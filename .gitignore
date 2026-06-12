@@ -1,0 +1,15 @@
+# Rust
+/backend/target/
+
+# Node
+/frontend/node_modules/
+/frontend/dist/
+
+# Downloaded + rendered media
+/backend/storage/sources/*
+/backend/storage/outputs/*
+!/backend/storage/sources/.gitkeep
+!/backend/storage/outputs/.gitkeep
+
+# OS / editor
+.DS_Store
