@@ -275,11 +275,30 @@ fn parse_fraction(s: &str) -> Option<f64> {
     Some(n / d)
 }
 
+/// Map a named look preset to an ffmpeg filter string.
+fn filter_preset(name: &str) -> Option<&'static str> {
+    match name {
+        "grayscale" => Some("hue=s=0"),
+        "sepia" => Some(
+            "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
+        ),
+        "warm" => Some("colorbalance=rs=0.2:gs=0.05:bs=-0.2"),
+        "cold" => Some("colorbalance=rs=-0.2:gs=0:bs=0.2"),
+        _ => None,
+    }
+}
+
 /// Build the ffmpeg argument list for an edit request.
 ///
 /// Trim is applied as an *input* option (`-ss` + `-t`) so it happens before the
-/// filter graph; crop/scale/speed then operate on the trimmed stream.
-pub fn build_ffmpeg_args(input: &Path, output: &Path, edit: &EditRequest) -> Vec<String> {
+/// filter graph; geometry/colour/speed/fade then operate on the trimmed stream.
+/// `source_duration` is the probed length of the input, used to time fade-outs.
+pub fn build_ffmpeg_args(
+    input: &Path,
+    output: &Path,
+    edit: &EditRequest,
+    source_duration: f64,
+) -> Vec<String> {
     let mut args: Vec<String> = vec!["-y".into()];
 
     // --- input-side trim ---
@@ -294,7 +313,12 @@ pub fn build_ffmpeg_args(input: &Path, output: &Path, edit: &EditRequest) -> Vec
     args.push("-i".into());
     args.push(input.to_string_lossy().into_owned());
 
-    // --- video filter chain ---
+    let speed = edit.speed;
+    let speed_changed = (speed - 1.0).abs() > 1e-6 && speed > 0.0;
+    // Output duration drives fade-out start (fades run on the retimed stream).
+    let out_dur = expected_output_secs(edit, source_duration);
+
+    // --- video filter chain (order matters) ---
     let mut vf: Vec<String> = Vec::new();
     if let Some(c) = &edit.crop {
         // Force even dimensions; libx264 + yuv420p requires them.
@@ -302,26 +326,86 @@ pub fn build_ffmpeg_args(input: &Path, output: &Path, edit: &EditRequest) -> Vec
         let h = c.h & !1;
         vf.push(format!("crop={w}:{h}:{}:{}", c.x, c.y));
     }
+    match edit.rotate.rem_euclid(360) {
+        90 => vf.push("transpose=1".into()),
+        180 => {
+            vf.push("transpose=1".into());
+            vf.push("transpose=1".into());
+        }
+        270 => vf.push("transpose=2".into()),
+        _ => {}
+    }
+    if edit.flip_h {
+        vf.push("hflip".into());
+    }
+    if edit.flip_v {
+        vf.push("vflip".into());
+    }
     if let Some(s) = &edit.scale {
         vf.push(format!("scale={}:{}", s.w, s.h));
     }
-    let speed = edit.speed;
-    let speed_changed = (speed - 1.0).abs() > 1e-6 && speed > 0.0;
+    let eq_changed = edit.brightness.abs() > 1e-6
+        || (edit.contrast - 1.0).abs() > 1e-6
+        || (edit.saturation - 1.0).abs() > 1e-6;
+    if eq_changed {
+        vf.push(format!(
+            "eq=brightness={:.3}:contrast={:.3}:saturation={:.3}",
+            edit.brightness, edit.contrast, edit.saturation
+        ));
+    }
+    if let Some(f) = edit.filter.as_deref().and_then(filter_preset) {
+        vf.push(f.into());
+    }
+    if edit.reverse {
+        vf.push("reverse".into());
+    }
     if speed_changed {
         vf.push(format!("setpts={:.6}*PTS", 1.0 / speed));
+    }
+    if edit.fade_in > 0.0 {
+        vf.push(format!("fade=t=in:st=0:d={:.3}", edit.fade_in));
+    }
+    if edit.fade_out > 0.0 && out_dur > edit.fade_out {
+        vf.push(format!(
+            "fade=t=out:st={:.3}:d={:.3}",
+            out_dur - edit.fade_out,
+            edit.fade_out
+        ));
     }
     if !vf.is_empty() {
         args.push("-vf".into());
         args.push(vf.join(","));
     }
 
-    // --- audio ---
+    // --- audio filter chain ---
     if edit.mute {
         args.push("-an".into());
-    } else if speed_changed {
-        args.push("-af".into());
-        // atempo only accepts 0.5..=2.0; the frontend clamps speed to that range.
-        args.push(format!("atempo={:.6}", speed.clamp(0.5, 2.0)));
+    } else {
+        let mut af: Vec<String> = Vec::new();
+        if edit.reverse {
+            af.push("areverse".into());
+        }
+        if (edit.volume - 1.0).abs() > 1e-6 {
+            af.push(format!("volume={:.3}", edit.volume.max(0.0)));
+        }
+        if speed_changed {
+            // atempo only accepts 0.5..=2.0; the frontend clamps speed to that range.
+            af.push(format!("atempo={:.6}", speed.clamp(0.5, 2.0)));
+        }
+        if edit.fade_in > 0.0 {
+            af.push(format!("afade=t=in:st=0:d={:.3}", edit.fade_in));
+        }
+        if edit.fade_out > 0.0 && out_dur > edit.fade_out {
+            af.push(format!(
+                "afade=t=out:st={:.3}:d={:.3}",
+                out_dur - edit.fade_out,
+                edit.fade_out
+            ));
+        }
+        if !af.is_empty() {
+            args.push("-af".into());
+            args.push(af.join(","));
+        }
     }
 
     // --- web-friendly encode settings ---
@@ -333,6 +417,12 @@ pub fn build_ffmpeg_args(input: &Path, output: &Path, edit: &EditRequest) -> Vec
     args.push("23".into());
     args.push("-pix_fmt".into());
     args.push("yuv420p".into());
+    if let Some(fps) = edit.fps {
+        if fps > 0.0 {
+            args.push("-r".into());
+            args.push(format!("{fps:.3}"));
+        }
+    }
     if !edit.mute {
         args.push("-c:a".into());
         args.push("aac".into());
@@ -461,4 +551,123 @@ fn tail(s: &str, n: usize) -> String {
     let lines: Vec<&str> = s.lines().filter(|l| !l.trim().is_empty()).collect();
     let start = lines.len().saturating_sub(n);
     lines[start..].join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn edit(v: serde_json::Value) -> EditRequest {
+        serde_json::from_value(v).expect("valid EditRequest")
+    }
+
+    fn args_for(v: serde_json::Value, dur: f64) -> Vec<String> {
+        let input = Path::new("/in.mp4");
+        let output = Path::new("/out.mp4");
+        build_ffmpeg_args(input, output, &edit(v), dur)
+    }
+
+    fn vf(args: &[String]) -> String {
+        let i = args.iter().position(|a| a == "-vf").expect("has -vf");
+        args[i + 1].clone()
+    }
+
+    fn af(args: &[String]) -> Option<String> {
+        args.iter().position(|a| a == "-af").map(|i| args[i + 1].clone())
+    }
+
+    #[test]
+    fn default_edit_reencodes_with_audio() {
+        let args = args_for(json!({ "videoId": "x" }), 10.0);
+        assert!(args.contains(&"libx264".to_string()));
+        assert!(args.contains(&"aac".to_string()));
+        assert!(!args.contains(&"-an".to_string()));
+        assert!(!args.contains(&"-vf".to_string()));
+    }
+
+    #[test]
+    fn trim_is_input_side() {
+        let args = args_for(
+            json!({ "videoId": "x", "trim": { "start": 2.0, "end": 5.0 } }),
+            10.0,
+        );
+        let ss = args.iter().position(|a| a == "-ss").unwrap();
+        let i = args.iter().position(|a| a == "-i").unwrap();
+        assert!(ss < i, "-ss must precede -i");
+        assert_eq!(args[args.iter().position(|a| a == "-t").unwrap() + 1], "3.000");
+    }
+
+    #[test]
+    fn mute_drops_audio() {
+        let args = args_for(json!({ "videoId": "x", "mute": true }), 10.0);
+        assert!(args.contains(&"-an".to_string()));
+        assert!(!args.contains(&"aac".to_string()));
+        assert!(af(&args).is_none());
+    }
+
+    #[test]
+    fn geometry_and_colour_order() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "crop": { "x": 10, "y": 20, "w": 101, "h": 51 },
+                "rotate": 90,
+                "flipH": true,
+                "scale": { "w": 640, "h": -2 },
+                "filter": "grayscale",
+                "fadeOut": 1.0
+            }),
+            10.0,
+        );
+        let chain = vf(&args);
+        // Crop forces even dimensions.
+        assert!(chain.contains("crop=100:50:10:20"), "{chain}");
+        let order = |s: &str| chain.find(s).unwrap();
+        assert!(order("crop") < order("transpose=1"));
+        assert!(order("transpose=1") < order("hflip"));
+        assert!(order("hflip") < order("scale"));
+        assert!(order("scale") < order("hue=s=0"));
+        assert!(chain.contains("fade=t=out:st=9.000:d=1.000"), "{chain}");
+    }
+
+    #[test]
+    fn audio_chain_volume_and_speed() {
+        let args = args_for(
+            json!({ "videoId": "x", "volume": 1.5, "speed": 2.0 }),
+            10.0,
+        );
+        let chain = af(&args).expect("has -af");
+        assert!(chain.contains("volume=1.500"), "{chain}");
+        assert!(chain.contains("atempo=2.000000"), "{chain}");
+        // Speed halves duration: setpts on the video side.
+        assert!(vf(&args).contains("setpts="));
+    }
+
+    #[test]
+    fn fps_override_present() {
+        let args = args_for(json!({ "videoId": "x", "fps": 30.0 }), 10.0);
+        let i = args.iter().position(|a| a == "-r").expect("has -r");
+        assert_eq!(args[i + 1], "30.000");
+    }
+
+    #[test]
+    fn validate_url_blocks_local_and_bad_schemes() {
+        assert!(validate_url("https://example.com/v").is_ok());
+        assert!(validate_url("http://1.2.3.4/v").is_ok());
+        assert!(validate_url("ftp://example.com/v").is_err());
+        assert!(validate_url("https://localhost/v").is_err());
+        assert!(validate_url("http://127.0.0.1/v").is_err());
+        assert!(validate_url("http://10.0.0.5/v").is_err());
+        assert!(validate_url("http://192.168.1.1/v").is_err());
+        assert!(validate_url("http://[::1]/v").is_err());
+        assert!(validate_url("not a url").is_err());
+    }
+
+    #[test]
+    fn ytdlp_progress_parsing() {
+        assert_eq!(parse_ytdlp_progress("[download]  42.3% of 10MiB"), Some(42.3));
+        assert_eq!(parse_ytdlp_progress("[download] 100% of 10MiB"), Some(100.0));
+        assert_eq!(parse_ytdlp_progress("some other line"), None);
+    }
 }

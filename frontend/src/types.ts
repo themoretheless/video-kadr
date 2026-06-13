@@ -16,6 +16,7 @@ export interface ResultInfo {
   id: string
   url: string
   filename: string
+  sizeBytes?: number | null
 }
 
 export interface EditState {
@@ -27,6 +28,19 @@ export interface EditState {
   scale: { w: number; h: number }
   mute: boolean
   speed: number
+  // round 2 effects
+  rotate: number
+  flipH: boolean
+  flipV: boolean
+  volume: number
+  fadeIn: number
+  fadeOut: number
+  brightness: number
+  contrast: number
+  saturation: number
+  filter: string
+  reverse: boolean
+  fps: number | null
 }
 
 export type JobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'

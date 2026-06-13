@@ -273,6 +273,18 @@ body {
   border-color: var(--accent);
 }
 
+.grid2 input[type="range"] {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.reset-color {
+  align-self: end;
+}
+
 /* Chips / segmented controls */
 .chips {
   display: flex;

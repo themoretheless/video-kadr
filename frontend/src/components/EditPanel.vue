@@ -138,6 +138,31 @@ function resetCrop() {
   if (!v) return
   state.edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
 }
+
+const rotations = [0, 90, 180, 270]
+
+const filters = [
+  { v: '', label: 'Нет' },
+  { v: 'grayscale', label: 'Ч/Б' },
+  { v: 'sepia', label: 'Сепия' },
+  { v: 'warm', label: 'Тёплый' },
+  { v: 'cold', label: 'Холодный' },
+]
+
+const fpsPresets = [
+  { v: null as number | null, label: 'ориг.' },
+  { v: 60, label: '60' },
+  { v: 30, label: '30' },
+  { v: 24, label: '24' },
+  { v: 15, label: '15' },
+]
+
+function resetColor() {
+  state.edit.brightness = 0
+  state.edit.contrast = 1
+  state.edit.saturation = 1
+  state.edit.filter = ''
+}
 </script>
 
 <template>
@@ -209,6 +234,22 @@ function resetCrop() {
           </button>
         </div>
       </div>
+
+      <div class="field inline">
+        <label class="toggle"><input type="checkbox" v-model="state.edit.reverse" /> Реверс</label>
+        <span v-if="state.edit.reverse" class="hint">короткие отрезки: реверс грузит весь клип в память</span>
+      </div>
+
+      <div class="field">
+        <div class="grid2">
+          <label>Появление: {{ state.edit.fadeIn.toFixed(1) }} c
+            <input type="range" min="0" max="5" step="0.1" v-model.number="state.edit.fadeIn" />
+          </label>
+          <label>Затухание: {{ state.edit.fadeOut.toFixed(1) }} c
+            <input type="range" min="0" max="5" step="0.1" v-model.number="state.edit.fadeOut" />
+          </label>
+        </div>
+      </div>
     </section>
 
     <!-- Frame -->
@@ -260,6 +301,73 @@ function resetCrop() {
           </div>
         </template>
       </div>
+
+      <div class="field">
+        <label>Поворот</label>
+        <div class="chips">
+          <button
+            v-for="r in rotations"
+            :key="r"
+            class="chip"
+            :class="{ active: state.edit.rotate === r }"
+            @click="state.edit.rotate = r"
+          >
+            {{ r }}°
+          </button>
+        </div>
+      </div>
+
+      <div class="field inline">
+        <label class="toggle"><input type="checkbox" v-model="state.edit.flipH" /> Отразить ↔</label>
+        <label class="toggle"><input type="checkbox" v-model="state.edit.flipV" /> Отразить ↕</label>
+      </div>
+
+      <div class="field">
+        <label>Частота кадров</label>
+        <div class="chips">
+          <button
+            v-for="f in fpsPresets"
+            :key="String(f.v)"
+            class="chip"
+            :class="{ active: state.edit.fps === f.v }"
+            @click="state.edit.fps = f.v"
+          >
+            {{ f.label }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Colour -->
+    <section class="group">
+      <div class="group-title">Цвет</div>
+      <div class="field">
+        <div class="chips">
+          <button
+            v-for="f in filters"
+            :key="f.v"
+            class="chip"
+            :class="{ active: state.edit.filter === f.v }"
+            @click="state.edit.filter = f.v"
+          >
+            {{ f.label }}
+          </button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="grid2">
+          <label>Яркость: {{ state.edit.brightness.toFixed(2) }}
+            <input type="range" min="-1" max="1" step="0.05" v-model.number="state.edit.brightness" />
+          </label>
+          <label>Контраст: {{ state.edit.contrast.toFixed(2) }}
+            <input type="range" min="0" max="2" step="0.05" v-model.number="state.edit.contrast" />
+          </label>
+          <label>Насыщенность: {{ state.edit.saturation.toFixed(2) }}
+            <input type="range" min="0" max="3" step="0.05" v-model.number="state.edit.saturation" />
+          </label>
+          <button class="btn ghost sm reset-color" @click="resetColor">Сбросить цвет</button>
+        </div>
+      </div>
     </section>
 
     <!-- Audio -->
@@ -267,6 +375,10 @@ function resetCrop() {
       <div class="group-title">Звук</div>
       <div class="field inline">
         <label class="toggle"><input type="checkbox" v-model="state.edit.mute" /> Без звука</label>
+      </div>
+      <div v-if="!state.edit.mute" class="field">
+        <label>Громкость: {{ Math.round(state.edit.volume * 100) }}%</label>
+        <input type="range" min="0" max="2" step="0.05" v-model.number="state.edit.volume" />
       </div>
     </section>
 

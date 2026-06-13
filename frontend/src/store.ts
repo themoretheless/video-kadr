@@ -13,6 +13,18 @@ export function defaultEdit(): EditState {
     scale: { w: 1280, h: -2 },
     mute: false,
     speed: 1,
+    rotate: 0,
+    flipH: false,
+    flipV: false,
+    volume: 1,
+    fadeIn: 0,
+    fadeOut: 0,
+    brightness: 0,
+    contrast: 1,
+    saturation: 1,
+    filter: '',
+    reverse: false,
+    fps: null,
   }
 }
 
@@ -145,6 +157,19 @@ export function buildEditPayload(): Record<string, unknown> {
   if (e.scaleEnabled) {
     payload.scale = { w: e.scale.w, h: e.scale.h }
   }
+  // Effects: only send what differs from the defaults to keep payloads small.
+  if (e.rotate) payload.rotate = e.rotate
+  if (e.flipH) payload.flipH = true
+  if (e.flipV) payload.flipV = true
+  if (e.volume !== 1) payload.volume = e.volume
+  if (e.fadeIn > 0) payload.fadeIn = e.fadeIn
+  if (e.fadeOut > 0) payload.fadeOut = e.fadeOut
+  if (e.brightness !== 0) payload.brightness = e.brightness
+  if (e.contrast !== 1) payload.contrast = e.contrast
+  if (e.saturation !== 1) payload.saturation = e.saturation
+  if (e.filter) payload.filter = e.filter
+  if (e.reverse) payload.reverse = true
+  if (e.fps) payload.fps = e.fps
   return payload
 }
 

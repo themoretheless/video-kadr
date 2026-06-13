@@ -159,7 +159,7 @@ pub async fn edit_handler(
             let input = tools::find_source(&sources, &req.video_id).await?;
             let probe = tools::probe_video(&input).await?;
             let expected = tools::expected_output_secs(&req, probe.duration);
-            let args = tools::build_ffmpeg_args(&input, &output_path, &req);
+            let args = tools::build_ffmpeg_args(&input, &output_path, &req, probe.duration);
             tracing::info!("ffmpeg {}", args.join(" "));
             let done = tools::run_ffmpeg(&args, expected, &tx, &token, job_timeout()).await?;
             if matches!(done, Done::Cancelled) {

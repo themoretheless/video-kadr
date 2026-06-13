@@ -76,9 +76,45 @@ pub struct EditRequest {
     pub mute: bool,
     #[serde(default = "default_speed")]
     pub speed: f64,
+    // --- round 2 effects ---
+    /// Clockwise rotation in degrees: 0, 90, 180, 270.
+    #[serde(default)]
+    pub rotate: i32,
+    #[serde(default)]
+    pub flip_h: bool,
+    #[serde(default)]
+    pub flip_v: bool,
+    /// Linear audio gain (1.0 = unchanged).
+    #[serde(default = "default_one")]
+    pub volume: f64,
+    /// Fade in/out durations in seconds (0 = none), applied to video and audio.
+    #[serde(default)]
+    pub fade_in: f64,
+    #[serde(default)]
+    pub fade_out: f64,
+    /// eq filter params: brightness -1..1, contrast/saturation around 1.0.
+    #[serde(default)]
+    pub brightness: f64,
+    #[serde(default = "default_one")]
+    pub contrast: f64,
+    #[serde(default = "default_one")]
+    pub saturation: f64,
+    /// Named look: "grayscale" | "sepia" | "warm" | "cold".
+    #[serde(default)]
+    pub filter: Option<String>,
+    /// Reverse the clip (buffers all frames; intended for short segments).
+    #[serde(default)]
+    pub reverse: bool,
+    /// Output frame rate override.
+    #[serde(default)]
+    pub fps: Option<f64>,
 }
 
 fn default_speed() -> f64 {
+    1.0
+}
+
+fn default_one() -> f64 {
     1.0
 }
 
