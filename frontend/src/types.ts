@@ -5,6 +5,11 @@ export interface VideoInfo {
   duration: number
   width: number
   height: number
+  title?: string | null
+  fps?: number | null
+  vcodec?: string | null
+  acodec?: string | null
+  sizeBytes?: number | null
 }
 
 export interface ResultInfo {
@@ -24,11 +29,15 @@ export interface EditState {
   speed: number
 }
 
-export type JobStatus = 'pending' | 'running' | 'done' | 'error'
+export type JobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 
 export interface Job {
   id: string
   status: JobStatus
   result?: unknown
   error?: string
+  /** 0..100, omitted by the backend when unknown. */
+  progress?: number
+  /** One of "queued" | "downloading" | "processing". */
+  stage?: string
 }

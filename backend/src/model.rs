@@ -1,13 +1,21 @@
 use serde::{Deserialize, Serialize};
 
 /// Status of an asynchronous job (import or edit).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum JobStatus {
     Pending,
     Running,
     Done,
     Error,
+    Cancelled,
+}
+
+impl JobStatus {
+    /// A job is terminal once it can no longer change state.
+    pub fn is_terminal(self) -> bool {
+        matches!(self, JobStatus::Done | JobStatus::Error | JobStatus::Cancelled)
+    }
 }
 
 /// A unit of background work tracked in memory and polled by the frontend.
@@ -19,11 +27,24 @@ pub struct Job {
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// 0..100. Omitted while unknown (e.g. before the child reports anything).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<f64>,
+    /// Coarse phase label: "queued" | "downloading" | "processing".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
 }
 
 impl Job {
     pub fn pending(id: String) -> Self {
-        Job { id, status: JobStatus::Pending, result: None, error: None }
+        Job {
+            id,
+            status: JobStatus::Pending,
+            result: None,
+            error: None,
+            progress: None,
+            stage: None,
+        }
     }
 }
 

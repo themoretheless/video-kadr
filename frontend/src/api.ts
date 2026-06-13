@@ -26,9 +26,19 @@ export async function getJob(jobId: string): Promise<Job> {
   return res.json()
 }
 
+/** Ask the backend to cancel a running/pending job. Best-effort. */
+export async function cancelJob(jobId: string): Promise<void> {
+  try {
+    await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' })
+  } catch {
+    // The poll loop will surface the resulting state.
+  }
+}
+
 /**
- * Poll a job once per second until it finishes. Resolves with the completed job
- * (status `done`) or rejects with the job's error message.
+ * Poll a job until it finishes. Resolves with the completed job (status `done`),
+ * rejects with the job's error, or rejects with Error('cancelled') so callers
+ * can tell a user cancellation apart from a real failure.
  */
 export function pollJob(jobId: string, onTick?: (job: Job) => void): Promise<Job> {
   return new Promise((resolve, reject) => {
@@ -37,8 +47,11 @@ export function pollJob(jobId: string, onTick?: (job: Job) => void): Promise<Job
         const job = await getJob(jobId)
         onTick?.(job)
         if (job.status === 'done') return resolve(job)
-        if (job.status === 'error') return reject(new Error(job.error || 'задача завершилась с ошибкой'))
-        setTimeout(tick, 1000)
+        if (job.status === 'cancelled') return reject(new Error('cancelled'))
+        if (job.status === 'error') {
+          return reject(new Error(job.error || 'задача завершилась с ошибкой'))
+        }
+        setTimeout(tick, 500)
       } catch (e) {
         reject(e)
       }

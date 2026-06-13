@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { state, doImport } from '../store'
+import { state, doImport, cancelImport } from '../store'
+import ProgressBar from './ProgressBar.vue'
 </script>
 
 <template>
@@ -24,9 +25,17 @@ import { state, doImport } from '../store'
     <div class="range-row">
       <label>с <input v-model="state.importStart" class="time-input" placeholder="0:30" :disabled="state.importing" /></label>
       <label>по <input v-model="state.importEnd" class="time-input" placeholder="2:00" :disabled="state.importing" /></label>
-      <span class="hint">диапазон импорта (мм:сс). Пусто = всё видео — для длинных роликов укажи отрезок</span>
+      <span class="hint">диапазон импорта (мм:сс). Пусто = всё видео, для длинных роликов укажи отрезок</span>
     </div>
-    <p v-if="state.importStatus" class="status">{{ state.importStatus }}</p>
+
+    <ProgressBar
+      v-if="state.importing"
+      class="import-progress"
+      :progress="state.importProgress"
+      :stage="state.importStage"
+      cancellable
+      @cancel="cancelImport"
+    />
     <p v-if="state.importError" class="error">Ошибка: {{ state.importError }}</p>
   </div>
 </template>
