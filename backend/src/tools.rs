@@ -288,37 +288,21 @@ fn filter_preset(name: &str) -> Option<&'static str> {
     }
 }
 
-/// Build the ffmpeg argument list for an edit request.
-///
-/// Trim is applied as an *input* option (`-ss` + `-t`) so it happens before the
-/// filter graph; geometry/colour/speed/fade then operate on the trimmed stream.
-/// `source_duration` is the probed length of the input, used to time fade-outs.
-pub fn build_ffmpeg_args(
-    input: &Path,
-    output: &Path,
-    edit: &EditRequest,
-    source_duration: f64,
-) -> Vec<String> {
-    let mut args: Vec<String> = vec!["-y".into()];
-
-    // --- input-side trim ---
-    if let Some(t) = &edit.trim {
-        let dur = (t.end - t.start).max(0.0);
-        args.push("-ss".into());
-        args.push(format_secs(t.start));
-        args.push("-t".into());
-        args.push(format_secs(dur));
+/// Output file extension for a requested export format.
+pub fn output_ext(format: Option<&str>) -> &'static str {
+    match format.unwrap_or("mp4") {
+        "webm" => "webm",
+        "gif" => "gif",
+        "png" => "png",
+        "mp3" => "mp3",
+        _ => "mp4",
     }
+}
 
-    args.push("-i".into());
-    args.push(input.to_string_lossy().into_owned());
-
-    let speed = edit.speed;
-    let speed_changed = (speed - 1.0).abs() > 1e-6 && speed > 0.0;
-    // Output duration drives fade-out start (fades run on the retimed stream).
-    let out_dur = expected_output_secs(edit, source_duration);
-
-    // --- video filter chain (order matters) ---
+/// Build the geometry/colour (and optionally temporal) video filter chain.
+/// Order matters: crop -> rotate -> flip -> scale -> eq -> preset -> reverse
+/// -> setpts -> fade. `temporal=false` skips speed/fade (used for still frames).
+fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String> {
     let mut vf: Vec<String> = Vec::new();
     if let Some(c) = &edit.crop {
         // Force even dimensions; libx264 + yuv420p requires them.
@@ -359,78 +343,190 @@ pub fn build_ffmpeg_args(
     if edit.reverse {
         vf.push("reverse".into());
     }
-    if speed_changed {
-        vf.push(format!("setpts={:.6}*PTS", 1.0 / speed));
-    }
-    if edit.fade_in > 0.0 {
-        vf.push(format!("fade=t=in:st=0:d={:.3}", edit.fade_in));
-    }
-    if edit.fade_out > 0.0 && out_dur > edit.fade_out {
-        vf.push(format!(
-            "fade=t=out:st={:.3}:d={:.3}",
-            out_dur - edit.fade_out,
-            edit.fade_out
-        ));
-    }
-    if !vf.is_empty() {
-        args.push("-vf".into());
-        args.push(vf.join(","));
-    }
-
-    // --- audio filter chain ---
-    if edit.mute {
-        args.push("-an".into());
-    } else {
-        let mut af: Vec<String> = Vec::new();
-        if edit.reverse {
-            af.push("areverse".into());
-        }
-        if (edit.volume - 1.0).abs() > 1e-6 {
-            af.push(format!("volume={:.3}", edit.volume.max(0.0)));
-        }
-        if speed_changed {
-            // atempo only accepts 0.5..=2.0; the frontend clamps speed to that range.
-            af.push(format!("atempo={:.6}", speed.clamp(0.5, 2.0)));
+    if temporal {
+        let speed = edit.speed;
+        if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
+            vf.push(format!("setpts={:.6}*PTS", 1.0 / speed));
         }
         if edit.fade_in > 0.0 {
-            af.push(format!("afade=t=in:st=0:d={:.3}", edit.fade_in));
+            vf.push(format!("fade=t=in:st=0:d={:.3}", edit.fade_in));
         }
         if edit.fade_out > 0.0 && out_dur > edit.fade_out {
-            af.push(format!(
-                "afade=t=out:st={:.3}:d={:.3}",
+            vf.push(format!(
+                "fade=t=out:st={:.3}:d={:.3}",
                 out_dur - edit.fade_out,
                 edit.fade_out
             ));
         }
-        if !af.is_empty() {
-            args.push("-af".into());
-            args.push(af.join(","));
-        }
     }
+    vf
+}
 
-    // --- web-friendly encode settings ---
-    args.push("-c:v".into());
-    args.push("libx264".into());
-    args.push("-preset".into());
-    args.push("veryfast".into());
-    args.push("-crf".into());
-    args.push("23".into());
-    args.push("-pix_fmt".into());
-    args.push("yuv420p".into());
+/// Build the audio filter chain: areverse -> volume -> atempo -> afade.
+fn audio_filters(edit: &EditRequest, out_dur: f64) -> Vec<String> {
+    let mut af: Vec<String> = Vec::new();
+    if edit.reverse {
+        af.push("areverse".into());
+    }
+    if (edit.volume - 1.0).abs() > 1e-6 {
+        af.push(format!("volume={:.3}", edit.volume.max(0.0)));
+    }
+    let speed = edit.speed;
+    if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
+        // atempo only accepts 0.5..=2.0; the frontend clamps speed to that range.
+        af.push(format!("atempo={:.6}", speed.clamp(0.5, 2.0)));
+    }
+    if edit.fade_in > 0.0 {
+        af.push(format!("afade=t=in:st=0:d={:.3}", edit.fade_in));
+    }
+    if edit.fade_out > 0.0 && out_dur > edit.fade_out {
+        af.push(format!(
+            "afade=t=out:st={:.3}:d={:.3}",
+            out_dur - edit.fade_out,
+            edit.fade_out
+        ));
+    }
+    af
+}
+
+/// Append audio options: `-an` when muted, otherwise the filter chain + codec.
+fn push_audio(args: &mut Vec<String>, edit: &EditRequest, out_dur: f64, codec: &str) {
+    if edit.mute {
+        args.push("-an".into());
+        return;
+    }
+    let af = audio_filters(edit, out_dur);
+    if !af.is_empty() {
+        args.push("-af".into());
+        args.push(af.join(","));
+    }
+    args.push("-c:a".into());
+    args.push(codec.into());
+    args.push("-b:a".into());
+    args.push("128k".into());
+}
+
+fn push_fps(args: &mut Vec<String>, edit: &EditRequest) {
     if let Some(fps) = edit.fps {
         if fps > 0.0 {
             args.push("-r".into());
             args.push(format!("{fps:.3}"));
         }
     }
-    if !edit.mute {
-        args.push("-c:a".into());
-        args.push("aac".into());
-        args.push("-b:a".into());
-        args.push("128k".into());
+}
+
+/// Build the ffmpeg argument list for an edit request.
+///
+/// Trim is applied as an *input* option (`-ss` + `-t`) so it happens before the
+/// filter graph; geometry/colour/speed/fade then operate on the trimmed stream.
+/// `source_duration` is the probed length of the input, used to time fade-outs.
+/// The output container/codecs depend on `edit.format` (mp4/webm/gif/png/mp3).
+pub fn build_ffmpeg_args(
+    input: &Path,
+    output: &Path,
+    edit: &EditRequest,
+    source_duration: f64,
+) -> Vec<String> {
+    let mut args: Vec<String> = vec!["-y".into()];
+
+    // --- input-side trim ---
+    if let Some(t) = &edit.trim {
+        let dur = (t.end - t.start).max(0.0);
+        args.push("-ss".into());
+        args.push(format_secs(t.start));
+        args.push("-t".into());
+        args.push(format_secs(dur));
     }
-    args.push("-movflags".into());
-    args.push("+faststart".into());
+
+    args.push("-i".into());
+    args.push(input.to_string_lossy().into_owned());
+
+    let out_dur = expected_output_secs(edit, source_duration);
+    let format = edit.format.as_deref().unwrap_or("mp4");
+
+    match format {
+        "mp3" => {
+            // Audio-only extraction.
+            let af = audio_filters(edit, out_dur);
+            if !af.is_empty() {
+                args.push("-af".into());
+                args.push(af.join(","));
+            }
+            args.push("-vn".into());
+            args.push("-c:a".into());
+            args.push("libmp3lame".into());
+            args.push("-q:a".into());
+            args.push("2".into());
+        }
+        "png" => {
+            // Single still frame at the trim start (positioned by -ss above).
+            let vf = video_filters(edit, out_dur, false);
+            if !vf.is_empty() {
+                args.push("-vf".into());
+                args.push(vf.join(","));
+            }
+            args.push("-frames:v".into());
+            args.push("1".into());
+            args.push("-an".into());
+        }
+        "gif" => {
+            // Generate a per-clip palette for a good-looking gif (single pass
+            // via split + palettegen/paletteuse).
+            let mut parts = video_filters(edit, out_dur, true);
+            let fps = edit.fps.filter(|f| *f > 0.0).unwrap_or(12.0);
+            parts.push(format!("fps={fps:.3}"));
+            let graph = format!(
+                "{},split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                parts.join(",")
+            );
+            args.push("-vf".into());
+            args.push(graph);
+            args.push("-an".into());
+        }
+        "webm" => {
+            let vf = video_filters(edit, out_dur, true);
+            if !vf.is_empty() {
+                args.push("-vf".into());
+                args.push(vf.join(","));
+            }
+            push_audio(&mut args, edit, out_dur, "libopus");
+            args.push("-c:v".into());
+            args.push("libvpx-vp9".into());
+            args.push("-crf".into());
+            args.push(edit.quality.unwrap_or(32).to_string());
+            args.push("-b:v".into());
+            args.push("0".into());
+            args.push("-pix_fmt".into());
+            args.push("yuv420p".into());
+            push_fps(&mut args, edit);
+        }
+        _ => {
+            // mp4 (default): H.264 or H.265.
+            let vf = video_filters(edit, out_dur, true);
+            if !vf.is_empty() {
+                args.push("-vf".into());
+                args.push(vf.join(","));
+            }
+            let h265 = edit.codec.as_deref() == Some("h265");
+            push_audio(&mut args, edit, out_dur, "aac");
+            args.push("-c:v".into());
+            args.push(if h265 { "libx265" } else { "libx264" }.into());
+            args.push("-preset".into());
+            args.push("veryfast".into());
+            args.push("-crf".into());
+            args.push(edit.quality.unwrap_or(if h265 { 28 } else { 23 }).to_string());
+            args.push("-pix_fmt".into());
+            args.push("yuv420p".into());
+            if h265 {
+                // hvc1 tag keeps the result playable in QuickTime/Safari.
+                args.push("-tag:v".into());
+                args.push("hvc1".into());
+            }
+            push_fps(&mut args, edit);
+            args.push("-movflags".into());
+            args.push("+faststart".into());
+        }
+    }
 
     args.push(output.to_string_lossy().into_owned());
     args
@@ -669,5 +765,71 @@ mod tests {
         assert_eq!(parse_ytdlp_progress("[download]  42.3% of 10MiB"), Some(42.3));
         assert_eq!(parse_ytdlp_progress("[download] 100% of 10MiB"), Some(100.0));
         assert_eq!(parse_ytdlp_progress("some other line"), None);
+    }
+
+    #[test]
+    fn output_ext_maps_formats() {
+        assert_eq!(output_ext(None), "mp4");
+        assert_eq!(output_ext(Some("mp4")), "mp4");
+        assert_eq!(output_ext(Some("webm")), "webm");
+        assert_eq!(output_ext(Some("gif")), "gif");
+        assert_eq!(output_ext(Some("png")), "png");
+        assert_eq!(output_ext(Some("mp3")), "mp3");
+        assert_eq!(output_ext(Some("weird")), "mp4");
+    }
+
+    #[test]
+    fn h265_codec_and_quality() {
+        let args = args_for(
+            json!({ "videoId": "x", "codec": "h265", "quality": 20 }),
+            10.0,
+        );
+        assert!(args.contains(&"libx265".to_string()));
+        assert!(args.contains(&"hvc1".to_string()));
+        let crf = args.iter().position(|a| a == "-crf").unwrap();
+        assert_eq!(args[crf + 1], "20");
+    }
+
+    #[test]
+    fn webm_uses_vp9_and_opus() {
+        let args = args_for(json!({ "videoId": "x", "format": "webm" }), 10.0);
+        assert!(args.contains(&"libvpx-vp9".to_string()));
+        assert!(args.contains(&"libopus".to_string()));
+        assert!(!args.contains(&"+faststart".to_string()));
+    }
+
+    #[test]
+    fn gif_has_palette_graph_and_no_audio() {
+        let args = args_for(json!({ "videoId": "x", "format": "gif" }), 10.0);
+        let chain = vf(&args);
+        assert!(chain.contains("palettegen"), "{chain}");
+        assert!(chain.contains("paletteuse"), "{chain}");
+        assert!(chain.contains("fps="), "{chain}");
+        assert!(args.contains(&"-an".to_string()));
+    }
+
+    #[test]
+    fn png_grabs_single_frame() {
+        let args = args_for(
+            json!({ "videoId": "x", "format": "png", "trim": { "start": 3.0, "end": 9.0 } }),
+            10.0,
+        );
+        let frames = args.iter().position(|a| a == "-frames:v").unwrap();
+        assert_eq!(args[frames + 1], "1");
+        assert!(args.contains(&"-an".to_string()));
+        // Trim still positions the grab.
+        assert_eq!(args[args.iter().position(|a| a == "-ss").unwrap() + 1], "3.000");
+    }
+
+    #[test]
+    fn mp3_is_audio_only() {
+        let args = args_for(
+            json!({ "videoId": "x", "format": "mp3", "volume": 0.5 }),
+            10.0,
+        );
+        assert!(args.contains(&"-vn".to_string()));
+        assert!(args.contains(&"libmp3lame".to_string()));
+        assert!(!args.contains(&"-vf".to_string()));
+        assert!(af(&args).unwrap().contains("volume=0.500"));
     }
 }

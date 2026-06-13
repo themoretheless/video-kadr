@@ -163,6 +163,57 @@ function resetColor() {
   state.edit.saturation = 1
   state.edit.filter = ''
 }
+
+const formats = [
+  { v: 'mp4', label: 'MP4' },
+  { v: 'webm', label: 'WebM' },
+  { v: 'gif', label: 'GIF' },
+  { v: 'png', label: 'Кадр PNG' },
+  { v: 'mp3', label: 'Аудио MP3' },
+]
+
+const qualityTiers = [
+  { v: '', label: 'Авто' },
+  { v: 'high', label: 'Высокое' },
+  { v: 'medium', label: 'Среднее' },
+  { v: 'compact', label: 'Компактное' },
+]
+
+const formatHint = computed(() => {
+  switch (state.edit.format) {
+    case 'gif':
+      return 'GIF без звука, по умолчанию 12 fps. Лучше укажи размер и короткий отрезок.'
+    case 'png':
+      return 'Один кадр на позиции начала обрезки, без звука.'
+    case 'mp3':
+      return 'Только звук, видеоэффекты игнорируются.'
+    case 'webm':
+      return 'VP9 + Opus, меньше размер, дольше кодируется.'
+    default:
+      return ''
+  }
+})
+
+const showQuality = computed(() => state.edit.format === 'mp4' || state.edit.format === 'webm')
+
+function applyPlatform(name: string) {
+  if (!state.video) return
+  state.edit.format = 'mp4'
+  state.edit.codec = 'h264'
+  state.edit.fps = null
+  if (name === 'shorts' || name === 'reels') {
+    // Vertical 9:16, 1080 wide, 30 fps.
+    setAspect(9, 16)
+    state.edit.scaleEnabled = true
+    state.edit.scale = { w: 1080, h: -2 }
+    state.edit.fps = 30
+  } else {
+    // telegram / youtube: keep frame, just cap width.
+    state.edit.cropEnabled = false
+    state.edit.scaleEnabled = true
+    state.edit.scale = { w: name === 'youtube' ? 1920 : 1280, h: -2 }
+  }
+}
 </script>
 
 <template>
@@ -380,6 +431,64 @@ function resetColor() {
         <label>Громкость: {{ Math.round(state.edit.volume * 100) }}%</label>
         <input type="range" min="0" max="2" step="0.05" v-model.number="state.edit.volume" />
       </div>
+    </section>
+
+    <!-- Export -->
+    <section class="group">
+      <div class="group-title">Экспорт</div>
+      <div class="field">
+        <label>Формат</label>
+        <div class="chips">
+          <button
+            v-for="f in formats"
+            :key="f.v"
+            class="chip"
+            :class="{ active: state.edit.format === f.v }"
+            @click="state.edit.format = f.v"
+          >
+            {{ f.label }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="state.edit.format === 'mp4'" class="field">
+        <label>Кодек</label>
+        <div class="chips">
+          <button class="chip" :class="{ active: state.edit.codec === 'h264' }" @click="state.edit.codec = 'h264'">
+            H.264
+          </button>
+          <button class="chip" :class="{ active: state.edit.codec === 'h265' }" @click="state.edit.codec = 'h265'">
+            H.265
+          </button>
+        </div>
+      </div>
+
+      <div v-if="showQuality" class="field">
+        <label>Качество</label>
+        <div class="chips">
+          <button
+            v-for="q in qualityTiers"
+            :key="q.v"
+            class="chip"
+            :class="{ active: state.edit.qualityTier === q.v }"
+            @click="state.edit.qualityTier = q.v"
+          >
+            {{ q.label }}
+          </button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Под платформу</label>
+        <div class="chips">
+          <button class="chip" @click="applyPlatform('telegram')">Telegram</button>
+          <button class="chip" @click="applyPlatform('shorts')">Shorts</button>
+          <button class="chip" @click="applyPlatform('reels')">Reels</button>
+          <button class="chip" @click="applyPlatform('youtube')">YouTube</button>
+        </div>
+      </div>
+
+      <p v-if="formatHint" class="hint">{{ formatHint }}</p>
     </section>
 
     <button class="btn primary big" :disabled="state.exporting" @click="doExport">

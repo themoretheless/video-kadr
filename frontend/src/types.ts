@@ -41,6 +41,10 @@ export interface EditState {
   filter: string
   reverse: boolean
   fps: number | null
+  // round 3 export options
+  format: string
+  codec: string
+  qualityTier: string
 }
 
 export type JobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'

@@ -108,6 +108,16 @@ pub struct EditRequest {
     /// Output frame rate override.
     #[serde(default)]
     pub fps: Option<f64>,
+    // --- round 3 export options ---
+    /// Output format: "mp4" (default) | "webm" | "gif" | "png" | "mp3".
+    #[serde(default)]
+    pub format: Option<String>,
+    /// Video codec for mp4: "h264" (default) | "h265".
+    #[serde(default)]
+    pub codec: Option<String>,
+    /// Quality as CRF (lower = better). Defaults per format/codec.
+    #[serde(default)]
+    pub quality: Option<u32>,
 }
 
 fn default_speed() -> f64 {

@@ -25,7 +25,20 @@ export function defaultEdit(): EditState {
     filter: '',
     reverse: false,
     fps: null,
+    format: 'mp4',
+    codec: 'h264',
+    qualityTier: '',
   }
+}
+
+/** Map a quality tier to a CRF value appropriate for the target format. */
+export function tierToCrf(tier: string, format: string): number | null {
+  if (!tier) return null
+  const table: Record<string, Record<string, number>> = {
+    mp4: { high: 18, medium: 23, compact: 28 },
+    webm: { high: 28, medium: 33, compact: 38 },
+  }
+  return table[format]?.[tier] ?? null
 }
 
 /**
@@ -170,6 +183,11 @@ export function buildEditPayload(): Record<string, unknown> {
   if (e.filter) payload.filter = e.filter
   if (e.reverse) payload.reverse = true
   if (e.fps) payload.fps = e.fps
+  // Export format/codec/quality.
+  if (e.format && e.format !== 'mp4') payload.format = e.format
+  if (e.format === 'mp4' && e.codec === 'h265') payload.codec = 'h265'
+  const crf = tierToCrf(e.qualityTier, e.format)
+  if (crf !== null) payload.quality = crf
   return payload
 }
 

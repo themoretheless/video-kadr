@@ -6,14 +6,15 @@ import ProgressBar from './ProgressBar.vue'
 // Build a friendly download filename from the source title, falling back to a
 // generic name. Strips characters that are awkward in filenames.
 const downloadName = computed(() => {
+  const ext = state.result?.filename?.split('.').pop() || 'mp4'
   const title = state.video?.title?.trim()
-  if (!title) return 'edited.mp4'
+  if (!title) return `edited.${ext}`
   const safe = title
     .replace(/[\\/:*?"<>|]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 60)
-  return `${safe || 'edited'}.mp4`
+  return `${safe || 'edited'}.${ext}`
 })
 </script>
 

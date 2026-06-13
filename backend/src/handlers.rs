@@ -153,7 +153,9 @@ pub async fn edit_handler(
 
         let sources = st.sources_dir();
         let outputs = st.outputs_dir();
-        let output_path = outputs.join(format!("{out_id}.mp4"));
+        let ext = tools::output_ext(req.format.as_deref());
+        let filename = format!("{out_id}.{ext}");
+        let output_path = outputs.join(&filename);
 
         let outcome = async {
             let input = tools::find_source(&sources, &req.video_id).await?;
@@ -169,8 +171,8 @@ pub async fn edit_handler(
             let size = tokio::fs::metadata(&output_path).await.map(|m| m.len()).ok();
             Ok(Some(json!({
                 "id": out_id,
-                "url": format!("/files/outputs/{out_id}.mp4"),
-                "filename": format!("{out_id}.mp4"),
+                "url": format!("/files/outputs/{filename}"),
+                "filename": filename,
                 "sizeBytes": size,
             })))
         }
