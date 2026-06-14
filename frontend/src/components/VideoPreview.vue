@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { state } from '../store'
-import CropOverlay from './CropOverlay.vue'
+import RectOverlay from './RectOverlay.vue'
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 
@@ -127,7 +127,18 @@ const meta = computed(() => {
         playsinline
         @timeupdate="onTimeUpdate"
       ></video>
-      <CropOverlay v-if="state.video && state.edit.cropEnabled" />
+      <RectOverlay
+        v-if="state.video && state.edit.cropEnabled"
+        :rect="state.edit.crop"
+        @update:rect="state.edit.crop = $event"
+      />
+      <RectOverlay
+        v-if="state.video && state.edit.censorEnabled"
+        :rect="state.edit.censor"
+        color="var(--danger)"
+        mode="mask"
+        @update:rect="state.edit.censor = $event"
+      />
     </div>
     <div v-if="state.video" class="meta">
       <span v-for="(m, i) in meta" :key="i" class="meta-chip">{{ m }}</span>

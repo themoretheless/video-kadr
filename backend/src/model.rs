@@ -112,6 +112,17 @@ pub struct EditRequest {
     /// Output frame rate override.
     #[serde(default)]
     pub fps: Option<f64>,
+    /// Hide a rectangular region with a filled box (privacy / censor).
+    #[serde(default)]
+    pub censor: Option<Crop>,
+    #[serde(default)]
+    pub censor_color: Option<String>,
+    /// Darkened-edges vignette.
+    #[serde(default)]
+    pub vignette: bool,
+    /// Letterbox/pillarbox to a target aspect like "9:16" (pad, no cropping).
+    #[serde(default)]
+    pub pad: Option<String>,
     // --- round 3 export options ---
     /// Output format: "mp4" (default) | "webm" | "gif" | "png" | "mp3".
     #[serde(default)]

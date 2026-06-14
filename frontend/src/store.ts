@@ -27,6 +27,11 @@ export function defaultEdit(): EditState {
     filter: '',
     reverse: false,
     fps: null,
+    censorEnabled: false,
+    censor: { x: 0, y: 0, w: 0, h: 0 },
+    censorColor: 'black',
+    vignette: false,
+    pad: '',
     format: 'mp4',
     codec: 'h264',
     qualityTier: '',
@@ -230,6 +235,12 @@ export function buildEditPayload(): Record<string, unknown> {
   if (e.filter) payload.filter = e.filter
   if (e.reverse) payload.reverse = true
   if (e.fps) payload.fps = e.fps
+  if (e.censorEnabled && e.censor.w > 1 && e.censor.h > 1) {
+    payload.censor = { x: e.censor.x, y: e.censor.y, w: e.censor.w, h: e.censor.h }
+    payload.censorColor = e.censorColor
+  }
+  if (e.vignette) payload.vignette = true
+  if (e.pad) payload.pad = e.pad
   // Export format/codec/quality.
   if (e.format && e.format !== 'mp4') payload.format = e.format
   if (e.format === 'mp4' && e.codec === 'h265') payload.codec = 'h265'

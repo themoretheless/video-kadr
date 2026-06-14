@@ -288,6 +288,27 @@ fn filter_preset(name: &str) -> Option<&'static str> {
     }
 }
 
+/// Whitelist a censor-box colour to a safe token (default black).
+fn sanitize_color(name: Option<&str>) -> &'static str {
+    match name.unwrap_or("black") {
+        "white" => "white",
+        "gray" | "grey" => "gray",
+        "red" => "red",
+        _ => "black",
+    }
+}
+
+/// Parse an aspect like "9:16" into (w, h), only allowing small sane values.
+fn parse_aspect(s: &str) -> Option<(u32, u32)> {
+    let (a, b) = s.split_once(':')?;
+    let w: u32 = a.trim().parse().ok()?;
+    let h: u32 = b.trim().parse().ok()?;
+    if w == 0 || h == 0 || w > 100 || h > 100 {
+        return None;
+    }
+    Some((w, h))
+}
+
 /// Output file extension for a requested export format.
 pub fn output_ext(format: Option<&str>) -> &'static str {
     match format.unwrap_or("mp4") {
@@ -304,6 +325,11 @@ pub fn output_ext(format: Option<&str>) -> &'static str {
 /// -> setpts -> fade. `temporal=false` skips speed/fade (used for still frames).
 fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String> {
     let mut vf: Vec<String> = Vec::new();
+    // Censor box first, in source coordinates (matches the on-video selection).
+    if let Some(c) = &edit.censor {
+        let color = sanitize_color(edit.censor_color.as_deref());
+        vf.push(format!("drawbox=x={}:y={}:w={}:h={}:color={color}:t=fill", c.x, c.y, c.w, c.h));
+    }
     if let Some(c) = &edit.crop {
         // Force even dimensions; libx264 + yuv420p requires them.
         let w = c.w & !1;
@@ -328,6 +354,12 @@ fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String
     if let Some(s) = &edit.scale {
         vf.push(format!("scale={}:{}", s.w, s.h));
     }
+    // Letterbox/pillarbox to a target aspect (adds bars, keeps whole frame).
+    if let Some((tw, th)) = edit.pad.as_deref().and_then(parse_aspect) {
+        vf.push(format!(
+            "pad=w='ceil(max(iw,ih*{tw}/{th})/2)*2':h='ceil(max(ih,iw*{th}/{tw})/2)*2':x='(ow-iw)/2':y='(oh-ih)/2':color=black"
+        ));
+    }
     let eq_changed = edit.brightness.abs() > 1e-6
         || (edit.contrast - 1.0).abs() > 1e-6
         || (edit.saturation - 1.0).abs() > 1e-6;
@@ -339,6 +371,9 @@ fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String
     }
     if let Some(f) = edit.filter.as_deref().and_then(filter_preset) {
         vf.push(f.into());
+    }
+    if edit.vignette {
+        vf.push("vignette".into());
     }
     if edit.reverse {
         vf.push("reverse".into());
@@ -963,6 +998,36 @@ mod tests {
     fn filter_complex(args: &[String]) -> String {
         let i = args.iter().position(|a| a == "-filter_complex").expect("has -filter_complex");
         args[i + 1].clone()
+    }
+
+    #[test]
+    fn censor_vignette_pad_in_chain() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "censor": { "x": 10, "y": 20, "w": 100, "h": 50 },
+                "censorColor": "white",
+                "vignette": true,
+                "pad": "9:16",
+                "crop": { "x": 0, "y": 0, "w": 320, "h": 240 }
+            }),
+            10.0,
+        );
+        let chain = vf(&args);
+        assert!(chain.contains("drawbox=x=10:y=20:w=100:h=50:color=white:t=fill"), "{chain}");
+        assert!(chain.contains("vignette"), "{chain}");
+        assert!(chain.contains("pad=w="), "{chain}");
+        // Censor is applied before crop (source coordinates).
+        assert!(chain.find("drawbox").unwrap() < chain.find("crop=").unwrap());
+    }
+
+    #[test]
+    fn censor_color_sanitized() {
+        let args = args_for(
+            json!({ "videoId": "x", "censor": { "x": 0, "y": 0, "w": 10, "h": 10 }, "censorColor": "; rm -rf" }),
+            10.0,
+        );
+        assert!(vf(&args).contains("color=black"));
     }
 
     #[test]

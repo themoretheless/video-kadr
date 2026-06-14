@@ -186,6 +186,39 @@ function resetColor() {
   state.edit.filter = ''
 }
 
+const censorColors = [
+  { v: 'black', label: 'Чёрный' },
+  { v: 'white', label: 'Белый' },
+  { v: 'gray', label: 'Серый' },
+]
+
+const padAspects = [
+  { v: '', label: 'Нет' },
+  { v: '9:16', label: '9:16' },
+  { v: '1:1', label: '1:1' },
+  { v: '4:5', label: '4:5' },
+  { v: '16:9', label: '16:9' },
+]
+
+// Seed the censor box to a centred rectangle when first enabled.
+watch(
+  () => state.edit.censorEnabled,
+  (on) => {
+    if (!on) return
+    const v = state.video
+    if (!v) return
+    const c = state.edit.censor
+    if (!(c.w > 1 && c.h > 1)) {
+      state.edit.censor = {
+        x: Math.round(v.width * 0.3),
+        y: Math.round(v.height * 0.3),
+        w: Math.round(v.width * 0.4),
+        h: Math.round(v.height * 0.25),
+      }
+    }
+  },
+)
+
 const formats = [
   { v: 'mp4', label: 'MP4' },
   { v: 'webm', label: 'WebM' },
@@ -429,6 +462,41 @@ function applyPlatform(name: string) {
           </button>
         </div>
       </div>
+
+      <div class="field">
+        <label class="toggle">
+          <input type="checkbox" v-model="state.edit.censorEnabled" /> Замазать область
+        </label>
+        <template v-if="state.edit.censorEnabled">
+          <div class="chips">
+            <button
+              v-for="c in censorColors"
+              :key="c.v"
+              class="chip"
+              :class="{ active: state.edit.censorColor === c.v }"
+              @click="state.edit.censorColor = c.v"
+            >
+              {{ c.label }}
+            </button>
+          </div>
+          <p class="hint">Выдели красный прямоугольник прямо на видео.</p>
+        </template>
+      </div>
+
+      <div class="field">
+        <label>Поля под пропорции (letterbox)</label>
+        <div class="chips">
+          <button
+            v-for="p in padAspects"
+            :key="p.v"
+            class="chip"
+            :class="{ active: state.edit.pad === p.v }"
+            @click="state.edit.pad = p.v"
+          >
+            {{ p.label }}
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- Colour -->
@@ -460,6 +528,9 @@ function applyPlatform(name: string) {
           </label>
           <button class="btn ghost sm reset-color" @click="resetColor">Сбросить цвет</button>
         </div>
+      </div>
+      <div class="field inline">
+        <label class="toggle"><input type="checkbox" v-model="state.edit.vignette" /> Виньетка</label>
       </div>
     </section>
 

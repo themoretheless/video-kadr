@@ -43,6 +43,11 @@ export interface EditState {
   filter: string
   reverse: boolean
   fps: number | null
+  censorEnabled: boolean
+  censor: { x: number; y: number; w: number; h: number }
+  censorColor: string
+  vignette: boolean
+  pad: string
   // round 3 export options
   format: string
   codec: string
