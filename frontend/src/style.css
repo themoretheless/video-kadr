@@ -290,11 +290,69 @@ body {
   }
 }
 
+.player-wrap {
+  position: relative;
+  line-height: 0;
+}
+
 .player {
   width: 100%;
   border-radius: var(--radius);
   background: #000;
   display: block;
+}
+
+/* Interactive crop overlay (sits on top of the video). Only the rectangle and
+   its handles capture pointer events; clicks elsewhere reach the video controls. */
+.crop-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.crop-rect {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  cursor: move;
+  pointer-events: auto;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  pointer-events: auto;
+}
+
+.crop-handle.nw {
+  top: -8px;
+  left: -8px;
+  cursor: nwse-resize;
+}
+
+.crop-handle.ne {
+  top: -8px;
+  right: -8px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.sw {
+  bottom: -8px;
+  left: -8px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.se {
+  bottom: -8px;
+  right: -8px;
+  cursor: nwse-resize;
 }
 
 .preview-title {
