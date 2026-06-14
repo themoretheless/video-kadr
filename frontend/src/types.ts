@@ -22,6 +22,8 @@ export interface ResultInfo {
 export interface EditState {
   trimStart: number
   trimEnd: number
+  cutEnabled: boolean
+  cut: { start: number; end: number }
   cropEnabled: boolean
   crop: { x: number; y: number; w: number; h: number }
   scaleEnabled: boolean

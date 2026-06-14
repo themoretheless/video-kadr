@@ -427,6 +427,15 @@ pub fn build_ffmpeg_args(
     edit: &EditRequest,
     source_duration: f64,
 ) -> Vec<String> {
+    let format = edit.format.as_deref().unwrap_or("mp4");
+
+    // Multi-segment edits (cut from the middle / stitch ranges) need a concat
+    // filter graph; only meaningful for the video containers.
+    let segs = valid_segments(edit);
+    if !segs.is_empty() && matches!(format, "mp4" | "webm") {
+        return build_concat_args(input, output, edit, &segs, source_duration);
+    }
+
     let mut args: Vec<String> = vec!["-y".into()];
 
     // --- input-side trim ---
@@ -442,7 +451,6 @@ pub fn build_ffmpeg_args(
     args.push(input.to_string_lossy().into_owned());
 
     let out_dur = expected_output_secs(edit, source_duration);
-    let format = edit.format.as_deref().unwrap_or("mp4");
 
     match format {
         "mp3" => {
@@ -532,11 +540,142 @@ pub fn build_ffmpeg_args(
     args
 }
 
+/// Build args for a multi-segment edit: trim each keep-segment, concat them,
+/// then apply the usual geometry/colour/speed/fade filters to the result.
+fn build_concat_args(
+    input: &Path,
+    output: &Path,
+    edit: &EditRequest,
+    segments: &[&crate::model::Trim],
+    source_duration: f64,
+) -> Vec<String> {
+    let format = edit.format.as_deref().unwrap_or("mp4");
+    let muted = edit.mute;
+    let n = segments.len();
+    let out_dur = expected_output_secs(edit, source_duration);
+
+    let mut graph = String::new();
+    for (i, s) in segments.iter().enumerate() {
+        graph.push_str(&format!(
+            "[0:v]trim=start={:.3}:end={:.3},setpts=PTS-STARTPTS[v{i}];",
+            s.start, s.end
+        ));
+        if !muted {
+            graph.push_str(&format!(
+                "[0:a]atrim=start={:.3}:end={:.3},asetpts=PTS-STARTPTS[a{i}];",
+                s.start, s.end
+            ));
+        }
+    }
+    for i in 0..n {
+        graph.push_str(&format!("[v{i}]"));
+        if !muted {
+            graph.push_str(&format!("[a{i}]"));
+        }
+    }
+    if muted {
+        graph.push_str(&format!("concat=n={n}:v=1:a=0[cv]"));
+    } else {
+        graph.push_str(&format!("concat=n={n}:v=1:a=1[cv][ca]"));
+    }
+
+    // Effects apply to the concatenated stream.
+    let vf = video_filters(edit, out_dur, true);
+    let vmap = if vf.is_empty() {
+        "[cv]".to_string()
+    } else {
+        graph.push_str(&format!(";[cv]{}[vout]", vf.join(",")));
+        "[vout]".to_string()
+    };
+    let amap = if muted {
+        None
+    } else {
+        let af = audio_filters(edit, out_dur);
+        if af.is_empty() {
+            Some("[ca]".to_string())
+        } else {
+            graph.push_str(&format!(";[ca]{}[aout]", af.join(",")));
+            Some("[aout]".to_string())
+        }
+    };
+
+    let mut args: Vec<String> = vec![
+        "-y".into(),
+        "-i".into(),
+        input.to_string_lossy().into_owned(),
+        "-filter_complex".into(),
+        graph,
+        "-map".into(),
+        vmap,
+    ];
+    if let Some(am) = &amap {
+        args.push("-map".into());
+        args.push(am.clone());
+    }
+
+    if format == "webm" {
+        args.push("-c:v".into());
+        args.push("libvpx-vp9".into());
+        args.push("-crf".into());
+        args.push(edit.quality.unwrap_or(32).to_string());
+        args.push("-b:v".into());
+        args.push("0".into());
+        args.push("-pix_fmt".into());
+        args.push("yuv420p".into());
+        if amap.is_some() {
+            args.push("-c:a".into());
+            args.push("libopus".into());
+            args.push("-b:a".into());
+            args.push("128k".into());
+        }
+        push_fps(&mut args, edit);
+    } else {
+        let h265 = edit.codec.as_deref() == Some("h265");
+        args.push("-c:v".into());
+        args.push(if h265 { "libx265" } else { "libx264" }.into());
+        args.push("-preset".into());
+        args.push("veryfast".into());
+        args.push("-crf".into());
+        args.push(edit.quality.unwrap_or(if h265 { 28 } else { 23 }).to_string());
+        args.push("-pix_fmt".into());
+        args.push("yuv420p".into());
+        if h265 {
+            args.push("-tag:v".into());
+            args.push("hvc1".into());
+        }
+        if amap.is_some() {
+            args.push("-c:a".into());
+            args.push("aac".into());
+            args.push("-b:a".into());
+            args.push("128k".into());
+        }
+        push_fps(&mut args, edit);
+        args.push("-movflags".into());
+        args.push("+faststart".into());
+    }
+
+    args.push(output.to_string_lossy().into_owned());
+    args
+}
+
+/// Valid keep-segments (positive length), if any were requested.
+fn valid_segments(edit: &EditRequest) -> Vec<&crate::model::Trim> {
+    match &edit.segments {
+        Some(segs) => segs.iter().filter(|s| s.end - s.start > 0.01).collect(),
+        None => Vec::new(),
+    }
+}
+
 /// Expected output duration (seconds) for an edit, used to scale ffmpeg progress.
 pub fn expected_output_secs(edit: &EditRequest, source_duration: f64) -> f64 {
-    let base = match &edit.trim {
-        Some(t) => (t.end - t.start).max(0.0),
-        None => source_duration,
+    let segs = valid_segments(edit);
+    let base = if !segs.is_empty() {
+        segs.iter().map(|s| (s.end - s.start).max(0.0)).sum()
+    } else {
+        match &edit.trim {
+            Some(t) => (t.end - t.start).max(0.0),
+            None => source_duration,
+        }
     };
     let speed = if edit.speed > 0.0 { edit.speed } else { 1.0 };
     base / speed
@@ -819,6 +958,57 @@ mod tests {
         assert!(args.contains(&"-an".to_string()));
         // Trim still positions the grab.
         assert_eq!(args[args.iter().position(|a| a == "-ss").unwrap() + 1], "3.000");
+    }
+
+    fn filter_complex(args: &[String]) -> String {
+        let i = args.iter().position(|a| a == "-filter_complex").expect("has -filter_complex");
+        args[i + 1].clone()
+    }
+
+    #[test]
+    fn segments_concat_graph() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 3.0, "end": 4.0 }]
+            }),
+            5.0,
+        );
+        let graph = filter_complex(&args);
+        assert!(graph.contains("trim=start=0.000:end=1.000"), "{graph}");
+        assert!(graph.contains("trim=start=3.000:end=4.000"), "{graph}");
+        assert!(graph.contains("concat=n=2:v=1:a=1[cv][ca]"), "{graph}");
+        assert!(args.contains(&"libx264".to_string()));
+        // The concat path replaces input-side trim.
+        assert!(!args.contains(&"-ss".to_string()));
+        assert_eq!(args.iter().filter(|a| *a == "-map").count(), 2);
+    }
+
+    #[test]
+    fn segments_muted_drops_audio_streams() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "mute": true,
+                "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 2.0, "end": 3.0 }]
+            }),
+            5.0,
+        );
+        let graph = filter_complex(&args);
+        assert!(graph.contains("concat=n=2:v=1:a=0[cv]"), "{graph}");
+        assert!(!graph.contains("atrim"), "{graph}");
+        assert_eq!(args.iter().filter(|a| *a == "-map").count(), 1);
+    }
+
+    #[test]
+    fn segments_ignored_for_gif() {
+        // gif is not a concat target, so it falls back to the normal path.
+        let args = args_for(
+            json!({ "videoId": "x", "format": "gif", "segments": [{ "start": 0.0, "end": 1.0 }] }),
+            5.0,
+        );
+        assert!(!args.contains(&"-filter_complex".to_string()));
+        assert!(vf(&args).contains("palettegen"));
     }
 
     #[test]

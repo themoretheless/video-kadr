@@ -68,6 +68,10 @@ pub struct EditRequest {
     pub video_id: String,
     #[serde(default)]
     pub trim: Option<Trim>,
+    /// Keep-segments to extract and concatenate (overrides `trim` when non-empty).
+    /// Lets the user cut a piece out of the middle or stitch several ranges.
+    #[serde(default)]
+    pub segments: Option<Vec<Trim>>,
     #[serde(default)]
     pub crop: Option<Crop>,
     #[serde(default)]

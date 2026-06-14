@@ -12,6 +12,28 @@ import TrimSlider from './TrimSlider.vue'
 const duration = computed(() => state.video?.duration ?? 0)
 const selected = computed(() => Math.max(0, state.edit.trimEnd - state.edit.trimStart))
 
+// Initialise the cut range to the middle third when the feature is enabled.
+watch(
+  () => state.edit.cutEnabled,
+  (on) => {
+    if (!on) return
+    const a = state.edit.trimStart
+    const b = state.edit.trimEnd
+    const c = state.edit.cut
+    if (!(c.end > c.start) || c.start < a || c.end > b) {
+      const span = b - a
+      state.edit.cut = { start: a + span / 3, end: a + (2 * span) / 3 }
+    }
+  },
+)
+
+const keptDuration = computed(() => {
+  const e = state.edit
+  const cs = Math.max(e.trimStart, Math.min(e.cut.start, e.trimEnd))
+  const ce = Math.max(e.trimStart, Math.min(e.cut.end, e.trimEnd))
+  return Math.max(0, selected.value - Math.max(0, ce - cs))
+})
+
 function fmt(t: number): string {
   if (!isFinite(t)) return '0:00.0'
   const m = Math.floor(t / 60)
@@ -269,6 +291,26 @@ function applyPlatform(name: string) {
             />
           </label>
         </div>
+      </div>
+
+      <div class="field">
+        <label class="toggle">
+          <input type="checkbox" v-model="state.edit.cutEnabled" /> Вырезать кусок из середины
+        </label>
+        <template v-if="state.edit.cutEnabled">
+          <TrimSlider
+            :min="state.edit.trimStart"
+            :max="state.edit.trimEnd"
+            :start="state.edit.cut.start"
+            :end="state.edit.cut.end"
+            @update:start="state.edit.cut.start = $event"
+            @update:end="state.edit.cut.end = $event"
+          />
+          <p class="hint">
+            Удаляем {{ fmt(Math.max(0, state.edit.cut.end - state.edit.cut.start)) }}, останется
+            {{ fmt(keptDuration) }}. Доступно для MP4/WebM.
+          </p>
+        </template>
       </div>
 
       <div class="field">

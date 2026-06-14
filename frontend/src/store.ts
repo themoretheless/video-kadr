@@ -7,6 +7,8 @@ export function defaultEdit(): EditState {
   return {
     trimStart: 0,
     trimEnd: 0,
+    cutEnabled: false,
+    cut: { start: 0, end: 0 },
     cropEnabled: false,
     crop: { x: 0, y: 0, w: 0, h: 0 },
     scaleEnabled: false,
@@ -194,8 +196,19 @@ export function buildEditPayload(): Record<string, unknown> {
     mute: e.mute,
     speed: e.speed,
   }
-  // Only send trim when it actually narrows the clip.
-  if (e.trimStart > 0.05 || e.trimEnd < v.duration - 0.05) {
+  // Cut-a-piece-out: send keep-segments around the removed range (video only).
+  const videoFormat = e.format === 'mp4' || e.format === 'webm'
+  const cutStart = Math.max(e.trimStart, Math.min(e.cut.start, e.trimEnd))
+  const cutEnd = Math.max(e.trimStart, Math.min(e.cut.end, e.trimEnd))
+  const segments: { start: number; end: number }[] = []
+  if (e.cutEnabled && videoFormat && cutEnd > cutStart + 0.05) {
+    if (cutStart > e.trimStart + 0.05) segments.push({ start: e.trimStart, end: cutStart })
+    if (e.trimEnd > cutEnd + 0.05) segments.push({ start: cutEnd, end: e.trimEnd })
+  }
+  if (segments.length) {
+    payload.segments = segments
+  } else if (e.trimStart > 0.05 || e.trimEnd < v.duration - 0.05) {
+    // Otherwise send a plain trim when it narrows the clip.
     payload.trim = { start: e.trimStart, end: e.trimEnd }
   }
   if (e.cropEnabled) {
