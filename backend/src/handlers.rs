@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::library::MediaEntry;
 use crate::model::{EditRequest, ImportRequest, Job, JobStatus};
 use crate::state::AppState;
 use crate::tools::{self, Done};
@@ -106,7 +107,7 @@ pub async fn import_handler(
 
         drop(tx);
         let _ = drain.await;
-        finish_job(&st, &jid, outcome).await;
+        finish_job(&st, &jid, outcome, "source").await;
     });
 
     Json(json!({ "jobId": job_id }))
@@ -165,7 +166,7 @@ pub async fn upload_handler(
                 .to_string()
         });
 
-        return Ok(Json(json!({
+        let body = json!({
             "id": video_id,
             "url": format!("/files/sources/{filename}"),
             "filename": filename,
@@ -177,7 +178,9 @@ pub async fn upload_handler(
             "vcodec": info.vcodec,
             "acodec": info.acodec,
             "sizeBytes": size,
-        })));
+        });
+        state.library.add(MediaEntry::from_result("source", &body)).await;
+        return Ok(Json(body));
     }
 
     Err((StatusCode::BAD_REQUEST, "файл не найден в запросе".into()))
@@ -274,7 +277,7 @@ pub async fn edit_handler(
 
         drop(tx);
         let _ = drain.await;
-        finish_job(&st, &jid, outcome).await;
+        finish_job(&st, &jid, outcome, "output").await;
     });
 
     Json(json!({ "jobId": job_id }))
@@ -317,6 +320,25 @@ pub async fn cancel_handler(
     }
 }
 
+/// `GET /api/library` — list persisted sources and outputs, newest first.
+pub async fn library_list_handler(
+    State(state): State<AppState>,
+) -> Json<Vec<crate::library::MediaEntry>> {
+    Json(state.library.list().await)
+}
+
+/// `DELETE /api/library/:id` — remove a library entry and delete its file.
+pub async fn library_delete_handler(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> StatusCode {
+    if state.library.remove(&id).await {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
 /// `GET /api/health` — readiness plus external tool availability/versions.
 pub async fn health_handler(State(state): State<AppState>) -> Json<Value> {
     let t = &state.tools;
@@ -343,10 +365,12 @@ fn spawn_progress_drain(
 }
 
 /// Apply the terminal outcome of a worker to the job and clear its cancel token.
-/// `Ok(Some)` -> done, `Ok(None)` -> cancelled, `Err` -> error.
-async fn finish_job(st: &AppState, jid: &str, outcome: anyhow::Result<Option<Value>>) {
+/// `Ok(Some)` -> done (also recorded in the media library under `kind`),
+/// `Ok(None)` -> cancelled, `Err` -> error.
+async fn finish_job(st: &AppState, jid: &str, outcome: anyhow::Result<Option<Value>>, kind: &str) {
     match outcome {
         Ok(Some(info)) => {
+            st.library.add(MediaEntry::from_result(kind, &info)).await;
             st.update_job(jid, |j| {
                 j.status = JobStatus::Done;
                 j.result = Some(info);

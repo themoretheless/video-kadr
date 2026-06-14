@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import * as api from './api'
 import { toast } from './toasts'
-import type { EditState, Job, ResultInfo, VideoInfo } from './types'
+import type { EditState, Job, MediaEntry, ResultInfo, VideoInfo } from './types'
 
 export function defaultEdit(): EditState {
   return {
@@ -74,6 +74,7 @@ export const state = reactive({
   exportStage: null as string | null,
   exportJobId: null as string | null,
   result: null as ResultInfo | null,
+  library: [] as MediaEntry[],
   // Player bridge: VideoPreview owns the <video>; the rest of the app talks to
   // it through these fields.
   playerTime: 0,
@@ -123,6 +124,7 @@ export async function doImport(): Promise<void> {
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
     state.importStatus = ''
+    void loadLibrary()
     toast('success', v.title ? `Загружено: ${v.title}` : 'Видео загружено')
   } catch (e) {
     if (isCancel(e)) {
@@ -169,6 +171,7 @@ export async function doUpload(file: File): Promise<void> {
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
     state.importStatus = ''
+    void loadLibrary()
     toast('success', v.title ? `Загружено: ${v.title}` : 'Файл загружен')
   } catch (e) {
     state.importError = e instanceof Error ? e.message : String(e)
@@ -238,6 +241,7 @@ export async function doExport(): Promise<void> {
     const job = await api.pollJob(jobId, onExportTick)
     state.result = job.result as ResultInfo
     state.exportStatus = ''
+    void loadLibrary()
     toast('success', 'Готово! Видео обработано')
   } catch (e) {
     if (isCancel(e)) {
@@ -288,4 +292,48 @@ export function setTrimStartFromPlayer(): void {
 export function setTrimEndFromPlayer(): void {
   if (!state.video) return
   state.edit.trimEnd = Math.min(state.video.duration, Math.max(state.playerTime, state.edit.trimStart + 0.1))
+}
+
+// --- media library ---
+
+export async function loadLibrary(): Promise<void> {
+  try {
+    state.library = await api.getLibrary()
+  } catch {
+    // Non-fatal: the library panel just stays empty.
+  }
+}
+
+/** Reopen a stored source clip in the editor. */
+export function openFromLibrary(entry: MediaEntry): void {
+  if (entry.kind !== 'source') return
+  const v: VideoInfo = {
+    id: entry.id,
+    url: entry.url,
+    filename: entry.filename,
+    duration: entry.duration ?? 0,
+    width: entry.width ?? 0,
+    height: entry.height ?? 0,
+    title: entry.title ?? null,
+    sizeBytes: entry.sizeBytes ?? null,
+  }
+  state.video = v
+  state.result = null
+  const edit = defaultEdit()
+  edit.trimEnd = v.duration
+  edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
+  edit.scale = { w: v.width, h: -2 }
+  state.edit = edit
+  toast('info', v.title ? `Открыто: ${v.title}` : 'Клип открыт')
+}
+
+export async function deleteFromLibrary(id: string): Promise<void> {
+  try {
+    await api.deleteLibraryItem(id)
+    state.library = state.library.filter((e) => e.id !== id)
+    if (state.video?.id === id) state.video = null
+    toast('info', 'Удалено')
+  } catch (e) {
+    toast('error', e instanceof Error ? e.message : String(e))
+  }
 }

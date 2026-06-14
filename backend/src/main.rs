@@ -1,4 +1,5 @@
 mod handlers;
+mod library;
 mod model;
 mod state;
 mod tools;
@@ -52,7 +53,8 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(2);
 
-    let state = AppState::new(storage.clone(), max_concurrent, tool_info);
+    let lib = library::Library::load(storage.clone()).await;
+    let state = AppState::new(storage.clone(), max_concurrent, tool_info, lib);
 
     // Optional TTL cleanup of generated/downloaded files.
     let ttl_hours: u64 = std::env::var("FILE_TTL_HOURS")
@@ -79,6 +81,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/edit", post(handlers::edit_handler))
         .route("/api/jobs/:id", get(handlers::job_status_handler))
         .route("/api/jobs/:id/cancel", post(handlers::cancel_handler))
+        .route("/api/library", get(handlers::library_list_handler))
+        .route("/api/library/:id", axum::routing::delete(handlers::library_delete_handler))
         .route("/api/health", get(handlers::health_handler))
         // Static file serving for both source and rendered videos. ServeDir
         // honours HTTP range requests, which the browser needs to seek videos.

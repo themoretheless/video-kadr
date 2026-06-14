@@ -47,6 +47,19 @@ export interface EditState {
   qualityTier: string
 }
 
+export interface MediaEntry {
+  id: string
+  kind: 'source' | 'output'
+  filename: string
+  url: string
+  title?: string | null
+  duration?: number | null
+  width?: number | null
+  height?: number | null
+  sizeBytes?: number | null
+  createdAt: number
+}
+
 export type JobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 
 export interface Job {

@@ -6,6 +6,7 @@ use serde::Serialize;
 use tokio::sync::{Mutex, Semaphore};
 use tokio_util::sync::CancellationToken;
 
+use crate::library::Library;
 use crate::model::Job;
 
 /// Availability and versions of the external tools we shell out to. Probed once
@@ -30,16 +31,18 @@ pub struct AppState {
     /// Caps how many downloads/renders run at once; the rest wait as "queued".
     pub jobs_semaphore: Arc<Semaphore>,
     pub tools: Arc<ToolInfo>,
+    pub library: Library,
     pub storage: PathBuf,
 }
 
 impl AppState {
-    pub fn new(storage: PathBuf, max_concurrent: usize, tools: ToolInfo) -> Self {
+    pub fn new(storage: PathBuf, max_concurrent: usize, tools: ToolInfo, library: Library) -> Self {
         AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             jobs_semaphore: Arc::new(Semaphore::new(max_concurrent.max(1))),
             tools: Arc::new(tools),
+            library,
             storage,
         }
     }

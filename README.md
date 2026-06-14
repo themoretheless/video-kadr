@@ -19,6 +19,8 @@
 - Экспорт в MP4 (H.264/H.265 + AAC), WebM (VP9 + Opus), GIF, стоп-кадр PNG или
   аудио MP3; выбор качества и пресеты под платформы (Telegram/Shorts/Reels/YouTube).
 - Скачивание с осмысленным именем файла.
+- Медиатека: импортированные источники и результаты сохраняются между перезапусками
+  (`storage/library.json`), можно переоткрыть клип в редакторе, скачать или удалить.
 - Прогресс скачивания и обработки в процентах, кнопка отмены задачи.
 - Очередь задач с ограничением параллелизма, таймауты, опциональная очистка старых файлов.
 - Горячие клавиши: `Space` (плей/пауза), `I`/`O` (точки входа/выхода), `←`/`→` (перемотка,
@@ -29,15 +31,18 @@
 ```
 POST /api/import            { url, start?, end? }        -> { jobId }
 POST /api/edit              { videoId, trim?, crop?, ... } -> { jobId }
+POST /api/upload            multipart file               -> VideoInfo
 GET  /api/jobs/:id          -> { status, progress?, stage?, result?, error? }
 POST /api/jobs/:id/cancel   -> 200 cancelled | 404 | 409
+GET  /api/library           -> [ MediaEntry ]  (sources + outputs, newest first)
+DELETE /api/library/:id     -> 204 | 404  (also deletes the file)
 GET  /api/health            -> { status, ffmpeg, ytdlp, ffmpegVersion, ytdlpVersion }
 GET  /files/...             -> исходники и результаты (с поддержкой Range)
 ```
 
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
 `MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2), `JOB_TIMEOUT_SECS` (1800),
-`FILE_TTL_HOURS` (0 = выключено).
+`FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ).
 
 ## Требования
 

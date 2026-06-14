@@ -1,4 +1,4 @@
-import type { Job, VideoInfo } from './types'
+import type { Job, MediaEntry, VideoInfo } from './types'
 
 async function postJson(path: string, body: unknown): Promise<{ jobId: string }> {
   const res = await fetch(path, {
@@ -36,6 +36,19 @@ export async function getJob(jobId: string): Promise<Job> {
   const res = await fetch(`/api/jobs/${jobId}`)
   if (!res.ok) throw new Error(`job poll -> HTTP ${res.status}`)
   return res.json()
+}
+
+/** List persisted sources and outputs, newest first. */
+export async function getLibrary(): Promise<MediaEntry[]> {
+  const res = await fetch('/api/library')
+  if (!res.ok) throw new Error(`library -> HTTP ${res.status}`)
+  return res.json()
+}
+
+/** Delete a library entry (and its file on disk). */
+export async function deleteLibraryItem(id: string): Promise<void> {
+  const res = await fetch(`/api/library/${id}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) throw new Error(`delete -> HTTP ${res.status}`)
 }
 
 /** Ask the backend to cancel a running/pending job. Best-effort. */

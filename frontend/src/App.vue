@@ -6,11 +6,13 @@ import {
   seekRelative,
   setTrimStartFromPlayer,
   setTrimEndFromPlayer,
+  loadLibrary,
 } from './store'
 import UrlImport from './components/UrlImport.vue'
 import VideoPreview from './components/VideoPreview.vue'
 import EditPanel from './components/EditPanel.vue'
 import ResultPanel from './components/ResultPanel.vue'
+import MediaLibrary from './components/MediaLibrary.vue'
 import Toasts from './components/Toasts.vue'
 
 function isTyping(t: EventTarget | null): boolean {
@@ -57,7 +59,10 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', onKey))
+onMounted(() => {
+  window.addEventListener('keydown', onKey)
+  void loadLibrary()
+})
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 
@@ -69,6 +74,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
     </header>
 
     <UrlImport />
+
+    <MediaLibrary />
 
     <main v-if="state.video" class="editor">
       <section class="left">
