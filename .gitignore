@@ -11,5 +11,8 @@
 !/backend/storage/sources/.gitkeep
 !/backend/storage/outputs/.gitkeep
 
+# Runtime media library state
+/backend/storage/library.json
+
 # OS / editor
 .DS_Store

@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import * as api from './api'
 import { toast } from './toasts'
 import type { EditState, Job, MediaEntry, ResultInfo, VideoInfo } from './types'
@@ -130,6 +130,7 @@ export async function doImport(): Promise<void> {
     edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
+    resetHistory()
     state.importStatus = ''
     void loadLibrary()
     toast('success', v.title ? `Загружено: ${v.title}` : 'Видео загружено')
@@ -177,6 +178,7 @@ export async function doUpload(file: File): Promise<void> {
     edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
+    resetHistory()
     state.importStatus = ''
     void loadLibrary()
     toast('success', v.title ? `Загружено: ${v.title}` : 'Файл загружен')
@@ -348,6 +350,7 @@ export function openFromLibrary(entry: MediaEntry): void {
   edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
   edit.scale = { w: v.width, h: -2 }
   state.edit = edit
+  resetHistory()
   toast('info', v.title ? `Открыто: ${v.title}` : 'Клип открыт')
 }
 
@@ -360,4 +363,180 @@ export async function deleteFromLibrary(id: string): Promise<void> {
   } catch (e) {
     toast('error', e instanceof Error ? e.message : String(e))
   }
+}
+
+// --- edit history (undo / redo) ---
+// Snapshots of state.edit (as JSON) are pushed onto an undo stack, debounced so
+// a drag or a burst of slider moves collapses into a single history step.
+
+export const history = reactive({ past: [] as string[], future: [] as string[] })
+let lastSnapshot = JSON.stringify(state.edit)
+let historyTimer: ReturnType<typeof setTimeout> | null = null
+
+function snapshot(): string {
+  return JSON.stringify(state.edit)
+}
+
+function recordChange(): void {
+  historyTimer = null
+  const snap = snapshot()
+  if (snap === lastSnapshot) return
+  history.past.push(lastSnapshot)
+  if (history.past.length > 100) history.past.shift()
+  history.future = []
+  lastSnapshot = snap
+}
+
+/** Drop history and pin the baseline to the current edit (on load/open). */
+function resetHistory(): void {
+  if (historyTimer) {
+    clearTimeout(historyTimer)
+    historyTimer = null
+  }
+  history.past = []
+  history.future = []
+  lastSnapshot = snapshot()
+}
+
+function applySnapshot(json: string): void {
+  if (historyTimer) {
+    clearTimeout(historyTimer)
+    historyTimer = null
+  }
+  state.edit = JSON.parse(json) as EditState
+  // Pin the baseline so the watch fired by this assignment is a no-op.
+  lastSnapshot = json
+}
+
+export function undo(): void {
+  // Flush any pending edit into history before stepping back.
+  if (historyTimer) recordChange()
+  const prev = history.past.pop()
+  if (prev === undefined) return
+  history.future.push(snapshot())
+  applySnapshot(prev)
+}
+
+export function redo(): void {
+  const next = history.future.pop()
+  if (next === undefined) return
+  history.past.push(snapshot())
+  applySnapshot(next)
+}
+
+watch(
+  () => state.edit,
+  () => {
+    if (historyTimer) clearTimeout(historyTimer)
+    historyTimer = setTimeout(recordChange, 350)
+  },
+  { deep: true },
+)
+
+// --- effect presets (reusable "looks", persisted to localStorage) ---
+// A preset captures the reusable effect fields, not clip-specific geometry
+// (trim/cut/crop/censor/scale stay tied to the current video).
+
+export interface Preset {
+  name: string
+  edit: Partial<EditState>
+}
+
+const PRESET_KEYS: (keyof EditState)[] = [
+  'speed',
+  'rotate',
+  'flipH',
+  'flipV',
+  'mute',
+  'volume',
+  'fadeIn',
+  'fadeOut',
+  'brightness',
+  'contrast',
+  'saturation',
+  'filter',
+  'reverse',
+  'fps',
+  'vignette',
+  'censorColor',
+  'pad',
+  'format',
+  'codec',
+  'qualityTier',
+]
+
+export const presets = reactive({ list: [] as Preset[] })
+
+function capturePreset(): Partial<EditState> {
+  const e = state.edit as unknown as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const k of PRESET_KEYS) out[k] = e[k]
+  return out as Partial<EditState>
+}
+
+function persistPresets(): void {
+  try {
+    localStorage.setItem('ve_presets', JSON.stringify(presets.list))
+  } catch {
+    // Private mode / quota: presets just stay in-memory for this session.
+  }
+}
+
+export function savePreset(name: string): void {
+  const n = name.trim()
+  if (!n) return
+  const entry: Preset = { name: n, edit: capturePreset() }
+  const idx = presets.list.findIndex((p) => p.name === n)
+  if (idx >= 0) presets.list[idx] = entry
+  else presets.list.push(entry)
+  persistPresets()
+  toast('success', `Пресет «${n}» сохранён`)
+}
+
+export function applyPreset(p: Preset): void {
+  Object.assign(state.edit, p.edit)
+  toast('info', `Пресет «${p.name}» применён`)
+}
+
+export function deletePreset(name: string): void {
+  presets.list = presets.list.filter((p) => p.name !== name)
+  persistPresets()
+}
+
+export function loadPresets(): void {
+  try {
+    const raw = localStorage.getItem('ve_presets')
+    if (raw) presets.list = JSON.parse(raw) as Preset[]
+  } catch {
+    // Ignore malformed storage; start with an empty preset list.
+  }
+}
+
+// --- theme (dark default, light alternative; persisted) ---
+
+export const ui = reactive({ theme: 'dark' as 'dark' | 'light' })
+
+function applyTheme(t: 'dark' | 'light'): void {
+  ui.theme = t
+  document.documentElement.dataset.theme = t
+  try {
+    localStorage.setItem('ve_theme', t)
+  } catch {
+    // Non-fatal: the theme just won't persist across reloads.
+  }
+}
+
+export function initTheme(): void {
+  let t: 'dark' | 'light' = 'dark'
+  try {
+    const saved = localStorage.getItem('ve_theme')
+    if (saved === 'light' || saved === 'dark') t = saved
+  } catch {
+    // Ignore and keep the default.
+  }
+  applyTheme(t)
+}
+
+export function toggleTheme(): void {
+  applyTheme(ui.theme === 'dark' ? 'light' : 'dark')
 }

@@ -2,12 +2,32 @@
 import { computed, ref, watch } from 'vue'
 import {
   state,
+  history,
+  presets,
   doExport,
   parseTime,
   setTrimStartFromPlayer,
   setTrimEndFromPlayer,
+  undo,
+  redo,
+  savePreset,
+  applyPreset,
+  deletePreset,
 } from '../store'
+import type { Preset } from '../store'
 import TrimSlider from './TrimSlider.vue'
+
+const canUndo = computed(() => history.past.length > 0)
+const canRedo = computed(() => history.future.length > 0)
+
+const presetName = ref('')
+function onSavePreset() {
+  savePreset(presetName.value)
+  presetName.value = ''
+}
+function onApplyPreset(p: Preset) {
+  applyPreset(p)
+}
 
 const duration = computed(() => state.video?.duration ?? 0)
 const selected = computed(() => Math.max(0, state.edit.trimEnd - state.edit.trimStart))
@@ -273,7 +293,58 @@ function applyPlatform(name: string) {
 
 <template>
   <div class="card edit">
-    <h2>Редактирование</h2>
+    <div class="edit-head">
+      <h2>Редактирование</h2>
+      <div class="history-btns">
+        <button
+          class="btn ghost sm"
+          :disabled="!canUndo"
+          title="Отменить (Cmd/Ctrl+Z)"
+          @click="undo"
+        >
+          ↶ Отменить
+        </button>
+        <button
+          class="btn ghost sm"
+          :disabled="!canRedo"
+          title="Повторить (Cmd/Ctrl+Shift+Z)"
+          @click="redo"
+        >
+          ↷ Повторить
+        </button>
+      </div>
+    </div>
+
+    <!-- Presets -->
+    <section class="group">
+      <div class="group-title">Пресеты эффектов</div>
+      <div class="field">
+        <div class="preset-row">
+          <input
+            class="time-input preset-name"
+            v-model="presetName"
+            placeholder="Имя пресета"
+            @keyup.enter="onSavePreset"
+          />
+          <button class="btn ghost sm" :disabled="!presetName.trim()" @click="onSavePreset">
+            Сохранить
+          </button>
+        </div>
+        <div v-if="presets.list.length" class="chips preset-chips">
+          <span v-for="p in presets.list" :key="p.name" class="preset-chip">
+            <button class="chip" :title="`Применить «${p.name}»`" @click="onApplyPreset(p)">
+              {{ p.name }}
+            </button>
+            <button class="preset-del" :title="`Удалить «${p.name}»`" @click="deletePreset(p.name)">
+              ×
+            </button>
+          </span>
+        </div>
+        <p v-else class="hint">
+          Сохрани текущие эффекты (цвет, скорость, звук, формат) как пресет и применяй к другим клипам.
+        </p>
+      </div>
+    </section>
 
     <!-- Timing -->
     <section class="group">

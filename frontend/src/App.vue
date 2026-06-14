@@ -2,11 +2,17 @@
 import { onMounted, onUnmounted } from 'vue'
 import {
   state,
+  ui,
   togglePlay,
   seekRelative,
   setTrimStartFromPlayer,
   setTrimEndFromPlayer,
   loadLibrary,
+  loadPresets,
+  initTheme,
+  toggleTheme,
+  undo,
+  redo,
 } from './store'
 import UrlImport from './components/UrlImport.vue'
 import VideoPreview from './components/VideoPreview.vue'
@@ -24,6 +30,18 @@ function isTyping(t: EventTarget | null): boolean {
 
 function onKey(e: KeyboardEvent) {
   if (!state.video || isTyping(e.target)) return
+  // Undo / redo (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Ctrl+Y).
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+    e.preventDefault()
+    if (e.shiftKey) redo()
+    else undo()
+    return
+  }
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) {
+    e.preventDefault()
+    redo()
+    return
+  }
   const fps = state.video.fps || 30
   switch (e.key) {
     case ' ':
@@ -61,6 +79,8 @@ function onKey(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKey)
+  initTheme()
+  loadPresets()
   void loadLibrary()
 })
 onUnmounted(() => window.removeEventListener('keydown', onKey))
@@ -69,7 +89,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="app">
     <header class="topbar">
-      <h1>🎬 Видеоредактор</h1>
+      <div class="topbar-row">
+        <h1>🎬 Видеоредактор</h1>
+        <button
+          class="btn ghost sm theme-toggle"
+          :title="ui.theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'"
+          @click="toggleTheme"
+        >
+          {{ ui.theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная' }}
+        </button>
+      </div>
       <p class="sub">Вставь ссылку на видео (например, VK Видео), обрежь и скачай результат.</p>
     </header>
 

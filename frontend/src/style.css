@@ -23,6 +23,27 @@
   color-scheme: dark;
 }
 
+/* Light theme: opt-in via <html data-theme="light"> (toggled from the header). */
+:root[data-theme="light"] {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --panel-2: #f1f4f9;
+  --panel-3: #e7ecf3;
+  --border: #d9dfe8;
+  --border-strong: #c2cad6;
+  --text: #1a1f29;
+  --muted: #56606f;
+  --faint: #8a94a3;
+  --accent: #2f6fed;
+  --accent-2: #2a63d6;
+  --accent-soft: rgba(47, 111, 237, 0.14);
+  --danger: #e0484d;
+  --ok: #1f9d63;
+  --warn: #c8881f;
+  --shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -794,4 +815,80 @@ body {
 .toast-leave-to {
   opacity: 0;
   transform: translateY(8px);
+}
+
+/* Header row with theme toggle */
+.topbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.theme-toggle {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Edit panel header with undo/redo */
+.edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.edit-head h2 {
+  margin: 0;
+}
+
+.history-btns {
+  display: flex;
+  gap: 6px;
+}
+
+/* Effect presets */
+.preset-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.preset-name {
+  flex: 1;
+  width: auto;
+}
+
+.preset-chips {
+  margin-top: 10px;
+}
+
+.preset-chip {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.preset-chip .chip {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.preset-del {
+  border: 1px solid var(--border);
+  border-left: none;
+  background: var(--panel-2);
+  color: var(--muted);
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+  padding: 0 9px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.preset-del:hover {
+  color: var(--danger);
+  background: var(--panel-3);
 }

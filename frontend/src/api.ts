@@ -1,13 +1,30 @@
 import type { Job, MediaEntry, VideoInfo } from './types'
 
+// The import/edit endpoints answer 200 + a jobId by design, so a 5xx (or a
+// thrown fetch) from them means the request never reached the backend - in dev
+// that is the Vite proxy failing to connect. Surface that plainly instead of a
+// cryptic "HTTP 500".
+const BACKEND_DOWN = 'Сервер недоступен. Запущен ли бэкенд? (cargo run на :8080)'
+
+/** fetch that turns a network/proxy-level failure into a clear "backend down" error. */
+async function safeFetch(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init)
+  } catch {
+    throw new Error(BACKEND_DOWN)
+  }
+}
+
 async function postJson(path: string, body: unknown): Promise<{ jobId: string }> {
-  const res = await fetch(path, {
+  const res = await safeFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    throw new Error(`${path} -> HTTP ${res.status}`)
+    if (res.status >= 500) throw new Error(BACKEND_DOWN)
+    const text = await res.text().catch(() => '')
+    throw new Error(text.trim() || `${path} -> HTTP ${res.status}`)
   }
   return res.json()
 }
@@ -24,30 +41,34 @@ export function edit(payload: unknown): Promise<{ jobId: string }> {
 export async function uploadFile(file: File): Promise<VideoInfo> {
   const fd = new FormData()
   fd.append('file', file)
-  const res = await fetch('/api/upload', { method: 'POST', body: fd })
+  const res = await safeFetch('/api/upload', { method: 'POST', body: fd })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(text || `upload -> HTTP ${res.status}`)
+    if (text.trim()) throw new Error(text.trim())
+    throw new Error(res.status >= 500 ? BACKEND_DOWN : `upload -> HTTP ${res.status}`)
   }
   return res.json()
 }
 
 export async function getJob(jobId: string): Promise<Job> {
-  const res = await fetch(`/api/jobs/${jobId}`)
-  if (!res.ok) throw new Error(`job poll -> HTTP ${res.status}`)
+  const res = await safeFetch(`/api/jobs/${jobId}`)
+  if (!res.ok) {
+    if (res.status >= 500) throw new Error(BACKEND_DOWN)
+    throw new Error(`job poll -> HTTP ${res.status}`)
+  }
   return res.json()
 }
 
 /** List persisted sources and outputs, newest first. */
 export async function getLibrary(): Promise<MediaEntry[]> {
-  const res = await fetch('/api/library')
+  const res = await safeFetch('/api/library')
   if (!res.ok) throw new Error(`library -> HTTP ${res.status}`)
   return res.json()
 }
 
 /** Delete a library entry (and its file on disk). */
 export async function deleteLibraryItem(id: string): Promise<void> {
-  const res = await fetch(`/api/library/${id}`, { method: 'DELETE' })
+  const res = await safeFetch(`/api/library/${id}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 404) throw new Error(`delete -> HTTP ${res.status}`)
 }
 
