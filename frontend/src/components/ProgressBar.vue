@@ -11,6 +11,7 @@ defineEmits<{ cancel: [] }>()
 
 const stageLabels: Record<string, string> = {
   queued: 'В очереди',
+  uploading: 'Загружаю',
   downloading: 'Скачиваю',
   processing: 'Обрабатываю',
 }

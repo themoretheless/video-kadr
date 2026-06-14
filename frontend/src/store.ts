@@ -150,6 +150,37 @@ export async function cancelImport(): Promise<void> {
   if (state.importJobId) await api.cancelJob(state.importJobId)
 }
 
+/** Import a local file via multipart upload (no job: it returns directly). */
+export async function doUpload(file: File): Promise<void> {
+  if (state.importing) return
+  state.importing = true
+  state.importError = ''
+  state.importStatus = 'Загружаю файл…'
+  state.importProgress = null
+  state.importStage = 'uploading'
+  state.result = null
+
+  try {
+    const v = await api.uploadFile(file)
+    state.video = v
+    const edit = defaultEdit()
+    edit.trimEnd = v.duration
+    edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
+    edit.scale = { w: v.width, h: -2 }
+    state.edit = edit
+    state.importStatus = ''
+    toast('success', v.title ? `Загружено: ${v.title}` : 'Файл загружен')
+  } catch (e) {
+    state.importError = e instanceof Error ? e.message : String(e)
+    state.importStatus = ''
+    toast('error', state.importError)
+  } finally {
+    state.importing = false
+    state.importProgress = null
+    state.importStage = null
+  }
+}
+
 export function buildEditPayload(): Record<string, unknown> {
   const e = state.edit
   const v = state.video

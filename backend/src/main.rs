@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use tower_http::cors::CorsLayer;
@@ -63,8 +64,18 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("file cleanup enabled: TTL {ttl_hours}h");
     }
 
+    // Upload limit for local files (default 2 GiB), overridable via env.
+    let max_upload: usize = std::env::var("MAX_UPLOAD_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2 * 1024 * 1024 * 1024);
+
     let app = Router::new()
         .route("/api/import", post(handlers::import_handler))
+        .route(
+            "/api/upload",
+            post(handlers::upload_handler).layer(DefaultBodyLimit::max(max_upload)),
+        )
         .route("/api/edit", post(handlers::edit_handler))
         .route("/api/jobs/:id", get(handlers::job_status_handler))
         .route("/api/jobs/:id/cancel", post(handlers::cancel_handler))

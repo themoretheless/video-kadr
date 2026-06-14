@@ -1,10 +1,32 @@
 <script setup lang="ts">
-import { state, doImport, cancelImport } from '../store'
+import { ref } from 'vue'
+import { state, doImport, doUpload, cancelImport } from '../store'
 import ProgressBar from './ProgressBar.vue'
+
+const picker = ref<HTMLInputElement | null>(null)
+const dragover = ref(false)
+
+function onPick(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (file) void doUpload(file)
+  ;(e.target as HTMLInputElement).value = ''
+}
+
+function onDrop(e: DragEvent) {
+  dragover.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (file) void doUpload(file)
+}
 </script>
 
 <template>
-  <div class="card import">
+  <div
+    class="card import"
+    :class="{ dragover }"
+    @dragover.prevent="dragover = true"
+    @dragleave.prevent="dragover = false"
+    @drop.prevent="onDrop"
+  >
     <div class="row">
       <input
         v-model="state.url"
@@ -28,12 +50,20 @@ import ProgressBar from './ProgressBar.vue'
       <span class="hint">диапазон импорта (мм:сс). Пусто = всё видео, для длинных роликов укажи отрезок</span>
     </div>
 
+    <div class="import-or"><span>или</span></div>
+
+    <button type="button" class="dropzone" :disabled="state.importing" @click="picker?.click()">
+      <input ref="picker" type="file" accept="video/*" class="hidden-file" @change="onPick" />
+      <span class="dropzone-icon">📁</span>
+      <span>Перетащи видеофайл сюда или нажми, чтобы выбрать</span>
+    </button>
+
     <ProgressBar
       v-if="state.importing"
       class="import-progress"
       :progress="state.importProgress"
       :stage="state.importStage"
-      cancellable
+      :cancellable="state.importStage !== 'uploading'"
       @cancel="cancelImport"
     />
     <p v-if="state.importError" class="error">Ошибка: {{ state.importError }}</p>

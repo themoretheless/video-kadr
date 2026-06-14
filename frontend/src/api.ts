@@ -1,4 +1,4 @@
-import type { Job } from './types'
+import type { Job, VideoInfo } from './types'
 
 async function postJson(path: string, body: unknown): Promise<{ jobId: string }> {
   const res = await fetch(path, {
@@ -18,6 +18,18 @@ export function importUrl(body: Record<string, unknown>): Promise<{ jobId: strin
 
 export function edit(payload: unknown): Promise<{ jobId: string }> {
   return postJson('/api/edit', payload)
+}
+
+/** Upload a local video file; the backend probes it and returns VideoInfo. */
+export async function uploadFile(file: File): Promise<VideoInfo> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/upload', { method: 'POST', body: fd })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `upload -> HTTP ${res.status}`)
+  }
+  return res.json()
 }
 
 export async function getJob(jobId: string): Promise<Job> {

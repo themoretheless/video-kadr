@@ -142,6 +142,72 @@ body {
   margin-top: 14px;
 }
 
+/* File drop zone */
+.import-or {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--faint);
+  font-size: 13px;
+  margin: 14px 0;
+}
+
+.import-or::before,
+.import-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.import-or span {
+  padding: 0 12px;
+}
+
+.dropzone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 16px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.dropzone:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.dropzone:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropzone-icon {
+  font-size: 22px;
+}
+
+.card.import.dragover {
+  border-color: var(--accent);
+}
+
+.card.import.dragover .dropzone {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.hidden-file {
+  display: none;
+}
+
 /* Editor layout */
 .editor {
   display: grid;

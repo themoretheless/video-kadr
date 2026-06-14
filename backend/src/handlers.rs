@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use axum::extract::{Path as AxPath, State};
+use axum::extract::{Multipart, Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde_json::{json, Value};
@@ -110,6 +110,96 @@ pub async fn import_handler(
     });
 
     Json(json!({ "jobId": job_id }))
+}
+
+/// `POST /api/upload` — accept a multipart file upload, store it as a source,
+/// probe it, and return the same VideoInfo shape as a completed import (no job:
+/// the work is just a disk write plus a quick probe).
+pub async fn upload_handler(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let video_id = Uuid::new_v4().to_string();
+    let sources = state.sources_dir();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+    {
+        let original = field.file_name().map(|s| s.to_string());
+        if field.name() != Some("file") && original.is_none() {
+            continue;
+        }
+        let ext = sanitize_ext(original.as_deref());
+        let filename = format!("{video_id}.{ext}");
+        let path = sources.join(&filename);
+
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("не удалось прочитать файл: {e}")))?;
+        if data.is_empty() {
+            return Err((StatusCode::BAD_REQUEST, "пустой файл".into()));
+        }
+        tokio::fs::write(&path, &data)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        let info = match tools::probe_video(&path).await {
+            Ok(i) if i.width > 0 || i.duration > 0.0 => i,
+            _ => {
+                let _ = tokio::fs::remove_file(&path).await;
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "не удалось распознать видео в файле".into(),
+                ));
+            }
+        };
+        let size = tokio::fs::metadata(&path).await.map(|m| m.len()).ok();
+        let title = original.as_deref().map(|n| {
+            std::path::Path::new(n)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(n)
+                .to_string()
+        });
+
+        return Ok(Json(json!({
+            "id": video_id,
+            "url": format!("/files/sources/{filename}"),
+            "filename": filename,
+            "duration": info.duration,
+            "width": info.width,
+            "height": info.height,
+            "title": title,
+            "fps": info.fps,
+            "vcodec": info.vcodec,
+            "acodec": info.acodec,
+            "sizeBytes": size,
+        })));
+    }
+
+    Err((StatusCode::BAD_REQUEST, "файл не найден в запросе".into()))
+}
+
+/// Keep only a short alphanumeric extension to avoid path tricks / odd names.
+fn sanitize_ext(original: Option<&str>) -> String {
+    let ext = original
+        .and_then(|n| std::path::Path::new(n).extension())
+        .and_then(|e| e.to_str())
+        .unwrap_or("mp4");
+    let clean: String = ext
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(5)
+        .collect::<String>()
+        .to_lowercase();
+    if clean.is_empty() {
+        "mp4".into()
+    } else {
+        clean
+    }
 }
 
 /// `POST /api/edit` — apply trim/crop/scale/mute/speed to a previously imported
