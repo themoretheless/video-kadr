@@ -4,6 +4,7 @@ use axum::extract::{Multipart, Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -236,6 +237,16 @@ fn sanitize_ext(original: Option<&str>) -> String {
     }
 }
 
+/// Content key for the render cache: a hash of the canonical (source + edit)
+/// request. Re-serializing the deserialized `EditRequest` normalises omitted
+/// defaults, so two equivalent requests map to the same key.
+pub fn render_cache_key(req: &EditRequest) -> String {
+    let canonical = serde_json::to_string(req).unwrap_or_default();
+    let mut hasher = Sha256::new();
+    hasher.update(canonical.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
 /// `POST /api/edit` — apply trim/crop/scale/mute/speed to a previously imported
 /// video and return a job id to poll for the rendered result.
 pub async fn edit_handler(
@@ -245,6 +256,28 @@ pub async fn edit_handler(
     let job_id = Uuid::new_v4().to_string();
     let out_id = Uuid::new_v4().to_string();
     state.set_job(Job::pending(job_id.clone())).await;
+
+    // Content-addressed cache: an identical (source + edit) render is reused
+    // instead of running ffmpeg again, as long as the output file still exists.
+    let cache_key = render_cache_key(&req);
+    if let Ok(Some((output, filename))) = state.db.cache_get(&cache_key).await {
+        if tokio::fs::metadata(state.outputs_dir().join(&filename))
+            .await
+            .is_ok()
+        {
+            state
+                .update_job(&job_id, |j| {
+                    j.status = JobStatus::Done;
+                    j.result = Some(output);
+                    j.progress = Some(100.0);
+                    j.stage = None;
+                })
+                .await;
+            state.persist_job(&job_id).await;
+            return Json(json!({ "jobId": job_id }));
+        }
+    }
+
     let token = state.register_cancel(&job_id).await;
 
     let st = state.clone();
@@ -309,6 +342,11 @@ pub async fn edit_handler(
 
         if outcome.is_err() {
             let _ = tokio::fs::remove_file(&output_path).await;
+        }
+
+        // Remember a successful render so an identical request can skip ffmpeg.
+        if let Ok(Some(info)) = &outcome {
+            let _ = st.db.cache_put(&cache_key, info, &filename).await;
         }
 
         drop(tx);

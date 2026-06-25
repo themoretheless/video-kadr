@@ -14,7 +14,7 @@ use tower::ServiceExt;
 use video_editor_backend::build_router;
 use video_editor_backend::db::Db;
 use video_editor_backend::library::{Library, MediaEntry};
-use video_editor_backend::model::{Job, JobStatus};
+use video_editor_backend::model::{EditRequest, Job, JobStatus};
 use video_editor_backend::state::{AppState, ToolInfo};
 
 const UPLOAD_LIMIT: usize = 64 * 1024 * 1024;
@@ -173,6 +173,41 @@ async fn edit_with_missing_source_fails_job() {
         "error should name the missing source: {}",
         job["error"]
     );
+}
+
+#[tokio::test]
+async fn edit_cache_hit_returns_existing_output() {
+    let (state, _d) = make_state(true, true).await;
+    // Pre-seed the render cache for a specific edit, with its output file present.
+    let req_json = json!({ "videoId": "vidX", "trim": { "start": 0.0, "end": 5.0 } });
+    let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
+    let key = video_editor_backend::handlers::render_cache_key(&req);
+    let filename = "cached.mp4";
+    tokio::fs::write(state.outputs_dir().join(filename), b"x")
+        .await
+        .unwrap();
+    state
+        .db
+        .cache_put(
+            &key,
+            &json!({
+                "id": "cached",
+                "url": format!("/files/outputs/{filename}"),
+                "filename": filename,
+                "sizeBytes": 1
+            }),
+            filename,
+        )
+        .await
+        .unwrap();
+
+    // The identical request must resolve from cache (no ffmpeg) to a done job.
+    let app = router(state);
+    let (_s, body, _) = send(&app, post_json("/api/edit", req_json)).await;
+    let id = body["jobId"].as_str().unwrap().to_string();
+    let job = poll_terminal(&app, &id).await;
+    assert_eq!(job["status"], "done");
+    assert_eq!(job["result"]["filename"], "cached.mp4");
 }
 
 #[tokio::test]

@@ -90,8 +90,9 @@ pub struct ImportRequest {
 }
 
 /// Request body for `POST /api/edit`. Field names arrive as camelCase from the
-/// frontend (e.g. `videoId`).
-#[derive(Debug, Deserialize)]
+/// frontend (e.g. `videoId`). It is also `Serialize` so a deserialized request
+/// can be re-serialized canonically into the render-cache key.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditRequest {
     pub video_id: String,
@@ -173,14 +174,14 @@ fn default_one() -> f64 {
 }
 
 /// Trim the source to the region `[start, end]` (seconds).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Trim {
     pub start: f64,
     pub end: f64,
 }
 
 /// Crop rectangle in source pixels.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Crop {
     pub x: u32,
     pub y: u32,
@@ -189,7 +190,7 @@ pub struct Crop {
 }
 
 /// Target size. Use `-1` (or `-2`) for a dimension to keep aspect ratio.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Scale {
     pub w: i32,
     pub h: i32,

@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS render_cache (
+    cache_key TEXT PRIMARY KEY,
+    output_json TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
 ";
 
 /// A saved editing project: a clip plus its full edit recipe. `video` and `edit`
@@ -205,6 +211,41 @@ impl Db {
         .await?;
         rows.into_iter().map(row_to_job).collect()
     }
+
+    /// Look up a cached render by its content key, returning the stored result
+    /// JSON and the output filename (the caller verifies the file still exists).
+    pub async fn cache_get(&self, key: &str) -> Result<Option<(Value, String)>> {
+        let row = sqlx::query("SELECT output_json, filename FROM render_cache WHERE cache_key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?;
+        match row {
+            Some(r) => {
+                let output: Value = serde_json::from_str(&r.try_get::<String, _>("output_json")?)?;
+                Ok(Some((output, r.try_get("filename")?)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Remember a finished render so an identical request can skip ffmpeg.
+    pub async fn cache_put(&self, key: &str, output: &Value, filename: &str) -> Result<()> {
+        let now = now_secs() as i64;
+        sqlx::query(
+            "INSERT INTO render_cache (cache_key, output_json, filename, created_at) \
+             VALUES (?, ?, ?, ?) \
+             ON CONFLICT(cache_key) DO UPDATE SET \
+               output_json = excluded.output_json, filename = excluded.filename, \
+               created_at = excluded.created_at",
+        )
+        .bind(key)
+        .bind(serde_json::to_string(output)?)
+        .bind(filename)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 fn row_to_job(row: SqliteRow) -> Result<Job> {
@@ -307,6 +348,17 @@ mod tests {
             "/files/outputs/x.mp4"
         );
         assert_eq!(loaded[0].progress, Some(100.0));
+    }
+
+    #[tokio::test]
+    async fn render_cache_roundtrip() {
+        let (db, _d) = db().await;
+        assert!(db.cache_get("k1").await.unwrap().is_none());
+        let out = json!({ "id": "o1", "filename": "o1.mp4" });
+        db.cache_put("k1", &out, "o1.mp4").await.unwrap();
+        let (got, filename) = db.cache_get("k1").await.unwrap().unwrap();
+        assert_eq!(got["id"], "o1");
+        assert_eq!(filename, "o1.mp4");
     }
 
     #[tokio::test]
