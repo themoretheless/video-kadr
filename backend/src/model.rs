@@ -9,6 +9,8 @@ pub enum JobStatus {
     Done,
     Error,
     Cancelled,
+    /// The process restarted while this job was still in flight; it won't resume.
+    Interrupted,
 }
 
 impl JobStatus {
@@ -16,8 +18,32 @@ impl JobStatus {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            JobStatus::Done | JobStatus::Error | JobStatus::Cancelled
+            JobStatus::Done | JobStatus::Error | JobStatus::Cancelled | JobStatus::Interrupted
         )
+    }
+
+    /// Stable lowercase token used for the database and the JSON API.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            JobStatus::Pending => "pending",
+            JobStatus::Running => "running",
+            JobStatus::Done => "done",
+            JobStatus::Error => "error",
+            JobStatus::Cancelled => "cancelled",
+            JobStatus::Interrupted => "interrupted",
+        }
+    }
+
+    /// Parse a token read back from the database (unknown -> Pending).
+    pub fn from_token(s: &str) -> JobStatus {
+        match s {
+            "running" => JobStatus::Running,
+            "done" => JobStatus::Done,
+            "error" => JobStatus::Error,
+            "cancelled" => JobStatus::Cancelled,
+            "interrupted" => JobStatus::Interrupted,
+            _ => JobStatus::Pending,
+        }
     }
 }
 

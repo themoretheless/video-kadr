@@ -13,6 +13,7 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::library::now_secs;
+use crate::model::{Job, JobStatus};
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS projects (
@@ -26,6 +27,16 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_projects_video_id ON projects(video_id);
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    result_json TEXT,
+    error TEXT,
+    stage TEXT,
+    progress REAL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
 ";
 
 /// A saved editing project: a clip plus its full edit recipe. `video` and `edit`
@@ -155,6 +166,60 @@ impl Db {
             .await?;
         Ok(res.rows_affected() > 0)
     }
+
+    /// Insert or update a job record. Called on creation and at terminal states;
+    /// progress ticks are intentionally not persisted (they are ephemeral).
+    pub async fn persist_job(&self, job: &Job) -> Result<()> {
+        let now = now_secs() as i64;
+        let result_str = match &job.result {
+            Some(v) => Some(serde_json::to_string(v)?),
+            None => None,
+        };
+        sqlx::query(
+            "INSERT INTO jobs (id, status, result_json, error, stage, progress, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(id) DO UPDATE SET \
+               status = excluded.status, result_json = excluded.result_json, \
+               error = excluded.error, stage = excluded.stage, \
+               progress = excluded.progress, updated_at = excluded.updated_at",
+        )
+        .bind(&job.id)
+        .bind(job.status.as_str())
+        .bind(&result_str)
+        .bind(&job.error)
+        .bind(&job.stage)
+        .bind(job.progress)
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Load every persisted job (used once at startup to recover state).
+    pub async fn load_jobs(&self) -> Result<Vec<Job>> {
+        let rows = sqlx::query(
+            "SELECT id, status, result_json, error, stage, progress FROM jobs ORDER BY updated_at",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(row_to_job).collect()
+    }
+}
+
+fn row_to_job(row: SqliteRow) -> Result<Job> {
+    let result = match row.try_get::<Option<String>, _>("result_json")? {
+        Some(s) => Some(serde_json::from_str(&s)?),
+        None => None,
+    };
+    Ok(Job {
+        id: row.try_get("id")?,
+        status: JobStatus::from_token(&row.try_get::<String, _>("status")?),
+        result,
+        error: row.try_get("error")?,
+        progress: row.try_get("progress")?,
+        stage: row.try_get("stage")?,
+    })
 }
 
 fn row_to_project(row: SqliteRow) -> Result<Project> {
@@ -222,6 +287,26 @@ mod tests {
         assert!(db.delete_project(&p.id).await.unwrap());
         assert!(!db.delete_project(&p.id).await.unwrap());
         assert!(db.get_project(&p.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn jobs_persist_and_load() {
+        use crate::model::Job;
+        let (db, _d) = db().await;
+        let mut j = Job::pending("j1".into());
+        j.status = JobStatus::Done;
+        j.result = Some(json!({ "url": "/files/outputs/x.mp4" }));
+        j.progress = Some(100.0);
+        db.persist_job(&j).await.unwrap();
+        let loaded = db.load_jobs().await.unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, "j1");
+        assert_eq!(loaded[0].status, JobStatus::Done);
+        assert_eq!(
+            loaded[0].result.as_ref().unwrap()["url"],
+            "/files/outputs/x.mp4"
+        );
+        assert_eq!(loaded[0].progress, Some(100.0));
     }
 
     #[tokio::test]

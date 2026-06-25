@@ -62,6 +62,7 @@ pub async fn import_handler(
                 j.stage = None;
             })
             .await;
+            st.persist_job(&jid).await;
             st.clear_cancel(&jid).await;
             return;
         }
@@ -261,6 +262,7 @@ pub async fn edit_handler(
                 j.stage = None;
             })
             .await;
+            st.persist_job(&jid).await;
             st.clear_cancel(&jid).await;
             return;
         }
@@ -352,6 +354,7 @@ pub async fn cancel_handler(
                     }
                 })
                 .await;
+            state.persist_job(&id).await;
             (StatusCode::OK, Json(json!({ "status": "cancelled" })))
         }
     }
@@ -516,5 +519,7 @@ async fn finish_job(st: &AppState, jid: &str, outcome: anyhow::Result<Option<Val
             .await
         }
     }
+    // Persist the terminal state so it survives a restart.
+    st.persist_job(jid).await;
     st.clear_cancel(jid).await;
 }

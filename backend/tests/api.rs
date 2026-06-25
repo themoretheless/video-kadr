@@ -307,6 +307,54 @@ async fn project_upsert_list_get_delete_flow() {
 }
 
 #[tokio::test]
+async fn jobs_survive_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = dir.path().to_path_buf();
+    tokio::fs::create_dir_all(storage.join("sources"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(storage.join("outputs"))
+        .await
+        .unwrap();
+
+    // Session 1: one job finishes, one is still running when the process stops.
+    {
+        let db = Db::open(&storage).await.unwrap();
+        let lib = Library::load(storage.clone()).await;
+        let st = AppState::new(storage.clone(), 2, ToolInfo::default(), lib, db);
+        st.set_job(Job::pending("done1".into())).await; // persists pending
+        st.update_job("done1", |j| {
+            j.status = JobStatus::Done;
+            j.result = Some(json!({ "url": "/files/outputs/x.mp4" }));
+            j.progress = Some(100.0);
+        })
+        .await;
+        st.persist_job("done1").await; // persists the terminal state
+        st.set_job(Job::pending("run1".into())).await;
+        st.update_job("run1", |j| j.status = JobStatus::Running)
+            .await; // memory only
+    }
+
+    // Session 2: a fresh state over the same DB recovers the jobs.
+    let db2 = Db::open(&storage).await.unwrap();
+    let lib2 = Library::load(storage.clone()).await;
+    let st2 = AppState::new(storage.clone(), 2, ToolInfo::default(), lib2, db2);
+    st2.recover_jobs().await;
+    let app = router(st2);
+
+    // The finished job is recovered with its result.
+    let (status, body, _) = send(&app, get("/api/jobs/done1")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "done");
+    assert_eq!(body["result"]["url"], "/files/outputs/x.mp4");
+
+    // The in-flight job became interrupted (not a 404, not an endless spinner).
+    let (status, body, _) = send(&app, get("/api/jobs/run1")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "interrupted");
+}
+
+#[tokio::test]
 async fn project_by_video_missing_is_404() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);

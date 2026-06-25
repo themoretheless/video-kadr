@@ -56,6 +56,8 @@ async fn main() -> anyhow::Result<()> {
     let lib = Library::load(storage.clone()).await;
     let db = Db::open(&storage).await?;
     let state = AppState::new(storage.clone(), max_concurrent, tool_info, lib, db);
+    // Recover jobs from a previous run; mark any that were in flight as interrupted.
+    state.recover_jobs().await;
 
     // Optional TTL cleanup of generated/downloaded files.
     let ttl_hours: u64 = std::env::var("FILE_TTL_HOURS")

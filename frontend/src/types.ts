@@ -67,7 +67,7 @@ export interface MediaEntry {
   createdAt: number
 }
 
-export type JobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
+export type JobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled' | 'interrupted'
 
 export interface Job {
   id: string

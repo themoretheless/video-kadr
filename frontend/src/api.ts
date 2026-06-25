@@ -136,6 +136,9 @@ export function pollJob(jobId: string, onTick?: (job: Job) => void): Promise<Job
         onTick?.(job)
         if (job.status === 'done') return resolve(job)
         if (job.status === 'cancelled') return reject(new Error('cancelled'))
+        if (job.status === 'interrupted') {
+          return reject(new Error('Задача прервана (сервер перезапущен)'))
+        }
         if (job.status === 'error') {
           return reject(new Error(job.error || 'задача завершилась с ошибкой'))
         }

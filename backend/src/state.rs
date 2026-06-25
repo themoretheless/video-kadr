@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::db::Db;
 use crate::library::Library;
-use crate::model::Job;
+use crate::model::{Job, JobStatus};
 
 /// Availability and versions of the external tools we shell out to. Probed once
 /// at startup and surfaced via `/api/health`.
@@ -22,8 +22,9 @@ pub struct ToolInfo {
     pub ytdlp_version: Option<String>,
 }
 
-/// Shared application state. Jobs are kept in memory only — this is an MVP, so a
-/// restart loses job history (the produced files on disk survive).
+/// Shared application state. Jobs live in memory as the hot path (with live
+/// progress) and are written through to SQLite on creation and at terminal
+/// states, so a restart recovers them (in-flight jobs become `interrupted`).
 #[derive(Clone)]
 pub struct AppState {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
@@ -57,6 +58,9 @@ impl AppState {
     }
 
     pub async fn set_job(&self, job: Job) {
+        if let Err(e) = self.db.persist_job(&job).await {
+            tracing::warn!("persist job {}: {e}", job.id);
+        }
         self.jobs.lock().await.insert(job.id.clone(), job);
     }
 
@@ -64,10 +68,43 @@ impl AppState {
         self.jobs.lock().await.get(id).cloned()
     }
 
-    /// Mutate a job in place if it exists.
+    /// Mutate a job in place if it exists. Memory-only (used for frequent progress
+    /// ticks); call `persist_job` separately at status transitions.
     pub async fn update_job(&self, id: &str, f: impl FnOnce(&mut Job)) {
         if let Some(job) = self.jobs.lock().await.get_mut(id) {
             f(job);
+        }
+    }
+
+    /// Write the current in-memory state of a job to the database (best-effort).
+    pub async fn persist_job(&self, id: &str) {
+        let job = self.jobs.lock().await.get(id).cloned();
+        if let Some(job) = job {
+            if let Err(e) = self.db.persist_job(&job).await {
+                tracing::warn!("persist job {id}: {e}");
+            }
+        }
+    }
+
+    /// Load persisted jobs into memory at startup. Any job that was still in
+    /// flight when the process stopped is marked `interrupted` so a polling
+    /// client gets a clear terminal state instead of a 404 or an endless spinner.
+    pub async fn recover_jobs(&self) {
+        match self.db.load_jobs().await {
+            Ok(jobs) => {
+                let mut guard = self.jobs.lock().await;
+                for mut job in jobs {
+                    if !job.status.is_terminal() {
+                        job.status = JobStatus::Interrupted;
+                        job.stage = None;
+                        if let Err(e) = self.db.persist_job(&job).await {
+                            tracing::warn!("persist recovered job {}: {e}", job.id);
+                        }
+                    }
+                    guard.insert(job.id.clone(), job);
+                }
+            }
+            Err(e) => tracing::warn!("could not recover jobs: {e}"),
         }
     }
 
