@@ -6,6 +6,7 @@ use serde::Serialize;
 use tokio::sync::{Mutex, Semaphore};
 use tokio_util::sync::CancellationToken;
 
+use crate::db::Db;
 use crate::library::Library;
 use crate::model::Job;
 
@@ -32,17 +33,25 @@ pub struct AppState {
     pub jobs_semaphore: Arc<Semaphore>,
     pub tools: Arc<ToolInfo>,
     pub library: Library,
+    pub db: Db,
     pub storage: PathBuf,
 }
 
 impl AppState {
-    pub fn new(storage: PathBuf, max_concurrent: usize, tools: ToolInfo, library: Library) -> Self {
+    pub fn new(
+        storage: PathBuf,
+        max_concurrent: usize,
+        tools: ToolInfo,
+        library: Library,
+        db: Db,
+    ) -> Self {
         AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             jobs_semaphore: Arc::new(Semaphore::new(max_concurrent.max(1))),
             tools: Arc::new(tools),
             library,
+            db,
             storage,
         }
     }

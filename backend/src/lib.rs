@@ -4,6 +4,7 @@
 //! router builder as a library lets the integration tests in `tests/` drive the
 //! real HTTP API with `tower::ServiceExt::oneshot`, without binding a socket.
 
+pub mod db;
 pub mod handlers;
 pub mod library;
 pub mod model;
@@ -37,6 +38,18 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
         .route("/api/jobs/:id/cancel", post(handlers::cancel_handler))
         .route("/api/library", get(handlers::library_list_handler))
         .route("/api/library/:id", delete(handlers::library_delete_handler))
+        .route(
+            "/api/projects",
+            post(handlers::project_upsert_handler).get(handlers::project_list_handler),
+        )
+        .route(
+            "/api/projects/by-video/:videoId",
+            get(handlers::project_by_video_handler),
+        )
+        .route(
+            "/api/projects/:id",
+            get(handlers::project_get_handler).delete(handlers::project_delete_handler),
+        )
         .route("/api/health", get(handlers::health_handler))
         .nest_service("/files", ServeDir::new(&storage))
         .layer(TraceLayer::new_for_http())

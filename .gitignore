@@ -14,6 +14,12 @@
 # Runtime media library state
 /backend/storage/library.json
 
+# Runtime SQLite database (projects/jobs) + WAL sidecars
+/backend/storage/app.db*
+
+# Stray storage dir if the backend is ever run from the repo root
+/storage/
+
 # OS / editor
 .DS_Store
 .idea/

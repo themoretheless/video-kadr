@@ -351,6 +351,8 @@ export function openFromLibrary(entry: MediaEntry): void {
   edit.scale = { w: v.width, h: -2 }
   state.edit = edit
   resetHistory()
+  // Restore any saved edit for this clip (overrides the defaults above).
+  void restoreProject(v.id)
   toast('info', v.title ? `Открыто: ${v.title}` : 'Клип открыт')
 }
 
@@ -540,3 +542,52 @@ export function initTheme(): void {
 export function toggleTheme(): void {
   applyTheme(ui.theme === 'dark' ? 'light' : 'dark')
 }
+
+// --- project autosave / restore (persisted server-side in SQLite) ---
+// The current clip + edit autosave (debounced) to a project keyed by the clip.
+// Reopening a clip from the library restores its saved edit instead of resetting
+// to defaults. Failures are non-fatal: the editor still works without the backend.
+
+let projectSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Load the saved project for a clip (if any) and apply its edit recipe. */
+async function restoreProject(videoId: string): Promise<void> {
+  try {
+    const p = await api.getProjectByVideo(videoId)
+    // Guard against a clip switch while the lookup was in flight.
+    if (p && p.edit && state.video?.id === videoId) {
+      state.edit = { ...defaultEdit(), ...p.edit }
+      resetHistory()
+    }
+  } catch {
+    // Non-fatal: keep the default edit if the lookup fails.
+  }
+}
+
+async function persistProject(): Promise<void> {
+  const v = state.video
+  if (!v) return
+  try {
+    await api.saveProject({
+      videoId: v.id,
+      video: v,
+      edit: state.edit,
+      name: v.title || v.filename,
+    })
+  } catch {
+    // Non-fatal: the next edit change retries the autosave.
+  }
+}
+
+watch(
+  () => [state.video, state.edit],
+  () => {
+    if (!state.video) return
+    if (projectSaveTimer) clearTimeout(projectSaveTimer)
+    projectSaveTimer = setTimeout(() => {
+      projectSaveTimer = null
+      void persistProject()
+    }, 1000)
+  },
+  { deep: true },
+)

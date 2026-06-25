@@ -16,6 +16,8 @@ uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Embedded SQLite (statically bundled) for persistent projects / jobs.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 
 [dev-dependencies]
 # `util` brings `tower::ServiceExt::oneshot`, used to drive the router in tests

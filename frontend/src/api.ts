@@ -1,4 +1,4 @@
-import type { Job, MediaEntry, VideoInfo } from './types'
+import type { EditState, Job, MediaEntry, VideoInfo } from './types'
 
 // The import/edit endpoints answer 200 + a jobId by design, so a 5xx (or a
 // thrown fetch) from them means the request never reached the backend - in dev
@@ -70,6 +70,48 @@ export async function getLibrary(): Promise<MediaEntry[]> {
 export async function deleteLibraryItem(id: string): Promise<void> {
   const res = await safeFetch(`/api/library/${id}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 404) throw new Error(`delete -> HTTP ${res.status}`)
+}
+
+/** A saved editing project: a clip plus its persisted edit recipe. */
+export interface ProjectDto {
+  id: string
+  name: string
+  videoId: string
+  video: VideoInfo
+  edit: Partial<EditState>
+  createdAt: number
+  updatedAt: number
+}
+
+/** Create or update (keyed by videoId) the saved project for a clip. */
+export async function saveProject(body: Record<string, unknown>): Promise<ProjectDto> {
+  const res = await safeFetch('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(res.status >= 500 ? BACKEND_DOWN : `projects -> HTTP ${res.status}`)
+  return res.json()
+}
+
+/** Fetch the saved project for a clip, or null if none exists yet. */
+export async function getProjectByVideo(videoId: string): Promise<ProjectDto | null> {
+  const res = await safeFetch(`/api/projects/by-video/${encodeURIComponent(videoId)}`)
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(res.status >= 500 ? BACKEND_DOWN : `projects -> HTTP ${res.status}`)
+  return res.json()
+}
+
+/** List saved projects, most recently updated first. */
+export async function getProjects(): Promise<ProjectDto[]> {
+  const res = await safeFetch('/api/projects')
+  if (!res.ok) throw new Error(`projects -> HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  const res = await safeFetch(`/api/projects/${id}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) throw new Error(`projects -> HTTP ${res.status}`)
 }
 
 /** Ask the backend to cancel a running/pending job. Best-effort. */

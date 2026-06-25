@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime};
 use tracing_subscriber::EnvFilter;
 
 use video_editor_backend::build_router;
+use video_editor_backend::db::Db;
 use video_editor_backend::library::Library;
 use video_editor_backend::state::{AppState, ToolInfo};
 use video_editor_backend::tools;
@@ -53,7 +54,8 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(2);
 
     let lib = Library::load(storage.clone()).await;
-    let state = AppState::new(storage.clone(), max_concurrent, tool_info, lib);
+    let db = Db::open(&storage).await?;
+    let state = AppState::new(storage.clone(), max_concurrent, tool_info, lib, db);
 
     // Optional TTL cleanup of generated/downloaded files.
     let ttl_hours: u64 = std::env::var("FILE_TTL_HOURS")

@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 use video_editor_backend::build_router;
+use video_editor_backend::db::Db;
 use video_editor_backend::library::{Library, MediaEntry};
 use video_editor_backend::model::{Job, JobStatus};
 use video_editor_backend::state::{AppState, ToolInfo};
@@ -30,13 +31,14 @@ async fn make_state(ffmpeg: bool, ytdlp: bool) -> (AppState, tempfile::TempDir) 
         .await
         .unwrap();
     let lib = Library::load(storage.clone()).await;
+    let db = Db::open(&storage).await.unwrap();
     let tools = ToolInfo {
         ffmpeg,
         ytdlp,
         ffmpeg_version: None,
         ytdlp_version: None,
     };
-    (AppState::new(storage, 2, tools, lib), dir)
+    (AppState::new(storage, 2, tools, lib, db), dir)
 }
 
 fn router(state: AppState) -> Router {
@@ -242,6 +244,82 @@ async fn library_list_add_delete_flow() {
     // Deleting again is a 404.
     let (status, _b, _) = send(&app, delete("/api/library/abc")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn project_upsert_list_get_delete_flow() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+
+    // Empty to start.
+    let (status, body, _) = send(&app, get("/api/projects")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body.as_array().unwrap().len(), 0);
+
+    // Create.
+    let (status, p, _) = send(
+        &app,
+        post_json(
+            "/api/projects",
+            json!({
+                "videoId": "vid1",
+                "video": { "id": "vid1", "filename": "a.mp4", "duration": 10 },
+                "edit": { "trimStart": 0, "trimEnd": 5, "filter": "sepia" },
+                "name": "My edit"
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let pid = p["id"].as_str().unwrap().to_string();
+    assert_eq!(p["videoId"], "vid1");
+    assert_eq!(p["edit"]["filter"], "sepia");
+
+    // by-video lookup finds it.
+    let (_s, bv, _) = send(&app, get("/api/projects/by-video/vid1")).await;
+    assert_eq!(bv["id"], pid);
+
+    // Upsert for the same video updates in place (no duplicate).
+    let (_s, p2, _) = send(
+        &app,
+        post_json(
+            "/api/projects",
+            json!({
+                "videoId": "vid1",
+                "video": { "id": "vid1", "filename": "a.mp4" },
+                "edit": { "filter": "warm" }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(p2["id"], pid);
+    let (_s, list, _) = send(&app, get("/api/projects")).await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["edit"]["filter"], "warm");
+
+    // Get by id, then delete.
+    let (status, _g, _) = send(&app, get(&format!("/api/projects/{pid}"))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _b, _) = send(&app, delete(&format!("/api/projects/{pid}"))).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _b, _) = send(&app, get(&format!("/api/projects/{pid}"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn project_by_video_missing_is_404() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+    let (status, _b, _) = send(&app, get("/api/projects/by-video/nope")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn project_upsert_requires_video_and_edit() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+    let (status, _b, _) = send(&app, post_json("/api/projects", json!({ "videoId": "x" }))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

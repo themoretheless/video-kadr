@@ -1,0 +1,241 @@
+//! SQLite-backed persistence. Currently holds editing **projects** so reopening
+//! a clip restores the work instead of resetting to defaults. Jobs and a render
+//! cache are slated to move here too (Phase 1 of the architecture review).
+
+use std::path::Path;
+use std::time::Duration;
+
+use anyhow::{anyhow, Result};
+use serde::Serialize;
+use serde_json::Value;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow};
+use sqlx::{Row, SqlitePool};
+use uuid::Uuid;
+
+use crate::library::now_secs;
+
+const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    video_id TEXT NOT NULL,
+    video_json TEXT NOT NULL,
+    edit_json TEXT NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_projects_video_id ON projects(video_id);
+";
+
+/// A saved editing project: a clip plus its full edit recipe. `video` and `edit`
+/// are opaque JSON blobs (the frontend's `VideoInfo` and `EditState`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub video_id: String,
+    pub video: Value,
+    pub edit: Value,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Clone)]
+pub struct Db {
+    pool: SqlitePool,
+}
+
+impl Db {
+    /// Open (creating if needed) `storage/app.db` and ensure the schema exists.
+    pub async fn open(storage: &Path) -> Result<Db> {
+        let opts = SqliteConnectOptions::new()
+            .filename(storage.join("app.db"))
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect_with(opts)
+            .await?;
+        sqlx::query(SCHEMA).execute(&pool).await?;
+        Ok(Db { pool })
+    }
+
+    /// Create or update (keyed by `video_id`) the project for a clip and return it.
+    pub async fn upsert_project(
+        &self,
+        video_id: &str,
+        name: &str,
+        video: &Value,
+        edit: &Value,
+    ) -> Result<Project> {
+        let now = now_secs() as i64;
+        let video_str = serde_json::to_string(video)?;
+        let edit_str = serde_json::to_string(edit)?;
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT id FROM projects WHERE video_id = ?")
+                .bind(video_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        let id = match existing {
+            Some(id) => {
+                sqlx::query(
+                    "UPDATE projects SET name = ?, video_json = ?, edit_json = ?, updated_at = ? WHERE id = ?",
+                )
+                .bind(name)
+                .bind(&video_str)
+                .bind(&edit_str)
+                .bind(now)
+                .bind(&id)
+                .execute(&self.pool)
+                .await?;
+                id
+            }
+            None => {
+                let id = Uuid::new_v4().to_string();
+                sqlx::query(
+                    "INSERT INTO projects (id, name, video_id, video_json, edit_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(&id)
+                .bind(name)
+                .bind(video_id)
+                .bind(&video_str)
+                .bind(&edit_str)
+                .bind(now)
+                .bind(now)
+                .execute(&self.pool)
+                .await?;
+                id
+            }
+        };
+        self.get_project(&id)
+            .await?
+            .ok_or_else(|| anyhow!("project vanished right after upsert"))
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<Project>> {
+        let rows = sqlx::query(
+            "SELECT id, name, video_id, video_json, edit_json, created_at, updated_at \
+             FROM projects ORDER BY updated_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(row_to_project).collect()
+    }
+
+    pub async fn get_project(&self, id: &str) -> Result<Option<Project>> {
+        let row = sqlx::query(
+            "SELECT id, name, video_id, video_json, edit_json, created_at, updated_at \
+             FROM projects WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_project).transpose()
+    }
+
+    pub async fn get_project_by_video(&self, video_id: &str) -> Result<Option<Project>> {
+        let row = sqlx::query(
+            "SELECT id, name, video_id, video_json, edit_json, created_at, updated_at \
+             FROM projects WHERE video_id = ? ORDER BY updated_at DESC LIMIT 1",
+        )
+        .bind(video_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_project).transpose()
+    }
+
+    /// Returns true if a row was deleted.
+    pub async fn delete_project(&self, id: &str) -> Result<bool> {
+        let res = sqlx::query("DELETE FROM projects WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
+}
+
+fn row_to_project(row: SqliteRow) -> Result<Project> {
+    Ok(Project {
+        id: row.try_get("id")?,
+        name: row.try_get("name")?,
+        video_id: row.try_get("video_id")?,
+        video: serde_json::from_str(&row.try_get::<String, _>("video_json")?)?,
+        edit: serde_json::from_str(&row.try_get::<String, _>("edit_json")?)?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    async fn db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).await.unwrap();
+        (db, dir)
+    }
+
+    #[tokio::test]
+    async fn upsert_is_keyed_by_video_id() {
+        let (db, _d) = db().await;
+        let p1 = db
+            .upsert_project(
+                "v1",
+                "first",
+                &json!({"id":"v1"}),
+                &json!({"filter":"sepia"}),
+            )
+            .await
+            .unwrap();
+        let p2 = db
+            .upsert_project(
+                "v1",
+                "second",
+                &json!({"id":"v1"}),
+                &json!({"filter":"warm"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(p1.id, p2.id, "same video keeps the same project");
+        assert_eq!(db.list_projects().await.unwrap().len(), 1);
+        assert_eq!(p2.edit["filter"], "warm");
+        assert!(p2.updated_at >= p1.updated_at);
+    }
+
+    #[tokio::test]
+    async fn get_by_video_and_delete() {
+        let (db, _d) = db().await;
+        let p = db
+            .upsert_project("vid", "n", &json!({"id":"vid"}), &json!({}))
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_project_by_video("vid").await.unwrap().unwrap().id,
+            p.id
+        );
+        assert!(db.get_project_by_video("missing").await.unwrap().is_none());
+        assert!(db.delete_project(&p.id).await.unwrap());
+        assert!(!db.delete_project(&p.id).await.unwrap());
+        assert!(db.get_project(&p.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn projects_persist_across_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let db = Db::open(dir.path()).await.unwrap();
+            db.upsert_project("v1", "n", &json!({"id":"v1"}), &json!({"filter":"sepia"}))
+                .await
+                .unwrap();
+        }
+        // Reopening the same file restores the data (the point of SQLite).
+        let db2 = Db::open(dir.path()).await.unwrap();
+        let p = db2.get_project_by_video("v1").await.unwrap().unwrap();
+        assert_eq!(p.edit["filter"], "sepia");
+    }
+}
