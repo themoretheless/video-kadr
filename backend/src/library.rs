@@ -130,7 +130,143 @@ impl Library {
     }
 
     fn file_path(&self, e: &MediaEntry) -> PathBuf {
-        let sub = if e.kind == "output" { "outputs" } else { "sources" };
+        let sub = if e.kind == "output" {
+            "outputs"
+        } else {
+            "sources"
+        };
         self.storage.join(sub).join(&e.filename)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Create the on-disk file an entry points at, so `list()` keeps it.
+    async fn touch(storage: &std::path::Path, kind: &str, filename: &str) {
+        let sub = if kind == "output" {
+            "outputs"
+        } else {
+            "sources"
+        };
+        let dir = storage.join(sub);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join(filename), b"x").await.unwrap();
+    }
+
+    fn entry(id: &str, kind: &str, filename: &str, created_at: u64) -> MediaEntry {
+        let sub = if kind == "output" {
+            "outputs"
+        } else {
+            "sources"
+        };
+        MediaEntry {
+            id: id.into(),
+            kind: kind.into(),
+            filename: filename.into(),
+            url: format!("/files/{sub}/{filename}"),
+            title: None,
+            duration: None,
+            width: None,
+            height: None,
+            size_bytes: None,
+            created_at,
+        }
+    }
+
+    #[tokio::test]
+    async fn add_then_list_newest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        touch(&storage, "source", "a.mp4").await;
+        touch(&storage, "source", "b.mp4").await;
+        lib.add(entry("a", "source", "a.mp4", 100)).await;
+        lib.add(entry("b", "source", "b.mp4", 200)).await;
+        let list = lib.list().await;
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].id, "b"); // created_at 200 -> newest first
+        assert_eq!(list[1].id, "a");
+    }
+
+    #[tokio::test]
+    async fn list_drops_entries_whose_file_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        touch(&storage, "source", "present.mp4").await;
+        lib.add(entry("p", "source", "present.mp4", 1)).await;
+        lib.add(entry("g", "source", "ghost.mp4", 2)).await; // never created
+        let list = lib.list().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "p");
+    }
+
+    #[tokio::test]
+    async fn add_dedups_by_id_keeping_latest() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        touch(&storage, "source", "f.mp4").await;
+        lib.add(entry("same", "source", "f.mp4", 1)).await;
+        lib.add(entry("same", "source", "f.mp4", 2)).await;
+        let list = lib.list().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].created_at, 2);
+    }
+
+    #[tokio::test]
+    async fn remove_deletes_file_and_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        touch(&storage, "output", "o.mp4").await;
+        lib.add(entry("o1", "output", "o.mp4", 1)).await;
+        assert!(lib.remove("o1").await);
+        assert!(!lib.remove("o1").await); // already gone
+        assert!(tokio::fs::metadata(storage.join("outputs").join("o.mp4"))
+            .await
+            .is_err());
+        assert!(lib.list().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn entries_persist_across_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        touch(&storage, "source", "keep.mp4").await;
+        {
+            let lib = Library::load(storage.clone()).await;
+            lib.add(entry("k", "source", "keep.mp4", 5)).await;
+        }
+        let lib2 = Library::load(storage.clone()).await;
+        let list = lib2.list().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "k");
+    }
+
+    #[test]
+    fn from_result_maps_json_fields() {
+        let v = json!({
+            "id": "vid",
+            "filename": "vid.mp4",
+            "url": "/files/sources/vid.mp4",
+            "title": "Hello",
+            "duration": 12.5,
+            "width": 1280,
+            "height": 720,
+            "sizeBytes": 999
+        });
+        let e = MediaEntry::from_result("source", &v);
+        assert_eq!(e.id, "vid");
+        assert_eq!(e.kind, "source");
+        assert_eq!(e.filename, "vid.mp4");
+        assert_eq!(e.title.as_deref(), Some("Hello"));
+        assert_eq!(e.duration, Some(12.5));
+        assert_eq!(e.width, Some(1280));
+        assert_eq!(e.height, Some(720));
+        assert_eq!(e.size_bytes, Some(999));
     }
 }

@@ -14,7 +14,10 @@ pub enum JobStatus {
 impl JobStatus {
     /// A job is terminal once it can no longer change state.
     pub fn is_terminal(self) -> bool {
-        matches!(self, JobStatus::Done | JobStatus::Error | JobStatus::Cancelled)
+        matches!(
+            self,
+            JobStatus::Done | JobStatus::Error | JobStatus::Cancelled
+        )
     }
 }
 
@@ -164,4 +167,75 @@ pub struct Crop {
 pub struct Scale {
     pub w: i32,
     pub h: i32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn job_status_terminal_only_for_finished() {
+        assert!(JobStatus::Done.is_terminal());
+        assert!(JobStatus::Error.is_terminal());
+        assert!(JobStatus::Cancelled.is_terminal());
+        assert!(!JobStatus::Pending.is_terminal());
+        assert!(!JobStatus::Running.is_terminal());
+    }
+
+    #[test]
+    fn pending_job_serializes_minimally() {
+        // None fields are skipped so the polling payload stays small.
+        let v = serde_json::to_value(Job::pending("id1".into())).unwrap();
+        assert_eq!(v["id"], "id1");
+        assert_eq!(v["status"], "pending");
+        assert!(v.get("result").is_none());
+        assert!(v.get("error").is_none());
+        assert!(v.get("progress").is_none());
+        assert!(v.get("stage").is_none());
+    }
+
+    #[test]
+    fn edit_request_applies_defaults() {
+        let e: EditRequest = serde_json::from_value(json!({ "videoId": "abc" })).unwrap();
+        assert_eq!(e.video_id, "abc");
+        assert_eq!(e.speed, 1.0);
+        assert_eq!(e.volume, 1.0);
+        assert_eq!(e.contrast, 1.0);
+        assert_eq!(e.saturation, 1.0);
+        assert_eq!(e.brightness, 0.0);
+        assert_eq!(e.rotate, 0);
+        assert!(!e.mute);
+        assert!(!e.flip_h);
+        assert!(e.trim.is_none());
+        assert!(e.segments.is_none());
+        assert!(e.format.is_none());
+    }
+
+    #[test]
+    fn edit_request_reads_camel_case() {
+        let e: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "flipH": true,
+            "fadeIn": 1.5,
+            "censorColor": "white"
+        }))
+        .unwrap();
+        assert!(e.flip_h);
+        assert_eq!(e.fade_in, 1.5);
+        assert_eq!(e.censor_color.as_deref(), Some("white"));
+    }
+
+    #[test]
+    fn import_request_optional_range() {
+        let i: ImportRequest = serde_json::from_value(json!({ "url": "https://x/y" })).unwrap();
+        assert_eq!(i.url, "https://x/y");
+        assert!(i.start.is_none());
+        assert!(i.end.is_none());
+
+        let i2: ImportRequest =
+            serde_json::from_value(json!({ "url": "u", "start": 1.0, "end": 2.0 })).unwrap();
+        assert_eq!(i2.start, Some(1.0));
+        assert_eq!(i2.end, Some(2.0));
+    }
 }

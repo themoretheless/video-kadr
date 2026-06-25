@@ -81,6 +81,36 @@ npm run dev
 `/api/import -> HTTP 500`, значит не поднят бэкенд: dev-прокси Vite не может достучаться
 до `:8080` и отвечает 500. Запусти `cargo run` в `backend`.
 
+## Разработка и тесты
+
+Бэкенд покрыт юнит-тестами (сборка ffmpeg-аргументов, валидация URL, медиатека,
+модель) и HTTP-интеграционными тестами (роутер гоняется через
+`tower::ServiceExt::oneshot`, без сокета). Есть один реальный ffmpeg-тест рендера
+(`backend/tests/render.rs`), который сам пропускается, если `ffmpeg`/`ffprobe` нет
+в `PATH`. Фронтенд — ESLint + Vitest на логику стора (`buildEditPayload`,
+`parseTime`, пресеты).
+
+```
+make check   # всё как в CI: fmt + clippy + cargo test + lint + typecheck + vitest + build
+make test    # только тесты (cargo test + vitest)
+make lint    # clippy -D warnings + eslint
+make fmt     # cargo fmt
+```
+
+Точечно:
+```
+cd backend  && cargo test
+cd backend  && cargo fmt --check
+cd backend  && cargo clippy --all-targets -- -D warnings
+cd frontend && npm run lint
+cd frontend && npm run typecheck
+cd frontend && npm run test
+```
+
+CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` ставит ffmpeg,
+гоняет для бэкенда `cargo fmt --check`, `clippy -D warnings`, `cargo test`, а для
+фронтенда — lint, typecheck, тесты и сборку.
+
 ## Архитектура
 
 ```

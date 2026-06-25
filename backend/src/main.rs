@@ -1,29 +1,19 @@
-mod handlers;
-mod library;
-mod model;
-mod state;
-mod tools;
-
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
-use axum::Router;
-use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
-use state::{AppState, ToolInfo};
+use video_editor_backend::build_router;
+use video_editor_backend::library::Library;
+use video_editor_backend::state::{AppState, ToolInfo};
+use video_editor_backend::tools;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,tower_http=info".into()),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,tower_http=info".into()),
         )
         .init();
 
@@ -39,21 +29,30 @@ async fn main() -> anyhow::Result<()> {
     if ffmpeg {
         tracing::info!("ffmpeg: {}", ffmpeg_version.clone().unwrap_or_default());
     } else {
-        tracing::error!("ffmpeg not found on PATH — rendering will fail. Install with: brew install ffmpeg");
+        tracing::error!(
+            "ffmpeg not found on PATH - rendering will fail. Install with: brew install ffmpeg"
+        );
     }
     if ytdlp {
         tracing::info!("yt-dlp: {}", ytdlp_version.clone().unwrap_or_default());
     } else {
-        tracing::error!("yt-dlp not found on PATH — imports will fail. Install with: brew install yt-dlp");
+        tracing::error!(
+            "yt-dlp not found on PATH - imports will fail. Install with: brew install yt-dlp"
+        );
     }
-    let tool_info = ToolInfo { ffmpeg, ytdlp, ffmpeg_version, ytdlp_version };
+    let tool_info = ToolInfo {
+        ffmpeg,
+        ytdlp,
+        ffmpeg_version,
+        ytdlp_version,
+    };
 
     let max_concurrent: usize = std::env::var("MAX_CONCURRENT_JOBS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(2);
 
-    let lib = library::Library::load(storage.clone()).await;
+    let lib = Library::load(storage.clone()).await;
     let state = AppState::new(storage.clone(), max_concurrent, tool_info, lib);
 
     // Optional TTL cleanup of generated/downloaded files.
@@ -72,24 +71,7 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(2 * 1024 * 1024 * 1024);
 
-    let app = Router::new()
-        .route("/api/import", post(handlers::import_handler))
-        .route(
-            "/api/upload",
-            post(handlers::upload_handler).layer(DefaultBodyLimit::max(max_upload)),
-        )
-        .route("/api/edit", post(handlers::edit_handler))
-        .route("/api/jobs/:id", get(handlers::job_status_handler))
-        .route("/api/jobs/:id/cancel", post(handlers::cancel_handler))
-        .route("/api/library", get(handlers::library_list_handler))
-        .route("/api/library/:id", axum::routing::delete(handlers::library_delete_handler))
-        .route("/api/health", get(handlers::health_handler))
-        // Static file serving for both source and rendered videos. ServeDir
-        // honours HTTP range requests, which the browser needs to seek videos.
-        .nest_service("/files", ServeDir::new(&storage))
-        .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
-        .with_state(state);
+    let app = build_router(state, max_upload);
 
     let port: u16 = std::env::var("PORT")
         .ok()
@@ -130,8 +112,12 @@ fn spawn_cleanup(storage: PathBuf, ttl_hours: u64) {
                     if path.file_name().and_then(|n| n.to_str()) == Some(".gitkeep") {
                         continue;
                     }
-                    let Ok(meta) = entry.metadata().await else { continue };
-                    let Ok(modified) = meta.modified() else { continue };
+                    let Ok(meta) = entry.metadata().await else {
+                        continue;
+                    };
+                    let Ok(modified) = meta.modified() else {
+                        continue;
+                    };
                     let age = SystemTime::now()
                         .duration_since(modified)
                         .unwrap_or_default();

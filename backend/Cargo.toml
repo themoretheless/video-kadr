@@ -16,3 +16,9 @@ uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# `util` brings `tower::ServiceExt::oneshot`, used to drive the router in tests
+# without binding a socket. `tempfile` gives each test an isolated storage dir.
+tower = { version = "0.4", features = ["util"] }
+tempfile = "3"

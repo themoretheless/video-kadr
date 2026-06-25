@@ -168,7 +168,9 @@ fn map_ytdlp_error(stderr: &str) -> String {
         "Видео приватное или требует входа в аккаунт".into()
     } else if l.contains("geo") || l.contains("your country") || l.contains("country") {
         "Видео недоступно в этом регионе".into()
-    } else if l.contains("404") || l.contains("not found") || l.contains("unavailable")
+    } else if l.contains("404")
+        || l.contains("not found")
+        || l.contains("unavailable")
         || l.contains("removed")
     {
         "Видео не найдено или удалено".into()
@@ -184,7 +186,10 @@ fn parse_ytdlp_progress(line: &str) -> Option<f64> {
     }
     let idx = line.find('%')?;
     let prefix = &line[..idx];
-    let start = prefix.rfind(|c: char| c.is_whitespace()).map(|i| i + 1).unwrap_or(0);
+    let start = prefix
+        .rfind(|c: char| c.is_whitespace())
+        .map(|i| i + 1)
+        .unwrap_or(0);
     prefix[start..].trim().parse::<f64>().ok()
 }
 
@@ -232,8 +237,8 @@ pub async fn probe_video(path: &Path) -> Result<ProbeInfo> {
         return Err(anyhow!("ffprobe failed for {}", path.display()));
     }
 
-    let v: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .context("failed to parse ffprobe JSON output")?;
+    let v: serde_json::Value =
+        serde_json::from_slice(&output.stdout).context("failed to parse ffprobe JSON output")?;
 
     let duration = v["format"]["duration"]
         .as_str()
@@ -261,7 +266,14 @@ pub async fn probe_video(path: &Path) -> Result<ProbeInfo> {
         }
     }
 
-    Ok(ProbeInfo { duration, width, height, fps, vcodec, acodec })
+    Ok(ProbeInfo {
+        duration,
+        width,
+        height,
+        fps,
+        vcodec,
+        acodec,
+    })
 }
 
 /// Parse an ffprobe fraction like "30000/1001" into frames per second.
@@ -279,9 +291,7 @@ fn parse_fraction(s: &str) -> Option<f64> {
 fn filter_preset(name: &str) -> Option<&'static str> {
     match name {
         "grayscale" => Some("hue=s=0"),
-        "sepia" => Some(
-            "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
-        ),
+        "sepia" => Some("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"),
         "warm" => Some("colorbalance=rs=0.2:gs=0.05:bs=-0.2"),
         "cold" => Some("colorbalance=rs=-0.2:gs=0:bs=0.2"),
         _ => None,
@@ -328,7 +338,10 @@ fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String
     // Censor box first, in source coordinates (matches the on-video selection).
     if let Some(c) = &edit.censor {
         let color = sanitize_color(edit.censor_color.as_deref());
-        vf.push(format!("drawbox=x={}:y={}:w={}:h={}:color={color}:t=fill", c.x, c.y, c.w, c.h));
+        vf.push(format!(
+            "drawbox=x={}:y={}:w={}:h={}:color={color}:t=fill",
+            c.x, c.y, c.w, c.h
+        ));
     }
     if let Some(c) = &edit.crop {
         // Force even dimensions; libx264 + yuv420p requires them.
@@ -557,7 +570,11 @@ pub fn build_ffmpeg_args(
             args.push("-preset".into());
             args.push("veryfast".into());
             args.push("-crf".into());
-            args.push(edit.quality.unwrap_or(if h265 { 28 } else { 23 }).to_string());
+            args.push(
+                edit.quality
+                    .unwrap_or(if h265 { 28 } else { 23 })
+                    .to_string(),
+            );
             args.push("-pix_fmt".into());
             args.push("yuv420p".into());
             if h265 {
@@ -671,7 +688,11 @@ fn build_concat_args(
         args.push("-preset".into());
         args.push("veryfast".into());
         args.push("-crf".into());
-        args.push(edit.quality.unwrap_or(if h265 { 28 } else { 23 }).to_string());
+        args.push(
+            edit.quality
+                .unwrap_or(if h265 { 28 } else { 23 })
+                .to_string(),
+        );
         args.push("-pix_fmt".into());
         args.push("yuv420p".into());
         if h265 {
@@ -726,7 +747,10 @@ pub async fn run_ffmpeg(
     timeout: Duration,
 ) -> Result<Done> {
     let mut cmd = Command::new("ffmpeg");
-    cmd.arg("-nostats").arg("-progress").arg("pipe:1").args(args);
+    cmd.arg("-nostats")
+        .arg("-progress")
+        .arg("pipe:1")
+        .args(args);
 
     let expected = expected_secs.max(0.001);
     let parse = move |line: &str| -> Option<f64> {
@@ -844,7 +868,9 @@ mod tests {
     }
 
     fn af(args: &[String]) -> Option<String> {
-        args.iter().position(|a| a == "-af").map(|i| args[i + 1].clone())
+        args.iter()
+            .position(|a| a == "-af")
+            .map(|i| args[i + 1].clone())
     }
 
     #[test]
@@ -865,7 +891,10 @@ mod tests {
         let ss = args.iter().position(|a| a == "-ss").unwrap();
         let i = args.iter().position(|a| a == "-i").unwrap();
         assert!(ss < i, "-ss must precede -i");
-        assert_eq!(args[args.iter().position(|a| a == "-t").unwrap() + 1], "3.000");
+        assert_eq!(
+            args[args.iter().position(|a| a == "-t").unwrap() + 1],
+            "3.000"
+        );
     }
 
     #[test]
@@ -903,10 +932,7 @@ mod tests {
 
     #[test]
     fn audio_chain_volume_and_speed() {
-        let args = args_for(
-            json!({ "videoId": "x", "volume": 1.5, "speed": 2.0 }),
-            10.0,
-        );
+        let args = args_for(json!({ "videoId": "x", "volume": 1.5, "speed": 2.0 }), 10.0);
         let chain = af(&args).expect("has -af");
         assert!(chain.contains("volume=1.500"), "{chain}");
         assert!(chain.contains("atempo=2.000000"), "{chain}");
@@ -936,8 +962,14 @@ mod tests {
 
     #[test]
     fn ytdlp_progress_parsing() {
-        assert_eq!(parse_ytdlp_progress("[download]  42.3% of 10MiB"), Some(42.3));
-        assert_eq!(parse_ytdlp_progress("[download] 100% of 10MiB"), Some(100.0));
+        assert_eq!(
+            parse_ytdlp_progress("[download]  42.3% of 10MiB"),
+            Some(42.3)
+        );
+        assert_eq!(
+            parse_ytdlp_progress("[download] 100% of 10MiB"),
+            Some(100.0)
+        );
         assert_eq!(parse_ytdlp_progress("some other line"), None);
     }
 
@@ -992,11 +1024,17 @@ mod tests {
         assert_eq!(args[frames + 1], "1");
         assert!(args.contains(&"-an".to_string()));
         // Trim still positions the grab.
-        assert_eq!(args[args.iter().position(|a| a == "-ss").unwrap() + 1], "3.000");
+        assert_eq!(
+            args[args.iter().position(|a| a == "-ss").unwrap() + 1],
+            "3.000"
+        );
     }
 
     fn filter_complex(args: &[String]) -> String {
-        let i = args.iter().position(|a| a == "-filter_complex").expect("has -filter_complex");
+        let i = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .expect("has -filter_complex");
         args[i + 1].clone()
     }
 
@@ -1014,7 +1052,10 @@ mod tests {
             10.0,
         );
         let chain = vf(&args);
-        assert!(chain.contains("drawbox=x=10:y=20:w=100:h=50:color=white:t=fill"), "{chain}");
+        assert!(
+            chain.contains("drawbox=x=10:y=20:w=100:h=50:color=white:t=fill"),
+            "{chain}"
+        );
         assert!(chain.contains("vignette"), "{chain}");
         assert!(chain.contains("pad=w="), "{chain}");
         // Censor is applied before crop (source coordinates).
@@ -1074,6 +1115,40 @@ mod tests {
         );
         assert!(!args.contains(&"-filter_complex".to_string()));
         assert!(vf(&args).contains("palettegen"));
+    }
+
+    #[test]
+    fn expected_output_secs_trim_speed_segments() {
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        // Whole clip.
+        assert!(close(
+            expected_output_secs(&edit(json!({ "videoId": "x" })), 10.0),
+            10.0
+        ));
+        // Trim narrows to its length.
+        assert!(close(
+            expected_output_secs(
+                &edit(json!({ "videoId": "x", "trim": { "start": 2.0, "end": 7.0 } })),
+                10.0
+            ),
+            5.0
+        ));
+        // Speed shortens proportionally.
+        assert!(close(
+            expected_output_secs(&edit(json!({ "videoId": "x", "speed": 2.0 })), 10.0),
+            5.0
+        ));
+        // Segments sum their lengths (and override trim).
+        assert!(close(
+            expected_output_secs(
+                &edit(json!({
+                    "videoId": "x",
+                    "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 3.0, "end": 5.0 }]
+                })),
+                10.0
+            ),
+            3.0
+        ));
     }
 
     #[test]

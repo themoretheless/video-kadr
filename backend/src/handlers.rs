@@ -48,7 +48,8 @@ pub async fn import_handler(
         }
 
         // Wait for a queue slot.
-        st.update_job(&jid, |j| j.stage = Some("queued".into())).await;
+        st.update_job(&jid, |j| j.stage = Some("queued".into()))
+            .await;
         let _permit = match st.jobs_semaphore.clone().acquire_owned().await {
             Ok(p) => p,
             Err(_) => return,
@@ -75,9 +76,17 @@ pub async fn import_handler(
 
         let sources = st.sources_dir();
         let outcome = async {
-            let done =
-                tools::download_video(&req.url, &sources, &vid, req.start, req.end, &tx, &token, job_timeout())
-                    .await?;
+            let done = tools::download_video(
+                &req.url,
+                &sources,
+                &vid,
+                req.start,
+                req.end,
+                &tx,
+                &token,
+                job_timeout(),
+            )
+            .await?;
             if matches!(done, Done::Cancelled) {
                 return Ok::<Option<Value>, anyhow::Error>(None);
             }
@@ -136,10 +145,12 @@ pub async fn upload_handler(
         let filename = format!("{video_id}.{ext}");
         let path = sources.join(&filename);
 
-        let data = field
-            .bytes()
-            .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("не удалось прочитать файл: {e}")))?;
+        let data = field.bytes().await.map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("не удалось прочитать файл: {e}"),
+            )
+        })?;
         if data.is_empty() {
             return Err((StatusCode::BAD_REQUEST, "пустой файл".into()));
         }
@@ -179,7 +190,10 @@ pub async fn upload_handler(
             "acodec": info.acodec,
             "sizeBytes": size,
         });
-        state.library.add(MediaEntry::from_result("source", &body)).await;
+        state
+            .library
+            .add(MediaEntry::from_result("source", &body))
+            .await;
         return Ok(Json(body));
     }
 
@@ -219,7 +233,8 @@ pub async fn edit_handler(
     let st = state.clone();
     let jid = job_id.clone();
     tokio::spawn(async move {
-        st.update_job(&jid, |j| j.stage = Some("queued".into())).await;
+        st.update_job(&jid, |j| j.stage = Some("queued".into()))
+            .await;
         let _permit = match st.jobs_semaphore.clone().acquire_owned().await {
             Ok(p) => p,
             Err(_) => return,
@@ -261,7 +276,10 @@ pub async fn edit_handler(
                 let _ = tokio::fs::remove_file(&output_path).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
             }
-            let size = tokio::fs::metadata(&output_path).await.map(|m| m.len()).ok();
+            let size = tokio::fs::metadata(&output_path)
+                .await
+                .map(|m| m.len())
+                .ok();
             Ok(Some(json!({
                 "id": out_id,
                 "url": format!("/files/outputs/{filename}"),
@@ -300,7 +318,10 @@ pub async fn cancel_handler(
     AxPath(id): AxPath<String>,
 ) -> (StatusCode, Json<Value>) {
     match state.get_job(&id).await {
-        None => (StatusCode::NOT_FOUND, Json(json!({ "error": "job not found" }))),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "job not found" })),
+        ),
         Some(job) if job.status.is_terminal() => (
             StatusCode::CONFLICT,
             Json(json!({ "error": "job already finished" })),

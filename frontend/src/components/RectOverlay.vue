@@ -25,7 +25,7 @@ const root = ref<HTMLElement | null>(null)
 const MIN = 16
 
 type Mode = 'move' | 'nw' | 'ne' | 'sw' | 'se'
-let mode: Mode | null = null
+let dragMode: Mode | null = null
 let startX = 0
 let startY = 0
 let orig: Rect = { x: 0, y: 0, w: 0, h: 0 }
@@ -59,7 +59,7 @@ function toSrc(dxPx: number, dyPx: number) {
 }
 
 function begin(m: Mode, e: PointerEvent) {
-  mode = m
+  dragMode = m
   startX = e.clientX
   startY = e.clientY
   orig = { ...props.rect }
@@ -71,10 +71,10 @@ function begin(m: Mode, e: PointerEvent) {
 }
 
 function onMove(e: PointerEvent) {
-  if (!mode) return
+  if (!dragMode) return
   const { dx, dy } = toSrc(e.clientX - startX, e.clientY - startY)
   const { W, H } = dims()
-  if (mode === 'move') {
+  if (dragMode === 'move') {
     const x = clamp(orig.x + dx, 0, W - orig.w)
     const y = clamp(orig.y + dy, 0, H - orig.h)
     emit('update:rect', { x: Math.round(x), y: Math.round(y), w: orig.w, h: orig.h })
@@ -84,10 +84,10 @@ function onMove(e: PointerEvent) {
   let y1 = orig.y
   let x2 = orig.x + orig.w
   let y2 = orig.y + orig.h
-  if (mode.includes('w')) x1 = clamp(orig.x + dx, 0, x2 - MIN)
-  if (mode.includes('e')) x2 = clamp(orig.x + orig.w + dx, x1 + MIN, W)
-  if (mode.includes('n')) y1 = clamp(orig.y + dy, 0, y2 - MIN)
-  if (mode.includes('s')) y2 = clamp(orig.y + orig.h + dy, y1 + MIN, H)
+  if (dragMode.includes('w')) x1 = clamp(orig.x + dx, 0, x2 - MIN)
+  if (dragMode.includes('e')) x2 = clamp(orig.x + orig.w + dx, x1 + MIN, W)
+  if (dragMode.includes('n')) y1 = clamp(orig.y + dy, 0, y2 - MIN)
+  if (dragMode.includes('s')) y2 = clamp(orig.y + orig.h + dy, y1 + MIN, H)
   emit('update:rect', {
     x: Math.round(x1),
     y: Math.round(y1),
@@ -97,7 +97,7 @@ function onMove(e: PointerEvent) {
 }
 
 function onUp() {
-  mode = null
+  dragMode = null
   window.removeEventListener('pointermove', onMove)
   window.removeEventListener('pointerup', onUp)
 }
