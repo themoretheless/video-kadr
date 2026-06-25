@@ -546,15 +546,7 @@ pub fn build_ffmpeg_args(
                 args.push(vf.join(","));
             }
             push_audio(&mut args, edit, out_dur, "libopus");
-            args.push("-c:v".into());
-            args.push("libvpx-vp9".into());
-            args.push("-crf".into());
-            args.push(edit.quality.unwrap_or(32).to_string());
-            args.push("-b:v".into());
-            args.push("0".into());
-            args.push("-pix_fmt".into());
-            args.push("yuv420p".into());
-            push_fps(&mut args, edit);
+            push_video_codec(&mut args, edit, "webm");
         }
         _ => {
             // mp4 (default): H.264 or H.265.
@@ -563,33 +555,53 @@ pub fn build_ffmpeg_args(
                 args.push("-vf".into());
                 args.push(vf.join(","));
             }
-            let h265 = edit.codec.as_deref() == Some("h265");
             push_audio(&mut args, edit, out_dur, "aac");
-            args.push("-c:v".into());
-            args.push(if h265 { "libx265" } else { "libx264" }.into());
-            args.push("-preset".into());
-            args.push("veryfast".into());
-            args.push("-crf".into());
-            args.push(
-                edit.quality
-                    .unwrap_or(if h265 { 28 } else { 23 })
-                    .to_string(),
-            );
-            args.push("-pix_fmt".into());
-            args.push("yuv420p".into());
-            if h265 {
-                // hvc1 tag keeps the result playable in QuickTime/Safari.
-                args.push("-tag:v".into());
-                args.push("hvc1".into());
-            }
-            push_fps(&mut args, edit);
-            args.push("-movflags".into());
-            args.push("+faststart".into());
+            push_video_codec(&mut args, edit, "mp4");
         }
     }
 
     args.push(output.to_string_lossy().into_owned());
     args
+}
+
+/// Push the video encoder and its quality/pixel-format options for `format`
+/// (VP9 for webm, otherwise H.264/H.265), then fps and (for mp4) faststart.
+/// Shared by the single-pass and concat paths so codec settings live in one place.
+fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
+    if format == "webm" {
+        args.push("-c:v".into());
+        args.push("libvpx-vp9".into());
+        args.push("-crf".into());
+        args.push(edit.quality.unwrap_or(32).to_string());
+        args.push("-b:v".into());
+        args.push("0".into());
+        args.push("-pix_fmt".into());
+        args.push("yuv420p".into());
+    } else {
+        let h265 = edit.codec.as_deref() == Some("h265");
+        args.push("-c:v".into());
+        args.push(if h265 { "libx265" } else { "libx264" }.into());
+        args.push("-preset".into());
+        args.push("veryfast".into());
+        args.push("-crf".into());
+        args.push(
+            edit.quality
+                .unwrap_or(if h265 { 28 } else { 23 })
+                .to_string(),
+        );
+        args.push("-pix_fmt".into());
+        args.push("yuv420p".into());
+        if h265 {
+            // hvc1 tag keeps the result playable in QuickTime/Safari.
+            args.push("-tag:v".into());
+            args.push("hvc1".into());
+        }
+    }
+    push_fps(args, edit);
+    if format != "webm" {
+        args.push("-movflags".into());
+        args.push("+faststart".into());
+    }
 }
 
 /// Build args for a multi-segment edit: trim each keep-segment, concat them,
@@ -665,49 +677,12 @@ fn build_concat_args(
         args.push(am.clone());
     }
 
-    if format == "webm" {
-        args.push("-c:v".into());
-        args.push("libvpx-vp9".into());
-        args.push("-crf".into());
-        args.push(edit.quality.unwrap_or(32).to_string());
-        args.push("-b:v".into());
-        args.push("0".into());
-        args.push("-pix_fmt".into());
-        args.push("yuv420p".into());
-        if amap.is_some() {
-            args.push("-c:a".into());
-            args.push("libopus".into());
-            args.push("-b:a".into());
-            args.push("128k".into());
-        }
-        push_fps(&mut args, edit);
-    } else {
-        let h265 = edit.codec.as_deref() == Some("h265");
-        args.push("-c:v".into());
-        args.push(if h265 { "libx265" } else { "libx264" }.into());
-        args.push("-preset".into());
-        args.push("veryfast".into());
-        args.push("-crf".into());
-        args.push(
-            edit.quality
-                .unwrap_or(if h265 { 28 } else { 23 })
-                .to_string(),
-        );
-        args.push("-pix_fmt".into());
-        args.push("yuv420p".into());
-        if h265 {
-            args.push("-tag:v".into());
-            args.push("hvc1".into());
-        }
-        if amap.is_some() {
-            args.push("-c:a".into());
-            args.push("aac".into());
-            args.push("-b:a".into());
-            args.push("128k".into());
-        }
-        push_fps(&mut args, edit);
-        args.push("-movflags".into());
-        args.push("+faststart".into());
+    push_video_codec(&mut args, edit, format);
+    if amap.is_some() {
+        args.push("-c:a".into());
+        args.push(if format == "webm" { "libopus" } else { "aac" }.into());
+        args.push("-b:a".into());
+        args.push("128k".into());
     }
 
     args.push(output.to_string_lossy().into_owned());
@@ -1104,6 +1079,25 @@ mod tests {
         assert!(graph.contains("concat=n=2:v=1:a=0[cv]"), "{graph}");
         assert!(!graph.contains("atrim"), "{graph}");
         assert_eq!(args.iter().filter(|a| *a == "-map").count(), 1);
+    }
+
+    #[test]
+    fn segments_carry_codec_and_faststart() {
+        // The concat path must produce the same encoder settings as the simple
+        // path (shared via push_video_codec): h265 tag + faststart + mapped audio.
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "codec": "h265",
+                "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 2.0, "end": 3.0 }]
+            }),
+            5.0,
+        );
+        assert!(args.contains(&"-filter_complex".to_string()));
+        assert!(args.contains(&"libx265".to_string()));
+        assert!(args.contains(&"hvc1".to_string()));
+        assert!(args.contains(&"+faststart".to_string()));
+        assert!(args.contains(&"aac".to_string())); // not muted -> audio mapped
     }
 
     #[test]

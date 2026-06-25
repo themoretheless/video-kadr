@@ -96,20 +96,17 @@ impl Library {
         self.save(&snapshot).await;
     }
 
-    /// Return entries newest-first, dropping any whose file no longer exists.
+    /// Return entries newest-first, hiding any whose file is currently missing.
+    /// Read-only: a temporarily-unavailable file is hidden, not deleted, so it
+    /// reappears once present. (A previous version pruned and rewrote the store
+    /// on every read, which could silently drop a still-wanted entry.)
     pub async fn list(&self) -> Vec<MediaEntry> {
-        let mut guard = self.entries.lock().await;
-        let mut kept = Vec::with_capacity(guard.len());
-        for e in guard.iter() {
-            if tokio::fs::metadata(self.file_path(e)).await.is_ok() {
-                kept.push(e.clone());
+        let entries = self.entries.lock().await.clone();
+        let mut kept = Vec::with_capacity(entries.len());
+        for e in entries {
+            if tokio::fs::metadata(self.file_path(&e)).await.is_ok() {
+                kept.push(e);
             }
-        }
-        let changed = kept.len() != guard.len();
-        *guard = kept.clone();
-        drop(guard);
-        if changed {
-            self.save(&kept).await;
         }
         kept.sort_by_key(|e| std::cmp::Reverse(e.created_at));
         kept
@@ -245,6 +242,22 @@ mod tests {
         let list = lib2.list().await;
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, "k");
+    }
+
+    #[tokio::test]
+    async fn list_is_read_only_and_keeps_hidden_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        // No file yet: the entry is hidden from the listing...
+        lib.add(entry("late", "source", "late.mp4", 1)).await;
+        assert!(lib.list().await.is_empty());
+        // ...but not pruned. Once the file appears it shows up again (the old
+        // read-with-write list() would have dropped it permanently).
+        touch(&storage, "source", "late.mp4").await;
+        let list = lib.list().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "late");
     }
 
     #[test]

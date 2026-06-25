@@ -4,6 +4,7 @@ use axum::extract::{Multipart, Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde_json::{json, Value};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -132,7 +133,7 @@ pub async fn upload_handler(
     let video_id = Uuid::new_v4().to_string();
     let sources = state.sources_dir();
 
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
@@ -145,18 +146,32 @@ pub async fn upload_handler(
         let filename = format!("{video_id}.{ext}");
         let path = sources.join(&filename);
 
-        let data = field.bytes().await.map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("не удалось прочитать файл: {e}"),
-            )
-        })?;
-        if data.is_empty() {
+        // Stream the upload to disk chunk by chunk instead of buffering the
+        // whole file in memory (videos can be gigabytes).
+        let mut total: u64 = 0;
+        {
+            let mut file = tokio::fs::File::create(&path)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            while let Some(chunk) = field.chunk().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("не удалось прочитать файл: {e}"),
+                )
+            })? {
+                file.write_all(&chunk)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                total += chunk.len() as u64;
+            }
+            file.flush()
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
+        if total == 0 {
+            let _ = tokio::fs::remove_file(&path).await;
             return Err((StatusCode::BAD_REQUEST, "пустой файл".into()));
         }
-        tokio::fs::write(&path, &data)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let info = match tools::probe_video(&path).await {
             Ok(i) if i.width > 0 || i.duration > 0.0 => i,
