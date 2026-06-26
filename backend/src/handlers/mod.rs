@@ -9,11 +9,21 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::db::Project;
 use crate::library::MediaEntry;
 use crate::model::{EditRequest, ImportRequest, Job, JobStatus};
 use crate::state::AppState;
 use crate::tools::{self, Done};
+
+mod health;
+mod library;
+mod projects;
+
+pub use health::health_handler;
+pub use library::{library_delete_handler, library_list_handler};
+pub use projects::{
+    project_by_video_handler, project_delete_handler, project_get_handler, project_list_handler,
+    project_upsert_handler,
+};
 
 /// Per-job wall-clock limit (download or render), overridable via env.
 fn job_timeout() -> Duration {
@@ -396,120 +406,6 @@ pub async fn cancel_handler(
             (StatusCode::OK, Json(json!({ "status": "cancelled" })))
         }
     }
-}
-
-/// `GET /api/library` — list persisted sources and outputs, newest first.
-pub async fn library_list_handler(
-    State(state): State<AppState>,
-) -> Json<Vec<crate::library::MediaEntry>> {
-    Json(state.library.list().await)
-}
-
-/// `DELETE /api/library/:id` — remove a library entry and delete its file.
-pub async fn library_delete_handler(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> StatusCode {
-    if state.library.remove(&id).await {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::NOT_FOUND
-    }
-}
-
-/// `POST /api/projects` — create or update (keyed by `videoId`) the saved
-/// project for a clip: its `video` metadata plus the `edit` recipe. Acts as the
-/// autosave endpoint so reopening a clip restores the work.
-pub async fn project_upsert_handler(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Project>, (StatusCode, String)> {
-    let video_id = body["videoId"]
-        .as_str()
-        .ok_or((StatusCode::BAD_REQUEST, "videoId обязателен".to_string()))?;
-    let video = body
-        .get("video")
-        .filter(|v| v.is_object())
-        .cloned()
-        .ok_or((StatusCode::BAD_REQUEST, "video обязателен".to_string()))?;
-    let edit = body
-        .get("edit")
-        .filter(|v| v.is_object())
-        .cloned()
-        .ok_or((StatusCode::BAD_REQUEST, "edit обязателен".to_string()))?;
-    let name = body["name"]
-        .as_str()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| video["title"].as_str())
-        .or_else(|| video["filename"].as_str())
-        .unwrap_or("Без названия")
-        .to_string();
-    let project = state
-        .db
-        .upsert_project(video_id, &name, &video, &edit)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(project))
-}
-
-/// `GET /api/projects` — list saved projects, most recently updated first.
-pub async fn project_list_handler(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<Project>>, (StatusCode, String)> {
-    state
-        .db
-        .list_projects()
-        .await
-        .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-}
-
-/// `GET /api/projects/:id` — fetch one project by its id.
-pub async fn project_get_handler(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> Result<Json<Project>, StatusCode> {
-    match state.db.get_project(&id).await {
-        Ok(Some(p)) => Ok(Json(p)),
-        Ok(None) => Err(StatusCode::NOT_FOUND),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
-}
-
-/// `GET /api/projects/by-video/:videoId` — fetch the saved project for a clip.
-pub async fn project_by_video_handler(
-    State(state): State<AppState>,
-    AxPath(video_id): AxPath<String>,
-) -> Result<Json<Project>, StatusCode> {
-    match state.db.get_project_by_video(&video_id).await {
-        Ok(Some(p)) => Ok(Json(p)),
-        Ok(None) => Err(StatusCode::NOT_FOUND),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
-}
-
-/// `DELETE /api/projects/:id` — remove a saved project.
-pub async fn project_delete_handler(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> StatusCode {
-    match state.db.delete_project(&id).await {
-        Ok(true) => StatusCode::NO_CONTENT,
-        Ok(false) => StatusCode::NOT_FOUND,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-/// `GET /api/health` — readiness plus external tool availability/versions.
-pub async fn health_handler(State(state): State<AppState>) -> Json<Value> {
-    let t = &state.tools;
-    Json(json!({
-        "status": if t.ffmpeg && t.ytdlp { "ok" } else { "degraded" },
-        "ffmpeg": t.ffmpeg,
-        "ytdlp": t.ytdlp,
-        "ffmpegVersion": t.ffmpeg_version,
-        "ytdlpVersion": t.ytdlp_version,
-    }))
 }
 
 /// Drain numeric progress updates from a worker into the job record.
