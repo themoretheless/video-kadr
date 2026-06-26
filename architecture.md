@@ -198,3 +198,4 @@ components/        EditPanel = тонкий контейнер + секции:
 порядок и трудоёмкость каждого шага рефакторинга - в [docs/refactor-plan.md](docs/refactor-plan.md).
 Известные дефекты (не модульность): DNS-rebinding в `validate_url`; пропущенный
 `persist_job` при отмене на пути `validate_url`; неограниченный рост `recover_jobs`.
+Полный аудит проблем (топ-50 по серьёзности) - в [docs/audit.md](docs/audit.md).

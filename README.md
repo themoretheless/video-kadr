@@ -125,6 +125,7 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 [recommendation.md](recommendation.md). Подробный модульный дизайн (целевой «как с
 нуля» + текущее состояние и правила зависимостей) - в [architecture.md](architecture.md).
 Пошаговый рефакторинг на слабую зацепленность - в [docs/refactor-plan.md](docs/refactor-plan.md).
+Аудит «топ-50 проблем» (баги/безопасность/перф/тесты) - в [docs/audit.md](docs/audit.md).
 
 ```
 frontend (Vue 3 + Vite)
