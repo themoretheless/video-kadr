@@ -1,75 +1,133 @@
-# Рекомендации: что делать дальше
+# Рекомендации: что делать дальше (чеклист)
 
-Приоритизированный план действий, синхронизированный с
-[architecture.md](architecture.md) (целевой модульный дизайн),
-[docs/refactor-plan.md](docs/refactor-plan.md) (пошаговый рефакторинг) и
-[docs/ideas/round-13.md](docs/ideas/round-13.md) (приоритеты фич).
+Приоритизированный, гранулярный план, синхронизированный с
+[architecture.md](architecture.md) (целевой дизайн),
+[docs/refactor-plan.md](docs/refactor-plan.md) (шаги рефакторинга) и
+[docs/ideas/round-13.md](docs/ideas/round-13.md) (фичи).
 
-Принцип порядка: **корректность → дешёвая модульность → глубокий рефактор**;
-фичи вклиниваются параллельно по готовности. Каждый шаг идёт под зелёным
-`make check`. Оценка: **S** = часы, **M** = день-два, **L** = неделя+.
+Порядок: **корректность → дешёвая модульность → глубокий рефактор**; фичи
+параллельно. Каждая задача идёт под зелёным `make check`. **S** = часы, **M** =
+день-два, **L** = неделя+. У каждой задачи - файлы, шаги, критерий приёмки.
 
-## P0 — Корректность (чинить первым, S)
+---
 
-1. **`persist_job` при ошибке URL в импорте.** `handlers/mod.rs:53-59`: ветка
-   плохого URL ставит `Error` в память и `clear_cancel`, но **не** `persist_job`
-   → в БД джоба остаётся `pending` → после рестарта показывается `interrupted`,
-   а не `error`. Фикс: один `st.persist_job(&jid).await;` перед `clear_cancel`.
-   (Снимется автоматически при JobRunner, P2 #9.) **S.**
-2. **DNS-rebinding в `validate_url`** (`tools/net.rs`). Проверяется только
-   хост-литерал, DNS не резолвится: домен, резолвящийся в 127.0.0.1/RFC1918,
-   проходит SSRF-guard. Минимум - задокументировать как известное ограничение;
-   полноценно - резолвить хост и проверять все адреса (или egress-allowlist). **S→M.**
-3. **Ретеншн `recover_jobs`** (`state.rs`). Грузит все исторические джобы в память
-   при старте (рост от рестарта к рестарту). Фикс: грузить только N последних / по
-   времени, либо удалять терминальные старше TTL. **S.**
+## P0 - Корректность (чинить первым)
 
-## P1 — Безопасная модульность (дни, прикрыто тестами, поведение не меняется)
+### ☐ P0-1. `persist_job` при ошибке URL в импорте · S
+- **Файлы:** `backend/src/handlers/mod.rs` (`import_handler`, ветка `validate_url`, ~53-59).
+- **Шаги:**
+  - [ ] В ветке `if let Err(e) = tools::validate_url(...)` добавить `st.persist_job(&jid).await;` перед `st.clear_cancel(&jid).await;`.
+  - [ ] Тест в `backend/tests/api.rs`: импорт с плохим URL → poll до `error`; затем новый `AppState` поверх той же БД + `recover_jobs()` → джоба остаётся `error`, **не** `interrupted`.
+- **Критерий:** новый тест зелёный; `make check` зелёный.
 
-Выравнивает код с [architecture.md](architecture.md) без смены поведения.
+### ☐ P0-2. Ретеншн `recover_jobs` · S
+- **Файлы:** `backend/src/state.rs` (`recover_jobs`), `backend/src/db.rs` (`load_jobs`).
+- **Шаги:**
+  - [ ] В `db.rs` добавить `load_recent_jobs(limit)` (ORDER BY updated_at DESC LIMIT) или `prune_jobs_older_than(ts)`.
+  - [ ] `recover_jobs` грузит только последние N (env `RECOVER_JOBS_LIMIT`, дефолт 200) и/или чистит терминальные старше TTL.
+  - [ ] db-тест: при >N сохранённых джобах загрузка возвращает ≤N.
+- **Критерий:** db-тест зелёный; recover не падает на пустой/большой БД; `make check`.
 
-4. **`Config`-struct** (architecture.md → config). env читается в ~9 местах на
-   лету (`MAX_HEIGHT` в `tools`, `JOB_TIMEOUT_SECS` в `handlers` - на каждый
-   запрос). Собрать `Config::from_env()` один раз в `main`, прокинуть явно;
-   fail-fast на кривом `BIND_ADDR`/`PORT`. **M.**
-5. **Frontend `store.ts` → модули** (architecture.md → frontend). Чистые функции
-   в `lib/`, тема/пресеты/история - в свои composables; реэкспорт из `store.ts`,
-   чтобы потребители и `store.test.ts` не менялись. **S→M.**
-6. **Frontend `EditPanel.vue` → секции** (architecture.md → frontend). Каталоги
-   опций в `lib/editOptions.ts` (S); секции `AudioControls`/`PresetBar`/
-   `ColorControls`/`Timing`/`Frame`/`Export`; развязать скрытую связь
-   Export→Frame (вынести `applyPlatform`/`setAspect`). **S→M.**
-7. **Единый источник дефолтов контракта** (architecture.md → контракт). Один
-   `EDIT_DEFAULTS` + `diffFromDefault`; из него вывести `PRESET_KEYS` и плоскую
-   часть `buildEditPayload`. Снижает «новое поле = ~6 мест» до ~3. **S.**
-8. **`messages.rs` (i18n-каталог).** Вынести русские строки-ошибки из `tools`/
-   `handlers` в один модуль по ключам. **S→M.**
+### ☐ P0-3. DNS-rebinding в `validate_url` · S (пометка) / M (резолвинг)
+- **Файлы:** `backend/src/tools/net.rs`; (документация уже в architecture.md/README).
+- **Шаги:**
+  - [ ] Минимум (S): явный комментарий-ограничение в `net.rs` + строка в «Ограничениях» README.
+  - [ ] Полноценно (M): резолвить host (`(host, 0).to_socket_addrs()`), прогнать каждый IP через `is_blocked_ip`; отклонять, если хоть один приватный.
+- **Критерий:** для S - комментарий + тест текущего поведения; для M - тест, что хост, резолвящийся в loopback/RFC1918, отклоняется (за фичей/мокабельным резолвером).
 
-## P2 — Глубокий рефактор (недели, меняет контракты/контрол-флоу, нужны новые тесты)
+---
 
-Порядок и детали - в [docs/refactor-plan.md](docs/refactor-plan.md).
+## P1 - Безопасная модульность (поведение не меняется, под тестами)
 
-9. **JobRunner + трейт `Task`** (architecture.md → jobs/). Убрать копипасту
-   оркестрации `import`/`edit`; **заодно закрывает P0 #1** (persist в одном
-   месте). Нужны юнит-тесты на runner (отмена в queued, no-hang `drop(tx)`). **L.**
-10. **Репозитории-трейты** (`ProjectRepo`/`JobRepo`/`MediaRepo`/`RenderCache`).
-    Шаг A: трейты поверх существующего `Db` (in-memory тесты без sqlite). Шаг B:
-    мигрировать `Library` (JSON) в SQLite + вынести `FileStore`. **M→L.**
-11. **`AppError` + `IntoResponse`.** Один enum вместо россыпи `(StatusCode,
-    String)`; маппинг кодов в одном месте; `ErrorKind` для `job.error`. **L.**
-12. **`JobService`.** Инвариант «терминал → persist + clear_cancel» в одном
-    методе вместо дисциплины вызовов в 5 местах. **M.**
-13. **Timeline IR** (architecture.md → доменная модель). Разделить wire-DTO →
-    `EditPlan`/Timeline → чистый `compile()` в ffmpeg. Первый шаг - вынести
-    `OutputSpec` (S); полный IR - **L**, и только он разблокирует мультитрек.
+### ☐ P1-4. `Config`-struct (env в одном месте) · M
+- **Файлы:** новый `backend/src/config.rs`; `main.rs`; `state.rs` (поле `config`); `handlers/mod.rs` (убрать `job_timeout()`); `tools/mod.rs` (`download_video` берёт `max_height` параметром).
+- **Шаги:**
+  - [ ] `Config` + `from_env()` со всеми 8 переменными (PORT/BIND_ADDR/STORAGE_DIR/MAX_HEIGHT/MAX_CONCURRENT_JOBS/JOB_TIMEOUT_SECS/FILE_TTL_HOURS/MAX_UPLOAD_BYTES); `file_ttl: Option<Duration>` вместо магического 0; fail-fast на кривом BIND_ADDR/PORT.
+  - [ ] `AppState` получает `Arc<Config>`; `main` собирает один раз.
+  - [ ] Удалить `job_timeout()`, брать из `config`; `download_video(..., max_height)`.
+- **Критерий:** дефолты и поведение те же; нет `std::env::var` вне `config.rs` (grep); тест `Config::from_env` без мутации процессного env; `make check`.
 
-## P3 — Фичи (параллельно, из round-13)
+### ☐ P1-5. `store.ts` → модули · S→M
+- **Файлы:** новые `frontend/src/lib/{time,quality,defaults}.ts`, `core/payload.ts`; `features/{presets,history}.ts`, `ui/useTheme.ts`; `store.ts` оставляет реэкспорты.
+- **Шаги:**
+  - [ ] Чистые `parseTime`/`tierToCrf`/`defaultEdit`/`buildEditPayload` → lib/core, реэкспорт из `store.ts`.
+  - [ ] `theme`/`presets`/`history` (+ их module-level `let`/watch) → свои файлы, реэкспорт.
+  - [ ] Развязать `resetHistory`/`restoreProject` от `doImport`/`openFromLibrary` через событие смены `video` в core-модели.
+- **Критерий:** `store.test.ts` без изменений зелёный; `typecheck`/`build`; ручная проверка undo/тема/пресеты в превью.
 
-- **Тир-1, ложатся на текущий `build_ffmpeg_args` (S–M):** хромакей (зелёный
-  экран), LUT-импорт `.cube`, стабилизация `vidstab`, scopes (гистограмма/
-  waveform/vectorscope), режим «до/после», авто-обрезка чёрных полос, boomerang.
-- **Тир-0 (разблокировщик):** мультитрек-таймлайн - **только после Timeline IR
-  (P2 #13)**, иначе строить не на чем.
+### ☐ P1-6. `EditPanel.vue` → секции · S→M
+- **Файлы:** новый `frontend/src/lib/editOptions.ts`; `components/{AudioControls,PresetBar,ColorControls,TimingControls,FrameControls,ExportControls}.vue`; `EditPanel.vue` - тонкий контейнер.
+- **Шаги:**
+  - [ ] 10 каталогов опций (`speeds`/`aspects`/`filters`/`formats`/…) → `lib/editOptions.ts`.
+  - [ ] Секции по одной (начать с `AudioControls`/`PresetBar` - они без скрытых связей).
+  - [ ] Вынести `applyPlatform`/`setAspect` в store/lib (развязка Export→Frame).
+- **Критерий:** `typecheck`/`build`; ручная проверка каждой секции в превью (как в прошлых фичах через `window.__store`).
+
+### ☐ P1-7. Единый источник дефолтов контракта · S
+- **Файлы:** `frontend/src/store.ts` (или `lib/defaults.ts`), `store.test.ts`.
+- **Шаги:**
+  - [ ] `EDIT_DEFAULTS` (его же отдаёт `defaultEdit()`).
+  - [ ] Плоскую часть `buildEditPayload` (строки «if e.x !== default») заменить на `diffFromDefault`.
+  - [ ] `PRESET_KEYS` вывести из списка скалярных полей (не вручную).
+- **Критерий:** `store.test.ts` зелёный (payload идентичен); добавить тест «`defaultEdit()` == `EDIT_DEFAULTS`».
+
+### ☐ P1-8. `messages.rs` (i18n-каталог) · S→M
+- **Файлы:** новый `backend/src/messages.rs`; `tools/{mod,net}.rs`, `handlers/*` (use `messages::`).
+- **Шаги:**
+  - [ ] Каталог ключей (Timeout/PrivateVideo/GeoBlocked/NotFound/BadUrl/…) + русские тексты в одном месте.
+  - [ ] Заменить захардкоженные строки в домене на `messages::*`.
+- **Критерий:** тексты не меняются (тесты, что ждут конкретные строки, напр. `"Недопустимый URL"`, зелёные); `make check`.
+
+---
+
+## P2 - Глубокий рефактор (меняет контракты/контрол-флоу, нужны новые тесты)
+
+### ☐ P2-9. JobRunner + трейт `Task` · L  ← закрывает P0-1 и убирает дублирование
+- **Файлы:** новый `backend/src/jobs/{mod,runner,task}.rs`; `handlers/mod.rs` (`import`/`edit` переписать); перенести `spawn_progress_drain`/`finish_job`.
+- **Шаги:**
+  - [ ] `trait Task { async fn run(&self, ctx) -> Result<Option<Value>> }` + `JobContext{progress,cancel}`.
+  - [ ] `JobService::spawn(id, spec, task)` - единственное место со скелетом (queued→permit→cancel→running→drain→finish→persist).
+  - [ ] `import`/`edit` строят `Task` и зовут `spawn`; `validate_url` как `Err` внутри `work` (фикс P0-1).
+  - [ ] Юнит-тесты раннера: отмена в `queued`, отсутствие зависания (`drop(tx)`), три исхода `Ok(Some)/Ok(None)/Err`.
+- **Критерий:** `tests/api.rs` без изменений зелёный; новые runner-тесты; `make check`.
+
+### ☐ P2-10. Репозитории-трейты · M→L
+- [ ] **Шаг A (M):** `ProjectRepo`/`JobRepo`/`MediaRepo`/`RenderCache` поверх существующего `Db`; `AppState` на `Arc<dyn ...>`; in-memory реализации + переписать 1-2 теста хендлеров на них.
+- [ ] **Шаг B (L):** `Library` (JSON) → таблица `media` в SQLite + `FileStore` (file-IO отдельно); одноразовая миграция `library.json` + тест миграции.
+- **Критерий:** существующие тесты зелёные; новый in-memory тест хендлера без sqlite.
+
+### ☐ P2-11. `AppError` + `IntoResponse` · L
+- **Файлы:** новый `error.rs`; хендлеры; домен (строки → варианты).
+- [ ] enum `AppError{BadRequest(Reason)/NotFound/Conflict/Internal}` + `IntoResponse`; `ErrorKind` для `job.error`; убрать россыпь `(StatusCode, String)`.
+- **Критерий:** статус-коды в `tests/api.rs` не меняются.
+
+### ☐ P2-12. `JobService` (инвариант завершения) · M
+- [ ] `transition(id, f)` сам персистит на терминальном статусе + `clear_cancel`; убрать ручные `persist_job` из 5 мест.
+- **Критерий:** тест «терминал → токен очищен + статус в БД».
+
+### ☐ P2-13. Timeline IR · L (разблокирует мультитрек)
+- [ ] **Шаг 1 (S):** вынести `OutputSpec` (enum) из плоских format/codec/quality.
+- [ ] **Шаг 2 (M):** `EditRequest -> EditPlan` адаптером; билдер на `&EditPlan`; ключ кэша по хешу плана.
+- [ ] **Шаг 3 (L):** `Scope`/диапазоны + мультитрек в компиляторе.
+- **Критерий:** golden-тест «старый `build_ffmpeg_args` == новый» на корпусе запросов.
+
+---
+
+## P3 - Фичи (параллельно, из round-13)
+
+### ☐ Тир-1 (ложатся на текущий `build_ffmpeg_args`, S-M каждая)
+- [ ] Хромакей (зелёный экран) + despill · M
+- [ ] LUT-импорт `.cube` + интенсивность · M
+- [ ] Стабилизация `vidstab` (двухпроходная) · M
+- [ ] Scopes: гистограмма/waveform/vectorscope (бэк рендерит PNG по кадру) · M
+- [ ] Режим «до/после» слайдером · M
+- [ ] Авто-обрезка чёрных полос (`cropdetect`) · S
+- [ ] Boomerang-экспорт · S
+
+### ☐ Тир-0 (разблокировщик) - только после P2-13
+- [ ] Мультитрек-таймлайн · L `[нужен Timeline IR]`
+
+---
 
 ## Рекомендуемая последовательность
 
@@ -79,7 +137,6 @@ P0 (часы)  →  P1 #4-#8 (модульность, безопасно)  →  
 Тир-1 фичи (P3) — в любой момент;  мультитрек — после #13.
 ```
 
-Самый высокий ROI прямо сейчас: **P0 целиком** (часы, реальная корректность) +
-**P1 #4/#5/#6** (модульность под тестами). Самый ценный крупный шаг: **#9
-JobRunner** (убирает дублирование и чинит баг), затем **#13 Timeline IR** (открывает
-мультитрек и половину фич-бэклога).
+Самый высокий ROI прямо сейчас: **P0 целиком** + **P1 #4/#5/#6**. Самый ценный
+крупный шаг: **#9 JobRunner** (дедуп + фикс бага), затем **#13 Timeline IR**
+(мультитрек + половина фич-бэклога).
