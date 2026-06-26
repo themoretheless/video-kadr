@@ -194,6 +194,7 @@ components/        EditPanel = тонкий контейнер + секции:
 | Frontend стор | `store.ts` god-модуль | core + features composables | ☐ |
 | Frontend панель | `EditPanel.vue` god-компонент | секции-компоненты | ☐ |
 
-Порядок и трудоёмкость каждого шага - в [docs/refactor-plan.md](docs/refactor-plan.md).
+Приоритизированный план «что делать первым» - в [recommendation.md](recommendation.md);
+порядок и трудоёмкость каждого шага рефакторинга - в [docs/refactor-plan.md](docs/refactor-plan.md).
 Известные дефекты (не модульность): DNS-rebinding в `validate_url`; пропущенный
 `persist_job` при отмене на пути `validate_url`; неограниченный рост `recover_jobs`.
