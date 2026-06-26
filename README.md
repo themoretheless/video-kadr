@@ -121,6 +121,10 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 
 ## Архитектура
 
+Подробный модульный дизайн (целевой «как с нуля» + текущее состояние и правила
+зависимостей) - в [architecture.md](architecture.md). План рефакторинга на
+слабую зацепленность по шагам - в [docs/refactor-plan.md](docs/refactor-plan.md).
+
 ```
 frontend (Vue 3 + Vite)
   └── POST /api/import { url }        -> { jobId }      (yt-dlp скачивает)
