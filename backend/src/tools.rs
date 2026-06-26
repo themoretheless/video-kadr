@@ -333,7 +333,10 @@ pub fn output_ext(format: Option<&str>) -> &'static str {
         "webm" => "webm",
         "gif" => "gif",
         "png" => "png",
+        "jpg" => "jpg",
         "mp3" => "mp3",
+        "prores" => "mov",
+        // av1 lives in an mp4 container.
         _ => "mp4",
     }
 }
@@ -439,6 +442,9 @@ fn audio_filters(edit: &EditRequest, out_dur: f64) -> Vec<String> {
     if edit.reverse {
         af.push("areverse".into());
     }
+    if edit.highpass {
+        af.push("highpass=f=100".into());
+    }
     if (edit.volume - 1.0).abs() > 1e-6 {
         af.push(format!("volume={:.3}", edit.volume.max(0.0)));
     }
@@ -456,6 +462,10 @@ fn audio_filters(edit: &EditRequest, out_dur: f64) -> Vec<String> {
             out_dur - edit.fade_out,
             edit.fade_out
         ));
+    }
+    // Loudness normalization is applied last, on the finished chain.
+    if edit.normalize_audio {
+        af.push("loudnorm=I=-14:TP=-1.5:LRA=11".into());
     }
     af
 }
@@ -537,8 +547,9 @@ pub fn build_ffmpeg_args(
             args.push("-q:a".into());
             args.push("2".into());
         }
-        "png" => {
+        "png" | "jpg" => {
             // Single still frame at the trim start (positioned by -ss above).
+            // The encoder is chosen by the output extension (png / mjpeg).
             let vf = video_filters(edit, out_dur, false);
             if !vf.is_empty() {
                 args.push("-vf".into());
@@ -570,6 +581,52 @@ pub fn build_ffmpeg_args(
             }
             push_audio(&mut args, edit, out_dur, "libopus");
             push_video_codec(&mut args, edit, "webm");
+        }
+        "av1" => {
+            // Modern, compact codec in an mp4 container (needs libsvtav1).
+            let vf = video_filters(edit, out_dur, true);
+            if !vf.is_empty() {
+                args.push("-vf".into());
+                args.push(vf.join(","));
+            }
+            push_audio(&mut args, edit, out_dur, "aac");
+            args.push("-c:v".into());
+            args.push("libsvtav1".into());
+            args.push("-crf".into());
+            args.push(edit.quality.unwrap_or(32).to_string());
+            args.push("-preset".into());
+            args.push("6".into());
+            args.push("-pix_fmt".into());
+            args.push("yuv420p".into());
+            push_fps(&mut args, edit);
+            args.push("-movflags".into());
+            args.push("+faststart".into());
+        }
+        "prores" => {
+            // Intra-only edit codec in a .mov; audio as PCM. prores_ks is built in.
+            let vf = video_filters(edit, out_dur, true);
+            if !vf.is_empty() {
+                args.push("-vf".into());
+                args.push(vf.join(","));
+            }
+            if edit.mute {
+                args.push("-an".into());
+            } else {
+                let af = audio_filters(edit, out_dur);
+                if !af.is_empty() {
+                    args.push("-af".into());
+                    args.push(af.join(","));
+                }
+                args.push("-c:a".into());
+                args.push("pcm_s16le".into());
+            }
+            args.push("-c:v".into());
+            args.push("prores_ks".into());
+            args.push("-profile:v".into());
+            args.push("3".into());
+            args.push("-pix_fmt".into());
+            args.push("yuv422p10le".into());
+            push_fps(&mut args, edit);
         }
         _ => {
             // mp4 (default): H.264 or H.265.
@@ -978,8 +1035,52 @@ mod tests {
         assert_eq!(output_ext(Some("webm")), "webm");
         assert_eq!(output_ext(Some("gif")), "gif");
         assert_eq!(output_ext(Some("png")), "png");
+        assert_eq!(output_ext(Some("jpg")), "jpg");
         assert_eq!(output_ext(Some("mp3")), "mp3");
+        assert_eq!(output_ext(Some("prores")), "mov");
+        assert_eq!(output_ext(Some("av1")), "mp4");
         assert_eq!(output_ext(Some("weird")), "mp4");
+    }
+
+    #[test]
+    fn audio_normalize_and_highpass() {
+        let args = args_for(
+            json!({ "videoId": "x", "normalizeAudio": true, "highpass": true }),
+            10.0,
+        );
+        let chain = af(&args).expect("has -af");
+        assert!(chain.contains("loudnorm"), "{chain}");
+        assert!(chain.contains("highpass=f=100"), "{chain}");
+    }
+
+    #[test]
+    fn av1_format_uses_svtav1() {
+        let args = args_for(
+            json!({ "videoId": "x", "format": "av1", "quality": 30 }),
+            10.0,
+        );
+        assert!(args.contains(&"libsvtav1".to_string()));
+        assert!(args.contains(&"+faststart".to_string()));
+        let crf = args.iter().position(|a| a == "-crf").unwrap();
+        assert_eq!(args[crf + 1], "30");
+    }
+
+    #[test]
+    fn prores_format_uses_prores_ks_and_pcm() {
+        let args = args_for(json!({ "videoId": "x", "format": "prores" }), 10.0);
+        assert!(args.contains(&"prores_ks".to_string()));
+        assert!(args.contains(&"pcm_s16le".to_string())); // not muted -> PCM audio
+        assert!(!args.contains(&"+faststart".to_string())); // mov, not mp4
+    }
+
+    #[test]
+    fn jpg_grabs_single_frame() {
+        let args = args_for(json!({ "videoId": "x", "format": "jpg" }), 10.0);
+        assert_eq!(
+            args[args.iter().position(|a| a == "-frames:v").unwrap() + 1],
+            "1"
+        );
+        assert!(args.contains(&"-an".to_string()));
     }
 
     #[test]

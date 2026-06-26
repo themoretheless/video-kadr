@@ -136,3 +136,61 @@ async fn real_render_denoise_sharpen_grain_look() {
     assert!(matches!(done, Done::Completed));
     assert!(tokio::fs::metadata(&output).await.unwrap().len() > 0);
 }
+
+#[tokio::test]
+async fn real_render_prores_with_audio_cleanup() {
+    if !tools_available().await {
+        eprintln!("skipping real_render_prores_with_audio_cleanup: ffmpeg/ffprobe not on PATH");
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("src.mp4");
+    let output = dir.path().join("out.mov");
+
+    let gen = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=320x240:rate=15:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1",
+            "-shortest",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&input)
+        .output()
+        .await
+        .unwrap();
+    assert!(gen.status.success());
+
+    // ProRes export with loudnorm + highpass exercises prores_ks + the audio chain.
+    let req: EditRequest = serde_json::from_value(serde_json::json!({
+        "videoId": "x",
+        "format": "prores",
+        "normalizeAudio": true,
+        "highpass": true
+    }))
+    .unwrap();
+    let probe = probe_video(&input).await.unwrap();
+    let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
+
+    let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
+    let token = CancellationToken::new();
+    let done = run_ffmpeg(&args, 1.0, &tx, &token, Duration::from_secs(60))
+        .await
+        .unwrap();
+    drop(tx);
+    let _ = drain.await;
+
+    assert!(matches!(done, Done::Completed));
+    let out = probe_video(&output).await.unwrap();
+    assert!(out.duration > 0.0);
+    assert_eq!(out.vcodec.as_deref(), Some("prores"));
+}

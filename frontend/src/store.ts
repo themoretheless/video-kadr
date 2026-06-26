@@ -21,6 +21,8 @@ export function defaultEdit(): EditState {
     volume: 1,
     fadeIn: 0,
     fadeOut: 0,
+    normalizeAudio: false,
+    highpass: false,
     brightness: 0,
     contrast: 1,
     saturation: 1,
@@ -47,6 +49,7 @@ export function tierToCrf(tier: string, format: string): number | null {
   const table: Record<string, Record<string, number>> = {
     mp4: { high: 18, medium: 23, compact: 28 },
     webm: { high: 28, medium: 33, compact: 38 },
+    av1: { high: 28, medium: 34, compact: 40 },
   }
   return table[format]?.[tier] ?? null
 }
@@ -234,6 +237,8 @@ export function buildEditPayload(): Record<string, unknown> {
   if (e.volume !== 1) payload.volume = e.volume
   if (e.fadeIn > 0) payload.fadeIn = e.fadeIn
   if (e.fadeOut > 0) payload.fadeOut = e.fadeOut
+  if (e.normalizeAudio) payload.normalizeAudio = true
+  if (e.highpass) payload.highpass = true
   if (e.brightness !== 0) payload.brightness = e.brightness
   if (e.contrast !== 1) payload.contrast = e.contrast
   if (e.saturation !== 1) payload.saturation = e.saturation
@@ -459,6 +464,8 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'volume',
   'fadeIn',
   'fadeOut',
+  'normalizeAudio',
+  'highpass',
   'brightness',
   'contrast',
   'saturation',

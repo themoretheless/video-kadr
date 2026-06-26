@@ -126,6 +126,12 @@ pub struct EditRequest {
     pub fade_in: f64,
     #[serde(default)]
     pub fade_out: f64,
+    /// Normalize loudness to a streaming target (EBU R128 via loudnorm).
+    #[serde(default)]
+    pub normalize_audio: bool,
+    /// High-pass filter to cut low-frequency rumble/hum from the voice.
+    #[serde(default)]
+    pub highpass: bool,
     /// eq filter params: brightness -1..1, contrast/saturation around 1.0.
     #[serde(default)]
     pub brightness: f64,

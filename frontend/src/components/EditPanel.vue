@@ -249,8 +249,11 @@ watch(
 const formats = [
   { v: 'mp4', label: 'MP4' },
   { v: 'webm', label: 'WebM' },
+  { v: 'av1', label: 'AV1' },
+  { v: 'prores', label: 'ProRes' },
   { v: 'gif', label: 'GIF' },
   { v: 'png', label: 'Кадр PNG' },
+  { v: 'jpg', label: 'Кадр JPG' },
   { v: 'mp3', label: 'Аудио MP3' },
 ]
 
@@ -267,16 +270,27 @@ const formatHint = computed(() => {
       return 'GIF без звука, по умолчанию 12 fps. Лучше укажи размер и короткий отрезок.'
     case 'png':
       return 'Один кадр на позиции начала обрезки, без звука.'
+    case 'jpg':
+      return 'Один кадр JPG на позиции начала обрезки, без звука.'
     case 'mp3':
       return 'Только звук, видеоэффекты игнорируются.'
     case 'webm':
       return 'VP9 + Opus, меньше размер, дольше кодируется.'
+    case 'av1':
+      return 'AV1 — компактный современный кодек, кодируется медленно (нужен libsvtav1 в сборке ffmpeg).'
+    case 'prores':
+      return 'ProRes 422 HQ в .mov для монтажа: крупный файл, звук PCM.'
     default:
       return ''
   }
 })
 
-const showQuality = computed(() => state.edit.format === 'mp4' || state.edit.format === 'webm')
+const showQuality = computed(
+  () =>
+    state.edit.format === 'mp4' ||
+    state.edit.format === 'webm' ||
+    state.edit.format === 'av1',
+)
 
 function applyPlatform(name: string) {
   if (!state.video) return
@@ -629,10 +643,20 @@ function applyPlatform(name: string) {
       <div class="field inline">
         <label class="toggle"><input type="checkbox" v-model="state.edit.mute" /> Без звука</label>
       </div>
-      <div v-if="!state.edit.mute" class="field">
-        <label>Громкость: {{ Math.round(state.edit.volume * 100) }}%</label>
-        <input type="range" min="0" max="2" step="0.05" v-model.number="state.edit.volume" />
-      </div>
+      <template v-if="!state.edit.mute">
+        <div class="field">
+          <label>Громкость: {{ Math.round(state.edit.volume * 100) }}%</label>
+          <input type="range" min="0" max="2" step="0.05" v-model.number="state.edit.volume" />
+        </div>
+        <div class="field inline">
+          <label class="toggle">
+            <input type="checkbox" v-model="state.edit.normalizeAudio" /> Нормализация громкости
+          </label>
+          <label class="toggle">
+            <input type="checkbox" v-model="state.edit.highpass" /> Убрать гул (highpass)
+          </label>
+        </div>
+      </template>
     </section>
 
     <!-- Export -->

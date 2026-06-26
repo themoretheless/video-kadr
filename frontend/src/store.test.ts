@@ -53,6 +53,7 @@ describe('tierToCrf', () => {
     expect(tierToCrf('high', 'mp4')).toBe(18)
     expect(tierToCrf('compact', 'mp4')).toBe(28)
     expect(tierToCrf('high', 'webm')).toBe(28)
+    expect(tierToCrf('medium', 'av1')).toBe(34)
     expect(tierToCrf('', 'mp4')).toBeNull()
     expect(tierToCrf('high', 'gif')).toBeNull()
     expect(tierToCrf('weird', 'mp4')).toBeNull()
@@ -114,6 +115,14 @@ describe('buildEditPayload', () => {
     expect(p.denoise).toBe(true)
     expect(p.sharpen).toBe(1.5)
     expect(p.grain).toBe(20)
+  })
+
+  it('maps audio normalize/highpass only when set', () => {
+    expect('normalizeAudio' in buildEditPayload()).toBe(false)
+    Object.assign(state.edit, { normalizeAudio: true, highpass: true })
+    const p = buildEditPayload()
+    expect(p.normalizeAudio).toBe(true)
+    expect(p.highpass).toBe(true)
   })
 
   it('gates censor by size and maps codec/quality', () => {

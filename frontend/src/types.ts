@@ -37,6 +37,8 @@ export interface EditState {
   volume: number
   fadeIn: number
   fadeOut: number
+  normalizeAudio: boolean
+  highpass: boolean
   brightness: number
   contrast: number
   saturation: number
