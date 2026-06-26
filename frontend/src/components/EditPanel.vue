@@ -189,6 +189,10 @@ const filters = [
   { v: 'sepia', label: 'Сепия' },
   { v: 'warm', label: 'Тёплый' },
   { v: 'cold', label: 'Холодный' },
+  { v: 'teal-orange', label: 'Teal-Orange' },
+  { v: 'faded', label: 'Выцветший' },
+  { v: 'noir', label: 'Нуар' },
+  { v: 'vintage', label: 'Винтаж' },
 ]
 
 const fpsPresets = [
@@ -204,6 +208,9 @@ function resetColor() {
   state.edit.contrast = 1
   state.edit.saturation = 1
   state.edit.filter = ''
+  state.edit.denoise = false
+  state.edit.sharpen = 0
+  state.edit.grain = 0
 }
 
 const censorColors = [
@@ -602,6 +609,17 @@ function applyPlatform(name: string) {
       </div>
       <div class="field inline">
         <label class="toggle"><input type="checkbox" v-model="state.edit.vignette" /> Виньетка</label>
+        <label class="toggle"><input type="checkbox" v-model="state.edit.denoise" /> Шумодав</label>
+      </div>
+      <div class="field">
+        <div class="grid2">
+          <label>Резкость: {{ state.edit.sharpen.toFixed(1) }}
+            <input type="range" min="0" max="3" step="0.1" v-model.number="state.edit.sharpen" />
+          </label>
+          <label>Зерно: {{ Math.round(state.edit.grain) }}
+            <input type="range" min="0" max="60" step="1" v-model.number="state.edit.grain" />
+          </label>
+        </div>
       </div>
     </section>
 

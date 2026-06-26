@@ -150,6 +150,15 @@ pub struct EditRequest {
     /// Darkened-edges vignette.
     #[serde(default)]
     pub vignette: bool,
+    /// Spatial denoise (hqdn3d).
+    #[serde(default)]
+    pub denoise: bool,
+    /// Sharpen amount (0 = off, ~0..3 luma_amount for unsharp).
+    #[serde(default)]
+    pub sharpen: f64,
+    /// Film grain amount (0 = off, ~0..100 noise strength).
+    #[serde(default)]
+    pub grain: f64,
     /// Letterbox/pillarbox to a target aspect like "9:16" (pad, no cropping).
     #[serde(default)]
     pub pad: Option<String>,

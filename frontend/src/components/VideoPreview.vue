@@ -45,6 +45,10 @@ const videoStyle = computed(() => {
     sepia: 'sepia(0.6)',
     warm: 'sepia(0.4) saturate(1.3)',
     cold: 'hue-rotate(-12deg) saturate(1.15)',
+    'teal-orange': 'contrast(1.1) saturate(1.2) hue-rotate(-6deg)',
+    faded: 'contrast(0.85) brightness(1.05) saturate(0.9)',
+    noir: 'grayscale(1) contrast(1.4)',
+    vintage: 'sepia(0.3) contrast(0.95) saturate(1.1)',
   }
   if (e.filter && presets[e.filter]) f.push(presets[e.filter])
   const sx = e.flipH ? -1 : 1

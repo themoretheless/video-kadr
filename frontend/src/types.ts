@@ -47,6 +47,9 @@ export interface EditState {
   censor: { x: number; y: number; w: number; h: number }
   censorColor: string
   vignette: boolean
+  denoise: boolean
+  sharpen: number
+  grain: number
   pad: string
   // round 3 export options
   format: string

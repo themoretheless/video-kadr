@@ -83,3 +83,56 @@ async fn real_render_trim_scale_grayscale() {
     assert!(out.duration > 0.0, "output should have a positive duration");
     assert_eq!(out.width, 160, "scale width should be applied");
 }
+
+#[tokio::test]
+async fn real_render_denoise_sharpen_grain_look() {
+    if !tools_available().await {
+        eprintln!("skipping real_render_denoise_sharpen_grain_look: ffmpeg/ffprobe not on PATH");
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("src.mp4");
+    let output = dir.path().join("out.mp4");
+
+    let gen = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=320x240:rate=15:duration=1",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&input)
+        .output()
+        .await
+        .unwrap();
+    assert!(gen.status.success());
+
+    // Exercise the new effects through the real binary so a bad filter string fails.
+    let req: EditRequest = serde_json::from_value(serde_json::json!({
+        "videoId": "x",
+        "denoise": true,
+        "sharpen": 1.2,
+        "grain": 15.0,
+        "filter": "teal-orange",
+        "mute": true
+    }))
+    .unwrap();
+    let probe = probe_video(&input).await.unwrap();
+    let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
+
+    let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
+    let token = CancellationToken::new();
+    let done = run_ffmpeg(&args, 1.0, &tx, &token, Duration::from_secs(60))
+        .await
+        .unwrap();
+    drop(tx);
+    let _ = drain.await;
+
+    assert!(matches!(done, Done::Completed));
+    assert!(tokio::fs::metadata(&output).await.unwrap().len() > 0);
+}

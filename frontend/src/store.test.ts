@@ -107,6 +107,15 @@ describe('buildEditPayload', () => {
     expect('flipH' in p).toBe(false)
   })
 
+  it('maps denoise/sharpen/grain only when set', () => {
+    expect('denoise' in buildEditPayload()).toBe(false)
+    Object.assign(state.edit, { denoise: true, sharpen: 1.5, grain: 20 })
+    const p = buildEditPayload()
+    expect(p.denoise).toBe(true)
+    expect(p.sharpen).toBe(1.5)
+    expect(p.grain).toBe(20)
+  })
+
   it('gates censor by size and maps codec/quality', () => {
     state.edit.censorEnabled = true
     state.edit.censor = { x: 1, y: 1, w: 0, h: 0 } // too small

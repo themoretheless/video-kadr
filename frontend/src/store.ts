@@ -31,6 +31,9 @@ export function defaultEdit(): EditState {
     censor: { x: 0, y: 0, w: 0, h: 0 },
     censorColor: 'black',
     vignette: false,
+    denoise: false,
+    sharpen: 0,
+    grain: 0,
     pad: '',
     format: 'mp4',
     codec: 'h264',
@@ -242,6 +245,9 @@ export function buildEditPayload(): Record<string, unknown> {
     payload.censorColor = e.censorColor
   }
   if (e.vignette) payload.vignette = true
+  if (e.denoise) payload.denoise = true
+  if (e.sharpen > 0) payload.sharpen = e.sharpen
+  if (e.grain > 0) payload.grain = e.grain
   if (e.pad) payload.pad = e.pad
   // Export format/codec/quality.
   if (e.format && e.format !== 'mp4') payload.format = e.format
@@ -460,6 +466,9 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'reverse',
   'fps',
   'vignette',
+  'denoise',
+  'sharpen',
+  'grain',
   'censorColor',
   'pad',
   'format',

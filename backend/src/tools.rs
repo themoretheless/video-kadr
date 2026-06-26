@@ -294,6 +294,14 @@ fn filter_preset(name: &str) -> Option<&'static str> {
         "sepia" => Some("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"),
         "warm" => Some("colorbalance=rs=0.2:gs=0.05:bs=-0.2"),
         "cold" => Some("colorbalance=rs=-0.2:gs=0:bs=0.2"),
+        // Shadows toward teal, highlights toward orange (the blockbuster look).
+        "teal-orange" => Some("colorbalance=rs=-0.15:bs=0.15:rm=0.1:bm=-0.05:rh=0.15:bh=-0.15"),
+        // Lifted blacks + lowered whites for a flat, matte film look.
+        "faded" => Some("curves=all='0/0.08 1/0.92'"),
+        // High-contrast black and white.
+        "noir" => Some("hue=s=0,eq=contrast=1.4"),
+        // Warm, slightly faded vintage.
+        "vintage" => Some("curves=all='0/0.06 1/0.95',colorbalance=rs=0.15:gs=0.05:bs=-0.1"),
         _ => None,
     }
 }
@@ -373,6 +381,9 @@ fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String
             "pad=w='ceil(max(iw,ih*{tw}/{th})/2)*2':h='ceil(max(ih,iw*{th}/{tw})/2)*2':x='(ow-iw)/2':y='(oh-ih)/2':color=black"
         ));
     }
+    if edit.denoise {
+        vf.push("hqdn3d".into());
+    }
     let eq_changed = edit.brightness.abs() > 1e-6
         || (edit.contrast - 1.0).abs() > 1e-6
         || (edit.saturation - 1.0).abs() > 1e-6;
@@ -385,8 +396,20 @@ fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String
     if let Some(f) = edit.filter.as_deref().and_then(filter_preset) {
         vf.push(f.into());
     }
+    if edit.sharpen > 1e-6 {
+        vf.push(format!(
+            "unsharp=5:5:{:.3}:5:5:0.0",
+            edit.sharpen.clamp(0.0, 5.0)
+        ));
+    }
     if edit.vignette {
         vf.push("vignette".into());
+    }
+    if edit.grain > 1e-6 {
+        vf.push(format!(
+            "noise=alls={:.0}:allf=t",
+            edit.grain.clamp(0.0, 100.0)
+        ));
     }
     if edit.reverse {
         vf.push("reverse".into());
@@ -1035,6 +1058,39 @@ mod tests {
         assert!(chain.contains("pad=w="), "{chain}");
         // Censor is applied before crop (source coordinates).
         assert!(chain.find("drawbox").unwrap() < chain.find("crop=").unwrap());
+    }
+
+    #[test]
+    fn denoise_sharpen_grain_in_chain() {
+        let args = args_for(
+            json!({ "videoId": "x", "denoise": true, "sharpen": 1.5, "grain": 20.0, "filter": "teal-orange" }),
+            10.0,
+        );
+        let chain = vf(&args);
+        assert!(chain.contains("hqdn3d"), "{chain}");
+        assert!(chain.contains("unsharp=5:5:1.500"), "{chain}");
+        assert!(chain.contains("noise=alls=20"), "{chain}");
+        assert!(chain.contains("colorbalance="), "{chain}"); // teal-orange preset
+                                                             // Order: denoise -> preset -> sharpen -> grain.
+        assert!(chain.find("hqdn3d").unwrap() < chain.find("unsharp").unwrap());
+        assert!(chain.find("unsharp").unwrap() < chain.find("noise=alls").unwrap());
+    }
+
+    #[test]
+    fn look_presets_map_to_filters() {
+        assert!(vf(&args_for(
+            json!({ "videoId": "x", "filter": "faded" }),
+            10.0
+        ))
+        .contains("curves="));
+        assert!(
+            vf(&args_for(json!({ "videoId": "x", "filter": "noir" }), 10.0)).contains("hue=s=0")
+        );
+        assert!(vf(&args_for(
+            json!({ "videoId": "x", "filter": "vintage" }),
+            10.0
+        ))
+        .contains("curves="));
     }
 
     #[test]
