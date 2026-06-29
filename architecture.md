@@ -62,10 +62,10 @@ Backend (Rust + Axum + Tokio)
 Уже выровнено по целевому дизайну: `tools/{args,net,mod}` и
 `handlers/{projects,library,health}` (чистое перемещение, см. refactor-plan).
 
-## Top-50: что сделано плохо или неправильно
+## Top-200: что сделано плохо или неправильно
 
 Источник правды - [docs/audit.md](docs/audit.md). Ниже та же первая
-приоритизированная пятидесятка, синхронизированная с `recommendation.md`.
+приоритизированная двухсотка, синхронизированная с `recommendation.md`.
 `docs/audit.md` хранит расширенный список, file:line и опровергнутые находки.
 
 ### Correctness и гонки задач
@@ -136,6 +136,177 @@ Backend (Rust + Axum + Tokio)
 49. Есть проглоченные `catch {}`, a11y debt и unsafe `root.value!`.
 50. Тесты не покрывают orchestration render path, async store actions и API
     contract snapshots.
+
+### Конфиг, сборка и эксплуатация
+
+51. `BIND_ADDR` при ошибке парсинга тихо откатывается на localhost.
+52. Числовые env-переменные fail-soft: опечатка молча превращается в дефолт.
+53. Env читается в нескольких местах вместо одного `Config`.
+54. Нет тестируемой `Config`-структуры с явными defaults и validation.
+55. Docker тянет `yt-dlp`/ffmpeg без строгого pinning и checksum.
+56. Backend container не имеет non-root user, healthcheck и resource limits.
+57. CI не ставит `yt-dlp`, поэтому import path покрыт хуже render path.
+58. README, Docker и CI могут разойтись по версии Node/Rust/toolchain.
+59. Не зафиксирован MSRV/Rust toolchain для backend.
+60. `RUST_LOG`/tracing policy не документированы для диагностики.
+61. Нет structured job lifecycle logs как отдельного observability contract.
+62. Нет metrics endpoint для длительности jobs, ошибок, очереди и cache hit rate.
+63. Health endpoint смешивает readiness/liveness и не различает degradation классы.
+64. Health не проверяет, что storage и SQLite реально writable.
+65. CORS/security policy не управляется конфигом по окружениям.
+66. Served media и internal runtime files живут в одном `storage` namespace.
+67. Cleanup не имеет dry-run/report mode и явного журнала удалений.
+68. Docker Compose не задаёт CPU/memory/pids limits для тяжёлых media процессов.
+69. Нет backup/restore инструкции для `storage/app.db` и media файлов.
+70. Нет rollback strategy для будущих DB/schema migrations.
+
+### API и контракт
+
+71. Нет OpenAPI/schema source of truth в текущем `main`.
+72. TypeScript DTO поддерживаются вручную и не генерируются из backend contract.
+73. `ProjectDto` объявлен в `api.ts`, а не в едином `types.ts`/generated module.
+74. Response DTO не типизированы на backend: много ручного `json!`.
+75. Handlers вручную собирают JSON вместо typed response structs.
+76. Status codes не нормализованы: async jobs отвечают 200, delete допускает 404 как success.
+77. `cancelJob` на frontend игнорирует HTTP статус и тело ответа.
+78. `safeFetch` смешивает network failure и backend 5xx.
+79. Frontend requests не имеют `AbortController`/timeout на уровне API client.
+80. Polling interval фиксирован, без backoff/jitter.
+81. Polling не имеет max attempts/deadline на зависшие jobs.
+82. Нет idempotency keys для import/edit/upload.
+83. Upload sync-flow отличается от job-based import/edit.
+84. Нет `GET /api/jobs` для списка jobs и диагностики очереди.
+85. Нет request-id/correlation-id в API responses и logs.
+86. Error body shape не единый между resources.
+87. Plain-text errors всё ещё возможны в projects/upload paths.
+88. Library/projects endpoints без pagination/filter/search contract.
+89. API не версионирован (`/api/v1` или schema version отсутствуют).
+90. README API блок отстаёт от фактических ошибок, cache и jobs details.
+
+### Доменная модель edit/render
+
+91. `EditRequest` совмещает wire DTO, domain input и cache-key normalization.
+92. Эффекты представлены россыпью bool/scalar полей вместо typed effect enum.
+93. `format`, `codec`, `filter`, `pad`, colors остаются raw strings.
+94. Нет `OutputSpec` как отдельной политики формата/кодека/качества.
+95. Нет `TimeRange` type с invariant `start < end`.
+96. Нет `CropRect` type с invariant внутри source dimensions и even dimensions.
+97. Нет `ScaleSpec` type с допустимыми sentinel values `-1/-2`.
+98. Speed/volume/fade/fps bounds не централизованы в domain policy.
+99. Non-finite/edge numeric inputs не описаны как отдельная validation policy.
+100. Расчёт output duration зависит от builder logic, а не от domain plan.
+101. Render cache key считается от serialized request, а не от normalized `EditPlan`.
+102. Cache key не учитывает ffmpeg version/capabilities/pipeline version.
+103. Cache policy не различает source provenance: URL import vs upload.
+104. Нет typed `MediaId`/`ProjectId`/`CacheKey`.
+105. Project хранит полный video JSON blob вместо нормализованной связи на media.
+106. Project edit JSON не имеет versioned schema/migration path.
+107. Defaults UI/edit не имеют явной версии для старых проектов.
+108. Autosave project не имеет rollback/history.
+109. Нет доменного audit trail для изменений проекта.
+110. Нет typed domain errors для edit validation.
+111. Backend capabilities не оформлены как contract для frontend controls.
+112. Preview fidelity не связана с backend compile policy.
+113. Source/output media kind не представлен отдельной domain enum везде.
+114. Нет corpus-а canonical edit recipes для regression testing.
+115. Новое поле edit всё ещё требует правок в нескольких местах.
+116. Platform presets живут как UI logic, а не как domain/export presets.
+117. Quality tiers не представлены как общая таблица backend/frontend.
+118. Нет formal compatibility policy для старых сохранённых проектов.
+119. Timeline IR описан в архитектуре, но ещё не является кодовой границей.
+120. Domain model не готова к multi-track/range effects без большого переписывания.
+
+### Backend модульность и тестируемость
+
+121. `backend/src/tools/args.rs` остаётся слишком крупным compile god-file.
+122. `backend/src/handlers/mod.rs` всё ещё хранит общую job-машинерию.
+123. `backend/src/db.rs` смешивает schema, SQL, DTO mapping и tests.
+124. `backend/src/library.rs` остаётся JSON repository рядом с SQLite repository.
+125. `lib.rs` строит router с конкретными implementations вместо ports.
+126. Нет traits для `ProjectRepo`, `JobRepo`, `MediaRepo`, `RenderCache`.
+127. Нет in-memory repositories для быстрых service tests.
+128. Нет `AppError`/`IntoResponse` как единого error boundary.
+129. Нет `messages.rs`/i18n boundary для пользовательских строк.
+130. Process runner и parser progress всё ещё слабо отделены от tool facade.
+131. Нет `JobService::spawn` как единственного скелета queued/running/finish.
+132. Нет explicit state machine для Job transitions.
+133. Cancel tokens живут рядом с app state, а не внутри jobs subsystem.
+134. Persist-on-terminal invariant не закреплён типом/service API.
+135. Нет тестов на TTL cleanup и active-file protection.
+136. Нет тестов на upload concurrency/backpressure.
+137. Нет property tests для geometry/timeline normalization.
+138. Нет API snapshot tests для JSON response shapes.
+139. Нет fuzz/negative corpus для request DTO.
+140. Нет benchmark/perf baseline для ffmpeg args builder и large library/projects.
+
+### Frontend архитектура и UX
+
+141. Нет component tests для editor panels.
+142. Нет browser/E2E smoke на import/open/edit/export UI flow.
+143. Нет route/lazy boundary для проектов, медиатеки и будущего audit/ideas surface.
+144. Нет error boundary для неожиданных runtime ошибок UI.
+145. Toasts не имеют action/retry и не связаны с API error codes.
+146. Toast history/debug context не сохраняется.
+147. Global keyboard handler живёт в `App.vue`, а не в `useShortcuts`.
+148. Shortcut handling не учитывает все a11y/IME/composition случаи.
+149. После upload/open/delete нет системного focus management.
+150. Drag/drop upload не имеет client-side size/type preflight.
+151. URL import warning не связан с backend URL policy.
+152. `pollJob` нельзя отменить при unmount/смене клипа.
+153. `setTimeout` polling не хранит handle для cleanup.
+154. Import/export status fields дублируют друг друга вместо job view model.
+155. Нет UI для persisted jobs history.
+156. Media library без search/filter/pagination.
+157. Delete media/project без undo/confirm для destructive flow.
+158. Result panel и media library не имеют unified download/open actions model.
+159. LocalStorage presets без size limit/quota handling UX.
+160. Theme хранится локально, но нет first-class system preference mode.
+161. Нет reduced-motion/high-contrast accessibility pass.
+162. Controls не вынесены в reusable primitives (`Field`, `SegmentedControl`, `Slider`).
+163. Options arrays живут в `EditPanel.vue`, а не в `lib/editOptions`.
+164. Export hints смешаны с component computed logic.
+165. Autosave/project restore side effects не изолированы в composable.
+166. Frontend API client не валидирует runtime shape ответов.
+167. `window.__store` DEV hook полезен, но не описан как debug-only contract.
+168. CSS/design tokens не описаны как система.
+169. Нет visual regression/screenshots для responsive editor.
+170. Frontend не готов к локализации строк.
+
+### Security и privacy beyond local MVP
+
+171. Нет threat model для локального vs exposed deployment.
+172. Нет authentication middleware и token story.
+173. Нет CSRF posture для future cookie/session mode.
+174. Нет rate limiting на import/upload/edit.
+175. Нет per-user isolation для проектов, jobs и files.
+176. Нет sandbox profile для ffmpeg/yt-dlp.
+177. Нет allowlist/denylist policy для supported URL domains.
+178. Нет redirect policy для yt-dlp после URL validation.
+179. Нет centralized redaction для logs/errors/API.
+180. Query tokens в импортируемых URL не редактируются как единая policy.
+181. Нет diagnostics bundle с гарантированной redaction.
+182. Upload не проверяет magic bytes до публикации файла через `/files`.
+183. Нет malware/quarantine story для uploaded media.
+184. File serving не ставит explicit safe `Content-Disposition`.
+185. Нет audit log для mutating operations.
+
+### Storage, data lifecycle и operations
+
+186. Нет quota/usage reporting по `sources`, `outputs`, SQLite и cache.
+187. Нет checksum/integrity metadata для source/output files.
+188. Нет orphan scanner/repair tool для storage/library/db/cache.
+189. Нет backup/export/import command для проектов и медиатеки.
+190. Нет DB maintenance story: vacuum/analyze/checkpoint.
+191. Нет transaction boundary для file write + DB/cache/library update.
+192. Нет media table с FK на projects/jobs/render_cache.
+193. Cleanup не считает reference counts для files.
+194. Disk-full ошибки не превращаются в понятный user-facing state.
+195. Startup не проверяет permissions/free space заранее.
+196. Нет filesystem lock для защиты от двух backend процессов на одном storage.
+197. Нет retention policy для проектов.
+198. Нет retention policy для старых source files отдельно от outputs.
+199. Нет runbook для ручного восстановления после broken DB/storage drift.
+200. Нет регулярного docs/code drift check, который гарантирует актуальность этой двухсотки.
 
 ## Целевой модульный дизайн (backend)
 

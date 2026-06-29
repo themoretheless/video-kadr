@@ -9,7 +9,7 @@
 параллельно. Каждая задача идёт под зелёным `make check`. **S** = часы, **M** =
 день-два, **L** = неделя+. У каждой задачи - файлы, шаги, критерий приёмки.
 
-## Синхронизированный top-50: проблема → куда чинить
+## Синхронизированный top-200: проблема → куда чинить
 
 Номера совпадают с диагностическим списком в `architecture.md`; подробные
 file:line и доказательства - в [docs/audit.md](docs/audit.md).
@@ -64,12 +64,162 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 48. Runtime validation отсутствует для JSON/presets → P1-5/P1-7.
 49. Silent catch/a11y/unsafe non-null → P1-6.
 50. Test gaps по render orchestration/API/store → P0 + P2 acceptance tests.
+51. `BIND_ADDR` silent fallback → P1-4 Config validation.
+52. Numeric env fail-soft → P1-4 Config validation.
+53. Env reads scattered → P1-4 single `Config`.
+54. Нет testable config struct → P1-4 config tests.
+55. Tool versions unpinned → Docker/CI reproducibility task.
+56. Container root/no healthcheck/limits → Docker hardening task.
+57. CI lacks `yt-dlp` import coverage → CI import smoke.
+58. Node/Rust/toolchain drift → README/Docker/CI version alignment.
+59. No MSRV/toolchain pin → add `rust-toolchain.toml` or documented MSRV.
+60. No tracing docs → README ops/debug section.
+61. No job lifecycle logs → observability task after JobService.
+62. No metrics endpoint → later ops track.
+63. Health mixes readiness/liveness → split `/healthz`/`/readyz`.
+64. Health ignores storage writability → add storage/db probe.
+65. CORS not config-driven → Config + deployment profile.
+66. Served/internal storage mixed → split public files from internal state.
+67. Cleanup no dry-run/report → cleanup worker refactor.
+68. Compose no resource limits → docker-compose hardening.
+69. No backup/restore docs → ops runbook.
+70. No migration rollback → DB migration framework.
+71. No OpenAPI/schema → contract generation task.
+72. Manual TS DTOs → generated types/client.
+73. `ProjectDto` in API client → move to generated/shared types.
+74. Backend response DTOs missing → typed DTO structs.
+75. Manual `json!` responses → HTTP DTO layer.
+76. Status code drift → AppError/API policy.
+77. Cancel response ignored → frontend API cleanup.
+78. 5xx/network mixed → frontend API error model.
+79. No AbortController/timeouts → cancellable API client.
+80. Polling no backoff/jitter → jobs UI/client refactor.
+81. Polling no deadline → jobs client deadline.
+82. No idempotency keys → future API hardening.
+83. Upload sync-flow differs → upload-as-job or documented exception.
+84. No jobs list endpoint → jobs history endpoint/UI.
+85. No request correlation id → request-id middleware.
+86. Error body shape not unified → AppError + typed ApiError.
+87. Plain-text errors possible → convert all handlers to ApiError.
+88. No pagination/search → library/projects API pagination.
+89. No API versioning → `/api/v1` or schema version policy.
+90. README API drift → docs/API contract check.
+91. `EditRequest` triple role → DTO → `EditPlan` mapper.
+92. Effects as scalars/bools → typed `Effect` enum.
+93. Raw format/codec strings → enums/newtypes.
+94. Missing `OutputSpec` → P2-13 step 1.
+95. Missing `TimeRange` → domain validation refactor.
+96. Missing `CropRect` → geometry validation refactor.
+97. Missing `ScaleSpec` → geometry validation refactor.
+98. Bounds scattered → central validation policy.
+99. Numeric edge policy absent → validation corpus.
+100. Duration tied to builder → `EditPlan` duration calculation.
+101. Cache key from request JSON → normalized plan hash.
+102. Cache ignores tool/pipeline version → cache key versioning.
+103. Source provenance not typed → media domain model.
+104. Raw IDs → newtypes.
+105. Project stores video blob → media reference table/model.
+106. Edit JSON no schema migration → versioned project schema.
+107. Defaults unversioned → versioned defaults/migrations.
+108. Autosave no rollback → project history/undo later.
+109. No project audit trail → optional history table.
+110. No domain error enum → AppError/domain errors.
+111. Capabilities no contract → capabilities endpoint/schema.
+112. Preview/backend mismatch → shared preview capability model.
+113. Media kind not typed everywhere → media enum.
+114. No edit recipe corpus → golden fixtures.
+115. New edit field touches many files → generated/default diff work.
+116. Platform presets in UI → export preset policy module.
+117. Quality tier table duplicated → shared/generated policy.
+118. No compatibility policy → project schema docs/tests.
+119. Timeline IR only docs → P2-13 implementation.
+120. Multi-track blocked → Timeline IR + range effects.
+121. `tools/args.rs` too large → split compile/filter/output modules.
+122. `handlers/mod.rs` owns jobs → JobRunner/JobService.
+123. `db.rs` mixed concerns → repositories + migrations.
+124. `library.rs` parallel JSON repo → move media to SQLite.
+125. Router uses concretes → ports/services injected in state.
+126. Missing repo traits → P2-10.
+127. Missing in-memory repos → service tests.
+128. Missing `AppError` → P2-11.
+129. Missing messages/i18n boundary → P1-8.
+130. Process runner weak boundary → `ffmpeg/process.rs` + `download`.
+131. No `JobService::spawn` → P2-9.
+132. No job state machine → P2-12.
+133. Cancel tokens outside jobs subsystem → jobs/cancellation.
+134. Persist terminal invariant missing → JobService transitions.
+135. No cleanup tests → TTL test suite.
+136. No upload concurrency tests → API/concurrency test.
+137. No property geometry tests → proptest/fixture corpus.
+138. No API snapshots → contract/snapshot tests.
+139. No DTO fuzz/negative corpus → serde validation tests.
+140. No perf baseline → benches after split.
+141. No component tests → Vitest component test setup.
+142. No E2E smoke → Playwright smoke.
+143. No route/lazy boundary → frontend app structure refactor.
+144. No UI error boundary → error boundary component/composable.
+145. Toasts no actions → toast action model.
+146. Toasts no debug context → error context logging.
+147. Shortcuts in `App.vue` → `useShortcuts`.
+148. Shortcut a11y/IME gaps → keyboard handling audit.
+149. No focus management → UX/accessibility task.
+150. Upload preflight missing → client file validation.
+151. URL warning not tied to backend policy → shared URL risk helper.
+152. `pollJob` not abortable → abortable polling.
+153. Poll timeout handle not cleaned → composable cleanup.
+154. Import/export duplicate status → job view model.
+155. No jobs history UI → jobs panel.
+156. Library no search/pagination → media library UX.
+157. Destructive actions no undo/confirm → delete flow redesign.
+158. Result/library action duplication → media action model.
+159. Preset quota UX missing → preset storage validation.
+160. Theme no system mode → `system|dark|light` theme state.
+161. No reduced-motion/contrast pass → accessibility pass.
+162. No UI primitives → extract shared controls.
+163. Options in component → `lib/editOptions`.
+164. Export hints in component → export availability composable.
+165. Autosave side effects not isolated → projects composable.
+166. API responses not runtime-validated → lightweight schema guards.
+167. Debug hook undocumented → dev docs/test helper note.
+168. No design tokens docs → style/design token cleanup.
+169. No visual regression → screenshot smoke later.
+170. No localization boundary → frontend i18n/messages.
+171. No threat model → security design note.
+172. No auth → before-exposure auth middleware.
+173. No CSRF posture → auth/session design.
+174. No rate limiting → middleware/queue limits.
+175. No per-user isolation → multi-user architecture later.
+176. No process sandbox → container/seccomp/resource limits.
+177. No URL domain policy → configurable allow/deny list.
+178. No redirect policy → downloader adapter constraints.
+179. No centralized redaction → redaction module.
+180. Query tokens not unified → URL redaction/warning policy.
+181. No redacted diagnostics bundle → diagnostics endpoint.
+182. Upload magic bytes missing → media probe before publish.
+183. No quarantine story → upload staging directory.
+184. No safe content-disposition → file serving wrapper.
+185. No audit log → mutating operations log.
+186. No quota reporting → storage usage endpoint/tool.
+187. No checksums → media metadata.
+188. No orphan scanner → repair CLI/script.
+189. No backup command → export/import storage task.
+190. No DB maintenance → vacuum/checkpoint runbook.
+191. No file+DB transaction boundary → unit of work pattern.
+192. No media FK table → SQLite media schema.
+193. Cleanup no ref counts → reference-aware cleanup.
+194. Disk-full generic → storage error mapping.
+195. Startup no free-space/permission check → readiness probe.
+196. No filesystem lock → single-process storage guard.
+197. No project retention → retention config.
+198. No source/output retention split → retention policy.
+199. No repair runbook → ops documentation.
+200. No docs/code drift check → docs check in CI.
 
 ---
 
 ## P0 - Корректность (чинить первым)
 
-> Полный аудит (топ-50 проблем по серьёзности) - в [docs/audit.md](docs/audit.md).
+> Полный аудит (топ-200 проблем по серьёзности) - в [docs/audit.md](docs/audit.md).
 > Ниже - первоочередные баги из него.
 
 ### ☐ P0-1. `persist_job` при ошибке URL в импорте · S
