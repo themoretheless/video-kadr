@@ -38,9 +38,27 @@ function dims() {
   return { W: state.video?.width || 1, H: state.video?.height || 1 }
 }
 
+function normalizeRect(r: Rect): Rect {
+  const { W, H } = dims()
+  const minW = Math.min(MIN, W)
+  const minH = Math.min(MIN, H)
+  const w = clamp(Math.round(r.w || minW), minW, W)
+  const h = clamp(Math.round(r.h || minH), minH, H)
+  return {
+    x: clamp(Math.round(r.x || 0), 0, W - w),
+    y: clamp(Math.round(r.y || 0), 0, H - h),
+    w,
+    h,
+  }
+}
+
+function emitRect(r: Rect) {
+  emit('update:rect', normalizeRect(r))
+}
+
 const rectStyle = computed(() => {
   const { W, H } = dims()
-  const c = props.rect
+  const c = normalizeRect(props.rect)
   return {
     left: `${(c.x / W) * 100}%`,
     top: `${(c.y / H) * 100}%`,
@@ -62,7 +80,7 @@ function begin(m: Mode, e: PointerEvent) {
   dragMode = m
   startX = e.clientX
   startY = e.clientY
-  orig = { ...props.rect }
+  orig = normalizeRect(props.rect)
   ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
@@ -74,21 +92,23 @@ function onMove(e: PointerEvent) {
   if (!dragMode) return
   const { dx, dy } = toSrc(e.clientX - startX, e.clientY - startY)
   const { W, H } = dims()
+  const minW = Math.min(MIN, W)
+  const minH = Math.min(MIN, H)
   if (dragMode === 'move') {
     const x = clamp(orig.x + dx, 0, W - orig.w)
     const y = clamp(orig.y + dy, 0, H - orig.h)
-    emit('update:rect', { x: Math.round(x), y: Math.round(y), w: orig.w, h: orig.h })
+    emitRect({ x: Math.round(x), y: Math.round(y), w: orig.w, h: orig.h })
     return
   }
   let x1 = orig.x
   let y1 = orig.y
   let x2 = orig.x + orig.w
   let y2 = orig.y + orig.h
-  if (dragMode.includes('w')) x1 = clamp(orig.x + dx, 0, x2 - MIN)
-  if (dragMode.includes('e')) x2 = clamp(orig.x + orig.w + dx, x1 + MIN, W)
-  if (dragMode.includes('n')) y1 = clamp(orig.y + dy, 0, y2 - MIN)
-  if (dragMode.includes('s')) y2 = clamp(orig.y + orig.h + dy, y1 + MIN, H)
-  emit('update:rect', {
+  if (dragMode.includes('w')) x1 = clamp(orig.x + dx, 0, x2 - minW)
+  if (dragMode.includes('e')) x2 = clamp(orig.x + orig.w + dx, x1 + minW, W)
+  if (dragMode.includes('n')) y1 = clamp(orig.y + dy, 0, y2 - minH)
+  if (dragMode.includes('s')) y2 = clamp(orig.y + orig.h + dy, y1 + minH, H)
+  emitRect({
     x: Math.round(x1),
     y: Math.round(y1),
     w: Math.round(x2 - x1),

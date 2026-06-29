@@ -275,13 +275,13 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
   - [x] Тест: late-cancel завершённой задачи не превращает её в Done; отменённый импорт не оставляет файлов.
 - **Критерий:** тесты зелёные; `make check`. **Сделано.**
 
-### ◐ P0-8. crop/geometry валидируется против размеров источника · S
+### ☑ P0-8. crop/geometry валидируется против размеров источника · S
 - **Файлы:** `backend/src/tools/args.rs` (crop ~75-79), `backend/src/handlers/mod.rs` (probe ~331), `frontend/src/components/RectOverlay.vue` (~87-96).
 - **Шаги:**
   - [x] Клампить crop/censor к `width/height` из probe; на бэкенде - перед `build_ffmpeg_args`.
   - [x] На бэкенде ограничить `fps` и валидировать `scale`, чтобы API не принимал заведомо невозможные значения.
-  - [ ] На фронте при эмите overlay: `x = min(x, W-w)`, чтобы `x+w ≤ W`.
-- **Критерий:** backend-тест на клампинг/валидацию зелёный; frontend overlay clamp ещё впереди.
+  - [x] На фронте при эмите overlay: `x = min(x, W-w)`, чтобы `x+w ≤ W`.
+- **Критерий:** backend-тест на клампинг/валидацию зелёный; frontend overlay clamp включён. **Сделано.**
 
 > Прочие верифицированные 🔴/🟠 (upload минует семафор `handlers/mod.rs:142-229`;
 > TTL-чистка без проверки ссылок `main.rs:103-135`; клампинг сегментов/fps в
