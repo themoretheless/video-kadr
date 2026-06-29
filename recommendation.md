@@ -46,15 +46,40 @@
 - **Критерий:** тест с `max_concurrent=1` и забитым слотом: вторая джоба не висит вечно.
 
 ### ☐ P0-5. Целостность render_cache · S
-- **Файлы:** `backend/src/handlers/mod.rs` (cache_get ~273, `render_cache_key` ~255), `backend/src/db.rs`.
+- **Файлы:** `backend/src/handlers/mod.rs` (cache_get ~273), `backend/src/db.rs`, `backend/src/library.rs` (`remove`).
 - **Шаги:**
   - [ ] При промахе файла (`metadata` fail) удалять запись кэша (`cache_delete(key)`) и падать в обычный рендер.
-  - [ ] `render_cache_key`: при ошибке сериализации НЕ кэшировать (а не пустой ключ).
-  - [ ] (вместе с P2-10) инвалидировать кэш при `library.remove`.
+  - [ ] (вместе с P2-10) инвалидировать кэш при `library.remove` и при TTL-чистке.
 - **Критерий:** тест «cache_put без файла → джоба идёт в рендер, не Done мгновенно».
+- **Прим.:** изначальный пункт «пустой ключ при ошибке сериализации» снят - верификация показала, что `serde_json` пишет `null` для не-finite f64 (не ошибка), ключ не пустеет (audit.md, раздел опровергнутого).
 
+### ☐ P0-6. Вырезание сегмента молча не работает для AV1/ProRes · S
+- **Файлы:** `backend/src/tools/args.rs` (~234, 491-496), `frontend/src/store.ts` (~213-226).
+- **Шаги:**
+  - [ ] Строить concat-ветку для всех видеоформатов (или явно запрещать сегменты в UI для AV1/ProRes с предупреждением).
+  - [ ] Тест: edit с `segments` + format=av1/prores даёт concat-аргументы (или явную ошибку), а не неразрезанный экспорт.
+- **Критерий:** тест зелёный; пользовательский вырез не пропадает молча.
+
+### ☐ P0-7. Гонка cancel↔finish и очистка при отмене импорта · S
+- **Файлы:** `backend/src/handlers/mod.rs` (`finish_job` ~427-459, `cancel_handler` ~382-409, import cancel ~104-106).
+- **Шаги:**
+  - [ ] В `finish_job` гейтить запись статуса на `!j.status.is_terminal()` (как уже делает `cancel_handler`), чтобы отменённая задача не перезаписалась в `Done`.
+  - [ ] В ветках Cancelled/Err импорта подмести `sources/` по префиксу `vid` (+ `.info.json`, `.part`).
+  - [ ] Тест: late-cancel завершённой задачи не превращает её в Done; отменённый импорт не оставляет файлов.
+- **Критерий:** тесты зелёные; `make check`.
+
+### ☐ P0-8. crop/geometry валидируется против размеров источника · S
+- **Файлы:** `backend/src/tools/args.rs` (crop ~75-79), `backend/src/handlers/mod.rs` (probe ~331), `frontend/src/components/RectOverlay.vue` (~87-96).
+- **Шаги:**
+  - [ ] Клампить crop/censor к `width/height` из probe; на бэкенде - перед `build_ffmpeg_args`.
+  - [ ] На фронте при эмите overlay: `x = min(x, W-w)`, чтобы `x+w ≤ W`.
+- **Критерий:** crop за кадром не роняет ffmpeg (и не утекает stderr); тест на клампинг.
+
+> Прочие верифицированные 🔴/🟠 (upload минует семафор `handlers/mod.rs:142-229`;
+> TTL-чистка без проверки ссылок `main.rs:103-135`; клампинг сегментов/fps в
+> `args.rs`) - в [docs/audit.md](docs/audit.md), разделы A-D.
 > Безопасность (auth, CORS, SSRF-резолвинг, ресурсные лимиты ffmpeg) - отдельный
-> трек, см. [docs/audit.md](docs/audit.md) §B/§C; обязателен перед выставлением наружу.
+> трек, см. [docs/audit.md](docs/audit.md) §C/§E; обязателен перед выставлением наружу.
 
 ---
 
