@@ -8,6 +8,7 @@
 # Downloaded + rendered media
 /backend/storage/sources/*
 /backend/storage/outputs/*
+/backend/storage/fixtures/
 !/backend/storage/sources/.gitkeep
 !/backend/storage/outputs/.gitkeep
 
