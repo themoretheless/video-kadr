@@ -10,6 +10,8 @@ use crate::db::Db;
 use crate::library::Library;
 use crate::model::{Job, JobStatus};
 
+const DEFAULT_RECOVER_JOBS_LIMIT: i64 = 200;
+
 /// Availability and versions of the external tools we shell out to. Probed once
 /// at startup and surfaced via `/api/health`.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -105,7 +107,7 @@ impl AppState {
     /// flight when the process stopped is marked `interrupted` so a polling
     /// client gets a clear terminal state instead of a 404 or an endless spinner.
     pub async fn recover_jobs(&self) {
-        match self.db.load_jobs().await {
+        match self.db.load_recent_jobs(recover_jobs_limit()).await {
             Ok(jobs) => {
                 let mut guard = self.jobs.lock().await;
                 for mut job in jobs {
@@ -154,5 +156,31 @@ impl AppState {
 
     pub fn outputs_dir(&self) -> PathBuf {
         self.storage.join("outputs")
+    }
+}
+
+fn recover_jobs_limit() -> i64 {
+    std::env::var("RECOVER_JOBS_LIMIT")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_RECOVER_JOBS_LIMIT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recover_jobs_limit_defaults_on_bad_values() {
+        std::env::remove_var("RECOVER_JOBS_LIMIT");
+        assert_eq!(recover_jobs_limit(), DEFAULT_RECOVER_JOBS_LIMIT);
+        std::env::set_var("RECOVER_JOBS_LIMIT", "not-a-number");
+        assert_eq!(recover_jobs_limit(), DEFAULT_RECOVER_JOBS_LIMIT);
+        std::env::set_var("RECOVER_JOBS_LIMIT", "0");
+        assert_eq!(recover_jobs_limit(), DEFAULT_RECOVER_JOBS_LIMIT);
+        std::env::set_var("RECOVER_JOBS_LIMIT", "12");
+        assert_eq!(recover_jobs_limit(), 12);
+        std::env::remove_var("RECOVER_JOBS_LIMIT");
     }
 }

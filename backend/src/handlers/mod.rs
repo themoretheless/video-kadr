@@ -7,11 +7,12 @@ use axum::Json;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, OwnedSemaphorePermit};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::library::MediaEntry;
-use crate::model::{EditRequest, ImportRequest, Job, JobStatus};
+use crate::model::{Crop, EditRequest, ImportRequest, Job, JobStatus, Scale};
 use crate::state::AppState;
 use crate::tools::{self, Done};
 
@@ -65,21 +66,12 @@ pub async fn import_handler(
         // Wait for a queue slot.
         st.update_job(&jid, |j| j.stage = Some("queued".into()))
             .await;
-        let _permit = match st.jobs_semaphore.clone().acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => {
-                mark_queue_closed(&st, &jid).await;
-                return;
-            }
+        let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
+            Some(p) => p,
+            None => return,
         };
         if token.is_cancelled() {
-            st.update_job(&jid, |j| {
-                j.status = JobStatus::Cancelled;
-                j.stage = None;
-            })
-            .await;
-            st.persist_job(&jid).await;
-            st.clear_cancel(&jid).await;
+            mark_cancelled(&st, &jid).await;
             return;
         }
 
@@ -306,21 +298,12 @@ pub async fn edit_handler(
     tokio::spawn(async move {
         st.update_job(&jid, |j| j.stage = Some("queued".into()))
             .await;
-        let _permit = match st.jobs_semaphore.clone().acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => {
-                mark_queue_closed(&st, &jid).await;
-                return;
-            }
+        let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
+            Some(p) => p,
+            None => return,
         };
         if token.is_cancelled() {
-            st.update_job(&jid, |j| {
-                j.status = JobStatus::Cancelled;
-                j.stage = None;
-            })
-            .await;
-            st.persist_job(&jid).await;
-            st.clear_cancel(&jid).await;
+            mark_cancelled(&st, &jid).await;
             return;
         }
 
@@ -336,6 +319,7 @@ pub async fn edit_handler(
 
         let sources = st.sources_dir();
         let outputs = st.outputs_dir();
+        let mut req = req;
         let ext = tools::output_ext(req.format.as_deref());
         let filename = format!("{out_id}.{ext}");
         let output_path = outputs.join(&filename);
@@ -343,6 +327,7 @@ pub async fn edit_handler(
         let outcome = async {
             let input = tools::find_source(&sources, &req.video_id).await?;
             let probe = tools::probe_video(&input).await?;
+            normalize_edit_geometry(&mut req, probe.width, probe.height)?;
             let expected = tools::expected_output_secs(&req, probe.duration);
             let args = tools::build_ffmpeg_args(&input, &output_path, &req, probe.duration);
             tracing::info!("ffmpeg {}", args.join(" "));
@@ -439,6 +424,40 @@ fn spawn_progress_drain(
     })
 }
 
+async fn acquire_job_permit_or_cancelled(
+    st: &AppState,
+    jid: &str,
+    token: &CancellationToken,
+) -> Option<OwnedSemaphorePermit> {
+    tokio::select! {
+        permit = st.jobs_semaphore.clone().acquire_owned() => match permit {
+            Ok(p) => Some(p),
+            Err(_) => {
+                mark_queue_closed(st, jid).await;
+                None
+            }
+        },
+        _ = token.cancelled() => {
+            mark_cancelled(st, jid).await;
+            None
+        }
+    }
+}
+
+async fn mark_cancelled(st: &AppState, jid: &str) {
+    let updated = st
+        .update_job_if_open(jid, |j| {
+            j.status = JobStatus::Cancelled;
+            j.stage = None;
+            j.progress = None;
+        })
+        .await;
+    if updated {
+        st.persist_job(jid).await;
+    }
+    st.clear_cancel(jid).await;
+}
+
 async fn mark_queue_closed(st: &AppState, jid: &str) {
     let updated = st
         .update_job_if_open(jid, |j| {
@@ -452,6 +471,61 @@ async fn mark_queue_closed(st: &AppState, jid: &str) {
         st.persist_job(jid).await;
     }
     st.clear_cancel(jid).await;
+}
+
+fn normalize_edit_geometry(
+    edit: &mut EditRequest,
+    source_width: u32,
+    source_height: u32,
+) -> anyhow::Result<()> {
+    if let Some(crop) = edit.crop.as_mut() {
+        clamp_rect_to_source(crop, source_width, source_height);
+    }
+    if let Some(censor) = edit.censor.as_mut() {
+        clamp_rect_to_source(censor, source_width, source_height);
+    }
+    if let Some(fps) = edit.fps {
+        if !fps.is_finite() || fps <= 0.0 {
+            anyhow::bail!("Недопустимый fps");
+        }
+        edit.fps = Some(fps.clamp(1.0, 240.0));
+    }
+    if let Some(scale) = &edit.scale {
+        validate_scale(scale)?;
+    }
+    Ok(())
+}
+
+fn clamp_rect_to_source(rect: &mut Crop, source_width: u32, source_height: u32) {
+    if source_width == 0 || source_height == 0 {
+        return;
+    }
+
+    let min_w = if source_width >= 2 { 2 } else { 1 };
+    let min_h = if source_height >= 2 { 2 } else { 1 };
+    rect.x = rect.x.min(source_width - min_w);
+    rect.y = rect.y.min(source_height - min_h);
+
+    let max_w = source_width - rect.x;
+    let max_h = source_height - rect.y;
+    rect.w = rect.w.clamp(min_w, max_w);
+    rect.h = rect.h.clamp(min_h, max_h);
+    if min_w == 2 {
+        rect.w = (rect.w & !1).max(2);
+    }
+    if min_h == 2 {
+        rect.h = (rect.h & !1).max(2);
+    }
+}
+
+fn validate_scale(scale: &Scale) -> anyhow::Result<()> {
+    fn valid_dim(v: i32) -> bool {
+        matches!(v, -2 | -1) || (2..=7680).contains(&v)
+    }
+    if !valid_dim(scale.w) || !valid_dim(scale.h) || (scale.w < 0 && scale.h < 0) {
+        anyhow::bail!("Недопустимый размер экспорта");
+    }
+    Ok(())
 }
 
 async fn cleanup_files_with_prefix(dir: &Path, prefix: &str) {
@@ -584,5 +658,39 @@ mod tests {
         assert!(!dir.join("abc").exists());
         assert!(dir.join("abcd.mp4").exists());
         assert!(dir.join(".gitkeep").exists());
+    }
+
+    #[test]
+    fn normalize_edit_geometry_clamps_rectangles_to_source() {
+        let mut edit: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "crop": { "x": 9999, "y": 9999, "w": 0, "h": 9999 },
+            "censor": { "x": 1919, "y": 1079, "w": 20, "h": 20 },
+            "fps": 500.0,
+            "scale": { "w": 1280, "h": -2 }
+        }))
+        .unwrap();
+
+        normalize_edit_geometry(&mut edit, 1920, 1080).unwrap();
+
+        let crop = edit.crop.unwrap();
+        assert_eq!((crop.x, crop.y, crop.w, crop.h), (1918, 1078, 2, 2));
+        let censor = edit.censor.unwrap();
+        assert_eq!((censor.x, censor.y, censor.w, censor.h), (1918, 1078, 2, 2));
+        assert_eq!(edit.fps, Some(240.0));
+    }
+
+    #[test]
+    fn normalize_edit_geometry_rejects_invalid_fps_and_scale() {
+        let mut bad_fps: EditRequest =
+            serde_json::from_value(json!({ "videoId": "x", "fps": -1.0 })).unwrap();
+        assert!(normalize_edit_geometry(&mut bad_fps, 100, 100).is_err());
+
+        let mut bad_scale: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "scale": { "w": -1, "h": -2 }
+        }))
+        .unwrap();
+        assert!(normalize_edit_geometry(&mut bad_scale, 100, 100).is_err());
     }
 }

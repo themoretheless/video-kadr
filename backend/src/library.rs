@@ -112,6 +112,15 @@ impl Library {
         kept
     }
 
+    pub async fn get(&self, id: &str) -> Option<MediaEntry> {
+        self.entries
+            .lock()
+            .await
+            .iter()
+            .find(|e| e.id == id)
+            .cloned()
+    }
+
     /// Remove an entry and delete its file. Returns true if it existed.
     pub async fn remove(&self, id: &str) -> bool {
         let mut guard = self.entries.lock().await;

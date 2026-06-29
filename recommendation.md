@@ -229,13 +229,13 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
   - [x] Тест в `backend/tests/api.rs`: импорт с плохим URL → poll до `error`; затем новый `AppState` поверх той же БД + `recover_jobs()` → джоба остаётся `error`, **не** `interrupted`.
 - **Критерий:** новый тест зелёный; `make check` зелёный. **Сделано.**
 
-### ☐ P0-2. Ретеншн `recover_jobs` · S
+### ☑ P0-2. Ретеншн `recover_jobs` · S
 - **Файлы:** `backend/src/state.rs` (`recover_jobs`), `backend/src/db.rs` (`load_jobs`).
 - **Шаги:**
-  - [ ] В `db.rs` добавить `load_recent_jobs(limit)` (ORDER BY updated_at DESC LIMIT) или `prune_jobs_older_than(ts)`.
-  - [ ] `recover_jobs` грузит только последние N (env `RECOVER_JOBS_LIMIT`, дефолт 200) и/или чистит терминальные старше TTL.
-  - [ ] db-тест: при >N сохранённых джобах загрузка возвращает ≤N.
-- **Критерий:** db-тест зелёный; recover не падает на пустой/большой БД; `make check`.
+  - [x] В `db.rs` добавить `load_recent_jobs(limit)` (ORDER BY updated_at DESC LIMIT) или `prune_jobs_older_than(ts)`.
+  - [x] `recover_jobs` грузит только последние N (env `RECOVER_JOBS_LIMIT`, дефолт 200) и/или чистит терминальные старше TTL.
+  - [x] db-тест: при >N сохранённых джобах загрузка возвращает ≤N.
+- **Критерий:** db-тест зелёный; recover не падает на пустой/большой БД; `make check`. **Сделано.**
 
 ### ☐ P0-3. DNS-rebinding в `validate_url` · S (пометка) / M (резолвинг)
 - **Файлы:** `backend/src/tools/net.rs`; (документация уже в architecture.md/README).
@@ -244,19 +244,20 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
   - [ ] Полноценно (M): резолвить host (`(host, 0).to_socket_addrs()`), прогнать каждый IP через `is_blocked_ip`; отклонять, если хоть один приватный.
 - **Критерий:** для S - комментарий + тест текущего поведения; для M - тест, что хост, резолвящийся в loopback/RFC1918, отклоняется (за фичей/мокабельным резолвером).
 
-### ◐ P0-4. Зависание джобы на закрытом семафоре · S
+### ☑ P0-4. Зависание джобы на закрытом семафоре · S
 - **Файлы:** `backend/src/handlers/mod.rs` (ветки `acquire_owned() => Err`, ~66-69, 298-301).
 - **Шаги:**
   - [x] В ветке `Err(_)` перевести джобу в `Error`, `persist_job`, `clear_cancel` (вместо голого `return`).
-  - [ ] (опц.) `select!` ожидания permit против `token.cancelled()`, чтобы отмена «queued» прерывала очередь.
-- **Критерий:** тест с закрытым semaphore зелёный; `select!` для queued cancel остался отдельным шагом.
+  - [x] `select!` ожидания permit против `token.cancelled()`, чтобы отмена «queued» прерывала очередь.
+- **Критерий:** тест с закрытым semaphore зелёный; queued cancel теперь не ждёт permit. **Сделано.**
 
 ### ◐ P0-5. Целостность render_cache · S
 - **Файлы:** `backend/src/handlers/mod.rs` (cache_get ~273), `backend/src/db.rs`, `backend/src/library.rs` (`remove`).
 - **Шаги:**
   - [x] При промахе файла (`metadata` fail) удалять запись кэша (`cache_delete(key)`) и падать в обычный рендер.
-  - [ ] (вместе с P2-10) инвалидировать кэш при `library.remove` и при TTL-чистке.
-- **Критерий:** тест «cache_put без файла → джоба идёт в рендер, не Done мгновенно» зелёный; invalidation при delete/TTL ещё впереди.
+  - [x] Инвалидировать кэш при `library.remove` для output-файлов по `filename`.
+  - [ ] (вместе с P2-10) инвалидировать кэш при TTL-чистке.
+- **Критерий:** тест «cache_put без файла → джоба идёт в рендер, не Done мгновенно» зелёный; delete-инвалидация покрыта HTTP-тестом; TTL ещё впереди.
 - **Прим.:** изначальный пункт «пустой ключ при ошибке сериализации» снят - верификация показала, что `serde_json` пишет `null` для не-finite f64 (не ошибка), ключ не пустеет (audit.md, раздел опровергнутого).
 
 ### ☑ P0-6. Вырезание сегмента молча не работает для AV1/ProRes · S
@@ -274,12 +275,13 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
   - [x] Тест: late-cancel завершённой задачи не превращает её в Done; отменённый импорт не оставляет файлов.
 - **Критерий:** тесты зелёные; `make check`. **Сделано.**
 
-### ☐ P0-8. crop/geometry валидируется против размеров источника · S
+### ◐ P0-8. crop/geometry валидируется против размеров источника · S
 - **Файлы:** `backend/src/tools/args.rs` (crop ~75-79), `backend/src/handlers/mod.rs` (probe ~331), `frontend/src/components/RectOverlay.vue` (~87-96).
 - **Шаги:**
-  - [ ] Клампить crop/censor к `width/height` из probe; на бэкенде - перед `build_ffmpeg_args`.
+  - [x] Клампить crop/censor к `width/height` из probe; на бэкенде - перед `build_ffmpeg_args`.
+  - [x] На бэкенде ограничить `fps` и валидировать `scale`, чтобы API не принимал заведомо невозможные значения.
   - [ ] На фронте при эмите overlay: `x = min(x, W-w)`, чтобы `x+w ≤ W`.
-- **Критерий:** crop за кадром не роняет ffmpeg (и не утекает stderr); тест на клампинг.
+- **Критерий:** backend-тест на клампинг/валидацию зелёный; frontend overlay clamp ещё впереди.
 
 > Прочие верифицированные 🔴/🟠 (upload минует семафор `handlers/mod.rs:142-229`;
 > TTL-чистка без проверки ссылок `main.rs:103-135`; клампинг сегментов/fps в

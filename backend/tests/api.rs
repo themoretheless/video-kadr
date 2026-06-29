@@ -314,6 +314,27 @@ async fn cancel_pending_job_marks_cancelled() {
 }
 
 #[tokio::test]
+async fn cancel_queued_edit_does_not_wait_for_permit() {
+    let (state, _d) = make_state(true, true).await;
+    let _p1 = state.jobs_semaphore.clone().acquire_owned().await.unwrap();
+    let _p2 = state.jobs_semaphore.clone().acquire_owned().await.unwrap();
+    let app = router(state);
+
+    let (_s, body, _) = send(
+        &app,
+        post_json("/api/edit", json!({ "videoId": "blocked-behind-permits" })),
+    )
+    .await;
+    let id = body["jobId"].as_str().unwrap().to_string();
+    let (status, cancel, _) = send(&app, post_empty(&format!("/api/jobs/{id}/cancel"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(cancel["status"], "cancelled");
+
+    let job = poll_terminal(&app, &id).await;
+    assert_eq!(job["status"], "cancelled");
+}
+
+#[tokio::test]
 async fn library_list_add_delete_flow() {
     let (state, _d) = make_state(true, true).await;
 
@@ -350,6 +371,35 @@ async fn library_list_add_delete_flow() {
     // Deleting again is a 404.
     let (status, _b, _) = send(&app, delete("/api/library/abc")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn library_delete_invalidates_output_render_cache() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state.clone());
+    let fname = "cached-output.mp4";
+    tokio::fs::write(state.outputs_dir().join(fname), b"data")
+        .await
+        .unwrap();
+    let output = json!({
+        "id": "out1",
+        "filename": fname,
+        "url": format!("/files/outputs/{fname}")
+    });
+    state
+        .library
+        .add(MediaEntry::from_result("output", &output))
+        .await;
+    state
+        .db
+        .cache_put("cache-key", &output, fname)
+        .await
+        .unwrap();
+    assert!(state.db.cache_get("cache-key").await.unwrap().is_some());
+
+    let (status, _b, _) = send(&app, delete("/api/library/out1")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(state.db.cache_get("cache-key").await.unwrap().is_none());
 }
 
 #[tokio::test]

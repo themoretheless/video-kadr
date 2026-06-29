@@ -37,12 +37,14 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_jobs_updated_at ON jobs(updated_at DESC);
 CREATE TABLE IF NOT EXISTS render_cache (
     cache_key TEXT PRIMARY KEY,
     output_json TEXT NOT NULL,
     filename TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_render_cache_created_at ON render_cache(created_at DESC);
 ";
 
 /// A saved editing project: a clip plus its full edit recipe. `video` and `edit`
@@ -212,6 +214,19 @@ impl Db {
         rows.into_iter().map(row_to_job).collect()
     }
 
+    /// Load only the most recently updated jobs. Used at startup so a long-lived
+    /// install does not rebuild an unbounded in-memory job map.
+    pub async fn load_recent_jobs(&self, limit: i64) -> Result<Vec<Job>> {
+        let rows = sqlx::query(
+            "SELECT id, status, result_json, error, stage, progress \
+             FROM jobs ORDER BY updated_at DESC LIMIT ?",
+        )
+        .bind(limit.max(0))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(row_to_job).collect()
+    }
+
     /// Look up a cached render by its content key, returning the stored result
     /// JSON and the output filename (the caller verifies the file still exists).
     pub async fn cache_get(&self, key: &str) -> Result<Option<(Value, String)>> {
@@ -254,6 +269,15 @@ impl Db {
             .execute(&self.pool)
             .await?;
         Ok(res.rows_affected() > 0)
+    }
+
+    /// Remove all cache rows pointing at a deleted output file.
+    pub async fn cache_delete_filename(&self, filename: &str) -> Result<u64> {
+        let res = sqlx::query("DELETE FROM render_cache WHERE filename = ?")
+            .bind(filename)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
     }
 }
 
@@ -360,17 +384,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn load_recent_jobs_respects_limit() {
+        use crate::model::Job;
+        let (db, _d) = db().await;
+        for i in 0..10 {
+            db.persist_job(&Job::pending(format!("j{i}")))
+                .await
+                .unwrap();
+        }
+        assert_eq!(db.load_recent_jobs(3).await.unwrap().len(), 3);
+        assert!(db.load_recent_jobs(0).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn render_cache_roundtrip() {
         let (db, _d) = db().await;
         assert!(db.cache_get("k1").await.unwrap().is_none());
         let out = json!({ "id": "o1", "filename": "o1.mp4" });
         db.cache_put("k1", &out, "o1.mp4").await.unwrap();
+        db.cache_put("k2", &out, "o1.mp4").await.unwrap();
         let (got, filename) = db.cache_get("k1").await.unwrap().unwrap();
         assert_eq!(got["id"], "o1");
         assert_eq!(filename, "o1.mp4");
         assert!(db.cache_delete("k1").await.unwrap());
         assert!(db.cache_get("k1").await.unwrap().is_none());
         assert!(!db.cache_delete("k1").await.unwrap());
+        assert_eq!(db.cache_delete_filename("o1.mp4").await.unwrap(), 1);
+        assert!(db.cache_get("k2").await.unwrap().is_none());
     }
 
     #[tokio::test]

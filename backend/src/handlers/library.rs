@@ -18,7 +18,11 @@ pub async fn library_delete_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
 ) -> StatusCode {
+    let entry = state.library.get(&id).await;
     if state.library.remove(&id).await {
+        if let Some(entry) = entry.filter(|e| e.kind == "output") {
+            let _ = state.db.cache_delete_filename(&entry.filename).await;
+        }
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
