@@ -126,10 +126,14 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 нуля» + текущее состояние и правила зависимостей) - в [architecture.md](architecture.md)
 и совместимом alias-файле [arhitecture.md](arhitecture.md).
 Пошаговый рефакторинг на слабую зацепленность - в [docs/refactor-plan.md](docs/refactor-plan.md).
-Аудит «топ-200 проблем» (баги/безопасность/перф/тесты) - в [docs/audit.md](docs/audit.md).
-Синхронизированный top-200 теперь продублирован в `architecture.md` как диагноз и
-в `recommendation.md` как карта исправлений; источником правды остаётся
-верифицированный `docs/audit.md`.
+Порядок исполнения по фазам - в [plan.md](plan.md).
+Аудиты проблем: проверенное ядро (118 находок, поштучно верифицировано, 14
+опровергнутых) - в [docs/audit.md](docs/audit.md); расширенный широкий охват
+(509 заземлённых на код проблем) - в [docs/audit-500.md](docs/audit-500.md);
+единый бэклог с идеями/фичами - в [docs/ideas/top-200-backlog.md](docs/ideas/top-200-backlog.md).
+Синхронизированный top-200 продублирован в `architecture.md` как диагноз и в
+`recommendation.md` как карта исправлений; источник правды по багам - `docs/audit.md`,
+порядок работ - `plan.md`.
 
 ```
 frontend (Vue 3 + Vite)
