@@ -9,6 +9,62 @@
 параллельно. Каждая задача идёт под зелёным `make check`. **S** = часы, **M** =
 день-два, **L** = неделя+. У каждой задачи - файлы, шаги, критерий приёмки.
 
+## Синхронизированный top-50: проблема → куда чинить
+
+Номера совпадают с диагностическим списком в `architecture.md`; подробные
+file:line и доказательства - в [docs/audit.md](docs/audit.md).
+
+1. Cancel/finish race → P0-7 и P2-12.
+2. Мусор после отмены/таймаута импорта → P0-7.
+3. Cancel окна на cache-hit edit → P2-12.
+4. Осиротевший child `ffmpeg` из `yt-dlp` → P2-9.
+5. Shutdown бросает workers/processes → P2-9.
+6. Queued job нельзя отменить сразу → P0-4 и P2-9.
+7. `acquire_owned()` error оставляет job non-terminal → P0-4.
+8. Progress drain пишет в terminal job → P2-9/P2-12.
+9. Segments не работают для AV1/ProRes → P0-6.
+10. Crop не валидируется по source dimensions → P0-8.
+11. Overlay может выйти за кадр → P0-8.
+12. Сегменты не сортируются → P0-6/P2-13.
+13. Segment end не клампится к duration → P0-6/P2-13.
+14. Negative segment start → P0-6/P2-13.
+15. Overlapping segments → P0-6/P2-13.
+16. `fps` без bounds → P0-8/P2-13.
+17. `scale` без строгой validation → P0-8/P2-13.
+18. Upload минует semaphore → P0 backlog/P2-9.
+19. Нет resource limits ffmpeg/yt-dlp → security/perf track.
+20. Нет no-progress watchdog → P2-9.
+21. Нет filesize/duration import cap → security/perf track.
+22. Partial upload после multipart error → P0 backlog.
+23. Progress tick берёт global jobs mutex → P2-9/P2-12.
+24. TTL удаляет referenced/active files → P0 backlog/P2-10.
+25. Render cache не инвалидируется → P0-5/P2-10.
+26. Нет DB migrations → P2-10.
+27. Нет jobs/cache retention → P0-2/P2-10.
+28. `library.json` и SQLite дрейфуют → P2-10.
+29. Нет single-flight render cache → P2-10.
+30. `cache_put` и `library.add` не атомарны → P2-10.
+31. Persist errors глотаются → P2-12.
+32. Нет DB indexes для retention/sort → P0-2/P2-10.
+33. DNS SSRF bypass → P0-3.
+34. Нет auth → before-exposure security track.
+35. `ServeDir` отдаёт весь `storage` → before-exposure security track.
+36. Permissive CORS → before-exposure security track.
+37. Неполный special-use IP blocklist → P0-3.
+38. Upload без magic-byte validation → security track.
+39. Projects JSON без схемы/лимита → P2-10/P2-11.
+40. Нет `deny_unknown_fields` → P2-11/contract work.
+41. Сырой stderr наружу → P1-8/P2-11.
+42. Разные формы API errors → P2-11.
+43. DB errors без нормального body/log → P2-11.
+44. Async jobs отвечают `200`, не `202` → P2-11.
+45. Frontend маскирует real 500 → P1-5/frontend API cleanup.
+46. God store + god `EditPanel.vue` → P1-5/P1-6.
+47. Watchers как import side effects → P1-5.
+48. Runtime validation отсутствует для JSON/presets → P1-5/P1-7.
+49. Silent catch/a11y/unsafe non-null → P1-6.
+50. Test gaps по render orchestration/API/store → P0 + P2 acceptance tests.
+
 ---
 
 ## P0 - Корректность (чинить первым)

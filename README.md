@@ -123,9 +123,13 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 
 Что делать дальше (приоритизированный план действий) - в
 [recommendation.md](recommendation.md). Подробный модульный дизайн (целевой «как с
-нуля» + текущее состояние и правила зависимостей) - в [architecture.md](architecture.md).
+нуля» + текущее состояние и правила зависимостей) - в [architecture.md](architecture.md)
+и совместимом alias-файле [arhitecture.md](arhitecture.md).
 Пошаговый рефакторинг на слабую зацепленность - в [docs/refactor-plan.md](docs/refactor-plan.md).
 Аудит «топ-50 проблем» (баги/безопасность/перф/тесты) - в [docs/audit.md](docs/audit.md).
+Синхронизированный top-50 теперь продублирован в `architecture.md` как диагноз и
+в `recommendation.md` как карта исправлений; источником правды остаётся
+верифицированный `docs/audit.md`.
 
 ```
 frontend (Vue 3 + Vite)

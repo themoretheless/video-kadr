@@ -62,6 +62,81 @@ Backend (Rust + Axum + Tokio)
 Уже выровнено по целевому дизайну: `tools/{args,net,mod}` и
 `handlers/{projects,library,health}` (чистое перемещение, см. refactor-plan).
 
+## Top-50: что сделано плохо или неправильно
+
+Источник правды - [docs/audit.md](docs/audit.md). Ниже та же первая
+приоритизированная пятидесятка, синхронизированная с `recommendation.md`.
+`docs/audit.md` хранит расширенный список, file:line и опровергнутые находки.
+
+### Correctness и гонки задач
+
+1. `cancel_handler` и `finish_job` гоняются: отменённая задача может стать `Done`.
+2. Отмена или таймаут импорта оставляет частично скачанные файлы в `sources/`.
+3. Кэш-хит edit может быть отменён в окне между cancel и записью `Done`.
+4. `ffmpeg`, порождённый через `yt-dlp`, может осиротеть при cancel/timeout.
+5. Graceful shutdown закрывает HTTP, но бросает in-flight workers и child processes.
+6. Ожидание permit в очереди не отменяемо.
+7. Ошибка `acquire_owned()` оставляет job в non-terminal статусе.
+8. Progress drain продолжает писать progress в терминальную job.
+
+### Геометрия и сегменты
+
+9. Вырезание сегмента молча не работает для AV1/ProRes.
+10. Crop не валидируется против размеров источника.
+11. Overlay может округлить `x+w` за пределы ширины кадра.
+12. Сегменты не сортируются, пользовательский порядок ломает timeline.
+13. Концы сегментов не клампятся к duration.
+14. Отрицательный start сегмента может уйти в ffmpeg.
+15. Перекрывающиеся сегменты не отклоняются и дублируют кадры.
+16. `fps` не ограничен сверху/снизу и может устроить CPU/memory blow-up.
+17. `scale` принимает небезопасные отрицательные и нечётные размеры.
+
+### Ресурсы и DoS
+
+18. `upload_handler` минует общий `jobs_semaphore`.
+19. Для ffmpeg/yt-dlp нет CPU/RAM/threads/filesize лимитов.
+20. Нет watchdog-а по отсутствию progress.
+21. Нет cap на размер и длительность импорта.
+22. Partial upload может остаться на диске после ошибки multipart/body limit.
+23. Каждый progress tick берёт глобальный jobs mutex.
+
+### Данные и целостность
+
+24. TTL-чистка удаляет файлы по mtime без проверки ссылок и активных jobs.
+25. `render_cache` не инвалидируется при удалении/пропаже output-файла.
+26. SQLite schema version пишется, но миграций нет.
+27. Jobs/render_cache растут без retention, `recover_jobs` грузит всё в память.
+28. `library.json` и SQLite живут параллельно и могут дрейфовать.
+29. Нет single-flight для одинаковых параллельных renders.
+30. `cache_put` и `library.add` не атомарны.
+31. Ошибки persist job глотаются.
+32. Нет индексов для сортировки/retention jobs и render_cache.
+
+### Security
+
+33. SSRF-валидация не резолвит DNS, `yt-dlp` может уйти в private IP.
+34. Нет authentication на мутирующих endpoints.
+35. `ServeDir` отдаёт весь `storage`, включая потенциально чувствительные файлы.
+36. `CorsLayer::permissive()` открыт для mutating requests.
+37. Blocklist приватных диапазонов неполный.
+38. Upload доверяет расширению/контейнеру до проверки magic bytes.
+39. Projects API хранит произвольный JSON без схемы и лимита.
+40. Request DTO не используют `deny_unknown_fields`.
+
+### API, frontend и тесты
+
+41. Сырой stderr ffmpeg/yt-dlp может попасть в `job.error`.
+42. Project endpoints возвращают разные формы ошибок.
+43. DB errors местами превращаются в голый 500 без тела и лога.
+44. Async job creation отвечает `200`, а не `202 Accepted`.
+45. Frontend маскирует реальные HTTP 500 как «backend down».
+46. Frontend `store.ts` и `EditPanel.vue` остаются god-module/god-component.
+47. Store watchers регистрируются как side effect импорта модуля.
+48. Presets/project/job JSON приводятся через `as` без runtime validation.
+49. Есть проглоченные `catch {}`, a11y debt и unsafe `root.value!`.
+50. Тесты не покрывают orchestration render path, async store actions и API
+    contract snapshots.
+
 ## Целевой модульный дизайн (backend)
 
 Дерево по слоям, стрелка = «зависит от» (только вниз):
