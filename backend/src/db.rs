@@ -246,6 +246,15 @@ impl Db {
         .await?;
         Ok(())
     }
+
+    /// Remove a stale render-cache entry.
+    pub async fn cache_delete(&self, key: &str) -> Result<bool> {
+        let res = sqlx::query("DELETE FROM render_cache WHERE cache_key = ?")
+            .bind(key)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
 }
 
 fn row_to_job(row: SqliteRow) -> Result<Job> {
@@ -359,6 +368,9 @@ mod tests {
         let (got, filename) = db.cache_get("k1").await.unwrap().unwrap();
         assert_eq!(got["id"], "o1");
         assert_eq!(filename, "o1.mp4");
+        assert!(db.cache_delete("k1").await.unwrap());
+        assert!(db.cache_get("k1").await.unwrap().is_none());
+        assert!(!db.cache_delete("k1").await.unwrap());
     }
 
     #[tokio::test]

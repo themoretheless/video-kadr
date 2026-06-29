@@ -157,6 +157,32 @@ async fn import_rejects_unsafe_url_via_job_error() {
 }
 
 #[tokio::test]
+async fn import_url_validation_error_survives_restart() {
+    let (state, dir) = make_state(true, true).await;
+    let storage = dir.path().to_path_buf();
+    let app = router(state);
+
+    let (_s, body, _) = send(
+        &app,
+        post_json("/api/import", json!({ "url": "http://localhost/secret" })),
+    )
+    .await;
+    let id = body["jobId"].as_str().unwrap().to_string();
+    let job = poll_terminal(&app, &id).await;
+    assert_eq!(job["status"], "error");
+
+    let db2 = Db::open(&storage).await.unwrap();
+    let lib2 = Library::load(storage.clone()).await;
+    let st2 = AppState::new(storage, 2, ToolInfo::default(), lib2, db2);
+    st2.recover_jobs().await;
+    let app2 = router(st2);
+    let (status, recovered, _) = send(&app2, get(&format!("/api/jobs/{id}"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(recovered["status"], "error");
+    assert_eq!(recovered["error"], "Недопустимый URL");
+}
+
+#[tokio::test]
 async fn edit_with_missing_source_fails_job() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
@@ -208,6 +234,51 @@ async fn edit_cache_hit_returns_existing_output() {
     let job = poll_terminal(&app, &id).await;
     assert_eq!(job["status"], "done");
     assert_eq!(job["result"]["filename"], "cached.mp4");
+}
+
+#[tokio::test]
+async fn edit_stale_render_cache_entry_is_evicted() {
+    let (state, _d) = make_state(true, true).await;
+    let req_json = json!({ "videoId": "missing-video", "trim": { "start": 0.0, "end": 5.0 } });
+    let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
+    let key = video_editor_backend::handlers::render_cache_key(&req);
+    state
+        .db
+        .cache_put(
+            &key,
+            &json!({
+                "id": "stale",
+                "url": "/files/outputs/stale.mp4",
+                "filename": "stale.mp4"
+            }),
+            "stale.mp4",
+        )
+        .await
+        .unwrap();
+    assert!(state.db.cache_get(&key).await.unwrap().is_some());
+
+    let app = router(state.clone());
+    let (_s, body, _) = send(&app, post_json("/api/edit", req_json)).await;
+    let id = body["jobId"].as_str().unwrap().to_string();
+    let job = poll_terminal(&app, &id).await;
+    assert_eq!(job["status"], "error");
+    assert!(state.db.cache_get(&key).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn closed_job_queue_marks_job_error() {
+    let (state, _d) = make_state(true, true).await;
+    state.jobs_semaphore.close();
+    let app = router(state);
+    let (_s, body, _) = send(
+        &app,
+        post_json("/api/edit", json!({ "videoId": "no-such-id" })),
+    )
+    .await;
+    let id = body["jobId"].as_str().unwrap().to_string();
+    let job = poll_terminal(&app, &id).await;
+    assert_eq!(job["status"], "error");
+    assert_eq!(job["error"], "очередь задач закрыта");
 }
 
 #[tokio::test]

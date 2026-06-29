@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::time::Duration;
 
 use axum::extract::{Multipart, Path as AxPath, State};
@@ -56,6 +57,7 @@ pub async fn import_handler(
                 j.error = Some(e.to_string());
             })
             .await;
+            st.persist_job(&jid).await;
             st.clear_cancel(&jid).await;
             return;
         }
@@ -65,7 +67,10 @@ pub async fn import_handler(
             .await;
         let _permit = match st.jobs_semaphore.clone().acquire_owned().await {
             Ok(p) => p,
-            Err(_) => return,
+            Err(_) => {
+                mark_queue_closed(&st, &jid).await;
+                return;
+            }
         };
         if token.is_cancelled() {
             st.update_job(&jid, |j| {
@@ -102,6 +107,7 @@ pub async fn import_handler(
             )
             .await?;
             if matches!(done, Done::Cancelled) {
+                cleanup_files_with_prefix(&sources, &vid).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
             }
             let path = tools::find_source(&sources, &vid).await?;
@@ -127,6 +133,10 @@ pub async fn import_handler(
             })))
         }
         .await;
+
+        if outcome.is_err() {
+            cleanup_files_with_prefix(&sources, &vid).await;
+        }
 
         drop(tx);
         let _ = drain.await;
@@ -286,6 +296,7 @@ pub async fn edit_handler(
             state.persist_job(&job_id).await;
             return Json(json!({ "jobId": job_id }));
         }
+        let _ = state.db.cache_delete(&cache_key).await;
     }
 
     let token = state.register_cancel(&job_id).await;
@@ -297,7 +308,10 @@ pub async fn edit_handler(
             .await;
         let _permit = match st.jobs_semaphore.clone().acquire_owned().await {
             Ok(p) => p,
-            Err(_) => return,
+            Err(_) => {
+                mark_queue_closed(&st, &jid).await;
+                return;
+            }
         };
         if token.is_cancelled() {
             st.update_job(&jid, |j| {
@@ -415,29 +429,70 @@ fn spawn_progress_drain(
     mut rx: mpsc::UnboundedReceiver<f64>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        let mut last_saved = -1.0_f64;
         while let Some(p) = rx.recv().await {
-            st.update_job(&jid, |j| j.progress = Some(p)).await;
+            if p >= 100.0 || p - last_saved >= 1.0 {
+                last_saved = p;
+                st.update_job_if_open(&jid, |j| j.progress = Some(p)).await;
+            }
         }
     })
+}
+
+async fn mark_queue_closed(st: &AppState, jid: &str) {
+    let updated = st
+        .update_job_if_open(jid, |j| {
+            j.status = JobStatus::Error;
+            j.error = Some("очередь задач закрыта".into());
+            j.stage = None;
+            j.progress = None;
+        })
+        .await;
+    if updated {
+        st.persist_job(jid).await;
+    }
+    st.clear_cancel(jid).await;
+}
+
+async fn cleanup_files_with_prefix(dir: &Path, prefix: &str) {
+    let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let matches_prefix = name == prefix
+            || name
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with('.'));
+        if name == ".gitkeep" || !matches_prefix {
+            continue;
+        }
+        let _ = tokio::fs::remove_file(entry.path()).await;
+    }
 }
 
 /// Apply the terminal outcome of a worker to the job and clear its cancel token.
 /// `Ok(Some)` -> done (also recorded in the media library under `kind`),
 /// `Ok(None)` -> cancelled, `Err` -> error.
 async fn finish_job(st: &AppState, jid: &str, outcome: anyhow::Result<Option<Value>>, kind: &str) {
-    match outcome {
+    let updated = match outcome {
         Ok(Some(info)) => {
-            st.library.add(MediaEntry::from_result(kind, &info)).await;
-            st.update_job(jid, |j| {
-                j.status = JobStatus::Done;
-                j.result = Some(info);
-                j.progress = Some(100.0);
-                j.stage = None;
-            })
-            .await
+            let updated = st
+                .update_job_if_open(jid, |j| {
+                    j.status = JobStatus::Done;
+                    j.result = Some(info.clone());
+                    j.progress = Some(100.0);
+                    j.stage = None;
+                })
+                .await;
+            if updated {
+                st.library.add(MediaEntry::from_result(kind, &info)).await;
+            }
+            updated
         }
         Ok(None) => {
-            st.update_job(jid, |j| {
+            st.update_job_if_open(jid, |j| {
                 j.status = JobStatus::Cancelled;
                 j.stage = None;
                 j.progress = None;
@@ -445,15 +500,89 @@ async fn finish_job(st: &AppState, jid: &str, outcome: anyhow::Result<Option<Val
             .await
         }
         Err(e) => {
-            st.update_job(jid, |j| {
+            st.update_job_if_open(jid, |j| {
                 j.status = JobStatus::Error;
                 j.error = Some(e.to_string());
                 j.stage = None;
             })
             .await
         }
-    }
+    };
     // Persist the terminal state so it survives a restart.
-    st.persist_job(jid).await;
+    if updated {
+        st.persist_job(jid).await;
+    }
     st.clear_cancel(jid).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Db;
+    use crate::library::Library;
+    use crate::state::ToolInfo;
+    use serde_json::json;
+
+    async fn state() -> (AppState, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        tokio::fs::create_dir_all(storage.join("sources"))
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(storage.join("outputs"))
+            .await
+            .unwrap();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        (AppState::new(storage, 2, ToolInfo::default(), lib, db), dir)
+    }
+
+    #[tokio::test]
+    async fn finish_job_does_not_overwrite_terminal_cancelled_job() {
+        let (st, _dir) = state().await;
+        st.set_job(Job::pending("j1".into())).await;
+        st.update_job("j1", |j| j.status = JobStatus::Cancelled)
+            .await;
+        st.persist_job("j1").await;
+
+        finish_job(
+            &st,
+            "j1",
+            Ok(Some(json!({
+                "id": "out",
+                "filename": "out.mp4",
+                "url": "/files/outputs/out.mp4"
+            }))),
+            "output",
+        )
+        .await;
+
+        let job = st.get_job("j1").await.unwrap();
+        assert_eq!(job.status, JobStatus::Cancelled);
+        assert!(job.result.is_none());
+        assert!(st.library.list().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleanup_files_with_prefix_removes_partial_imports() {
+        let (st, _dir) = state().await;
+        let dir = st.sources_dir();
+        tokio::fs::write(dir.join("abc.mp4.part"), b"x")
+            .await
+            .unwrap();
+        tokio::fs::write(dir.join("abc.info.json"), b"x")
+            .await
+            .unwrap();
+        tokio::fs::write(dir.join("abcd.mp4"), b"x").await.unwrap();
+        tokio::fs::write(dir.join("abc"), b"x").await.unwrap();
+        tokio::fs::write(dir.join(".gitkeep"), b"").await.unwrap();
+
+        cleanup_files_with_prefix(&dir, "abc").await;
+
+        assert!(!dir.join("abc.mp4.part").exists());
+        assert!(!dir.join("abc.info.json").exists());
+        assert!(!dir.join("abc").exists());
+        assert!(dir.join("abcd.mp4").exists());
+        assert!(dir.join(".gitkeep").exists());
+    }
 }

@@ -231,7 +231,7 @@ pub fn build_ffmpeg_args(
     // Multi-segment edits (cut from the middle / stitch ranges) need a concat
     // filter graph; only meaningful for the video containers.
     let segs = valid_segments(edit);
-    if !segs.is_empty() && matches!(format, "mp4" | "webm") {
+    if !segs.is_empty() && matches!(format, "mp4" | "webm" | "av1" | "prores") {
         return build_concat_args(input, output, edit, &segs, source_duration);
     }
 
@@ -366,39 +366,63 @@ pub fn build_ffmpeg_args(
 /// (VP9 for webm, otherwise H.264/H.265), then fps and (for mp4) faststart.
 /// Shared by the single-pass and concat paths so codec settings live in one place.
 fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
-    if format == "webm" {
-        args.push("-c:v".into());
-        args.push("libvpx-vp9".into());
-        args.push("-crf".into());
-        args.push(edit.quality.unwrap_or(32).to_string());
-        args.push("-b:v".into());
-        args.push("0".into());
-        args.push("-pix_fmt".into());
-        args.push("yuv420p".into());
-    } else {
-        let h265 = edit.codec.as_deref() == Some("h265");
-        args.push("-c:v".into());
-        args.push(if h265 { "libx265" } else { "libx264" }.into());
-        args.push("-preset".into());
-        args.push("veryfast".into());
-        args.push("-crf".into());
-        args.push(
-            edit.quality
-                .unwrap_or(if h265 { 28 } else { 23 })
-                .to_string(),
-        );
-        args.push("-pix_fmt".into());
-        args.push("yuv420p".into());
-        if h265 {
-            // hvc1 tag keeps the result playable in QuickTime/Safari.
-            args.push("-tag:v".into());
-            args.push("hvc1".into());
+    match format {
+        "webm" => {
+            args.push("-c:v".into());
+            args.push("libvpx-vp9".into());
+            args.push("-crf".into());
+            args.push(edit.quality.unwrap_or(32).to_string());
+            args.push("-b:v".into());
+            args.push("0".into());
+            args.push("-pix_fmt".into());
+            args.push("yuv420p".into());
+            push_fps(args, edit);
         }
-    }
-    push_fps(args, edit);
-    if format != "webm" {
-        args.push("-movflags".into());
-        args.push("+faststart".into());
+        "av1" => {
+            args.push("-c:v".into());
+            args.push("libsvtav1".into());
+            args.push("-crf".into());
+            args.push(edit.quality.unwrap_or(32).to_string());
+            args.push("-preset".into());
+            args.push("6".into());
+            args.push("-pix_fmt".into());
+            args.push("yuv420p".into());
+            push_fps(args, edit);
+            args.push("-movflags".into());
+            args.push("+faststart".into());
+        }
+        "prores" => {
+            args.push("-c:v".into());
+            args.push("prores_ks".into());
+            args.push("-profile:v".into());
+            args.push("3".into());
+            args.push("-pix_fmt".into());
+            args.push("yuv422p10le".into());
+            push_fps(args, edit);
+        }
+        _ => {
+            let h265 = edit.codec.as_deref() == Some("h265");
+            args.push("-c:v".into());
+            args.push(if h265 { "libx265" } else { "libx264" }.into());
+            args.push("-preset".into());
+            args.push("veryfast".into());
+            args.push("-crf".into());
+            args.push(
+                edit.quality
+                    .unwrap_or(if h265 { 28 } else { 23 })
+                    .to_string(),
+            );
+            args.push("-pix_fmt".into());
+            args.push("yuv420p".into());
+            if h265 {
+                // hvc1 tag keeps the result playable in QuickTime/Safari.
+                args.push("-tag:v".into());
+                args.push("hvc1".into());
+            }
+            push_fps(args, edit);
+            args.push("-movflags".into());
+            args.push("+faststart".into());
+        }
     }
 }
 
@@ -478,9 +502,18 @@ fn build_concat_args(
     push_video_codec(&mut args, edit, format);
     if amap.is_some() {
         args.push("-c:a".into());
-        args.push(if format == "webm" { "libopus" } else { "aac" }.into());
-        args.push("-b:a".into());
-        args.push("128k".into());
+        args.push(
+            match format {
+                "webm" => "libopus",
+                "prores" => "pcm_s16le",
+                _ => "aac",
+            }
+            .into(),
+        );
+        if format != "prores" {
+            args.push("-b:a".into());
+            args.push("128k".into());
+        }
     }
 
     args.push(output.to_string_lossy().into_owned());
@@ -842,6 +875,42 @@ mod tests {
         assert!(args.contains(&"hvc1".to_string()));
         assert!(args.contains(&"+faststart".to_string()));
         assert!(args.contains(&"aac".to_string())); // not muted -> audio mapped
+    }
+
+    #[test]
+    fn segments_concat_supports_av1() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "format": "av1",
+                "quality": 30,
+                "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 2.0, "end": 3.0 }]
+            }),
+            5.0,
+        );
+        assert!(args.contains(&"-filter_complex".to_string()));
+        assert!(filter_complex(&args).contains("concat=n=2:v=1:a=1[cv][ca]"));
+        assert!(args.contains(&"libsvtav1".to_string()));
+        assert!(args.contains(&"+faststart".to_string()));
+        let crf = args.iter().position(|a| a == "-crf").unwrap();
+        assert_eq!(args[crf + 1], "30");
+    }
+
+    #[test]
+    fn segments_concat_supports_prores() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "format": "prores",
+                "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 2.0, "end": 3.0 }]
+            }),
+            5.0,
+        );
+        assert!(args.contains(&"-filter_complex".to_string()));
+        assert!(filter_complex(&args).contains("concat=n=2:v=1:a=1[cv][ca]"));
+        assert!(args.contains(&"prores_ks".to_string()));
+        assert!(args.contains(&"pcm_s16le".to_string()));
+        assert!(!args.contains(&"+faststart".to_string()));
     }
 
     #[test]

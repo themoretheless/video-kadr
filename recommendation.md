@@ -222,12 +222,12 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 > Полный аудит (топ-200 проблем по серьёзности) - в [docs/audit.md](docs/audit.md).
 > Ниже - первоочередные баги из него.
 
-### ☐ P0-1. `persist_job` при ошибке URL в импорте · S
+### ☑ P0-1. `persist_job` при ошибке URL в импорте · S
 - **Файлы:** `backend/src/handlers/mod.rs` (`import_handler`, ветка `validate_url`, ~53-59).
 - **Шаги:**
-  - [ ] В ветке `if let Err(e) = tools::validate_url(...)` добавить `st.persist_job(&jid).await;` перед `st.clear_cancel(&jid).await;`.
-  - [ ] Тест в `backend/tests/api.rs`: импорт с плохим URL → poll до `error`; затем новый `AppState` поверх той же БД + `recover_jobs()` → джоба остаётся `error`, **не** `interrupted`.
-- **Критерий:** новый тест зелёный; `make check` зелёный.
+  - [x] В ветке `if let Err(e) = tools::validate_url(...)` добавить `st.persist_job(&jid).await;` перед `st.clear_cancel(&jid).await;`.
+  - [x] Тест в `backend/tests/api.rs`: импорт с плохим URL → poll до `error`; затем новый `AppState` поверх той же БД + `recover_jobs()` → джоба остаётся `error`, **не** `interrupted`.
+- **Критерий:** новый тест зелёный; `make check` зелёный. **Сделано.**
 
 ### ☐ P0-2. Ретеншн `recover_jobs` · S
 - **Файлы:** `backend/src/state.rs` (`recover_jobs`), `backend/src/db.rs` (`load_jobs`).
@@ -244,35 +244,35 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
   - [ ] Полноценно (M): резолвить host (`(host, 0).to_socket_addrs()`), прогнать каждый IP через `is_blocked_ip`; отклонять, если хоть один приватный.
 - **Критерий:** для S - комментарий + тест текущего поведения; для M - тест, что хост, резолвящийся в loopback/RFC1918, отклоняется (за фичей/мокабельным резолвером).
 
-### ☐ P0-4. Зависание джобы на закрытом семафоре · S
+### ◐ P0-4. Зависание джобы на закрытом семафоре · S
 - **Файлы:** `backend/src/handlers/mod.rs` (ветки `acquire_owned() => Err`, ~66-69, 298-301).
 - **Шаги:**
-  - [ ] В ветке `Err(_)` перевести джобу в `Error`, `persist_job`, `clear_cancel` (вместо голого `return`).
+  - [x] В ветке `Err(_)` перевести джобу в `Error`, `persist_job`, `clear_cancel` (вместо голого `return`).
   - [ ] (опц.) `select!` ожидания permit против `token.cancelled()`, чтобы отмена «queued» прерывала очередь.
-- **Критерий:** тест с `max_concurrent=1` и забитым слотом: вторая джоба не висит вечно.
+- **Критерий:** тест с закрытым semaphore зелёный; `select!` для queued cancel остался отдельным шагом.
 
-### ☐ P0-5. Целостность render_cache · S
+### ◐ P0-5. Целостность render_cache · S
 - **Файлы:** `backend/src/handlers/mod.rs` (cache_get ~273), `backend/src/db.rs`, `backend/src/library.rs` (`remove`).
 - **Шаги:**
-  - [ ] При промахе файла (`metadata` fail) удалять запись кэша (`cache_delete(key)`) и падать в обычный рендер.
+  - [x] При промахе файла (`metadata` fail) удалять запись кэша (`cache_delete(key)`) и падать в обычный рендер.
   - [ ] (вместе с P2-10) инвалидировать кэш при `library.remove` и при TTL-чистке.
-- **Критерий:** тест «cache_put без файла → джоба идёт в рендер, не Done мгновенно».
+- **Критерий:** тест «cache_put без файла → джоба идёт в рендер, не Done мгновенно» зелёный; invalidation при delete/TTL ещё впереди.
 - **Прим.:** изначальный пункт «пустой ключ при ошибке сериализации» снят - верификация показала, что `serde_json` пишет `null` для не-finite f64 (не ошибка), ключ не пустеет (audit.md, раздел опровергнутого).
 
-### ☐ P0-6. Вырезание сегмента молча не работает для AV1/ProRes · S
+### ☑ P0-6. Вырезание сегмента молча не работает для AV1/ProRes · S
 - **Файлы:** `backend/src/tools/args.rs` (~234, 491-496), `frontend/src/store.ts` (~213-226).
 - **Шаги:**
-  - [ ] Строить concat-ветку для всех видеоформатов (или явно запрещать сегменты в UI для AV1/ProRes с предупреждением).
-  - [ ] Тест: edit с `segments` + format=av1/prores даёт concat-аргументы (или явную ошибку), а не неразрезанный экспорт.
-- **Критерий:** тест зелёный; пользовательский вырез не пропадает молча.
+  - [x] Строить concat-ветку для всех видеоформатов (или явно запрещать сегменты в UI для AV1/ProRes с предупреждением).
+  - [x] Тест: edit с `segments` + format=av1/prores даёт concat-аргументы, а не неразрезанный экспорт.
+- **Критерий:** тест зелёный; пользовательский вырез не пропадает молча. **Сделано.**
 
-### ☐ P0-7. Гонка cancel↔finish и очистка при отмене импорта · S
+### ☑ P0-7. Гонка cancel↔finish и очистка при отмене импорта · S
 - **Файлы:** `backend/src/handlers/mod.rs` (`finish_job` ~427-459, `cancel_handler` ~382-409, import cancel ~104-106).
 - **Шаги:**
-  - [ ] В `finish_job` гейтить запись статуса на `!j.status.is_terminal()` (как уже делает `cancel_handler`), чтобы отменённая задача не перезаписалась в `Done`.
-  - [ ] В ветках Cancelled/Err импорта подмести `sources/` по префиксу `vid` (+ `.info.json`, `.part`).
-  - [ ] Тест: late-cancel завершённой задачи не превращает её в Done; отменённый импорт не оставляет файлов.
-- **Критерий:** тесты зелёные; `make check`.
+  - [x] В `finish_job` гейтить запись статуса на `!j.status.is_terminal()` (как уже делает `cancel_handler`), чтобы отменённая задача не перезаписалась в `Done`.
+  - [x] В ветках Cancelled/Err импорта подмести `sources/` по префиксу `vid` (+ `.info.json`, `.part`).
+  - [x] Тест: late-cancel завершённой задачи не превращает её в Done; отменённый импорт не оставляет файлов.
+- **Критерий:** тесты зелёные; `make check`. **Сделано.**
 
 ### ☐ P0-8. crop/geometry валидируется против размеров источника · S
 - **Файлы:** `backend/src/tools/args.rs` (crop ~75-79), `backend/src/handlers/mod.rs` (probe ~331), `frontend/src/components/RectOverlay.vue` (~87-96).

@@ -76,6 +76,21 @@ impl AppState {
         }
     }
 
+    /// Mutate a job only if it has not reached a terminal state yet. Returns
+    /// true when the update was applied. This keeps late worker completion from
+    /// overwriting a user cancellation.
+    pub async fn update_job_if_open(&self, id: &str, f: impl FnOnce(&mut Job)) -> bool {
+        let mut guard = self.jobs.lock().await;
+        let Some(job) = guard.get_mut(id) else {
+            return false;
+        };
+        if job.status.is_terminal() {
+            return false;
+        }
+        f(job);
+        true
+    }
+
     /// Write the current in-memory state of a job to the database (best-effort).
     pub async fn persist_job(&self, id: &str) {
         let job = self.jobs.lock().await.get(id).cloned();
