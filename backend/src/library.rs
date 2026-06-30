@@ -77,23 +77,37 @@ impl Library {
         }
     }
 
-    async fn save(&self, entries: &[MediaEntry]) {
-        if let Ok(json) = serde_json::to_vec_pretty(entries) {
-            // Write to a temp file then rename, so a crash never leaves a partial file.
-            let tmp = self.path.with_extension("json.tmp");
-            if tokio::fs::write(&tmp, &json).await.is_ok() {
-                let _ = tokio::fs::rename(&tmp, &self.path).await;
-            }
-        }
+    /// Persist the whole list atomically (temp file + rename). Returns an error
+    /// instead of swallowing it, so callers can avoid committing an in-memory
+    /// change that never reached disk.
+    async fn save(&self, entries: &[MediaEntry]) -> std::io::Result<()> {
+        let json = serde_json::to_vec_pretty(entries)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        // Write to a temp file then rename, so a crash never leaves a partial file.
+        let tmp = self.path.with_extension("json.tmp");
+        tokio::fs::write(&tmp, &json).await?;
+        tokio::fs::rename(&tmp, &self.path).await?;
+        Ok(())
     }
 
     pub async fn add(&self, entry: MediaEntry) {
+        // Reject malformed entries: an empty id would collapse unrelated media
+        // into one slot via the dedup-by-id below (and serve a broken url).
+        if entry.id.is_empty() || entry.filename.is_empty() {
+            tracing::warn!("library: skipping add of entry with empty id/filename");
+            return;
+        }
         let mut guard = self.entries.lock().await;
-        guard.retain(|e| e.id != entry.id);
-        guard.push(entry);
-        let snapshot = guard.clone();
-        drop(guard);
-        self.save(&snapshot).await;
+        let mut next = guard.clone();
+        next.retain(|e| e.id != entry.id);
+        next.push(entry);
+        // Persist first; only commit to memory if the write succeeded, so a failed
+        // save never reports success while the entry is lost on restart.
+        if let Err(e) = self.save(&next).await {
+            tracing::error!(error = %e, "library: persist failed on add, entry not stored");
+            return;
+        }
+        *guard = next;
     }
 
     /// Return entries newest-first, hiding any whose file is currently missing.
@@ -121,17 +135,24 @@ impl Library {
             .cloned()
     }
 
-    /// Remove an entry and delete its file. Returns true if it existed.
+    /// Remove an entry and delete its file. Returns true if it existed and the
+    /// removal was persisted. The file is deleted only after a successful save,
+    /// so a persist failure never deletes a file the stored library still lists.
     pub async fn remove(&self, id: &str) -> bool {
         let mut guard = self.entries.lock().await;
         let Some(pos) = guard.iter().position(|e| e.id == id) else {
             return false;
         };
-        let entry = guard.remove(pos);
-        let snapshot = guard.clone();
+        let entry = guard[pos].clone();
+        let mut next = guard.clone();
+        next.remove(pos);
+        if let Err(e) = self.save(&next).await {
+            tracing::error!(id, error = %e, "library: persist failed on remove, keeping entry");
+            return false;
+        }
+        *guard = next;
         drop(guard);
         let _ = tokio::fs::remove_file(self.file_path(&entry)).await;
-        self.save(&snapshot).await;
         true
     }
 
@@ -221,6 +242,20 @@ mod tests {
         let list = lib.list().await;
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].created_at, 2);
+    }
+
+    #[tokio::test]
+    async fn add_skips_empty_id_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        touch(&storage, "source", "x.mp4").await;
+        // Two empty-id results must not collapse into one colliding slot - both
+        // are rejected outright.
+        lib.add(entry("", "source", "x.mp4", 1)).await;
+        lib.add(entry("", "source", "x.mp4", 2)).await;
+        assert!(lib.get("").await.is_none());
+        assert!(lib.list().await.is_empty());
     }
 
     #[tokio::test]
