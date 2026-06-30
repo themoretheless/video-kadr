@@ -8,6 +8,7 @@ import {
   parseTime,
   setTrimStartFromPlayer,
   setTrimEndFromPlayer,
+  normalizeCrop,
   undo,
   redo,
   savePreset,
@@ -512,10 +513,10 @@ function applyPlatform(name: string) {
             <button class="chip" @click="resetCrop">сброс</button>
           </div>
           <div class="grid2">
-            <label>X <input type="number" min="0" v-model.number="state.edit.crop.x" /></label>
-            <label>Y <input type="number" min="0" v-model.number="state.edit.crop.y" /></label>
-            <label>Ширина <input type="number" min="2" v-model.number="state.edit.crop.w" /></label>
-            <label>Высота <input type="number" min="2" v-model.number="state.edit.crop.h" /></label>
+            <label>X <input type="number" min="0" v-model.number="state.edit.crop.x" @blur="normalizeCrop" /></label>
+            <label>Y <input type="number" min="0" v-model.number="state.edit.crop.y" @blur="normalizeCrop" /></label>
+            <label>Ширина <input type="number" min="2" v-model.number="state.edit.crop.w" @blur="normalizeCrop" /></label>
+            <label>Высота <input type="number" min="2" v-model.number="state.edit.crop.h" @blur="normalizeCrop" /></label>
           </div>
         </template>
       </div>

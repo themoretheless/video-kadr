@@ -1,17 +1,39 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { nextTick } from 'vue'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import * as api from './api'
 import {
   state,
   defaultEdit,
   buildEditPayload,
+  normalizeCrop,
   parseTime,
   tierToCrf,
+  history,
+  resetHistory,
+  undo,
+  redo,
+  openFromLibrary,
   savePreset,
   applyPreset,
   deletePreset,
   loadPresets,
   presets,
 } from './store'
-import type { VideoInfo } from './types'
+import type { EditState, VideoInfo } from './types'
+
+vi.mock('./api', () => ({
+  importUrl: vi.fn(),
+  uploadFile: vi.fn(),
+  edit: vi.fn(),
+  pollJob: vi.fn(),
+  getLibrary: vi.fn(() => Promise.resolve([])),
+  deleteLibraryItem: vi.fn(),
+  saveProject: vi.fn(() => Promise.resolve({})),
+  getProjectByVideo: vi.fn(() => Promise.resolve(null)),
+  getProjects: vi.fn(() => Promise.resolve([])),
+  deleteProject: vi.fn(),
+  cancelJob: vi.fn(),
+}))
 
 /** Put a video and a fresh full-clip edit into the store. */
 function setVideo(duration = 10, width = 1280, height = 720): void {
@@ -138,6 +160,109 @@ describe('buildEditPayload', () => {
     expect(p.censor).toEqual({ x: 1, y: 1, w: 20, h: 20 })
     expect(p.codec).toBe('h265')
     expect(p.quality).toBe(18)
+  })
+
+  it('sanitizes crop values before sending payloads', () => {
+    state.edit.cropEnabled = true
+    state.edit.crop = {
+      x: Number.NaN,
+      y: Number.POSITIVE_INFINITY,
+      w: Number.NaN,
+      h: 0,
+    }
+    expect(buildEditPayload().crop).toEqual({ x: 0, y: 0, w: 1280, h: 2 })
+  })
+
+  it('normalizes crop state after manual numeric input', () => {
+    state.edit.crop = {
+      x: 9999,
+      y: Number.NaN,
+      w: Number.NaN,
+      h: 9999,
+    }
+    normalizeCrop()
+    expect(state.edit.crop).toEqual({ x: 0, y: 0, w: 1280, h: 720 })
+  })
+})
+
+describe('history', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    setVideo()
+    resetHistory()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('flushes a pending edit before redo', async () => {
+    state.edit.filter = 'sepia'
+    await nextTick()
+
+    undo()
+    expect(state.edit.filter).toBe('')
+    expect(history.future).toHaveLength(1)
+
+    state.edit.filter = 'warm'
+    await nextTick()
+    redo()
+
+    expect(state.edit.filter).toBe('warm')
+    expect(history.future).toHaveLength(0)
+  })
+})
+
+describe('project restore autosave', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.clearAllMocks()
+    setVideo()
+    resetHistory()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('does not save default edit while restore is in flight', async () => {
+    let resolveProject: (value: Awaited<ReturnType<typeof api.getProjectByVideo>>) => void = () => {}
+    vi.mocked(api.getProjectByVideo).mockReturnValue(
+      new Promise((resolve) => {
+        resolveProject = resolve
+      }) as ReturnType<typeof api.getProjectByVideo>,
+    )
+
+    openFromLibrary({
+      id: 'saved',
+      kind: 'source',
+      filename: 'saved.mp4',
+      url: '/files/sources/saved.mp4',
+      duration: 20,
+      width: 640,
+      height: 360,
+      createdAt: 1,
+    })
+
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(api.saveProject).not.toHaveBeenCalled()
+
+    resolveProject({
+      id: 'p1',
+      name: 'saved',
+      videoId: 'saved',
+      video: state.video!,
+      edit: { filter: 'sepia' } satisfies Partial<EditState>,
+      createdAt: 1,
+      updatedAt: 2,
+    })
+    await Promise.resolve()
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1500)
+
+    expect(state.edit.filter).toBe('sepia')
+    expect(api.saveProject).not.toHaveBeenCalled()
   })
 })
 
