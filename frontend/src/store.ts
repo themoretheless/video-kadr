@@ -225,7 +225,7 @@ export function buildEditPayload(): Record<string, unknown> {
     payload.trim = { start: e.trimStart, end: e.trimEnd }
   }
   if (e.cropEnabled) {
-    payload.crop = { x: e.crop.x, y: e.crop.y, w: e.crop.w, h: e.crop.h }
+    payload.crop = sanitizeRect(e.crop, v.width, v.height)
   }
   if (e.scaleEnabled) {
     payload.scale = { w: e.scale.w, h: e.scale.h }
@@ -260,6 +260,39 @@ export function buildEditPayload(): Record<string, unknown> {
   const crf = tierToCrf(e.qualityTier, e.format)
   if (crf !== null) payload.quality = crf
   return payload
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.round(finiteOr(value, fallback))
+  return Math.max(min, Math.min(n, max))
+}
+
+function sanitizeRect(
+  rect: { x: number; y: number; w: number; h: number },
+  width: number,
+  height: number,
+): { x: number; y: number; w: number; h: number } {
+  const W = Math.max(1, Math.round(finiteOr(width, 1)))
+  const H = Math.max(1, Math.round(finiteOr(height, 1)))
+  const minW = Math.min(2, W)
+  const minH = Math.min(2, H)
+  const w = clampInt(rect.w, minW, W, W)
+  const h = clampInt(rect.h, minH, H, H)
+  return {
+    x: clampInt(rect.x, 0, W - w, 0),
+    y: clampInt(rect.y, 0, H - h, 0),
+    w,
+    h,
+  }
+}
+
+export function normalizeCrop(): void {
+  if (!state.video) return
+  state.edit.crop = sanitizeRect(state.edit.crop, state.video.width, state.video.height)
 }
 
 export async function doExport(): Promise<void> {
@@ -344,6 +377,8 @@ export async function loadLibrary(): Promise<void> {
 /** Reopen a stored source clip in the editor. */
 export function openFromLibrary(entry: MediaEntry): void {
   if (entry.kind !== 'source') return
+  restoringProjectFor = entry.id
+  clearProjectSaveTimer()
   const v: VideoInfo = {
     id: entry.id,
     url: entry.url,
@@ -401,7 +436,7 @@ function recordChange(): void {
 }
 
 /** Drop history and pin the baseline to the current edit (on load/open). */
-function resetHistory(): void {
+export function resetHistory(): void {
   if (historyTimer) {
     clearTimeout(historyTimer)
     historyTimer = null
@@ -423,7 +458,7 @@ function applySnapshot(json: string): void {
 
 export function undo(): void {
   // Flush any pending edit into history before stepping back.
-  if (historyTimer) recordChange()
+  flushPendingHistory()
   const prev = history.past.pop()
   if (prev === undefined) return
   history.future.push(snapshot())
@@ -431,10 +466,17 @@ export function undo(): void {
 }
 
 export function redo(): void {
+  flushPendingHistory()
   const next = history.future.pop()
   if (next === undefined) return
   history.past.push(snapshot())
   applySnapshot(next)
+}
+
+function flushPendingHistory(): void {
+  if (!historyTimer) return
+  clearTimeout(historyTimer)
+  recordChange()
 }
 
 watch(
@@ -565,6 +607,15 @@ export function toggleTheme(): void {
 // to defaults. Failures are non-fatal: the editor still works without the backend.
 
 let projectSaveTimer: ReturnType<typeof setTimeout> | null = null
+let restoringProjectFor: string | null = null
+let restoredProjectFor: string | null = null
+
+function clearProjectSaveTimer(): void {
+  if (projectSaveTimer) {
+    clearTimeout(projectSaveTimer)
+    projectSaveTimer = null
+  }
+}
 
 /** Load the saved project for a clip (if any) and apply its edit recipe. */
 async function restoreProject(videoId: string): Promise<void> {
@@ -577,6 +628,12 @@ async function restoreProject(videoId: string): Promise<void> {
     }
   } catch {
     // Non-fatal: keep the default edit if the lookup fails.
+  } finally {
+    if (state.video?.id === videoId && restoringProjectFor === videoId) {
+      restoredProjectFor = videoId
+      restoringProjectFor = null
+      clearProjectSaveTimer()
+    }
   }
 }
 
@@ -599,7 +656,16 @@ watch(
   () => [state.video, state.edit],
   () => {
     if (!state.video) return
-    if (projectSaveTimer) clearTimeout(projectSaveTimer)
+    if (restoringProjectFor === state.video.id) {
+      clearProjectSaveTimer()
+      return
+    }
+    if (restoredProjectFor === state.video.id) {
+      restoredProjectFor = null
+      clearProjectSaveTimer()
+      return
+    }
+    clearProjectSaveTimer()
     projectSaveTimer = setTimeout(() => {
       projectSaveTimer = null
       void persistProject()
