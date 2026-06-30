@@ -241,12 +241,13 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
   - [x] db-тест: при >N сохранённых джобах загрузка возвращает ≤N.
 - **Критерий:** db-тест зелёный; recover не падает на пустой/большой БД; `make check`. **Сделано.**
 
-### ☐ P0-3. DNS-rebinding в `validate_url` · S (пометка) / M (резолвинг)
+### ☑ P0-3. DNS-rebinding в `validate_url` · S/M
 - **Файлы:** `backend/src/tools/net.rs`; (документация уже в architecture.md/README).
 - **Шаги:**
-  - [ ] Минимум (S): явный комментарий-ограничение в `net.rs` + строка в «Ограничениях» README.
-  - [ ] Полноценно (M): резолвить host (`(host, 0).to_socket_addrs()`), прогнать каждый IP через `is_blocked_ip`; отклонять, если хоть один приватный.
-- **Критерий:** для S - комментарий + тест текущего поведения; для M - тест, что хост, резолвящийся в loopback/RFC1918, отклоняется (за фичей/мокабельным резолвером).
+  - [x] Резолвить host, прогнать каждый IP через `is_blocked_ip`; отклонять, если хоть один приватный.
+  - [x] Закрыть edge cases: credentials в URL, decimal/octal/hex-like IP, CGNAT `100.64/10`, IPv4-mapped IPv6, `.local`/`.localhost`.
+  - [x] Тесты через мокабельный resolver без зависимости от внешнего DNS.
+- **Критерий:** DNS/private-host тесты зелёные; initial URL guard усилен. **Сделано.** Redirect-to-private в `yt-dlp` остаётся отдельным security-пунктом.
 
 ### ☑ P0-4. Зависание джобы на закрытом семафоре · S
 - **Файлы:** `backend/src/handlers/mod.rs` (ветки `acquire_owned() => Err`, ~66-69, 298-301).
@@ -255,13 +256,13 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
   - [x] `select!` ожидания permit против `token.cancelled()`, чтобы отмена «queued» прерывала очередь.
 - **Критерий:** тест с закрытым semaphore зелёный; queued cancel теперь не ждёт permit. **Сделано.**
 
-### ◐ P0-5. Целостность render_cache · S
+### ☑ P0-5. Целостность render_cache · S
 - **Файлы:** `backend/src/handlers/mod.rs` (cache_get ~273), `backend/src/db.rs`, `backend/src/library.rs` (`remove`).
 - **Шаги:**
   - [x] При промахе файла (`metadata` fail) удалять запись кэша (`cache_delete(key)`) и падать в обычный рендер.
   - [x] Инвалидировать кэш при `library.remove` для output-файлов по `filename`.
-  - [ ] (вместе с P2-10) инвалидировать кэш при TTL-чистке.
-- **Критерий:** тест «cache_put без файла → джоба идёт в рендер, не Done мгновенно» зелёный; delete-инвалидация покрыта HTTP-тестом; TTL ещё впереди.
+  - [x] Инвалидировать кэш при TTL-чистке output-файлов и удалять library entry через `Library::remove`.
+- **Критерий:** тест «cache_put без файла → джоба идёт в рендер, не Done мгновенно» зелёный; delete-инвалидация покрыта HTTP-тестом; TTL теперь чистит файл/library/cache согласованно. **Сделано.**
 - **Прим.:** изначальный пункт «пустой ключ при ошибке сериализации» снят - верификация показала, что `serde_json` пишет `null` для не-finite f64 (не ошибка), ключ не пустеет (audit.md, раздел опровергнутого).
 
 ### ☑ P0-6. Вырезание сегмента молча не работает для AV1/ProRes · S

@@ -6,7 +6,7 @@ use tracing_subscriber::EnvFilter;
 
 use video_editor_backend::build_router;
 use video_editor_backend::db::Db;
-use video_editor_backend::library::Library;
+use video_editor_backend::library::{Library, MediaEntry};
 use video_editor_backend::state::{AppState, ToolInfo};
 use video_editor_backend::tools;
 
@@ -55,7 +55,13 @@ async fn main() -> anyhow::Result<()> {
 
     let lib = Library::load(storage.clone()).await;
     let db = Db::open(&storage).await?;
-    let state = AppState::new(storage.clone(), max_concurrent, tool_info, lib, db);
+    let state = AppState::new(
+        storage.clone(),
+        max_concurrent,
+        tool_info,
+        lib.clone(),
+        db.clone(),
+    );
     // Recover jobs from a previous run; mark any that were in flight as interrupted.
     state.recover_jobs().await;
 
@@ -65,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
     if ttl_hours > 0 {
-        spawn_cleanup(storage.clone(), ttl_hours);
+        spawn_cleanup(storage.clone(), lib, db, ttl_hours);
         tracing::info!("file cleanup enabled: TTL {ttl_hours}h");
     }
 
@@ -100,12 +106,13 @@ async fn shutdown_signal() {
 }
 
 /// Periodically delete files in sources/ and outputs/ older than `ttl_hours`.
-fn spawn_cleanup(storage: PathBuf, ttl_hours: u64) {
+fn spawn_cleanup(storage: PathBuf, library: Library, db: Db, ttl_hours: u64) {
     tokio::spawn(async move {
         let ttl = Duration::from_secs(ttl_hours * 3600);
         let mut tick = tokio::time::interval(Duration::from_secs(30 * 60));
         loop {
             tick.tick().await;
+            let library_entries = library.list().await;
             for sub in ["sources", "outputs"] {
                 let dir = storage.join(sub);
                 let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
@@ -125,11 +132,45 @@ fn spawn_cleanup(storage: PathBuf, ttl_hours: u64) {
                     let age = SystemTime::now()
                         .duration_since(modified)
                         .unwrap_or_default();
-                    if age > ttl && tokio::fs::remove_file(&path).await.is_ok() {
-                        tracing::info!("cleanup removed {}", path.display());
+                    if age <= ttl {
+                        continue;
+                    }
+                    let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
+                        continue;
+                    };
+                    let entry = library_entries.iter().find(|entry| {
+                        entry.kind_path_segment() == sub && entry.filename == filename
+                    });
+                    if let Some(entry) = entry {
+                        let entry_id = entry.id.clone();
+                        if library.remove(&entry_id).await {
+                            if sub == "outputs" {
+                                let _ = db.cache_delete_filename(filename).await;
+                            }
+                            tracing::info!("cleanup removed library entry {entry_id}");
+                        }
+                    } else if tokio::fs::remove_file(&path).await.is_ok() {
+                        if sub == "outputs" {
+                            let _ = db.cache_delete_filename(filename).await;
+                        }
+                        tracing::info!("cleanup removed orphan {}", path.display());
                     }
                 }
             }
         }
     });
+}
+
+trait CleanupEntryKind {
+    fn kind_path_segment(&self) -> &'static str;
+}
+
+impl CleanupEntryKind for MediaEntry {
+    fn kind_path_segment(&self) -> &'static str {
+        if self.kind == "output" {
+            "outputs"
+        } else {
+            "sources"
+        }
+    }
 }

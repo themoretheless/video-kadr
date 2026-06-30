@@ -16,9 +16,9 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 
 ## P0-A. Функциональные баги и потеря данных (часы-день каждый)
 
-- [ ] **Рассинхрон A/V при speed>2** - видео `setpts=1/speed` без границ, аудио `atempo` клампится 0.5..2.0. Клампить `speed` один раз в `normalize_edit_geometry` (или строить цепочку `atempo`). `tools/args.rs:138-173`
-- [ ] **NaN/Inf в числовых полях** - `speed/volume/brightness/.../fade` это `f64` без `is_finite()`; `{"speed":1e999}` ломает/вешает ffmpeg. Валидировать все `f64` + клампить в `normalize_edit_geometry`; `Trim` без finite-guard. `model.rs:111-167`, `tools/args.rs:524-529`
-- [ ] **Сегменты/trim не клампятся к длительности** - `end>duration` уходит в trim за EOF → пустой/битый concat. Клампить каждый сегмент к `[0, probe.duration]`, дропать нулевые. `handlers/mod.rs:476-497`
+- [x] **Рассинхрон A/V при speed>2** - видео `setpts=1/speed` без границ, аудио `atempo` клампится 0.5..2.0. Клампить `speed` один раз в `normalize_edit_geometry` (или строить цепочку `atempo`). `tools/args.rs:138-173`
+- [x] **NaN/Inf в числовых полях** - `speed/volume/brightness/.../fade` это `f64` без `is_finite()`; `{"speed":1e999}` ломает/вешает ffmpeg. Валидировать все `f64` + клампить в `normalize_edit_geometry`; `Trim` без finite-guard. `model.rs:111-167`, `tools/args.rs:524-529`
+- [x] **Сегменты/trim не клампятся к длительности** - `end>duration` уходит в trim за EOF → пустой/битый concat. Клампить каждый сегмент к `[0, probe.duration]`, дропать нулевые. `handlers/mod.rs:476-497`
 - [ ] **Пустой crop-инпут → NaN → 422** - `v-model.number` ставит NaN при очистке поля, бэкенд `u32` отвергает всё тело. Коэрсить на вводе до finite int. `components/EditPanel.vue:515-518`
 - [ ] **Гонка cancel↔finish + кэш-хит перетирает cancel** - `finish_job` гейтит `update_job_if_open`, но кэш-хит использует `update_job` и токен чистится до `cancel()`. Атомарно: решение об отмене под тем же локом, кэш-хит тоже через `update_job_if_open`. `handlers/mod.rs:275-292, 381-408`
 - [ ] **Параллельные идентичные edit → сирота-output** - оба мимо кэша, оба рендерят, второй `cache_put` перетирает первый, его файл осиротевает. Single-flight по `cache_key` (in-flight карта). `handlers/mod.rs:268-359`
@@ -28,7 +28,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [ ] **Autosave гонится с restore, затирает проект дефолтом** - `openFromLibrary` ставит дефолтный edit и заряжает 1000ms autosave; async `restoreProject` может прийти позже → сохранится дефолт. Флаг `restoring`, гасить таймер до завершения restore. `store.ts:345-368, 569-609`
 - [ ] **`redo()` не флашит pending debounce** - правка в окне 350ms перед redo теряется (в отличие от `undo()`). Добавить `if (historyTimer) recordChange()` в начало `redo()`. `store.ts:424-438`
 - [ ] **`run_with_progress` висит/осиротевает процессы** - `wait` ждёт EOF обоих пайпов (висит, если один открыт); `start_kill` бьёт только прямого ребёнка, внук-ffmpeg от yt-dlp выживает. Гонять `child.wait()` безусловно + бить process-group; ограничить post-kill wait таймаутом. `tools/mod.rs:314-351`
-- [ ] **Отмена/таймаут импорта оставляет мусор; TTL чистит без проверки ссылок** (из [docs/audit.md](docs/audit.md)) - чистить `sources/` по префиксу vid; TTL удалять только нессылаемые/неактивные. `handlers/mod.rs`, `main.rs:103-135`
+- [x] **Отмена/таймаут импорта оставляет мусор; TTL чистит без проверки ссылок** (из [docs/audit.md](docs/audit.md)) - чистить `sources/` по префиксу vid; TTL удалять только нессылаемые/неактивные. `handlers/mod.rs`, `main.rs:103-135`
 
 ## P0-B. Безопасность (обязательно перед любым выставлением наружу)
 
@@ -36,7 +36,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [ ] **Нет auth/ownership на projects** - любой клиент читает/удаляет любой проект (URL, имена, метаданные). Сессия/owner-ключ или явный single-tenant. `handlers/projects.rs:47-92`
 - [ ] **`ServeDir` отдаёт `app.db` + WAL/SHM** - `/files/app.db-wal` скачивается, утечка всей БД. Вынести БД из обслуживаемого дерева; монтировать только `sources/` и `outputs/`. `lib.rs:54`
 - [ ] **CORS `permissive()`** - любой сайт читает тела ответов (`/api/library`, `/api/projects`) из браузера жертвы. Явный allowlist origin, за конфигом. `lib.rs:56`
-- [ ] **SSRF обходится** - `validate_url` не резолвит DNS; yt-dlp ходит по редиректам; десятичные/hex IP и IPv4-mapped IPv6 (`::ffff:127.0.0.1`) и CGNAT `100.64/10` не блокируются. Резолвить host и гонять каждый IP через `is_blocked_ip`, нормализовать форму, ограничить редиректы. `tools/net.rs:10-47`, `tools/mod.rs:63-115`
+- [ ] **SSRF обходится** - `validate_url` теперь резолвит DNS и блокирует private/special IP edge cases; осталось закрыть редиректы `yt-dlp` на приватные адреса. `tools/net.rs:10-47`, `tools/mod.rs:63-115`
 
 ## P1. Надёжность, ресурсы, контракт ошибок
 
