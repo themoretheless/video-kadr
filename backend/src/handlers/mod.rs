@@ -268,6 +268,7 @@ pub async fn edit_handler(
     let job_id = Uuid::new_v4().to_string();
     let out_id = Uuid::new_v4().to_string();
     state.set_job(Job::pending(job_id.clone())).await;
+    let token = state.register_cancel(&job_id).await;
 
     // Content-addressed cache: an identical (source + edit) render is reused
     // instead of running ffmpeg again, as long as the output file still exists.
@@ -277,21 +278,22 @@ pub async fn edit_handler(
             .await
             .is_ok()
         {
-            state
-                .update_job(&job_id, |j| {
+            let updated = state
+                .update_job_if_open(&job_id, |j| {
                     j.status = JobStatus::Done;
                     j.result = Some(output);
                     j.progress = Some(100.0);
                     j.stage = None;
                 })
                 .await;
-            state.persist_job(&job_id).await;
+            if updated {
+                state.persist_job(&job_id).await;
+            }
+            state.clear_cancel(&job_id).await;
             return Json(json!({ "jobId": job_id }));
         }
         let _ = state.db.cache_delete(&cache_key).await;
     }
-
-    let token = state.register_cancel(&job_id).await;
 
     let st = state.clone();
     let jid = job_id.clone();
@@ -353,14 +355,19 @@ pub async fn edit_handler(
             let _ = tokio::fs::remove_file(&output_path).await;
         }
 
-        // Remember a successful render so an identical request can skip ffmpeg.
-        if let Ok(Some(info)) = &outcome {
-            let _ = st.db.cache_put(&cache_key, info, &filename).await;
-        }
+        let cache_info = match &outcome {
+            Ok(Some(info)) => Some(info.clone()),
+            _ => None,
+        };
 
         drop(tx);
         let _ = drain.await;
-        finish_job(&st, &jid, outcome, "output").await;
+        let updated = finish_job(&st, &jid, outcome, "output").await;
+        if updated {
+            if let Some(info) = &cache_info {
+                let _ = st.db.cache_put(&cache_key, info, &filename).await;
+            }
+        }
     });
 
     Json(json!({ "jobId": job_id }))
@@ -625,7 +632,12 @@ async fn cleanup_files_with_prefix(dir: &Path, prefix: &str) {
 /// Apply the terminal outcome of a worker to the job and clear its cancel token.
 /// `Ok(Some)` -> done (also recorded in the media library under `kind`),
 /// `Ok(None)` -> cancelled, `Err` -> error.
-async fn finish_job(st: &AppState, jid: &str, outcome: anyhow::Result<Option<Value>>, kind: &str) {
+async fn finish_job(
+    st: &AppState,
+    jid: &str,
+    outcome: anyhow::Result<Option<Value>>,
+    kind: &str,
+) -> bool {
     let updated = match outcome {
         Ok(Some(info)) => {
             let updated = st
@@ -663,6 +675,7 @@ async fn finish_job(st: &AppState, jid: &str, outcome: anyhow::Result<Option<Val
         st.persist_job(jid).await;
     }
     st.clear_cancel(jid).await;
+    updated
 }
 
 #[cfg(test)]
@@ -695,7 +708,7 @@ mod tests {
             .await;
         st.persist_job("j1").await;
 
-        finish_job(
+        let updated = finish_job(
             &st,
             "j1",
             Ok(Some(json!({
@@ -707,6 +720,7 @@ mod tests {
         )
         .await;
 
+        assert!(!updated);
         let job = st.get_job("j1").await.unwrap();
         assert_eq!(job.status, JobStatus::Cancelled);
         assert!(job.result.is_none());
