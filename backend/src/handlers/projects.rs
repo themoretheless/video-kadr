@@ -8,6 +8,8 @@ use serde_json::Value;
 use crate::db::Project;
 use crate::state::AppState;
 
+const MAX_PROJECT_JSON_BYTES: usize = 64 * 1024;
+
 /// `POST /api/projects` — create or update (keyed by `videoId`) the saved
 /// project for a clip: its `video` metadata plus the `edit` recipe. Acts as the
 /// autosave endpoint so reopening a clip restores the work.
@@ -28,6 +30,8 @@ pub async fn project_upsert_handler(
         .filter(|v| v.is_object())
         .cloned()
         .ok_or((StatusCode::BAD_REQUEST, "edit обязателен".to_string()))?;
+    ensure_project_json_size("video", &video)?;
+    ensure_project_json_size("edit", &edit)?;
     let name = body["name"]
         .as_str()
         .filter(|s| !s.trim().is_empty())
@@ -41,6 +45,19 @@ pub async fn project_upsert_handler(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(project))
+}
+
+fn ensure_project_json_size(field: &str, value: &Value) -> Result<(), (StatusCode, String)> {
+    let size = serde_json::to_vec(value)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("{field}: {e}")))?
+        .len();
+    if size > MAX_PROJECT_JSON_BYTES {
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!("{field} больше {MAX_PROJECT_JSON_BYTES} байт"),
+        ));
+    }
+    Ok(())
 }
 
 /// `GET /api/projects` — list saved projects, most recently updated first.

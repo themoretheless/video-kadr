@@ -41,7 +41,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 
 ## P1. Надёжность, ресурсы, контракт ошибок
 
-- [ ] **project JSON без size cap** - до ~2MB на любой videoId, БД растёт без предела. Кап `video_json/edit_json` (напр. 64KB), 413/400. `handlers/projects.rs:21-42`
+- [x] **project JSON без size cap** - `video` и `edit` ограничены 64KiB каждый; oversized autosave получает `413 Payload Too Large` до записи в SQLite. `handlers/projects.rs:21-42`
 - [ ] **upload без MIME/magic/quota** - доверяет расширению, отдаёт обратно. Allowlist расширений + проверка `codec_type` + квота. `handlers/mod.rs:144-231`
 - [ ] **ffmpeg без CPU/RAM/threads/filesize-лимитов**; нет no-progress watchdog (из audit-500 разделов «Ресурсы»).
 - [ ] **Логировать падение задачи** - `finish_job` Err не пишет `tracing::error!`, диагностики ноль. `handlers/mod.rs:576-583`

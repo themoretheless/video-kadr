@@ -551,6 +551,32 @@ async fn project_upsert_requires_video_and_edit() {
 }
 
 #[tokio::test]
+async fn project_upsert_rejects_oversized_json_fields() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+    let huge = "x".repeat(70 * 1024);
+
+    let (status, _b, raw) = send(
+        &app,
+        post_json(
+            "/api/projects",
+            json!({
+                "videoId": "huge",
+                "video": { "id": "huge", "blob": huge },
+                "edit": { "filter": "warm" }
+            }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(raw.contains("video"));
+
+    let (_status, body, _) = send(&app, get("/api/projects")).await;
+    assert!(body.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn upload_rejects_empty_file() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
