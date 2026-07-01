@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Multipart, Path as AxPath, State};
@@ -7,7 +8,7 @@ use axum::Json;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::{mpsc, OwnedSemaphorePermit};
+use tokio::sync::{mpsc, Mutex, OwnedMutexGuard, OwnedSemaphorePermit};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -273,26 +274,8 @@ pub async fn edit_handler(
     // Content-addressed cache: an identical (source + edit) render is reused
     // instead of running ffmpeg again, as long as the output file still exists.
     let cache_key = render_cache_key(&req);
-    if let Ok(Some((output, filename))) = state.db.cache_get(&cache_key).await {
-        if tokio::fs::metadata(state.outputs_dir().join(&filename))
-            .await
-            .is_ok()
-        {
-            let updated = state
-                .update_job_if_open(&job_id, |j| {
-                    j.status = JobStatus::Done;
-                    j.result = Some(output);
-                    j.progress = Some(100.0);
-                    j.stage = None;
-                })
-                .await;
-            if updated {
-                state.persist_job(&job_id).await;
-            }
-            state.clear_cancel(&job_id).await;
-            return Json(json!({ "jobId": job_id }));
-        }
-        let _ = state.db.cache_delete(&cache_key).await;
+    if finish_from_render_cache(&state, &job_id, &cache_key).await {
+        return Json(json!({ "jobId": job_id }));
     }
 
     let st = state.clone();
@@ -300,6 +283,16 @@ pub async fn edit_handler(
     tokio::spawn(async move {
         st.update_job(&jid, |j| j.stage = Some("queued".into()))
             .await;
+        let render_lock = st.render_lock(&cache_key).await;
+        let _render_guard =
+            match acquire_render_lock_or_cancelled(&st, &jid, &token, render_lock).await {
+                Some(g) => g,
+                None => return,
+            };
+        if finish_from_render_cache(&st, &jid, &cache_key).await {
+            return;
+        }
+
         let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
             Some(p) => p,
             None => return,
@@ -429,6 +422,63 @@ fn spawn_progress_drain(
             }
         }
     })
+}
+
+async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> bool {
+    let Ok(Some((output, filename))) = st.db.cache_get(cache_key).await else {
+        return false;
+    };
+    if !is_plain_filename(&filename) {
+        let _ = st.db.cache_delete(cache_key).await;
+        return false;
+    }
+    if tokio::fs::metadata(st.outputs_dir().join(&filename))
+        .await
+        .is_err()
+    {
+        let _ = st.db.cache_delete(cache_key).await;
+        return false;
+    }
+    let updated = st
+        .update_job_if_open(jid, |j| {
+            j.status = JobStatus::Done;
+            j.result = Some(output);
+            j.progress = Some(100.0);
+            j.stage = None;
+        })
+        .await;
+    if updated {
+        st.persist_job(jid).await;
+    }
+    st.clear_cancel(jid).await;
+    true
+}
+
+fn is_plain_filename(filename: &str) -> bool {
+    !filename.is_empty()
+        && !filename.contains('/')
+        && !filename.contains('\\')
+        && filename != "."
+        && filename != ".."
+        && Path::new(filename)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == filename)
+}
+
+async fn acquire_render_lock_or_cancelled(
+    st: &AppState,
+    jid: &str,
+    token: &CancellationToken,
+    lock: Arc<Mutex<()>>,
+) -> Option<OwnedMutexGuard<()>> {
+    tokio::select! {
+        guard = lock.lock_owned() => Some(guard),
+        _ = token.cancelled() => {
+            mark_cancelled(st, jid).await;
+            None
+        }
+    }
 }
 
 async fn acquire_job_permit_or_cancelled(
@@ -725,6 +775,76 @@ mod tests {
         assert_eq!(job.status, JobStatus::Cancelled);
         assert!(job.result.is_none());
         assert!(st.library.list().await.is_empty());
+    }
+
+    #[test]
+    fn cache_filenames_must_be_plain_output_names() {
+        assert!(is_plain_filename("output.mp4"));
+        assert!(is_plain_filename("b5b2b5b2-clip.webm"));
+
+        for filename in ["", ".", "..", "../x.mp4", "dir/x.mp4", "dir\\x.mp4"] {
+            assert!(
+                !is_plain_filename(filename),
+                "{filename:?} must be rejected"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn finish_from_render_cache_validates_filename_and_file() {
+        let (st, _dir) = state().await;
+
+        st.set_job(Job::pending("valid".into())).await;
+        let output = json!({
+            "id": "out",
+            "filename": "out.mp4",
+            "url": "/files/outputs/out.mp4"
+        });
+        tokio::fs::write(st.outputs_dir().join("out.mp4"), b"video")
+            .await
+            .unwrap();
+        st.db
+            .cache_put("valid-key", &output, "out.mp4")
+            .await
+            .unwrap();
+
+        assert!(finish_from_render_cache(&st, "valid", "valid-key").await);
+        let job = st.get_job("valid").await.unwrap();
+        assert_eq!(job.status, JobStatus::Done);
+        assert_eq!(job.progress, Some(100.0));
+        assert_eq!(job.result.unwrap()["filename"], "out.mp4");
+
+        st.set_job(Job::pending("unsafe".into())).await;
+        st.db
+            .cache_put(
+                "unsafe-key",
+                &json!({ "filename": "../leak.mp4" }),
+                "../leak.mp4",
+            )
+            .await
+            .unwrap();
+        assert!(!finish_from_render_cache(&st, "unsafe", "unsafe-key").await);
+        assert!(st.db.cache_get("unsafe-key").await.unwrap().is_none());
+        assert_eq!(
+            st.get_job("unsafe").await.unwrap().status,
+            JobStatus::Pending
+        );
+
+        st.set_job(Job::pending("missing".into())).await;
+        st.db
+            .cache_put(
+                "missing-key",
+                &json!({ "filename": "missing.mp4" }),
+                "missing.mp4",
+            )
+            .await
+            .unwrap();
+        assert!(!finish_from_render_cache(&st, "missing", "missing-key").await);
+        assert!(st.db.cache_get("missing-key").await.unwrap().is_none());
+        assert_eq!(
+            st.get_job("missing").await.unwrap().status,
+            JobStatus::Pending
+        );
     }
 
     #[tokio::test]

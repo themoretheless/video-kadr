@@ -32,6 +32,9 @@ pub struct AppState {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
     /// Per-job cancellation handles, removed when the job finishes.
     cancels: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// Per-render-cache-key locks. They serialize identical edit requests so
+    /// only one worker renders while followers wait and then reuse the cache.
+    render_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     /// Caps how many downloads/renders run at once; the rest wait as "queued".
     pub jobs_semaphore: Arc<Semaphore>,
     pub tools: Arc<ToolInfo>,
@@ -51,6 +54,7 @@ impl AppState {
         AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
+            render_locks: Arc::new(Mutex::new(HashMap::new())),
             jobs_semaphore: Arc::new(Semaphore::new(max_concurrent.max(1))),
             tools: Arc::new(tools),
             library,
@@ -150,6 +154,14 @@ impl AppState {
         }
     }
 
+    pub async fn render_lock(&self, key: &str) -> Arc<Mutex<()>> {
+        let mut guard = self.render_locks.lock().await;
+        guard
+            .entry(key.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
     pub fn sources_dir(&self) -> PathBuf {
         self.storage.join("sources")
     }
@@ -182,5 +194,21 @@ mod tests {
         std::env::set_var("RECOVER_JOBS_LIMIT", "12");
         assert_eq!(recover_jobs_limit(), 12);
         std::env::remove_var("RECOVER_JOBS_LIMIT");
+    }
+
+    #[tokio::test]
+    async fn render_lock_reuses_the_same_mutex_per_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+
+        let a = st.render_lock("same").await;
+        let b = st.render_lock("same").await;
+        let c = st.render_lock("other").await;
+
+        assert!(Arc::ptr_eq(&a, &b));
+        assert!(!Arc::ptr_eq(&a, &c));
     }
 }
