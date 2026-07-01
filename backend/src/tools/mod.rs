@@ -17,7 +17,7 @@ use anyhow::{anyhow, Context, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::time::Instant;
+use tokio::time::{timeout, Instant};
 use tokio_util::sync::CancellationToken;
 
 /// Probed metadata about a source video.
@@ -300,7 +300,9 @@ async fn run_with_progress(
     timeout: Duration,
 ) -> Result<(ProcStatus, String)> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    configure_process_group(&mut cmd);
     let mut child = cmd.spawn()?;
+    let child_id = child.id();
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take().expect("stderr piped");
 
@@ -334,7 +336,10 @@ async fn run_with_progress(
                 }
                 _ => err_done = true,
             },
-            res = child.wait(), if out_done && err_done => {
+            res = child.wait() => {
+                if !out_done || !err_done {
+                    signal_process_group(child_id, SignalKind::Terminate);
+                }
                 break match res {
                     Ok(es) if es.success() => ProcStatus::Ok,
                     _ => ProcStatus::Failed,
@@ -344,11 +349,55 @@ async fn run_with_progress(
     };
 
     if matches!(status, ProcStatus::Cancelled | ProcStatus::TimedOut) {
-        let _ = child.start_kill();
-        let _ = child.wait().await;
+        terminate_child_tree(&mut child, child_id).await;
     }
 
     Ok((status, err_buf))
+}
+
+#[cfg(unix)]
+fn configure_process_group(cmd: &mut Command) {
+    cmd.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn configure_process_group(_cmd: &mut Command) {}
+
+#[derive(Clone, Copy)]
+enum SignalKind {
+    Terminate,
+    Kill,
+}
+
+#[cfg(unix)]
+fn signal_process_group(child_id: Option<u32>, signal: SignalKind) {
+    let Some(pid) = child_id.and_then(|id| i32::try_from(id).ok()) else {
+        return;
+    };
+    let signal = match signal {
+        SignalKind::Terminate => libc::SIGTERM,
+        SignalKind::Kill => libc::SIGKILL,
+    };
+    // SAFETY: `pid` came from a successfully spawned child and `process_group(0)`
+    // placed it into a new group whose id equals that pid. Negative pid targets
+    // exactly that group; errors (already exited, permission, etc.) are ignored.
+    let _ = unsafe { libc::kill(-pid, signal) };
+}
+
+#[cfg(not(unix))]
+fn signal_process_group(_child_id: Option<u32>, _signal: SignalKind) {}
+
+async fn terminate_child_tree(child: &mut tokio::process::Child, child_id: Option<u32>) {
+    signal_process_group(child_id, SignalKind::Terminate);
+    #[cfg(not(unix))]
+    let _ = child.start_kill();
+    if timeout(Duration::from_secs(3), child.wait()).await.is_ok() {
+        return;
+    }
+
+    signal_process_group(child_id, SignalKind::Kill);
+    let _ = child.start_kill();
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }
 
 /// Keep the last `n` non-empty lines of a log blob.
@@ -373,5 +422,54 @@ mod tests {
             Some(100.0)
         );
         assert_eq!(parse_ytdlp_progress("some other line"), None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_with_progress_does_not_wait_for_background_pipe_holders() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("sleep 2 & printf 'progress=50\\n'");
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+
+        let result = timeout(
+            Duration::from_millis(700),
+            run_with_progress(
+                cmd,
+                |line| line.strip_prefix("progress=").and_then(|p| p.parse().ok()),
+                &tx,
+                &cancel,
+                Duration::from_secs(10),
+            ),
+        )
+        .await
+        .expect("child exit must win over pipe EOF")
+        .unwrap();
+
+        assert!(matches!(result.0, ProcStatus::Ok));
+        assert_eq!(rx.try_recv().unwrap(), 50.0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_with_progress_kills_process_group_on_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("escaped-child");
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg("(sleep 1; touch \"$1\") & wait")
+            .arg("runner")
+            .arg(&marker);
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+
+        let (status, _stderr) =
+            run_with_progress(cmd, |_| None, &tx, &cancel, Duration::from_millis(50))
+                .await
+                .unwrap();
+
+        assert!(matches!(status, ProcStatus::TimedOut));
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(!marker.exists(), "background child survived timeout");
     }
 }

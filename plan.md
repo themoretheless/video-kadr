@@ -27,7 +27,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] **`from_result` пустой id схлопывает медиа** - `add()` отбраковывает записи с пустым id/filename (guard перед dedup), два пустых id больше не сливаются. `library.rs:90-96`
 - [x] **Autosave гонится с restore, затирает проект дефолтом** - `openFromLibrary` ставит дефолтный edit и заряжает 1000ms autosave; async `restoreProject` может прийти позже → сохранится дефолт. Флаг `restoring`, гасить таймер до завершения restore. `store.ts:345-368, 569-609`
 - [x] **`redo()` не флашит pending debounce** - правка в окне 350ms перед redo теряется (в отличие от `undo()`). Добавить `if (historyTimer) recordChange()` в начало `redo()`. `store.ts:424-438`
-- [ ] **`run_with_progress` висит/осиротевает процессы** - `wait` ждёт EOF обоих пайпов (висит, если один открыт); `start_kill` бьёт только прямого ребёнка, внук-ffmpeg от yt-dlp выживает. Гонять `child.wait()` безусловно + бить process-group; ограничить post-kill wait таймаутом. `tools/mod.rs:314-351`
+- [x] **`run_with_progress` висит/осиротевает процессы** - `child.wait()` теперь участвует в select всегда, процессы запускаются в отдельной process group, cancel/timeout гасят группу SIGTERM→SIGKILL с bounded wait; покрыто регрессиями на pipe-holder/background child. `tools/mod.rs:314-351`
 - [x] **Отмена/таймаут импорта оставляет мусор; TTL чистит без проверки ссылок** (из [docs/audit.md](docs/audit.md)) - чистить `sources/` по префиксу vid; TTL удалять только нессылаемые/неактивные. `handlers/mod.rs`, `main.rs:103-135`
 
 ## P0-B. Безопасность (обязательно перед любым выставлением наружу)

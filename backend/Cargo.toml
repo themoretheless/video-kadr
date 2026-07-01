@@ -16,6 +16,7 @@ uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+libc = "0.2"
 # Embedded SQLite (statically bundled) for persistent projects / jobs.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 # Hashing the (source + edit) into a render-cache key.
