@@ -3,6 +3,7 @@ services:
     build: ./backend
     environment:
       STORAGE_DIR: /data
+      # Internal docker network only; the public surface is the frontend nginx proxy.
       BIND_ADDR: 0.0.0.0
     volumes:
       - storage:/data

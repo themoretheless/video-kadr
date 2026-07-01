@@ -32,10 +32,11 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 
 ## P0-B. Безопасность (обязательно перед любым выставлением наружу)
 
-- [ ] **Dockerfile `BIND_ADDR=0.0.0.0` + нет auth** - образ слушает все интерфейсы при полностью открытом API. Дефолт `127.0.0.1`, расширять только за аутентифицированным прокси. `Dockerfile:16-17`
+- [x] **Dockerfile `BIND_ADDR=0.0.0.0`** - образ по умолчанию снова слушает `127.0.0.1`; `docker-compose` оставляет явный `0.0.0.0` только для внутреннего nginx proxy. `backend/Dockerfile`, `docker-compose.yml`
+- [ ] **Нет глобального auth при внешней публикации API** - bind теперь безопаснее по дефолту, но при прямом expose наружу нужен auth/reverse-proxy guard.
 - [ ] **Нет auth/ownership на projects** - любой клиент читает/удаляет любой проект (URL, имена, метаданные). Сессия/owner-ключ или явный single-tenant. `handlers/projects.rs:47-92`
-- [ ] **`ServeDir` отдаёт `app.db` + WAL/SHM** - `/files/app.db-wal` скачивается, утечка всей БД. Вынести БД из обслуживаемого дерева; монтировать только `sources/` и `outputs/`. `lib.rs:54`
-- [ ] **CORS `permissive()`** - любой сайт читает тела ответов (`/api/library`, `/api/projects`) из браузера жертвы. Явный allowlist origin, за конфигом. `lib.rs:56`
+- [x] **`ServeDir` отдаёт `app.db` + WAL/SHM** - `/files` теперь монтирует только `sources/` и `outputs/`; корень storage и SQLite-файлы не публикуются. `lib.rs:54`
+- [x] **CORS `permissive()`** - заменён на явный allowlist (`CORS_ALLOW_ORIGINS`, defaults для local dev); wildcard/не-origin значения отбрасываются. `lib.rs:56`
 - [ ] **SSRF обходится** - `validate_url` теперь резолвит DNS и блокирует private/special IP edge cases; осталось закрыть редиректы `yt-dlp` на приватные адреса. `tools/net.rs:10-47`, `tools/mod.rs:63-115`
 
 ## P1. Надёжность, ресурсы, контракт ошибок

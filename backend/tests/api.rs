@@ -403,6 +403,30 @@ async fn library_delete_invalidates_output_render_cache() {
 }
 
 #[tokio::test]
+async fn files_route_serves_only_media_subdirectories() {
+    let (state, _d) = make_state(true, true).await;
+    tokio::fs::write(state.sources_dir().join("clip.mp4"), b"source")
+        .await
+        .unwrap();
+    tokio::fs::write(state.outputs_dir().join("render.mp4"), b"output")
+        .await
+        .unwrap();
+
+    let app = router(state);
+    let (status, _body, raw) = send(&app, get("/files/sources/clip.mp4")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(raw, "source");
+
+    let (status, _body, raw) = send(&app, get("/files/outputs/render.mp4")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(raw, "output");
+
+    let (status, _body, raw) = send(&app, get("/files/app.db")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!raw.contains("SQLite"));
+}
+
+#[tokio::test]
 async fn project_upsert_list_get_delete_flow() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
