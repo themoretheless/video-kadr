@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::library::MediaEntry;
 use crate::model::{Crop, EditRequest, ImportRequest, Job, JobStatus, Scale, Trim};
-use crate::state::AppState;
+use crate::state::{AppState, CancelJobOutcome};
 use crate::tools::{self, Done};
 
 mod health;
@@ -382,28 +382,16 @@ pub async fn cancel_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
 ) -> (StatusCode, Json<Value>) {
-    match state.get_job(&id).await {
-        None => (
+    match state.cancel_open_job(&id).await {
+        CancelJobOutcome::NotFound => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "job not found" })),
         ),
-        Some(job) if job.status.is_terminal() => (
+        CancelJobOutcome::AlreadyFinished => (
             StatusCode::CONFLICT,
             Json(json!({ "error": "job already finished" })),
         ),
-        Some(_) => {
-            state.cancel(&id).await;
-            state
-                .update_job(&id, |j| {
-                    if !j.status.is_terminal() {
-                        j.status = JobStatus::Cancelled;
-                        j.stage = None;
-                    }
-                })
-                .await;
-            state.persist_job(&id).await;
-            (StatusCode::OK, Json(json!({ "status": "cancelled" })))
-        }
+        CancelJobOutcome::Cancelled => (StatusCode::OK, Json(json!({ "status": "cancelled" }))),
     }
 }
 

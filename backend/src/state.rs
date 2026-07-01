@@ -43,6 +43,13 @@ pub struct AppState {
     pub storage: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelJobOutcome {
+    Cancelled,
+    NotFound,
+    AlreadyFinished,
+}
+
 impl AppState {
     pub fn new(
         storage: PathBuf,
@@ -144,14 +151,26 @@ impl AppState {
         self.cancels.lock().await.remove(id);
     }
 
-    /// Signal cancellation for a job. Returns true if a live token was found.
-    pub async fn cancel(&self, id: &str) -> bool {
+    /// Atomically mark a non-terminal job as cancelled, then signal its worker.
+    pub async fn cancel_open_job(&self, id: &str) -> CancelJobOutcome {
+        {
+            let mut guard = self.jobs.lock().await;
+            let Some(job) = guard.get_mut(id) else {
+                return CancelJobOutcome::NotFound;
+            };
+            if job.status.is_terminal() {
+                return CancelJobOutcome::AlreadyFinished;
+            }
+            job.status = JobStatus::Cancelled;
+            job.stage = None;
+            job.progress = None;
+        }
+
         if let Some(token) = self.cancels.lock().await.remove(id) {
             token.cancel();
-            true
-        } else {
-            false
         }
+        self.persist_job(id).await;
+        CancelJobOutcome::Cancelled
     }
 
     pub async fn render_lock(&self, key: &str) -> Arc<Mutex<()>> {
@@ -210,5 +229,50 @@ mod tests {
 
         assert!(Arc::ptr_eq(&a, &b));
         assert!(!Arc::ptr_eq(&a, &c));
+    }
+
+    #[tokio::test]
+    async fn cancel_open_job_is_atomic_for_non_terminal_jobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+
+        st.set_job(Job::pending("running".into())).await;
+        let token = st.register_cancel("running").await;
+        st.update_job("running", |j| {
+            j.status = JobStatus::Running;
+            j.stage = Some("processing".into());
+            j.progress = Some(12.0);
+        })
+        .await;
+
+        assert_eq!(
+            st.cancel_open_job("running").await,
+            CancelJobOutcome::Cancelled
+        );
+        assert!(token.is_cancelled());
+        let job = st.get_job("running").await.unwrap();
+        assert_eq!(job.status, JobStatus::Cancelled);
+        assert!(job.stage.is_none());
+        assert!(job.progress.is_none());
+        assert_eq!(
+            st.db.load_jobs().await.unwrap()[0].status,
+            JobStatus::Cancelled
+        );
+
+        assert_eq!(
+            st.cancel_open_job("missing").await,
+            CancelJobOutcome::NotFound
+        );
+
+        st.set_job(Job::pending("done".into())).await;
+        st.update_job("done", |j| j.status = JobStatus::Done).await;
+        assert_eq!(
+            st.cancel_open_job("done").await,
+            CancelJobOutcome::AlreadyFinished
+        );
+        assert_eq!(st.get_job("done").await.unwrap().status, JobStatus::Done);
     }
 }
