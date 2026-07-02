@@ -376,6 +376,25 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
 | [Config, build, Docker, CI, observability](#module-ops) | 46 | Env разбросан по местам; логи/метрики; Docker hardening; toolchain drift. |
 | [Доменная модель и архитектура целиком (cross-cutting SOLID и DRY)](#module-domain) | 48 | Тройная роль EditRequest; контракт правки в 6 местах; нет Timeline-IR. |
 
+### Как проходить список маленькими кусками
+
+1. Выбери один модуль из таблицы, не весь документ.
+2. Внутри модуля сначала закрывай 🔴, потом 🟠, потом 🟡.
+3. Если пункт требует много файлов, сначала сделай только safe-extract
+   (перемещение/переименование без смены поведения), затем отдельным коммитом -
+   изменение поведения.
+4. После каждого маленького куска - `make check`.
+
+### Три итерации раунда 3
+
+- **Итерация 1: широкий проход.** Для каждого из 12 модулей собраны все заметные
+  нарушения SRP/OCP/DIP/DRY, UI/UX-долг, тестовые дыры и эксплуатационные риски.
+- **Итерация 2: углубление.** High/medium пункты перечитаны по файлам и привязаны
+  к конкретным зонам кода, чтобы рекомендация была исполнимой, а не общей.
+- **Итерация 3: ревью и дедуп.** Явные повторы сняты, спорные низкоуверенные
+  пункты понижены, а визуальный дизайн выделен отдельным модулем с дизайнерской
+  линзой: иерархия, плотность, типографика, состояния, mobile/responsive.
+
 <a id="module-http"></a>
 ### Модуль: HTTP-хендлеры и роутинг (51)
 
@@ -920,8 +939,8 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 695. 🟡 [проблема] Docker build не кэширует cargo-зависимости — любое изменение исходников пересобирает все крейты заново - `backend/Dockerfile` -> Сначала COPY Cargo.toml/Cargo.lock и собрать зависимости отдельным слоем (cargo build с пустым src/main.rs-заглушкой), затем COPY остальных исходников.
 696. 🟡 [проблема] CI не собирает и не проверяет сами Docker-образы - `.github/workflows/ci.yml` -> Добавить job docker в ci.yml с docker build ./backend и docker build ./frontend, либо docker compose build.
 697. 🟡 [идея] В CI нет сканирования зависимостей на известные уязвимости - `.github/workflows/ci.yml` -> Добавить шаг cargo audit в backend job и npm audit --audit-level=high в frontend job.
-698. 🟡 [проблема] README требует Node.js 18+, но CI и Dockerfile используют Node 20 — версии не синхронизированы - `README.md` -> Поднять минимальную версию в README до 20+ и добавить .nvmrc с той же версией, что в CI и Dockerfile.
-699. 🟡 [проблема] README не документирует CORS_ALLOW_ORIGINS и RECOVER_JOBS_LIMIT, хотя это реальные переменные окружения - `README.md` -> Добавить CORS_ALLOW_ORIGINS и RECOVER_JOBS_LIMIT в список переменных окружения в README.md с их дефолтами.
+698. ✅ [проблема] README требует Node.js 18+, но CI и Dockerfile используют Node 20 — версии не синхронизированы - `README.md` -> README поднят до Node.js 20+, добавлен `.nvmrc` со значением `20`.
+699. ✅ [проблема] README не документирует CORS_ALLOW_ORIGINS и RECOVER_JOBS_LIMIT, хотя это реальные переменные окружения - `README.md` -> README теперь перечисляет `CORS_ALLOW_ORIGINS`, `RECOVER_JOBS_LIMIT` и фактические дефолты.
 700. 🟠 [баг] BIND_ADDR парсится с молчаливым фоллбэком на 127.0.0.1 при невалидном значении - `backend/src/main.rs` -> Заменить unwrap_or_else на явный panic!/expect с сообщением о некорректном BIND_ADDR при ошибке парсинга.
 701. 🟡 [проблема/DIP] main.rs напрямую создаёт пути sources/outputs вместо делегирования Library - `backend/src/main.rs` -> Вынести создание storage-подкаталогов в Library::load или AppState::new, чтобы main.rs не знал о конкретных именах поддиректорий.
 702. 🟠 [проблема] MAX_CONCURRENT_JOBS, FILE_TTL_HOURS, MAX_UPLOAD_BYTES читаются через .ok().and_then(parse) без проверки на 0 или неразумные значения - `backend/src/main.rs` -> Добавить валидацию с понятным log::error!/panic при значениях вне разумного диапазона (например MAX_CONCURRENT_JOBS < 1).
@@ -949,7 +968,7 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 724. 🟠 [проблема] Путь скачивания через yt-dlp не покрыт ни одним тестом, и CI даже не устанавливает yt-dlp - `.github/workflows/ci.yml` -> Либо установить yt-dlp в CI и добавить интеграционный тест с фиктивным/локальным медиа-источником, либо явно задокументировать это ограничение покрытия.
 725. 🟡 [проблема/SRP] MAX_HEIGHT читается из env внутри download_video при каждом вызове вместо однократного чтения при старте - `backend/src/tools/mod.rs` -> Перенести чтение MAX_HEIGHT в main.rs/Config и передавать значение параметром в download_video.
 726. 🟡 [проблема] MAX_HEIGHT не покрыт unit-тестом, в отличие от аналогичного RECOVER_JOBS_LIMIT - `backend/src/tools/mod.rs` -> Вынести чтение MAX_HEIGHT в отдельную функцию с unit-тестом по образцу recover_jobs_limit().
-727. 🟡 [проблема] RUST_LOG не задокументирован в README, хотя реально читается через EnvFilter - `README.md` -> Добавить RUST_LOG в список переменных окружения README.md с дефолтным значением и примером использования.
+727. ✅ [проблема] RUST_LOG не задокументирован в README, хотя реально читается через EnvFilter - `README.md` -> README теперь перечисляет `RUST_LOG` и дефолт `info,tower_http=info`.
 728. 🟡 [улучшение/ISP] tokio подключён с features = ["full"] вместо реально используемого подмножества - `backend/Cargo.toml` -> Заменить "full" на явный список используемых фич (rt-multi-thread, macros, fs, process, signal, net, time, sync).
 729. 🟡 [проблема/DRY] tower объявлен дважды в Cargo.toml — в [dependencies] и [dev-dependencies] с разными наборами фич - `backend/Cargo.toml` -> Объединить в одну запись tower в [dependencies] с нужными фичами, либо явно прокомментировать, почему нужно раздельное объявление.
 730. 🟡 [проблема] docker-compose.yml не используется и не проверяется нигде в CI - `docker-compose.yml` -> Добавить шаг docker compose config -q (валидация синтаксиса) или полноценный docker compose build в CI.

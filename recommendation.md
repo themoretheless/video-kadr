@@ -240,6 +240,22 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 отмечай сделанное. Модули почти не пересекаются по файлам - можно закрывать
 по одному, не боясь конфликтов с остальными.
 
+**Как брать по маленьким кускам.**
+
+1. Сначала бери один модуль и один severity-слой: например, только 🔴 из
+   `Frontend компоненты`, не весь frontend.
+2. Для рефакторинга сначала делай safe-extract без изменения поведения, потом
+   отдельным коммитом меняй поведение.
+3. Для UI/UX сначала исправляй состояния/иерархию/доступность, потом эстетику:
+   так дизайнерские правки меньше ломают сценарии.
+4. После каждого куска запускай `make check`; для frontend-визуала дополнительно
+   открывай dev-сборку и проверяй desktop/mobile.
+
+**Рекомендуемые первые 12 кусочков:** P0-9 upload XSS, P0-10 SSRF redirect,
+P0-11 cancel→Running race, `upload_handler` через semaphore, `AppError`,
+`Config`, `JobRunner`, `EditPanel` split, `store.ts` split, RectOverlay/TrimSlider
+cleanup, design empty states, shared format/time utils.
+
 ### HTTP-хендлеры и роутинг (51)
 
 - [ ] 🔴 **219.** (проблема) import_handler смешивает валидацию URL, оркестрацию очереди, скачивание, probing и persistence в одной async-функции -> Вынести оркестрацию job (create/permit/progress/finish) в общий раннер, а скачивание+probing в отдельную доменную функцию, которую import_handler только вызывает. `backend/src/handlers/mod.rs`
@@ -764,8 +780,8 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 - [ ] 🟡 **694.** (проблема) apt-get install ffmpeg без версии — рантайм ffmpeg не зафиксирован -> Указать ffmpeg=<version> явно или зафиксировать образ по digest, чтобы версия ffmpeg была воспроизводимой. `backend/Dockerfile`
 - [ ] 🟡 **695.** (проблема) Docker build не кэширует cargo-зависимости — любое изменение исходников пересобирает все крейты заново -> Сначала COPY Cargo.toml/Cargo.lock и собрать зависимости отдельным слоем (cargo build с пустым src/main.rs-заглушкой), затем COPY остальных исходников. `backend/Dockerfile`
 - [ ] 🟡 **696.** (проблема) CI не собирает и не проверяет сами Docker-образы -> Добавить job docker в ci.yml с docker build ./backend и docker build ./frontend, либо docker compose build. `.github/workflows/ci.yml`
-- [ ] 🟡 **698.** (проблема) README требует Node.js 18+, но CI и Dockerfile используют Node 20 — версии не синхронизированы -> Поднять минимальную версию в README до 20+ и добавить .nvmrc с той же версией, что в CI и Dockerfile. `README.md`
-- [ ] 🟡 **699.** (проблема) README не документирует CORS_ALLOW_ORIGINS и RECOVER_JOBS_LIMIT, хотя это реальные переменные окружения -> Добавить CORS_ALLOW_ORIGINS и RECOVER_JOBS_LIMIT в список переменных окружения в README.md с их дефолтами. `README.md`
+- [x] 🟡 **698.** (проблема) README требует Node.js 18+, но CI и Dockerfile используют Node 20 — версии не синхронизированы -> README поднят до Node.js 20+, добавлен `.nvmrc` со значением `20`. `README.md`
+- [x] 🟡 **699.** (проблема) README не документирует CORS_ALLOW_ORIGINS и RECOVER_JOBS_LIMIT, хотя это реальные переменные окружения -> README теперь перечисляет `CORS_ALLOW_ORIGINS`, `RECOVER_JOBS_LIMIT` и дефолты. `README.md`
 - [ ] 🟡 **701.** (проблема) main.rs напрямую создаёт пути sources/outputs вместо делегирования Library -> Вынести создание storage-подкаталогов в Library::load или AppState::new, чтобы main.rs не знал о конкретных именах поддиректорий. `backend/src/main.rs`
 - [ ] 🟡 **704.** (проблема) Нет trace-идентификатора на уровне job — лог-строки одной задачи не сопоставить друг с другом -> Обернуть обработку каждой задачи в tracing::info_span!("job", job_id = %id) при её запуске. `backend/src/handlers/mod.rs`
 - [ ] 🟡 **705.** (проблема) Нет метрик Prometheus/OpenMetrics для очереди задач и рендеров -> Подключить metrics-exporter-prometheus и отдавать /metrics с счётчиками активных/завершённых/упавших задач. `backend/src/main.rs`
@@ -782,7 +798,7 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 - [ ] 🟡 **723.** (баг) FILE_TTL_HOURS из env умножается на 3600 без проверки переполнения u64 -> Использовать ttl_hours.saturating_mul(3600) или checked_mul с логированием ошибки вместо прямого умножения. `backend/src/main.rs`
 - [ ] 🟡 **725.** (проблема) MAX_HEIGHT читается из env внутри download_video при каждом вызове вместо однократного чтения при старте -> Перенести чтение MAX_HEIGHT в main.rs/Config и передавать значение параметром в download_video. `backend/src/tools/mod.rs`
 - [ ] 🟡 **726.** (проблема) MAX_HEIGHT не покрыт unit-тестом, в отличие от аналогичного RECOVER_JOBS_LIMIT -> Вынести чтение MAX_HEIGHT в отдельную функцию с unit-тестом по образцу recover_jobs_limit(). `backend/src/tools/mod.rs`
-- [ ] 🟡 **727.** (проблема) RUST_LOG не задокументирован в README, хотя реально читается через EnvFilter -> Добавить RUST_LOG в список переменных окружения README.md с дефолтным значением и примером использования. `README.md`
+- [x] 🟡 **727.** (проблема) RUST_LOG не задокументирован в README, хотя реально читается через EnvFilter -> README теперь перечисляет `RUST_LOG` и фактический дефолт `info,tower_http=info`. `README.md`
 - [ ] 🟡 **729.** (проблема) tower объявлен дважды в Cargo.toml — в [dependencies] и [dev-dependencies] с разными наборами фич -> Объединить в одну запись tower в [dependencies] с нужными фичами, либо явно прокомментировать, почему нужно раздельное объявление. `backend/Cargo.toml`
 - [ ] 🟡 **730.** (проблема) docker-compose.yml не используется и не проверяется нигде в CI -> Добавить шаг docker compose config -q (валидация синтаксиса) или полноценный docker compose build в CI. `docker-compose.yml`
 - [ ] 🟡 **731.** (проблема) depends_on в docker-compose без condition: service_healthy — frontend стартует раньше готовности backend -> Добавить HEALTHCHECK в backend/Dockerfile и заменить depends_on на форму condition: service_healthy. `docker-compose.yml`

@@ -60,7 +60,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 
 - [ ] **yt-dlp через curl без `-f`/pin/checksum** - на не-200 в бинарь пишется тело ошибки; `latest` невоспроизводим. `curl -fSL` + пин-тег + sha256. `Dockerfile:11-12`
 - [ ] Логи жизненного цикла задач (`tracing::info!` на create/start/done/cancel, `warn/error` на fail).
-- [ ] README-дрейф (env/Node/API/фичи), `RUST_LOG`, MSRV, healthcheck/non-root в Docker/compose.
+- [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
 
 ---
 

@@ -50,17 +50,20 @@ GET  /api/projects/by-video/:videoId -> Project | 404
 GET  /api/projects/:id      -> Project | 404
 DELETE /api/projects/:id    -> 204 | 404
 GET  /api/health            -> { status, ffmpeg, ytdlp, ffmpegVersion, ytdlpVersion }
-GET  /files/...             -> исходники и результаты (с поддержкой Range)
+GET  /files/sources/...     -> исходники (с поддержкой Range)
+GET  /files/outputs/...     -> результаты (с поддержкой Range)
 ```
 
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
 `MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2), `JOB_TIMEOUT_SECS` (1800),
-`FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ).
+`FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ),
+`RECOVER_JOBS_LIMIT` (200), `CORS_ALLOW_ORIGINS` (локальные dev-origin'ы через
+запятую), `RUST_LOG` (`info,tower_http=info`).
 
 ## Требования
 
 - Rust (cargo)
-- Node.js 18+
+- Node.js 20+ (`.nvmrc` зафиксирован на 20)
 - `ffmpeg` и `yt-dlp` в `PATH`
   ```
   brew install ffmpeg yt-dlp
@@ -133,7 +136,10 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 единый бэклог с идеями/фичами - в [docs/ideas/top-200-backlog.md](docs/ideas/top-200-backlog.md).
 Синхронизированный top-200 продублирован в `architecture.md` как диагноз и в
 `recommendation.md` как карта исправлений; источник правды по багам - `docs/audit.md`,
-порядок работ - `plan.md`.
+порядок работ - `plan.md`. Если нужен именно большой список «500 предложений,
+улучшений, проблем и ошибок», читай так: `docs/audit-500.md` = 509 широких
+находок по коду; `architecture.md` и `recommendation.md` = 565 SOLID/DRY-пунктов,
+разбитых на 12 маленьких модулей, чтобы можно было брать по одному кусочку.
 
 **Раунд 2 (1 июля 2026).** После 5 P0-фиксов (single-flight рендер-кэша,
 process-group kill, атомарная отмена задач, CORS/ServeDir lockdown, лимит на
@@ -159,6 +165,10 @@ frontend-store, frontend-компоненты, **визуальный дизай
 в [architecture.md](architecture.md#модульная-карта-soliddry-декомпозиция-2-июля-2026);
 чеклист с чекбоксами для работы - в
 [recommendation.md](recommendation.md#soliddry-модули-по-кусочкам-2-июля-2026).
+Самый удобный порядок чтения: сначала таблица модулей в `architecture.md`, затем
+один соответствующий чеклист-модуль в `recommendation.md`, затем при споре -
+подтверждение/доказательство в `docs/audit.md` или широкий источник в
+`docs/audit-500.md`.
 
 ```
 frontend (Vue 3 + Vite)
