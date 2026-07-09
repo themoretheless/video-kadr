@@ -256,6 +256,30 @@ P0-11 cancel→Running race, `upload_handler` через semaphore, `AppError`,
 `Config`, `JobRunner`, `EditPanel` split, `store.ts` split, RectOverlay/TrimSlider
 cleanup, design empty states, shared format/time utils.
 
+**Сверка 9 июля 2026.** Этот файл синхронизирован с `architecture.md`: здесь
+565 чекбоксов, в архитектуре - те же 565 пунктов с пояснениями, а
+`docs/audit-500.md` остаётся широким источником на 509 проблем/улучшений. Новые
+PR лучше делать не по всему списку, а по одному маленькому вертикальному срезу:
+один модуль, один severity-слой, один критерий приёмки.
+
+**Следующие маленькие PR по приоритету.**
+
+1. Закрыть upload XSS: magic-byte sniffing, безопасный `Content-Type`, тест на HTML/SVG payload.
+2. Закрыть SSRF redirect: проверять финальный URL/IP после редиректов `yt-dlp`.
+3. Добить cancel-to-running race: отменённая queued-задача не должна становиться `Running`.
+4. Провести upload через общий лимит или отдельный upload semaphore.
+5. Вынести единый `AppError` и JSON error boundary для backend API.
+6. Собрать `Config` один раз на старте и убрать scattered env reads.
+7. Вынести `JobRunner`: create, acquire, progress, finish, cancel, panic handling.
+8. Разделить `EditPanel.vue` на секции trim/crop/scale/effects/export.
+9. Разделить `store.ts` на `media/project/timeline/export/ui` без смены UX.
+10. Убрать дубли drag/time math из `RectOverlay` и `TrimSlider`.
+11. Добавить экспорт-без-изменений warning и пустые/error states как first-class UI.
+12. Вынести shared format/time/quality helpers и покрыть `tierToCrf` тестами.
+13. Добавить typed API/OpenAPI слой между Rust и TS.
+14. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
+15. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
+
 ### HTTP-хендлеры и роутинг (51)
 
 - [ ] 🔴 **219.** (проблема) import_handler смешивает валидацию URL, оркестрацию очереди, скачивание, probing и persistence в одной async-функции -> Вынести оркестрацию job (create/permit/progress/finish) в общий раннер, а скачивание+probing в отдельную доменную функцию, которую import_handler только вызывает. `backend/src/handlers/mod.rs`
