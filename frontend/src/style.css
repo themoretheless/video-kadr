@@ -15,9 +15,9 @@
   --ok: #3ecf8e;
   --warn: #f5b84f;
 
-  --radius: 10px;
-  --radius-sm: 7px;
-  --radius-lg: 14px;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 8px;
   --ring: 0 0 0 3px var(--accent-soft);
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   color-scheme: dark;
@@ -76,7 +76,7 @@ body {
 .topbar h1 {
   margin: 0 0 4px;
   font-size: 28px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .topbar .sub {
@@ -305,6 +305,10 @@ body {
   align-items: start;
 }
 
+.editor > * {
+  min-width: 0;
+}
+
 @media (max-width: 860px) {
   .editor {
     grid-template-columns: 1fr;
@@ -418,7 +422,7 @@ body {
 .group-title {
   font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--faint);
   margin-bottom: 12px;
 }
@@ -509,7 +513,7 @@ body {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 8px 15px;
   min-height: 34px;
   cursor: pointer;
@@ -673,6 +677,46 @@ body {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.export-warning {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--warn);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.export-warning strong {
+  display: block;
+  font-size: 14px;
+}
+
+.export-warning p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.export-warning-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.export-submit {
+  min-height: 48px;
+}
+
+@media (max-width: 560px) {
+  .export-warning-actions .btn {
+    flex: 1;
+  }
 }
 
 /* Progress */

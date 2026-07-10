@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { state } from '../store'
 
 interface Rect {
@@ -71,7 +71,10 @@ const rectStyle = computed(() => {
 })
 
 function toSrc(dxPx: number, dyPx: number) {
-  const r = root.value!.getBoundingClientRect()
+  const element = root.value
+  if (!element) return null
+  const r = element.getBoundingClientRect()
+  if (r.width <= 0 || r.height <= 0) return null
   const { W, H } = dims()
   return { dx: (dxPx / r.width) * W, dy: (dyPx / r.height) * H }
 }
@@ -90,7 +93,12 @@ function begin(m: Mode, e: PointerEvent) {
 
 function onMove(e: PointerEvent) {
   if (!dragMode) return
-  const { dx, dy } = toSrc(e.clientX - startX, e.clientY - startY)
+  const delta = toSrc(e.clientX - startX, e.clientY - startY)
+  if (!delta) {
+    stopDrag()
+    return
+  }
+  const { dx, dy } = delta
   const { W, H } = dims()
   const minW = Math.min(MIN, W)
   const minH = Math.min(MIN, H)
@@ -117,10 +125,16 @@ function onMove(e: PointerEvent) {
 }
 
 function onUp() {
+  stopDrag()
+}
+
+function stopDrag() {
   dragMode = null
   window.removeEventListener('pointermove', onMove)
   window.removeEventListener('pointerup', onUp)
 }
+
+onUnmounted(stopDrag)
 </script>
 
 <template>

@@ -12,11 +12,12 @@ pub mod state;
 pub mod tools;
 
 use axum::extract::DefaultBodyLimit;
-use axum::http::{header, HeaderValue, Method};
+use axum::http::{header, HeaderName, HeaderValue, Method};
 use axum::routing::{delete, get, post};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 use state::AppState;
@@ -54,6 +55,14 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
         .route("/api/health", get(handlers::health_handler))
         .nest_service("/files/sources", ServeDir::new(storage.join("sources")))
         .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("content-security-policy"),
+            HeaderValue::from_static("sandbox; default-src 'none'"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-content-type-options"),
+            HeaderValue::from_static("nosniff"),
+        ))
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer())
         .with_state(state)

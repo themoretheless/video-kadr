@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -59,10 +59,16 @@ function onMove(e: PointerEvent): void {
 }
 
 function onUp(): void {
+  stopDrag()
+}
+
+function stopDrag(): void {
   active = null
   window.removeEventListener('pointermove', onMove)
   window.removeEventListener('pointerup', onUp)
 }
+
+onUnmounted(stopDrag)
 
 function startDrag(which: 'start' | 'end', e: PointerEvent): void {
   active = which

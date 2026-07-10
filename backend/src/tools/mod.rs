@@ -21,6 +21,7 @@ use tokio::time::{timeout, Instant};
 use tokio_util::sync::CancellationToken;
 
 /// Probed metadata about a source video.
+#[derive(Debug, Clone)]
 pub struct ProbeInfo {
     pub duration: f64,
     pub width: u32,
@@ -28,6 +29,8 @@ pub struct ProbeInfo {
     pub fps: Option<f64>,
     pub vcodec: Option<String>,
     pub acodec: Option<String>,
+    /// Comma-separated demuxer aliases reported by ffprobe.
+    pub format_name: Option<String>,
 }
 
 /// How a child process finished from our point of view.
@@ -210,6 +213,7 @@ pub async fn probe_video(path: &Path) -> Result<ProbeInfo> {
         .as_str()
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(0.0);
+    let format_name = v["format"]["format_name"].as_str().map(str::to_owned);
 
     let (mut width, mut height) = (0u32, 0u32);
     let mut fps = None;
@@ -239,6 +243,7 @@ pub async fn probe_video(path: &Path) -> Result<ProbeInfo> {
         fps,
         vcodec,
         acodec,
+        format_name,
     })
 }
 

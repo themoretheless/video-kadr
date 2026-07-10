@@ -2,12 +2,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{Multipart, Path as AxPath, State};
+use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, Mutex, OwnedMutexGuard, OwnedSemaphorePermit};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -20,6 +19,7 @@ use crate::tools::{self, Done};
 mod health;
 mod library;
 mod projects;
+mod upload;
 
 pub use health::health_handler;
 pub use library::{library_delete_handler, library_list_handler};
@@ -27,6 +27,7 @@ pub use projects::{
     project_by_video_handler, project_delete_handler, project_get_handler, project_list_handler,
     project_upsert_handler,
 };
+pub use upload::upload_handler;
 
 /// Per-job wall-clock limit (download or render), overridable via env.
 fn job_timeout() -> Duration {
@@ -54,19 +55,24 @@ pub async fn import_handler(
     tokio::spawn(async move {
         // Reject bad/unsafe URLs before doing any work.
         if let Err(e) = tools::validate_url(&req.url).await {
-            st.update_job(&jid, |j| {
-                j.status = JobStatus::Error;
-                j.error = Some(e.to_string());
-            })
-            .await;
-            st.persist_job(&jid).await;
+            let updated = st
+                .update_job_if_open(&jid, |j| {
+                    j.status = JobStatus::Error;
+                    j.error = Some(e.to_string());
+                })
+                .await;
+            if updated {
+                st.persist_job(&jid).await;
+            }
             st.clear_cancel(&jid).await;
             return;
         }
 
         // Wait for a queue slot.
-        st.update_job(&jid, |j| j.stage = Some("queued".into()))
-            .await;
+        if !mark_queued(&st, &jid).await {
+            st.clear_cancel(&jid).await;
+            return;
+        }
         let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
             Some(p) => p,
             None => return,
@@ -76,12 +82,10 @@ pub async fn import_handler(
             return;
         }
 
-        st.update_job(&jid, |j| {
-            j.status = JobStatus::Running;
-            j.stage = Some("downloading".into());
-            j.progress = Some(0.0);
-        })
-        .await;
+        if !mark_running(&st, &jid, "downloading").await {
+            st.clear_cancel(&jid).await;
+            return;
+        }
 
         let (tx, rx) = mpsc::unbounded_channel::<f64>();
         let drain = spawn_progress_drain(st.clone(), jid.clone(), rx);
@@ -139,117 +143,6 @@ pub async fn import_handler(
     Json(json!({ "jobId": job_id }))
 }
 
-/// `POST /api/upload` — accept a multipart file upload, store it as a source,
-/// probe it, and return the same VideoInfo shape as a completed import (no job:
-/// the work is just a disk write plus a quick probe).
-pub async fn upload_handler(
-    State(state): State<AppState>,
-    mut multipart: Multipart,
-) -> Result<Json<Value>, (StatusCode, String)> {
-    let video_id = Uuid::new_v4().to_string();
-    let sources = state.sources_dir();
-
-    while let Some(mut field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
-    {
-        let original = field.file_name().map(|s| s.to_string());
-        if field.name() != Some("file") && original.is_none() {
-            continue;
-        }
-        let ext = sanitize_ext(original.as_deref());
-        let filename = format!("{video_id}.{ext}");
-        let path = sources.join(&filename);
-
-        // Stream the upload to disk chunk by chunk instead of buffering the
-        // whole file in memory (videos can be gigabytes).
-        let mut total: u64 = 0;
-        {
-            let mut file = tokio::fs::File::create(&path)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            while let Some(chunk) = field.chunk().await.map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("не удалось прочитать файл: {e}"),
-                )
-            })? {
-                file.write_all(&chunk)
-                    .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                total += chunk.len() as u64;
-            }
-            file.flush()
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        }
-        if total == 0 {
-            let _ = tokio::fs::remove_file(&path).await;
-            return Err((StatusCode::BAD_REQUEST, "пустой файл".into()));
-        }
-
-        let info = match tools::probe_video(&path).await {
-            Ok(i) if i.width > 0 || i.duration > 0.0 => i,
-            _ => {
-                let _ = tokio::fs::remove_file(&path).await;
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "не удалось распознать видео в файле".into(),
-                ));
-            }
-        };
-        let size = tokio::fs::metadata(&path).await.map(|m| m.len()).ok();
-        let title = original.as_deref().map(|n| {
-            std::path::Path::new(n)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or(n)
-                .to_string()
-        });
-
-        let body = json!({
-            "id": video_id,
-            "url": format!("/files/sources/{filename}"),
-            "filename": filename,
-            "duration": info.duration,
-            "width": info.width,
-            "height": info.height,
-            "title": title,
-            "fps": info.fps,
-            "vcodec": info.vcodec,
-            "acodec": info.acodec,
-            "sizeBytes": size,
-        });
-        state
-            .library
-            .add(MediaEntry::from_result("source", &body))
-            .await;
-        return Ok(Json(body));
-    }
-
-    Err((StatusCode::BAD_REQUEST, "файл не найден в запросе".into()))
-}
-
-/// Keep only a short alphanumeric extension to avoid path tricks / odd names.
-fn sanitize_ext(original: Option<&str>) -> String {
-    let ext = original
-        .and_then(|n| std::path::Path::new(n).extension())
-        .and_then(|e| e.to_str())
-        .unwrap_or("mp4");
-    let clean: String = ext
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .take(5)
-        .collect::<String>()
-        .to_lowercase();
-    if clean.is_empty() {
-        "mp4".into()
-    } else {
-        clean
-    }
-}
-
 /// Content key for the render cache: a hash of the canonical (source + edit)
 /// request. Re-serializing the deserialized `EditRequest` normalises omitted
 /// defaults, so two equivalent requests map to the same key.
@@ -281,8 +174,10 @@ pub async fn edit_handler(
     let st = state.clone();
     let jid = job_id.clone();
     tokio::spawn(async move {
-        st.update_job(&jid, |j| j.stage = Some("queued".into()))
-            .await;
+        if !mark_queued(&st, &jid).await {
+            st.clear_cancel(&jid).await;
+            return;
+        }
         let render_lock = st.render_lock(&cache_key).await;
         let _render_guard =
             match acquire_render_lock_or_cancelled(&st, &jid, &token, render_lock).await {
@@ -302,12 +197,10 @@ pub async fn edit_handler(
             return;
         }
 
-        st.update_job(&jid, |j| {
-            j.status = JobStatus::Running;
-            j.stage = Some("processing".into());
-            j.progress = Some(0.0);
-        })
-        .await;
+        if !mark_running(&st, &jid, "processing").await {
+            st.clear_cancel(&jid).await;
+            return;
+        }
 
         let (tx, rx) = mpsc::unbounded_channel::<f64>();
         let drain = spawn_progress_drain(st.clone(), jid.clone(), rx);
@@ -358,7 +251,9 @@ pub async fn edit_handler(
         let updated = finish_job(&st, &jid, outcome, "output").await;
         if updated {
             if let Some(info) = &cache_info {
-                let _ = st.db.cache_put(&cache_key, info, &filename).await;
+                if let Err(error) = st.db.cache_put(&cache_key, info, &filename).await {
+                    tracing::warn!("cache successful render {cache_key}: {error}");
+                }
             }
         }
     });
@@ -410,6 +305,22 @@ fn spawn_progress_drain(
             }
         }
     })
+}
+
+/// Atomically start an open job. Cancellation may win immediately before this
+/// transition; in that case the terminal state must never be overwritten.
+async fn mark_running(st: &AppState, jid: &str, stage: &str) -> bool {
+    st.update_job_if_open(jid, |j| {
+        j.status = JobStatus::Running;
+        j.stage = Some(stage.into());
+        j.progress = Some(0.0);
+    })
+    .await
+}
+
+async fn mark_queued(st: &AppState, jid: &str) -> bool {
+    st.update_job_if_open(jid, |j| j.stage = Some("queued".into()))
+        .await
 }
 
 async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> bool {
@@ -700,6 +611,7 @@ async fn finish_job(
             .await
         }
         Err(e) => {
+            tracing::error!("job {jid} failed: {e}");
             st.update_job_if_open(jid, |j| {
                 j.status = JobStatus::Error;
                 j.error = Some(e.to_string());
@@ -763,6 +675,24 @@ mod tests {
         assert_eq!(job.status, JobStatus::Cancelled);
         assert!(job.result.is_none());
         assert!(st.library.list().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mark_running_does_not_revive_a_cancelled_job() {
+        let (st, _dir) = state().await;
+        st.set_job(Job::pending("cancelled-before-start".into()))
+            .await;
+        assert_eq!(
+            st.cancel_open_job("cancelled-before-start").await,
+            CancelJobOutcome::Cancelled
+        );
+
+        assert!(!mark_running(&st, "cancelled-before-start", "processing").await);
+        assert!(!mark_queued(&st, "cancelled-before-start").await);
+        let job = st.get_job("cancelled-before-start").await.unwrap();
+        assert_eq!(job.status, JobStatus::Cancelled);
+        assert!(job.stage.is_none());
+        assert!(job.progress.is_none());
     }
 
     #[test]

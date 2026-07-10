@@ -5,6 +5,7 @@ import {
   state,
   defaultEdit,
   buildEditPayload,
+  hasMeaningfulChanges,
   normalizeCrop,
   parseTime,
   tierToCrf,
@@ -183,6 +184,15 @@ describe('buildEditPayload', () => {
     normalizeCrop()
     expect(state.edit.crop).toEqual({ x: 0, y: 0, w: 1280, h: 720 })
   })
+
+  it('distinguishes an unchanged export from media or output changes', () => {
+    expect(hasMeaningfulChanges()).toBe(false)
+    state.edit.filter = 'warm'
+    expect(hasMeaningfulChanges()).toBe(true)
+    state.edit.filter = ''
+    state.edit.qualityTier = 'compact'
+    expect(hasMeaningfulChanges()).toBe(true)
+  })
 })
 
 describe('history', () => {
@@ -274,7 +284,14 @@ describe('effect presets', () => {
   })
 
   it('captures only reusable effect keys, not clip geometry', () => {
-    Object.assign(state.edit, { filter: 'sepia', speed: 1.5, trimStart: 3, cropEnabled: true })
+    Object.assign(state.edit, {
+      filter: 'sepia',
+      speed: 1.5,
+      trimStart: 3,
+      cropEnabled: true,
+      format: 'webm',
+      qualityTier: 'compact',
+    })
     state.edit.crop = { x: 1, y: 2, w: 3, h: 4 }
     savePreset('look')
     expect(presets.list).toHaveLength(1)
@@ -283,6 +300,8 @@ describe('effect presets', () => {
     expect(p.edit.speed).toBe(1.5)
     expect('trimStart' in p.edit).toBe(false)
     expect('crop' in p.edit).toBe(false)
+    expect('format' in p.edit).toBe(false)
+    expect('qualityTier' in p.edit).toBe(false)
     expect(JSON.parse(localStorage.getItem('ve_presets')!)).toHaveLength(1)
   })
 
@@ -292,6 +311,18 @@ describe('effect presets', () => {
     applyPreset({ name: 'x', edit: { filter: 'warm', speed: 2 } })
     expect(state.edit.filter).toBe('warm')
     expect(state.edit.speed).toBe(2)
+  })
+
+  it('does not let legacy look presets change export settings', () => {
+    state.edit.format = 'mp4'
+    state.edit.qualityTier = 'high'
+    applyPreset({
+      name: 'legacy',
+      edit: { filter: 'warm', format: 'webm', qualityTier: 'compact' },
+    })
+    expect(state.edit.filter).toBe('warm')
+    expect(state.edit.format).toBe('mp4')
+    expect(state.edit.qualityTier).toBe('high')
   })
 
   it('deletes and reloads presets from storage', () => {

@@ -4,7 +4,6 @@ import {
   state,
   history,
   presets,
-  doExport,
   parseTime,
   setTrimStartFromPlayer,
   setTrimEndFromPlayer,
@@ -17,6 +16,7 @@ import {
 } from '../store'
 import type { Preset } from '../store'
 import TrimSlider from './TrimSlider.vue'
+import ExportControls from './edit/ExportControls.vue'
 
 const canUndo = computed(() => history.past.length > 0)
 const canRedo = computed(() => history.future.length > 0)
@@ -247,52 +247,6 @@ watch(
   },
 )
 
-const formats = [
-  { v: 'mp4', label: 'MP4' },
-  { v: 'webm', label: 'WebM' },
-  { v: 'av1', label: 'AV1' },
-  { v: 'prores', label: 'ProRes' },
-  { v: 'gif', label: 'GIF' },
-  { v: 'png', label: 'Кадр PNG' },
-  { v: 'jpg', label: 'Кадр JPG' },
-  { v: 'mp3', label: 'Аудио MP3' },
-]
-
-const qualityTiers = [
-  { v: '', label: 'Авто' },
-  { v: 'high', label: 'Высокое' },
-  { v: 'medium', label: 'Среднее' },
-  { v: 'compact', label: 'Компактное' },
-]
-
-const formatHint = computed(() => {
-  switch (state.edit.format) {
-    case 'gif':
-      return 'GIF без звука, по умолчанию 12 fps. Лучше укажи размер и короткий отрезок.'
-    case 'png':
-      return 'Один кадр на позиции начала обрезки, без звука.'
-    case 'jpg':
-      return 'Один кадр JPG на позиции начала обрезки, без звука.'
-    case 'mp3':
-      return 'Только звук, видеоэффекты игнорируются.'
-    case 'webm':
-      return 'VP9 + Opus, меньше размер, дольше кодируется.'
-    case 'av1':
-      return 'AV1 — компактный современный кодек, кодируется медленно (нужен libsvtav1 в сборке ffmpeg).'
-    case 'prores':
-      return 'ProRes 422 HQ в .mov для монтажа: крупный файл, звук PCM.'
-    default:
-      return ''
-  }
-})
-
-const showQuality = computed(
-  () =>
-    state.edit.format === 'mp4' ||
-    state.edit.format === 'webm' ||
-    state.edit.format === 'av1',
-)
-
 function applyPlatform(name: string) {
   if (!state.video) return
   state.edit.format = 'mp4'
@@ -363,7 +317,7 @@ function applyPlatform(name: string) {
           </span>
         </div>
         <p v-else class="hint">
-          Сохрани текущие эффекты (цвет, скорость, звук, формат) как пресет и применяй к другим клипам.
+          Сохрани текущий образ (цвет, скорость и звук) и применяй к другим клипам.
         </p>
       </div>
     </section>
@@ -660,66 +614,6 @@ function applyPlatform(name: string) {
       </template>
     </section>
 
-    <!-- Export -->
-    <section class="group">
-      <div class="group-title">Экспорт</div>
-      <div class="field">
-        <label>Формат</label>
-        <div class="chips">
-          <button
-            v-for="f in formats"
-            :key="f.v"
-            class="chip"
-            :class="{ active: state.edit.format === f.v }"
-            @click="state.edit.format = f.v"
-          >
-            {{ f.label }}
-          </button>
-        </div>
-      </div>
-
-      <div v-if="state.edit.format === 'mp4'" class="field">
-        <label>Кодек</label>
-        <div class="chips">
-          <button class="chip" :class="{ active: state.edit.codec === 'h264' }" @click="state.edit.codec = 'h264'">
-            H.264
-          </button>
-          <button class="chip" :class="{ active: state.edit.codec === 'h265' }" @click="state.edit.codec = 'h265'">
-            H.265
-          </button>
-        </div>
-      </div>
-
-      <div v-if="showQuality" class="field">
-        <label>Качество</label>
-        <div class="chips">
-          <button
-            v-for="q in qualityTiers"
-            :key="q.v"
-            class="chip"
-            :class="{ active: state.edit.qualityTier === q.v }"
-            @click="state.edit.qualityTier = q.v"
-          >
-            {{ q.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Под платформу</label>
-        <div class="chips">
-          <button class="chip" @click="applyPlatform('telegram')">Telegram</button>
-          <button class="chip" @click="applyPlatform('shorts')">Shorts</button>
-          <button class="chip" @click="applyPlatform('reels')">Reels</button>
-          <button class="chip" @click="applyPlatform('youtube')">YouTube</button>
-        </div>
-      </div>
-
-      <p v-if="formatHint" class="hint">{{ formatHint }}</p>
-    </section>
-
-    <button class="btn primary big" :disabled="state.exporting" @click="doExport">
-      {{ state.exporting ? 'Обработка…' : 'Экспортировать' }}
-    </button>
+    <ExportControls @platform="applyPlatform" />
   </div>
 </template>

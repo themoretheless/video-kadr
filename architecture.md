@@ -326,21 +326,21 @@ stored XSS через upload) и полный ранжированный **то�
 [docs/audit.md](docs/audit.md#раунд-2-новые-находки-201-218-1-июля-2026).
 
 201. 🟠 Редирект `yt-dlp` на приватный адрес после успешной `validate_url` обходит SSRF-защиту импорта (новый high).
-202. 🟠 Upload принимает полиглот-файл и отдаёт его как `text/html` - подтверждённый PoC stored XSS (новый high).
-203. Отмена между `is_cancelled()` и записью `Running` в import/edit-воркерах по-прежнему перетирается - `596327b` не закрыл этот путь.
+202. 🟠 Upload принимает полиглот-файл и отдаёт его как `text/html` - подтверждённый PoC stored XSS (новый high). **Закрыто в раунде 5:** расширение теперь выводится из `ffprobe format_name`, ответы получают `nosniff` + sandbox CSP.
+203. Отмена между `is_cancelled()` и записью `Running` в import/edit-воркерах по-прежнему перетирается - `596327b` не закрыл этот путь. **Закрыто в раунде 5:** `queued`/`running`/validation-error переходы используют `update_job_if_open`.
 204. `upsert_project` не атомарен - конкурентный автосейв из двух вкладок даёт дубликаты project-строк.
 205. `render_locks` в `AppState` растёт неограниченно, записи никогда не удаляются (побочный эффект `a550a86`).
 206. В `174e1a7` путь «оба потока дали EOF раньше child» шлёт только SIGTERM без эскалации до SIGKILL.
 207. Лимит `3b655c8` покрывает `video`/`edit`, но не `name` - можно записать ~2МБ в `projects.name`.
 208. `fade_in`/`fade_out` клэмпятся к длительности исходника, а не результата - фейд может молча выпасть из графа фильтров.
-209. `PRESET_KEYS` включает `format`/`codec`/`qualityTier` наравне с цветом - цветовой пресет тихо меняет экспорт (переформулировка №48).
-210. `RectOverlay` не снимает `window` pointermove/pointerup при размонтировании во время drag → `root.value!` бросает `TypeError`.
-211. Провал задачи (`finish_job` `Err`-ветка) не пишет `tracing::error!` - нет диагностики в логах на упавший job.
+209. `PRESET_KEYS` включает `format`/`codec`/`qualityTier` наравне с цветом - цветовой пресет тихо меняет экспорт (переформулировка №48). **Закрыто в раунде 5**, включая фильтрацию старых пресетов из `localStorage`.
+210. `RectOverlay` не снимает `window` pointermove/pointerup при размонтировании во время drag → `root.value!` бросает `TypeError`. **Закрыто в раунде 5:** общий `stopDrag` вызывается из `onUnmounted`, доступ к root guarded.
+211. Провал задачи (`finish_job` `Err`-ветка) не пишет `tracing::error!` - нет диагностики в логах на упавший job. **Закрыто в раунде 5.**
 212. CI не ставит `yt-dlp` - путь импорта не выполняется в CI ни разу.
 213. `cache_put` может тихо не сработать после успешного рендера A → воркер B перерендеривает вместо переиспользования готового файла.
 214. Геометрический клэмп crop/censor может дать нулевую/нечётную ширину на источнике 1px.
 215. `list_projects`/`load_jobs`/`load_recent_jobs` роняют весь список 500-й, если у одной строки испорчен JSON.
-216. `TrimSlider` - тот же listener-leak паттерн, что №210.
+216. `TrimSlider` - тот же listener-leak паттерн, что №210. **Закрыто в раунде 5.**
 217. `normalizeRect` маскирует `NaN` как `0`/минимум вместо явной валидации.
 218. Нет `rust-toolchain.toml`/MSRV, сборка зависит от плавающего `stable`.
 
@@ -422,6 +422,33 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
 `MediaRepository`/`JobRepository`/`Renderer`, typed API contract, frontend-store
 по доменам `media/project/timeline/export/ui`, а дизайн-система с токенами,
 состояниями и accessibility-checklist появилась бы до роста компонентов.
+
+### Раунд 5: три итерации исполнения (11 июля 2026)
+
+Полные списки не пересоздавались: `docs/audit-500.md` по-прежнему содержит 509
+широких пунктов, а модульная карта ниже - 565. Этот раунд взял только один
+вертикальный срез, чтобы diff оставался читаемым и проверяемым.
+
+- **Итерация 1, backend security/correctness.** `upload_handler` вынесен из
+  `handlers/mod.rs` в собственный модуль; имя клиента стало display-only,
+  расширение определяется по `ffprobe format_name`, статика получает
+  `X-Content-Type-Options: nosniff` и sandbox CSP. Переходы в `queued` и
+  `running` больше не перетирают терминальную отмену. Закрыты 202/203/445.
+- **Итерация 2, frontend SOLID/DRY + дизайн.** Чистые defaults, time parsing,
+  quality mapping, rectangle sanitization и payload compiler вынесены в
+  `domain/edit.ts`; экспорт отделён в `components/edit/ExportControls.vue`.
+  Добавлены accessible segmented states, предупреждение перед no-op export,
+  спокойная геометрия контролов и отсутствие horizontal overflow на 390 px.
+  Закрыты 209/517; 500/550 выполнены частично одним безопасным срезом.
+- **Итерация 3, adversarial review.** Исправлена очистка оборванного `.upload`,
+  атомарность стадии `queued` и validation-error, логирование job/cache errors,
+  cleanup window-listeners в `RectOverlay`/`TrimSlider`; добавлены regression-
+  тесты и живой desktop/mobile-прогон. Закрыты 210/211/216/553/554.
+
+Следующий независимый срез по приоритету: P0-10 SSRF на redirect-hop, затем
+upload semaphore, `AppError`, единый `Config`, и только после них общий
+`JobRunner`. Frontend продолжать секциями: `AudioControls`, `PresetBar`,
+history/presets/theme stores; фасад `store.ts` сохранять до конца миграции.
 
 <a id="module-http"></a>
 ### Модуль: HTTP-хендлеры и роутинг (51)
@@ -678,7 +705,7 @@ Security и сеть (`tools/net.rs`, CORS/ServeDir в `lib.rs`, upload, Docker-
 442. 🟡 [дизайн] BIND_ADDR=127.0.0.1 в Dockerfile и docker-compose.yml=0.0.0.0 расходятся, что критично при прямом docker run без compose - `backend/Dockerfile` -> Уточнить комментарий в Dockerfile, что при самостоятельном docker run с -p потребуется явно передать -e BIND_ADDR=0.0.0.0.
 443. 🟡 [проблема] ffmpeg-аргументы логируются целиком через tracing::info! без редактирования путей - `backend/src/handlers/mod.rs` -> Понизить подробность до DEBUG или логировать только идентификаторы video_id/out_id вместо полных ffmpeg-аргументов на уровне INFO.
 444. 🟡 [проблема] import_handler и upload_handler не ограничивают число одновременно принимаемых upload-запросов - `backend/src/handlers/mod.rs` -> Ограничить одновременные upload_handler через отдельный semaphore или общий с jobs_semaphore лимит на конкурентные дисковые операции.
-445. 🔴 [баг] Файл с расширением .html/.svg, прошедший sanitize_ext, отдаётся ServeDir с соответствующим Content-Type, создавая stored XSS - `backend/src/lib.rs` -> Ограничить sanitize_ext allowlist'ом видео-расширений (см. связанную находку в handlers/mod.rs) и/или добавить Content-Disposition: attachment для не-video Content-Type в ServeDir.
+445. 🔴 [баг] Файл с расширением .html/.svg, прошедший sanitize_ext, отдаётся ServeDir с соответствующим Content-Type, создавая stored XSS - `backend/src/lib.rs` -> Ограничить sanitize_ext allowlist'ом видео-расширений (см. связанную находку в handlers/mod.rs) и/или добавить Content-Disposition: attachment для не-video Content-Type в ServeDir. **Закрыто в раунде 5.**
 446. 🟡 [проблема] Ни backend, ни nginx не выставляют X-Content-Type-Options: nosniff или Content-Security-Policy - `frontend/nginx.conf` -> Добавить add_header X-Content-Type-Options nosniff; и базовый Content-Security-Policy в блок server nginx.conf.
 447. 🟡 [проблема] /api/import не ограничивает размер скачиваемого видео, только высоту через MAX_HEIGHT и общий таймаут - `backend/src/tools/mod.rs` -> Добавить флаг yt-dlp --max-filesize с лимитом, согласованным с MAX_UPLOAD_BYTES, чтобы download не мог превысить тот же порог, что и ручная загрузка.
 448. 🟡 [улучшение] upload_handler не проверяет Content-Type multipart-поля, полагаясь только на имя файла и позднюю проверку ffprobe - `backend/src/handlers/mod.rs` -> Проверять field.content_type() на префикс video/ как раннюю (не единственную) эвристику до начала записи файла.
@@ -762,7 +789,7 @@ Frontend state/store (`store.ts`, `toasts.ts`). God-module: SRP через до�
 514. 🟡 [баг] resetHistory и history.past хранят до 100 полных JSON-снапшотов EditState без сжатия - `frontend/src/store.ts` -> Либо уведомлять пользователя при достижении лимита истории, либо хранить дифф вместо полной копии state.edit на каждый шаг.
 515. 🟡 [проблема/DIP] store.ts напрямую импортирует toast из конкретного модуля и обращается к document/localStorage напрямую - `frontend/src/store.ts` -> Ввести интерфейсы NotificationPort и StoragePort, инжектируемые в store, чтобы логика была тестируема без реального DOM/localStorage.
 516. 🟡 [баг] loadPresets и initTheme не различают 'нет данных' и 'испорченные данные' в localStorage - `frontend/src/store.ts` -> В catch логировать/чистить повреждённый ключ localStorage.removeItem, чтобы не пытаться парсить его повторно на каждой загрузке.
-517. 🟡 [улучшение/KISS] buildEditPayload — 60-строчная функция с плотной бизнес-логикой внутри store.ts - `frontend/src/store.ts` -> Вынести buildEditPayload, tierToCrf, sanitizeRect в отдельный модуль edit-payload.ts, не зависящий от reactive state импорта/экспорта.
+517. 🟡 [улучшение/KISS] buildEditPayload — 60-строчная функция с плотной бизнес-логикой внутри store.ts - `frontend/src/store.ts` -> Вынести buildEditPayload, tierToCrf, sanitizeRect в отдельный модуль edit-payload.ts, не зависящий от reactive state импорта/экспорта. **Закрыто в раунде 5:** чистое ядро находится в `domain/edit.ts`, `store.ts` оставляет совместимый фасад.
 518. 🟠 [проблема] seekTo не защищён от NaN/Infinity во входном значении - `frontend/src/store.ts` -> Добавить явную проверку Number.isFinite(t) в начале функции и игнорировать вызов при невалидном значении.
 519. 🟡 [проблема] setTrimStartFromPlayer/setTrimEndFromPlayer используют фиксированный зазор 0.1 секунды не связанный с fps видео - `frontend/src/store.ts` -> Вычислять минимальный зазор как 1/fps (если fps видео известен), с fallback на текущую константу 0.1.
 520. 🟡 [проблема/DRY] onImportTick и onExportTick — идентичные по структуре функции с разными префиксами полей state - `frontend/src/store.ts` -> Обобщить через фабрику makeTickHandler(prefix) или общий helper, принимающий ref-пару progress/stage.
@@ -804,8 +831,8 @@ Frontend компоненты (`EditPanel.vue` и остальные `.vue`). Go
 550. 🔴 [проблема/SRP] EditPanel.vue — компонент на 725 строк объединяет пресеты, тайминг, кадр, цвет, звук и экспорт - `frontend/src/components/EditPanel.vue` -> Разбить на подкомпоненты по секциям (TimingSection, FrameSection, ColorSection, AudioSection, ExportSection), EditPanel оставить оркестратором.
 551. 🟠 [проблема/DRY] Массивы опций (formats, filters, aspects, speeds, rotations, censorColors, padAspects, widthPresets, fpsPresets, qualityTiers) захардкожены в EditPanel.vue - `frontend/src/components/EditPanel.vue` -> Вынести в отдельный модуль (например edit-options.ts) с типами и экспортировать в EditPanel.
 552. 🟠 [проблема/DRY] Pointer-драг дублируется в RectOverlay и TrimSlider с разными правилами клампинга - `frontend/src/components/RectOverlay.vue` -> Вынести общий composable useDragHandle(window pointermove/up + cleanup) и переиспользовать в обоих компонентах.
-553. 🔴 [баг] RectOverlay не снимает window pointermove/pointerup при размонтировании во время активного драга - `frontend/src/components/RectOverlay.vue` -> Добавить onUnmounted(() => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }).
-554. 🔴 [баг] TrimSlider не снимает window pointermove/pointerup при размонтировании во время активного драга - `frontend/src/components/TrimSlider.vue` -> Добавить onUnmounted, снимающий pointermove/pointerup, аналогично для onTrackDown.
+553. 🔴 [баг] RectOverlay не снимает window pointermove/pointerup при размонтировании во время активного драга - `frontend/src/components/RectOverlay.vue` -> Добавить onUnmounted(() => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }). **Закрыто в раунде 5.**
+554. 🔴 [баг] TrimSlider не снимает window pointermove/pointerup при размонтировании во время активного драга - `frontend/src/components/TrimSlider.vue` -> Добавить onUnmounted, снимающий pointermove/pointerup, аналогично для onTrackDown. **Закрыто в раунде 5.**
 555. 🟡 [дизайн] RectOverlay в режиме censor стартует с нулевым прямоугольником до срабатывания watcher в EditPanel - `frontend/src/components/RectOverlay.vue` -> Инициализировать censor сразу валидным прямоугольником в самом sеттере cropEnabled/censorEnabled, а не через отдельный watcher.
 556. 🟠 [проблема/DIP] Все компоненты редактора напрямую импортируют глобальный singleton state/actions из store.ts - `frontend/src/components/EditPanel.vue` -> Ввести props/emit или provide/inject границу между презентационными компонентами и store, либо явно принять глобальный стор как осознанный архитектурный выбор для MVP.
 557. 🟠 [проблема/DRY] fmt()/fmtDuration() форматирование времени продублировано тремя разными реализациями - `frontend/src/components/EditPanel.vue` -> Вынести единый formatTime(seconds, {withTenths?}) в общий utils-модуль и использовать во всех трёх компонентах.

@@ -1,7 +1,7 @@
 //! HTTP-level integration tests. They drive the real router via
 //! `tower::ServiceExt::oneshot` (no socket bound) against an isolated temp
-//! storage dir, and deliberately avoid needing ffmpeg/yt-dlp: the import/edit
-//! error paths reject before shelling out, so the suite is deterministic.
+//! storage dir. Most tests avoid external tools; one upload security regression
+//! test generates a tiny MP4 and skips itself when ffmpeg is unavailable.
 
 use std::time::Duration;
 
@@ -63,6 +63,26 @@ fn post_json(uri: &str, body: Value) -> Request<Body> {
         .uri(uri)
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap()
+}
+
+fn post_multipart_file(filename: &str, bytes: &[u8]) -> Request<Body> {
+    let boundary = "BOUNDARY_UPLOAD_SECURITY";
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    Request::builder()
+        .method("POST")
+        .uri("/api/upload")
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(Body::from(body))
         .unwrap()
 }
 
@@ -619,4 +639,64 @@ async fn upload_without_file_field_is_400() {
     let (status, _b, text) = send(&app, req).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(text.contains("файл не найден"), "got: {text}");
+}
+
+#[tokio::test]
+async fn upload_ignores_spoofed_html_extension_and_static_files_do_not_sniff() {
+    let fixture_dir = tempfile::tempdir().unwrap();
+    let fixture = fixture_dir.path().join("fixture.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=size=16x16:rate=1",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "mpeg4",
+            "-y",
+        ])
+        .arg(&fixture)
+        .status()
+        .await;
+    let status = match generated {
+        Ok(status) => status,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => panic!("could not generate upload fixture: {error}"),
+    };
+    assert!(status.success(), "ffmpeg could not generate upload fixture");
+
+    let bytes = tokio::fs::read(&fixture).await.unwrap();
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let response = app
+        .clone()
+        .oneshot(post_multipart_file("payload.html", &bytes))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let uploaded: Value = serde_json::from_slice(&body).unwrap();
+    let filename = uploaded["filename"].as_str().unwrap();
+    assert!(filename.ends_with(".mp4"), "got {filename}");
+    assert!(!filename.ends_with(".html"));
+
+    let static_response = app
+        .oneshot(get(uploaded["url"].as_str().unwrap()))
+        .await
+        .unwrap();
+    assert_eq!(static_response.status(), StatusCode::OK);
+    assert_eq!(
+        static_response.headers()["x-content-type-options"],
+        "nosniff"
+    );
+    assert_eq!(
+        static_response.headers()["content-security-policy"],
+        "sandbox; default-src 'none'"
+    );
+    assert_eq!(static_response.headers()["content-type"], "video/mp4");
 }

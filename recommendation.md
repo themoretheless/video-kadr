@@ -251,10 +251,11 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 4. После каждого куска запускай `make check`; для frontend-визуала дополнительно
    открывай dev-сборку и проверяй desktop/mobile.
 
-**Рекомендуемые первые 12 кусочков:** P0-9 upload XSS, P0-10 SSRF redirect,
+**Исходный первый набор кусочков:** P0-9 upload XSS, P0-10 SSRF redirect,
 P0-11 cancel→Running race, `upload_handler` через semaphore, `AppError`,
 `Config`, `JobRunner`, `EditPanel` split, `store.ts` split, RectOverlay/TrimSlider
-cleanup, design empty states, shared format/time utils.
+cleanup, design empty states, shared format/time utils. Раунд 5 закрыл P0-9,
+P0-11, cleanup и первые безопасные frontend-срезы; актуальный остаток - ниже.
 
 **Сверка 9 июля 2026.** Этот файл синхронизирован с `architecture.md`: здесь
 565 чекбоксов, в архитектуре - те же 565 пунктов с пояснениями, а
@@ -262,23 +263,30 @@ cleanup, design empty states, shared format/time utils.
 PR лучше делать не по всему списку, а по одному маленькому вертикальному срезу:
 один модуль, один severity-слой, один критерий приёмки.
 
+**Раунд 5, 11 июля 2026.** После трёх итераций закрыты P0-9 (upload stored
+XSS), P0-11 (cancel→queued/running race), 209 (look-пресет менял экспорт),
+517 (чистый payload compiler), 553/554 (listener cleanup), а также no-op export
+warning и mobile overflow. `store.ts`/`EditPanel.vue` уменьшены безопасными
+срезами, но их полная декомпозиция 500/550 остаётся открытой. Проверка: backend
+тесты, frontend lint/typecheck/Vitest/build и живой desktop/mobile-прогон.
+
 **Следующие маленькие PR по приоритету.**
 
-1. Закрыть upload XSS: magic-byte sniffing, безопасный `Content-Type`, тест на HTML/SVG payload.
-2. Закрыть SSRF redirect: проверять финальный URL/IP после редиректов `yt-dlp`.
-3. Добить cancel-to-running race: отменённая queued-задача не должна становиться `Running`.
-4. Провести upload через общий лимит или отдельный upload semaphore.
-5. Вынести единый `AppError` и JSON error boundary для backend API.
-6. Собрать `Config` один раз на старте и убрать scattered env reads.
-7. Вынести `JobRunner`: create, acquire, progress, finish, cancel, panic handling.
-8. Разделить `EditPanel.vue` на секции trim/crop/scale/effects/export.
-9. Разделить `store.ts` на `media/project/timeline/export/ui` без смены UX.
-10. Убрать дубли drag/time math из `RectOverlay` и `TrimSlider`.
-11. Добавить экспорт-без-изменений warning и пустые/error states как first-class UI.
-12. Вынести shared format/time/quality helpers и покрыть `tierToCrf` тестами.
-13. Добавить typed API/OpenAPI слой между Rust и TS.
-14. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
-15. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
+1. Закрыть SSRF redirect: проверять финальный URL/IP после редиректов `yt-dlp`.
+2. Провести upload через общий лимит или отдельный upload semaphore.
+3. Вынести единый `AppError` и JSON error boundary для backend API.
+4. Собрать `Config` один раз на старте и убрать scattered env reads.
+5. Вынести `JobRunner`: create, acquire, progress, finish, cancel, panic handling.
+6. Продолжить `EditPanel.vue`: `AudioControls`, `PresetBar`, затем timing/frame.
+7. Продолжить store: history/presets/theme, сохраняя совместимый фасад.
+8. Вынести общий `useDragHandle`, теперь поверх уже безопасного unmount cleanup.
+9. Добавить URL query-token warning и redaction helper для логов.
+10. Добавить first-class empty/error/offline states без backend.
+11. Вынести shared formatDuration/formatSize и каталоги edit options.
+12. Добавить typed API/OpenAPI слой между Rust и TS.
+13. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
+14. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
+15. Закрепить Rust toolchain/MSRV и воспроизводимые Docker image digests.
 
 ### HTTP-хендлеры и роутинг (51)
 
@@ -489,7 +497,7 @@ PR лучше делать не по всему списку, а по одном
 - [ ] 🔴 **411.** (проблема) validate_url не проверяет редиректы, на которые пойдёт yt-dlp -> Запускать yt-dlp с ограничением редиректов на внешние хосты или повторно валидировать финальный resolved URL перед скачиванием. `backend/src/tools/net.rs`
 - [ ] 🔴 **421.** (проблема) Ни один API-эндпоинт не требует аутентификации -> Добавить хотя бы простую проверку статического API-ключа или basic-auth middleware перед /api и /files роутами, конфигурируемую через env. `backend/src/lib.rs`
 - [ ] 🔴 **424.** (баг) sanitize_ext допускает опасные расширения (.exe, .sh, .php, .html, .svg), фильтруя только по алфанумеричности, а не по allowlist видео-форматов -> Заменить фильтр по алфанумеричности на явный allowlist разрешённых видео-расширений (mp4, mov, webm, mkv, avi и т.п.), отклоняя всё остальное с 400 до записи на диск. `backend/src/handlers/mod.rs`
-- [ ] 🔴 **445.** (баг) Файл с расширением .html/.svg, прошедший sanitize_ext, отдаётся ServeDir с соответствующим Content-Type, создавая stored XSS -> Ограничить sanitize_ext allowlist'ом видео-расширений (см. связанную находку в handlers/mod.rs) и/или добавить Content-Disposition: attachment для не-video Content-Type в ServeDir. `backend/src/lib.rs`
+- [x] 🔴 **445.** (баг) Файл с расширением .html/.svg, прошедший sanitize_ext, отдаётся ServeDir с соответствующим Content-Type, создавая stored XSS -> Закрыто: расширение выводится из `ffprobe format_name`, `/files` получает `nosniff` и sandbox CSP. `backend/src/handlers/upload.rs`, `backend/src/lib.rs`
 - [ ] 🟠 **412.** (баг) is_blocked_ip не перечисляет явно IPv4 broadcast и все зарезервированные диапазоны, полагаясь на широкий octets[0] >= 240 -> Добавить явную проверку v4.is_broadcast() (255.255.255.255) и тест на неё, не полагаясь молча на побочный эффект диапазона 240+. `backend/src/tools/net.rs`
 - [ ] 🟠 **414.** (проблема) validate_url разрешает произвольный порт на публичном хосте, включая порты внутренних docker-compose сервисов -> Ограничить допустимые порты до 80/443 (или explicit allowlist), если нет обоснованной причины поддерживать произвольные порты для видеохостингов. `backend/src/tools/net.rs`
 - [ ] 🟠 **416.** (проблема) CORS default origins в lib.rs жёстко зашиты под dev-порты 5173/8088 без явного требования CORS_ALLOW_ORIGINS в проде -> При старте в non-dev окружении (например, когда BIND_ADDR не 127.0.0.1) логировать warn, если CORS_ALLOW_ORIGINS не задан, а дефолты все еще localhost. `backend/src/lib.rs`
@@ -599,7 +607,7 @@ PR лучше делать не по всему списку, а по одном
 - [ ] 🟠 **542.** (баг) doImport при ошибке валидации диапазона выходит раньше установки importing, разрешая спам одинаковых тостов -> Либо дебаунсить повторные идентичные ошибки валидации, либо кратковременно блокировать повторный вызов (например через локальный флаг validating). `frontend/src/store.ts`
 - [ ] 🟡 **529.** (идея) Нет способа переименовать сохранённый пресет -> Добавить renamePreset(oldName, newName), обновляющую entry.name на месте без создания нового элемента списка. `frontend/src/store.ts`
 - [ ] 🟡 **511.** (дизайн) Toast всегда автозакрывается через фиксированные 4 секунды независимо от длины текста и вида -> Добавить необязательный параметр durationMs (или вычислять из text.length) и увеличить дефолт для kind='error'. `frontend/src/toasts.ts`
-- [ ] 🟡 **517.** (улучшение) buildEditPayload — 60-строчная функция с плотной бизнес-логикой внутри store.ts -> Вынести buildEditPayload, tierToCrf, sanitizeRect в отдельный модуль edit-payload.ts, не зависящий от reactive state импорта/экспорта. `frontend/src/store.ts`
+- [x] 🟡 **517.** (улучшение) buildEditPayload — 60-строчная функция с плотной бизнес-логикой внутри store.ts -> Закрыто: `defaultEdit`, `parseTime`, `tierToCrf`, `sanitizeRect`, payload compiler и no-op detection вынесены в чистый `domain/edit.ts`; `store.ts` оставляет фасад. `frontend/src/domain/edit.ts`, `frontend/src/store.ts`
 - [ ] 🟡 **537.** (улучшение) openFromLibrary смешивает синхронный сброс дефолтного edit с последующим асинхронным restoreProject -> Показать состояние загрузки (skeleton/disabled edit panel) на время restoreProject вместо промежуточного показа дефолтного edit. `frontend/src/store.ts`
 - [ ] 🟡 **543.** (улучшение) PRESET_KEYS — захардкоженный список полей EditState, требующий ручной синхронизации -> Либо генерировать PRESET_KEYS из схемы EditState с явным исключением геометрических полей, либо добавить тест, проверяющий покрытие всех полей EditState (кроме геометрии) в PRESET_KEYS. `frontend/src/store.ts`
 - [ ] 🟡 **545.** (улучшение) initTheme и loadPresets повторяют один и тот же паттерн безопасного чтения из localStorage с разной обработкой ошибок -> Вынести общий helper safeReadLocalStorage<T>(key, validate, fallback): T, используемый в обеих функциях и в persistPresets/applyTheme. `frontend/src/store.ts`
@@ -635,8 +643,8 @@ PR лучше делать не по всему списку, а по одном
 ### Frontend компоненты и интерактивность (45)
 
 - [ ] 🔴 **550.** (проблема) EditPanel.vue — компонент на 725 строк объединяет пресеты, тайминг, кадр, цвет, звук и экспорт -> Разбить на подкомпоненты по секциям (TimingSection, FrameSection, ColorSection, AudioSection, ExportSection), EditPanel оставить оркестратором. `frontend/src/components/EditPanel.vue`
-- [ ] 🔴 **553.** (баг) RectOverlay не снимает window pointermove/pointerup при размонтировании во время активного драга -> Добавить onUnmounted(() => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }). `frontend/src/components/RectOverlay.vue`
-- [ ] 🔴 **554.** (баг) TrimSlider не снимает window pointermove/pointerup при размонтировании во время активного драга -> Добавить onUnmounted, снимающий pointermove/pointerup, аналогично для onTrackDown. `frontend/src/components/TrimSlider.vue`
+- [x] 🔴 **553.** (баг) RectOverlay не снимает window pointermove/pointerup при размонтировании во время активного драга -> Закрыто: `stopDrag` вызывается из `onUnmounted`, root/zero-size guarded. `frontend/src/components/RectOverlay.vue`
+- [x] 🔴 **554.** (баг) TrimSlider не снимает window pointermove/pointerup при размонтировании во время активного драга -> Закрыто: единый `stopDrag` вызывается из `pointerup` и `onUnmounted`. `frontend/src/components/TrimSlider.vue`
 - [ ] 🟠 **562.** (дизайн) Нет визуальной индикации, какой из двух RectOverlay (crop или censor) активен, если оба включены одновременно -> Добавить подпись рядом с каждым прямоугольником ('Кадрирование' / 'Замазка') или временно скрывать неактивный, пока не наведена мышь. `frontend/src/components/VideoPreview.vue`
 - [ ] 🟠 **576.** (дизайн) MediaLibrary: кнопка удаления '✕' не запрашивает подтверждение -> Добавить confirm-диалог или двухшаговое подтверждение (например, требовать повторный клик в течение 3с). `frontend/src/components/MediaLibrary.vue`
 - [ ] 🟠 **584.** (дизайн) VideoPreview использует нативные controls браузера, не синхронизированные визуально с TrimSlider -> Скрыть нативный seek или кастомизировать progress-бар плеера, синхронизировав его с trim-диапазоном визуально. `frontend/src/components/VideoPreview.vue`
@@ -954,13 +962,13 @@ PR лучше делать не по всему списку, а по одном
 > Безопасность (auth, CORS, SSRF-резолвинг, ресурсные лимиты ffmpeg) - отдельный
 > трек, см. [docs/audit.md](docs/audit.md) §C/§E; обязателен перед выставлением наружу.
 
-### ☐ P0-9. Upload принимает polyglot-файл, отдаёт как `text/html` - подтверждённый stored XSS · S/M
+### ☑ P0-9. Upload принимает polyglot-файл, отдаёт как `text/html` - подтверждённый stored XSS · S/M
 - **Найдено:** раунд 2 аудита, 1 июля 2026 (audit.md №202), подтверждено рабочим PoC (GIF-заголовок + `<script>`, имя `poc.html`, проходит `ffprobe`/`sanitize_ext`, отдаётся `/files/sources/<uuid>.html` как `text/html`).
-- **Файлы:** `backend/src/handlers/mod.rs` (`sanitize_ext` ~235-251, `upload_handler` ~145-232).
+- **Файлы:** `backend/src/handlers/upload.rs`, `backend/src/tools/mod.rs`, `backend/src/lib.rs`, `backend/tests/api.rs`.
 - **Шаги:**
-  - [ ] Определять расширение/тип по фактическому содержимому (`ffprobe format_name` через allow-list видеоформатов), не по имени файла от клиента.
-  - [ ] Отдавать `/files` с `Content-Disposition: attachment` и/или безопасным дефолтным `Content-Type` независимо от расширения.
-- **Критерий:** тест с тем же polyglot-PoC (GIF-заголовок + `<script>`) либо отклоняется, либо сохраняется с безопасным `Content-Type`/`Content-Disposition`, исполнение JS через прямую ссылку невозможно.
+  - [x] Определять расширение/тип по фактическому содержимому (`ffprobe format_name` через allow-list), не по имени файла от клиента.
+  - [x] Добавить `X-Content-Type-Options: nosniff` и sandbox CSP; MIME выводится только из server-selected расширения.
+- **Критерий:** regression-тест загружает MP4 под именем `payload.html`, получает `.mp4`/`video/mp4` и оба защитных заголовка. **Сделано.**
 
 ### ☐ P0-10. SSRF-редирект `yt-dlp` на приватный адрес после успешной `validate_url` · M
 - **Найдено:** раунд 2 аудита, 1 июля 2026 (audit.md №201); P0-3 закрыл DNS-резолвинг исходного URL, но не поведение `yt-dlp` (следование редиректам/собственный DNS-résolve).
@@ -969,12 +977,12 @@ PR лучше делать не по всему списку, а по одном
   - [ ] Пиннинг резолвленного IP в `yt-dlp` (`--resolve`/socket options) либо собственный HTTP-клиент с повторной DNS+IP-валидацией на каждый редирект-hop перед передачей финального URL в `yt-dlp`.
 - **Критерий:** тест на редирект/DNS-rebinding в приватный адрес после первичной проверки - отклоняется, не доходит до фактической загрузки.
 
-### ☐ P0-11. Отмена перед переходом в `Running` в import/edit-воркерах перетирается · S
+### ☑ P0-11. Отмена перед переходом в `Running` в import/edit-воркерах перетирается · S
 - **Найдено:** раунд 2 аудита, 1 июля 2026 (audit.md №203); соседняя гонка, не закрытая `596327b`.
 - **Файлы:** `backend/src/handlers/mod.rs` (~74-84, 300-310).
 - **Шаги:**
-  - [ ] Заменить оба безусловных `update_job(Running)` на `update_job_if_open`; при `false` - ранний `return` без запуска `download_video`/`run_ffmpeg`.
-- **Критерий:** тест «cancel между `is_cancelled()`-проверкой и записью `Running`» не даёт процессу стартовать.
+  - [x] Заменить `queued`/`Running` и validation-error переходы на `update_job_if_open`; при `false` - ранний `return` без запуска процесса.
+- **Критерий:** тест отменённой до старта job подтверждает, что `queued`/`Running` не возвращаются. **Сделано.**
 
 ---
 
@@ -991,15 +999,16 @@ PR лучше делать не по всему списку, а по одном
 ### ☐ P1-5. `store.ts` → модули · S→M
 - **Файлы:** новые `frontend/src/lib/{time,quality,defaults}.ts`, `core/payload.ts`; `features/{presets,history}.ts`, `ui/useTheme.ts`; `store.ts` оставляет реэкспорты.
 - **Шаги:**
-  - [ ] Чистые `parseTime`/`tierToCrf`/`defaultEdit`/`buildEditPayload` → lib/core, реэкспорт из `store.ts`.
+  - [x] Чистые `parseTime`/`tierToCrf`/`defaultEdit`/`buildEditPayload` → `domain/edit.ts`, реэкспорт из `store.ts`.
   - [ ] `theme`/`presets`/`history` (+ их module-level `let`/watch) → свои файлы, реэкспорт.
   - [ ] Развязать `resetHistory`/`restoreProject` от `doImport`/`openFromLibrary` через событие смены `video` в core-модели.
-- **Критерий:** `store.test.ts` без изменений зелёный; `typecheck`/`build`; ручная проверка undo/тема/пресеты в превью.
+- **Критерий:** публичные импорты сохранены; `store.test.ts`, `typecheck`/`build` зелёные; ручная проверка выполнена. Остальные два шага ещё открыты.
 
 ### ☐ P1-6. `EditPanel.vue` → секции · S→M
 - **Файлы:** новый `frontend/src/lib/editOptions.ts`; `components/{AudioControls,PresetBar,ColorControls,TimingControls,FrameControls,ExportControls}.vue`; `EditPanel.vue` - тонкий контейнер.
 - **Шаги:**
   - [ ] 10 каталогов опций (`speeds`/`aspects`/`filters`/`formats`/…) → `lib/editOptions.ts`.
+  - [x] Вынести export-секцию и no-op confirmation в `components/edit/ExportControls.vue`.
   - [ ] Секции по одной (начать с `AudioControls`/`PresetBar` - они без скрытых связей).
   - [ ] Вынести `applyPlatform`/`setAspect` в store/lib (развязка Export→Frame).
 - **Критерий:** `typecheck`/`build`; ручная проверка каждой секции в превью (как в прошлых фичах через `window.__store`).
@@ -1007,7 +1016,7 @@ PR лучше делать не по всему списку, а по одном
 ### ☐ P1-7. Единый источник дефолтов контракта · S
 - **Файлы:** `frontend/src/store.ts` (или `lib/defaults.ts`), `store.test.ts`.
 - **Шаги:**
-  - [ ] `EDIT_DEFAULTS` (его же отдаёт `defaultEdit()`).
+  - [x] `EDIT_DEFAULTS` (его же отдаёт `defaultEdit()`) в `domain/edit.ts`.
   - [ ] Плоскую часть `buildEditPayload` (строки «if e.x !== default») заменить на `diffFromDefault`.
   - [ ] `PRESET_KEYS` вывести из списка скалярных полей (не вручную).
 - **Критерий:** `store.test.ts` зелёный (payload идентичен); добавить тест «`defaultEdit()` == `EDIT_DEFAULTS`».

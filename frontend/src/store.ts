@@ -1,72 +1,16 @@
 import { reactive, watch } from 'vue'
 import * as api from './api'
+import {
+  buildEditPayload as buildPayload,
+  defaultEdit,
+  hasMeaningfulChanges as hasMeaningfulEditChanges,
+  parseTime,
+  sanitizeRect,
+} from './domain/edit'
 import { toast } from './toasts'
 import type { EditState, Job, MediaEntry, ResultInfo, VideoInfo } from './types'
 
-export function defaultEdit(): EditState {
-  return {
-    trimStart: 0,
-    trimEnd: 0,
-    cutEnabled: false,
-    cut: { start: 0, end: 0 },
-    cropEnabled: false,
-    crop: { x: 0, y: 0, w: 0, h: 0 },
-    scaleEnabled: false,
-    scale: { w: 1280, h: -2 },
-    mute: false,
-    speed: 1,
-    rotate: 0,
-    flipH: false,
-    flipV: false,
-    volume: 1,
-    fadeIn: 0,
-    fadeOut: 0,
-    normalizeAudio: false,
-    highpass: false,
-    brightness: 0,
-    contrast: 1,
-    saturation: 1,
-    filter: '',
-    reverse: false,
-    fps: null,
-    censorEnabled: false,
-    censor: { x: 0, y: 0, w: 0, h: 0 },
-    censorColor: 'black',
-    vignette: false,
-    denoise: false,
-    sharpen: 0,
-    grain: 0,
-    pad: '',
-    format: 'mp4',
-    codec: 'h264',
-    qualityTier: '',
-  }
-}
-
-/** Map a quality tier to a CRF value appropriate for the target format. */
-export function tierToCrf(tier: string, format: string): number | null {
-  if (!tier) return null
-  const table: Record<string, Record<string, number>> = {
-    mp4: { high: 18, medium: 23, compact: 28 },
-    webm: { high: 28, medium: 33, compact: 38 },
-    av1: { high: 28, medium: 34, compact: 40 },
-  }
-  return table[format]?.[tier] ?? null
-}
-
-/**
- * Parse a time string into seconds. Accepts "ss", "mm:ss", "hh:mm:ss", and a
- * fractional seconds part (e.g. "1:23.45"). Returns null for empty/invalid input.
- */
-export function parseTime(input: string): number | null {
-  const t = input.trim()
-  if (!t) return null
-  const parts = t.split(':').map((p) => p.trim())
-  if (parts.some((p) => p === '' || !/^\d+(\.\d+)?$/.test(p))) return null
-  let seconds = 0
-  for (const p of parts) seconds = seconds * 60 + Number(p)
-  return seconds
-}
+export { defaultEdit, parseTime, tierToCrf } from './domain/edit'
 
 export const state = reactive({
   url: '',
@@ -200,94 +144,11 @@ export async function doUpload(file: File): Promise<void> {
 }
 
 export function buildEditPayload(): Record<string, unknown> {
-  const e = state.edit
-  const v = state.video
-  if (!v) return {}
-
-  const payload: Record<string, unknown> = {
-    videoId: v.id,
-    mute: e.mute,
-    speed: e.speed,
-  }
-  // Cut-a-piece-out: send keep-segments around the removed range (video only).
-  const videoFormat = e.format === 'mp4' || e.format === 'webm'
-  const cutStart = Math.max(e.trimStart, Math.min(e.cut.start, e.trimEnd))
-  const cutEnd = Math.max(e.trimStart, Math.min(e.cut.end, e.trimEnd))
-  const segments: { start: number; end: number }[] = []
-  if (e.cutEnabled && videoFormat && cutEnd > cutStart + 0.05) {
-    if (cutStart > e.trimStart + 0.05) segments.push({ start: e.trimStart, end: cutStart })
-    if (e.trimEnd > cutEnd + 0.05) segments.push({ start: cutEnd, end: e.trimEnd })
-  }
-  if (segments.length) {
-    payload.segments = segments
-  } else if (e.trimStart > 0.05 || e.trimEnd < v.duration - 0.05) {
-    // Otherwise send a plain trim when it narrows the clip.
-    payload.trim = { start: e.trimStart, end: e.trimEnd }
-  }
-  if (e.cropEnabled) {
-    payload.crop = sanitizeRect(e.crop, v.width, v.height)
-  }
-  if (e.scaleEnabled) {
-    payload.scale = { w: e.scale.w, h: e.scale.h }
-  }
-  // Effects: only send what differs from the defaults to keep payloads small.
-  if (e.rotate) payload.rotate = e.rotate
-  if (e.flipH) payload.flipH = true
-  if (e.flipV) payload.flipV = true
-  if (e.volume !== 1) payload.volume = e.volume
-  if (e.fadeIn > 0) payload.fadeIn = e.fadeIn
-  if (e.fadeOut > 0) payload.fadeOut = e.fadeOut
-  if (e.normalizeAudio) payload.normalizeAudio = true
-  if (e.highpass) payload.highpass = true
-  if (e.brightness !== 0) payload.brightness = e.brightness
-  if (e.contrast !== 1) payload.contrast = e.contrast
-  if (e.saturation !== 1) payload.saturation = e.saturation
-  if (e.filter) payload.filter = e.filter
-  if (e.reverse) payload.reverse = true
-  if (e.fps) payload.fps = e.fps
-  if (e.censorEnabled && e.censor.w > 1 && e.censor.h > 1) {
-    payload.censor = { x: e.censor.x, y: e.censor.y, w: e.censor.w, h: e.censor.h }
-    payload.censorColor = e.censorColor
-  }
-  if (e.vignette) payload.vignette = true
-  if (e.denoise) payload.denoise = true
-  if (e.sharpen > 0) payload.sharpen = e.sharpen
-  if (e.grain > 0) payload.grain = e.grain
-  if (e.pad) payload.pad = e.pad
-  // Export format/codec/quality.
-  if (e.format && e.format !== 'mp4') payload.format = e.format
-  if (e.format === 'mp4' && e.codec === 'h265') payload.codec = 'h265'
-  const crf = tierToCrf(e.qualityTier, e.format)
-  if (crf !== null) payload.quality = crf
-  return payload
+  return buildPayload(state.edit, state.video)
 }
 
-function finiteOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
-}
-
-function clampInt(value: unknown, min: number, max: number, fallback: number): number {
-  const n = Math.round(finiteOr(value, fallback))
-  return Math.max(min, Math.min(n, max))
-}
-
-function sanitizeRect(
-  rect: { x: number; y: number; w: number; h: number },
-  width: number,
-  height: number,
-): { x: number; y: number; w: number; h: number } {
-  const W = Math.max(1, Math.round(finiteOr(width, 1)))
-  const H = Math.max(1, Math.round(finiteOr(height, 1)))
-  const minW = Math.min(2, W)
-  const minH = Math.min(2, H)
-  const w = clampInt(rect.w, minW, W, W)
-  const h = clampInt(rect.h, minH, H, H)
-  return {
-    x: clampInt(rect.x, 0, W - w, 0),
-    y: clampInt(rect.y, 0, H - h, 0),
-    w,
-    h,
-  }
+export function hasMeaningfulChanges(): boolean {
+  return hasMeaningfulEditChanges(state.edit, state.video)
 }
 
 export function normalizeCrop(): void {
@@ -520,9 +381,6 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'grain',
   'censorColor',
   'pad',
-  'format',
-  'codec',
-  'qualityTier',
 ]
 
 export const presets = reactive({ list: [] as Preset[] })
@@ -554,7 +412,11 @@ export function savePreset(name: string): void {
 }
 
 export function applyPreset(p: Preset): void {
-  Object.assign(state.edit, p.edit)
+  const source = p.edit as Record<string, unknown>
+  const target = state.edit as unknown as Record<string, unknown>
+  for (const key of PRESET_KEYS) {
+    if (Object.hasOwn(source, key)) target[key] = source[key]
+  }
   toast('info', `Пресет «${p.name}» применён`)
 }
 
