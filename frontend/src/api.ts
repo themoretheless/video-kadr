@@ -1,12 +1,24 @@
 import type { EditState, Job, MediaEntry, VideoInfo } from './types'
 
-// The import/edit endpoints answer 200 + a jobId by design, so a 5xx (or a
-// thrown fetch) from them means the request never reached the backend - in dev
-// that is the Vite proxy failing to connect. Surface that plainly instead of a
-// cryptic "HTTP 500".
 const BACKEND_DOWN = 'Сервер недоступен. Запущен ли бэкенд? (cargo run на :8080)'
 
-/** fetch that turns a network/proxy-level failure into a clear "backend down" error. */
+interface ApiErrorBody {
+  error?: unknown
+  code?: unknown
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+/** Fetch that distinguishes a network failure from a real HTTP error response. */
 async function safeFetch(path: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(path, init)
@@ -15,17 +27,36 @@ async function safeFetch(path: string, init?: RequestInit): Promise<Response> {
   }
 }
 
+async function responseError(response: Response, fallback: string): Promise<ApiError> {
+  const text = await response.text().catch(() => '')
+  const trimmed = text.trim()
+  let message = fallback
+  let code: string | undefined
+
+  if (trimmed) {
+    try {
+      const body = JSON.parse(trimmed) as ApiErrorBody
+      if (typeof body.error === 'string' && body.error.trim()) message = body.error.trim()
+      if (typeof body.code === 'string' && body.code.trim()) code = body.code.trim()
+    } catch {
+      message = trimmed
+    }
+  }
+
+  return new ApiError(message, response.status, code)
+}
+
+async function requireOk(response: Response, fallback: string): Promise<void> {
+  if (!response.ok) throw await responseError(response, fallback)
+}
+
 async function postJson(path: string, body: unknown): Promise<{ jobId: string }> {
   const res = await safeFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    if (res.status >= 500) throw new Error(BACKEND_DOWN)
-    const text = await res.text().catch(() => '')
-    throw new Error(text.trim() || `${path} -> HTTP ${res.status}`)
-  }
+  await requireOk(res, `${path} -> HTTP ${res.status}`)
   return res.json()
 }
 
@@ -42,34 +73,29 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
   const fd = new FormData()
   fd.append('file', file)
   const res = await safeFetch('/api/upload', { method: 'POST', body: fd })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    if (text.trim()) throw new Error(text.trim())
-    throw new Error(res.status >= 500 ? BACKEND_DOWN : `upload -> HTTP ${res.status}`)
-  }
+  await requireOk(res, `upload -> HTTP ${res.status}`)
   return res.json()
 }
 
 export async function getJob(jobId: string): Promise<Job> {
   const res = await safeFetch(`/api/jobs/${jobId}`)
-  if (!res.ok) {
-    if (res.status >= 500) throw new Error(BACKEND_DOWN)
-    throw new Error(`job poll -> HTTP ${res.status}`)
-  }
+  await requireOk(res, `job poll -> HTTP ${res.status}`)
   return res.json()
 }
 
 /** List persisted sources and outputs, newest first. */
 export async function getLibrary(): Promise<MediaEntry[]> {
   const res = await safeFetch('/api/library')
-  if (!res.ok) throw new Error(`library -> HTTP ${res.status}`)
+  await requireOk(res, `library -> HTTP ${res.status}`)
   return res.json()
 }
 
 /** Delete a library entry (and its file on disk). */
 export async function deleteLibraryItem(id: string): Promise<void> {
   const res = await safeFetch(`/api/library/${id}`, { method: 'DELETE' })
-  if (!res.ok && res.status !== 404) throw new Error(`delete -> HTTP ${res.status}`)
+  if (!res.ok && res.status !== 404) {
+    throw await responseError(res, `delete -> HTTP ${res.status}`)
+  }
 }
 
 /** A saved editing project: a clip plus its persisted edit recipe. */
@@ -90,7 +116,7 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(res.status >= 500 ? BACKEND_DOWN : `projects -> HTTP ${res.status}`)
+  await requireOk(res, `projects -> HTTP ${res.status}`)
   return res.json()
 }
 
@@ -98,20 +124,22 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
 export async function getProjectByVideo(videoId: string): Promise<ProjectDto | null> {
   const res = await safeFetch(`/api/projects/by-video/${encodeURIComponent(videoId)}`)
   if (res.status === 404) return null
-  if (!res.ok) throw new Error(res.status >= 500 ? BACKEND_DOWN : `projects -> HTTP ${res.status}`)
+  await requireOk(res, `projects -> HTTP ${res.status}`)
   return res.json()
 }
 
 /** List saved projects, most recently updated first. */
 export async function getProjects(): Promise<ProjectDto[]> {
   const res = await safeFetch('/api/projects')
-  if (!res.ok) throw new Error(`projects -> HTTP ${res.status}`)
+  await requireOk(res, `projects -> HTTP ${res.status}`)
   return res.json()
 }
 
 export async function deleteProject(id: string): Promise<void> {
   const res = await safeFetch(`/api/projects/${id}`, { method: 'DELETE' })
-  if (!res.ok && res.status !== 404) throw new Error(`projects -> HTTP ${res.status}`)
+  if (!res.ok && res.status !== 404) {
+    throw await responseError(res, `projects -> HTTP ${res.status}`)
+  }
 }
 
 /** Ask the backend to cancel a running/pending job. Best-effort. */

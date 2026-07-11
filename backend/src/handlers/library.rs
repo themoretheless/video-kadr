@@ -4,6 +4,7 @@ use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::Json;
 
+use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 /// `GET /api/library` — list persisted sources and outputs, newest first.
@@ -17,14 +18,14 @@ pub async fn library_list_handler(
 pub async fn library_delete_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
-) -> StatusCode {
+) -> AppResult<StatusCode> {
     let entry = state.library.get(&id).await;
     if state.library.remove(&id).await {
         if let Some(entry) = entry.filter(|e| e.kind == "output") {
             let _ = state.db.cache_delete_filename(&entry.filename).await;
         }
-        StatusCode::NO_CONTENT
+        Ok(StatusCode::NO_CONTENT)
     } else {
-        StatusCode::NOT_FOUND
+        Err(AppError::not_found("Медиафайл не найден"))
     }
 }

@@ -38,6 +38,7 @@ Backend (Rust + Axum + Tokio)
 
 **Backend** (`backend/src/`):
 - `lib.rs` - `build_router()` (сборка маршрутов), реэкспорт модулей.
+- `error.rs` - `AppError`/`AppResult`, JSON error envelope и адаптеры extractors.
 - `main.rs` - bootstrap: env, probe инструментов, открыть БД, recover задач, `serve`.
 - `handlers/` - HTTP. `mod.rs` (import/edit/jobs + общая job-машинерия:
   `finish_job`/`spawn_progress_drain`/`job_timeout`), `upload.rs`, `projects.rs`,
@@ -183,9 +184,9 @@ stored XSS через upload) и полный ранжированный **то�
 73. `ProjectDto` объявлен в `api.ts`, а не в едином `types.ts`/generated module.
 74. Response DTO не типизированы на backend: много ручного `json!`.
 75. Handlers вручную собирают JSON вместо typed response structs.
-76. Status codes не нормализованы: async jobs отвечают 200, delete допускает 404 как success.
+76. ◐ Error status/body нормализованы через `AppError`; async jobs всё ещё отвечают 200 вместо 202.
 77. `cancelJob` на frontend игнорирует HTTP статус и тело ответа.
-78. `safeFetch` смешивает network failure и backend 5xx.
+78. ✅ `safeFetch` смешивал network failure и backend 5xx. *(закрыто typed `ApiError` в раунде 8)*
 79. Frontend requests не имеют `AbortController`/timeout на уровне API client.
 80. Polling interval фиксирован, без backoff/jitter.
 81. Polling не имеет max attempts/deadline на зависшие jobs.
@@ -193,8 +194,8 @@ stored XSS через upload) и полный ранжированный **то�
 83. Upload sync-flow отличается от job-based import/edit.
 84. Нет `GET /api/jobs` для списка jobs и диагностики очереди.
 85. Нет request-id/correlation-id в API responses и logs.
-86. Error body shape не единый между resources.
-87. Plain-text errors всё ещё возможны в projects/upload paths.
+86. ✅ Error body shape унифицирован как `{error, code}` в раунде 8.
+87. ✅ Plain-text API errors в projects/upload/extractors устранены; frontend хранит text fallback только для старого proxy.
 88. Library/projects endpoints без pagination/filter/search contract.
 89. API не версионирован (`/api/v1` или schema version отсутствуют).
 90. README API блок отстаёт от фактических ошибок, cache и jobs details.
@@ -241,7 +242,7 @@ stored XSS через upload) и полный ранжированный **то�
 125. `lib.rs` строит router с конкретными implementations вместо ports.
 126. Нет traits для `ProjectRepo`, `JobRepo`, `MediaRepo`, `RenderCache`.
 127. Нет in-memory repositories для быстрых service tests.
-128. Нет `AppError`/`IntoResponse` как единого error boundary.
+128. ✅ `AppError`/`IntoResponse` введён как единый error boundary в раунде 8.
 129. Нет `messages.rs`/i18n boundary для пользовательских строк.
 130. Process runner и parser progress всё ещё слабо отделены от tool facade.
 131. Нет `JobService::spawn` как единственного скелета queued/running/finish.
@@ -482,8 +483,20 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
   timeout latency и cleanup staging-файла. Закрыты 18/22/223/225/278/288/444;
   строгий multipart contract и ранняя content-validation остаются открытыми.
 
-Следующий независимый срез по приоритету: `AppError`, единый `Config`, и только
-после них общий `JobRunner`. Frontend продолжать секциями: `AudioControls`,
+### Раунд 8: единый API error boundary (11 июля 2026)
+
+- Новый `error.rs` владеет `AppError`/`AppResult`, HTTP status, стабильным
+  machine code и JSON envelope `{error, code}`. Internal source остаётся в
+  структурированном логе, клиент получает безопасное общее сообщение.
+- Upload, projects, jobs и library переведены на boundary; `ApiJson`/
+  `ApiMultipart`, неизвестный route и method-not-allowed также возвращают JSON.
+  `projects.rs` разделяет parse/name resolution и persistence.
+- Frontend больше не угадывает ошибку по status: единый parser создаёт typed
+  `ApiError(status, code)`, а backend-down относится только к network exception.
+  Закрыты 455/457/460/469/472/488; `job.error` и cancel response остаются отдельно.
+
+Следующий независимый срез по приоритету: единый `Config`, затем общий
+`JobRunner`. Frontend продолжать секциями: `AudioControls`,
 `PresetBar`, history/presets/theme stores; фасад `store.ts` сохранять до конца
 миграции.
 
@@ -758,12 +771,12 @@ Security и сеть (`tools/net.rs`, CORS/ServeDir в `lib.rs`, upload, Docker-
 
 API contract и ошибки (`model.rs` DTO, ответы хендлеров, `frontend/src/api.ts`, `types.ts`). Типизация границы wire-контракта, единый error-boundary.
 
-455. 🔴 [проблема/SRP] Нет общего типа ошибки/IntoResponse — каждый хендлер сам решает форму тела ответа - `backend/src/handlers/mod.rs` -> Ввести AppError (Validation, NotFound, Internal, Conflict) с одним impl IntoResponse, возвращающим единообразный JSON {"error": ...}, и переписать все хендлеры на Result<T, AppError>.
+455. ✅ [проблема/SRP] Не было общего типа ошибки/IntoResponse - **закрыто в раунде 8:** `error.rs` централизует `AppError`/`AppResult`, safe internal logging и JSON `{error, code}` для handlers/extractors/fallbacks. `backend/src/error.rs`
 456. 🔴 [баг] Ошибка валидации EditRequest из normalize_edit_request никогда не попадает в тело HTTP-ответа POST /api/edit - `backend/src/handlers/mod.rs` -> Выполнить дешёвую часть валидации (то, что не требует probe_video) синхронно до spawn и вернуть 400 сразу, либо явно задокументировать это в контракте и убрать соответствующий фронтенд-код, ожидающий немедленной ошибки.
-457. 🟠 [баг] cancel_handler — единственный эндпоинт с нестандартной формой ошибки {"error": ...} - `backend/src/handlers/mod.rs` -> Унифицировать через общий AppError/IntoResponse так, чтобы все ошибочные тела имели одинаковую JSON-форму.
+457. ✅ [баг] cancel_handler имел отдельную форму ошибки - **закрыто в раунде 8:** not-found/conflict используют общий `AppError`. `backend/src/handlers/mod.rs`
 458. 🟠 [проблема/DRY] import_handler и upload_handler дублируют ручную сборку VideoInfo-JSON с разными допущениями о title - `backend/src/handlers/mod.rs` -> Вынести общий builder fn video_info_json(id, path, title, size) -> Value и передавать title как параметр из каждого источника.
 459. 🟠 [проблема/DRY] Ручной json!() вместо typed DTO во всех async job-хендлерах - `backend/src/handlers/mod.rs` -> Добавить в model.rs структуры VideoInfo и EditResult с Serialize и заменить json!() на них в обоих хендлерах.
-460. 🟠 [проблема/DIP] frontend/src/api.ts угадывает форму ошибки по HTTP-статусу вместо парсинга типизированного тела - `frontend/src/api.ts` -> После введения общего AppError на бэкенде разобрать тело как JSON {error: string} с фоллбэком на текст, и завести единую функцию parseErrorBody.
+460. ✅ [проблема/DIP] frontend угадывал форму ошибки по HTTP-статусу - **закрыто в раунде 8:** один parser читает `{error, code}`, сохраняет text fallback и создаёт typed `ApiError`. `frontend/src/api.ts`
 461. 🟠 [проблема] Job.result типизирован как serde_json::Value / TS unknown — нет единой формы результата job - `backend/src/model.rs` -> Ввести серверный enum JobResult { Video(VideoInfo), Output(EditResult) } с serde(untagged) и зеркальный union-тип в types.ts вместо unknown.
 462. 🟡 [проблема] GET /api/health всегда отвечает 200, даже когда status: "degraded" - `backend/src/handlers/health.rs` -> Возвращать (StatusCode::SERVICE_UNAVAILABLE, Json(...)) при status == "degraded", чтобы код ответа и тело были согласованы.
 463. 🟡 [проблема] health-эндпоинт не используется фронтендом вовсе - `frontend/src/api.ts` -> Добавить getHealth() в api.ts и показывать статус в UI (например баннер при status !== "ok").
@@ -772,10 +785,10 @@ API contract и ошибки (`model.rs` DTO, ответы хендлеров, `
 466. 🟠 [проблема] GET /api/library и GET /api/projects отдают весь список без пагинации - `backend/src/handlers/library.rs` -> Добавить query-параметры limit/offset (или курсор) в оба хендлера и соответствующие типы в api.ts.
 467. 🟠 [баг] MediaEntry.kind в Rust — произвольная String, в TS — union 'source'|'output' без валидации на границе - `backend/src/library.rs` -> Заменить String на enum MediaKind { Source, Output } с #[serde(rename_all="lowercase")] в library.rs, что сделает несоответствие невозможным по построению.
 468. 🟠 [проблема] POST /api/edit не возвращает 404, если video_id не существует — ошибка видна только после факта в error job - `backend/src/handlers/mod.rs` -> Либо проверить существование source синхронно до spawn и вернуть 404, либо задокументировать асинхронную семантику как контракт и не пытаться её "чинить" частично.
-469. 🟡 [баг] upload_handler смешивает форматы ошибок: часть на русском, часть — сырой e.to_string() от std/io на английском - `backend/src/handlers/mod.rs` -> Обернуть все io-ошибки в единое русское сообщение ("не удалось сохранить файл: {e}") вместо голого e.to_string().
+469. ✅ [баг] upload_handler выдавал клиенту сырой `io::Error` - **закрыто в раунде 8:** I/O source логируется как internal cause, наружу идёт безопасный `internal_error`. `backend/src/handlers/upload.rs`, `backend/src/error.rs`
 470. 🟡 [проблема] ImportRequest.start/end не валидируются на уровне модели - `backend/src/model.rs` -> Добавить #[serde(deny_unknown_fields)] и явную проверку 0 <= start < end в отдельной validate()-функции ImportRequest, вызываемой синхронно в import_handler до spawn.
 471. 🟠 [проблема/SRP] normalize_edit_request совмещает валидацию и мутацию/клэмпинг в одной функции с 10+ независимыми проверками - `backend/src/handlers/mod.rs` -> Разделить на validate_edit_request (только Err) и clamp_edit_request (только приведение к границам), вызываемые последовательно.
-472. 🟡 [проблема] job_status_handler — единственный чисто-пустой 404 без тела во всём контракте - `backend/src/handlers/mod.rs` -> Вернуть Json({"error": "job not found"}) из job_status_handler тем же способом, что и cancel_handler, ещё до введения общего AppError.
+472. ✅ [проблема] job_status_handler возвращал пустой 404 - **закрыто в раунде 8:** возвращает общий `not_found` envelope. `backend/src/handlers/mod.rs`
 473. 🟡 [проблема] getProjectByVideo — единственное место во фронте, где 404 трактуется как валидный null-результат - `frontend/src/api.ts` -> Ввести общий helper fetchOrNull/fetchOkOr404, явно кодирующий семантику "404 = ожидаемое отсутствие" одним способом для всех трёх мест.
 474. 🟠 [проблема] ProjectDto.edit — Partial<EditState> во фронте, но бэкенд хранит edit как serde_json::Value без проверки формы - `backend/src/db.rs` -> Переиспользовать EditRequest (или его подмножество) как typed Deserialize для поля edit в project_upsert_handler вместо произвольного Value.
 475. 🟡 [проблема] Project.video — тоже нетипизированный Value, дублирующий VideoInfo без проверки полей - `backend/src/db.rs` -> Десериализовать video как typed VideoInfo DTO (после его введения по пункту дублирования json!()) вместо серого Value.
@@ -791,7 +804,7 @@ API contract и ошибки (`model.rs` DTO, ответы хендлеров, `
 485. 🟡 [баг] Ошибка «source video not found» из tools::find_source долетает до job.error на английском - `backend/src/handlers/mod.rs` -> Обернуть ошибку find_source в edit_handler через .map_err в русское сообщение ("источник не найден: {video_id}") перед пробросом в outcome.
 486. 🟡 [проблема/DRY] import_handler и edit_handler дублируют последовательность finish_job/drain/tx, но edit_handler дополнительно пишет в render cache только внутри себя - `backend/src/handlers/mod.rs` -> Вынести общий хвост в helper fn finalize_job(st, jid, tx, drain, outcome, kind) -> bool, а cache_put оставить отдельным вызовом только в edit-пути после helper'а.
 487. 🟠 [баг] upload_handler возвращает 400 BAD_REQUEST на ошибку чтения multipart-поля, даже если она вызвана обрывом соединения клиента - `backend/src/handlers/mod.rs` -> Различать multipart::Error по типу (обрыв потока -> просто прервать без ответа/499-подобная семантика, реальная ошибка формата -> 400).
-488. 🟠 [проблема/SRP] project_upsert_handler совмещает разбор JSON-полей, доменную валидацию, вычисление имени по фоллбэкам и вызов БД в одном хендлере - `backend/src/handlers/projects.rs` -> Вынести вычисление name в отдельную fn resolve_project_name(body, video) -> String и валидацию полей в отдельную fn parse_project_body(body) -> Result<(String, Value, Value), AppError>.
+488. ✅ [проблема/SRP] project_upsert_handler смешивал parsing/name/persistence - **закрыто в раунде 8:** `parse_project_body` и `resolve_project_name` возвращают `ParsedProject`, handler только вызывает repository. `backend/src/handlers/projects.rs`
 489. 🟡 [баг] ensure_project_json_size сериализует JSON дважды на каждый upsert без необходимости в успешном пути - `backend/src/handlers/projects.rs` -> Считать размер по одной комбинированной сериализации {video, edit} или переиспользовать уже посчитанные байты для последующей записи в БД вместо повторной сериализации.
 490. 🟡 [проблема/DIP] Формат Job.error — plain String — не различает пользовательскую ошибку валидации от внутренней ошибки ffmpeg/IO - `backend/src/model.rs` -> Добавить в Job поле error_kind: Option<ErrorKind> (Validation | Internal) либо разделить сообщение на user-facing и internal (логируемое отдельно через tracing) в finish_job.
 491. 🟡 [проблема/DRY] getJob и pollJob не переиспользуют список терминальных статусов, уже определённый на бэкенде через JobStatus::is_terminal - `frontend/src/api.ts` -> Добавить в types.ts функцию isTerminalStatus(status: JobStatus): boolean и использовать её и в pollJob, и в любом другом месте фронта, проверяющем завершённость job.
@@ -1252,7 +1265,7 @@ components/        EditPanel = тонкий контейнер + секции:
 | SSRF transport | `tools/{net,egress_proxy}.rs` | policy + контролируемый downloader adapter | ✅ initial/redirect/rebinding закрыты |
 | HTTP god-file | `handlers/mod.rs` + 3 группы | `http/*` по ресурсам | ◐ частично |
 | Оркестрация задач | копипаста в import/edit | `jobs::JobService::spawn` + `Task` | ☐ |
-| Ошибки | `(StatusCode,String)` россыпью | `AppError` + `IntoResponse` | ☐ |
+| Ошибки | `AppError` + `{error,code}` | typed domain/job errors | ✅ HTTP boundary; job errors позже |
 | Персистентность | конкретный `Db` + `Library` JSON | трейты-репозитории + SQLite | ☐ |
 | Модель правок | плоский `EditRequest` | `EditPlan`/Timeline-IR | ☐ |
 | Конфиг | env в ~9 местах | `Config` один раз | ☐ |
@@ -1269,7 +1282,8 @@ components/        EditPanel = тонкий контейнер + секции:
 закрыта: ✅ вырезание сегмента для AV1/ProRes, ✅ гонка cancel↔finish
 (терминальные переходы), ✅ crop-валидация, ✅ пропущенный `persist_job` при
 ошибке URL, ✅ рост `recover_jobs`, ✅ upload stored XSS, ✅ SSRF initial/
-redirect/DNS rebinding, ✅ upload concurrency/probe timeout. Остаётся открытым:
+redirect/DNS rebinding, ✅ upload concurrency/probe timeout, ✅ единый API error
+boundary и frontend HTTP/network distinction. Остаётся открытым:
 TTL-чистка не проверяет активные job (№24, частично); нет auth и ownership перед
 внешней публикацией (№34/421), process/resource sandbox и import filesize cap.
 Свежие high раунда 2 закрыты: №202 в раунде 5, №201 в раунде 6.

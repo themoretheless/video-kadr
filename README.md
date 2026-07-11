@@ -54,6 +54,11 @@ GET  /files/sources/...     -> исходники (с поддержкой Range
 GET  /files/outputs/...     -> результаты (с поддержкой Range)
 ```
 
+Все ошибки приложения в `/api` имеют один JSON-контракт:
+`{"error":"Понятное сообщение","code":"machine_readable_code"}`. Frontend
+сохраняет `status`/`code` в `ApiError`; сообщение о недоступном backend
+используется только при сетевой ошибке, а не для настоящего HTTP `5xx`.
+
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
 `MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2; размер независимых job/upload
 пулов), `JOB_TIMEOUT_SECS` (1800),
@@ -89,9 +94,9 @@ npm run dev
 
 Открой http://localhost:5173
 
-Нужны оба процесса. Если фронтенд показывает «Сервер недоступен» или раньше отдавал
-`/api/import -> HTTP 500`, значит не поднят бэкенд: dev-прокси Vite не может достучаться
-до `:8080` и отвечает 500. Запусти `cargo run` в `backend`.
+Нужны оба процесса. Если frontend показывает «Сервер недоступен» или ошибку
+dev-прокси, значит не поднят backend: Vite не может достучаться до `:8080`.
+Запусти `cargo run` в `backend`.
 
 ## Разработка и тесты
 
@@ -214,6 +219,15 @@ multipart не занимает render/download slots. Приём тела ог�
 tool checks - 5 секундами. Timeout явно делает kill+wait, а `kill_on_drop`
 остаётся страховкой; probe-timeout возвращает отдельный `504`. Существующий
 frontend показывает понятный текст ошибки inline и toast без отдельной UI-ветки.
+
+**Раунд 8 (11 июля 2026): единая граница ошибок API.** Новый `error.rs`
+инкапсулирует статус, машинный `code`, пользовательский текст и internal cause;
+внутренние детали логируются, но не выдаются клиенту. Upload, projects, jobs,
+library, JSON/multipart extractors и `404/405` fallbacks отвечают одним JSON
+envelope. `projects.rs` дополнительно разделён на parsing/name resolution и
+persistence. Frontend использует один parser и typed `ApiError`, сохраняя
+plain-text fallback для старого proxy. Regression-тесты покрывают malformed
+JSON, routing errors, body limit, скрытие internal source и HTTP 500 vs network.
 
 ```
 frontend (Vue 3 + Vite)

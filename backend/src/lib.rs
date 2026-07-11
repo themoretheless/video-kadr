@@ -5,6 +5,7 @@
 //! real HTTP API with `tower::ServiceExt::oneshot`, without binding a socket.
 
 pub mod db;
+pub mod error;
 pub mod handlers;
 pub mod library;
 pub mod model;
@@ -29,30 +30,36 @@ use state::AppState;
 /// those directories but is intentionally not reachable via `/files`.
 pub fn build_router(state: AppState, max_upload: usize) -> Router {
     let storage = state.storage.clone();
-    Router::new()
-        .route("/api/import", post(handlers::import_handler))
+    let api = Router::new()
+        .route("/import", post(handlers::import_handler))
         .route(
-            "/api/upload",
+            "/upload",
             post(handlers::upload_handler).layer(DefaultBodyLimit::max(max_upload)),
         )
-        .route("/api/edit", post(handlers::edit_handler))
-        .route("/api/jobs/:id", get(handlers::job_status_handler))
-        .route("/api/jobs/:id/cancel", post(handlers::cancel_handler))
-        .route("/api/library", get(handlers::library_list_handler))
-        .route("/api/library/:id", delete(handlers::library_delete_handler))
+        .route("/edit", post(handlers::edit_handler))
+        .route("/jobs/:id", get(handlers::job_status_handler))
+        .route("/jobs/:id/cancel", post(handlers::cancel_handler))
+        .route("/library", get(handlers::library_list_handler))
+        .route("/library/:id", delete(handlers::library_delete_handler))
         .route(
-            "/api/projects",
+            "/projects",
             post(handlers::project_upsert_handler).get(handlers::project_list_handler),
         )
         .route(
-            "/api/projects/by-video/:videoId",
+            "/projects/by-video/:videoId",
             get(handlers::project_by_video_handler),
         )
         .route(
-            "/api/projects/:id",
+            "/projects/:id",
             get(handlers::project_get_handler).delete(handlers::project_delete_handler),
         )
-        .route("/api/health", get(handlers::health_handler))
+        .route("/health", get(handlers::health_handler))
+        .fallback(handlers::api_not_found_handler)
+        .method_not_allowed_fallback(handlers::method_not_allowed_handler)
+        .with_state(state);
+
+    Router::new()
+        .nest("/api", api)
         .nest_service("/files/sources", ServeDir::new(storage.join("sources")))
         .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")))
         .layer(SetResponseHeaderLayer::overriding(
@@ -65,7 +72,6 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
         ))
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer())
-        .with_state(state)
 }
 
 fn cors_layer() -> CorsLayer {

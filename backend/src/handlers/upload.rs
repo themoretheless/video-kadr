@@ -2,7 +2,7 @@ use std::future::Future;
 use std::path::Path;
 use std::time::Duration;
 
-use axum::extract::{Multipart, State};
+use axum::extract::{multipart::MultipartError, Multipart, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde_json::{json, Value};
@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::timeout;
 use uuid::Uuid;
 
+use crate::error::{ApiMultipart, AppError, AppResult};
 use crate::library::MediaEntry;
 use crate::state::AppState;
 use crate::tools::{self, ProbeInfo};
@@ -27,13 +28,10 @@ struct ReceivedUpload {
 /// response MIME type under `/files/sources`.
 pub async fn upload_handler(
     State(state): State<AppState>,
-    multipart: Multipart,
-) -> Result<Json<Value>, (StatusCode, String)> {
+    ApiMultipart(multipart): ApiMultipart,
+) -> AppResult<Json<Value>> {
     let _upload_slot = state.try_acquire_upload_slot().ok_or_else(|| {
-        (
-            StatusCode::TOO_MANY_REQUESTS,
-            "слишком много одновременных загрузок, повторите позже".into(),
-        )
+        AppError::too_many_requests("слишком много одновременных загрузок, повторите позже")
     })?;
     let video_id = Uuid::new_v4().to_string();
     let sources = state.sources_dir();
@@ -48,7 +46,7 @@ pub async fn upload_handler(
 
     if received.total_bytes == 0 {
         remove_quietly(&temporary_path).await;
-        return Err((StatusCode::BAD_REQUEST, "пустой файл".into()));
+        return Err(AppError::bad_request("пустой файл"));
     }
 
     let info = match tools::probe_video(&temporary_path).await {
@@ -59,17 +57,13 @@ pub async fn upload_handler(
         }
         _ => {
             remove_quietly(&temporary_path).await;
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "не удалось распознать видео в файле".into(),
-            ));
+            return Err(AppError::bad_request("не удалось распознать видео в файле"));
         }
     };
     let Some(extension) = safe_upload_extension(&info) else {
         remove_quietly(&temporary_path).await;
-        return Err((
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "формат файла не поддерживается".into(),
+        return Err(AppError::unsupported_media_type(
+            "формат файла не поддерживается",
         ));
     };
 
@@ -77,7 +71,7 @@ pub async fn upload_handler(
     let path = sources.join(&filename);
     if let Err(error) = tokio::fs::rename(&temporary_path, &path).await {
         remove_quietly(&temporary_path).await;
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
+        return Err(AppError::internal("publish uploaded file", error));
     }
 
     let size = tokio::fs::metadata(&path).await.map(|meta| meta.len()).ok();
@@ -102,17 +96,11 @@ pub async fn upload_handler(
     Ok(Json(body))
 }
 
-fn probe_error_response(error: &anyhow::Error) -> (StatusCode, String) {
+fn probe_error_response(error: &anyhow::Error) -> AppError {
     if tools::is_tool_timeout(error) {
-        (
-            StatusCode::GATEWAY_TIMEOUT,
-            "анализ файла превысил лимит времени".into(),
-        )
+        AppError::gateway_timeout("анализ файла превысил лимит времени")
     } else {
-        (
-            StatusCode::BAD_REQUEST,
-            "не удалось распознать видео в файле".into(),
-        )
+        AppError::bad_request("не удалось распознать видео в файле")
     }
 }
 
@@ -120,9 +108,9 @@ async fn receive_with_timeout<F>(
     receive: F,
     temporary_path: &Path,
     limit: Duration,
-) -> Result<ReceivedUpload, (StatusCode, String)>
+) -> AppResult<ReceivedUpload>
 where
-    F: Future<Output = Result<ReceivedUpload, (StatusCode, String)>>,
+    F: Future<Output = AppResult<ReceivedUpload>>,
 {
     match timeout(limit, receive).await {
         Ok(Ok(received)) => Ok(received),
@@ -132,9 +120,8 @@ where
         }
         Err(_) => {
             remove_quietly(temporary_path).await;
-            Err((
-                StatusCode::REQUEST_TIMEOUT,
-                "загрузка файла превысила лимит времени".into(),
+            Err(AppError::request_timeout(
+                "загрузка файла превысила лимит времени",
             ))
         }
     }
@@ -143,12 +130,8 @@ where
 async fn receive_upload(
     mut multipart: Multipart,
     temporary_path: &Path,
-) -> Result<ReceivedUpload, (StatusCode, String)> {
-    while let Some(mut field) = multipart
-        .next_field()
-        .await
-        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?
-    {
+) -> AppResult<ReceivedUpload> {
+    while let Some(mut field) = multipart.next_field().await.map_err(multipart_error)? {
         let original = field.file_name().map(str::to_owned);
         if field.name() != Some("file") && original.is_none() {
             continue;
@@ -161,23 +144,18 @@ async fn receive_upload(
         });
     }
 
-    Err((StatusCode::BAD_REQUEST, "файл не найден в запросе".into()))
+    Err(AppError::bad_request("файл не найден в запросе"))
 }
 
 async fn stream_field_to_file(
     field: &mut axum::extract::multipart::Field<'_>,
     path: &Path,
-) -> Result<u64, (StatusCode, String)> {
+) -> AppResult<u64> {
     let mut file = tokio::fs::File::create(path)
         .await
         .map_err(internal_error)?;
     let mut total = 0_u64;
-    while let Some(chunk) = field.chunk().await.map_err(|error| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("не удалось прочитать файл: {error}"),
-        )
-    })? {
+    while let Some(chunk) = field.chunk().await.map_err(multipart_error)? {
         file.write_all(&chunk).await.map_err(internal_error)?;
         total += chunk.len() as u64;
     }
@@ -185,8 +163,18 @@ async fn stream_field_to_file(
     Ok(total)
 }
 
-fn internal_error(error: std::io::Error) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+fn multipart_error(error: MultipartError) -> AppError {
+    match error.status() {
+        StatusCode::PAYLOAD_TOO_LARGE => {
+            AppError::payload_too_large("файл превышает допустимый размер")
+        }
+        StatusCode::BAD_REQUEST => AppError::invalid_multipart(),
+        _ => AppError::internal("read multipart upload", error),
+    }
+}
+
+fn internal_error(error: std::io::Error) -> AppError {
+    AppError::internal("write uploaded file", error)
 }
 
 async fn remove_quietly(path: &Path) {
@@ -281,7 +269,8 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(error.0, StatusCode::REQUEST_TIMEOUT);
+        assert_eq!(error.status(), StatusCode::REQUEST_TIMEOUT);
+        assert_eq!(error.code(), "request_timeout");
         assert!(tokio::fs::metadata(path).await.is_err());
     }
 
@@ -290,10 +279,10 @@ mod tests {
         let error = anyhow::Error::new(crate::tools::ToolTimeout);
         let response = probe_error_response(&error);
 
-        assert_eq!(response.0, StatusCode::GATEWAY_TIMEOUT);
-        assert!(response.1.contains("превысил лимит времени"));
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(response.code(), "gateway_timeout");
         assert_eq!(
-            probe_error_response(&anyhow::anyhow!("invalid media")).0,
+            probe_error_response(&anyhow::anyhow!("invalid media")).status(),
             StatusCode::BAD_REQUEST
         );
     }

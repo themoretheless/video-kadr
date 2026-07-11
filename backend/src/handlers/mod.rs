@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Path as AxPath, State};
-use axum::http::StatusCode;
 use axum::Json;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -11,6 +10,7 @@ use tokio::sync::{mpsc, Mutex, OwnedMutexGuard, OwnedSemaphorePermit};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::error::{ApiJson, AppError, AppResult};
 use crate::library::MediaEntry;
 use crate::model::{Crop, EditRequest, ImportRequest, Job, JobStatus, Scale, Trim};
 use crate::state::{AppState, CancelJobOutcome};
@@ -42,7 +42,7 @@ fn job_timeout() -> Duration {
 /// and immediately return a job id to poll.
 pub async fn import_handler(
     State(state): State<AppState>,
-    Json(req): Json<ImportRequest>,
+    ApiJson(req): ApiJson<ImportRequest>,
 ) -> Json<Value> {
     let job_id = Uuid::new_v4().to_string();
     let video_id = Uuid::new_v4().to_string();
@@ -157,7 +157,7 @@ pub fn render_cache_key(req: &EditRequest) -> String {
 /// video and return a job id to poll for the rendered result.
 pub async fn edit_handler(
     State(state): State<AppState>,
-    Json(req): Json<EditRequest>,
+    ApiJson(req): ApiJson<EditRequest>,
 ) -> Json<Value> {
     let job_id = Uuid::new_v4().to_string();
     let out_id = Uuid::new_v4().to_string();
@@ -265,10 +265,10 @@ pub async fn edit_handler(
 pub async fn job_status_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
-) -> Result<Json<Job>, StatusCode> {
+) -> AppResult<Json<Job>> {
     match state.get_job(&id).await {
         Some(job) => Ok(Json(job)),
-        None => Err(StatusCode::NOT_FOUND),
+        None => Err(AppError::not_found("Задача не найдена")),
     }
 }
 
@@ -276,18 +276,20 @@ pub async fn job_status_handler(
 pub async fn cancel_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
-) -> (StatusCode, Json<Value>) {
+) -> AppResult<Json<Value>> {
     match state.cancel_open_job(&id).await {
-        CancelJobOutcome::NotFound => (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "job not found" })),
-        ),
-        CancelJobOutcome::AlreadyFinished => (
-            StatusCode::CONFLICT,
-            Json(json!({ "error": "job already finished" })),
-        ),
-        CancelJobOutcome::Cancelled => (StatusCode::OK, Json(json!({ "status": "cancelled" }))),
+        CancelJobOutcome::NotFound => Err(AppError::not_found("Задача не найдена")),
+        CancelJobOutcome::AlreadyFinished => Err(AppError::conflict("Задача уже завершена")),
+        CancelJobOutcome::Cancelled => Ok(Json(json!({ "status": "cancelled" }))),
     }
+}
+
+pub async fn api_not_found_handler() -> AppError {
+    AppError::not_found("API-маршрут не найден")
+}
+
+pub async fn method_not_allowed_handler() -> AppError {
+    AppError::method_not_allowed("Метод не поддерживается")
 }
 
 /// Drain numeric progress updates from a worker into the job record.

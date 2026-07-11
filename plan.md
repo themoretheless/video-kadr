@@ -64,6 +64,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] Раунд 5 (11 июля 2026): закрыты upload XSS и cancel→running, вынесены backend upload/frontend edit domain/export controls, исправлены no-op export, preset drift, drag cleanup и mobile overflow; три итерации проверены тестами и живым UI.
 - [x] Раунд 6 (11 июля 2026): закрыты SSRF redirect/DNS rebinding и custom-port egress; добавлены per-job proxy, bounded DNS/connect, реальные `yt-dlp` regression-тесты и pinned `yt-dlp` в CI.
 - [x] Раунд 7 (11 июля 2026): закрыты upload concurrency, partial-upload cleanup, probe timeout и публичный jobs_semaphore; multipart bounded с cleanup, tool probes имеют timeout с kill+wait, добавлены state/API/tool regressions.
+- [x] Раунд 8 (11 июля 2026): введены `AppError`/`AppResult`, единый JSON envelope и typed frontend `ApiError`; projects parsing отделён от persistence, extractor/404/405/body-limit ошибки покрыты regression-тестами.
 - [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
 
 ---

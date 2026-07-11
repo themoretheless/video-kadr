@@ -94,6 +94,16 @@ fn delete(uri: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn assert_api_error(body: &Value, code: &str) {
+    assert_eq!(body["code"], code);
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty()),
+        "expected a non-empty API error, got: {body}"
+    );
+}
+
 /// Send a request and return (status, parsed-json-or-Null, raw-text).
 async fn send(app: &Router, req: Request<Body>) -> (StatusCode, Value, String) {
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -143,8 +153,33 @@ async fn health_reflects_tool_availability() {
 async fn unknown_job_is_404() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
-    let (status, _b, _) = send(&app, get("/api/jobs/does-not-exist")).await;
+    let (status, body, _) = send(&app, get("/api/jobs/does-not-exist")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
+}
+
+#[tokio::test]
+async fn malformed_json_and_routing_errors_use_the_api_envelope() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+
+    let invalid_json = Request::builder()
+        .method("POST")
+        .uri("/api/import")
+        .header("content-type", "application/json")
+        .body(Body::from("{"))
+        .unwrap();
+    let (status, body, _) = send(&app, invalid_json).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
+
+    let (status, body, _) = send(&app, delete("/api/import")).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_api_error(&body, "method_not_allowed");
+
+    let (status, body, _) = send(&app, get("/api/does-not-exist")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
 }
 
 #[tokio::test]
@@ -305,8 +340,9 @@ async fn closed_job_queue_marks_job_error() {
 async fn cancel_unknown_job_is_404() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
-    let (status, _b, _) = send(&app, post_empty("/api/jobs/ghost/cancel")).await;
+    let (status, body, _) = send(&app, post_empty("/api/jobs/ghost/cancel")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
 }
 
 #[tokio::test]
@@ -318,7 +354,8 @@ async fn cancel_terminal_job_is_conflict() {
     let app = router(state);
     let (status, body, _) = send(&app, post_empty("/api/jobs/done-job/cancel")).await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(body["error"], "job already finished");
+    assert_eq!(body["error"], "Задача уже завершена");
+    assert_api_error(&body, "conflict");
 }
 
 #[tokio::test]
@@ -558,16 +595,18 @@ async fn jobs_survive_restart() {
 async fn project_by_video_missing_is_404() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
-    let (status, _b, _) = send(&app, get("/api/projects/by-video/nope")).await;
+    let (status, body, _) = send(&app, get("/api/projects/by-video/nope")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
 }
 
 #[tokio::test]
 async fn project_upsert_requires_video_and_edit() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
-    let (status, _b, _) = send(&app, post_json("/api/projects", json!({ "videoId": "x" }))).await;
+    let (status, body, _) = send(&app, post_json("/api/projects", json!({ "videoId": "x" }))).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
 }
 
 #[tokio::test]
@@ -613,8 +652,9 @@ async fn upload_rejects_empty_file() {
         )
         .body(Body::from(body))
         .unwrap();
-    let (status, _b, text) = send(&app, req).await;
+    let (status, body, text) = send(&app, req).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
     assert!(text.contains("пустой файл"), "got: {text}");
 }
 
@@ -625,13 +665,15 @@ async fn upload_limit_fails_fast_and_recovers_after_a_slot_is_released() {
     let _slot_b = state.try_acquire_upload_slot().unwrap();
     let app = router(state);
 
-    let (status, _body, text) = send(&app, post_multipart_file("clip.mp4", b"data")).await;
+    let (status, body, text) = send(&app, post_multipart_file("clip.mp4", b"data")).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_api_error(&body, "too_many_requests");
     assert!(text.contains("слишком много одновременных загрузок"));
 
     drop(slot_a);
-    let (status, _body, text) = send(&app, post_multipart_file("clip.mp4", b"")).await;
+    let (status, body, text) = send(&app, post_multipart_file("clip.mp4", b"")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
     assert!(text.contains("пустой файл"));
 }
 
@@ -653,9 +695,20 @@ async fn upload_without_file_field_is_400() {
         )
         .body(Body::from(body))
         .unwrap();
-    let (status, _b, text) = send(&app, req).await;
+    let (status, body, text) = send(&app, req).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
     assert!(text.contains("файл не найден"), "got: {text}");
+}
+
+#[tokio::test]
+async fn upload_body_limit_uses_json_error_envelope() {
+    let (state, _d) = make_state(true, true).await;
+    let app = build_router(state, 64);
+
+    let (status, body, _) = send(&app, post_multipart_file("clip.mp4", &[b'x'; 128])).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_api_error(&body, "payload_too_large");
 }
 
 #[tokio::test]

@@ -105,9 +105,9 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 73. `ProjectDto` in API client → move to generated/shared types.
 74. Backend response DTOs missing → typed DTO structs.
 75. Manual `json!` responses → HTTP DTO layer.
-76. Status code drift → AppError/API policy.
+76. ◐ Error status/body drift закрыт AppError; async jobs 200→202 остаётся.
 77. Cancel response ignored → frontend API cleanup.
-78. 5xx/network mixed → frontend API error model.
+78. ✅ 5xx/network mixed → закрыто typed `ApiError` в раунде 8.
 79. No AbortController/timeouts → cancellable API client.
 80. Polling no backoff/jitter → jobs UI/client refactor.
 81. Polling no deadline → jobs client deadline.
@@ -115,8 +115,8 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 83. Upload sync-flow differs → upload-as-job or documented exception.
 84. No jobs list endpoint → jobs history endpoint/UI.
 85. No request correlation id → request-id middleware.
-86. Error body shape not unified → AppError + typed ApiError.
-87. Plain-text errors possible → convert all handlers to ApiError.
+86. ✅ Error body shape unified → `{error, code}` через AppError.
+87. ✅ Plain-text API errors устранены в handlers/extractors/fallbacks.
 88. No pagination/search → library/projects API pagination.
 89. No API versioning → `/api/v1` or schema version policy.
 90. README API drift → docs/API contract check.
@@ -157,7 +157,7 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 125. Router uses concretes → ports/services injected in state.
 126. Missing repo traits → P2-10.
 127. Missing in-memory repos → service tests.
-128. Missing `AppError` → P2-11.
+128. ✅ `AppError` HTTP boundary введён в раунде 8; typed `job.error` остаётся.
 129. Missing messages/i18n boundary → P1-8.
 130. Process runner weak boundary → `ffmpeg/process.rs` + `download`.
 131. No `JobService::spawn` → P2-9.
@@ -256,7 +256,8 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 P0-11 cancel→Running race, `upload_handler` через semaphore, `AppError`,
 `Config`, `JobRunner`, `EditPanel` split, `store.ts` split, RectOverlay/TrimSlider
 cleanup, design empty states, shared format/time utils. Раунд 5 закрыл P0-9,
-P0-11, cleanup и первые безопасные frontend-срезы; раунд 6 закрыл P0-10.
+P0-11, cleanup и первые безопасные frontend-срезы; раунд 6 закрыл P0-10,
+раунд 7 - upload gate, раунд 8 - `AppError`.
 Актуальный остаток - ниже.
 
 **Сверка 9 июля 2026.** Этот файл синхронизирован с `architecture.md`: здесь
@@ -292,21 +293,28 @@ cleanup `.upload`; `ffprobe` bounded 30 секундами, startup tool checks 
 проверяют pools, saturation/recovery, timeout latency и staging cleanup. Frontend
 уже показывает серверный текст `429` inline и toast.
 
+**Раунд 8, 11 июля 2026.** Закрыты 455/457/460/469/472/488: новый `error.rs`
+возвращает единый `{error, code}` для handlers, JSON/multipart extractors и
+`404/405`; internal source логируется и не утекает клиенту. `projects.rs`
+разделяет parsing/name resolution и persistence. Frontend использует один
+parser и typed `ApiError(status, code)`, поэтому реальный HTTP 500 больше не
+маскируется под network failure. `job.error`, 202 и cancel outcome остаются
+отдельными задачами.
+
 **Следующие маленькие PR по приоритету.**
 
-1. Вынести единый `AppError` и JSON error boundary для backend API.
-2. Собрать `Config` один раз на старте и убрать scattered env reads.
-3. Вынести `JobRunner`: create, acquire, progress, finish, cancel, panic handling.
-4. Продолжить `EditPanel.vue`: `AudioControls`, `PresetBar`, затем timing/frame.
-5. Продолжить store: history/presets/theme, сохраняя совместимый фасад.
-6. Вынести общий `useDragHandle`, теперь поверх уже безопасного unmount cleanup.
-7. Добавить URL query-token warning и redaction helper для логов.
-8. Добавить first-class empty/error/offline states без backend.
-9. Вынести shared formatDuration/formatSize и каталоги edit options.
-10. Добавить typed API/OpenAPI слой между Rust и TS.
-11. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
-12. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
-13. Закрепить Rust toolchain/MSRV и воспроизводимые Docker image digests.
+1. Собрать `Config` один раз на старте и убрать scattered env reads.
+2. Вынести `JobRunner`: create, acquire, progress, finish, cancel, panic handling.
+3. Продолжить `EditPanel.vue`: `AudioControls`, `PresetBar`, затем timing/frame.
+4. Продолжить store: history/presets/theme, сохраняя совместимый фасад.
+5. Вынести общий `useDragHandle`, теперь поверх уже безопасного unmount cleanup.
+6. Добавить URL query-token warning и redaction helper для логов.
+7. Добавить first-class empty/error/offline states без backend.
+8. Вынести shared formatDuration/formatSize и каталоги edit options.
+9. Добавить typed API/OpenAPI слой между Rust и TS.
+10. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
+11. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
+12. Закрепить Rust toolchain/MSRV и воспроизводимые Docker image digests.
 
 ### HTTP-хендлеры и роутинг (51)
 
@@ -561,12 +569,12 @@ cleanup `.upload`; `ffprobe` bounded 30 секундами, startup tool checks 
 
 ### API contract и обработка ошибок (45)
 
-- [ ] 🔴 **455.** (проблема) Нет общего типа ошибки/IntoResponse — каждый хендлер сам решает форму тела ответа -> Ввести AppError (Validation, NotFound, Internal, Conflict) с одним impl IntoResponse, возвращающим единообразный JSON {"error": ...}, и переписать все хендлеры на Result<T, AppError>. `backend/src/handlers/mod.rs`
+- [x] 🔴 **455.** (проблема) Не было общего типа ошибки/IntoResponse -> Закрыто в раунде 8: `error.rs` централизует AppError/AppResult, безопасный internal mapping и JSON `{error, code}` для handlers/extractors/fallbacks. `backend/src/error.rs`
 - [ ] 🔴 **456.** (баг) Ошибка валидации EditRequest из normalize_edit_request никогда не попадает в тело HTTP-ответа POST /api/edit -> Выполнить дешёвую часть валидации (то, что не требует probe_video) синхронно до spawn и вернуть 400 сразу, либо явно задокументировать это в контракте и убрать соответствующий фронтенд-код, ожидающий немедленной ошибки. `backend/src/handlers/mod.rs`
-- [ ] 🟠 **457.** (баг) cancel_handler — единственный эндпоинт с нестандартной формой ошибки {"error": ...} -> Унифицировать через общий AppError/IntoResponse так, чтобы все ошибочные тела имели одинаковую JSON-форму. `backend/src/handlers/mod.rs`
+- [x] 🟠 **457.** (баг) cancel_handler имел отдельную форму ошибки -> Закрыто в раунде 8: not-found/conflict используют AppError. `backend/src/handlers/mod.rs`
 - [ ] 🟠 **458.** (проблема) import_handler и upload_handler дублируют ручную сборку VideoInfo-JSON с разными допущениями о title -> Вынести общий builder fn video_info_json(id, path, title, size) -> Value и передавать title как параметр из каждого источника. `backend/src/handlers/mod.rs`
 - [ ] 🟠 **459.** (проблема) Ручной json!() вместо typed DTO во всех async job-хендлерах -> Добавить в model.rs структуры VideoInfo и EditResult с Serialize и заменить json!() на них в обоих хендлерах. `backend/src/handlers/mod.rs`
-- [ ] 🟠 **460.** (проблема) frontend/src/api.ts угадывает форму ошибки по HTTP-статусу вместо парсинга типизированного тела -> После введения общего AppError на бэкенде разобрать тело как JSON {error: string} с фоллбэком на текст, и завести единую функцию parseErrorBody. `frontend/src/api.ts`
+- [x] 🟠 **460.** (проблема) frontend угадывал форму ошибки по HTTP-статусу -> Закрыто в раунде 8: единый parser читает `{error, code}`, сохраняет text fallback и создаёт typed ApiError. `frontend/src/api.ts`
 - [ ] 🟠 **461.** (проблема) Job.result типизирован как serde_json::Value / TS unknown — нет единой формы результата job -> Ввести серверный enum JobResult { Video(VideoInfo), Output(EditResult) } с serde(untagged) и зеркальный union-тип в types.ts вместо unknown. `backend/src/model.rs`
 - [ ] 🟠 **465.** (проблема) EditRequest — одна плоская структура на 27+ полей без группировки по фиче -> Разбить EditRequest на вложенные группы с #[serde(flatten)] (TimingOptions, ColorOptions, ExportOptions), сохранив совместимость сериализации. `backend/src/model.rs`
 - [ ] 🟠 **466.** (проблема) GET /api/library и GET /api/projects отдают весь список без пагинации -> Добавить query-параметры limit/offset (или курсор) в оба хендлера и соответствующие типы в api.ts. `backend/src/handlers/library.rs`
@@ -577,15 +585,15 @@ cleanup `.upload`; `ffprobe` bounded 30 секундами, startup tool checks 
 - [ ] 🟠 **482.** (проблема) Job — одна структура на все статусы; result/error/progress/stage валидны только в подмножестве состояний -> Смоделировать как enum JobState { Pending, Running{progress,stage}, Done{result}, Error{message}, Cancelled, Interrupted } с serde(tag="status") вместо плоской структуры с опциональными полями. `backend/src/model.rs`
 - [ ] 🟠 **483.** (проблема) POST /api/projects принимает произвольный serde_json::Value без typed DTO для тела запроса -> Ввести struct ProjectUpsertRequest { video_id: String, name: Option<String>, video: Value, edit: Value } с Deserialize и убрать ручное индексирование Value. `backend/src/handlers/projects.rs`
 - [ ] 🟠 **487.** (баг) upload_handler возвращает 400 BAD_REQUEST на ошибку чтения multipart-поля, даже если она вызвана обрывом соединения клиента -> Различать multipart::Error по типу (обрыв потока -> просто прервать без ответа/499-подобная семантика, реальная ошибка формата -> 400). `backend/src/handlers/mod.rs`
-- [ ] 🟠 **488.** (проблема) project_upsert_handler совмещает разбор JSON-полей, доменную валидацию, вычисление имени по фоллбэкам и вызов БД в одном хендлере -> Вынести вычисление name в отдельную fn resolve_project_name(body, video) -> String и валидацию полей в отдельную fn parse_project_body(body) -> Result<(String, Value, Value), AppError>. `backend/src/handlers/projects.rs`
+- [x] 🟠 **488.** (проблема) project_upsert_handler смешивал parsing/name/persistence -> Закрыто в раунде 8: `parse_project_body` и `resolve_project_name` возвращают ParsedProject, handler вызывает только repository. `backend/src/handlers/projects.rs`
 - [ ] 🟠 **492.** (баг) cancelJob проглатывает даже успешный не-2xx ответ (404/409 CancelJobOutcome), не давая вызывающему коду отличить исходы -> Вернуть из cancelJob Promise<'cancelled'|'not_found'|'already_finished'|'network_error'> вместо void, разобрав тело/статус ответа. `frontend/src/api.ts`
 - [ ] 🟠 **495.** (баг) project_get_handler (GET /api/projects/:id) и project_list_handler/getProjects/deleteProject объявлены и экспортированы, но не используются нигде на фронтенде -> Либо удалить неиспользуемые эндпоинты/функции, либо подключить их к UI (например список сохранённых проектов), если такая фича планируется. `backend/src/handlers/projects.rs`
 - [ ] 🟡 **462.** (проблема) GET /api/health всегда отвечает 200, даже когда status: "degraded" -> Возвращать (StatusCode::SERVICE_UNAVAILABLE, Json(...)) при status == "degraded", чтобы код ответа и тело были согласованы. `backend/src/handlers/health.rs`
 - [ ] 🟡 **463.** (проблема) health-эндпоинт не используется фронтендом вовсе -> Добавить getHealth() в api.ts и показывать статус в UI (например баннер при status !== "ok"). `frontend/src/api.ts`
 - [ ] 🟡 **464.** (проблема) Нет версионирования API — все пути живут под /api без /v1 -> Либо задокументировать as-is для локального MVP как осознанное решение, либо ввести /api/v1 префикс до появления второго клиента контракта. `backend/src/lib.rs`
-- [ ] 🟡 **469.** (баг) upload_handler смешивает форматы ошибок: часть на русском, часть — сырой e.to_string() от std/io на английском -> Обернуть все io-ошибки в единое русское сообщение ("не удалось сохранить файл: {e}") вместо голого e.to_string(). `backend/src/handlers/mod.rs`
+- [x] 🟡 **469.** (баг) upload_handler выдавал сырой io::Error -> Закрыто в раунде 8: source логируется как internal cause, клиент получает безопасный `internal_error`. `backend/src/handlers/upload.rs`, `backend/src/error.rs`
 - [ ] 🟡 **470.** (проблема) ImportRequest.start/end не валидируются на уровне модели -> Добавить #[serde(deny_unknown_fields)] и явную проверку 0 <= start < end в отдельной validate()-функции ImportRequest, вызываемой синхронно в import_handler до spawn. `backend/src/model.rs`
-- [ ] 🟡 **472.** (проблема) job_status_handler — единственный чисто-пустой 404 без тела во всём контракте -> Вернуть Json({"error": "job not found"}) из job_status_handler тем же способом, что и cancel_handler, ещё до введения общего AppError. `backend/src/handlers/mod.rs`
+- [x] 🟡 **472.** (проблема) job_status_handler возвращал пустой 404 -> Закрыто в раунде 8 общим `not_found` envelope. `backend/src/handlers/mod.rs`
 - [ ] 🟡 **473.** (проблема) getProjectByVideo — единственное место во фронте, где 404 трактуется как валидный null-результат -> Ввести общий helper fetchOrNull/fetchOkOr404, явно кодирующий семантику "404 = ожидаемое отсутствие" одним способом для всех трёх мест. `frontend/src/api.ts`
 - [ ] 🟡 **475.** (проблема) Project.video — тоже нетипизированный Value, дублирующий VideoInfo без проверки полей -> Десериализовать video как typed VideoInfo DTO (после его введения по пункту дублирования json!()) вместо серого Value. `backend/src/db.rs`
 - [ ] 🟡 **476.** (проблема) MAX_PROJECT_JSON_BYTES = 64KB — magic number без сообщения клиенту о лимите заранее -> Экспортировать лимит в GET /api/health или отдельный /api/config эндпоинт, чтобы фронтенд мог предупреждать до отправки большого edit-состояния (например при работе с очень длинным списком segments). `backend/src/handlers/projects.rs`
@@ -1070,9 +1078,10 @@ cleanup `.upload`; `ffprobe` bounded 30 секундами, startup tool checks 
 - [ ] **Шаг B (L):** `Library` (JSON) → таблица `media` в SQLite + `FileStore` (file-IO отдельно); одноразовая миграция `library.json` + тест миграции.
 - **Критерий:** существующие тесты зелёные; новый in-memory тест хендлера без sqlite.
 
-### ☐ P2-11. `AppError` + `IntoResponse` · L
+### ◐ P2-11. `AppError` + `IntoResponse` · L
 - **Файлы:** новый `error.rs`; хендлеры; домен (строки → варианты).
-- [ ] enum `AppError{BadRequest(Reason)/NotFound/Conflict/Internal}` + `IntoResponse`; `ErrorKind` для `job.error`; убрать россыпь `(StatusCode, String)`.
+- [x] `AppError` + `IntoResponse`; убрать россыпь `(StatusCode, String)` и унифицировать extractor/routing errors.
+- [ ] Ввести `ErrorKind` для асинхронного `job.error`, не смешивая его с HTTP boundary.
 - **Критерий:** статус-коды в `tests/api.rs` не меняются.
 
 ### ☐ P2-12. `JobService` (инвариант завершения) · M
