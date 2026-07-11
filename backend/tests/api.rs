@@ -288,7 +288,7 @@ async fn edit_stale_render_cache_entry_is_evicted() {
 #[tokio::test]
 async fn closed_job_queue_marks_job_error() {
     let (state, _d) = make_state(true, true).await;
-    state.jobs_semaphore.close();
+    state.close_job_queue();
     let app = router(state);
     let (_s, body, _) = send(
         &app,
@@ -336,8 +336,8 @@ async fn cancel_pending_job_marks_cancelled() {
 #[tokio::test]
 async fn cancel_queued_edit_does_not_wait_for_permit() {
     let (state, _d) = make_state(true, true).await;
-    let _p1 = state.jobs_semaphore.clone().acquire_owned().await.unwrap();
-    let _p2 = state.jobs_semaphore.clone().acquire_owned().await.unwrap();
+    let _p1 = state.acquire_job_slot().await.unwrap();
+    let _p2 = state.acquire_job_slot().await.unwrap();
     let app = router(state);
 
     let (_s, body, _) = send(
@@ -616,6 +616,23 @@ async fn upload_rejects_empty_file() {
     let (status, _b, text) = send(&app, req).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(text.contains("пустой файл"), "got: {text}");
+}
+
+#[tokio::test]
+async fn upload_limit_fails_fast_and_recovers_after_a_slot_is_released() {
+    let (state, _d) = make_state(true, true).await;
+    let slot_a = state.try_acquire_upload_slot().unwrap();
+    let _slot_b = state.try_acquire_upload_slot().unwrap();
+    let app = router(state);
+
+    let (status, _body, text) = send(&app, post_multipart_file("clip.mp4", b"data")).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(text.contains("слишком много одновременных загрузок"));
+
+    drop(slot_a);
+    let (status, _body, text) = send(&app, post_multipart_file("clip.mp4", b"")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(text.contains("пустой файл"));
 }
 
 #[tokio::test]

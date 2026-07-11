@@ -11,17 +11,36 @@ pub use args::{build_ffmpeg_args, expected_output_secs, output_ext};
 pub use net::validate_url;
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Output, Stdio};
 use std::time::Duration;
+use std::{error::Error, fmt};
 
 use anyhow::{anyhow, Context, Result};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{timeout, Instant};
 use tokio_util::sync::CancellationToken;
 
 use egress_proxy::EgressProxy;
+
+const TOOL_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Debug)]
+pub(crate) struct ToolTimeout;
+
+impl fmt::Display for ToolTimeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("external command timed out")
+    }
+}
+
+impl Error for ToolTimeout {}
+
+pub(crate) fn is_tool_timeout(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<ToolTimeout>().is_some()
+}
 
 /// Probed metadata about a source video.
 #[derive(Debug, Clone)]
@@ -52,13 +71,58 @@ pub enum Done {
 
 /// Probe availability + version of an external tool. Returns (present, first line).
 pub async fn check_tool(bin: &str, version_arg: &str) -> (bool, Option<String>) {
-    match Command::new(bin).arg(version_arg).output().await {
+    let mut command = Command::new(bin);
+    command.arg(version_arg);
+    match output_with_timeout(command, TOOL_CHECK_TIMEOUT).await {
         Ok(out) if out.status.success() => {
             let s = String::from_utf8_lossy(&out.stdout);
             let first = s.lines().next().unwrap_or("").trim().to_string();
             (true, (!first.is_empty()).then_some(first))
         }
         _ => (false, None),
+    }
+}
+
+async fn output_with_timeout(mut command: Command, limit: Duration) -> Result<Output> {
+    command
+        .kill_on_drop(true)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .context("failed to spawn external command")?;
+    let mut stdout = child.stdout.take().expect("stdout piped");
+    let mut stderr = child.stderr.take().expect("stderr piped");
+    let mut stdout_bytes = Vec::new();
+    let mut stderr_bytes = Vec::new();
+
+    let captured = timeout(limit, async {
+        let (_, _, status) = tokio::try_join!(
+            stdout.read_to_end(&mut stdout_bytes),
+            stderr.read_to_end(&mut stderr_bytes),
+            child.wait(),
+        )?;
+        Ok::<_, std::io::Error>(status)
+    })
+    .await;
+
+    match captured {
+        Ok(Ok(status)) => Ok(Output {
+            status,
+            stdout: stdout_bytes,
+            stderr: stderr_bytes,
+        }),
+        Ok(Err(error)) => {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            Err(error).context("failed to read external command output")
+        }
+        Err(_) => {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            Err(ToolTimeout.into())
+        }
     }
 }
 
@@ -227,17 +291,18 @@ pub async fn find_by_id(dir: &Path, id: &str) -> Result<Option<PathBuf>> {
 
 /// Probe a video for duration, dimensions, fps and codecs via ffprobe.
 pub async fn probe_video(path: &Path) -> Result<ProbeInfo> {
-    let output = Command::new("ffprobe")
+    let mut command = Command::new("ffprobe");
+    command
         .arg("-v")
         .arg("quiet")
         .arg("-print_format")
         .arg("json")
         .arg("-show_format")
         .arg("-show_streams")
-        .arg(path)
-        .output()
+        .arg(path);
+    let output = output_with_timeout(command, PROBE_TIMEOUT)
         .await
-        .context("failed to spawn ffprobe (is ffmpeg installed?)")?;
+        .with_context(|| format!("failed to run ffprobe for {}", path.display()))?;
 
     if !output.status.success() {
         return Err(anyhow!("ffprobe failed for {}", path.display()));
@@ -464,6 +529,22 @@ mod tests {
             Some(100.0)
         );
         assert_eq!(parse_ytdlp_progress("some other line"), None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn short_command_output_is_bounded() {
+        let mut command = Command::new("sleep");
+        command.arg("2");
+        let started = Instant::now();
+        let error = output_with_timeout(command, Duration::from_millis(25))
+            .await
+            .context("wrapped tool failure")
+            .unwrap_err();
+
+        assert!(format!("{error:#}").contains("timed out"));
+        assert!(is_tool_timeout(&error));
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]

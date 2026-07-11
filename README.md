@@ -55,7 +55,8 @@ GET  /files/outputs/...     -> результаты (с поддержкой Ran
 ```
 
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
-`MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2), `JOB_TIMEOUT_SECS` (1800),
+`MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2; размер независимых job/upload
+пулов), `JOB_TIMEOUT_SECS` (1800),
 `FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ),
 `RECOVER_JOBS_LIMIT` (200), `CORS_ALLOW_ORIGINS` (локальные dev-origin'ы через
 запятую), `RUST_LOG` (`info,tower_http=info`).
@@ -204,6 +205,15 @@ backlog; закрытые пункты отмечены в `recommendation.md`.
 downloader'ов и без `NO_PROXY`. Реальные regression-тесты проверяют 302 на
 loopback, смену DNS-ответа public→private и отказ RTMP-only metadata без
 соединения с приватной целью.
+
+**Раунд 7 (11 июля 2026): изоляция upload-ресурсов.** `AppState` больше не
+публикует сырой job semaphore: очередь доступна через узкие методы, а upload
+получил отдельный пул того же размера и fail-fast `429`, поэтому медленный
+multipart не занимает render/download slots. Приём тела ограничен 30 минутами
+и удаляет staging-файл при timeout; `ffprobe` ограничен 30 секундами, startup
+tool checks - 5 секундами. Timeout явно делает kill+wait, а `kill_on_drop`
+остаётся страховкой; probe-timeout возвращает отдельный `504`. Существующий
+frontend показывает понятный текст ошибки inline и toast без отдельной UI-ветки.
 
 ```
 frontend (Vue 3 + Vite)

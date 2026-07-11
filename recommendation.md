@@ -47,11 +47,11 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 15. Overlapping segments → P0-6/P2-13.
 16. `fps` без bounds → P0-8/P2-13.
 17. `scale` без строгой validation → P0-8/P2-13.
-18. ☐ Upload минует semaphore → P0 backlog/P2-9. *(перепроверено 1 июля 2026, не тронуто)*
+18. ✅ Upload минует concurrency gate → закрыто в раунде 7 отдельным upload pool.
 19. Нет resource limits ffmpeg/yt-dlp → security/perf track.
 20. Нет no-progress watchdog → P2-9.
 21. Нет filesize/duration import cap → security/perf track.
-22. Partial upload после multipart error → P0 backlog.
+22. ✅ Partial upload после multipart error → закрыто в раунде 7 единым cleanup boundary.
 23. Progress tick берёт global jobs mutex → P2-9/P2-12.
 24. ◐ TTL удаляет referenced/active files → P0 backlog/P2-10. *(file/cache/library-консистентность есть; active-job-awareness - нет, audit.md №24)*
 25. ✅ Render cache не инвалидируется → P0-5/P2-10.
@@ -284,30 +284,37 @@ media URL и не даёт выбрать direct RTMP/FTP/WebSocket downloader. 
 HTTPS+RTMP/RTMP-only metadata: private TCP connect не создаётся, non-HTTP-only
 media отклоняется.
 
+**Раунд 7, 11 июля 2026.** Закрыты 18/22/223/225/278/288/444: job semaphore
+инкапсулирован, upload использует независимый fail-fast pool и отвечает `429`
+при насыщении. Multipart receive имеет 30-минутный timeout с обязательным
+cleanup `.upload`; `ffprobe` bounded 30 секундами, startup tool checks - 5
+секундами, timeout делает kill+wait с `kill_on_drop` fallback. Regression-тесты
+проверяют pools, saturation/recovery, timeout latency и staging cleanup. Frontend
+уже показывает серверный текст `429` inline и toast.
+
 **Следующие маленькие PR по приоритету.**
 
-1. Провести upload через общий лимит или отдельный upload semaphore.
-2. Вынести единый `AppError` и JSON error boundary для backend API.
-3. Собрать `Config` один раз на старте и убрать scattered env reads.
-4. Вынести `JobRunner`: create, acquire, progress, finish, cancel, panic handling.
-5. Продолжить `EditPanel.vue`: `AudioControls`, `PresetBar`, затем timing/frame.
-6. Продолжить store: history/presets/theme, сохраняя совместимый фасад.
-7. Вынести общий `useDragHandle`, теперь поверх уже безопасного unmount cleanup.
-8. Добавить URL query-token warning и redaction helper для логов.
-9. Добавить first-class empty/error/offline states без backend.
-10. Вынести shared formatDuration/formatSize и каталоги edit options.
-11. Добавить typed API/OpenAPI слой между Rust и TS.
-12. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
-13. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
-14. Закрепить Rust toolchain/MSRV и воспроизводимые Docker image digests.
+1. Вынести единый `AppError` и JSON error boundary для backend API.
+2. Собрать `Config` один раз на старте и убрать scattered env reads.
+3. Вынести `JobRunner`: create, acquire, progress, finish, cancel, panic handling.
+4. Продолжить `EditPanel.vue`: `AudioControls`, `PresetBar`, затем timing/frame.
+5. Продолжить store: history/presets/theme, сохраняя совместимый фасад.
+6. Вынести общий `useDragHandle`, теперь поверх уже безопасного unmount cleanup.
+7. Добавить URL query-token warning и redaction helper для логов.
+8. Добавить first-class empty/error/offline states без backend.
+9. Вынести shared formatDuration/formatSize и каталоги edit options.
+10. Добавить typed API/OpenAPI слой между Rust и TS.
+11. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
+12. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
+13. Закрепить Rust toolchain/MSRV и воспроизводимые Docker image digests.
 
 ### HTTP-хендлеры и роутинг (51)
 
 - [ ] 🔴 **219.** (проблема) import_handler смешивает валидацию URL, оркестрацию очереди, скачивание, probing и persistence в одной async-функции -> Вынести оркестрацию job (create/permit/progress/finish) в общий раннер, а скачивание+probing в отдельную доменную функцию, которую import_handler только вызывает. `backend/src/handlers/mod.rs`
 - [ ] 🔴 **220.** (проблема) import_handler и edit_handler дублируют весь жизненный цикл job целиком -> Выделить общую функцию run_job(state, job_id, token, work: impl Future) -> Json<Value>, инкапсулирующую permit/progress/finish, и передавать в неё только специфичную работу. `backend/src/handlers/mod.rs`
 - [ ] 🟠 **221.** (проблема) edit_handler дополнительно совмещает cache-логику рендера с оркестрацией job -> Вынести проверку и запись в render cache в отдельный RenderCache-хелпер с методами try_serve/store, вызываемый из edit_handler декларативно. `backend/src/handlers/mod.rs`
-- [ ] 🟠 **223.** (проблема) upload_handler не создаёт job и не проходит через jobs_semaphore, обходя лимит одновременных операций -> Провести upload через тот же jobs_semaphore.acquire перед записью на диск, либо явно задокументировать, почему upload намеренно вне лимита, и добавить отдельный лимит параллельных upload. `backend/src/handlers/mod.rs`
-- [ ] 🟠 **225.** (баг) upload_handler не ограничивает время probe_video и не даёт отмену, в отличие от import/edit -> Обернуть probe_video в upload_handler в tokio::time::timeout(job_timeout(), ...) и вернуть 500/504 при истечении. `backend/src/handlers/mod.rs`
+- [x] 🟠 **223.** (проблема) upload_handler не проходил через concurrency gate -> Закрыто в раунде 7: отдельный upload pool ограничивает multipart/probe без starvation job queue; saturation возвращает `429`. `backend/src/handlers/upload.rs`, `backend/src/state.rs`
+- [x] 🟠 **225.** (баг) upload_handler не ограничивал время probe_video -> Закрыто в раунде 7: общий `probe_video` bounded 30 секундами с kill+wait; upload удаляет staging и возвращает отдельный `504`. `backend/src/tools/mod.rs`, `backend/src/handlers/upload.rs`
 - [ ] 🟠 **226.** (проблема) normalize_edit_request и валидаторы диапазонов — доменная логика в HTTP-слое -> Перенести эти функции в model.rs или отдельный модуль domain/edit_validation.rs, откуда их будет импортировать edit_handler. `backend/src/handlers/mod.rs`
 - [ ] 🟠 **228.** (проблема) import_handler и edit_handler игнорируют JoinHandle из tokio::spawn — паника воркера не отражается в job -> Сохранять JoinHandle и в отдельной задаче через .await с обработкой Err(JoinError) переводить job в JobStatus::Error с сообщением о панике. `backend/src/handlers/mod.rs`
 - [ ] 🟠 **239.** (баг) library_delete_handler читает entry и удаляет его двумя раздельными операциями без атомарности -> Изменить Library::remove, чтобы он возвращал Option<MediaEntry> удалённой записи одним атомарным вызовом, и убрать отдельный get. `backend/src/handlers/library.rs`
@@ -378,7 +385,7 @@ media отклоняется.
 - [ ] 🟡 **272.** (проблема) update_job без суффикса _if_open в state.rs — небезопасный по умолчанию API, который легко перепутать с update_job_if_open. -> Оставить только update_job_if_open как основной публичный метод, а update_job сделать приватным helper'ом или переименовать в update_job_unchecked, чтобы название явно предупреждало о риске. `backend/src/state.rs`
 - [ ] 🟡 **276.** (проблема) AppState совмещает пять разных ответственностей: jobs-реестр, cancel-токены, render-lock-кэш, семафор конкурентности и доступ к Db/Library/storage. -> Выделить JobsRegistry (jobs+cancels+recover) и RenderLockRegistry в отдельные структуры-поля с собственными методами, оставив AppState тонкой агрегирующей оболочкой. `backend/src/state.rs`
 - [ ] 🟡 **277.** (проблема) AppState хранит конкретные типы Db и Library вместо трейтов, что не позволяет подменить их в тестах без реальной SQLite/FS. -> Ввести трейты JobStore/MediaLibrary с реализациями поверх Db/Library и хранить в AppState Arc<dyn Trait>, чтобы юнит-тесты могли подставлять fake-реализации. `backend/src/state.rs`
-- [ ] 🟡 **278.** (проблема) jobs_semaphore — публичное поле AppState, а не метод, что нарушает инкапсуляцию по сравнению с приватными jobs/cancels/render_locks. -> Сделать поле приватным и добавить метод acquire_job_permit(&self) -> impl Future<...>, инкапсулирующий получение permit, единообразно с остальными приватными коллекциями. `backend/src/state.rs`
+- [x] 🟡 **278.** (проблема) jobs_semaphore был публичным полем AppState -> Закрыто в раунде 7: оба gates приватны, наружу выходят только узкие acquire/close методы. `backend/src/state.rs`
 - [ ] 🟡 **280.** (проблема) Job::pending не хранит created_at/updated_at, поэтому recover_jobs и любая будущая очистка jobs не имеют временной метки для принятия решений. -> Добавить поле created_at: DateTime<Utc> (и опционально updated_at) в Job и заполнять его в Job::pending, используя далее для TTL-эвакуации и сортировки recover_jobs. `backend/src/model.rs`
 - [ ] 🟡 **282.** (проблема) Парсинг числовых переменных окружения (RECOVER_JOBS_LIMIT, JOB_TIMEOUT_SECS, MAX_HEIGHT) дублирует один и тот же паттерн 'parse + filter + unwrap_or' в разных модулях без общего helper'а. -> Вынести общую функцию env_usize(name, default) / env_positive(name, default) в отдельный модуль config.rs и переиспользовать её во всех трёх местах. `backend/src/state.rs`
 - [ ] 🟡 **283.** (проблема) 3-секундный SIGTERM grace period в terminate_child_tree захардкожен и не настраивается через конфиг. -> Вынести grace-period в переменную окружения (например GRACEFUL_KILL_SECS) с разумным дефолтом 3, аналогично MAX_HEIGHT/JOB_TIMEOUT_SECS. `backend/src/tools/mod.rs`
@@ -386,7 +393,7 @@ media отклоняется.
 - [ ] 🟡 **285.** (проблема) run_ffmpeg и download_video дублируют одинаковый паттерн match status { Ok/Cancelled/TimedOut/Failed } с разными текстами ошибок. -> Вынести общий helper fn map_proc_status(status, stderr, timeout_msg, fail_fmt: impl Fn(&str) -> String) -> Result<Done>, параметризованный только форматтером ошибки. `backend/src/tools/mod.rs`
 - [ ] 🟡 **286.** (баг) parse_ytdlp_progress не отличает overall percent от процента отдельного фрагмента при раздельной загрузке video+audio форматов. -> Учитывать, что yt-dlp пишет отдельный '[download] Destination:' перед каждым фрагментом, и сбрасывать/усреднять базовую точку прогресса при смене фрагмента, либо делить на количество ожидаемых форматов. `backend/src/tools/mod.rs`
 - [ ] 🟡 **287.** (проблема) tail() пересчитывает весь Vec<&str> из накопленного err_buf при каждом вызове без ограничения на общий размер накопленного буфера. -> Ограничить err_buf кольцевым буфером фиксированного размера (например, хранить только последние ~64 КБ) при накоплении в run_with_progress, а не постфактум резать в tail(). `backend/src/tools/mod.rs`
-- [ ] 🟡 **288.** (баг) check_tool не имеет таймаута — при зависшем бинарнике (--version) health-check на старте может повиснуть навсегда. -> Обернуть .output().await в tokio::time::timeout(Duration::from_secs(5), ...) и трактовать истечение как отсутствие инструмента. `backend/src/tools/mod.rs`
+- [x] 🟡 **288.** (баг) check_tool не имел таймаута -> Закрыто в раунде 7: общий bounded output runner даёт tool checks 5 секунд, timeout kill+wait и `kill_on_drop` fallback. `backend/src/tools/mod.rs`
 - [x] 🟡 **291.** (баг) validate_url вызывался один раз перед стартом импорта, оставляя TOCTOU на редиректах. -> Закрыто в раунде 6: все запросы `yt-dlp` принудительно проходят per-target policy egress-proxy. `backend/src/tools/egress_proxy.rs`
 - [ ] 🟡 **297.** (проблема) JobStatus::from_token не различает 'неизвестный статус в БД' от 'pending', что маскирует порчу данных при восстановлении. -> Вернуть Result<JobStatus, String> из from_token и залогировать warn в recover_jobs при получении ошибки вместо тихого приведения к Pending. `backend/src/model.rs`
 - [ ] 🟡 **298.** (проблема) EditRequest не валидирует диапазоны большинства числовых полей на уровне модели — rotate, quality, censor и другие принимают любые значения из JSON без ограничений. -> Либо добавить #[serde(deserialize_with = ...)] валидаторы на самые опасные поля (rotate, speed, quality), либо явно задокументировать в модели, что EditRequest — сырой DTO и вся валидация намеренно вынесена в normalize_edit_request. `backend/src/model.rs`
@@ -542,7 +549,7 @@ media отклоняется.
 - [ ] 🟡 **438.** (проблема) Нет HEALTHCHECK в Dockerfile и healthcheck в docker-compose, несмотря на существующий /api/health эндпоинт -> Добавить HEALTHCHECK CMD curl -f http://localhost:8080/api/health в Dockerfile или healthcheck: секцию в docker-compose.yml, ссылающуюся на этот эндпоинт. `backend/Dockerfile`
 - [ ] 🟡 **439.** (проблема) backend не публикует порт наружу, но и не изолирован explicit internal-сетью — полагается только на отсутствие ports: -> Объявить явную internal-сеть для backend и подключить к ней frontend отдельным вторым интерфейсом, либо задокументировать, что изоляция опирается только на отсутствие ports: и это осознанный компромисс MVP. `docker-compose.yml`
 - [ ] 🟡 **443.** (проблема) ffmpeg-аргументы логируются целиком через tracing::info! без редактирования путей -> Понизить подробность до DEBUG или логировать только идентификаторы video_id/out_id вместо полных ffmpeg-аргументов на уровне INFO. `backend/src/handlers/mod.rs`
-- [ ] 🟡 **444.** (проблема) import_handler и upload_handler не ограничивают число одновременно принимаемых upload-запросов -> Ограничить одновременные upload_handler через отдельный semaphore или общий с jobs_semaphore лимит на конкурентные дисковые операции. `backend/src/handlers/mod.rs`
+- [x] 🟡 **444.** (проблема) upload_handler не ограничивал число одновременно принимаемых upload-запросов -> Закрыто в раунде 7 независимым fail-fast upload pool. `backend/src/handlers/upload.rs`, `backend/src/state.rs`
 - [ ] 🟡 **446.** (проблема) Ни backend, ни nginx не выставляют X-Content-Type-Options: nosniff или Content-Security-Policy -> Добавить add_header X-Content-Type-Options nosniff; и базовый Content-Security-Policy в блок server nginx.conf. `frontend/nginx.conf`
 - [ ] 🟡 **447.** (проблема) /api/import не ограничивает размер скачиваемого видео, только высоту через MAX_HEIGHT и общий таймаут -> Добавить флаг yt-dlp --max-filesize с лимитом, согласованным с MAX_UPLOAD_BYTES, чтобы download не мог превысить тот же порог, что и ручная загрузка. `backend/src/tools/mod.rs`
 - [ ] 🟡 **449.** (проблема) Заголовок yt-dlp title сохраняется в библиотеку без ограничения длины и без санитизации -> Ограничить длину title (например, до 500 символов) и отфильтровать управляющие символы перед сохранением в MediaEntry. `backend/src/tools/mod.rs`

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{AcquireError, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use crate::db::Db;
@@ -35,8 +35,10 @@ pub struct AppState {
     /// Per-render-cache-key locks. They serialize identical edit requests so
     /// only one worker renders while followers wait and then reuse the cache.
     render_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
-    /// Caps how many downloads/renders run at once; the rest wait as "queued".
-    pub jobs_semaphore: Arc<Semaphore>,
+    /// Downloads/renders queue here; uploads use a separate pool so a slow
+    /// client cannot consume every render slot.
+    jobs_semaphore: Arc<Semaphore>,
+    upload_semaphore: Arc<Semaphore>,
     pub tools: Arc<ToolInfo>,
     pub library: Library,
     pub db: Db,
@@ -58,11 +60,13 @@ impl AppState {
         library: Library,
         db: Db,
     ) -> Self {
+        let max_concurrent = max_concurrent.max(1);
         AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             render_locks: Arc::new(Mutex::new(HashMap::new())),
-            jobs_semaphore: Arc::new(Semaphore::new(max_concurrent.max(1))),
+            jobs_semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            upload_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             tools: Arc::new(tools),
             library,
             db,
@@ -181,6 +185,23 @@ impl AppState {
             .clone()
     }
 
+    /// Wait for a download/render slot. Cancellation remains the caller's
+    /// responsibility because job workers already own their cancellation token.
+    pub async fn acquire_job_slot(&self) -> Result<OwnedSemaphorePermit, AcquireError> {
+        self.jobs_semaphore.clone().acquire_owned().await
+    }
+
+    /// Stop admitting queued jobs; this is the queue-level shutdown boundary.
+    pub fn close_job_queue(&self) {
+        self.jobs_semaphore.close();
+    }
+
+    /// Uploads are synchronous HTTP requests, so they fail fast instead of
+    /// occupying connections in an invisible queue.
+    pub fn try_acquire_upload_slot(&self) -> Option<OwnedSemaphorePermit> {
+        self.upload_semaphore.clone().try_acquire_owned().ok()
+    }
+
     pub fn sources_dir(&self) -> PathBuf {
         self.storage.join("sources")
     }
@@ -229,6 +250,24 @@ mod tests {
 
         assert!(Arc::ptr_eq(&a, &b));
         assert!(!Arc::ptr_eq(&a, &c));
+    }
+
+    #[tokio::test]
+    async fn job_and_upload_slots_are_independent_and_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+
+        let _job_a = st.acquire_job_slot().await.unwrap();
+        let _job_b = st.acquire_job_slot().await.unwrap();
+        let upload_a = st.try_acquire_upload_slot().unwrap();
+        let _upload_b = st.try_acquire_upload_slot().unwrap();
+        assert!(st.try_acquire_upload_slot().is_none());
+
+        drop(upload_a);
+        assert!(st.try_acquire_upload_slot().is_some());
     }
 
     #[tokio::test]

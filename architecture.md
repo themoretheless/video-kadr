@@ -46,8 +46,8 @@ Backend (Rust + Axum + Tokio)
   тесты), `net.rs` (единая URL/host/IP/port-policy), `egress_proxy.rs`
   (контролируемый transport с DNS pinning на каждый request), `mod.rs`
   (process/download/probe orchestration и реэкспорт публичного API).
-- `state.rs` - `AppState`: горячий jobs-registry + cancels + semaphore + tools +
-  library + SQLite persistence + storage.
+- `state.rs` - `AppState`: горячий jobs-registry + cancels + инкапсулированные
+  независимые job/upload gates + tools + library + SQLite persistence + storage.
 - `db.rs` - sqlx/SQLite: projects, jobs, render_cache.
 - `library.rs` - медиатека (JSON-файл, параллельно БД).
 - `model.rs` - `Job`/`JobStatus`, `EditRequest` (плоский DTO+домен), `Trim`/`Crop`/`Scale`.
@@ -109,11 +109,11 @@ stored XSS через upload) и полный ранжированный **то�
 
 ### Ресурсы и DoS
 
-18. ☐ `upload_handler` минует общий `jobs_semaphore`. *(перепроверено 1 июля 2026, не тронуто фиксами)*
+18. ✅ `upload_handler` минует concurrency gate. *(закрыто в раунде 7 отдельным upload pool; job/upload slots независимы)*
 19. Для ffmpeg/yt-dlp нет CPU/RAM/threads/filesize лимитов.
 20. Нет watchdog-а по отсутствию progress.
 21. Нет cap на размер и длительность импорта.
-22. Partial upload может остаться на диске после ошибки multipart/body limit.
+22. ✅ Partial upload может остаться на диске после ошибки multipart/body limit. *(закрыто в раунде 7: единый receive boundary удаляет staging при parse/I/O/timeout)*
 23. Каждый progress tick берёт глобальный jobs mutex.
 
 ### Данные и целостность
@@ -468,10 +468,24 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
   HTTPS+RTMP/RTMP-only format tests. Они доказывают отсутствие private TCP
   connect и отказ non-HTTP media до downloader. CI ставит закреплённый `yt-dlp`.
 
-Следующий независимый срез по приоритету: upload semaphore, `AppError`, единый
-`Config`, и только после них общий `JobRunner`. Frontend продолжать секциями:
-`AudioControls`, `PresetBar`, history/presets/theme stores; фасад `store.ts`
-сохранять до конца миграции.
+### Раунд 7: upload resource isolation (11 июля 2026)
+
+- `jobs_semaphore` скрыт за `acquire_job_slot`/`close_job_queue`; upload использует
+  отдельный fail-fast pool, поэтому медленный HTTP client не блокирует очередь
+  render/download. Saturation возвращает пользовательский `429` без скрытого
+  ожидания соединения.
+- Multipart receive вынесен в отдельную pre-publish стадию с 30-минутным timeout;
+  любой parse/I/O/timeout path удаляет `.upload`. `ffprobe` ограничен 30 секундами,
+  startup `--version` checks - 5 секундами; timeout явно делает kill+wait, а
+  `kill_on_drop` остаётся fallback.
+- State/API/tool tests проверяют независимость pools, saturation/recovery,
+  timeout latency и cleanup staging-файла. Закрыты 18/22/223/225/278/288/444;
+  строгий multipart contract и ранняя content-validation остаются открытыми.
+
+Следующий независимый срез по приоритету: `AppError`, единый `Config`, и только
+после них общий `JobRunner`. Frontend продолжать секциями: `AudioControls`,
+`PresetBar`, history/presets/theme stores; фасад `store.ts` сохранять до конца
+миграции.
 
 <a id="module-http"></a>
 ### Модуль: HTTP-хендлеры и роутинг (51)
@@ -482,9 +496,9 @@ HTTP-хендлеры и роутинг (`backend/src/handlers/`, `lib.rs`). SRP
 220. 🔴 [проблема/DRY] import_handler и edit_handler дублируют весь жизненный цикл job целиком - `backend/src/handlers/mod.rs` -> Выделить общую функцию run_job(state, job_id, token, work: impl Future) -> Json<Value>, инкапсулирующую permit/progress/finish, и передавать в неё только специфичную работу.
 221. 🟠 [проблема/SRP] edit_handler дополнительно совмещает cache-логику рендера с оркестрацией job - `backend/src/handlers/mod.rs` -> Вынести проверку и запись в render cache в отдельный RenderCache-хелпер с методами try_serve/store, вызываемый из edit_handler декларативно.
 222. 🟡 [идея/DRY] upload_handler вручную повторяет сборку VideoInfo-JSON, уже собираемую в import_handler - `backend/src/handlers/mod.rs` -> Ввести конструктор VideoInfo::new(id,url,filename,probe,title,size) -> Value и использовать его в обоих хендлерах.
-223. 🟠 [проблема] upload_handler не создаёт job и не проходит через jobs_semaphore, обходя лимит одновременных операций - `backend/src/handlers/mod.rs` -> Провести upload через тот же jobs_semaphore.acquire перед записью на диск, либо явно задокументировать, почему upload намеренно вне лимита, и добавить отдельный лимит параллельных upload.
+223. ✅ [проблема] upload_handler не проходил через concurrency gate - **закрыто в раунде 7:** отдельный upload pool ограничивает multipart/probe, не занимая job slots; saturation даёт `429`. `backend/src/handlers/upload.rs`, `backend/src/state.rs`
 224. 🟡 [дизайн] upload_handler возвращает результат по первому подходящему полю формы и молча игнорирует остальные части multipart - `backend/src/handlers/mod.rs` -> Явно проверять, что multipart содержит ровно одно валидное поле файла, и возвращать 400 при лишних/нераспознанных полях.
-225. 🟠 [баг] upload_handler не ограничивает время probe_video и не даёт отмену, в отличие от import/edit - `backend/src/handlers/mod.rs` -> Обернуть probe_video в upload_handler в tokio::time::timeout(job_timeout(), ...) и вернуть 500/504 при истечении.
+225. ✅ [баг] upload_handler не ограничивал время probe_video - **закрыто в раунде 7:** общий `probe_video` имеет 30-секундный timeout с kill+wait; upload удаляет staging и возвращает отдельный `504`. `backend/src/tools/mod.rs`, `backend/src/handlers/upload.rs`
 226. 🟠 [проблема/SRP] normalize_edit_request и валидаторы диапазонов — доменная логика в HTTP-слое - `backend/src/handlers/mod.rs` -> Перенести эти функции в model.rs или отдельный модуль domain/edit_validation.rs, откуда их будет импортировать edit_handler.
 227. 🟡 [улучшение/SRP] Файловые и криптографические утилиты живут в handlers/mod.rs вперемешку с HTTP-хендлерами - `backend/src/handlers/mod.rs` -> Вынести их в backend/src/tools/fs_utils.rs или backend/src/tools/cache.rs, оставив в handlers только вызовы.
 228. 🟠 [проблема] import_handler и edit_handler игнорируют JoinHandle из tokio::spawn — паника воркера не отражается в job - `backend/src/handlers/mod.rs` -> Сохранять JoinHandle и в отдельной задаче через .await с обработкой Err(JoinError) переводить job в JobStatus::Error с сообщением о панике.
@@ -543,7 +557,7 @@ Jobs, конкурентность, процессы (`state.rs`, процесс
 275. 🟡 [улучшение] recover_jobs держит единственный jobs-lock guard на весь цикл persist_job для каждого interrupted job, блокируя все остальные операции с jobs на время старта. - `backend/src/state.rs` -> Сначала собрать все job в Vec под локом, отпустить лок, затем персистить interrupted записи в БД без удержания jobs guard, и только на короткое время повторно взять лок для финальной вставки в map.
 276. 🟡 [проблема/SRP] AppState совмещает пять разных ответственностей: jobs-реестр, cancel-токены, render-lock-кэш, семафор конкурентности и доступ к Db/Library/storage. - `backend/src/state.rs` -> Выделить JobsRegistry (jobs+cancels+recover) и RenderLockRegistry в отдельные структуры-поля с собственными методами, оставив AppState тонкой агрегирующей оболочкой.
 277. 🟡 [проблема/DIP] AppState хранит конкретные типы Db и Library вместо трейтов, что не позволяет подменить их в тестах без реальной SQLite/FS. - `backend/src/state.rs` -> Ввести трейты JobStore/MediaLibrary с реализациями поверх Db/Library и хранить в AppState Arc<dyn Trait>, чтобы юнит-тесты могли подставлять fake-реализации.
-278. 🟡 [проблема/ISP] jobs_semaphore — публичное поле AppState, а не метод, что нарушает инкапсуляцию по сравнению с приватными jobs/cancels/render_locks. - `backend/src/state.rs` -> Сделать поле приватным и добавить метод acquire_job_permit(&self) -> impl Future<...>, инкапсулирующий получение permit, единообразно с остальными приватными коллекциями.
+278. ✅ [проблема/ISP] jobs_semaphore был публичным полем AppState - **закрыто в раунде 7:** оба semaphore приватны, наружу выходят только `acquire_job_slot`, `close_job_queue` и `try_acquire_upload_slot`. `backend/src/state.rs`
 279. 🟡 [дизайн/KISS] update_job и update_job_if_open дублируют идентичную структуру блокировки, различаясь только одной проверкой is_terminal. - `backend/src/state.rs` -> Реализовать update_job через update_job_if_open с параметром force: bool или сделать update_job приватным алиасом, вызывающим общий internal-helper с флагом пропуска terminal-проверки.
 280. 🟡 [проблема] Job::pending не хранит created_at/updated_at, поэтому recover_jobs и любая будущая очистка jobs не имеют временной метки для принятия решений. - `backend/src/model.rs` -> Добавить поле created_at: DateTime<Utc> (и опционально updated_at) в Job и заполнять его в Job::pending, используя далее для TTL-эвакуации и сортировки recover_jobs.
 281. 🟠 [проблема] jobs HashMap в AppState не имеет TTL или эвакуации — завершённые задачи (Done/Error/Cancelled/Interrupted) копятся в памяти навсегда до перезапуска процесса. - `backend/src/state.rs` -> Добавить фоновую задачу или обёртку в persist_job/update_job_if_open, которая удаляет из jobs записи старше N часов после достижения terminal-статуса, оставляя историю только в SQLite.
@@ -553,7 +567,7 @@ Jobs, конкурентность, процессы (`state.rs`, процесс
 285. 🟡 [проблема/DRY] run_ffmpeg и download_video дублируют одинаковый паттерн match status { Ok/Cancelled/TimedOut/Failed } с разными текстами ошибок. - `backend/src/tools/mod.rs` -> Вынести общий helper fn map_proc_status(status, stderr, timeout_msg, fail_fmt: impl Fn(&str) -> String) -> Result<Done>, параметризованный только форматтером ошибки.
 286. 🟡 [баг] parse_ytdlp_progress не отличает overall percent от процента отдельного фрагмента при раздельной загрузке video+audio форматов. - `backend/src/tools/mod.rs` -> Учитывать, что yt-dlp пишет отдельный '[download] Destination:' перед каждым фрагментом, и сбрасывать/усреднять базовую точку прогресса при смене фрагмента, либо делить на количество ожидаемых форматов.
 287. 🟡 [проблема] tail() пересчитывает весь Vec<&str> из накопленного err_buf при каждом вызове без ограничения на общий размер накопленного буфера. - `backend/src/tools/mod.rs` -> Ограничить err_buf кольцевым буфером фиксированного размера (например, хранить только последние ~64 КБ) при накоплении в run_with_progress, а не постфактум резать в tail().
-288. 🟡 [баг] check_tool не имеет таймаута — при зависшем бинарнике (--version) health-check на старте может повиснуть навсегда. - `backend/src/tools/mod.rs` -> Обернуть .output().await в tokio::time::timeout(Duration::from_secs(5), ...) и трактовать истечение как отсутствие инструмента.
+288. ✅ [баг] check_tool не имел таймаута - **закрыто в раунде 7:** короткие tool checks проходят общий 5-секундный bounded output runner с `kill_on_drop`. `backend/src/tools/mod.rs`
 289. 🟠 [проблема] find_by_id делает линейный скан всей директории sources на каждый find_source/find_by_id вызов вместо прямого поиска по известным расширениям. - `backend/src/tools/mod.rs` -> Хранить связку video_id -> filename в БД (или Library) при создании файла и искать по точному пути вместо сканирования директории при каждом обращении.
 290. 🟡 [дизайн/OCP] map_ytdlp_error жёстко зашивает распознавание типов ошибок по подстрокам в stderr — новый тип ошибки требует правки самой функции. - `backend/src/tools/mod.rs` -> Вынести таблицу (маркер, сообщение) в статический список пар и итерировать её, чтобы новые случаи добавлялись как данные, а не код.
 291. ✅ [баг] validate_url вызывался один раз перед стартом импорта, оставляя TOCTOU на HTTP-редиректах - **закрыто в раунде 6:** `yt-dlp` принудительно идёт через egress-proxy, который повторяет policy на каждом новом target. `backend/src/tools/egress_proxy.rs`
@@ -727,7 +741,7 @@ Security и сеть (`tools/net.rs`, CORS/ServeDir в `lib.rs`, upload, Docker-
 441. 🟡 [улучшение] docker-compose.yml не пробрасывает MAX_CONCURRENT_JOBS, MAX_UPLOAD_BYTES, JOB_TIMEOUT_SECS, FILE_TTL_HOURS, CORS_ALLOW_ORIGINS явно, полагаясь целиком на дефолты в main.rs - `docker-compose.yml` -> Добавить хотя бы закомментированные примеры этих переменных в environment: секцию docker-compose.yml, чтобы конфигурация была обнаруживаемой без чтения исходников main.rs.
 442. 🟡 [дизайн] BIND_ADDR=127.0.0.1 в Dockerfile и docker-compose.yml=0.0.0.0 расходятся, что критично при прямом docker run без compose - `backend/Dockerfile` -> Уточнить комментарий в Dockerfile, что при самостоятельном docker run с -p потребуется явно передать -e BIND_ADDR=0.0.0.0.
 443. 🟡 [проблема] ffmpeg-аргументы логируются целиком через tracing::info! без редактирования путей - `backend/src/handlers/mod.rs` -> Понизить подробность до DEBUG или логировать только идентификаторы video_id/out_id вместо полных ffmpeg-аргументов на уровне INFO.
-444. 🟡 [проблема] import_handler и upload_handler не ограничивают число одновременно принимаемых upload-запросов - `backend/src/handlers/mod.rs` -> Ограничить одновременные upload_handler через отдельный semaphore или общий с jobs_semaphore лимит на конкурентные дисковые операции.
+444. ✅ [проблема] upload_handler не ограничивал число одновременно принимаемых upload-запросов - **закрыто в раунде 7:** независимый pool ограничивает upload тем же capacity, что jobs, но не создаёт starvation между классами работы. `backend/src/handlers/upload.rs`, `backend/src/state.rs`
 445. 🔴 [баг] Файл с расширением .html/.svg, прошедший sanitize_ext, отдаётся ServeDir с соответствующим Content-Type, создавая stored XSS - `backend/src/lib.rs` -> Ограничить sanitize_ext allowlist'ом видео-расширений (см. связанную находку в handlers/mod.rs) и/или добавить Content-Disposition: attachment для не-video Content-Type в ServeDir. **Закрыто в раунде 5.**
 446. 🟡 [проблема] Ни backend, ни nginx не выставляют X-Content-Type-Options: nosniff или Content-Security-Policy - `frontend/nginx.conf` -> Добавить add_header X-Content-Type-Options nosniff; и базовый Content-Security-Policy в блок server nginx.conf.
 447. 🟡 [проблема] /api/import не ограничивает размер скачиваемого видео, только высоту через MAX_HEIGHT и общий таймаут - `backend/src/tools/mod.rs` -> Добавить флаг yt-dlp --max-filesize с лимитом, согласованным с MAX_UPLOAD_BYTES, чтобы download не мог превысить тот же порог, что и ручная загрузка.
@@ -1255,8 +1269,7 @@ components/        EditPanel = тонкий контейнер + секции:
 закрыта: ✅ вырезание сегмента для AV1/ProRes, ✅ гонка cancel↔finish
 (терминальные переходы), ✅ crop-валидация, ✅ пропущенный `persist_job` при
 ошибке URL, ✅ рост `recover_jobs`, ✅ upload stored XSS, ✅ SSRF initial/
-redirect/DNS rebinding. Остаётся открытым: `upload_handler` минует semaphore
-(№18/223/444); TTL-чистка не проверяет активные job (№24, частично); нет auth и
-ownership перед внешней публикацией (№34/421), process/resource sandbox и
-import filesize cap. Свежие high раунда 2 закрыты: №202 в раунде 5, №201 в
-раунде 6.
+redirect/DNS rebinding, ✅ upload concurrency/probe timeout. Остаётся открытым:
+TTL-чистка не проверяет активные job (№24, частично); нет auth и ownership перед
+внешней публикацией (№34/421), process/resource sandbox и import filesize cap.
+Свежие high раунда 2 закрыты: №202 в раунде 5, №201 в раунде 6.

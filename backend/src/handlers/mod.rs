@@ -386,7 +386,7 @@ async fn acquire_job_permit_or_cancelled(
     token: &CancellationToken,
 ) -> Option<OwnedSemaphorePermit> {
     tokio::select! {
-        permit = st.jobs_semaphore.clone().acquire_owned() => match permit {
+        permit = st.acquire_job_slot() => match permit {
             Ok(p) => Some(p),
             Err(_) => {
                 mark_queue_closed(st, jid).await;

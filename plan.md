@@ -42,7 +42,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 ## P1. Надёжность, ресурсы, контракт ошибок
 
 - [x] **project JSON без size cap** - `video` и `edit` ограничены 64KiB каждый; oversized autosave получает `413 Payload Too Large` до записи в SQLite. `handlers/projects.rs:21-42`
-- [x] **upload без MIME/magic/quota** - body-size quota уже есть; клиентское расширение игнорируется, контейнер проходит `ffprobe`/allow-list перед publish, статика получает `nosniff` + sandbox CSP. Отдельно остаётся concurrency semaphore. `handlers/upload.rs`, `lib.rs`
+- [x] **upload без MIME/magic/quota/concurrency cap** - body-size quota уже есть; клиентское расширение игнорируется, контейнер проходит bounded `ffprobe`/allow-list перед publish, статика получает `nosniff` + sandbox CSP; отдельный upload-pool отвечает `429` при насыщении. `handlers/upload.rs`, `state.rs`, `lib.rs`
 - [ ] **ffmpeg без CPU/RAM/threads/filesize-лимитов**; нет no-progress watchdog (из audit-500 разделов «Ресурсы»).
 - [ ] **Логировать падение задачи** - `finish_job` Err не пишет `tracing::error!`, диагностики ноль. `handlers/mod.rs:576-583`
 - [ ] **RectOverlay: координаты по letterbox, не по контенту видео** - при разнице пропорций crop/censor попадает мимо. Считать реальный content-box. `components/RectOverlay.vue:37-77`
@@ -63,6 +63,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] Сверка 9 июля 2026: `README.md`, `architecture.md` и `recommendation.md` синхронизированы вокруг 509 широких и 565 SOLID/DRY пунктов; порядок маленьких PR обновлён.
 - [x] Раунд 5 (11 июля 2026): закрыты upload XSS и cancel→running, вынесены backend upload/frontend edit domain/export controls, исправлены no-op export, preset drift, drag cleanup и mobile overflow; три итерации проверены тестами и живым UI.
 - [x] Раунд 6 (11 июля 2026): закрыты SSRF redirect/DNS rebinding и custom-port egress; добавлены per-job proxy, bounded DNS/connect, реальные `yt-dlp` regression-тесты и pinned `yt-dlp` в CI.
+- [x] Раунд 7 (11 июля 2026): закрыты upload concurrency, partial-upload cleanup, probe timeout и публичный jobs_semaphore; multipart bounded с cleanup, tool probes имеют timeout с kill+wait, добавлены state/API/tool regressions.
 - [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
 
 ---
