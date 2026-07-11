@@ -1,9 +1,10 @@
-//! External tools the backend shells out to. The pure parts live in submodules:
-//! `args` builds ffmpeg command lines, `net` validates import URLs (both
-//! I/O-free and unit-tested). This module holds the process/download/probe I/O
+//! External tools the backend shells out to. `args` is the pure ffmpeg command
+//! compiler, while `net` and `egress_proxy` own import network policy and its
+//! enforced transport. This module holds process/download/probe orchestration
 //! and re-exports the public surface so callers keep using `tools::*`.
 
 mod args;
+mod egress_proxy;
 mod net;
 
 pub use args::{build_ffmpeg_args, expected_output_secs, output_ext};
@@ -19,6 +20,8 @@ use tokio::process::Command;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{timeout, Instant};
 use tokio_util::sync::CancellationToken;
+
+use egress_proxy::EgressProxy;
 
 /// Probed metadata about a source video.
 #[derive(Debug, Clone)]
@@ -74,6 +77,10 @@ pub async fn download_video(
     timeout: Duration,
 ) -> Result<Done> {
     let template = sources_dir.join(format!("{id}.%(ext)s"));
+    let proxy = EgressProxy::start()
+        .await
+        .context("failed to start protected yt-dlp network proxy")?;
+    let proxy_url = proxy.url();
 
     // Cap download resolution so imports stay fast. "best" can be 1080p/4K and
     // hundreds of MB; <=720 is a sensible default and is overridable via MAX_HEIGHT.
@@ -81,9 +88,10 @@ pub async fn download_video(
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(720);
-    let format = format!("bv*[height<={max_height}]+ba/b[height<={max_height}]/bv*+ba/b");
+    let format = ytdlp_format(max_height);
 
     let mut cmd = Command::new("yt-dlp");
+    configure_ytdlp_network(&mut cmd, &proxy_url);
     cmd.arg("--newline")
         .arg("--no-playlist")
         .arg("--write-info-json")
@@ -105,16 +113,43 @@ pub async fn download_video(
 
     cmd.arg("-o").arg(&template).arg(url);
 
-    let (status, stderr) = run_with_progress(cmd, parse_ytdlp_progress, progress, cancel, timeout)
-        .await
-        .context("failed to spawn yt-dlp (is it installed and on PATH?)")?;
+    let run = run_with_progress(cmd, parse_ytdlp_progress, progress, cancel, timeout).await;
+    let egress_blocked = proxy.was_blocked();
+    proxy.shutdown().await;
+    let (status, stderr) = run.context("failed to spawn yt-dlp (is it installed and on PATH?)")?;
 
     match status {
         ProcStatus::Ok => Ok(Done::Completed),
         ProcStatus::Cancelled => Ok(Done::Cancelled),
         ProcStatus::TimedOut => Err(anyhow!("Превышен лимит времени обработки")),
-        ProcStatus::Failed => Err(anyhow!("{}", map_ytdlp_error(&stderr))),
+        ProcStatus::Failed => Err(anyhow!("{}", map_ytdlp_error(&stderr, egress_blocked))),
     }
+}
+
+fn ytdlp_format(max_height: u32) -> String {
+    // Non-HTTP media protocols can launch downloaders that do not honor the
+    // local HTTP proxy, so every fallback must carry the same URL constraint.
+    let web_url = "[url~='(?i)^https?://']";
+    format!(
+        "bv*[height<={max_height}]{web_url}+ba{web_url}/\
+         b[height<={max_height}]{web_url}/\
+         bv*{web_url}+ba{web_url}/b{web_url}"
+    )
+}
+
+fn configure_ytdlp_network(cmd: &mut Command, proxy_url: &str) {
+    cmd.arg("--ignore-config").arg("--proxy").arg(proxy_url);
+    for name in [
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ] {
+        cmd.env(name, proxy_url);
+    }
+    cmd.env_remove("NO_PROXY").env_remove("no_proxy");
 }
 
 /// Read the title out of yt-dlp's sidecar `<id>.info.json`, then delete that file.
@@ -131,9 +166,11 @@ pub async fn read_title(sources_dir: &Path, id: &str) -> Option<String> {
 }
 
 /// Map a raw yt-dlp stderr blob to a friendly Russian message.
-fn map_ytdlp_error(stderr: &str) -> String {
+fn map_ytdlp_error(stderr: &str, egress_blocked: bool) -> String {
     let l = stderr.to_lowercase();
-    if l.contains("private") || l.contains("login") || l.contains("sign in") {
+    if egress_blocked {
+        "Импорт заблокирован: ссылка ведёт в приватную сеть".into()
+    } else if l.contains("private") || l.contains("login") || l.contains("sign in") {
         "Видео приватное или требует входа в аккаунт".into()
     } else if l.contains("geo") || l.contains("your country") || l.contains("country") {
         "Видео недоступно в этом регионе".into()
@@ -427,6 +464,138 @@ mod tests {
             Some(100.0)
         );
         assert_eq!(parse_ytdlp_progress("some other line"), None);
+    }
+
+    #[test]
+    fn ytdlp_network_ignores_user_config_and_no_proxy() {
+        let mut cmd = Command::new("yt-dlp");
+        configure_ytdlp_network(&mut cmd, "http://127.0.0.1:43210");
+        let command = cmd.as_std();
+        let args = command
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            ["--ignore-config", "--proxy", "http://127.0.0.1:43210"]
+        );
+
+        let env = command
+            .get_envs()
+            .map(|(name, value)| {
+                (
+                    name.to_string_lossy().into_owned(),
+                    value.map(|value| value.to_string_lossy().into_owned()),
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        for name in [
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ] {
+            assert_eq!(
+                env.get(name).and_then(Option::as_deref),
+                Some("http://127.0.0.1:43210")
+            );
+        }
+        assert_eq!(env.get("NO_PROXY"), Some(&None));
+        assert_eq!(env.get("no_proxy"), Some(&None));
+    }
+
+    #[tokio::test]
+    async fn ytdlp_format_allows_https_and_rejects_direct_rtmp() {
+        match Command::new("yt-dlp").arg("--version").output().await {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => panic!("could not check yt-dlp: {error}"),
+            Ok(output) => assert!(output.status.success(), "yt-dlp --version failed"),
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let info_path = directory.path().join("media.info.json");
+        let mut info = serde_json::json!({
+            "id": "media",
+            "title": "media",
+            "extractor": "generic",
+            "webpage_url": "https://video.example/watch",
+            "formats": [
+                {
+                    "format_id": "https",
+                    "url": "https://cdn.example/video.mp4",
+                    "ext": "mp4",
+                    "protocol": "https",
+                    "vcodec": "h264",
+                    "acodec": "aac",
+                    "height": 720
+                },
+                {
+                    "format_id": "rtmp",
+                    "url": "rtmp://127.0.0.1/live",
+                    "ext": "flv",
+                    "protocol": "rtmp",
+                    "vcodec": "h264",
+                    "acodec": "aac",
+                    "height": 1080
+                }
+            ]
+        });
+        tokio::fs::write(&info_path, serde_json::to_vec(&info).unwrap())
+            .await
+            .unwrap();
+
+        let output = Command::new("yt-dlp")
+            .args(["--ignore-config", "--simulate", "--load-info-json"])
+            .arg(&info_path)
+            .arg("-f")
+            .arg(ytdlp_format(720))
+            .args(["--print", "%(url)s"])
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "https://cdn.example/video.mp4"
+        );
+
+        info["formats"] = serde_json::json!([{
+            "format_id": "rtmp",
+            "url": "rtmp://127.0.0.1/live",
+            "ext": "flv",
+            "protocol": "rtmp",
+            "vcodec": "h264",
+            "acodec": "aac",
+            "height": 720
+        }]);
+        tokio::fs::write(&info_path, serde_json::to_vec(&info).unwrap())
+            .await
+            .unwrap();
+        let output = Command::new("yt-dlp")
+            .args(["--ignore-config", "--simulate", "--load-info-json"])
+            .arg(&info_path)
+            .arg("-f")
+            .arg(ytdlp_format(720))
+            .output()
+            .await
+            .unwrap();
+        assert!(!output.status.success(), "RTMP-only media was selected");
+    }
+
+    #[test]
+    fn egress_proxy_errors_have_a_user_facing_message() {
+        assert_eq!(
+            map_ytdlp_error("ProxyError: Tunnel connection failed: 472", true),
+            "Импорт заблокирован: ссылка ведёт в приватную сеть"
+        );
+        assert!(map_ytdlp_error("HTTP Error 472", false).starts_with("yt-dlp:"));
+        assert!(map_ytdlp_error("HTTP Error 403: Forbidden", false).starts_with("yt-dlp:"));
     }
 
     #[cfg(unix)]

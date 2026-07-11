@@ -14,9 +14,14 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - name: Install ffmpeg
-        # ffprobe ships with ffmpeg; the real-render test exercises it.
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install media tools
+        # ffprobe ships with ffmpeg; pinned yt-dlp runs the local redirect SSRF test.
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          python -m pip install yt-dlp==2026.7.4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt

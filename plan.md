@@ -37,16 +37,16 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [ ] **Нет auth/ownership на projects** - любой клиент читает/удаляет любой проект (URL, имена, метаданные). Сессия/owner-ключ или явный single-tenant. `handlers/projects.rs:47-92`
 - [x] **`ServeDir` отдаёт `app.db` + WAL/SHM** - `/files` теперь монтирует только `sources/` и `outputs/`; корень storage и SQLite-файлы не публикуются. `lib.rs:54`
 - [x] **CORS `permissive()`** - заменён на явный allowlist (`CORS_ALLOW_ORIGINS`, defaults для local dev); wildcard/не-origin значения отбрасываются. `lib.rs:56`
-- [ ] **SSRF обходится** - `validate_url` теперь резолвит DNS и блокирует private/special IP edge cases; осталось закрыть редиректы `yt-dlp` на приватные адреса. `tools/net.rs:10-47`, `tools/mod.rs:63-115`
+- [x] **SSRF через redirect/DNS rebinding/protocol bypass** - HTTP(S) `yt-dlp` идёт через loopback egress-proxy: повторная DNS/IP-проверка, pinned `SocketAddr`, только 80/443, запрет `NO_PROXY`; format selector отклоняет RTMP/FTP/WebSocket media. Реальные тесты подтверждают блок до connect/downloader. `tools/net.rs`, `tools/egress_proxy.rs`, `tools/mod.rs`
 
 ## P1. Надёжность, ресурсы, контракт ошибок
 
 - [x] **project JSON без size cap** - `video` и `edit` ограничены 64KiB каждый; oversized autosave получает `413 Payload Too Large` до записи в SQLite. `handlers/projects.rs:21-42`
-- [ ] **upload без MIME/magic/quota** - доверяет расширению, отдаёт обратно. Allowlist расширений + проверка `codec_type` + квота. `handlers/mod.rs:144-231`
+- [x] **upload без MIME/magic/quota** - body-size quota уже есть; клиентское расширение игнорируется, контейнер проходит `ffprobe`/allow-list перед publish, статика получает `nosniff` + sandbox CSP. Отдельно остаётся concurrency semaphore. `handlers/upload.rs`, `lib.rs`
 - [ ] **ffmpeg без CPU/RAM/threads/filesize-лимитов**; нет no-progress watchdog (из audit-500 разделов «Ресурсы»).
 - [ ] **Логировать падение задачи** - `finish_job` Err не пишет `tracing::error!`, диагностики ноль. `handlers/mod.rs:576-583`
 - [ ] **RectOverlay: координаты по letterbox, не по контенту видео** - при разнице пропорций crop/censor попадает мимо. Считать реальный content-box. `components/RectOverlay.vue:37-77`
-- [ ] **`applyPreset` перетирает format/codec/quality** - `PRESET_KEYS` включает их, «look»-пресет меняет контейнер. Разделить look/export или убрать из `PRESET_KEYS`. `store.ts:458-484`
+- [x] **`applyPreset` перетирает format/codec/quality** - look-presets отделены от export-настроек; старый preset больше не меняет контейнер/codec/quality. `domain/edit.ts`, `store.ts`
 - [ ] Единый `ApiError`/`IntoResponse`, `202 Accepted` на async-задачи, единая форма ошибок (из audit-500 раздела «Ошибки и API»).
 
 ## P2. Тесты (всё ниже сейчас без покрытия)
@@ -62,6 +62,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [ ] Логи жизненного цикла задач (`tracing::info!` на create/start/done/cancel, `warn/error` на fail).
 - [x] Сверка 9 июля 2026: `README.md`, `architecture.md` и `recommendation.md` синхронизированы вокруг 509 широких и 565 SOLID/DRY пунктов; порядок маленьких PR обновлён.
 - [x] Раунд 5 (11 июля 2026): закрыты upload XSS и cancel→running, вынесены backend upload/frontend edit domain/export controls, исправлены no-op export, preset drift, drag cleanup и mobile overflow; три итерации проверены тестами и живым UI.
+- [x] Раунд 6 (11 июля 2026): закрыты SSRF redirect/DNS rebinding и custom-port egress; добавлены per-job proxy, bounded DNS/connect, реальные `yt-dlp` regression-тесты и pinned `yt-dlp` в CI.
 - [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
 
 ---

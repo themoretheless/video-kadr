@@ -1,22 +1,28 @@
 //! URL validation / SSRF guard for imports.
 
 use std::net::IpAddr;
+use std::time::Duration;
 use std::{future::Future, io};
 
 use anyhow::{anyhow, Result};
 use url::Url;
 
-/// Reject non-http(s) URLs and ones that point at the local machine / private
-/// network (a basic SSRF guard). Returns a Russian error message on rejection.
+pub(super) const DNS_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Reject non-http(s) URLs and targets outside the public web. The egress proxy
+/// repeats the same host/IP policy for every redirect and downloader request.
 pub async fn validate_url(raw: &str) -> Result<()> {
     validate_url_with_resolver(raw, |host, port| async move {
-        let addrs = tokio::net::lookup_host((host.as_str(), port)).await?;
+        let addrs =
+            tokio::time::timeout(DNS_TIMEOUT, tokio::net::lookup_host((host.as_str(), port)))
+                .await
+                .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "DNS lookup timed out"))??;
         Ok(addrs.map(|addr| addr.ip()).collect())
     })
     .await
 }
 
-async fn validate_url_with_resolver<F, Fut>(raw: &str, resolve: F) -> Result<()>
+pub(super) async fn validate_url_with_resolver<F, Fut>(raw: &str, resolve: F) -> Result<()>
 where
     F: FnOnce(String, u16) -> Fut,
     Fut: Future<Output = io::Result<Vec<IpAddr>>>,
@@ -29,33 +35,55 @@ where
         return Err(anyhow!("Недопустимый URL"));
     }
     let host = u.host_str().ok_or_else(|| anyhow!("Недопустимый URL"))?;
-    let host = host.trim_start_matches('[').trim_end_matches(']');
-    let lower = host.to_ascii_lowercase();
-    if lower == "localhost" || lower.ends_with(".local") || lower.ends_with(".localhost") {
-        return Err(anyhow!("Недопустимый URL"));
-    }
-    if let Ok(ip) = lower.parse::<IpAddr>() {
-        if is_blocked_ip(&ip) {
-            return Err(anyhow!("Недопустимый URL"));
-        }
-        return Ok(());
-    }
-    if looks_like_noncanonical_ip(&lower) {
-        return Err(anyhow!("Недопустимый URL"));
-    }
+    let host = normalize_host(host);
     let port = u
         .port_or_known_default()
         .ok_or_else(|| anyhow!("Недопустимый URL"))?;
-    let ips = resolve(lower, port)
+    if !is_allowed_port(port) || !is_allowed_host(&host) {
+        return Err(anyhow!("Недопустимый URL"));
+    }
+    if host.parse::<IpAddr>().is_ok() {
+        return Ok(());
+    }
+    let ips = resolve(host, port)
         .await
         .map_err(|_| anyhow!("Недопустимый URL"))?;
-    if ips.is_empty() || ips.iter().any(is_blocked_ip) {
+    if !resolved_ips_are_public(&ips) {
         return Err(anyhow!("Недопустимый URL"));
     }
     Ok(())
 }
 
-fn is_blocked_ip(ip: &IpAddr) -> bool {
+pub(super) fn normalize_host(host: &str) -> String {
+    host.trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_ascii_lowercase()
+}
+
+pub(super) fn is_allowed_port(port: u16) -> bool {
+    matches!(port, 80 | 443)
+}
+
+pub(super) fn is_allowed_host(host: &str) -> bool {
+    let host = normalize_host(host);
+    if host.is_empty()
+        || host == "localhost"
+        || host.ends_with(".local")
+        || host.ends_with(".localhost")
+    {
+        return false;
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return !is_blocked_ip(&ip);
+    }
+    !looks_like_noncanonical_ip(&host)
+}
+
+pub(super) fn resolved_ips_are_public(ips: &[IpAddr]) -> bool {
+    !ips.is_empty() && ips.iter().all(|ip| !is_blocked_ip(ip))
+}
+
+pub(super) fn is_blocked_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             let octets = v4.octets();
@@ -68,7 +96,11 @@ fn is_blocked_ip(ip: &IpAddr) -> bool {
                 || octets[0] >= 240
                 || (octets[0] == 100 && (64..=127).contains(&octets[1]))
                 || (octets[0] == 192 && octets[1] == 0 && octets[2] == 0)
+                || (octets[0] == 192 && octets[1] == 0 && octets[2] == 2)
+                || (octets[0] == 192 && octets[1] == 88 && octets[2] == 99)
                 || (octets[0] == 198 && (18..=19).contains(&octets[1]))
+                || (octets[0] == 198 && octets[1] == 51 && octets[2] == 100)
+                || (octets[0] == 203 && octets[1] == 0 && octets[2] == 113)
         }
         IpAddr::V6(v6) => {
             if let Some(v4) = v6.to_ipv4_mapped() {
@@ -79,10 +111,14 @@ fn is_blocked_ip(ip: &IpAddr) -> bool {
             }
             let seg = v6.segments();
             // fc00::/7 (unique local), fe80::/10 (link local), fec0::/10
-            // (deprecated site local).
+            // (deprecated site local), 64:ff9b::/96 (NAT64), and 2001:db8::/32
+            // (documentation). NAT64 is blocked as a class so it cannot tunnel
+            // a forbidden IPv4 target through an otherwise public IPv6 prefix.
             (seg[0] & 0xfe00) == 0xfc00
                 || (seg[0] & 0xffc0) == 0xfe80
                 || (seg[0] & 0xffc0) == 0xfec0
+                || (seg[0] == 0x0064 && seg[1] == 0xff9b)
+                || (seg[0] == 0x2001 && seg[1] == 0x0db8)
         }
     }
 }
@@ -134,9 +170,14 @@ mod tests {
         .is_err());
         assert!(validate_url("http://169.254.169.254/latest").await.is_err());
         assert!(validate_url("http://100.64.0.1/v").await.is_err());
+        assert!(validate_url("http://192.0.2.1/v").await.is_err());
+        assert!(validate_url("http://198.51.100.1/v").await.is_err());
+        assert!(validate_url("http://203.0.113.1/v").await.is_err());
         assert!(validate_url("http://[::ffff:127.0.0.1]/v").await.is_err());
         assert!(validate_url("http://[fc00::1]/v").await.is_err());
         assert!(validate_url("http://[fe80::1]/v").await.is_err());
+        assert!(validate_url("http://[64:ff9b::7f00:1]/v").await.is_err());
+        assert!(validate_url("http://[2001:db8::1]/v").await.is_err());
     }
 
     #[tokio::test]
@@ -147,5 +188,19 @@ mod tests {
         assert!(validate_url("http://user@example.com/v").await.is_err());
         assert!(validate_url("http://printer.local/v").await.is_err());
         assert!(validate_url("http://app.localhost/v").await.is_err());
+        assert!(validate_url("https://example.com:8443/v").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn validate_url_rejects_mixed_public_and_private_dns_answers() {
+        assert!(validate_with_ips(
+            "https://public.example/v",
+            vec![
+                "93.184.216.34".parse().unwrap(),
+                "127.0.0.1".parse().unwrap(),
+            ],
+        )
+        .await
+        .is_err());
     }
 }

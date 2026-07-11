@@ -41,7 +41,11 @@ stem, без join), `library.json` пишется атомарно (tmp+rename),
 
 ## Топ-50 актуальных проблем (1 июля 2026)
 
-Самое важное: P0-фиксы в основном держат заявленное, но 2 из старых
+Статусы синхронизированы 11 июля 2026: список и нумерация сохранены как
+аудиторское доказательство, актуальная очередь работ находится в
+`recommendation.md`.
+
+На дату снимка P0-фиксы в основном держали заявленное, но 2 из старых
 «самых критичных» пунктов (№18 upload-семафор, №33 SSRF) остаются открытыми
 почти в исходном виде, а фикс отмены (`596327b`) закрыл гонку по терминальным
 статусам, но **не** закрыл соседнюю гонку по переходу в `Running` (см. №203).
@@ -56,9 +60,9 @@ stem, без join), `library.json` пишется атомарно (tmp+rename),
 🟠 (эксплуатируемо удалённым сервером/второй вкладкой, не требует уже
 скомпрометированной машины).
 
-1. 🟠 №201 - редирект `yt-dlp` на приватный адрес обходит SSRF-проверку (DNS-часть №33 закрыта, редирект - нет).
-2. 🟠 №202 - upload принимает полиглот-файл и отдаёт его как `text/html` - подтверждённый stored XSS.
-3. 🟡 №203 - отмена между `is_cancelled()` и записью `Running` в import/edit-воркерах по-прежнему перетирается (`596327b` не закрыл этот путь).
+1. ✅ №201 - редирект `yt-dlp` на приватный адрес обходил SSRF-проверку; закрыто per-job egress-proxy в раунде 6.
+2. ✅ №202 - upload принимал полиглот-файл и отдавал его как `text/html`; закрыто content-derived extension + headers в раунде 5.
+3. ✅ №203 - отмена между `is_cancelled()` и записью `Running` перетиралась; закрыто атомарным `update_job_if_open` в раунде 5.
 4. 🟡 №18 - `upload_handler` всё ещё минует `jobs_semaphore` (было в «самом критичном» списке, не тронуто).
 5. 🟡 №24 - TTL-чистка сверяется только с `library`, не с активными/queued job (частично исправлено: file/cache/library теперь консистентны между собой, но не с job-очередью).
 6. 🟡 №204 - `upsert_project` не атомарен, конкурентный автосейв из двух вкладок даёт дубликаты project-строк.
@@ -122,13 +126,13 @@ callout ссылался на №1/№2/№3/№4/№17/№23/№32, что не
 нумерацией пунктов в разделах A-E ниже; сама подборка «самого критичного»
 осталась той же семёркой, поменялись только ссылочные номера.)*
 
-**Статус на 1 июля 2026:** ✅ №1, ✅ №2 закрыты и перепроверены (терминальные
+**Статус на 11 июля 2026:** ✅ №1, ✅ №2 закрыты и перепроверены (терминальные
 переходы cancel/finish и очистка мусора импорта; соседняя гонка на переходе в
-`Running` не входила в исходную семёрку и остаётся открытой - см. №203).
+`Running` позже закрыта в раунде 5 - см. №203).
 ✅ №9, ✅ №10 закрыты и перепроверены. ☐ №18 и ☐ №24 (только
 file/cache/library-консистентность, не active-job) остаются открытыми в почти
-исходном виде. ◐ №33 закрыт наполовину (DNS-резолвинг есть, редирект `yt-dlp` -
-нет, см. №201).
+исходном виде. ✅ №33/№201 закрыты полностью в раунде 6 (initial validation,
+redirect-hop и DNS rebinding).
 
 ## A. Корректность задач и гонки
 
@@ -176,7 +180,7 @@ file/cache/library-консистентность, не active-job) остают
 
 ## E. Безопасность (в основном ⚠выставление)
 
-33. 🟠 `tools/net.rs:10-47` + `tools/mod.rs:103` - SSRF обходится: host резолвит yt-dlp, а `validate_url` проверяет только литеральные IP (DNS-rebinding/редиректы на `169.254.169.254`/loopback). → резолвить host и проверять все A/AAAA, запрет приватных редиректов. **◐ Наполовину исправлено (recommendation.md P0-3): DNS-резолвинг исходного URL и полный special-use blocklist на месте и перепроверены 1 июля 2026. Редирект `yt-dlp` на приватный адрес после прохождения проверки - НЕ закрыт, см. №201.**
+33. 🟠 `tools/net.rs:10-47` + `tools/mod.rs:103` - SSRF обходился: host резолвил yt-dlp, а initial guard не контролировал фактический connect. → резолвить host и проверять все A/AAAA, запрет приватных редиректов. **✅ Закрыто полностью в раунде 6:** initial validation и per-request egress-proxy используют одну policy, DNS answer проверяется целиком, connect идёт к pinned `SocketAddr`; см. №201.**
 34. 🔴⚠выставление `lib.rs:28-58` - нет аутентификации ни на одном эндпоинте. → middleware с токеном перед выставлением.
 35. 🟠⚠выставление `lib.rs:54` - `ServeDir` отдаёт весь `storage`, включая `app.db` и `library.json`. → вынести БД из `storage`, отдавать за авторизацией. **✅ Исправлено (`986b799`), перепроверено 1 июля 2026: `/files` смонтирован раздельно на `sources/`/`outputs/`, `..`-traversal невозможен.**
 36. 🟠⚠выставление `lib.rs:56` - `CorsLayer::permissive()` на мутирующих POST/DELETE. → ограничить origin/методы. **✅ Исправлено (`986b799`), перепроверено 1 июля 2026: явный allowlist, fail-closed при отсутствии `CORS_ALLOW_ORIGINS`.**
@@ -227,8 +231,16 @@ file/cache/library-консистентность, не active-job) остают
 ### Security / concurrency
 
 201. 🟠 `tools/mod.rs:83-107` - редирект `yt-dlp` на приватный/link-local адрес после успешной `validate_url` полностью обходит SSRF-защиту. `validate_url` (net.rs) резолвит DNS исходного URL и блокирует приватные/loopback/link-local/CGNAT IP один раз, до старта импорта; `download_video` передаёт тот же raw URL в `Command::new("yt-dlp")` без прокси, `--resolve`-пиннинга или повторной проверки конечного адреса. `yt-dlp` сам резолвит DNS и следует HTTP-редиректам, поэтому сервер, прошедший первичную проверку (публичный IP с коротким TTL, либо просто отдающий 30x на `169.254.169.254`/`127.0.0.1`), уводит фактический запрос `yt-dlp` на приватный адрес - классический TOCTOU/DNS-rebinding/redirect SSRF. Уже был предвиден в recommendation.md как открытый пункт P0-3, здесь впервые заведён как отдельная пронумерованная находка с привязкой к коду. → пиннинг резолвленного IP в `yt-dlp` (`--resolve`/сокет-опции) либо собственный HTTP-клиент с повторной DNS+IP-валидацией на каждый hop перед передачей финального URL в `yt-dlp`. `tools/mod.rs:83-107`
+
+**Статус №201 на 11 июля 2026: ✅ закрыто в раунде 6.** `tools/egress_proxy.rs` проверяет каждый redirect/CONNECT target и пинит DNS answer в `SocketAddr`; format selector принимает только HTTP(S) media. Redirect, rebinding и RTMP-only tests не допускают private TCP connect/non-proxy downloader.
+
 202. 🟠 `handlers/mod.rs:145-251` - upload принимает полиглот-файл с любым расширением и отдаёт его с `Content-Type` по расширению - подтверждённый stored XSS. `sanitize_ext` фильтрует только алфанумерику и не имеет allow-list, единственная проверка контента - `ffprobe` через гейт `i.width > 0 || i.duration > 0.0`. Воспроизведено рабочим PoC: валидный заголовок `GIF89a` (1×1) с дописанным `<script>alert(document.domain)</script>` и именем `poc.html` проходит `ffprobe` (codec_name=gif) и сохраняется как `<uuid>.html`; `/files/sources/<uuid>.html` отдаётся `ServeDir` с `text/html`, переход по прямой ссылке (в т.ч. штатная ссылка «Скачать»/открыть в новой вкладке в `MediaLibrary.vue`/`ResultPanel.vue`) исполняет внедрённый JS в origin бэкенда. Это конкретизирует ранее гипотетические пункты №38/№182 («upload не проверяет magic bytes») рабочим эксплойтом. → определять формат по фактическому содержимому (magic bytes/`format_name` из ограниченного allow-list видеоформатов), присваивать расширение по detected-формату, а не по имени от клиента; отдавать `/files` с `Content-Disposition: attachment` и/или безопасным дефолтным `Content-Type` независимо от расширения. `handlers/mod.rs:145-251`
+
+**Статус №202 на 11 июля 2026: ✅ закрыто в раунде 5.** `handlers/upload.rs` публикует только после `ffprobe`, игнорирует client extension и выбирает server suffix по allow-list; `/files` ставит `nosniff` и sandbox CSP.
+
 203. 🟡 `handlers/mod.rs:74-84,300-310` - переход job в `Running` в import/edit-воркерах по-прежнему безусловно перетирает cancel, пришедший в узком окне. Паттерн в обоих воркерах: `if token.is_cancelled() { mark_cancelled(...); return; }`, затем безусловный `update_job(&jid, |j| j.status = Running)`. Отмена, прилетевшая между этими строками (или между захватом permit и этой проверкой), проходит мимо проверки, а безусловный `update_job` возвращает статус в `Running` и реально стартует `download_video`/`run_ffmpeg`; пользователь видит `Running` вместо `Cancelled` до следующего цикла. Это тот же класс гонки, что и №1/№3 (терминальные переходы), но по другому переходу - `596327b` («Make job cancellation atomic») закрыл терминальные переходы и не тронул именно этот. → заменить оба безусловных `update_job(Running)` на `update_job_if_open` и делать ранний `return`, если job уже терминальна (как уже сделано для Done/Cancelled/Error). `handlers/mod.rs:74-84,300-310`
+
+**Статус №203 на 11 июля 2026: ✅ закрыто в раунде 5.** Все переходы `queued`/`running`/validation-error используют `update_job_if_open` и не оживляют terminal job.
 204. 🟡 `db.rs:86-135` - `upsert_project` не атомарен: `SELECT`-then-`INSERT`/`UPDATE` без транзакции и без `UNIQUE(video_id)` даёт дублирующиеся project-строки при параллельном автосейве из двух вкладок/окон на одном клипе (проверено эмпирически: 10 параллельных вызовов → 10 строк вместо 1). `get_project_by_video` берёт `ORDER BY updated_at DESC LIMIT 1`, так что восстановление правки не страдает, но `list_projects` показывает дубликаты. → `UNIQUE` на `projects.video_id` + `INSERT ... ON CONFLICT(video_id) DO UPDATE` одним запросом (как уже сделано для `jobs`/`render_cache`), либо `BEGIN IMMEDIATE`-транзакция вокруг `SELECT`+write. `db.rs:86-135`
 
 ### Процессы и ffmpeg
@@ -278,8 +290,8 @@ file/cache/library-консистентность, не active-job) остают
 `idx_jobs_updated_at`/`idx_render_cache_created_at` есть в схеме (№32);
 `library.remove` корректно сериализован через мьютекс на весь read-modify-save
 (конкурентный повторный remove безопасен); `validate_url` резолвит DNS и
-блокирует полный набор спец-диапазонов (№33, частично - редирект `yt-dlp`
-остаётся, №201); ранее задокументированный баг «`RectOverlay` считает координаты
+блокирует известные private/special диапазоны, а раунд 6 закрыл redirect/rebinding через
+egress-proxy (№33/№201); ранее задокументированный баг «`RectOverlay` считает координаты
 по letterbox-контейнеру, а не по видимому видео» **не воспроизводится** в
 текущем коде (`object-fit` нигде не применяется к `.player`) - закрыт как
 неактуальный, не как исправленный отдельным коммитом.
@@ -407,11 +419,11 @@ file/cache/library-консистентность, не active-job) остают
 175. Нет per-user isolation для проектов, jobs и files.
 176. Нет sandbox profile для ffmpeg/yt-dlp.
 177. Нет allowlist/denylist policy для supported URL domains.
-178. Нет redirect policy для yt-dlp после URL validation. **Конкретизировано находкой №201 (1 июля 2026): подтверждённый обход SSRF через редирект/DNS-rebinding.**
+178. ✅ Нет redirect policy для yt-dlp после URL validation. **Закрыто в раунде 6:** per-job egress-proxy валидирует каждый target; см. №201.
 179. Нет centralized redaction для logs/errors/API.
 180. Query tokens в импортируемых URL не редактируются как единая policy.
 181. Нет diagnostics bundle с гарантированной redaction.
-182. Upload не проверяет magic bytes до публикации файла через `/files`. **Конкретизировано находкой №202 (1 июля 2026): подтверждённый рабочим PoC stored XSS через upload-полиглот.**
+182. ✅ Upload не проверяет magic bytes до публикации файла через `/files`. **Закрыто в раунде 5:** staging + `ffprobe format_name` + server-selected extension; см. №202.
 183. Нет malware/quarantine story для uploaded media.
 184. File serving не ставит explicit safe `Content-Disposition`.
 185. Нет audit log для mutating operations.

@@ -40,27 +40,30 @@ Backend (Rust + Axum + Tokio)
 - `lib.rs` - `build_router()` (сборка маршрутов), реэкспорт модулей.
 - `main.rs` - bootstrap: env, probe инструментов, открыть БД, recover задач, `serve`.
 - `handlers/` - HTTP. `mod.rs` (import/edit/jobs + общая job-машинерия:
-  `finish_job`/`spawn_progress_drain`/`job_timeout`), `projects.rs`, `library.rs`,
-  `health.rs` (вынесены как независимые группы).
+  `finish_job`/`spawn_progress_drain`/`job_timeout`), `upload.rs`, `projects.rs`,
+  `library.rs`, `health.rs` (вынесены как независимые группы).
 - `tools/` - внешние инструменты. `args.rs` (чистая сборка ffmpeg-аргументов +
-  тесты), `net.rs` (SSRF-валидация URL), `mod.rs` (process/download/probe I/O,
-  реэкспорт публичного API).
-- `state.rs` - `AppState`: jobs (in-memory) + cancels + semaphore + tools + library
-  + db + storage.
+  тесты), `net.rs` (единая URL/host/IP/port-policy), `egress_proxy.rs`
+  (контролируемый transport с DNS pinning на каждый request), `mod.rs`
+  (process/download/probe orchestration и реэкспорт публичного API).
+- `state.rs` - `AppState`: горячий jobs-registry + cancels + semaphore + tools +
+  library + SQLite persistence + storage.
 - `db.rs` - sqlx/SQLite: projects, jobs, render_cache.
 - `library.rs` - медиатека (JSON-файл, параллельно БД).
 - `model.rs` - `Job`/`JobStatus`, `EditRequest` (плоский DTO+домен), `Trim`/`Crop`/`Scale`.
 
 **Frontend** (`frontend/src/`):
-- `store.ts` - единый reactive `state` + все экшены (импорт/экспорт/библиотека/
-  проекты/история/пресеты/тема/плеер) + чистые `parseTime`/`tierToCrf`/`buildEditPayload`.
-- `components/` - `EditPanel.vue` (god-компонент со всеми контролами), `VideoPreview`,
-  `RectOverlay`, `TrimSlider`, `MediaLibrary`, `UrlImport`, `ResultPanel`, `Toasts`,
-  `ProgressBar`.
+- `store.ts` - единый reactive `state` + orchestration-экшены (импорт/экспорт/
+  библиотека/проекты/история/пресеты/тема/плеер); чистые edit-defaults,
+  валидация и payload compiler уже вынесены в `domain/edit.ts`.
+- `components/` - `EditPanel.vue` (ещё крупный контейнер), отдельный
+  `edit/ExportControls.vue`, `VideoPreview`, `RectOverlay`, `TrimSlider`,
+  `MediaLibrary`, `UrlImport`, `ResultPanel`, `Toasts`, `ProgressBar`.
 - `api.ts` - HTTP-клиент. `types.ts` - `EditState` (зеркало `EditRequest`).
 
-Уже выровнено по целевому дизайну: `tools/{args,net,mod}` и
-`handlers/{projects,library,health}` (чистое перемещение, см. refactor-plan).
+Уже выровнено по целевому дизайну: `tools/{args,net,egress_proxy,mod}`,
+`handlers/{upload,projects,library,health}`, frontend `domain/edit.ts` и
+`components/edit/ExportControls.vue` (см. refactor-plan).
 
 ## Top-200: что сделано плохо или неправильно
 
@@ -78,7 +81,8 @@ process-group kill, атомарная отмена, CORS/ServeDir, лимит p
 включая два новых high: обход SSRF через редирект `yt-dlp` и подтверждённый
 stored XSS через upload) и полный ранжированный **топ-50 актуальных проблем** -
 в [docs/audit.md](docs/audit.md#топ-50-актуальных-проблем-1-июля-2026)
-(источник правды по приоритету прямо сейчас).
+(исторический источник доказательств). Оба high позже закрыты: №202 в раунде 5,
+№201 в раунде 6.
 
 ### Correctness и гонки задач
 
@@ -126,12 +130,12 @@ stored XSS через upload) и полный ранжированный **то�
 
 ### Security
 
-33. ◐ SSRF-валидация не резолвит DNS, `yt-dlp` может уйти в private IP. *(DNS-резолвинг исходного URL исправлен; редирект `yt-dlp` на приватный адрес после проверки - нет, см. audit.md №201, новый high)*
+33. ✅ SSRF-валидация не резолвит DNS, `yt-dlp` может уйти в private IP. *(закрыто полностью в раунде 6: initial guard + per-request egress-proxy, redirect/DNS rebinding test)*
 34. ☐ Нет authentication на мутирующих endpoints. *(⚠выставление, задокументированный tradeoff для локального MVP, не тронуто)*
 35. ✅ `ServeDir` отдаёт весь `storage`, включая потенциально чувствительные файлы. *(исправлено `986b799`)*
 36. ✅ `CorsLayer::permissive()` открыт для mutating requests. *(исправлено `986b799`)*
 37. Blocklist приватных диапазонов неполный.
-38. Upload доверяет расширению/контейнеру до проверки magic bytes.
+38. ✅ Upload доверяет расширению/контейнеру до проверки magic bytes. *(закрыто в раунде 5: `ffprobe format_name` + server allow-list до publish)*
 39. ◐ Projects API хранит произвольный JSON без схемы и лимита. *(лимит на `video`/`edit` исправлен `3b655c8`; поле `name` осталось без лимита, audit.md №207)*
 40. Request DTO не используют `deny_unknown_fields`.
 
@@ -293,11 +297,11 @@ stored XSS через upload) и полный ранжированный **то�
 175. Нет per-user isolation для проектов, jobs и files.
 176. Нет sandbox profile для ffmpeg/yt-dlp.
 177. Нет allowlist/denylist policy для supported URL domains.
-178. Нет redirect policy для yt-dlp после URL validation. *(конкретизировано audit.md №201, подтверждённый обход)*
+178. ✅ Нет redirect policy для yt-dlp после URL validation. *(закрыто в раунде 6: каждый redirect открывает новый проверяемый proxy target)*
 179. Нет centralized redaction для logs/errors/API.
 180. Query tokens в импортируемых URL не редактируются как единая policy.
 181. Нет diagnostics bundle с гарантированной redaction.
-182. Upload не проверяет magic bytes до публикации файла через `/files`. *(конкретизировано audit.md №202, подтверждённый PoC stored XSS)*
+182. ✅ Upload не проверяет magic bytes до публикации файла через `/files`. *(закрыто в раунде 5: staging + `ffprobe` + server-selected extension)*
 183. Нет malware/quarantine story для uploaded media.
 184. File serving не ставит explicit safe `Content-Disposition`.
 185. Нет audit log для mutating operations.
@@ -325,7 +329,7 @@ stored XSS через upload) и полный ранжированный **то�
 Полные описания, `file:line` и adversarial-верификация - в
 [docs/audit.md](docs/audit.md#раунд-2-новые-находки-201-218-1-июля-2026).
 
-201. 🟠 Редирект `yt-dlp` на приватный адрес после успешной `validate_url` обходит SSRF-защиту импорта (новый high).
+201. ✅ Редирект `yt-dlp` на приватный адрес после успешной `validate_url` обходит SSRF-защиту импорта (новый high). **Закрыто в раунде 6:** loopback egress-proxy валидирует каждый HTTP/CONNECT target и соединяется с pinned `SocketAddr`; реальный `yt-dlp`-тест подтверждает отсутствие connect к private sink.
 202. 🟠 Upload принимает полиглот-файл и отдаёт его как `text/html` - подтверждённый PoC stored XSS (новый high). **Закрыто в раунде 5:** расширение теперь выводится из `ffprobe format_name`, ответы получают `nosniff` + sandbox CSP.
 203. Отмена между `is_cancelled()` и записью `Running` в import/edit-воркерах по-прежнему перетирается - `596327b` не закрыл этот путь. **Закрыто в раунде 5:** `queued`/`running`/validation-error переходы используют `update_job_if_open`.
 204. `upsert_project` не атомарен - конкурентный автосейв из двух вкладок даёт дубликаты project-строк.
@@ -367,7 +371,7 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
 | [Jobs, конкурентность, process lifecycle](#module-jobs) | 46 | Гонки, семафоры, отмена, spawn/kill/timeout; AppState как god-object. |
 | [FFmpeg domain compiler (args.rs)](#module-ffmpeg) | 53 | Чистое ядро сборки ffmpeg-графа: OCP при новых эффектах, DRY между путями. |
 | [Persistence layer (DIP)](#module-persistence) | 41 | Два хранилища без общего трейта-порта; миграции, транзакции, retention. |
-| [Security и сеть](#module-security) | 45 | CORS/ServeDir, upload, SSRF-остатки, Docker hardening. |
+| [Security и сеть](#module-security) | 45 | CORS/ServeDir, upload, controlled egress, auth и Docker hardening. |
 | [API contract и обработка ошибок](#module-api-contract) | 45 | Типизация wire-контракта, единый error-boundary, версионирование. |
 | [Frontend state и store](#module-frontend-store) | 50 | God-module store.ts: SRP по доменам, DRY между async-экшенами. |
 | [Frontend компоненты и интерактивность](#module-frontend-components) | 45 | God-component EditPanel.vue; дублирование drag-логики между компонентами. |
@@ -407,10 +411,10 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
   565 модульных пунктов совпадают между архитектурой и чеклистом. Старые top-200
   и top-50 оставлены как исторический приоритетный слой, а не как отдельный
   конкурирующий backlog.
-- **Итерация 2: приоритизация.** Ближайший маршрут остаётся тем же: закрыть
-  security/correctness high (upload XSS, SSRF redirect, cancel-to-running race),
-  затем дешёвые архитектурные разрезы (`AppError`, `Config`, `JobRunner`), затем
-  frontend-декомпозицию (`store.ts`, `EditPanel`, общие форматтеры).
+- **Итерация 2: приоритизация.** Маршрут начинался с security/correctness high
+  (upload XSS, SSRF redirect, cancel-to-running race); раунды 5-6 закрыли все
+  три. Текущий порядок: upload concurrency, `AppError`, `Config`, `JobRunner`,
+  затем frontend-декомпозиция (`store.ts`, `EditPanel`, общие форматтеры).
 - **Итерация 3: review и дизайн.** Документы проверены на drift между
   `README.md`, `architecture.md` и `recommendation.md`; UI/UX-слой трактуется
   как инженерный долг, а не как косметика. Для каждого визуального PR сначала
@@ -445,10 +449,29 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
   cleanup window-listeners в `RectOverlay`/`TrimSlider`; добавлены regression-
   тесты и живой desktop/mobile-прогон. Закрыты 210/211/216/553/554.
 
-Следующий независимый срез по приоритету: P0-10 SSRF на redirect-hop, затем
-upload semaphore, `AppError`, единый `Config`, и только после них общий
-`JobRunner`. Frontend продолжать секциями: `AudioControls`, `PresetBar`,
-history/presets/theme stores; фасад `store.ts` сохранять до конца миграции.
+### Раунд 6: SSRF transport и adversarial review (11 июля 2026)
+
+- **Итерация 1, policy.** `tools/net.rs` стал единым источником правил host/IP/
+  port: только HTTP(S) 80/443, mixed DNS answer отклоняется целиком, известные
+  private/special IPv4/IPv6 cases покрыты одной policy. Форматный селектор
+  допускает только `http://`/`https://` media URL, не позволяя `yt-dlp` выбрать
+  прямой RTMP/FTP/WebSocket downloader вне proxy.
+- **Итерация 2, enforced transport.** Новый per-job `tools/egress_proxy.rs`
+  обслуживает HTTP и HTTPS CONNECT, повторно резолвит каждый target и соединяется
+  непосредственно с проверенным `SocketAddr`. `yt-dlp` получает явный proxy в
+  CLI/env, `--ignore-config`, а `NO_PROXY` удаляется и для дочерних downloader'ов.
+- **Итерация 3, adversarial/perf review.** Policy-deny получает транспортный
+  код 472 и отдельный per-job atomic marker, поэтому настоящий upstream 403/472
+  не маскируется под SSRF; DNS и connect bounded, активные proxy-клиенты
+  ограничены 64 на job, shutdown прерывает оставшиеся tasks. Добавлены реальный
+  302→private-sink тест через `yt-dlp`, resolver-тест public→private и synthetic
+  HTTPS+RTMP/RTMP-only format tests. Они доказывают отсутствие private TCP
+  connect и отказ non-HTTP media до downloader. CI ставит закреплённый `yt-dlp`.
+
+Следующий независимый срез по приоритету: upload semaphore, `AppError`, единый
+`Config`, и только после них общий `JobRunner`. Frontend продолжать секциями:
+`AudioControls`, `PresetBar`, history/presets/theme stores; фасад `store.ts`
+сохранять до конца миграции.
 
 <a id="module-http"></a>
 ### Модуль: HTTP-хендлеры и роутинг (51)
@@ -500,7 +523,7 @@ HTTP-хендлеры и роутинг (`backend/src/handlers/`, `lib.rs`). SRP
 261. 🟡 [проблема] project_upsert_handler не ограничивает длину поля name - `backend/src/handlers/projects.rs` -> Добавить проверку name.len() <= разумного предела (например 200 байт) и обрезать/отклонить при превышении, аналогично ensure_project_json_size для video/edit.
 262. 🟡 [улучшение/DRY] acquire_render_lock_or_cancelled и mark_cancelled создают риск двойной записи отмены при отмене на этапе ожидания render_lock - `backend/src/handlers/mod.rs` -> Консолидировать перевод job в Cancelled в единственном методе AppState (например state.mark_job_cancelled), вызываемом и из cancel_handler, и из mod.rs-хелперов вместо двух параллельных реализаций.
 263. 🟡 [проблема/SRP] job_status_handler не различает 404 для несуществующего job и job, уже вычищенного лимитом recover_jobs - `backend/src/handlers/mod.rs` -> Добавить отдельный код/сообщение (например {"error":"job_expired"}) для случая, когда id валиден по формату UUID, но отсутствует и в памяти, и в БД.
-264. 🟡 [баг] sanitize_ext не проверяет конфликт очищенного расширения с зарезервированными именами - `backend/src/handlers/mod.rs` -> Явно исключить зарезервированные суффиксы (part, tmp, info.json-подобные) из допустимых значений ext в sanitize_ext.
+264. ✅ [баг] sanitize_ext не проверяет конфликт очищенного расширения с зарезервированными именами - **закрыто в раунде 5:** `sanitize_ext` удалён, итоговый suffix выбирается только `safe_upload_extension` из фиксированного allow-list; staging использует непубликуемый `.upload`. `backend/src/handlers/upload.rs`
 265. 🟡 [проблема/DRY] build_router перечисляет пары REST-методов на одном пути отдельными .route() вызовами без общего паттерна регистрации ресурса - `backend/src/lib.rs` -> При росте числа ресурсов ввести небольшой builder resource(path, handlers) для типового набора GET/POST/DELETE, снижающий повторение синтаксиса регистрации.
 266. 🟡 [проблема] spawn_progress_drain не имеет верхней границы по времени и переживает job, если воркер зависает до закрытия tx - `backend/src/handlers/mod.rs` -> Обернуть rx.recv() в tokio::select! с сигналом отмены/таймаутом job_timeout(), чтобы drain гарантированно завершался вместе с воркером.
 267. 🟡 [проблема/SRP] upload_handler комбинирует чтение multipart-полей, запись на диск и пробинг в одном цикле без ранней валидации типа поля - `backend/src/handlers/mod.rs` -> Сначала пройтись по всем полям и выбрать/провалидировать единственное поле файла, затем отдельным шагом выполнить запись+probe, разделяя разбор входа и работу с диском.
@@ -533,7 +556,7 @@ Jobs, конкурентность, процессы (`state.rs`, процесс
 288. 🟡 [баг] check_tool не имеет таймаута — при зависшем бинарнике (--version) health-check на старте может повиснуть навсегда. - `backend/src/tools/mod.rs` -> Обернуть .output().await в tokio::time::timeout(Duration::from_secs(5), ...) и трактовать истечение как отсутствие инструмента.
 289. 🟠 [проблема] find_by_id делает линейный скан всей директории sources на каждый find_source/find_by_id вызов вместо прямого поиска по известным расширениям. - `backend/src/tools/mod.rs` -> Хранить связку video_id -> filename в БД (или Library) при создании файла и искать по точному пути вместо сканирования директории при каждом обращении.
 290. 🟡 [дизайн/OCP] map_ytdlp_error жёстко зашивает распознавание типов ошибок по подстрокам в stderr — новый тип ошибки требует правки самой функции. - `backend/src/tools/mod.rs` -> Вынести таблицу (маркер, сообщение) в статический список пар и итерировать её, чтобы новые случаи добавлялись как данные, а не код.
-291. 🟡 [баг] validate_url вызывается один раз перед стартом импорта, но yt-dlp сам делает HTTP-редиректы — TOCTOU между валидацией исходного URL и фактическим доступом yt-dlp по редиректной цепочке. - `backend/src/handlers/mod.rs` -> Либо запускать yt-dlp с флагом ограничения редиректов на внешние хосты, либо повторно валидировать финальный resolved URL, который yt-dlp фактически использовал (если он его логирует).
+291. ✅ [баг] validate_url вызывался один раз перед стартом импорта, оставляя TOCTOU на HTTP-редиректах - **закрыто в раунде 6:** `yt-dlp` принудительно идёт через egress-proxy, который повторяет policy на каждом новом target. `backend/src/tools/egress_proxy.rs`
 292. 🟠 [баг] acquire_render_lock_or_cancelled удерживает render_lock guard, пока не будет получен jobs_semaphore permit — конкурентные edit-запросы с одинаковым cache_key упираются в permit-голод, удерживая лок долго. - `backend/src/handlers/mod.rs` -> Получать permit до захвата render_lock (сначала дождаться слота в очереди, затем сериализовать по cache_key) либо разделить 'ожидание очереди' и 'сериализация одинаковых рендеров' на независимые этапы, не блокирующие друг друга.
 293. 🟡 [улучшение/DRY] mark_cancelled и mark_queue_closed дублируют одинаковый паттерн update_job_if_open + persist_job + clear_cancel, отличаясь только устанавливаемыми полями job. - `backend/src/handlers/mod.rs` -> Вынести общий helper fn finalize_job_if_open(st, jid, f: impl FnOnce(&mut Job)) -> bool, инкапсулирующий update_job_if_open+persist_job+clear_cancel, и вызывать его с разными замыканиями из обоих мест.
 294. 🟡 [дизайн/KISS] Цепочка вложенных tokio::select!-хелперов для edit_handler требует держать в голове 4 независимые точки отмены, что легко пропустить при будущих правках. - `backend/src/handlers/mod.rs` -> Свести все точки отмены к единому паттерну (например, обернуть каждый шаг в общий cancellable_step helper, который всегда возвращает Result<T, Cancelled> через select!), убрав отдельную ручную проверку is_cancelled().
@@ -670,12 +693,12 @@ Persistence layer (`db.rs`, `library.rs`). DIP: два параллельных 
 
 Security и сеть (`tools/net.rs`, CORS/ServeDir в `lib.rs`, upload, Docker-хардening).
 
-410. 🔴 [проблема] SSRF-проверка URL и фактический HTTP-запрос yt-dlp разделены во времени (TOCTOU/DNS rebinding) - `backend/src/tools/net.rs` -> Резолвить хост самостоятельно, передавать yt-dlp уже проверенный IP (--resolve или явный IP в URL с Host-заголовком) вместо доменного имени.
-411. 🔴 [проблема] validate_url не проверяет редиректы, на которые пойдёт yt-dlp - `backend/src/tools/net.rs` -> Запускать yt-dlp с ограничением редиректов на внешние хосты или повторно валидировать финальный resolved URL перед скачиванием.
+410. ✅ [проблема] SSRF-проверка URL и фактический HTTP-запрос yt-dlp были разделены во времени (TOCTOU/DNS rebinding) - **закрыто в раунде 6:** proxy резолвит, валидирует всю DNS-выборку и делает connect к тому же pinned `SocketAddr`. `backend/src/tools/egress_proxy.rs`
+411. ✅ [проблема] validate_url не проверял редиректы, на которые пойдёт yt-dlp - **закрыто в раунде 6:** все HTTP/CONNECT targets проходят одну policy независимо от redirect-hop. `backend/src/tools/egress_proxy.rs`
 412. 🟠 [баг] is_blocked_ip не перечисляет явно IPv4 broadcast и все зарезервированные диапазоны, полагаясь на широкий octets[0] >= 240 - `backend/src/tools/net.rs` -> Добавить явную проверку v4.is_broadcast() (255.255.255.255) и тест на неё, не полагаясь молча на побочный эффект диапазона 240+.
 413. 🟡 [улучшение/DRY] looks_like_noncanonical_ip дублирует парсинг IP-подобных меток вместо переиспользования std IpAddr parse - `backend/src/tools/net.rs` -> Вынести общую логику разбора octal/hex/decimal представлений IP в одну функцию, используемую и для канонического, и для неканонического случая.
-414. 🟠 [проблема] validate_url разрешает произвольный порт на публичном хосте, включая порты внутренних docker-compose сервисов - `backend/src/tools/net.rs` -> Ограничить допустимые порты до 80/443 (или explicit allowlist), если нет обоснованной причины поддерживать произвольные порты для видеохостингов.
-415. 🟡 [дизайн] Комментарий 'basic SSRF guard' занижает фактический объём защиты в net.rs - `backend/src/tools/net.rs` -> Расширить комментарий с перечислением конкретных классов угроз, которые покрывает validate_url, и явно указать, чего не покрывает (редиректы, TOCTOU).
+414. ✅ [проблема] validate_url разрешал произвольный порт на публичном хосте - **закрыто в раунде 6:** initial guard и каждый proxy-hop принимают только 80/443. `backend/src/tools/net.rs`
+415. ✅ [дизайн] Комментарий 'basic SSRF guard' занижал фактический объём защиты - **закрыто в раунде 6:** module docs разделяют URL-policy и enforced per-request transport, включая DNS pinning. `backend/src/tools/net.rs`, `backend/src/tools/egress_proxy.rs`
 416. 🟠 [проблема] CORS default origins в lib.rs жёстко зашиты под dev-порты 5173/8088 без явного требования CORS_ALLOW_ORIGINS в проде - `backend/src/lib.rs` -> При старте в non-dev окружении (например, когда BIND_ADDR не 127.0.0.1) логировать warn, если CORS_ALLOW_ORIGINS не задан, а дефолты все еще localhost.
 417. 🟡 [улучшение] cors_origins_from_env читает CORS_ALLOW_ORIGINS один раз при старте роутера без отдельного этапа валидации конфигурации - `backend/src/lib.rs` -> Валидировать CORS_ALLOW_ORIGINS в main.rs на старте и завершать процесс с понятной ошибкой, если ни одна валидная origin не была распознана при непустой переменной.
 418. 🟠 [проблема] ServeDir для /files/sources и /files/outputs не ограничивает конкурентные Range-запросы к одному большому видео - `backend/src/lib.rs` -> Добавить rate-limiting/concurrency-cap middleware (например tower::limit::ConcurrencyLimitLayer) перед ServeDir или ограничить на уровне nginx.
@@ -684,8 +707,8 @@ Security и сеть (`tools/net.rs`, CORS/ServeDir в `lib.rs`, upload, Docker-
 421. 🔴 [проблема] Ни один API-эндпоинт не требует аутентификации - `backend/src/lib.rs` -> Добавить хотя бы простую проверку статического API-ключа или basic-auth middleware перед /api и /files роутами, конфигурируемую через env.
 422. 🟠 [проблема/SRP] upload_handler пишет файл на диск до какой-либо валидации содержимого, позволяя гигабайтные не-видео файлы полностью записываться прежде чем быть отклонёнными - `backend/src/handlers/mod.rs` -> Проверять Content-Type и/или делать раннюю частичную проверку (например, ffprobe по первым N МБ через pipe) прежде чем стримить весь файл на диск.
 423. 🟡 [улучшение/SRP] upload_handler совмещает парсинг multipart, запись на диск, санитизацию расширения, пробирование видео и обновление библиотеки в одной функции - `backend/src/handlers/mod.rs` -> Выделить сохранение файла, санитизацию имени и построение JSON-ответа в отдельные вспомогательные функции с независимыми unit-тестами.
-424. 🔴 [баг] sanitize_ext допускает опасные расширения (.exe, .sh, .php, .html, .svg), фильтруя только по алфанумеричности, а не по allowlist видео-форматов - `backend/src/handlers/mod.rs` -> Заменить фильтр по алфанумеричности на явный allowlist разрешённых видео-расширений (mp4, mov, webm, mkv, avi и т.п.), отклоняя всё остальное с 400 до записи на диск.
-425. 🟠 [проблема] probe_video как единственная валидация загруженного файла не проверяет соответствие реального кодека/контейнера расширению из sanitize_ext - `backend/src/handlers/mod.rs` -> После probe_video сверять фактический контейнер/кодек с ожидаемым по расширению и отклонять явные несоответствия.
+424. ✅ [баг] sanitize_ext допускал опасные клиентские расширения - **закрыто в раунде 5:** имя клиента display-only, server suffix выводится из `ffprobe format_name` через `safe_upload_extension`. `backend/src/handlers/upload.rs`
+425. ✅ [проблема] probe_video не сверял реальный контейнер с клиентским расширением - **закрыто в раунде 5:** клиентское расширение больше не участвует в storage/MIME, контейнер и WebM codec combination определяют server-selected suffix. `backend/src/handlers/upload.rs`
 426. 🟡 [проблема] upload_handler читает только первое подходящее multipart-поле и молча возвращает Ok, игнорируя остальные части запроса - `backend/src/handlers/mod.rs` -> Либо явно документировать и валидировать, что запрос должен содержать ровно одно файловое поле, отклоняя лишние поля с 400, либо поддержать множественную загрузку осознанно.
 427. 🟡 [улучшение/DRY] Формирование JSON-ответа VideoInfo дублируется почти дословно в import_handler и upload_handler - `backend/src/handlers/mod.rs` -> Вынести построение этого JSON в общую функцию, принимающую id, filename, ProbeInfo, title и sizeBytes.
 428. 🟡 [проблема] job_timeout читает переменную окружения JOB_TIMEOUT_SECS при каждом вызове import_handler/edit_handler вместо однократного чтения при старте - `backend/src/handlers/mod.rs` -> Прочитать JOB_TIMEOUT_SECS один раз в main.rs и передавать значение через AppState, как сделано для MAX_CONCURRENT_JOBS.
@@ -953,11 +976,11 @@ Frontend компоненты (`EditPanel.vue` и остальные `.vue`). Go
 660. 🟡 [проблема] Нет теста на восстановление после падения посреди рендера с недописанным output-файлом - `backend/tests/api.rs` -> Добавить в jobs_survive_restart создание недописанного *.part или .mp4 файла в outputs/ перед recover_jobs и проверить, что он не отдаётся как валидный результат.
 661. 🟠 [проблема] Нет теста на гонку cancel_open_job и finish_job в момент завершения worker'а - `backend/src/handlers/mod.rs` -> Добавить тест с tokio::join! на cancel_open_job и finish_job над одной job, запущенный многократно (loom или stress-repeat), чтобы отловить неатомарность.
 662. 🟡 [проблема] Нет property/fuzz-тестов для normalize_edit_request и clamp_rect_to_source - `backend/src/handlers/mod.rs` -> Добавить proptest, генерирующий source_width/height и rect в диапазоне 0..=8000, и утверждающий, что clamp_rect_to_source никогда не паникует и всегда возвращает rect внутри границ источника.
-663. 🟡 [проблема] SSRF-тесты не покрывают DNS rebinding между валидацией URL и фактическим скачиванием - `backend/tests/api.rs` -> Добавить unit-тест на уровне tools.rs с подменяемым resolver (trait-инъекция), который меняет ответ между двумя вызовами и проверяет, что download-путь тоже валидирует резолвнутый IP, а не только исходный hostname.
+663. ✅ [проблема] SSRF-тесты не покрывали DNS rebinding между валидацией URL и фактическим скачиванием - **закрыто в раунде 6:** injected resolver меняет public initial answer на private download answer; тест подтверждает policy block до connect. `backend/src/tools/egress_proxy.rs`
 664. 🟡 [проблема/DRY] make_state дублируется почти дословно между api.rs и handlers/mod.rs::tests::state() - `backend/tests/api.rs` -> Вынести общую фабрику AppState для тестов в отдельный test-util модуль (например backend/src/test_support.rs с #[cfg(test)]) и переиспользовать из обоих мест.
 665. 🟡 [проблема] Нет теста на конкурентный upload двух файлов с коллизией video_id - `backend/tests/api.rs` -> Добавить тест, отправляющий два параллельных multipart upload и проверяющий, что оба файла сохраняются под разными id без порчи данных.
 666. 🟡 [проблема] upload-тесты не проверяют путь ошибки probe_video на реальном файле - `backend/tests/api.rs` -> Добавить тест с реальным ffmpeg (в render.rs или отдельном ffmpeg-gated тесте), который заливает файл с мусорным содержимым и проверяет 400/ошибку от probe_video, а не панику.
-667. 🟡 [проблема] sanitize_ext не покрыт ни одним прямым или HTTP-level тестом - `backend/src/handlers/mod.rs` -> Добавить unit-тест sanitize_ext(Some("clip.MP4")), sanitize_ext(Some("noext")), sanitize_ext(Some("a.???")) и HTTP-тест upload с такими filename в multipart.
+667. ✅ [проблема] клиентский extension selector не был покрыт прямым или HTTP-level тестом - **закрыто в раунде 5:** `safe_upload_extension` unit-тестирован, HTTP regression загружает MP4 как `payload.html` и проверяет server-selected `.mp4`/MIME/headers. `backend/src/handlers/upload.rs`, `backend/tests/api.rs`
 668. 🟡 [проблема] cache_key коллизии между разными videoId с одинаковым edit не тестируются с реальным разделением файлов - `backend/tests/api.rs` -> Добавить тест: закэшировать результат для videoId='vidX', затем отправить идентичный edit с videoId='vidY' и проверить, что кэш не срабатывает (реальный рендер или явная ошибка отсутствия источника).
 669. 🟡 [проблема] CI не запускает Makefile check, дублируя его шаги вручную вместо переиспользования - `.github/workflows/ci.yml` -> Заменить пошаговые run-команды в ci.yml на вызов `make check` (или отдельных `make lint`/`make test`), чтобы Makefile оставался единственным источником истины.
 670. 🟡 [проблема] CI не публикует и не проверяет покрытие тестами ни для backend, ни для frontend - `.github/workflows/ci.yml` -> Добавить cargo-llvm-cov для backend и vitest --coverage для frontend с минимальным порогом, публикуемым как job summary или артефакт.
@@ -1116,7 +1139,9 @@ domain/            jobs/            persistence/    storage/
 ffmpeg/            (Task: работа)   sqlx / files
   compile.rs (IR→filter_complex, чистый, тестируемый)
   process.rs (запуск/прогресс/отмена/таймаут)
-net.rs (SSRF, чистый)     config.rs (env один раз)    messages.rs (i18n)
+download/          net/                         config.rs       messages.rs
+  ytdlp.rs           policy.rs (чистый)          (env один раз) (i18n)
+  egress_proxy.rs    resolver.rs (bounded I/O)
 ```
 
 ### Ключевые абстракции (сигнатуры-эскизы)
@@ -1198,7 +1223,8 @@ components/        EditPanel = тонкий контейнер + секции:
 
 - `http` → `services` → (`domain`, `jobs`, `persistence` traits, `storage`).
   HTTP не знает про sqlx/ffmpeg-флаги; `persistence/sqlite` - единственное место с sqlx.
-- `domain`/`ffmpeg::compile`/`net`/`config` - **чистые** (без I/O), тестируются изолированно.
+- `domain`/`ffmpeg::compile`/`net::policy`/config parsing - **чистые**;
+  `net::resolver`/egress-proxy - узкая I/O-граница с injected resolver/connector.
 - Пользовательские строки - только в `messages` (i18n), не в доменном коде.
 - Внешние процессы (ffmpeg/yt-dlp) - только за `ffmpeg`/`download`; всё через
   один process-раннер с отменой/таймаутом.
@@ -1209,7 +1235,7 @@ components/        EditPanel = тонкий контейнер + секции:
 | Область | Сейчас | Цель | Статус |
 |---|---|---|---|
 | ffmpeg-аргументы | `tools/args.rs` (чистый) | `ffmpeg/compile.rs` от IR | ✅ выделено, IR - позже |
-| SSRF | `tools/net.rs` | `net.rs` | ✅ |
+| SSRF transport | `tools/{net,egress_proxy}.rs` | policy + контролируемый downloader adapter | ✅ initial/redirect/rebinding закрыты |
 | HTTP god-file | `handlers/mod.rs` + 3 группы | `http/*` по ресурсам | ◐ частично |
 | Оркестрация задач | копипаста в import/edit | `jobs::JobService::spawn` + `Task` | ☐ |
 | Ошибки | `(StatusCode,String)` россыпью | `AppError` + `IntoResponse` | ☐ |
@@ -1228,8 +1254,9 @@ components/        EditPanel = тонкий контейнер + секции:
 начале `docs/audit.md`). Большая часть исходного «самого острого» списка теперь
 закрыта: ✅ вырезание сегмента для AV1/ProRes, ✅ гонка cancel↔finish
 (терминальные переходы), ✅ crop-валидация, ✅ пропущенный `persist_job` при
-ошибке URL, ✅ рост `recover_jobs`. Остаётся открытым: `upload_handler` минует
-семафор (№18); TTL-чистка не проверяет активные job (№24, частично); SSRF
-теперь закрыт по DNS, но не по редиректу `yt-dlp` (№201, новый, high). Новое
-самое острое - оба свежих high-пункта раунда 2: №201 (SSRF через редирект) и
-№202 (подтверждённый PoC stored XSS через upload-полиглот).
+ошибке URL, ✅ рост `recover_jobs`, ✅ upload stored XSS, ✅ SSRF initial/
+redirect/DNS rebinding. Остаётся открытым: `upload_handler` минует semaphore
+(№18/223/444); TTL-чистка не проверяет активные job (№24, частично); нет auth и
+ownership перед внешней публикацией (№34/421), process/resource sandbox и
+import filesize cap. Свежие high раунда 2 закрыты: №202 в раунде 5, №201 в
+раунде 6.

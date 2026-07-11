@@ -98,7 +98,8 @@ npm run dev
 модель) и HTTP-интеграционными тестами (роутер гоняется через
 `tower::ServiceExt::oneshot`, без сокета). Есть один реальный ffmpeg-тест рендера
 (`backend/tests/render.rs`), который сам пропускается, если `ffmpeg`/`ffprobe` нет
-в `PATH`. Фронтенд — ESLint + Vitest на логику стора (`buildEditPayload`,
+в `PATH`, и реальный `yt-dlp`-тест редиректа в приватную сеть (также skip без
+`yt-dlp`). Фронтенд — ESLint + Vitest на логику стора (`buildEditPayload`,
 `parseTime`, пресеты).
 
 ```
@@ -118,9 +119,10 @@ cd frontend && npm run typecheck
 cd frontend && npm run test
 ```
 
-CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` ставит ffmpeg,
-гоняет для бэкенда `cargo fmt --check`, `clippy -D warnings`, `cargo test`, а для
-фронтенда — lint, typecheck, тесты и сборку.
+CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` ставит ffmpeg
+и закреплённый `yt-dlp`, гоняет для бэкенда `cargo fmt --check`,
+`clippy -D warnings`, `cargo test`, а для фронтенда — lint, typecheck, тесты и
+сборку.
 
 ## Архитектура
 
@@ -149,7 +151,8 @@ adversarial-верификацией (плюс 15 доп. низкоприори
 исходных P0 закрыто; из нового - 2 подтверждённых high: обход SSRF-защиты
 импорта через редирект `yt-dlp` и воспроизведённый (рабочий PoC) stored XSS
 через загрузку файла. Актуальный ранжированный **топ-50** - в начале
-[docs/audit.md](docs/audit.md#топ-50-актуальных-проблем-1-июля-2026).
+[docs/audit.md](docs/audit.md#топ-50-актуальных-проблем-1-июля-2026). Оба пункта
+позже закрыты: upload XSS в раунде 5, SSRF redirect/DNS rebinding в раунде 6.
 
 **Раунд 3 (2 июля 2026): 565 находок, разбитые на 12 SOLID/DRY-модулей.**
 Отдельный проход не по глубине (как раунд 2), а по ширине: весь код заново
@@ -188,6 +191,19 @@ Upload вынесен в `backend/src/handlers/upload.rs`: имя клиента
 меняют формат/качество, drag-listeners очищаются при unmount. Живой UI-прогон
 закрыл горизонтальный overflow на 390 px. Полные 509/565 списки сохранены как
 backlog; закрытые пункты отмечены в `recommendation.md`.
+
+**Раунд 6 (11 июля 2026): защищённый сетевой транспорт импорта.** P0-10 закрыт
+отдельным loopback egress-proxy на каждый запуск `yt-dlp`. Proxy повторно
+резолвит и валидирует каждый HTTP/CONNECT target, отклоняет всю DNS-выборку при
+наличии private/special IP и соединяется с уже проверенным `SocketAddr`, поэтому
+редиректы и DNS rebinding не создают окно между проверкой и connect. Разрешены
+только порты 80/443, а format selector допускает только media URL с `http://`/
+`https://`, исключая прямой RTMP/FTP/WebSocket downloader bypass. DNS/connect
+имеют общий bounded budget, proxy ограничен 64 соединениями на job. `yt-dlp`
+запускается с `--ignore-config`, явным `--proxy`, proxy-env для дочерних
+downloader'ов и без `NO_PROXY`. Реальные regression-тесты проверяют 302 на
+loopback, смену DNS-ответа public→private и отказ RTMP-only metadata без
+соединения с приватной целью.
 
 ```
 frontend (Vue 3 + Vite)
@@ -228,6 +244,7 @@ backend (Rust + Axum + Tokio)
 - Stored XSS через подменённое расширение локального upload закрыт: публикация
   происходит только после `ffprobe`, расширение выбирается из allow-list
   фактического контейнера, а статические ответы запрещают MIME-sniffing и
-  активный document-контекст. Импорт по ссылке всё ещё может быть уведён
-  редиректом на приватный адрес в обход SSRF-проверки
-  ([docs/audit.md](docs/audit.md) №201); до P0-10 не выставляй сервис наружу.
+  активный document-контекст.
+- SSRF через redirect-hop и DNS rebinding закрыт egress-proxy; импорт намеренно
+  принимает только HTTP(S) на стандартных портах 80/443. Это не заменяет auth,
+  rate limits и process sandbox, которые всё ещё обязательны перед публикацией.
