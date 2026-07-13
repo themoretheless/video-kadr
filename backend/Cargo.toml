@@ -19,7 +19,7 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["client", "http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 libc = "0.2"
 # Embedded SQLite (statically bundled) for persistent projects / jobs.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }

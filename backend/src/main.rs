@@ -1,7 +1,9 @@
+use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use video_editor_backend::build_router;
@@ -23,6 +25,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| PathBuf::from("storage"));
     tokio::fs::create_dir_all(storage.join("sources")).await?;
     tokio::fs::create_dir_all(storage.join("outputs")).await?;
+    tokio::fs::create_dir_all(storage.join("staging")).await?;
 
     // Probe external tools once so /api/health and the logs reflect reality.
     let (ffmpeg, ffmpeg_version) = tools::check_tool("ffmpeg", "-version").await;
@@ -41,11 +44,19 @@ async fn main() -> anyhow::Result<()> {
             "yt-dlp not found on PATH - imports will fail. Install with: brew install yt-dlp"
         );
     }
+    let (ffmpeg_encoders, ffmpeg_muxers, ffmpeg_filters) = if ffmpeg {
+        tools::inspect_ffmpeg_support().await
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
     let tool_info = ToolInfo {
         ffmpeg,
         ytdlp,
         ffmpeg_version,
         ytdlp_version,
+        ffmpeg_encoders,
+        ffmpeg_muxers,
+        ffmpeg_filters,
     };
 
     let max_concurrent: usize = std::env::var("MAX_CONCURRENT_JOBS")
@@ -71,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
     if ttl_hours > 0 {
-        spawn_cleanup(storage.clone(), lib, db, ttl_hours);
+        spawn_cleanup(&state, storage.clone(), lib, db, ttl_hours);
         tracing::info!("file cleanup enabled: TTL {ttl_hours}h");
     }
 
@@ -81,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(2 * 1024 * 1024 * 1024);
 
-    let app = build_router(state, max_upload);
+    let app = build_router(state.clone(), max_upload);
 
     let port: u16 = std::env::var("PORT")
         .ok()
@@ -93,25 +104,71 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("backend listening on http://{addr}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let http_shutdown = CancellationToken::new();
+    let http_shutdown_waiter = http_shutdown.clone();
+    {
+        let server = axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                http_shutdown_waiter.cancelled().await;
+            })
+            .into_future();
+        tokio::pin!(server);
+
+        tokio::select! {
+            result = &mut server => result?,
+            _ = shutdown_signal() => {
+                state.begin_shutdown();
+                http_shutdown.cancel();
+                match tokio::time::timeout(Duration::from_secs(30), &mut server).await {
+                    Ok(result) => result?,
+                    Err(_) => tracing::warn!("HTTP shutdown exceeded 30 seconds; continuing bounded shutdown"),
+                }
+            }
+        }
+    }
+    state.begin_shutdown();
+    if !state.wait_for_tasks(Duration::from_secs(30)).await {
+        tracing::warn!("background task shutdown exceeded 30 seconds");
+    }
     Ok(())
 }
 
-/// Resolve when the process receives Ctrl-C (SIGINT).
+/// Resolve when the process receives Ctrl-C/SIGINT or SIGTERM.
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        match signal(SignalKind::terminate()) {
+            Ok(mut terminate) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = terminate.recv() => {}
+                }
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
     tracing::info!("shutdown signal received");
 }
 
 /// Periodically delete files in sources/ and outputs/ older than `ttl_hours`.
-fn spawn_cleanup(storage: PathBuf, library: Library, db: Db, ttl_hours: u64) {
-    tokio::spawn(async move {
+fn spawn_cleanup(state: &AppState, storage: PathBuf, library: Library, db: Db, ttl_hours: u64) {
+    let shutdown = state.shutdown_token();
+    state.spawn_task(async move {
         let ttl = Duration::from_secs(ttl_hours * 3600);
         let mut tick = tokio::time::interval(Duration::from_secs(30 * 60));
         loop {
-            tick.tick().await;
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = tick.tick() => {}
+            }
             let library_entries = library.list().await;
             for sub in ["sources", "outputs"] {
                 let dir = storage.join(sub);
@@ -153,7 +210,7 @@ fn spawn_cleanup(storage: PathBuf, library: Library, db: Db, ttl_hours: u64) {
                         if sub == "outputs" {
                             let _ = db.cache_delete_filename(filename).await;
                         }
-                        tracing::info!("cleanup removed orphan {}", path.display());
+                        tracing::info!(subdirectory = sub, filename, "cleanup removed orphan");
                     }
                 }
             }

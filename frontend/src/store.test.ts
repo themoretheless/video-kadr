@@ -18,23 +18,41 @@ import {
   applyPreset,
   deletePreset,
   loadPresets,
+  loadCapabilities,
+  selectedExportUnavailableReason,
   presets,
 } from './store'
 import type { EditState, VideoInfo } from './types'
 
-vi.mock('./api', () => ({
-  importUrl: vi.fn(),
-  uploadFile: vi.fn(),
-  edit: vi.fn(),
-  pollJob: vi.fn(),
-  getLibrary: vi.fn(() => Promise.resolve([])),
-  deleteLibraryItem: vi.fn(),
-  saveProject: vi.fn(() => Promise.resolve({})),
-  getProjectByVideo: vi.fn(() => Promise.resolve(null)),
-  getProjects: vi.fn(() => Promise.resolve([])),
-  deleteProject: vi.fn(),
-  cancelJob: vi.fn(),
-}))
+vi.mock('./api', () => {
+  class ApiError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+      readonly code?: string,
+    ) {
+      super(message)
+    }
+  }
+  class BackendUnavailableError extends Error {}
+
+  return {
+    ApiError,
+    BackendUnavailableError,
+    importUrl: vi.fn(),
+    uploadFile: vi.fn(),
+    edit: vi.fn(),
+    pollJob: vi.fn(),
+    getLibrary: vi.fn(() => Promise.resolve([])),
+    deleteLibraryItem: vi.fn(),
+    saveProject: vi.fn(() => Promise.resolve({})),
+    getProjectByVideo: vi.fn(() => Promise.resolve(null)),
+    getProjects: vi.fn(() => Promise.resolve([])),
+    deleteProject: vi.fn(),
+    cancelJob: vi.fn(),
+    getCapabilities: vi.fn(() => Promise.resolve(null)),
+  }
+})
 
 /** Put a video and a fresh full-clip edit into the store. */
 function setVideo(duration = 10, width = 1280, height = 720): void {
@@ -192,6 +210,47 @@ describe('buildEditPayload', () => {
     state.edit.filter = ''
     state.edit.qualityTier = 'compact'
     expect(hasMeaningfulChanges()).toBe(true)
+  })
+})
+
+describe('runtime capabilities', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.capabilities = null
+    state.backendStatus = 'checking'
+    setVideo()
+  })
+
+  it('distinguishes an older backend from a network outage', async () => {
+    vi.mocked(api.getCapabilities).mockRejectedValueOnce(new api.ApiError('not found', 404))
+    await loadCapabilities()
+    expect(state.backendStatus).toBe('online')
+    expect(state.capabilities).toBeNull()
+
+    vi.mocked(api.getCapabilities).mockRejectedValueOnce(new api.ApiError('proxy failed', 503))
+    await loadCapabilities()
+    expect(state.backendStatus).toBe('offline')
+
+    vi.mocked(api.getCapabilities).mockRejectedValueOnce(new api.BackendUnavailableError())
+    await loadCapabilities()
+    expect(state.backendStatus).toBe('offline')
+  })
+
+  it('explains why the selected export cannot run', () => {
+    state.capabilities = {
+      schemaVersion: 1,
+      toolFingerprint: 'fixture',
+      formats: [{ id: 'mp4', label: 'MP4', available: true }],
+      codecs: [
+        { id: 'h264', label: 'H.264', available: false, reason: 'libx264 отсутствует' },
+      ],
+      filters: [],
+      hardware: [],
+    }
+    state.edit.format = 'mp4'
+    state.edit.codec = 'h264'
+
+    expect(selectedExportUnavailableReason()).toBe('libx264 отсутствует')
   })
 })
 

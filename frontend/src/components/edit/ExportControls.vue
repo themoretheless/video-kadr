@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { doExport, hasMeaningfulChanges, state } from '../../store'
+import {
+  doExport,
+  hasMeaningfulChanges,
+  selectedExportUnavailableReason,
+  state,
+} from '../../store'
 
 type Platform = 'telegram' | 'shorts' | 'reels' | 'youtube'
 
@@ -47,6 +52,30 @@ const formatHint = computed(() => {
 })
 
 const showQuality = computed(() => ['mp4', 'webm', 'av1'].includes(state.edit.format))
+const exportUnavailable = computed(() => selectedExportUnavailableReason())
+
+function formatCapability(id: string) {
+  return state.capabilities?.formats.find((option) => option.id === id)
+}
+
+function codecCapability(id: string) {
+  return state.capabilities?.codecs.find((option) => option.id === id)
+}
+
+function unavailableReason(kind: 'format' | 'codec', id: string): string | undefined {
+  const option = kind === 'format' ? formatCapability(id) : codecCapability(id)
+  return option && !option.available ? option.reason || 'Недоступно в текущей сборке' : undefined
+}
+
+function selectFormat(id: string): void {
+  if (unavailableReason('format', id)) return
+  state.edit.format = id
+}
+
+function selectCodec(id: string): void {
+  if (unavailableReason('codec', id)) return
+  state.edit.codec = id
+}
 
 function requestExport(): void {
   if (!hasMeaningfulChanges()) {
@@ -83,7 +112,10 @@ watch(
           class="chip"
           :class="{ active: state.edit.format === format.value }"
           :aria-pressed="state.edit.format === format.value"
-          @click="state.edit.format = format.value"
+          :aria-disabled="formatCapability(format.value)?.available === false"
+          :aria-label="unavailableReason('format', format.value) ? `${format.label}. ${unavailableReason('format', format.value)}` : format.label"
+          :title="unavailableReason('format', format.value)"
+          @click="selectFormat(format.value)"
         >
           {{ format.label }}
         </button>
@@ -98,7 +130,10 @@ watch(
           class="chip"
           :class="{ active: state.edit.codec === 'h264' }"
           :aria-pressed="state.edit.codec === 'h264'"
-          @click="state.edit.codec = 'h264'"
+          :aria-disabled="codecCapability('h264')?.available === false"
+          :aria-label="unavailableReason('codec', 'h264') ? `H.264. ${unavailableReason('codec', 'h264')}` : 'H.264'"
+          :title="unavailableReason('codec', 'h264')"
+          @click="selectCodec('h264')"
         >
           H.264
         </button>
@@ -107,7 +142,10 @@ watch(
           class="chip"
           :class="{ active: state.edit.codec === 'h265' }"
           :aria-pressed="state.edit.codec === 'h265'"
-          @click="state.edit.codec = 'h265'"
+          :aria-disabled="codecCapability('h265')?.available === false"
+          :aria-label="unavailableReason('codec', 'h265') ? `H.265. ${unavailableReason('codec', 'h265')}` : 'H.265'"
+          :title="unavailableReason('codec', 'h265')"
+          @click="selectCodec('h265')"
         >
           H.265
         </button>
@@ -162,7 +200,8 @@ watch(
   <button
     type="button"
     class="btn primary big export-submit"
-    :disabled="state.exporting"
+    :disabled="state.exporting || Boolean(exportUnavailable)"
+    :title="exportUnavailable || undefined"
     @click="requestExport"
   >
     {{ state.exporting ? 'Обработка…' : 'Экспортировать' }}

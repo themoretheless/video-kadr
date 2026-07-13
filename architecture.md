@@ -93,10 +93,10 @@ stored XSS через upload) и полный ранжированный **то�
 2. ✅ Отмена или таймаут импорта оставляет частично скачанные файлы в `sources/`.
 3. ✅ Кэш-хит edit может быть отменён в окне между cancel и записью `Done`. *(исправлено `596327b`)*
 4. ✅ `ffmpeg`, порождённый через `yt-dlp`, может осиротеть при cancel/timeout. *(исправлено `174e1a7`; остаточный гэп в не-cancel/timeout ветке - audit.md №206)*
-5. Graceful shutdown закрывает HTTP, но бросает in-flight workers и child processes.
+5. ✅ Graceful shutdown владеет workers через `TaskSupervisor`, принимает SIGINT/SIGTERM, bounded-wait HTTP/tasks и эскалирует process groups.
 6. ✅ Ожидание permit в очереди не отменяемо.
-7. Ошибка `acquire_owned()` оставляет job в non-terminal статусе.
-8. Progress drain продолжает писать progress в терминальную job.
+7. ✅ Ошибка `acquire_owned()` переводит job в terminal error `очередь задач закрыта`.
+8. ✅ Progress drain использует `update_job_if_open` и не пишет в terminal job.
 
 ### Геометрия и сегменты
 
@@ -104,11 +104,11 @@ stored XSS через upload) и полный ранжированный **то�
 10. ✅ Crop не валидируется против размеров источника.
 11. Overlay может округлить `x+w` за пределы ширины кадра.
 12. ✅ Сегменты не сортируются, пользовательский порядок ломает timeline.
-13. Концы сегментов не клампятся к duration.
-14. Отрицательный start сегмента может уйти в ffmpeg.
-15. Перекрывающиеся сегменты не отклоняются и дублируют кадры.
-16. `fps` не ограничен сверху/снизу и может устроить CPU/memory blow-up.
-17. `scale` принимает небезопасные отрицательные и нечётные размеры.
+13. ✅ Концы сегментов клампятся к duration до запуска ffmpeg.
+14. ✅ Отрицательный start сегмента отклоняется как невалидный.
+15. ✅ Перекрывающиеся сегменты отклоняются после канонической сортировки.
+16. ✅ `fps` проверяется на finite/positive и ограничивается диапазоном 1..240.
+17. ✅ `scale` принимает только `-1`/`-2` или 2..7680 и запрещает две auto-оси.
 
 ### Ресурсы и DoS
 
@@ -124,7 +124,7 @@ stored XSS через upload) и полный ранжированный **то�
 24. ◐ TTL-чистка удаляет файлы по mtime без проверки ссылок и активных jobs. *(file/cache/library-консистентность исправлена; active-job-awareness - нет, см. audit.md №24)*
 25. ✅ `render_cache` не инвалидируется при удалении/пропаже output-файла.
 26. SQLite schema version пишется, но миграций нет.
-27. Jobs/render_cache растут без retention, `recover_jobs` грузит всё в память.
+27. ◐ Jobs/render_cache растут без retention; startup recovery теперь ограничен `RECOVER_JOBS_LIMIT` (200).
 28. `library.json` и SQLite живут параллельно и могут дрейфовать.
 29. ✅ Нет single-flight для одинаковых параллельных renders. *(исправлено `a550a86`; побочный эффект - неограниченный рост карты локов, audit.md №205)*
 30. `cache_put` и `library.add` не атомарны.
@@ -140,15 +140,15 @@ stored XSS через upload) и полный ранжированный **то�
 37. Blocklist приватных диапазонов неполный.
 38. ✅ Upload доверяет расширению/контейнеру до проверки magic bytes. *(закрыто в раунде 5: `ffprobe format_name` + server allow-list до publish)*
 39. ◐ Projects API хранит произвольный JSON без схемы и лимита. *(лимит на `video`/`edit` исправлен `3b655c8`; поле `name` осталось без лимита, audit.md №207)*
-40. Request DTO не используют `deny_unknown_fields`.
+40. ✅ Wire request DTO используют `deny_unknown_fields` и `schemaVersion: 1`; persisted project documents остаются tolerant.
 
 ### API, frontend и тесты
 
 41. Сырой stderr ffmpeg/yt-dlp может попасть в `job.error`.
-42. Project endpoints возвращают разные формы ошибок.
-43. DB errors местами превращаются в голый 500 без тела и лога.
+42. ✅ Project endpoints используют общий `AppError` JSON envelope.
+43. ✅ DB errors превращаются в typed internal error, логируются с redaction и не раскрывают source клиенту.
 44. Async job creation отвечает `200`, а не `202 Accepted`.
-45. Frontend маскирует реальные HTTP 500 как «backend down». *(латентно, не активно: `import`/`edit`-хендлеры сейчас не возвращают 5xx физически, см. audit.md №45)*
+45. ✅ Frontend различает network outage (`BackendUnavailableError`) и реальные HTTP `ApiError` со status/code.
 46. Frontend `store.ts` и `EditPanel.vue` остаются god-module/god-component.
 47. Store watchers регистрируются как side effect импорта модуля.
 48. Presets/project/job JSON приводятся через `as` без runtime validation. *(переформулировано 1 июля 2026: `job.result` - это typed-ответ собственного бэкенда, не «чужой JSON» - опровергнуто; реальная сегодняшняя проблема того же семейства - `PRESET_KEYS` слишком широкий, audit.md №209)*
@@ -164,10 +164,10 @@ stored XSS через upload) и полный ранжированный **то�
 54. Нет тестируемой `Config`-структуры с явными defaults и validation.
 55. Docker тянет `yt-dlp`/ffmpeg без строгого pinning и checksum.
 56. Backend container не имеет non-root user, healthcheck и resource limits.
-57. CI не ставит `yt-dlp`, поэтому import path покрыт хуже render path.
+57. ✅ CI ставит закреплённый `yt-dlp` и запускает реальный SSRF redirect regression.
 58. README, Docker и CI могут разойтись по версии Node/Rust/toolchain.
 59. Не зафиксирован MSRV/Rust toolchain для backend.
-60. `RUST_LOG`/tracing policy не документированы для диагностики.
+60. ✅ `RUST_LOG` документирован; request/job/process span schema и redaction закреплены тестом.
 61. Нет structured job lifecycle logs как отдельного observability contract.
 62. Нет metrics endpoint для длительности jobs, ошибок, очереди и cache hit rate.
 63. Health endpoint смешивает readiness/liveness и не различает degradation классы.
@@ -293,7 +293,7 @@ stored XSS через upload) и полный ранжированный **то�
 
 ### Security и privacy beyond local MVP
 
-171. Нет threat model для локального vs exposed deployment.
+171. ◐ Upload threat model фиксирует local/exposed assumptions и residual risks; общей deployment threat model ещё нет.
 172. Нет authentication middleware и token story.
 173. Нет CSRF posture для future cookie/session mode.
 174. Нет rate limiting на import/upload/edit.
@@ -301,11 +301,11 @@ stored XSS через upload) и полный ранжированный **то�
 176. Нет sandbox profile для ffmpeg/yt-dlp.
 177. Нет allowlist/denylist policy для supported URL domains.
 178. ✅ Нет redirect policy для yt-dlp после URL validation. *(закрыто в раунде 6: каждый redirect открывает новый проверяемый proxy target)*
-179. Нет centralized redaction для logs/errors/API.
-180. Query tokens в импортируемых URL не редактируются как единая policy.
+179. ◐ Общий helper редактирует URL/query/credentials/absolute paths в logs; API job errors и будущий diagnostics sink ещё не сведены к одной policy.
+180. ◐ Query tokens редактируются в логах, но UI-предупреждения перед импортом URL ещё нет.
 181. Нет diagnostics bundle с гарантированной redaction.
 182. ✅ Upload не проверяет magic bytes до публикации файла через `/files`. *(закрыто в раунде 5: staging + `ffprobe` + server-selected extension)*
-183. Нет malware/quarantine story для uploaded media.
+183. ◐ Private staging/probe/publish quarantine boundary есть; malware scanning/sandbox policy ещё нет.
 184. File serving не ставит explicit safe `Content-Disposition`.
 185. Нет audit log для mutating operations.
 
@@ -1150,6 +1150,30 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 SOLID/DRY-раунда. Общий синхронизированный набор `architecture.md` и
 `recommendation.md` после этого слоя - 665 пунктов.
 
+### Исполнение десятью волнами
+
+Источник статуса - чеклист в [recommendation.md](recommendation.md#волны-исполнения-по-10-пунктов).
+Разбиение покрывает все №784-883 ровно один раз:
+
+| Волна | Статус | IDs |
+|---:|---|---|
+| 1 | ✅ | 790, 824, 828, 829, 831, 844, 846, 847, 850, 854 |
+| 2 | ☐ | 784, 786, 787, 803, 814, 817, 820, 823, 825, 826 |
+| 3 | ☐ | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 |
+| 4 | ☐ | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 |
+| 5 | ☐ | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 |
+| 6 | ☐ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 |
+| 7 | ☐ | 833, 855, 856, 857, 858, 859, 860, 861, 862, 863 |
+| 8 | ☐ | 812, 813, 830, 864, 865, 866, 867, 868, 869, 873 |
+| 9 | ☐ | 874, 875, 876, 877, 878, 879, 880, 881, 882, 883 |
+| 10 | ☐ | 788, 802, 811, 841, 845, 848, 849, 851, 852, 853 |
+
+Волна 1 добавила четыре явные границы: `TaskSupervisor` владеет async workers,
+wire/storage DTO больше не делят policy, runtime ffmpeg muxer/encoder/filter
+manifest управляет UI,
+а upload проходит private staging/probe/publish pipeline. Frontend и transport
+границы закреплены lint, bundle и cross-browser regression gates.
+
 ### A. NLE и media pipeline (784-793)
 
 784. 🟠 [архитектура/FFmpeg] `Timeline` описан как цель, но у компилятора нет канонического типизированного media DAG - `backend/src/domain/filter_graph.rs` (target) -> Ввести `FilterGraph<Node, Pad, Edge>` с типами audio/video, topological validation, стабильной сериализацией и DOT/snapshot output; невалидная связь должна падать до запуска ffmpeg.
@@ -1158,7 +1182,7 @@ SOLID/DRY-раунда. Общий синхронизированный набо
 787. 🟠 [домен/Olive] Будущий timeline не фиксирует идентичность клипов и операций, поэтому reorder/undo/migration могут ломать ссылки - `backend/src/domain/timeline.rs` (target) -> Добавить стабильные `ClipId`/`OperationId` и immutable operation graph; тесты доказывают сохранение ссылок после reorder, undo и serialize/deserialize.
 788. 🟡 [совместимость/OpenShot] Пункт о schema versioning не задаёт проверяемую политику эволюции проектов - `backend/tests/fixtures/projects/` (target) -> Хранить golden fixture каждой версии, мигрировать в latest и делать reopen/re-save test; отдельно зафиксировать reject/preserve policy для неизвестных операций.
 789. 🟠 [perf/UX/Kdenlive] Для тяжёлых исходников нет proxy-media workflow - `backend/src/analysis/proxy.rs` (target) -> Сделать proxy производным артефактом по checksum источника с фоновой генерацией, relink и прозрачной заменой на full-resolution при export; удаление proxy не должно затрагивать проект.
-790. 🟠 [контракт/Shotcut] Статический список форматов не отражает реальные версии и возможности установленного ffmpeg - `backend/src/capabilities.rs` (target) -> Генерировать runtime manifest codecs/containers/filters/hardware с tool fingerprint и reason для unavailable; frontend показывает disabled-state, а не молча скрывает опцию.
+790. ✅ [контракт/Shotcut] Реализован runtime manifest encoders/muxers/filters/hardware с tool fingerprint и reason для unavailable; frontend блокирует неподдерживаемые форматы, кодеки и фильтры. `backend/src/capabilities.rs`, `frontend/src/components/`
 791. 🟡 [perf/Blender] Инвалидация render/probe/analysis cache задана отдельно для каждого хранилища - `backend/src/domain/artifact_graph.rs` (target) -> Ввести dependency graph производных артефактов и fingerprint входов; изменение edit invalidates только downstream nodes, что проверяется матрицей операций.
 792. 🟠 [SRP/OBS] Preview и export используют общую модель, но их разные latency/quality/resource policy формально не разделены - `backend/src/services/preview.rs`, `render.rs` (target) -> Оставить общий `EditPlan`, но завести разные execution profiles; тест запрещает preview-настройкам менять финальный output spec.
 793. 🟡 [масштабирование/Remotion] Рендер предполагается одним процессом и не имеет frame-level детерминизма - `backend/src/render/frame_renderer.rs` (target) -> Определить `render(frame_no, plan_hash, source_hash)` как детерминированный контракт, chunk manifest с checksum и idempotent retry; stitch стартует только при полном проверенном наборе кадров.
@@ -1204,14 +1228,14 @@ SOLID/DRY-раунда. Общий синхронизированный набо
 
 ### E. Rust backend (824-833)
 
-824. 🔴 [надёжность/Tokio] Shutdown не владеет всеми spawned tasks и child processes как одной структурой - `backend/src/runtime/task_supervisor.rs` (target) -> Root `CancellationToken` + `TaskTracker`: закрыть intake, notify, bounded wait, затем escalation для process groups; integration test не оставляет task/child после shutdown.
+824. ✅ [надёжность/Tokio] Root `CancellationToken` + `TaskTracker` владеют background workers; SIGINT/SIGTERM закрывают intake, HTTP и tasks имеют bounded wait, process runner эскалирует process groups. `backend/src/runtime.rs`, `backend/src/main.rs`
 825. 🟠 [DIP/Axum] Router tests всё ещё требуют конкретный `AppState` с БД/filesystem - `backend/src/http/mod.rs` (target) -> Хендлеры зависят от узких service ports, а contract tests поднимают `Router` с in-memory fakes; HTTP DTO/status остаются одинаковыми.
 826. 🟠 [архитектура/Tower] Request ID, body limit, auth, rate limit, timeout и tracing рискуют подключаться в разном порядке по маршрутам - `backend/src/http/policy.rs` (target) -> Описать route classes и один ordered middleware stack; snapshot test фиксирует порядок и исключения для health/files.
 827. 🟡 [проектирование/Actix Web] Смена HTTP framework может быть предложена без доказанного bottleneck - `backend/benches/http_baseline.rs` (target) -> Зафиксировать Axum throughput/p50/p95/p99/RSS для upload, polling и range response; framework rewrite допустим только после профиля и ADR.
-828. 🟠 [perf/Hyper] Нет теста bounded memory при очень медленном upload/download клиенте и disconnect - `backend/tests/http_backpressure.rs` (target) -> Стримить тело с контролируемой скоростью, оборвать соединение и доказать bounded buffering, отмену reader/task и удаление staging.
-829. 🟠 [контракт/Serde] Одинаковая permissive policy может случайно примениться к wire DTO и старым persisted documents - `backend/src/http/dto.rs`, `persistence/schema.rs` (target) -> Wire types strict + versioned, storage types migration-tolerant; negative corpus фиксирует неизвестные поля для обеих границ.
+828. ✅ [perf/Hyper] TCP regressions доказывают incremental upload без prebuffer объявленного тела, cleanup после disconnect и независимую отзывчивость API при slow Range reader. `backend/tests/http_backpressure.rs`
+829. ✅ [контракт/Serde] Wire DTO strict и versioned (`schemaVersion: 1`), project envelope strict, а вложенные persisted `video`/`edit` migration-tolerant; negative corpus покрывает обе policy. `backend/src/model.rs`, `backend/src/handlers/projects.rs`, `backend/tests/api.rs`
 830. 🟡 [quality/SQLx] Query/schema drift обнаруживается только при выполнении теста с конкретной БД - `.github/workflows/ci.yml` (target) -> Добавить offline metadata и `cargo sqlx prepare --check`; migration + query change без обновления metadata проваливает CI.
-831. 🟠 [observability/tracing] Отдельные spans не образуют стабильный trace contract и могут утечь paths/URLs - `backend/src/telemetry/schema.rs` (target) -> Зафиксировать дерево `request -> job -> process`, allowlist полей и redaction wrapper; golden JSON-log test содержит canary secret и доказывает его отсутствие.
+831. ✅ [observability/tracing] Зафиксированы `request -> job -> process` spans, CORS-visible request ID, path-only HTTP fields и redaction URL/query/absolute paths; JSON capture с canary доказывает отсутствие секрета. `backend/src/telemetry.rs`, `backend/src/privacy.rs`
 832. 🟠 [perf/Rayon] Будущие thumbnail/waveform/hash вычисления могут блокировать Tokio workers - `backend/src/runtime/cpu_pool.rs` (target) -> Выделить bounded CPU executor с queue budget/cancellation и метриками saturation; async runtime thread не выполняет CPU-heavy closure.
 833. 🟠 [security/rustls] Не определено, где завершается TLS и каким proxy headers доверять - `docs/deployment-security.md` (target) -> Зафиксировать один из профилей: trusted reverse proxy + private bind/allowlist headers либо direct rustls; public plain HTTP profile запрещён readiness check.
 
@@ -1230,20 +1254,20 @@ SOLID/DRY-раунда. Общий синхронизированный набо
 
 ### G. Vue, frontend и testing (844-853)
 
-844. 🟠 [модульность/Vue] Feature boundaries описаны в документах, но imports их не защищают - `frontend/eslint.config.*` (target) -> Определить public API каждого feature и forbidden cross-feature imports; dependency rule падает в lint при обходе facade.
+844. ✅ [модульность/Vue] ESLint закрепляет domain/transport/component dependency boundaries и запрещает прямой component→API обход store/facade. `frontend/eslint.config.js`
 845. 🟠 [SRP/Pinia] Разделение store остаётся намерением без контракта взаимодействия - `frontend/src/stores/` (target) -> Pilot `project` и `ui` stores с compatibility facade; каждый store зависит только от domain/api ports, cross-store действие идёт через команду, а не mutable import.
-846. 🟡 [perf/Vite] Нет бюджета initial JS/CSS и причины для lazy boundaries - `frontend/vite.config.ts`, CI (target) -> Генерировать bundle report и падать при превышении согласованного gzip budget; тяжёлые analysis/dev features загружаются отдельно.
-847. 🟠 [тесты/Vitest] Polling/autosave/history/retry тестируются реальным временем или отдельными примерами - `frontend/src/**/*.test.ts` (target) -> Fake timers + table/property cases для backoff, deadline, debounce, undo merge и cancellation; suite не содержит sleep.
+846. ✅ [perf/Vite] Build измеряет JS/CSS/total gzip и падает выше 55/5/60 KiB; gate включён в Make и CI, текущая сборка ниже total budget. `frontend/scripts/check-bundle-budget.mjs`
+847. ✅ [тесты/Vitest] Polling terminal/cancel cases, autosave debounce и history используют fake timers/table cases без real-time sleep. `frontend/src/api.test.ts`, `frontend/src/store.test.ts`
 848. 🟡 [DRY/VueUse] Lifecycle-sensitive listeners/resize/online logic легко снова разойдутся по компонентам - `frontend/src/composables/` (target) -> Использовать общие composables с automatic cleanup и lint-аудит: прямой global `addEventListener` разрешён только внутри lifecycle wrapper.
 849. 🟠 [дизайн/Storybook] Состояния компонентов проверяются только внутри целого приложения - `frontend/src/**/*.stories.ts` (target) -> Каталог empty/loading/error/long text/localization/mobile/reduced-motion для каждого tool surface; a11y и screenshot checks запускаются изолированно.
-850. 🔴 [smoke/Playwright] Нет гарантии, что shell редактора открывается без backend и корректно объясняет offline - `frontend/e2e/smoke.spec.ts` (target) -> Mock API contract, Chromium/Firefox/WebKit + 390px; проверить boot, offline state, import/edit/export happy path и отсутствие overflow.
+850. ✅ [smoke/Playwright] 9 smoke cases в Chromium/Firefox/WebKit проверяют backendless offline boot, mocked import/edit/export и отсутствие overflow на 390px. `frontend/e2e/smoke.spec.ts`
 851. 🟡 [проектирование/Cypress] Подключение второго E2E runner удвоит fixtures и ожидания - `docs/adr/e2e-runner.md` (target) -> Сравнить network-fault/debug/CI speed на одном сценарии и выбрать один runner; Playwright и Cypress одновременно не поддерживать.
 852. 🟠 [архитектура/TanStack Query] Server state library/projects/jobs смешан с mutable UI/edit state - `frontend/src/data/` (target) -> Выделить cache/invalidation/poll ownership за query-port; domain UI stores хранят только selection/draft, не копии API entities.
 853. 🟠 [UX/Floating UI] Tooltip/menu/popover рискуют по-разному решать collision, focus, Escape и outside click - `frontend/src/ui/overlay/` (target) -> Один accessible overlay primitive с focus return и visual-viewport tests; unfamiliar icon всегда получает tooltip через него.
 
 ### H. Security и supply chain (854-863)
 
-854. 🔴 [security/OWASP] Upload защищён probe/allowlist, но нет одной threat matrix, проверяющей всю цепочку - `docs/threat-model-upload.md`, `backend/tests/upload_security.rs` (target) -> Extension + declared MIME + signature/probe + generated name + quarantine + storage boundary + size/count limits; каждый control связан с negative fixture.
+854. ✅ [security/OWASP] Threat matrix связывает extension/MIME/probe/generated name/private staging/storage headers/body+concurrency limits с 6 focused fixtures и явно фиксирует residual risks. `docs/threat-model-upload.md`, `backend/tests/upload_security.rs`
 855. 🟠 [security/OSS-Fuzz] Parser boundary не получает непрерывного fuzzing вне обычного CI - `fuzz/oss-fuzz/` (target) -> Подготовить hermetic targets/corpus, sanitizer build и triage SLA; найденный crash автоматически становится regression fixture.
 856. 🟠 [security/cargo-fuzz] Локальный fuzz охватывает только намеченную geometry-функцию - `backend/fuzz/` (target) -> Targets для edit normalization, multipart filename/path, library JSON, URL policy и cache key; corpus versioned, panic/OOM/time budget являются failure.
 857. 🟠 [supply-chain/RustSec] `cargo audit` без policy приведёт к вечным ignore - `.cargo/audit.toml` (target) -> Каждое исключение содержит owner, rationale и expiry; просроченный advisory exception проваливает CI.

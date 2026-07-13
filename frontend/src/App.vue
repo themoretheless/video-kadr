@@ -8,6 +8,7 @@ import {
   setTrimStartFromPlayer,
   setTrimEndFromPlayer,
   loadLibrary,
+  loadCapabilities,
   loadPresets,
   initTheme,
   toggleTheme,
@@ -82,6 +83,7 @@ onMounted(() => {
   initTheme()
   loadPresets()
   void loadLibrary()
+  void loadCapabilities()
 })
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
@@ -91,13 +93,22 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
     <header class="topbar">
       <div class="topbar-row">
         <h1>🎬 Видеоредактор</h1>
-        <button
-          class="btn ghost sm theme-toggle"
-          :title="ui.theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'"
-          @click="toggleTheme"
-        >
-          {{ ui.theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная' }}
-        </button>
+        <div class="topbar-actions">
+          <span
+            v-if="state.backendStatus === 'offline'"
+            class="backend-status offline"
+            role="status"
+          >
+            Сервер недоступен
+          </span>
+          <button
+            class="btn ghost sm theme-toggle"
+            :title="ui.theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'"
+            @click="toggleTheme"
+          >
+            {{ ui.theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная' }}
+          </button>
+        </div>
       </div>
       <p class="sub">Вставь ссылку на видео (например, VK Видео), обрежь и скачай результат.</p>
     </header>

@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, Mutex, OwnedMutexGuard, OwnedSemaphorePermit};
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::error::{ApiJson, AppError, AppResult};
@@ -16,11 +17,13 @@ use crate::model::{Crop, EditRequest, ImportRequest, Job, JobStatus, Scale, Trim
 use crate::state::{AppState, CancelJobOutcome};
 use crate::tools::{self, Done};
 
+mod capabilities;
 mod health;
 mod library;
 mod projects;
 mod upload;
 
+pub use capabilities::capabilities_handler;
 pub use health::health_handler;
 pub use library::{library_delete_handler, library_list_handler};
 pub use projects::{
@@ -52,93 +55,98 @@ pub async fn import_handler(
     let st = state.clone();
     let jid = job_id.clone();
     let vid = video_id;
-    tokio::spawn(async move {
-        // Reject bad/unsafe URLs before doing any work.
-        if let Err(e) = tools::validate_url(&req.url).await {
-            let updated = st
-                .update_job_if_open(&jid, |j| {
-                    j.status = JobStatus::Error;
-                    j.error = Some(e.to_string());
-                })
-                .await;
-            if updated {
-                st.persist_job(&jid).await;
+    let span = tracing::info_span!("job", job.id = %job_id, job.kind = "import");
+    state.spawn_task(
+        async move {
+            // Reject bad/unsafe URLs before doing any work.
+            if let Err(e) = tools::validate_url(&req.url).await {
+                let updated = st
+                    .update_job_if_open(&jid, |j| {
+                        j.status = JobStatus::Error;
+                        j.error = Some(e.to_string());
+                    })
+                    .await;
+                if updated {
+                    st.persist_job(&jid).await;
+                }
+                st.clear_cancel(&jid).await;
+                return;
             }
-            st.clear_cancel(&jid).await;
-            return;
-        }
 
-        // Wait for a queue slot.
-        if !mark_queued(&st, &jid).await {
-            st.clear_cancel(&jid).await;
-            return;
-        }
-        let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
-            Some(p) => p,
-            None => return,
-        };
-        if token.is_cancelled() {
-            mark_cancelled(&st, &jid).await;
-            return;
-        }
+            // Wait for a queue slot.
+            if !mark_queued(&st, &jid).await {
+                st.clear_cancel(&jid).await;
+                return;
+            }
+            let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
+                Some(p) => p,
+                None => return,
+            };
+            if token.is_cancelled() {
+                mark_cancelled(&st, &jid).await;
+                return;
+            }
 
-        if !mark_running(&st, &jid, "downloading").await {
-            st.clear_cancel(&jid).await;
-            return;
-        }
+            if !mark_running(&st, &jid, "downloading").await {
+                st.clear_cancel(&jid).await;
+                return;
+            }
 
-        let (tx, rx) = mpsc::unbounded_channel::<f64>();
-        let drain = spawn_progress_drain(st.clone(), jid.clone(), rx);
+            let (tx, rx) = mpsc::unbounded_channel::<f64>();
+            let drain = spawn_progress_drain(st.clone(), jid.clone(), rx);
 
-        let sources = st.sources_dir();
-        let outcome = async {
-            let done = tools::download_video(
-                &req.url,
-                &sources,
-                &vid,
-                req.start,
-                req.end,
-                &tx,
-                &token,
-                job_timeout(),
-            )
-            .await?;
-            if matches!(done, Done::Cancelled) {
+            let sources = st.sources_dir();
+            let outcome = async {
+                let done = tools::download_video(
+                    &req.url,
+                    &sources,
+                    &vid,
+                    req.start,
+                    req.end,
+                    &tx,
+                    &token,
+                    job_timeout(),
+                )
+                .instrument(tracing::info_span!("process", process.tool = "yt-dlp"))
+                .await?;
+                if matches!(done, Done::Cancelled) {
+                    cleanup_files_with_prefix(&sources, &vid).await;
+                    return Ok::<Option<Value>, anyhow::Error>(None);
+                }
+                let path = tools::find_source(&sources, &vid).await?;
+                let info = tools::probe_video(&path).await?;
+                let title = tools::read_title(&sources, &vid).await;
+                let size = tokio::fs::metadata(&path).await.map(|m| m.len()).ok();
+                let filename = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| format!("{vid}.mp4"));
+                Ok(Some(json!({
+                    "id": vid,
+                    "url": format!("/files/sources/{filename}"),
+                    "filename": filename,
+                    "duration": info.duration,
+                    "width": info.width,
+                    "height": info.height,
+                    "title": title,
+                    "fps": info.fps,
+                    "vcodec": info.vcodec,
+                    "acodec": info.acodec,
+                    "sizeBytes": size,
+                })))
+            }
+            .await;
+
+            if outcome.is_err() {
                 cleanup_files_with_prefix(&sources, &vid).await;
-                return Ok::<Option<Value>, anyhow::Error>(None);
             }
-            let path = tools::find_source(&sources, &vid).await?;
-            let info = tools::probe_video(&path).await?;
-            let title = tools::read_title(&sources, &vid).await;
-            let size = tokio::fs::metadata(&path).await.map(|m| m.len()).ok();
-            let filename = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| format!("{vid}.mp4"));
-            Ok(Some(json!({
-                "id": vid,
-                "url": format!("/files/sources/{filename}"),
-                "filename": filename,
-                "duration": info.duration,
-                "width": info.width,
-                "height": info.height,
-                "title": title,
-                "fps": info.fps,
-                "vcodec": info.vcodec,
-                "acodec": info.acodec,
-                "sizeBytes": size,
-            })))
-        }
-        .await;
 
-        if outcome.is_err() {
-            cleanup_files_with_prefix(&sources, &vid).await;
+            drop(tx);
+            let _ = drain.await;
+            finish_job(&st, &jid, outcome, "source").await;
         }
-
-        drop(tx);
-        let _ = drain.await;
-        finish_job(&st, &jid, outcome, "source").await;
-    });
+        .instrument(span),
+    );
 
     Json(json!({ "jobId": job_id }))
 }
@@ -173,7 +181,8 @@ pub async fn edit_handler(
 
     let st = state.clone();
     let jid = job_id.clone();
-    tokio::spawn(async move {
+    let span = tracing::info_span!("job", job.id = %job_id, job.kind = "edit");
+    state.spawn_task(async move {
         if !mark_queued(&st, &jid).await {
             st.clear_cancel(&jid).await;
             return;
@@ -218,8 +227,10 @@ pub async fn edit_handler(
             normalize_edit_request(&mut req, probe.width, probe.height, probe.duration)?;
             let expected = tools::expected_output_secs(&req, probe.duration);
             let args = tools::build_ffmpeg_args(&input, &output_path, &req, probe.duration);
-            tracing::info!("ffmpeg {}", args.join(" "));
-            let done = tools::run_ffmpeg(&args, expected, &tx, &token, job_timeout()).await?;
+            tracing::info!(output.format = %req.format.as_deref().unwrap_or("mp4"), "starting render");
+            let done = tools::run_ffmpeg(&args, expected, &tx, &token, job_timeout())
+                .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
+                .await?;
             if matches!(done, Done::Cancelled) {
                 let _ = tokio::fs::remove_file(&output_path).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
@@ -256,7 +267,7 @@ pub async fn edit_handler(
                 }
             }
         }
-    });
+    }.instrument(span));
 
     Json(json!({ "jobId": job_id }))
 }
@@ -298,7 +309,8 @@ fn spawn_progress_drain(
     jid: String,
     mut rx: mpsc::UnboundedReceiver<f64>,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+    let owner = st.clone();
+    owner.spawn_task(async move {
         let mut last_saved = -1.0_f64;
         while let Some(p) = rx.recv().await {
             if p >= 100.0 || p - last_saved >= 1.0 {
@@ -613,7 +625,7 @@ async fn finish_job(
             .await
         }
         Err(e) => {
-            tracing::error!("job {jid} failed: {e}");
+            tracing::error!(job.id = jid, error = %crate::privacy::redact_text(&e.to_string()), "job failed");
             st.update_job_if_open(jid, |j| {
                 j.status = JobStatus::Error;
                 j.error = Some(e.to_string());

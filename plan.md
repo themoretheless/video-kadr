@@ -69,6 +69,8 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] Раунд 7 (11 июля 2026): закрыты upload concurrency, partial-upload cleanup, probe timeout и публичный jobs_semaphore; multipart bounded с cleanup, tool probes имеют timeout с kill+wait, добавлены state/API/tool regressions.
 - [x] Раунд 8 (11 июля 2026): введены `AppError`/`AppResult`, единый JSON envelope и typed frontend `ApiError`; projects parsing отделён от persistence, extractor/404/405/body-limit ошибки покрыты regression-тестами.
 - [x] Исследовательский раунд (14 июля 2026): изучены 100 активных высокорейтинговых репозиториев и первичные papers/specs; добавлены и синхронизированы карточки №784-883. Рабочий набор теперь 665 пунктов (565 SOLID/DRY + 100 research-backed).
+- [x] Research wave 1/10 (14 июля 2026): закрыты №790/824/828/829/831/844/846/847/850/854; добавлены runtime/shutdown/contract/privacy/perf/UI/security gates и отдельные regression suites.
+- [ ] Research wave 2/10: №784/786/787/803/814/817/820/823/825/826 - typed media/timeline domain и HTTP ports/policy.
 - [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
 
 ---

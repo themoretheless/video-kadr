@@ -4,22 +4,26 @@
 //! router builder as a library lets the integration tests in `tests/` drive the
 //! real HTTP API with `tower::ServiceExt::oneshot`, without binding a socket.
 
+pub mod capabilities;
 pub mod db;
 pub mod error;
 pub mod handlers;
 pub mod library;
 pub mod model;
+pub mod privacy;
+pub mod runtime;
 pub mod state;
+pub mod telemetry;
 pub mod tools;
 
 use axum::extract::DefaultBodyLimit;
 use axum::http::{header, HeaderName, HeaderValue, Method};
+use axum::middleware;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
-use tower_http::trace::TraceLayer;
 
 use state::AppState;
 
@@ -54,6 +58,7 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
             get(handlers::project_get_handler).delete(handlers::project_delete_handler),
         )
         .route("/health", get(handlers::health_handler))
+        .route("/capabilities", get(handlers::capabilities_handler))
         .fallback(handlers::api_not_found_handler)
         .method_not_allowed_fallback(handlers::method_not_allowed_handler)
         .with_state(state);
@@ -70,7 +75,7 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
             HeaderName::from_static("x-content-type-options"),
             HeaderValue::from_static("nosniff"),
         ))
-        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(telemetry::request_context))
         .layer(cors_layer())
 }
 
@@ -78,7 +83,8 @@ fn cors_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(cors_origins_from_env()))
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
-        .allow_headers([header::CONTENT_TYPE])
+        .allow_headers([header::CONTENT_TYPE, telemetry::REQUEST_ID_HEADER])
+        .expose_headers([telemetry::REQUEST_ID_HEADER])
 }
 
 fn cors_origins_from_env() -> Vec<HeaderValue> {
@@ -115,7 +121,7 @@ fn parse_cors_origin(origin: &str) -> Option<HeaderValue> {
     }
 
     let Ok(url) = url::Url::parse(origin) else {
-        tracing::warn!("ignoring invalid CORS origin {origin:?}: not a URL");
+        tracing::warn!(origin = %privacy::RedactedUrl(origin), "ignoring invalid CORS origin: not a URL");
         return None;
     };
     let valid_scheme = matches!(url.scheme(), "http" | "https");
@@ -126,7 +132,7 @@ fn parse_cors_origin(origin: &str) -> Option<HeaderValue> {
         && url.query().is_none()
         && url.fragment().is_none();
     if !valid_scheme || !has_host || !plain_origin {
-        tracing::warn!("ignoring invalid CORS origin {origin:?}: expected http(s) origin");
+        tracing::warn!(origin = %privacy::RedactedUrl(origin), "ignoring invalid CORS origin: expected http(s) origin");
         return None;
     }
 
@@ -134,7 +140,7 @@ fn parse_cors_origin(origin: &str) -> Option<HeaderValue> {
     match HeaderValue::from_str(normalized) {
         Ok(value) => Some(value),
         Err(e) => {
-            tracing::warn!("ignoring invalid CORS origin {origin:?}: {e}");
+            tracing::warn!(origin = %privacy::RedactedUrl(origin), error = %e, "ignoring invalid CORS origin");
             None
         }
     }

@@ -8,7 +8,7 @@ import {
   sanitizeRect,
 } from './domain/edit'
 import { toast } from './toasts'
-import type { EditState, Job, MediaEntry, ResultInfo, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, MediaEntry, ResultInfo, VideoInfo } from './types'
 
 export { defaultEdit, parseTime, tierToCrf } from './domain/edit'
 
@@ -32,6 +32,8 @@ export const state = reactive({
   exportJobId: null as string | null,
   result: null as ResultInfo | null,
   library: [] as MediaEntry[],
+  capabilities: null as Capabilities | null,
+  backendStatus: 'checking' as 'checking' | 'online' | 'offline',
   // Player bridge: VideoPreview owns the <video>; the rest of the app talks to
   // it through these fields.
   playerTime: 0,
@@ -159,6 +161,13 @@ export function normalizeCrop(): void {
 export async function doExport(): Promise<void> {
   if (!state.video || state.exporting) return
 
+  const unavailable = selectedExportUnavailableReason()
+  if (unavailable) {
+    state.exportError = unavailable
+    toast('error', unavailable)
+    return
+  }
+
   state.exporting = true
   state.exportError = ''
   state.exportStatus = 'Обрабатываю видео…'
@@ -233,6 +242,30 @@ export async function loadLibrary(): Promise<void> {
   } catch {
     // Non-fatal: the library panel just stays empty.
   }
+}
+
+export async function loadCapabilities(): Promise<void> {
+  try {
+    state.capabilities = await api.getCapabilities()
+    state.backendStatus = 'online'
+  } catch (error) {
+    // Older/offline backends keep the existing optimistic UI as a fallback.
+    state.capabilities = null
+    const proxyOutage = error instanceof api.ApiError && error.status >= 500 && !error.code
+    state.backendStatus =
+      error instanceof api.BackendUnavailableError || proxyOutage ? 'offline' : 'online'
+  }
+}
+
+export function selectedExportUnavailableReason(): string | null {
+  const format = state.capabilities?.formats.find((option) => option.id === state.edit.format)
+  if (format && !format.available) return format.reason || 'Выбранный формат недоступен'
+
+  if (state.edit.format === 'mp4') {
+    const codec = state.capabilities?.codecs.find((option) => option.id === state.edit.codec)
+    if (codec && !codec.available) return codec.reason || 'Выбранный кодек недоступен'
+  }
+  return null
 }
 
 /** Reopen a stored source clip in the editor. */

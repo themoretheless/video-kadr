@@ -12,6 +12,22 @@ export interface VideoInfo {
   sizeBytes?: number | null
 }
 
+export interface CapabilityOption {
+  id: string
+  label: string
+  available: boolean
+  reason?: string
+}
+
+export interface Capabilities {
+  schemaVersion: number
+  toolFingerprint: string
+  formats: CapabilityOption[]
+  codecs: CapabilityOption[]
+  filters: CapabilityOption[]
+  hardware: CapabilityOption[]
+}
+
 export interface ResultInfo {
   id: string
   url: string

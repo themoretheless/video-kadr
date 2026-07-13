@@ -1,53 +1,24 @@
 //! HTTP-level integration tests. They drive the real router via
 //! `tower::ServiceExt::oneshot` (no socket bound) against an isolated temp
-//! storage dir. Most tests avoid external tools; one upload security regression
-//! test generates a tiny MP4 and skips itself when ffmpeg is unavailable.
+//! storage dir. Upload-specific threat regressions live in
+//! `upload_security.rs` and share the same test harness.
+
+mod support;
 
 use std::time::Duration;
 
-use axum::body::{to_bytes, Body};
+use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use video_editor_backend::build_router;
 use video_editor_backend::db::Db;
 use video_editor_backend::library::{Library, MediaEntry};
 use video_editor_backend::model::{EditRequest, Job, JobStatus};
 use video_editor_backend::state::{AppState, ToolInfo};
 
-const UPLOAD_LIMIT: usize = 64 * 1024 * 1024;
-
-/// An app state backed by a fresh temp dir. The `TempDir` is returned so the
-/// caller keeps it alive (dropping it deletes the storage).
-async fn make_state(ffmpeg: bool, ytdlp: bool) -> (AppState, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
-    let storage = dir.path().to_path_buf();
-    tokio::fs::create_dir_all(storage.join("sources"))
-        .await
-        .unwrap();
-    tokio::fs::create_dir_all(storage.join("outputs"))
-        .await
-        .unwrap();
-    let lib = Library::load(storage.clone()).await;
-    let db = Db::open(&storage).await.unwrap();
-    let tools = ToolInfo {
-        ffmpeg,
-        ytdlp,
-        ffmpeg_version: None,
-        ytdlp_version: None,
-    };
-    (AppState::new(storage, 2, tools, lib, db), dir)
-}
-
-fn router(state: AppState) -> Router {
-    build_router(state, UPLOAD_LIMIT)
-}
-
-fn get(uri: &str) -> Request<Body> {
-    Request::builder().uri(uri).body(Body::empty()).unwrap()
-}
+use support::{assert_api_error, get, make_state, router, send};
 
 fn post_empty(uri: &str) -> Request<Body> {
     Request::builder()
@@ -66,52 +37,12 @@ fn post_json(uri: &str, body: Value) -> Request<Body> {
         .unwrap()
 }
 
-fn post_multipart_file(filename: &str, bytes: &[u8]) -> Request<Body> {
-    let boundary = "BOUNDARY_UPLOAD_SECURITY";
-    let mut body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
-    )
-    .into_bytes();
-    body.extend_from_slice(bytes);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-
-    Request::builder()
-        .method("POST")
-        .uri("/api/upload")
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(Body::from(body))
-        .unwrap()
-}
-
 fn delete(uri: &str) -> Request<Body> {
     Request::builder()
         .method("DELETE")
         .uri(uri)
         .body(Body::empty())
         .unwrap()
-}
-
-fn assert_api_error(body: &Value, code: &str) {
-    assert_eq!(body["code"], code);
-    assert!(
-        body["error"]
-            .as_str()
-            .is_some_and(|message| !message.is_empty()),
-        "expected a non-empty API error, got: {body}"
-    );
-}
-
-/// Send a request and return (status, parsed-json-or-Null, raw-text).
-async fn send(app: &Router, req: Request<Body>) -> (StatusCode, Value, String) {
-    let resp = app.clone().oneshot(req).await.unwrap();
-    let status = resp.status();
-    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let text = String::from_utf8_lossy(&bytes).into_owned();
-    let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-    (status, json, text)
 }
 
 /// Poll a job until it reaches a terminal state. The background worker runs on
@@ -150,6 +81,75 @@ async fn health_reflects_tool_availability() {
 }
 
 #[tokio::test]
+async fn capabilities_report_runtime_availability_and_fingerprint() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+    let (status, body, _) = send(&app, get("/api/capabilities")).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["schemaVersion"], 1);
+    assert_eq!(body["toolFingerprint"].as_str().unwrap().len(), 16);
+    assert_eq!(body["formats"][0]["id"], "mp4");
+    assert_eq!(body["formats"][0]["available"], true);
+    assert!(body["hardware"].as_array().is_some());
+
+    let (missing_state, _d) = make_state(false, false).await;
+    let (_, missing, _) = send(&router(missing_state), get("/api/capabilities")).await;
+    assert_eq!(missing["formats"][0]["available"], false);
+    assert!(missing["formats"][0]["reason"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn request_id_is_validated_and_propagated() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+
+    let request = Request::builder()
+        .uri("/api/health?token=CANARY")
+        .header("x-request-id", "client-trace_1")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.headers()["x-request-id"], "client-trace_1");
+
+    let invalid = Request::builder()
+        .uri("/api/health")
+        .header("x-request-id", "unsafe id with spaces")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(invalid).await.unwrap();
+    let generated = response.headers()["x-request-id"].to_str().unwrap();
+    assert_ne!(generated, "unsafe id with spaces");
+    assert_eq!(generated.len(), 36);
+
+    let preflight = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/health")
+        .header("origin", "http://localhost:5173")
+        .header("access-control-request-method", "GET")
+        .header("access-control-request-headers", "x-request-id")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(preflight).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers()["access-control-allow-headers"]
+        .to_str()
+        .unwrap()
+        .contains("x-request-id"));
+
+    let cors_get = Request::builder()
+        .uri("/api/health")
+        .header("origin", "http://localhost:5173")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(cors_get).await.unwrap();
+    assert!(response.headers()["access-control-expose-headers"]
+        .to_str()
+        .unwrap()
+        .contains("x-request-id"));
+}
+
+#[tokio::test]
 async fn unknown_job_is_404() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
@@ -180,6 +180,79 @@ async fn malformed_json_and_routing_errors_use_the_api_envelope() {
     let (status, body, _) = send(&app, get("/api/does-not-exist")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_api_error(&body, "not_found");
+}
+
+#[tokio::test]
+async fn wire_dtos_reject_unknown_fields_but_project_documents_remain_open() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state);
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/import",
+            json!({ "url": "https://example.com/video", "urll": "typo" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({ "schemaVersion": 2, "videoId": "clip" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": "clip",
+                "crop": { "x": 0, "y": 0, "w": 10, "h": 10, "width": 10 }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/projects",
+            json!({
+                "videoId": "clip",
+                "video": { "filename": "clip.mp4", "futureVideoField": true },
+                "edit": { "futureEffect": { "amount": 0.5 } }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["edit"]["futureEffect"]["amount"], 0.5);
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/projects",
+            json!({
+                "videoId": "clip",
+                "video": {},
+                "edit": {},
+                "videoo": {}
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
 }
 
 #[tokio::test]
@@ -633,140 +706,4 @@ async fn project_upsert_rejects_oversized_json_fields() {
 
     let (_status, body, _) = send(&app, get("/api/projects")).await;
     assert!(body.as_array().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn upload_rejects_empty_file() {
-    let (state, _d) = make_state(true, true).await;
-    let app = router(state);
-    let boundary = "BOUNDARYX";
-    let body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"clip.mp4\"\r\n\r\n\r\n--{boundary}--\r\n"
-    );
-    let req = Request::builder()
-        .method("POST")
-        .uri("/api/upload")
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(Body::from(body))
-        .unwrap();
-    let (status, body, text) = send(&app, req).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_api_error(&body, "bad_request");
-    assert!(text.contains("пустой файл"), "got: {text}");
-}
-
-#[tokio::test]
-async fn upload_limit_fails_fast_and_recovers_after_a_slot_is_released() {
-    let (state, _d) = make_state(true, true).await;
-    let slot_a = state.try_acquire_upload_slot().unwrap();
-    let _slot_b = state.try_acquire_upload_slot().unwrap();
-    let app = router(state);
-
-    let (status, body, text) = send(&app, post_multipart_file("clip.mp4", b"data")).await;
-    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
-    assert_api_error(&body, "too_many_requests");
-    assert!(text.contains("слишком много одновременных загрузок"));
-
-    drop(slot_a);
-    let (status, body, text) = send(&app, post_multipart_file("clip.mp4", b"")).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_api_error(&body, "bad_request");
-    assert!(text.contains("пустой файл"));
-}
-
-#[tokio::test]
-async fn upload_without_file_field_is_400() {
-    let (state, _d) = make_state(true, true).await;
-    let app = router(state);
-    let boundary = "BOUNDARYY";
-    // A plain text field, not a file: the handler skips it and reports none found.
-    let body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"hello\"\r\n\r\nworld\r\n--{boundary}--\r\n"
-    );
-    let req = Request::builder()
-        .method("POST")
-        .uri("/api/upload")
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(Body::from(body))
-        .unwrap();
-    let (status, body, text) = send(&app, req).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_api_error(&body, "bad_request");
-    assert!(text.contains("файл не найден"), "got: {text}");
-}
-
-#[tokio::test]
-async fn upload_body_limit_uses_json_error_envelope() {
-    let (state, _d) = make_state(true, true).await;
-    let app = build_router(state, 64);
-
-    let (status, body, _) = send(&app, post_multipart_file("clip.mp4", &[b'x'; 128])).await;
-    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
-    assert_api_error(&body, "payload_too_large");
-}
-
-#[tokio::test]
-async fn upload_ignores_spoofed_html_extension_and_static_files_do_not_sniff() {
-    let fixture_dir = tempfile::tempdir().unwrap();
-    let fixture = fixture_dir.path().join("fixture.mp4");
-    let generated = tokio::process::Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "color=size=16x16:rate=1",
-            "-frames:v",
-            "1",
-            "-c:v",
-            "mpeg4",
-            "-y",
-        ])
-        .arg(&fixture)
-        .status()
-        .await;
-    let status = match generated {
-        Ok(status) => status,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
-        Err(error) => panic!("could not generate upload fixture: {error}"),
-    };
-    assert!(status.success(), "ffmpeg could not generate upload fixture");
-
-    let bytes = tokio::fs::read(&fixture).await.unwrap();
-    let (state, _storage) = make_state(true, true).await;
-    let app = router(state);
-    let response = app
-        .clone()
-        .oneshot(post_multipart_file("payload.html", &bytes))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let uploaded: Value = serde_json::from_slice(&body).unwrap();
-    let filename = uploaded["filename"].as_str().unwrap();
-    assert!(filename.ends_with(".mp4"), "got {filename}");
-    assert!(!filename.ends_with(".html"));
-
-    let static_response = app
-        .oneshot(get(uploaded["url"].as_str().unwrap()))
-        .await
-        .unwrap();
-    assert_eq!(static_response.status(), StatusCode::OK);
-    assert_eq!(
-        static_response.headers()["x-content-type-options"],
-        "nosniff"
-    );
-    assert_eq!(
-        static_response.headers()["content-security-policy"],
-        "sandbox; default-src 'none'"
-    );
-    assert_eq!(static_response.headers()["content-type"], "video/mp4");
 }

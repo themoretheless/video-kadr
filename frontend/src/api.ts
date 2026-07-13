@@ -1,4 +1,4 @@
-import type { EditState, Job, MediaEntry, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, MediaEntry, VideoInfo } from './types'
 
 const BACKEND_DOWN = 'Сервер недоступен. Запущен ли бэкенд? (cargo run на :8080)'
 
@@ -18,12 +18,19 @@ export class ApiError extends Error {
   }
 }
 
+export class BackendUnavailableError extends Error {
+  constructor() {
+    super(BACKEND_DOWN)
+    this.name = 'BackendUnavailableError'
+  }
+}
+
 /** Fetch that distinguishes a network failure from a real HTTP error response. */
 async function safeFetch(path: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(path, init)
   } catch {
-    throw new Error(BACKEND_DOWN)
+    throw new BackendUnavailableError()
   }
 }
 
@@ -80,6 +87,12 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
 export async function getJob(jobId: string): Promise<Job> {
   const res = await safeFetch(`/api/jobs/${jobId}`)
   await requireOk(res, `job poll -> HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function getCapabilities(): Promise<Capabilities> {
+  const res = await safeFetch('/api/capabilities')
+  await requireOk(res, `capabilities -> HTTP ${res.status}`)
   return res.json()
 }
 

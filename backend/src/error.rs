@@ -127,7 +127,7 @@ impl IntoResponse for AppError {
         if let Some(internal) = &self.internal {
             tracing::error!(
                 context = internal.context,
-                error = %internal.source,
+                error = %crate::privacy::redact_text(&internal.source.to_string()),
                 "API request failed"
             );
         }

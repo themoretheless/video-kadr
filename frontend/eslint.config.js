@@ -7,7 +7,7 @@ import pluginVue from 'eslint-plugin-vue'
 // files use vue-eslint-parser (set by the plugin) with the TS parser for
 // <script lang="ts">.
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules'] },
+  { ignores: ['dist', 'node_modules', 'playwright-report', 'test-results'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/essential'],
@@ -25,8 +25,56 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.ts'],
+    files: ['**/*.test.ts', 'e2e/**/*.ts', 'playwright.config.ts', 'scripts/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    files: ['src/domain/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/api', '**/api.*', '**/store', '**/store.*', '**/components/**'],
+              message: 'Domain code must stay framework- and transport-independent.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/components/**/*.{ts,vue}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/api', '**/api.*'],
+              message: 'Components use the store or a feature facade instead of the transport layer.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/api.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['./store', './store.*', './components/**'],
+              message: 'The transport layer cannot depend on UI state or components.',
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     rules: {

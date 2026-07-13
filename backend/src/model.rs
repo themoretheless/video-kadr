@@ -1,4 +1,34 @@
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+pub const WIRE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WireSchemaVersion;
+
+impl<'de> Deserialize<'de> for WireSchemaVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let version = u32::deserialize(deserializer)?;
+        if version != WIRE_SCHEMA_VERSION {
+            return Err(D::Error::custom(format!(
+                "unsupported schemaVersion {version}; expected {WIRE_SCHEMA_VERSION}"
+            )));
+        }
+        Ok(Self)
+    }
+}
+
+impl Serialize for WireSchemaVersion {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u32(WIRE_SCHEMA_VERSION)
+    }
+}
 
 /// Status of an asynchronous job (import or edit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -81,7 +111,10 @@ impl Job {
 /// the download to a section instead of fetching the whole (possibly very long)
 /// video.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImportRequest {
+    #[serde(rename = "schemaVersion", default)]
+    pub schema_version: WireSchemaVersion,
     pub url: String,
     #[serde(default)]
     pub start: Option<f64>,
@@ -93,8 +126,10 @@ pub struct ImportRequest {
 /// frontend (e.g. `videoId`). It is also `Serialize` so a deserialized request
 /// can be re-serialized canonically into the render-cache key.
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
+    #[serde(default, skip_serializing)]
+    pub schema_version: WireSchemaVersion,
     pub video_id: String,
     #[serde(default)]
     pub trim: Option<Trim>,
@@ -190,6 +225,7 @@ fn default_one() -> f64 {
 
 /// Trim the source to the region `[start, end]` (seconds).
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Trim {
     pub start: f64,
     pub end: f64,
@@ -197,6 +233,7 @@ pub struct Trim {
 
 /// Crop rectangle in source pixels.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Crop {
     pub x: u32,
     pub y: u32,
@@ -206,6 +243,7 @@ pub struct Crop {
 
 /// Target size. Use `-1` (or `-2`) for a dimension to keep aspect ratio.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Scale {
     pub w: i32,
     pub h: i32,
@@ -279,5 +317,28 @@ mod tests {
             serde_json::from_value(json!({ "url": "u", "start": 1.0, "end": 2.0 })).unwrap();
         assert_eq!(i2.start, Some(1.0));
         assert_eq!(i2.end, Some(2.0));
+    }
+
+    #[test]
+    fn wire_schema_version_is_optional_v1_and_rejects_future_versions() {
+        assert!(serde_json::from_value::<ImportRequest>(json!({
+            "url": "https://example.com/video"
+        }))
+        .is_ok());
+        assert!(serde_json::from_value::<ImportRequest>(json!({
+            "schemaVersion": 1,
+            "url": "https://example.com/video"
+        }))
+        .is_ok());
+        assert!(serde_json::from_value::<ImportRequest>(json!({
+            "schemaVersion": 2,
+            "url": "https://example.com/video"
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<EditRequest>(json!({
+            "schemaVersion": 2,
+            "videoId": "abc"
+        }))
+        .is_err());
     }
 }

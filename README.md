@@ -50,6 +50,7 @@ GET  /api/projects/by-video/:videoId -> Project | 404
 GET  /api/projects/:id      -> Project | 404
 DELETE /api/projects/:id    -> 204 | 404
 GET  /api/health            -> { status, ffmpeg, ytdlp, ffmpegVersion, ytdlpVersion }
+GET  /api/capabilities      -> { schemaVersion, toolFingerprint, formats, codecs, filters, hardware }
 GET  /files/sources/...     -> исходники (с поддержкой Range)
 GET  /files/outputs/...     -> результаты (с поддержкой Range)
 ```
@@ -58,6 +59,8 @@ GET  /files/outputs/...     -> результаты (с поддержкой Ran
 `{"error":"Понятное сообщение","code":"machine_readable_code"}`. Frontend
 сохраняет `status`/`code` в `ApiError`; сообщение о недоступном backend
 используется только при сетевой ошибке, а не для настоящего HTTP `5xx`.
+Wire DTO строги к неизвестным полям и принимают опциональный `schemaVersion: 1`;
+вложенные JSON-документы сохранённых проектов остаются migration-tolerant.
 
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
 `MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2; размер независимых job/upload
@@ -106,10 +109,15 @@ dev-прокси, значит не поднят backend: Vite не может �
 (`backend/tests/render.rs`), который сам пропускается, если `ffmpeg`/`ffprobe` нет
 в `PATH`, и реальный `yt-dlp`-тест редиректа в приватную сеть (также skip без
 `yt-dlp`). Фронтенд — ESLint + Vitest на логику стора (`buildEditPayload`,
-`parseTime`, пресеты).
+`parseTime`, пресеты, polling с fake timers). Playwright проверяет offline boot,
+mocked import/edit/export и отсутствие overflow на 390 px в Chromium, Firefox и
+WebKit. Upload security и HTTP backpressure вынесены в отдельные backend suites.
+Linux CI запускает все три движка; локально на macOS Firefox можно включить
+через `PLAYWRIGHT_FIREFOX=1 npm run test:e2e` (по умолчанию остаются Chromium и
+WebKit из-за зависания teardown текущей bundled Firefox-сборки).
 
 ```
-make check   # всё как в CI: fmt + clippy + cargo test + lint + typecheck + vitest + build
+make check   # всё как в CI: backend + frontend + bundle budget + Playwright
 make test    # только тесты (cargo test + vitest)
 make lint    # clippy -D warnings + eslint
 make fmt     # cargo fmt
@@ -123,6 +131,8 @@ cd backend  && cargo clippy --all-targets -- -D warnings
 cd frontend && npm run lint
 cd frontend && npm run typecheck
 cd frontend && npm run test
+cd frontend && npx playwright install chromium firefox webkit # один раз локально
+cd frontend && npm run test:e2e
 ```
 
 CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` ставит ffmpeg
@@ -247,6 +257,17 @@ MLT, Tokio, OWASP, W3C, OpenTelemetry и SLSA. Каждый источник д�
 чеклист - в
 [recommendation.md](recommendation.md#исследовательский-чеклист-100-репозиториев-14-июля-2026).
 
+**Волна 1/10 (14 июля 2026): первые 10 research-backed пунктов реализованы.**
+Закрыты №790, 824, 828, 829, 831, 844, 846, 847, 850 и 854: runtime manifest
+encoder/muxer/filter возможностей ffmpeg, `TaskSupervisor` для bounded structured
+shutdown, transport-level
+backpressure/disconnect tests, versioned strict wire DTO при tolerant project
+documents, request/job/process spans с canary-redaction, ESLint dependency
+boundaries, gzip bundle budget, fake-time polling, backendless Playwright matrix
+и формальная upload threat matrix. Полное разбиение всех 100 задач на 10 волн -
+в [recommendation.md](recommendation.md#волны-исполнения-по-10-пунктов); модель
+upload-рисков - в [docs/threat-model-upload.md](docs/threat-model-upload.md).
+
 ```
 frontend (Vue 3 + Vite)
   └── POST /api/import { url }        -> { jobId }      (yt-dlp скачивает)
@@ -256,6 +277,7 @@ frontend (Vue 3 + Vite)
   └── GET  /files/outputs/<id>.mp4    -> результат
 
 backend (Rust + Axum + Tokio)
+  storage/staging/  приватный карантин незавершённых upload
   storage/sources/  скачанные оригиналы
   storage/outputs/  отрендеренные результаты
   storage/app.db    SQLite: проекты, задачи, кэш рендеров

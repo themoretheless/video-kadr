@@ -23,6 +23,27 @@ struct ReceivedUpload {
     total_bytes: u64,
 }
 
+struct StagingFile {
+    path: std::path::PathBuf,
+}
+
+impl StagingFile {
+    fn new(path: std::path::PathBuf) -> Self {
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for StagingFile {
+    fn drop(&mut self) {
+        // Drop also runs when Axum cancels the handler after a disconnect.
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// Accept a local media file. The client filename is display-only: the stored
 /// extension is derived from ffprobe so an HTML/SVG filename cannot control the
 /// response MIME type under `/files/sources`.
@@ -35,33 +56,33 @@ pub async fn upload_handler(
     })?;
     let video_id = Uuid::new_v4().to_string();
     let sources = state.sources_dir();
-    let temporary_path = sources.join(format!("{video_id}.upload"));
+    let temporary = StagingFile::new(state.staging_dir().join(format!("{video_id}.upload")));
 
     let received = receive_with_timeout(
-        receive_upload(multipart, &temporary_path),
-        &temporary_path,
+        receive_upload(multipart, temporary.path()),
+        temporary.path(),
         UPLOAD_RECEIVE_TIMEOUT,
     )
     .await?;
 
     if received.total_bytes == 0 {
-        remove_quietly(&temporary_path).await;
+        remove_quietly(temporary.path()).await;
         return Err(AppError::bad_request("пустой файл"));
     }
 
-    let info = match tools::probe_video(&temporary_path).await {
+    let info = match tools::probe_video(temporary.path()).await {
         Ok(info) if info.width > 0 || info.duration > 0.0 => info,
         Err(error) => {
-            remove_quietly(&temporary_path).await;
+            remove_quietly(temporary.path()).await;
             return Err(probe_error_response(&error));
         }
         _ => {
-            remove_quietly(&temporary_path).await;
+            remove_quietly(temporary.path()).await;
             return Err(AppError::bad_request("не удалось распознать видео в файле"));
         }
     };
     let Some(extension) = safe_upload_extension(&info) else {
-        remove_quietly(&temporary_path).await;
+        remove_quietly(temporary.path()).await;
         return Err(AppError::unsupported_media_type(
             "формат файла не поддерживается",
         ));
@@ -69,8 +90,8 @@ pub async fn upload_handler(
 
     let filename = format!("{video_id}.{extension}");
     let path = sources.join(&filename);
-    if let Err(error) = tokio::fs::rename(&temporary_path, &path).await {
-        remove_quietly(&temporary_path).await;
+    if let Err(error) = tokio::fs::rename(temporary.path(), &path).await {
+        remove_quietly(temporary.path()).await;
         return Err(AppError::internal("publish uploaded file", error));
     }
 

@@ -83,6 +83,50 @@ pub async fn check_tool(bin: &str, version_arg: &str) -> (bool, Option<String>) 
     }
 }
 
+/// Query the concrete encoders and filters exposed by the installed ffmpeg.
+/// The manifest is used for UI availability, so a compiled-out encoder is
+/// reported explicitly instead of failing only after an export starts.
+pub async fn inspect_ffmpeg_support() -> (Vec<String>, Vec<String>, Vec<String>) {
+    let encoders = inspect_ffmpeg_component("-encoders").await;
+    let muxers = inspect_ffmpeg_component("-muxers").await;
+    let filters = inspect_ffmpeg_component("-filters").await;
+    (encoders, muxers, filters)
+}
+
+async fn inspect_ffmpeg_component(argument: &str) -> Vec<String> {
+    let mut command = Command::new("ffmpeg");
+    command.args(["-hide_banner", argument]);
+    let Ok(output) = output_with_timeout(command, TOOL_CHECK_TIMEOUT).await else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+
+    let mut text = output.stdout;
+    text.extend_from_slice(&output.stderr);
+    parse_ffmpeg_component_list(&String::from_utf8_lossy(&text))
+}
+
+fn parse_ffmpeg_component_list(output: &str) -> Vec<String> {
+    let mut names: Vec<String> = output
+        .lines()
+        .filter_map(|line| {
+            let mut columns = line.split_whitespace();
+            let flags = columns.next()?;
+            let name = columns.next()?;
+            let looks_like_flags = !flags.is_empty()
+                && flags
+                    .bytes()
+                    .all(|value| value.is_ascii_alphabetic() || value == b'.' || value == b'=');
+            (looks_like_flags && !name.starts_with('=')).then(|| name.to_owned())
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
 async fn output_with_timeout(mut command: Command, limit: Duration) -> Result<Output> {
     command
         .kill_on_drop(true)
@@ -517,6 +561,26 @@ fn tail(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ffmpeg_component_output_is_parsed_into_stable_names() {
+        let output = r#"
+ Encoders:
+ V..... = Video
+ V....D libx264              H.264
+ A..... aac                  AAC
+ Muxers:
+  E mp4                 MP4
+ Filters:
+ T.. = Timeline support
+ ... palettegen        V->V       Generate palette
+ TS. hue               V->V       Adjust hue
+"#;
+        assert_eq!(
+            parse_ffmpeg_component_list(output),
+            ["aac", "hue", "libx264", "mp4", "palettegen"]
+        );
+    }
 
     #[test]
     fn ytdlp_progress_parsing() {

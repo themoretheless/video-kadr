@@ -15,6 +15,28 @@
 аудит (509 заземлённых на код проблем) - в [docs/audit-500.md](docs/audit-500.md);
 проверенное ядро - в [docs/audit.md](docs/audit.md).
 
+## Волны исполнения по 10 пунктов
+
+Все research-backed карточки №784-883 разложены ровно на 10 волн без повторов.
+Внутри волны сначала вводится контракт/fixture, затем реализация и общий verify.
+
+| Волна | Статус | Пункты | Фокус |
+|---:|---|---|---|
+| 1 | ✅ 10/10 | 790, 824, 828, 829, 831, 844, 846, 847, 850, 854 | Runtime/contract/security/test guardrails |
+| 2 | ☐ | 784, 786, 787, 803, 814, 817, 820, 823, 825, 826 | Typed media/timeline domain и HTTP ports |
+| 3 | ☐ | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 | Durable jobs, outbox, replay и concurrency invariants |
+| 4 | ☐ | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 | Proxy/render artifacts и измеряемый media performance |
+| 5 | ☐ | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 | Player/canvas state machines и accessibility |
+| 6 | ☐ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 | Quality/codecs/design tokens и benchmarks |
+| 7 | ☐ | 833, 855, 856, 857, 858, 859, 860, 861, 862, 863 | Deployment security, fuzzing и supply chain |
+| 8 | ☐ | 812, 813, 830, 864, 865, 866, 867, 868, 869, 873 | Resource classes, SQL contract и observability |
+| 9 | ☐ | 874, 875, 876, 877, 878, 879, 880, 881, 882, 883 | Versioned local-first ML artifacts |
+| 10 | ☐ | 788, 802, 811, 841, 845, 848, 849, 851, 852, 853 | Compatibility, ingest и frontend completion |
+
+Волна 1 проверяется `make check`: backend unit/API/upload/backpressure suites,
+frontend lint/typecheck/Vitest/build/budget и 9 Playwright сценариев. Детали
+upload-контролей - в [docs/threat-model-upload.md](docs/threat-model-upload.md).
+
 ## Синхронизированный top-200: проблема → куда чинить
 
 **Раунд 2 (1 июля 2026).** P0-1…P0-8 ниже все ✅ «Сделано» - но перепроверка
@@ -36,19 +58,19 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 2. ✅ Мусор после отмены/таймаута импорта → P0-7.
 3. ✅ Cancel окна на cache-hit edit → P2-12.
 4. ✅ Осиротевший child `ffmpeg` из `yt-dlp` → P2-9.
-5. Shutdown бросает workers/processes → P2-9.
+5. ✅ Shutdown владеет workers/processes, слушает SIGINT/SIGTERM и ограничивает HTTP/task drain → wave 1 №824.
 6. ✅ Queued job нельзя отменить сразу → P0-4 и P2-9.
-7. `acquire_owned()` error оставляет job non-terminal → P0-4.
-8. Progress drain пишет в terminal job → P2-9/P2-12.
+7. ✅ `acquire_owned()` error переводит job в terminal error → P0-4.
+8. ✅ Progress drain обновляет только open job → P2-9/P2-12.
 9. ✅ Segments не работают для AV1/ProRes → P0-6.
 10. ✅ Crop не валидируется по source dimensions → P0-8.
 11. Overlay может выйти за кадр → P0-8.
 12. ✅ Сегменты не сортируются → P0-6/P2-13.
-13. Segment end не клампится к duration → P0-6/P2-13.
-14. Negative segment start → P0-6/P2-13.
-15. Overlapping segments → P0-6/P2-13.
-16. `fps` без bounds → P0-8/P2-13.
-17. `scale` без строгой validation → P0-8/P2-13.
+13. ✅ Segment end клампится к duration → P0-6/P2-13.
+14. ✅ Negative segment start отклоняется → P0-6/P2-13.
+15. ✅ Overlapping segments отклоняются → P0-6/P2-13.
+16. ✅ `fps` ограничен 1..240 → P0-8/P2-13.
+17. ✅ `scale` строго валидируется → P0-8/P2-13.
 18. ✅ Upload минует concurrency gate → закрыто в раунде 7 отдельным upload pool.
 19. Нет resource limits ffmpeg/yt-dlp → security/perf track.
 20. Нет no-progress watchdog → P2-9.
@@ -58,7 +80,7 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 24. ◐ TTL удаляет referenced/active files → P0 backlog/P2-10. *(file/cache/library-консистентность есть; active-job-awareness - нет, audit.md №24)*
 25. ✅ Render cache не инвалидируется → P0-5/P2-10.
 26. Нет DB migrations → P2-10.
-27. Нет jobs/cache retention → P0-2/P2-10.
+27. ◐ Нет jobs/cache retention; recovery ограничен последними 200 → P0-2/P2-10.
 28. `library.json` и SQLite дрейфуют → P2-10.
 29. ✅ Нет single-flight render cache → P2-10. *(исправлено `a550a86`; побочный эффект - audit.md №205)*
 30. `cache_put` и `library.add` не атомарны → P2-10.
@@ -71,12 +93,12 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 37. Неполный special-use IP blocklist → P0-3.
 38. Upload без magic-byte validation → security track.
 39. Projects JSON без схемы/лимита → P2-10/P2-11.
-40. Нет `deny_unknown_fields` → P2-11/contract work.
+40. ✅ Wire DTO strict/versioned; persisted project documents tolerant → wave 1 №829.
 41. Сырой stderr наружу → P1-8/P2-11.
-42. Разные формы API errors → P2-11.
-43. DB errors без нормального body/log → P2-11.
+42. ✅ Единый `AppError` JSON envelope → P2-11.
+43. ✅ DB errors получают безопасный body и redacted internal log → P2-11.
 44. Async jobs отвечают `200`, не `202` → P2-11.
-45. Frontend маскирует real 500 → P1-5/frontend API cleanup. *(латентно: import/edit сейчас не возвращают 5xx физически, audit.md №45)*
+45. ✅ Frontend различает network outage и typed HTTP `ApiError` → P1-5/frontend API cleanup.
 46. God store + god `EditPanel.vue` → P1-5/P1-6.
 47. Watchers как import side effects → P1-5.
 48. Runtime validation отсутствует для JSON/presets → P1-5/P1-7. *(переформулировано: реальная сегодняшняя проблема - слишком широкий `PRESET_KEYS`, audit.md №209)*
@@ -202,7 +224,7 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 168. No design tokens docs → style/design token cleanup.
 169. No visual regression → screenshot smoke later.
 170. No localization boundary → frontend i18n/messages.
-171. No threat model → security design note.
+171. ◐ Upload threat model есть; общая deployment threat model ещё нужна.
 172. No auth → before-exposure auth middleware.
 173. No CSRF posture → auth/session design.
 174. No rate limiting → middleware/queue limits.
@@ -210,11 +232,11 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 176. No process sandbox → container/seccomp/resource limits.
 177. No URL domain policy → configurable allow/deny list.
 178. ✅ No redirect policy → downloader adapter constraints. *(закрыто в раунде 6 egress-proxy)*
-179. No centralized redaction → redaction module.
-180. Query tokens not unified → URL redaction/warning policy.
+179. ◐ Logs используют общий URL/query/path redaction; API/diagnostics policy ещё не едина.
+180. ◐ Query tokens скрываются в логах; UI warning перед импортом ещё нужен.
 181. No redacted diagnostics bundle → diagnostics endpoint.
 182. ✅ Upload magic bytes missing → media probe before publish. *(закрыто в раунде 5)*
-183. No quarantine story → upload staging directory.
+183. ◐ Private staging/probe/publish quarantine есть; malware scanner/sandbox policy ещё нет.
 184. No safe content-disposition → file serving wrapper.
 185. No audit log → mutating operations log.
 186. No quota reporting → storage usage endpoint/tool.
@@ -311,11 +333,11 @@ parser и typed `ApiError(status, code)`, поэтому реальный HTTP 5
 3. Продолжить `EditPanel.vue`: `AudioControls`, `PresetBar`, затем timing/frame.
 4. Продолжить store: history/presets/theme, сохраняя совместимый фасад.
 5. Вынести общий `useDragHandle`, теперь поверх уже безопасного unmount cleanup.
-6. Добавить URL query-token warning и redaction helper для логов.
-7. Добавить first-class empty/error/offline states без backend.
+6. ◐ Redaction helper для логов готов; добавить URL query-token warning в UI.
+7. ✅ Добавлен first-class offline state без backend.
 8. Вынести shared formatDuration/formatSize и каталоги edit options.
 9. Добавить typed API/OpenAPI слой между Rust и TS.
-10. Добавить smoke-тест: frontend открывается без backend и показывает понятное состояние.
+10. ✅ Добавлен cross-browser smoke: frontend открывается без backend и показывает понятное состояние.
 11. Собрать diagnostic bundle с redaction, чтобы приватные URL/token query не попадали в архив.
 12. Закрепить Rust toolchain/MSRV и воспроизводимые Docker image digests.
 
@@ -937,7 +959,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [ ] 🟠 **787. Olive:** Добавить стабильные `ClipId`/`OperationId`; проверить ссылки после reorder, undo и serialize round-trip. `backend/src/domain/timeline.rs` (target)
 - [ ] 🟡 **788. OpenShot:** Создать golden corpus версий проекта, migration-to-latest и policy test для неизвестных операций. `backend/tests/fixtures/projects/` (target)
 - [ ] 🟠 **789. Kdenlive:** Реализовать proxy-media artifact по source checksum с background generation/relink и full-res export. `backend/src/analysis/proxy.rs` (target)
-- [ ] 🟠 **790. Shotcut:** Генерировать runtime capabilities manifest с tool fingerprint и причиной unavailable для UI. `backend/src/capabilities.rs` (target)
+- [x] ✅ **790. Shotcut:** Runtime manifest encoders/muxers/filters/hardware с fingerprint и disabled-reason подключён к UI. `backend/src/capabilities.rs`, `frontend/src/components/`
 - [ ] 🟡 **791. Blender:** Ввести dependency graph производных артефактов и точечную downstream invalidation по fingerprint. `backend/src/domain/artifact_graph.rs` (target)
 - [ ] 🟠 **792. OBS:** Разделить execution profiles preview/export; тестом запретить preview-policy менять `OutputSpec`. `backend/src/services/{preview,render}.rs` (target)
 - [ ] 🟡 **793. Remotion:** Определить детерминированный frame-render contract, chunk manifest/checksums, idempotent retry и verified stitch. `backend/src/render/frame_renderer.rs` (target)
@@ -983,14 +1005,14 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### E. Rust backend
 
-- [ ] 🔴 **824. Tokio:** Root `CancellationToken` + `TaskTracker`; shutdown закрывает intake, ждёт bounded time и эскалирует process groups. `backend/src/runtime/task_supervisor.rs` (target)
+- [x] ✅ **824. Tokio:** Root `CancellationToken` + `TaskTracker` владеют workers; SIGINT/SIGTERM запускают bounded HTTP/task drain, process runner эскалирует process groups. `backend/src/runtime.rs`, `backend/src/main.rs`
 - [ ] 🟠 **825. Axum:** Перевести Router contract tests на service ports/in-memory fakes вместо concrete `AppState`. `backend/src/http/mod.rs` (target)
 - [ ] 🟠 **826. Tower:** Описать route classes и ordered middleware policy для request ID/body/auth/rate/timeout/tracing. `backend/src/http/policy.rs` (target)
 - [ ] 🟡 **827. Actix Web:** Зафиксировать Axum throughput/p50/p95/p99/RSS baseline; запретить framework rewrite без ADR и profile. `backend/benches/http_baseline.rs` (target)
-- [ ] 🟠 **828. Hyper:** Проверить bounded memory/cancellation/cleanup на slow upload, slow range client и disconnect. `backend/tests/http_backpressure.rs` (target)
-- [ ] 🟠 **829. Serde:** Развести strict versioned wire DTO и migration-tolerant storage DTO; добавить negative corpus обеих границ. `backend/src/{http,persistence}/` (target)
+- [x] ✅ **828. Hyper:** Реальные TCP-тесты доказывают incremental upload, cleanup после disconnect и отзывчивость API при slow Range reader. `backend/tests/http_backpressure.rs`
+- [x] ✅ **829. Serde:** Wire DTO strict, поддерживают `schemaVersion: 1`; project envelope strict, вложенные persisted documents tolerant. `backend/src/model.rs`, `backend/src/handlers/projects.rs`, `backend/tests/api.rs`
 - [ ] 🟡 **830. SQLx:** Добавить offline metadata и `cargo sqlx prepare --check` против query/schema drift. `.github/workflows/ci.yml` (target)
-- [ ] 🟠 **831. tracing:** Зафиксировать span tree `request -> job -> process`, allowlist полей и canary redaction golden test. `backend/src/telemetry/schema.rs` (target)
+- [x] ✅ **831. tracing:** Span tree `request -> job -> process`, CORS-visible request ID, path-only HTTP fields и URL/query/path canary-redaction реализованы. `backend/src/telemetry.rs`, `backend/src/privacy.rs`
 - [ ] 🟠 **832. Rayon:** Выделить bounded CPU executor с queue budget/cancellation/saturation metrics. `backend/src/runtime/cpu_pool.rs` (target)
 - [ ] 🟠 **833. rustls:** Принять deployment ADR для TLS termination и trusted proxy headers; запретить public plaintext profile. `docs/deployment-security.md` (target)
 
@@ -1009,20 +1031,20 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### G. Vue, frontend и testing
 
-- [ ] 🟠 **844. Vue:** Закрепить feature public APIs и forbidden cross-feature imports правилом ESLint. `frontend/eslint.config.*` (target)
+- [x] ✅ **844. Vue:** ESLint запрещает domain→transport/UI, component→API и transport→store/component imports; доступ идёт через store/facade. `frontend/eslint.config.js`
 - [ ] 🟠 **845. Pinia:** Выделить pilot `project`/`ui` stores с facade и command-only cross-store interaction. `frontend/src/stores/` (target)
-- [ ] 🟡 **846. Vite:** Ввести gzip budget initial JS/CSS и отдельные chunks для analysis/dev features. `frontend/vite.config.ts` + CI (target)
-- [ ] 🟠 **847. Vitest:** Перевести backoff/deadline/debounce/history/cancel tests на fake timers и table/property cases без sleep. `frontend/src/**/*.test.ts`
+- [x] ✅ **846. Vite:** Initial JS/CSS/total gzip budgets измеряются после build и падают в Make/CI; текущая сборка укладывается в total 60 KiB. `frontend/scripts/check-bundle-budget.mjs`, CI
+- [x] ✅ **847. Vitest:** Polling terminal/cancel cases используют fake timers/table cases; autosave/history suites также без real-time sleep. `frontend/src/api.test.ts`, `frontend/src/store.test.ts`
 - [ ] 🟡 **848. VueUse:** Централизовать global listeners/resize/online в lifecycle-safe composables и запретить обход lint-аудитом. `frontend/src/composables/` (target)
 - [ ] 🟠 **849. Storybook:** Каталогизировать empty/loading/error/long/localized/mobile/reduced-motion states с a11y/screenshots. `frontend/src/**/*.stories.ts` (target)
-- [ ] 🔴 **850. Playwright:** Backendless mock smoke в Chromium/Firefox/WebKit и 390px: boot/offline/import/edit/export/no-overflow. `frontend/e2e/smoke.spec.ts` (target)
+- [x] ✅ **850. Playwright:** 9 browser smoke cases покрывают backendless offline shell, mocked import/edit/export и 390px no-overflow в трёх движках. `frontend/e2e/smoke.spec.ts`
 - [ ] 🟡 **851. Cypress:** Сравнить один fault scenario и оформить ADR выбора ровно одного E2E runner. `docs/adr/e2e-runner.md` (target)
 - [ ] 🟠 **852. TanStack Query:** Вынести library/projects/jobs server cache/invalidation/polling из mutable UI stores. `frontend/src/data/` (target)
 - [ ] 🟠 **853. Floating UI:** Создать один tooltip/menu/popover primitive с collision/focus return/Escape/outside-click tests. `frontend/src/ui/overlay/` (target)
 
 ### H. Security и supply chain
 
-- [ ] 🔴 **854. OWASP:** Связать extension/MIME/signature/probe/name/quarantine/storage/limits с negative upload fixtures. `docs/threat-model-upload.md`, `backend/tests/upload_security.rs` (target)
+- [x] ✅ **854. OWASP:** Extension/MIME/probe/generated name/private staging/storage headers/body+concurrency limits связаны с 6 focused regressions и residual risks. `docs/threat-model-upload.md`, `backend/tests/upload_security.rs`
 - [ ] 🟠 **855. OSS-Fuzz:** Подготовить hermetic continuous fuzz targets, sanitizer build, corpus и triage SLA. `fuzz/oss-fuzz/` (target)
 - [ ] 🟠 **856. cargo-fuzz:** Targets для edit normalization, multipart path, library JSON, URL policy и cache key; crashes идут в regression corpus. `backend/fuzz/` (target)
 - [ ] 🟠 **857. RustSec:** У каждого advisory ignore должны быть owner/rationale/expiry; просрочка падает в CI. `.cargo/audit.toml` (target)

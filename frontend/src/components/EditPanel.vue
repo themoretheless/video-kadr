@@ -196,6 +196,21 @@ const filters = [
   { v: 'vintage', label: 'Винтаж' },
 ]
 
+function filterCapability(id: string) {
+  if (!id) return undefined
+  return state.capabilities?.filters.find((option) => option.id === id)
+}
+
+function filterUnavailableReason(id: string): string | undefined {
+  const option = filterCapability(id)
+  return option && !option.available ? option.reason || 'Недоступно в текущей сборке' : undefined
+}
+
+function selectFilter(id: string): void {
+  if (filterUnavailableReason(id)) return
+  state.edit.filter = id
+}
+
 const fpsPresets = [
   { v: null as number | null, label: 'ориг.' },
   { v: 60, label: '60' },
@@ -556,7 +571,10 @@ function applyPlatform(name: string) {
             :key="f.v"
             class="chip"
             :class="{ active: state.edit.filter === f.v }"
-            @click="state.edit.filter = f.v"
+            :aria-disabled="filterCapability(f.v)?.available === false"
+            :aria-label="filterUnavailableReason(f.v) ? `${f.label}. ${filterUnavailableReason(f.v)}` : f.label"
+            :title="filterUnavailableReason(f.v)"
+            @click="selectFilter(f.v)"
           >
             {{ f.label }}
           </button>

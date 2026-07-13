@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::Serialize;
 use tokio::sync::{AcquireError, Mutex, OwnedSemaphorePermit, Semaphore};
@@ -9,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::db::Db;
 use crate::library::Library;
 use crate::model::{Job, JobStatus};
+use crate::runtime::TaskSupervisor;
 
 const DEFAULT_RECOVER_JOBS_LIMIT: i64 = 200;
 
@@ -22,6 +24,12 @@ pub struct ToolInfo {
     pub ffmpeg_version: Option<String>,
     #[serde(rename = "ytdlpVersion")]
     pub ytdlp_version: Option<String>,
+    #[serde(skip)]
+    pub ffmpeg_encoders: Vec<String>,
+    #[serde(skip)]
+    pub ffmpeg_muxers: Vec<String>,
+    #[serde(skip)]
+    pub ffmpeg_filters: Vec<String>,
 }
 
 /// Shared application state. Jobs live in memory as the hot path (with live
@@ -39,6 +47,7 @@ pub struct AppState {
     /// client cannot consume every render slot.
     jobs_semaphore: Arc<Semaphore>,
     upload_semaphore: Arc<Semaphore>,
+    supervisor: TaskSupervisor,
     pub tools: Arc<ToolInfo>,
     pub library: Library,
     pub db: Db,
@@ -67,6 +76,7 @@ impl AppState {
             render_locks: Arc::new(Mutex::new(HashMap::new())),
             jobs_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             upload_semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            supervisor: TaskSupervisor::default(),
             tools: Arc::new(tools),
             library,
             db,
@@ -143,7 +153,7 @@ impl AppState {
     /// Register a cancellation token for a job and return a clone the worker can
     /// watch. Call `clear_cancel` when the job finishes.
     pub async fn register_cancel(&self, id: &str) -> CancellationToken {
-        let token = CancellationToken::new();
+        let token = self.supervisor.child_token();
         self.cancels
             .lock()
             .await
@@ -196,6 +206,28 @@ impl AppState {
         self.jobs_semaphore.close();
     }
 
+    pub fn spawn_task<F>(&self, future: F) -> tokio::task::JoinHandle<F::Output>
+    where
+        F: std::future::Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        self.supervisor.spawn(future)
+    }
+
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.supervisor.child_token()
+    }
+
+    pub fn begin_shutdown(&self) {
+        self.jobs_semaphore.close();
+        self.upload_semaphore.close();
+        self.supervisor.begin_shutdown();
+    }
+
+    pub async fn wait_for_tasks(&self, limit: Duration) -> bool {
+        self.supervisor.wait(limit).await
+    }
+
     /// Uploads are synchronous HTTP requests, so they fail fast instead of
     /// occupying connections in an invisible queue.
     pub fn try_acquire_upload_slot(&self) -> Option<OwnedSemaphorePermit> {
@@ -204,6 +236,10 @@ impl AppState {
 
     pub fn sources_dir(&self) -> PathBuf {
         self.storage.join("sources")
+    }
+
+    pub fn staging_dir(&self) -> PathBuf {
+        self.storage.join("staging")
     }
 
     pub fn outputs_dir(&self) -> PathBuf {

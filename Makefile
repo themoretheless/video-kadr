@@ -23,6 +23,8 @@ check:
 	cd frontend && npm run typecheck
 	cd frontend && npm run test
 	cd frontend && npm run build
+	cd frontend && npm run check:bundle
+	cd frontend && npm run test:e2e
 
 test:
 	cd backend && cargo test

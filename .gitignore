@@ -4,6 +4,8 @@
 # Node
 /frontend/node_modules/
 /frontend/dist/
+/frontend/playwright-report/
+/frontend/test-results/
 
 # Downloaded + rendered media
 /backend/storage/sources/*

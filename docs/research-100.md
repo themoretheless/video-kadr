@@ -203,14 +203,27 @@
 | 99 | [PaddlePaddle/PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) | 85 388 | OCR track с bbox/confidence/language | 882 |
 | 100 | [ultralytics/ultralytics](https://github.com/ultralytics/ultralytics) | 59 444 | Human-approved object tracks | 883 |
 
+## Исполнение пакетами
+
+Все 100 решений исполняются десятью волнами по 10. Полный состав волн и
+актуальные checkbox-статусы находятся в
+[recommendation.md](../recommendation.md#волны-исполнения-по-10-пунктов), а
+архитектурная карта - в
+[architecture.md](../architecture.md#исполнение-десятью-волнами).
+
+Первая волна закрыта 14 июля 2026: №790, 824, 828, 829, 831, 844, 846, 847,
+850 и 854. Она намеренно поставила guardrails перед тяжёлым media refactor:
+encoder/muxer/filter capabilities, SIGINT/SIGTERM bounded shutdown, HTTP
+backpressure, strict/versioned wire DTO, privacy-safe tracing, frontend dependency
+rules, bundle budget,
+deterministic async tests, cross-browser backendless smoke и upload threat model.
+
 ## Приоритетный вывод
 
-Новый слой не меняет ближайший P0 проекта: сначала `Config`, structured
-shutdown/`JobRunner`, resource limits и auth перед внешней публикацией. Затем
-самые выгодные исследовательские срезы: №784 (typed media graph), №789 (proxy
-media), №824 (structured shutdown), №839 (transactional enqueue), №850
-(backendless smoke), №854 (upload threat matrix), №864-868 (единая telemetry/
-redaction schema), №874/877/879 (transcript и scene artifacts).
+После закрытия первой волны ближайший research-фокус - волна 2: №784/786/787
+(typed media/timeline domain), №803 (typed probe), №814/817/820/823
+(history/geometry/keyframes) и №825/826 (HTTP ports/policy). Отдельный старый P0
+перед внешней публикацией остаётся: auth, ownership и process resource limits.
 
 Полные формулировки и критерии приёмки находятся в
 [architecture.md](../architecture.md#исследовательский-слой-100-репозиториев-14-июля-2026),
