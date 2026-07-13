@@ -11,6 +11,8 @@ import {
   tierToCrf,
   history,
   resetHistory,
+  beginEditTransaction,
+  endEditTransaction,
   undo,
   redo,
   openFromLibrary,
@@ -279,6 +281,20 @@ describe('history', () => {
 
     expect(state.edit.filter).toBe('warm')
     expect(history.future).toHaveLength(0)
+  })
+
+  it('coalesces pointer movement into one field-level command', async () => {
+    beginEditTransaction('crop-drag')
+    state.edit.crop = { x: 10, y: 0, w: 100, h: 100 }
+    await nextTick()
+    state.edit.crop = { x: 30, y: 20, w: 80, h: 70 }
+    await nextTick()
+    endEditTransaction()
+
+    expect(history.past).toHaveLength(1)
+    expect(history.past[0].changedKeys).toEqual(['crop'])
+    undo()
+    expect(state.edit.crop).toEqual({ x: 0, y: 0, w: 1280, h: 720 })
   })
 })
 

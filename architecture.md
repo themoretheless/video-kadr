@@ -42,13 +42,16 @@ Backend (Rust + Axum + Tokio)
 - `lib.rs` - `build_router()` (сборка маршрутов), реэкспорт модулей.
 - `error.rs` - `AppError`/`AppResult`, JSON error envelope и адаптеры extractors.
 - `main.rs` - bootstrap: env, probe инструментов, открыть БД, recover задач, `serve`.
-- `handlers/` - HTTP. `mod.rs` (import/edit/jobs + общая job-машинерия:
-  `finish_job`/`spawn_progress_drain`/`job_timeout`), `upload.rs`, `projects.rs`,
-  `library.rs`, `health.rs` (вынесены как независимые группы).
+- `domain/` - чистые media contracts: filter graph, pipeline registry, timeline,
+  normalized probe, geometry и keyframes; без HTTP/process/runtime/persistence.
+- `http/` - port-based system/project routers, production adapters и единый
+  route/middleware policy catalog.
+- `handlers/` - оставшийся orchestration layer: `mod.rs` (import/edit/jobs +
+  job-машинерия), `upload.rs`, `library.rs`; следующий split - service ports.
 - `tools/` - внешние инструменты. `args.rs` (чистая сборка ffmpeg-аргументов +
   тесты), `net.rs` (единая URL/host/IP/port-policy), `egress_proxy.rs`
   (контролируемый transport с DNS pinning на каждый request), `mod.rs`
-  (process/download/probe orchestration и реэкспорт публичного API).
+  (process/download orchestration, ffprobe adapter и реэкспорт публичного API).
 - `state.rs` - `AppState`: горячий jobs-registry + cancels + инкапсулированные
   независимые job/upload gates + tools + library + SQLite persistence + storage.
 - `db.rs` - sqlx/SQLite: projects, jobs, render_cache.
@@ -492,7 +495,7 @@ SOLID/DRY-нарушения в своей зоне. Итог - 565 находо
   структурированном логе, клиент получает безопасное общее сообщение.
 - Upload, projects, jobs и library переведены на boundary; `ApiJson`/
   `ApiMultipart`, неизвестный route и method-not-allowed также возвращают JSON.
-  `projects.rs` разделяет parse/name resolution и persistence.
+  `http/mod.rs` разделяет parse/name resolution и persistence.
 - Frontend больше не угадывает ошибку по status: единый parser создаёт typed
   `ApiError(status, code)`, а backend-down относится только к network exception.
   Закрыты 455/457/460/469/472/488; `job.error` и cancel response остаются отдельно.
@@ -521,17 +524,17 @@ HTTP-хендлеры и роутинг (`backend/src/handlers/`, `lib.rs`). SRP
 230. 🟡 [дизайн] Прогресс сохраняется только при шаге >=1%, без гарантии сохранения финального значения перед 100 - `backend/src/handlers/mod.rs` -> Если это осознанный компромисс — оставить как есть; иначе сохранять хотя бы последнее полученное значение перед закрытием канала независимо от порога.
 231. 🟡 [проблема/DIP] edit_handler мутирует входящий EditRequest прямо в воркере вместо получения провалидированного типа - `backend/src/handlers/mod.rs` -> Изменить normalize_edit_request на fn(EditRequest, ...) -> anyhow::Result<NormalizedEditRequest>, чтобы невалидированный EditRequest не мог случайно использоваться дальше по ошибке.
 232. 🟡 [баг] cleanup_files_with_prefix сопоставляет файлы по префиксу имени, что может задеть чужой файл при совпадении подстроки - `backend/src/handlers/mod.rs` -> Сравнивать Path::file_stem() файла целиком с prefix вместо strip_prefix, чтобы исключить любую теоретическую двусмысленность.
-233. 🟡 [проблема/SRP] project_upsert_handler вручную парсит сырой serde_json::Value вместо типизированного тела запроса - `backend/src/handlers/projects.rs` -> Ввести #[derive(Deserialize)] struct ProjectUpsertRequest { video_id: String, video: Value, edit: Value, name: Option<String> } и десериализовать через Json<ProjectUpsertRequest>.
-234. 🟡 [проблема/DRY] ensure_project_json_size сериализует video/edit отдельно от последующей записи в БД, дублируя сериализацию - `backend/src/handlers/projects.rs` -> Сериализовать video/edit один раз в project_upsert_handler, проверить длину байт и передать уже сериализованные строки в upsert_project, чтобы БД не сериализовала повторно.
-235. 🟡 [улучшение] project_upsert_handler не проверяет, что video["id"] совпадает с videoId тела запроса - `backend/src/handlers/projects.rs` -> После разбора video проверить video["id"].as_str() == Some(video_id) и вернуть 400 при расхождении.
-236. 🟡 [дизайн] Ошибки в projects.rs смешивают русский текст с сырыми деталями SQLx в INTERNAL_SERVER_ERROR - `backend/src/handlers/projects.rs` -> Логировать e через tracing::error! на сервере и возвращать клиенту фиксированное русскоязычное сообщение 'внутренняя ошибка' без деталей SQLx.
-237. 🟡 [проблема] project_get_handler и project_by_video_handler возвращают голый StatusCode без текста ошибки, в отличие от upsert/list - `backend/src/handlers/projects.rs` -> Привести все четыре project-хендлера к единому Result<_, (StatusCode, String)> с логированием причины на сервере.
-238. 🟡 [проблема/DRY] Паттерн 'Ok(Some)/Ok(None)/Err -> StatusCode' повторяется идентично в нескольких хендлерах - `backend/src/handlers/projects.rs` -> Добавить extension-trait для Result<Option<T>, sqlx::Error> с методом .into_response_or_404(), переиспользуемый во всех подобных хендлерах.
+233. 🟡 [проблема/SRP] project_upsert_handler вручную парсит сырой serde_json::Value вместо типизированного тела запроса - `backend/src/http/mod.rs` -> Ввести #[derive(Deserialize)] struct ProjectUpsertRequest { video_id: String, video: Value, edit: Value, name: Option<String> } и десериализовать через Json<ProjectUpsertRequest>.
+234. 🟡 [проблема/DRY] ensure_project_json_size сериализует video/edit отдельно от последующей записи в БД, дублируя сериализацию - `backend/src/http/mod.rs` -> Сериализовать video/edit один раз в project_upsert_handler, проверить длину байт и передать уже сериализованные строки в upsert_project, чтобы БД не сериализовала повторно.
+235. 🟡 [улучшение] project_upsert_handler не проверяет, что video["id"] совпадает с videoId тела запроса - `backend/src/http/mod.rs` -> После разбора video проверить video["id"].as_str() == Some(video_id) и вернуть 400 при расхождении.
+236. 🟡 [дизайн] Ошибки в projects.rs смешивают русский текст с сырыми деталями SQLx в INTERNAL_SERVER_ERROR - `backend/src/http/mod.rs` -> Логировать e через tracing::error! на сервере и возвращать клиенту фиксированное русскоязычное сообщение 'внутренняя ошибка' без деталей SQLx.
+237. 🟡 [проблема] project_get_handler и project_by_video_handler возвращают голый StatusCode без текста ошибки, в отличие от upsert/list - `backend/src/http/mod.rs` -> Привести все четыре project-хендлера к единому Result<_, (StatusCode, String)> с логированием причины на сервере.
+238. 🟡 [проблема/DRY] Паттерн 'Ok(Some)/Ok(None)/Err -> StatusCode' повторяется идентично в нескольких хендлерах - `backend/src/http/mod.rs` -> Добавить extension-trait для Result<Option<T>, sqlx::Error> с методом .into_response_or_404(), переиспользуемый во всех подобных хендлерах.
 239. 🟠 [баг] library_delete_handler читает entry и удаляет его двумя раздельными операциями без атомарности - `backend/src/handlers/library.rs` -> Изменить Library::remove, чтобы он возвращал Option<MediaEntry> удалённой записи одним атомарным вызовом, и убрать отдельный get.
 240. 🟡 [проблема] library_delete_handler чистит db cache только для kind == 'output', не проверяя cache-записи, ссылающиеся на source-файлы - `backend/src/handlers/library.rs` -> При удалении source дополнительно проверять и очищать cache-записи, у которых закешированный результат ссылается на этот video_id, либо явно задокументировать, что это не требуется, так как cache хранит только output.
-241. 🟡 [проблема] health_handler не проверяет живость хранилища/БД, только статически захваченные при старте флаги ffmpeg/ytdlp - `backend/src/handlers/health.rs` -> Добавить лёгкую проверку доступности storage-директорий и SQLite-пула (например, SELECT 1) прямо в health_handler с коротким таймаутом.
-242. 🟡 [улучшение/OCP] health_handler жёстко завязан на ровно два внешних инструмента - `backend/src/handlers/health.rs` -> Хранить инструменты как Vec<(name, ToolStatus)> в ToolInfo и сериализовать их в цикле, чтобы health_handler не менялся при добавлении нового инструмента.
-243. 🟡 [проблема/ISP] health_handler не различает, какой из статусов 'ok'/'degraded' к чему относится при отсутствии обоих инструментов - `backend/src/handlers/health.rs` -> Добавить массив missingTools в ответ, перечисляющий конкретные недоступные инструменты, чтобы не заставлять клиента сверять два булевых поля.
+241. 🟡 [проблема] health_handler не проверяет живость хранилища/БД, только статически захваченные при старте флаги ffmpeg/ytdlp - `backend/src/http/mod.rs` -> Добавить лёгкую проверку доступности storage-директорий и SQLite-пула (например, SELECT 1) прямо в health_handler с коротким таймаутом.
+242. 🟡 [улучшение/OCP] health_handler жёстко завязан на ровно два внешних инструмента - `backend/src/http/mod.rs` -> Хранить инструменты как Vec<(name, ToolStatus)> в ToolInfo и сериализовать их в цикле, чтобы health_handler не менялся при добавлении нового инструмента.
+243. 🟡 [проблема/ISP] health_handler не различает, какой из статусов 'ok'/'degraded' к чему относится при отсутствии обоих инструментов - `backend/src/http/mod.rs` -> Добавить массив missingTools в ответ, перечисляющий конкретные недоступные инструменты, чтобы не заставлять клиента сверять два булевых поля.
 244. 🟠 [проблема] build_router не имеет fallback-хендлера для несуществующих маршрутов - `backend/src/lib.rs` -> Добавить .fallback(|| async { (StatusCode::NOT_FOUND, Json(json!({"error":"not found"}))) }) для единообразного JSON-ответа на неизвестные маршруты.
 245. 🟠 [проблема] build_router не задаёт лимит тела запроса для JSON-эндпоинтов кроме /api/upload - `backend/src/lib.rs` -> Явно задать .layer(DefaultBodyLimit::max(N)) на уровне общего Router для всех /api/* JSON-маршрутов, чтобы лимит был виден и настраиваем в одном месте.
 246. 🟡 [дизайн] CORS allow_methods не включает PUT/PATCH/OPTIONS, ограничивая будущие эндпоинты - `backend/src/lib.rs` -> Добавить Method::PUT и Method::PATCH заранее либо держать список методов в одной константе, синхронизированной с build_router.
@@ -548,15 +551,15 @@ HTTP-хендлеры и роутинг (`backend/src/handlers/`, `lib.rs`). SRP
 257. 🟡 [проблема] import_handler не проверяет заранее пустой url и порядок start/end до запуска job - `backend/src/handlers/mod.rs` -> Выполнить лёгкую синхронную проверку url (не пустой, парсится как URL) в самом import_handler до set_job/register_cancel и вернуть 400 без создания job.
 258. 🟡 [проблема/DRY] upload_handler и import_handler по-разному вычисляют title файла - `backend/src/handlers/mod.rs` -> Свести оба пути к общей функции resolve_title(source: TitleSource) с явными вариантами Uploaded{original_name} и Downloaded{sources,id}.
 259. 🟡 [баг] upload_handler не ограничивает длину title, беря его напрямую из оригинального имени файла - `backend/src/handlers/mod.rs` -> Обрезать title до разумной длины (например 200 символов) и/или санитизировать управляющие символы перед сохранением в library.
-260. 🟡 [проблема/SRP] project_upsert_handler инлайн реализует fallback-цепочку для имени проекта вместо доменной функции - `backend/src/handlers/projects.rs` -> Вынести резолюцию имени в отдельную чистую функцию resolve_project_name(body, video) -> String, тестируемую независимо от HTTP-слоя.
-261. 🟡 [проблема] project_upsert_handler не ограничивает длину поля name - `backend/src/handlers/projects.rs` -> Добавить проверку name.len() <= разумного предела (например 200 байт) и обрезать/отклонить при превышении, аналогично ensure_project_json_size для video/edit.
+260. 🟡 [проблема/SRP] project_upsert_handler инлайн реализует fallback-цепочку для имени проекта вместо доменной функции - `backend/src/http/mod.rs` -> Вынести резолюцию имени в отдельную чистую функцию resolve_project_name(body, video) -> String, тестируемую независимо от HTTP-слоя.
+261. 🟡 [проблема] project_upsert_handler не ограничивает длину поля name - `backend/src/http/mod.rs` -> Добавить проверку name.len() <= разумного предела (например 200 байт) и обрезать/отклонить при превышении, аналогично ensure_project_json_size для video/edit.
 262. 🟡 [улучшение/DRY] acquire_render_lock_or_cancelled и mark_cancelled создают риск двойной записи отмены при отмене на этапе ожидания render_lock - `backend/src/handlers/mod.rs` -> Консолидировать перевод job в Cancelled в единственном методе AppState (например state.mark_job_cancelled), вызываемом и из cancel_handler, и из mod.rs-хелперов вместо двух параллельных реализаций.
 263. 🟡 [проблема/SRP] job_status_handler не различает 404 для несуществующего job и job, уже вычищенного лимитом recover_jobs - `backend/src/handlers/mod.rs` -> Добавить отдельный код/сообщение (например {"error":"job_expired"}) для случая, когда id валиден по формату UUID, но отсутствует и в памяти, и в БД.
 264. ✅ [баг] sanitize_ext не проверяет конфликт очищенного расширения с зарезервированными именами - **закрыто в раунде 5:** `sanitize_ext` удалён, итоговый suffix выбирается только `safe_upload_extension` из фиксированного allow-list; staging использует непубликуемый `.upload`. `backend/src/handlers/upload.rs`
 265. 🟡 [проблема/DRY] build_router перечисляет пары REST-методов на одном пути отдельными .route() вызовами без общего паттерна регистрации ресурса - `backend/src/lib.rs` -> При росте числа ресурсов ввести небольшой builder resource(path, handlers) для типового набора GET/POST/DELETE, снижающий повторение синтаксиса регистрации.
 266. 🟡 [проблема] spawn_progress_drain не имеет верхней границы по времени и переживает job, если воркер зависает до закрытия tx - `backend/src/handlers/mod.rs` -> Обернуть rx.recv() в tokio::select! с сигналом отмены/таймаутом job_timeout(), чтобы drain гарантированно завершался вместе с воркером.
 267. 🟡 [проблема/SRP] upload_handler комбинирует чтение multipart-полей, запись на диск и пробинг в одном цикле без ранней валидации типа поля - `backend/src/handlers/mod.rs` -> Сначала пройтись по всем полям и выбрать/провалидировать единственное поле файла, затем отдельным шагом выполнить запись+probe, разделяя разбор входа и работу с диском.
-268. 🟡 [проблема/DIP] Хендлеры projects.rs возвращают внутреннюю структуру Project из db.rs напрямую как HTTP DTO - `backend/src/handlers/projects.rs` -> Ввести отдельный ProjectResponse в handlers/projects.rs с явным From<Project>, чтобы изменения схемы БД не автоматически меняли HTTP-ответ.
+268. 🟡 [проблема/DIP] Хендлеры projects.rs возвращают внутреннюю структуру Project из db.rs напрямую как HTTP DTO - `backend/src/http/mod.rs` -> Ввести отдельный ProjectResponse в handlers/projects.rs с явным From<Project>, чтобы изменения схемы БД не автоматически меняли HTTP-ответ.
 269. 🟡 [баг] cors_origins_from_env использует запятую как единственный разделитель без экранирования - `backend/src/lib.rs` -> Задокументировать в комментарии, что CORS_ALLOW_ORIGINS ожидает только plain origin без query/fragment, разделённых запятой, без изменения кода при текущих ограничениях parse_cors_origin.
 
 <a id="module-jobs"></a>
@@ -707,11 +710,11 @@ Persistence layer (`db.rs`, `library.rs`). DIP: два параллельных 
 398. 🟡 [проблема] Колонка schema_version объявлена в схеме projects, но нигде не читается и не задаётся явно приложением. - `backend/src/db.rs` -> Либо использовать schema_version для версионирования формата video/edit JSON, либо убрать колонку, пока не появится нужда.
 399. 🟡 [проблема] idx_render_cache_created_at - мёртвый индекс, ни один запрос не сортирует и не фильтрует по created_at. - `backend/src/db.rs` -> Либо удалить неиспользуемый индекс, либо добавить retention-запрос (см. находку про отсутствие очистки), который реально будет использовать сортировку по created_at.
 400. 🟡 [проблема] Таблица projects не имеет индекса по updated_at, хотя list_projects и get_project_by_video сортируют именно по нему. - `backend/src/db.rs` -> Добавить CREATE INDEX ON projects(updated_at DESC).
-401. 🟡 [улучшение/SRP] GET /api/projects возвращает полные video/edit JSON-блобы для каждого проекта в списке. - `backend/src/handlers/projects.rs` -> Добавить облегчённый list-запрос без video/edit колонок для отображения списка проектов, подгружая полный JSON только по get_project.
+401. 🟡 [улучшение/SRP] GET /api/projects возвращает полные video/edit JSON-блобы для каждого проекта в списке. - `backend/src/http/mod.rs` -> Добавить облегчённый list-запрос без video/edit колонок для отображения списка проектов, подгружая полный JSON только по get_project.
 402. 🟡 [проблема/DIP] Db::open неявно требует, чтобы каталог storage уже существовал, но создаёт его только main.rs. - `backend/src/db.rs` -> Создавать storage-каталог внутри Db::open через tokio::fs::create_dir_all перед подключением, чтобы модуль не зависел от вызывающего кода.
 403. 🟠 [улучшение/DRY] Маппинг kind -> подкаталог продублирован в main.rs отдельным трейтом вместо переиспользования Library::file_path. - `backend/src/main.rs` -> Сделать Library::file_path (или его логику маппинга kind->subdir) публичным методом MediaEntry/Library и переиспользовать в main.rs вместо отдельного трейта.
 404. 🟠 [проблема] cache-hit путь finish_from_render_cache не продлевает жизнь записи в render_cache при повторном использовании. - `backend/src/db.rs` -> При успешном cache-hit обновлять created_at (или отдельный last_used_at) записи render_cache, чтобы TTL считался от последнего использования.
-405. 🟡 [проблема/ISP] Project (только Serialize) заставляет хендлеры парсить входящий JSON вручную через serde_json::Value. - `backend/src/handlers/projects.rs` -> Ввести отдельный ProjectUpsertRequest со строгими полями и Deserialize, заменив ручной разбор serde_json::Value в хендлере.
+405. 🟡 [проблема/ISP] Project (только Serialize) заставляет хендлеры парсить входящий JSON вручную через serde_json::Value. - `backend/src/http/mod.rs` -> Ввести отдельный ProjectUpsertRequest со строгими полями и Deserialize, заменив ручной разбор serde_json::Value в хендлере.
 406. 🟡 [проблема] Db::open не задаёт synchronous pragma, WAL с дефолтным synchronous=FULL избыточно тормозит запись для локального инструмента. - `backend/src/db.rs` -> Добавить .synchronous(SqliteSynchronous::Normal) к SqliteConnectOptions в Db::open.
 407. 🟡 [проблема] upsert_project не ограничивает длину name, хотя video/edit ограничены MAX_PROJECT_JSON_BYTES на уровне хендлера. - `backend/src/db.rs` -> Добавить проверку длины name (например, до нескольких сотен символов) либо в хендлере, либо как защиту внутри upsert_project.
 408. 🟡 [баг] cancel_open_job персистит job через persist_job (INSERT ON CONFLICT), что перегенерирует created_at=now даже для уже существующей записи при отмене. - `backend/src/state.rs` -> Передавать в db.persist_job исходный job.created_at (после добавления этого поля в Job/DB, см. отдельную находку про created_at) вместо всегда использования now при INSERT.
@@ -780,7 +783,7 @@ API contract и ошибки (`model.rs` DTO, ответы хендлеров, `
 459. 🟠 [проблема/DRY] Ручной json!() вместо typed DTO во всех async job-хендлерах - `backend/src/handlers/mod.rs` -> Добавить в model.rs структуры VideoInfo и EditResult с Serialize и заменить json!() на них в обоих хендлерах.
 460. ✅ [проблема/DIP] frontend угадывал форму ошибки по HTTP-статусу - **закрыто в раунде 8:** один parser читает `{error, code}`, сохраняет text fallback и создаёт typed `ApiError`. `frontend/src/api.ts`
 461. 🟠 [проблема] Job.result типизирован как serde_json::Value / TS unknown — нет единой формы результата job - `backend/src/model.rs` -> Ввести серверный enum JobResult { Video(VideoInfo), Output(EditResult) } с serde(untagged) и зеркальный union-тип в types.ts вместо unknown.
-462. 🟡 [проблема] GET /api/health всегда отвечает 200, даже когда status: "degraded" - `backend/src/handlers/health.rs` -> Возвращать (StatusCode::SERVICE_UNAVAILABLE, Json(...)) при status == "degraded", чтобы код ответа и тело были согласованы.
+462. 🟡 [проблема] GET /api/health всегда отвечает 200, даже когда status: "degraded" - `backend/src/http/mod.rs` -> Возвращать (StatusCode::SERVICE_UNAVAILABLE, Json(...)) при status == "degraded", чтобы код ответа и тело были согласованы.
 463. 🟡 [проблема] health-эндпоинт не используется фронтендом вовсе - `frontend/src/api.ts` -> Добавить getHealth() в api.ts и показывать статус в UI (например баннер при status !== "ok").
 464. 🟡 [проблема] Нет версионирования API — все пути живут под /api без /v1 - `backend/src/lib.rs` -> Либо задокументировать as-is для локального MVP как осознанное решение, либо ввести /api/v1 префикс до появления второго клиента контракта.
 465. 🟠 [проблема/OCP] EditRequest — одна плоская структура на 27+ полей без группировки по фиче - `backend/src/model.rs` -> Разбить EditRequest на вложенные группы с #[serde(flatten)] (TimingOptions, ColorOptions, ExportOptions), сохранив совместимость сериализации.
@@ -794,29 +797,29 @@ API contract и ошибки (`model.rs` DTO, ответы хендлеров, `
 473. 🟡 [проблема] getProjectByVideo — единственное место во фронте, где 404 трактуется как валидный null-результат - `frontend/src/api.ts` -> Ввести общий helper fetchOrNull/fetchOkOr404, явно кодирующий семантику "404 = ожидаемое отсутствие" одним способом для всех трёх мест.
 474. 🟠 [проблема] ProjectDto.edit — Partial<EditState> во фронте, но бэкенд хранит edit как serde_json::Value без проверки формы - `backend/src/db.rs` -> Переиспользовать EditRequest (или его подмножество) как typed Deserialize для поля edit в project_upsert_handler вместо произвольного Value.
 475. 🟡 [проблема] Project.video — тоже нетипизированный Value, дублирующий VideoInfo без проверки полей - `backend/src/db.rs` -> Десериализовать video как typed VideoInfo DTO (после его введения по пункту дублирования json!()) вместо серого Value.
-476. 🟡 [проблема] MAX_PROJECT_JSON_BYTES = 64KB — magic number без сообщения клиенту о лимите заранее - `backend/src/handlers/projects.rs` -> Экспортировать лимит в GET /api/health или отдельный /api/config эндпоинт, чтобы фронтенд мог предупреждать до отправки большого edit-состояния (например при работе с очень длинным списком segments).
+476. 🟡 [проблема] MAX_PROJECT_JSON_BYTES = 64KB — magic number без сообщения клиенту о лимите заранее - `backend/src/http/mod.rs` -> Экспортировать лимит в GET /api/health или отдельный /api/config эндпоинт, чтобы фронтенд мог предупреждать до отправки большого edit-состояния (например при работе с очень длинным списком segments).
 477. 🟡 [проблема/DRY] Формирование URL /files/sources/... и /files/outputs/... строковой интерполяцией в нескольких местах бэкенда - `backend/src/handlers/mod.rs` -> Ввести helper fn source_url(filename) / output_url(filename) в handlers/mod.rs и переиспользовать во всех трёх местах.
 478. 🟡 [проблема] pollJob сравнивает статус со строковыми литералами вручную вместо exhaustive switch по JobStatus - `frontend/src/api.ts` -> Переписать на switch (job.status) с exhaustive проверкой через never в default, что заставит компилятор упасть при добавлении нового статуса без обработки.
 479. 🟡 [проблема] Захардкоженный интервал поллинга 500мс в pollJob не настраивается и не учитывает backoff - `frontend/src/api.ts` -> Ввести нарастающий интервал (например 500мс -> 2с после первых 10 тиков) или вынести константу с комментарием, почему выбрано именно 500мс.
 480. 🟡 [проблема] BACKEND_DOWN — единственное клиентское сообщение об ошибке, зашитое на русском в api.ts, тогда как остальные тексты приходят с сервера - `frontend/src/api.ts` -> Задокументировать BACKEND_DOWN как осознанное клиентское исключение (единственный случай, когда сервер физически недостижим и не может прислать текст), не смешивая с остальными серверными сообщениями.
 481. 🟡 [проблема] ResultInfo в types.ts не имеет соответствующего Rust DTO — форма выведена только из ручного json!() в edit_handler - `frontend/src/types.ts` -> После введения typed EditResult DTO (см. отдельный пункт про json!()) держать ResultInfo как его прямое зеркало и проверять расхождение в CI-тесте контракта, если такой существует.
 482. 🟠 [проблема/ISP] Job — одна структура на все статусы; result/error/progress/stage валидны только в подмножестве состояний - `backend/src/model.rs` -> Смоделировать как enum JobState { Pending, Running{progress,stage}, Done{result}, Error{message}, Cancelled, Interrupted } с serde(tag="status") вместо плоской структуры с опциональными полями.
-483. 🟠 [проблема] POST /api/projects принимает произвольный serde_json::Value без typed DTO для тела запроса - `backend/src/handlers/projects.rs` -> Ввести struct ProjectUpsertRequest { video_id: String, name: Option<String>, video: Value, edit: Value } с Deserialize и убрать ручное индексирование Value.
+483. 🟠 [проблема] POST /api/projects принимает произвольный serde_json::Value без typed DTO для тела запроса - `backend/src/http/mod.rs` -> Ввести struct ProjectUpsertRequest { video_id: String, name: Option<String>, video: Value, edit: Value } с Deserialize и убрать ручное индексирование Value.
 484. 🟡 [проблема] CORS allow_methods не включает PATCH/PUT, ограничивая эволюцию контракта на уровне инфраструктуры - `backend/src/lib.rs` -> Либо оставить as-is как осознанный минимализм MVP, либо добавить Method::PATCH заранее, если планируется частичное обновление проектов.
 485. 🟡 [баг] Ошибка «source video not found» из tools::find_source долетает до job.error на английском - `backend/src/handlers/mod.rs` -> Обернуть ошибку find_source в edit_handler через .map_err в русское сообщение ("источник не найден: {video_id}") перед пробросом в outcome.
 486. 🟡 [проблема/DRY] import_handler и edit_handler дублируют последовательность finish_job/drain/tx, но edit_handler дополнительно пишет в render cache только внутри себя - `backend/src/handlers/mod.rs` -> Вынести общий хвост в helper fn finalize_job(st, jid, tx, drain, outcome, kind) -> bool, а cache_put оставить отдельным вызовом только в edit-пути после helper'а.
 487. 🟠 [баг] upload_handler возвращает 400 BAD_REQUEST на ошибку чтения multipart-поля, даже если она вызвана обрывом соединения клиента - `backend/src/handlers/mod.rs` -> Различать multipart::Error по типу (обрыв потока -> просто прервать без ответа/499-подобная семантика, реальная ошибка формата -> 400).
-488. ✅ [проблема/SRP] project_upsert_handler смешивал parsing/name/persistence - **закрыто в раунде 8:** `parse_project_body` и `resolve_project_name` возвращают `ParsedProject`, handler только вызывает repository. `backend/src/handlers/projects.rs`
-489. 🟡 [баг] ensure_project_json_size сериализует JSON дважды на каждый upsert без необходимости в успешном пути - `backend/src/handlers/projects.rs` -> Считать размер по одной комбинированной сериализации {video, edit} или переиспользовать уже посчитанные байты для последующей записи в БД вместо повторной сериализации.
+488. ✅ [проблема/SRP] project_upsert_handler смешивал parsing/name/persistence - **закрыто в раунде 8:** `parse_project_body` и `resolve_project_name` возвращают `ParsedProject`, handler только вызывает repository. `backend/src/http/mod.rs`
+489. 🟡 [баг] ensure_project_json_size сериализует JSON дважды на каждый upsert без необходимости в успешном пути - `backend/src/http/mod.rs` -> Считать размер по одной комбинированной сериализации {video, edit} или переиспользовать уже посчитанные байты для последующей записи в БД вместо повторной сериализации.
 490. 🟡 [проблема/DIP] Формат Job.error — plain String — не различает пользовательскую ошибку валидации от внутренней ошибки ffmpeg/IO - `backend/src/model.rs` -> Добавить в Job поле error_kind: Option<ErrorKind> (Validation | Internal) либо разделить сообщение на user-facing и internal (логируемое отдельно через tracing) в finish_job.
 491. 🟡 [проблема/DRY] getJob и pollJob не переиспользуют список терминальных статусов, уже определённый на бэкенде через JobStatus::is_terminal - `frontend/src/api.ts` -> Добавить в types.ts функцию isTerminalStatus(status: JobStatus): boolean и использовать её и в pollJob, и в любом другом месте фронта, проверяющем завершённость job.
 492. 🟠 [баг] cancelJob проглатывает даже успешный не-2xx ответ (404/409 CancelJobOutcome), не давая вызывающему коду отличить исходы - `frontend/src/api.ts` -> Вернуть из cancelJob Promise<'cancelled'|'not_found'|'already_finished'|'network_error'> вместо void, разобрав тело/статус ответа.
 493. 🟡 [проблема/OCP] normalize_edit_request жёстко перечисляет пары (поле, русское сообщение) построчно вместо декларативного описания - `backend/src/handlers/mod.rs` -> Осознанно оставить как есть для текущего размера EditRequest (27 полей управляемо) либо ввести макрос/массив описаний только если список продолжит расти.
 494. 🟡 [проблема/ISP] ProjectDto на фронте требует video: VideoInfo целиком, хотя store.ts передаёт в saveProject произвольный state.video без структурной проверки - `frontend/src/api.ts` -> Типизировать параметр saveProject как { videoId: string; name?: string; video: VideoInfo; edit: Partial<EditState> } вместо Record<string, unknown>, чтобы TS проверял вызывающий код, а не только ответ.
-495. 🟠 [баг] project_get_handler (GET /api/projects/:id) и project_list_handler/getProjects/deleteProject объявлены и экспортированы, но не используются нигде на фронтенде - `backend/src/handlers/projects.rs` -> Либо удалить неиспользуемые эндпоинты/функции, либо подключить их к UI (например список сохранённых проектов), если такая фича планируется.
+495. 🟠 [баг] project_get_handler (GET /api/projects/:id) и project_list_handler/getProjects/deleteProject объявлены и экспортированы, но не используются нигде на фронтенде - `backend/src/http/mod.rs` -> Либо удалить неиспользуемые эндпоинты/функции, либо подключить их к UI (например список сохранённых проектов), если такая фича планируется.
 496. 🟡 [проблема/SRP] finish_from_render_cache совмещает чтение кэша, валидацию имени файла, проверку существования файла на диске и обновление статуса job в одной функции - `backend/src/handlers/mod.rs` -> Вынести валидацию имени + существования файла в отдельную fn cached_output_is_usable(st, filename) -> bool и оставить в finish_from_render_cache только оркестрацию.
 497. 🟡 [проблема] stage: Option<String> в Job — произвольная строка без enum - `backend/src/model.rs` -> Ввести enum JobStage { Queued, Downloading, Processing } с #[serde(rename_all="lowercase")] и использовать его вместо строковых литералов во всех трёх местах присвоения.
-498. 🟡 [проблема] MAX_PROJECT_JSON_BYTES проверяется отдельно для video и edit по 64KB каждый, но нет предела на итоговый размер строки, которую пишет upsert_project - `backend/src/handlers/projects.rs` -> Добавить дополнительную проверку суммарного размера (video.len() + edit.len() <= MAX_PROJECT_TOTAL_BYTES) в project_upsert_handler.
+498. 🟡 [проблема] MAX_PROJECT_JSON_BYTES проверяется отдельно для video и edit по 64KB каждый, но нет предела на итоговый размер строки, которую пишет upsert_project - `backend/src/http/mod.rs` -> Добавить дополнительную проверку суммарного размера (video.len() + edit.len() <= MAX_PROJECT_TOTAL_BYTES) в project_upsert_handler.
 499. 🟡 [баг] deleteLibraryItem и deleteProject трактуют 404 как success молча, cancelJob не проверяет статус вовсе — три DELETE/POST-подобные мутации обрабатывают отсутствие ресурса по-разному - `frontend/src/api.ts` -> Вынести общий helper типа async function deleteOrNotFound(path): Promise<void> и использовать его в обоих DELETE-вызовах; для cancelJob явно решить, какой из трёх паттернов уместен, и привести к нему же.
 
 <a id="module-frontend-store"></a>
@@ -833,7 +836,7 @@ Frontend state/store (`store.ts`, `toasts.ts`). God-module: SRP через до�
 506. 🟠 [проблема/DIP] Автосейв проекта построен на трёх module-level mutable let-переменных с неявными состояниями гонки - `frontend/src/store.ts` -> Свести три переменные в один объект/enum состояния autosaveState = 'idle'|'restoring'|'restored' с явными переходами.
 507. 🟡 [баг] savePreset использует name как ключ идентичности без нормализации регистра - `frontend/src/store.ts` -> Нормализовать ключ сравнения через toLowerCase() при поиске совпадения, сохраняя оригинальный регистр для отображения.
 508. 🟡 [баг] loadLibrary молча глотает ошибку без уведомления пользователя - `frontend/src/store.ts` -> Добавить toast('error', ...) в catch loadLibrary для единообразия с остальными сетевыми операциями.
-509. 🟠 [проблема] applySnapshot перезаписывает весь state.edit целиком через JSON.parse при undo/redo - `frontend/src/store.ts` -> Использовать Object.assign(state.edit, JSON.parse(json)) с явным пересозданием вложенных объектов, чтобы сохранить единый реактивный корень.
+509. ✅ [исправлено №814] `applySnapshot` и full-state `JSON.parse` удалены; undo/redo применяет field-level commands, а nested values клонируются внутри history boundary. `frontend/src/domain/history.ts`, `frontend/src/store.ts`
 510. 🟡 [проблема/DRY] toast() вызывается с разнородными форматами сообщений без единой точки форматирования ошибок - `frontend/src/store.ts` -> Ввести helper errorText(e: unknown): string и использовать его во всех catch-блоках вместо повторяющегося тернарника.
 511. 🟡 [дизайн] Toast всегда автозакрывается через фиксированные 4 секунды независимо от длины текста и вида - `frontend/src/toasts.ts` -> Добавить необязательный параметр durationMs (или вычислять из text.length) и увеличить дефолт для kind='error'.
 512. 🟡 [проблема] dismissToast использует findIndex+splice вместо filter, а nextId — незащищённая module-level переменная - `frontend/src/toasts.ts` -> Заменить на toasts.splice(0, toasts.length, ...toasts.filter(t => t.id !== id)) или просто оставить filter-присваивание и добавить экспортируемый resetToasts() для тестов.
@@ -1054,7 +1057,7 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 703. 🟡 [улучшение] Логи пишутся в текстовом формате без структурированного JSON-вывода - `backend/src/main.rs` -> Добавить опциональный JSON-форматтер (tracing_subscriber::fmt().json()), включаемый через переменную окружения LOG_FORMAT=json.
 704. 🟡 [проблема] Нет trace-идентификатора на уровне job — лог-строки одной задачи не сопоставить друг с другом - `backend/src/handlers/mod.rs` -> Обернуть обработку каждой задачи в tracing::info_span!("job", job_id = %id) при её запуске.
 705. 🟡 [проблема] Нет метрик Prometheus/OpenMetrics для очереди задач и рендеров - `backend/src/main.rs` -> Подключить metrics-exporter-prometheus и отдавать /metrics с счётчиками активных/завершённых/упавших задач.
-706. 🟠 [проблема] /api/health не проверяет реальное состояние SQLite или диска, только статичные флаги ffmpeg/ytdlp - `backend/src/handlers/health.rs` -> Добавить в health_handler лёгкий SELECT 1 к Db и проверку доступности STORAGE_DIR на запись, включив их в ответ.
+706. 🟠 [проблема] /api/health не проверяет реальное состояние SQLite или диска, только статичные флаги ffmpeg/ytdlp - `backend/src/http/mod.rs` -> Добавить в health_handler лёгкий SELECT 1 к Db и проверку доступности STORAGE_DIR на запись, включив их в ответ.
 707. 🟠 [баг] Доступность ffmpeg/yt-dlp проверяется один раз при старте и никогда не переоценивается - `backend/src/main.rs` -> Переоценивать доступность инструментов периодически (например раз в 5 минут) или прямо в health_handler с троттлингом.
 708. 🟠 [проблема] docker-compose.yml не задаёт ресурсные лимиты (memory/cpu) ни для backend, ни для frontend - `docker-compose.yml` -> Добавить mem_limit/cpus (или deploy.resources.limits в compose v3) для обоих сервисов.
 709. 🟠 [проблема] docker-compose не пробрасывает MAX_CONCURRENT_JOBS/JOB_TIMEOUT_SECS/MAX_UPLOAD_BYTES/CORS_ALLOW_ORIGINS — все лимиты жёстко на дефолтах контейнера - `docker-compose.yml` -> Добавить эти переменные в environment (или через env_file) с возможностью переопределения через .env при деплое.
@@ -1127,8 +1130,8 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 770. 🟡 [проблема/SRP] clamp_rect_to_source не обеспечивает чётность w/h в общем случае, только для источников с обеими сторонами >= 2 - `backend/src/handlers/mod.rs` -> Централизовать форсирование чётности в одном месте (либо только normalize_edit_request, либо только video_filters), не дублируя в обоих.
 771. 🟡 [проблема/DRY] Job.stage строковые литералы 'queued'/'downloading'/'processing' захардкожены в handlers/mod.rs без общего источника - `backend/src/handlers/mod.rs` -> Ввести JobStage enum (см. отдельный пункт про Job.stage) и заменить строковые литералы на его варианты.
 772. 🟡 [проблема/OCP] output_ext и push_video_codec независимо перечисляют один и тот же список форматов - `backend/src/tools/args.rs` -> Определить единый Format enum с методом .extension() и .video_codec_kind(), чтобы оба свойства выводились из одного описания формата.
-773. 🟠 [проблема/SRP] project_upsert_handler валидирует форму project JSON вручную через Value-индексацию вместо десериализации в типизированный DTO - `backend/src/handlers/projects.rs` -> Определить `#[derive(Deserialize)] struct ProjectUpsertRequest { video_id: String, video: Value, edit: Value, name: Option<String> }` и заменить Json<Value> на Json<ProjectUpsertRequest>.
-774. 🟡 [проблема/SRP] ensure_project_json_size сериализует video/edit ещё раз только для проверки размера, а upsert_project сериализует их снова - `backend/src/handlers/projects.rs` -> Сериализовать video/edit один раз в handler, передать готовые строки в Db::upsert_project (изменив сигнатуру на &str) и проверять их len() напрямую.
+773. 🟠 [проблема/SRP] project_upsert_handler валидирует форму project JSON вручную через Value-индексацию вместо десериализации в типизированный DTO - `backend/src/http/mod.rs` -> Определить `#[derive(Deserialize)] struct ProjectUpsertRequest { video_id: String, video: Value, edit: Value, name: Option<String> }` и заменить Json<Value> на Json<ProjectUpsertRequest>.
+774. 🟡 [проблема/SRP] ensure_project_json_size сериализует video/edit ещё раз только для проверки размера, а upsert_project сериализует их снова - `backend/src/http/mod.rs` -> Сериализовать video/edit один раз в handler, передать готовые строки в Db::upsert_project (изменив сигнатуру на &str) и проверять их len() напрямую.
 775. 🟠 [проблема/SRP] Db::upsert_project делает SELECT id, затем UPDATE/INSERT, затем ещё раз SELECT * без единой транзакции - `backend/src/db.rs` -> Обернуть три запроса в одну транзакцию (pool.begin()) или использовать один INSERT ... ON CONFLICT(video_id) DO UPDATE ... RETURNING *.
 776. 🟡 [проблема/DRY] row_to_job и row_to_project — почти идентичный шаблон ручного маппинга SqliteRow -> struct, повторённый для каждой таблицы - `backend/src/db.rs` -> Вынести sqlx::FromRow (derive или ручной impl) для Job/Project вместо отдельных функций row_to_*, либо helper `fn json_column<T>(row, name) -> Result<T>`.
 777. 🟡 [проблема/ISP] EditRequest сериализуется в render_cache_key со всеми полями включая video_id, что делает кэш непереносимым между источниками с идентичным edit - `backend/src/handlers/mod.rs` -> Если нужен переносимый кэш, хэшировать video_id отдельно от содержимого edit и учитывать это явно в схеме ключа; иначе явно задокументировать, что кэш всегда per-source.
@@ -1158,7 +1161,7 @@ SOLID/DRY-раунда. Общий синхронизированный набо
 | Волна | Статус | IDs |
 |---:|---|---|
 | 1 | ✅ | 790, 824, 828, 829, 831, 844, 846, 847, 850, 854 |
-| 2 | ☐ | 784, 786, 787, 803, 814, 817, 820, 823, 825, 826 |
+| 2 | ✅ | 784, 786, 787, 803, 814, 817, 820, 823, 825, 826 |
 | 3 | ☐ | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 |
 | 4 | ☐ | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 |
 | 5 | ☐ | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 |
@@ -1174,12 +1177,22 @@ manifest управляет UI,
 а upload проходит private staging/probe/publish pipeline. Frontend и transport
 границы закреплены lint, bundle и cross-browser regression gates.
 
+Волна 2 добавила чистый `backend::domain`: filter DAG, media-service registry,
+stable timeline identity, normalized probe metadata, immutable geometry и
+keyframes не зависят от Axum/Tokio/process/SQLite. `tools` стал adapter boundary:
+ffprobe нормализуется в `ProbeResult`, а линейные ffmpeg chains проходят graph
+validation до spawn. На frontend command history и branded coordinate spaces
+подключены к реальным crop/censor gestures. HTTP system/projects выделены в
+port-based routers; policy catalog фиксирует порядок controls. Текущая
+authorization policy остаётся local-only boundary: публичная auth/ownership всё
+ещё отдельный P0, а не скрытая часть этой волны.
+
 ### A. NLE и media pipeline (784-793)
 
-784. 🟠 [архитектура/FFmpeg] `Timeline` описан как цель, но у компилятора нет канонического типизированного media DAG - `backend/src/domain/filter_graph.rs` (target) -> Ввести `FilterGraph<Node, Pad, Edge>` с типами audio/video, topological validation, стабильной сериализацией и DOT/snapshot output; невалидная связь должна падать до запуска ffmpeg.
+784. ✅ [архитектура/FFmpeg] Реализован `FilterGraph` DAG с audio/video pads, required/single-input и topological validation, стабильным JSON/DOT; текущие ffmpeg chains сериализуются через этот граф до spawn. `backend/src/domain/filter_graph.rs`, `backend/src/tools/args.rs`
 785. 🟠 [архитектура/GStreamer] Preview управляется набором DOM/store-команд без явной модели жизненного цикла и media clock - `frontend/src/features/player/previewSession.ts` (target) -> Ввести состояния `Idle/Ready/Paused/Playing/Draining/Failed`, монотонный clock и таблицу допустимых переходов; race `seek/load/play` покрыть fake-time тестами.
-786. 🟡 [DIP/MLT] Целевой pipeline всё ещё описан через конкретный ffmpeg compiler, а роли источника, эффекта, перехода и потребителя не являются портами - `backend/src/domain/media_pipeline.rs` (target) -> Определить узкие `Producer/Filter/Transition/Consumer` contracts и registry адаптеров; домен не импортирует CLI/process типы.
-787. 🟠 [домен/Olive] Будущий timeline не фиксирует идентичность клипов и операций, поэтому reorder/undo/migration могут ломать ссылки - `backend/src/domain/timeline.rs` (target) -> Добавить стабильные `ClipId`/`OperationId` и immutable operation graph; тесты доказывают сохранение ссылок после reorder, undo и serialize/deserialize.
+786. ✅ [DIP/MLT] `Producer/Filter/Transition/Consumer` стали независимыми ports с role-scoped registry/manifest; модуль не импортирует CLI, process или async runtime types. `backend/src/domain/media_pipeline.rs`
+787. ✅ [домен/Olive] Стабильные `ClipId`/`OperationId`, immutable operation map и invertible move command сохраняют ссылки после reorder, undo и serde round-trip. `backend/src/domain/timeline.rs`
 788. 🟡 [совместимость/OpenShot] Пункт о schema versioning не задаёт проверяемую политику эволюции проектов - `backend/tests/fixtures/projects/` (target) -> Хранить golden fixture каждой версии, мигрировать в latest и делать reopen/re-save test; отдельно зафиксировать reject/preserve policy для неизвестных операций.
 789. 🟠 [perf/UX/Kdenlive] Для тяжёлых исходников нет proxy-media workflow - `backend/src/analysis/proxy.rs` (target) -> Сделать proxy производным артефактом по checksum источника с фоновой генерацией, relink и прозрачной заменой на full-resolution при export; удаление proxy не должно затрагивать проект.
 790. ✅ [контракт/Shotcut] Реализован runtime manifest encoders/muxers/filters/hardware с tool fingerprint и reason для unavailable; frontend блокирует неподдерживаемые форматы, кодеки и фильтры. `backend/src/capabilities.rs`, `frontend/src/components/`
@@ -1198,7 +1211,7 @@ manifest управляет UI,
 800. 🟡 [OCP/libjxl] Добавление нового still-кодека потребует менять домен и UI одновременно - `backend/src/ports/still_encoder.rs` (target) -> Ввести `StillImageEncoder` + capability descriptor; JPEG XL или другой адаптер подключается без изменения `EditPlan`, а UI строится из manifest №790.
 801. 🟠 [валидация/libheif] Container brand, image item и codec смешиваются в одной строке format - `backend/src/domain/still_container.rs` (target) -> Типизировать эти три уровня отдельно и отклонять unsupported HEIF/AVIF combinations синхронно, до process spawn.
 802. 🟡 [идея/SRT] Remote/live ingest при добавлении протокола рискует проникнуть в editor core - `backend/src/ingest/srt.rs` (target) -> Оформить внешний ingest adapter с reconnect/latency/clock budgets, который выдаёт обычный immutable source artifact; домен редактора не знает сетевой протокол.
-803. 🟠 [контракт/PyAV] Probe metadata остаётся частично сырым JSON и теряет time-base/container semantics - `backend/src/domain/media_probe.rs` (target) -> Нормализовать streams, dispositions, frame rate, time base, color и rotation в `ProbeResult`; ffprobe/PyAV-подобные реализации проходят один contract corpus.
+803. ✅ [контракт/PyAV] `ProbeResult` сохраняет container aliases, streams, dispositions, frame/time base, color и rotation; ffprobe adapter и raw fixture corpus проверяют один normalized contract. `backend/src/domain/media_probe.rs`, `fixtures/media-probe/`
 
 ### C. Playback и streaming (804-813)
 
@@ -1215,25 +1228,25 @@ manifest управляет UI,
 
 ### D. Editor interactions и canvas (814-823)
 
-814. 🟠 [домен/Excalidraw] История хранит JSON snapshots всего `EditState`, что плохо масштабируется и скрывает семантику изменений - `frontend/src/domain/history.ts` (target) -> Команды получают `apply/invert/merge` и transaction boundary; тесты проверяют coalescing drag и точный undo без сериализации чужого состояния.
+814. ✅ [домен/Excalidraw] История хранит field-level `PatchCommand` с `apply/invert/merge`; crop/censor gestures имеют explicit transaction boundary и один undo step без full-state JSON. `frontend/src/domain/history.ts`, `frontend/src/store.ts`
 815. 🟠 [UI/tldraw] Selection/crop/censor/pan/trim конкурируют за pointer events без общей tool state machine - `frontend/src/features/canvas/toolMachine.ts` (target) -> Ввести конечные состояния и один pointer-capture lifecycle; unmount/cancel/lost-capture завершают gesture идемпотентно.
 816. 🟡 [дизайн/Penpot] CSS tokens существуют как значения, но не как versioned public contract компонентов - `frontend/src/ui/tokens.css`, `tokens.test.ts` (target) -> Зафиксировать semantic color/space/type/motion tokens, states и contrast assertions; feature CSS не использует raw palette values.
-817. 🟠 [корректность/Fabric.js] Preview pixels, source pixels, normalized rect и export pixels не различаются типами - `frontend/src/domain/geometry.ts` (target) -> Добавить branded coordinate spaces и `Transform2D`; property tests проверяют round-trip, resize, rotation и letterbox mapping.
+817. ✅ [корректность/Fabric.js] Source/preview/export/normalized coordinates различаются branded types; immutable `Transform2D` обслуживает overlay mapping, inverse/vector/rect transforms и matrix round-trip tests. `frontend/src/domain/geometry.ts`, `frontend/src/components/RectOverlay.vue`
 818. 🟡 [UI/Konva] Media, guides, overlays и handles находятся в одной event/render плоскости - `frontend/src/features/canvas/scene.ts` (target) -> Разделить scene layers, hit testing оставить только интерактивному слою; visual layer не может перехватывать pointer.
 819. 🟡 [perf/PixiJS] Переход на GPU для waveform/overlays пока не имеет порога окупаемости - `frontend/bench/canvas/` (target) -> Сравнить DOM/Canvas2D/WebGL на длинной timeline и low-end device; WebGL вводится только при заранее заданном выигрыше и с fallback/context-loss test.
-820. 🟠 [домен/Paper.js] Геометрические clamp/intersection/bounds распределены между Rust и Vue - `shared geometry corpus`, `frontend/src/domain/geometry.ts` (target) -> Создать immutable `Rect/Point/Transform` kernel и общий fixture corpus для Rust/TS; fuzz проверяет containment и отсутствие NaN.
+820. ✅ [домен/Paper.js] Rust/TS получили immutable `Point/Rect/Transform` kernels и общий fixture corpus; обе стороны проверяют containment, inverse, singular/NaN rejection и fuzz-like inputs. `backend/src/domain/geometry.rs`, `frontend/src/domain/geometry.ts`, `fixtures/geometry/`
 821. 🟡 [OCP/TUI Image Editor] Каждый новый инструмент потребует вручную менять panel, shortcuts, availability и serialization - `frontend/src/features/tools/registry.ts` (target) -> Ввести декларативный descriptor `{ id, icon, shortcut, capability, editor, serializer }`; registry валидирует уникальность ID/shortcut.
 822. 🟡 [diagnostics/xyflow] Media DAG трудно объяснить без чтения compiler output - `frontend/src/dev/renderGraph/` (target) -> Добавить только в dev-сборку visualizer nodes/edges/cost/cache-hit/validation error; production bundle не содержит этот feature.
-823. 🟡 [домен/Motionity] Для анимации нет независимой модели keyframes/easing/interpolation - `backend/src/domain/keyframes.rs` (target) -> Ввести `KeyframeTrack<T>` с deterministic sampling и отдельными preview/ffmpeg adapters; значения между keyframes покрыть golden corpus.
+823. ✅ [домен/Motionity] `KeyframeTrack<T>` валидирует time base/ticks/finite values, семплирует hold/linear/cubic детерминированно и разделяет preview/ffmpeg adapters; ffmpeg expression закреплён golden test. `backend/src/domain/keyframes.rs`
 
 ### E. Rust backend (824-833)
 
 824. ✅ [надёжность/Tokio] Root `CancellationToken` + `TaskTracker` владеют background workers; SIGINT/SIGTERM закрывают intake, HTTP и tasks имеют bounded wait, process runner эскалирует process groups. `backend/src/runtime.rs`, `backend/src/main.rs`
-825. 🟠 [DIP/Axum] Router tests всё ещё требуют конкретный `AppState` с БД/filesystem - `backend/src/http/mod.rs` (target) -> Хендлеры зависят от узких service ports, а contract tests поднимают `Router` с in-memory fakes; HTTP DTO/status остаются одинаковыми.
-826. 🟠 [архитектура/Tower] Request ID, body limit, auth, rate limit, timeout и tracing рискуют подключаться в разном порядке по маршрутам - `backend/src/http/policy.rs` (target) -> Описать route classes и один ordered middleware stack; snapshot test фиксирует порядок и исключения для health/files.
+825. ✅ [DIP/Axum] System/project endpoints собираются отдельными routers поверх `SystemPort`/`ProjectPort`; contract tests используют runtime port/in-memory fake без `AppState`, БД и filesystem, production сохраняет прежние DTO/status. `backend/src/http/mod.rs`, `backend/src/http/ports.rs`
+826. ✅ [архитектура/Tower] Route catalog фиксирует классы и единый порядок request ID/body/auth/rate/timeout/tracing; одна функция собирает outer layers, snapshot проверяет policy/enforcement. Auth пока явно `LocalDeploymentBoundary`, поэтому public auth остаётся P0. `backend/src/http/policy.rs`
 827. 🟡 [проектирование/Actix Web] Смена HTTP framework может быть предложена без доказанного bottleneck - `backend/benches/http_baseline.rs` (target) -> Зафиксировать Axum throughput/p50/p95/p99/RSS для upload, polling и range response; framework rewrite допустим только после профиля и ADR.
 828. ✅ [perf/Hyper] TCP regressions доказывают incremental upload без prebuffer объявленного тела, cleanup после disconnect и независимую отзывчивость API при slow Range reader. `backend/tests/http_backpressure.rs`
-829. ✅ [контракт/Serde] Wire DTO strict и versioned (`schemaVersion: 1`), project envelope strict, а вложенные persisted `video`/`edit` migration-tolerant; negative corpus покрывает обе policy. `backend/src/model.rs`, `backend/src/handlers/projects.rs`, `backend/tests/api.rs`
+829. ✅ [контракт/Serde] Wire DTO strict и versioned (`schemaVersion: 1`), project envelope strict, а вложенные persisted `video`/`edit` migration-tolerant; negative corpus покрывает обе policy. `backend/src/model.rs`, `backend/src/http/mod.rs`, `backend/tests/api.rs`
 830. 🟡 [quality/SQLx] Query/schema drift обнаруживается только при выполнении теста с конкретной БД - `.github/workflows/ci.yml` (target) -> Добавить offline metadata и `cargo sqlx prepare --check`; migration + query change без обновления metadata проваливает CI.
 831. ✅ [observability/tracing] Зафиксированы `request -> job -> process` spans, CORS-visible request ID, path-only HTTP fields и redaction URL/query/absolute paths; JSON capture с canary доказывает отсутствие секрета. `backend/src/telemetry.rs`, `backend/src/privacy.rs`
 832. 🟠 [perf/Rayon] Будущие thumbnail/waveform/hash вычисления могут блокировать Tokio workers - `backend/src/runtime/cpu_pool.rs` (target) -> Выделить bounded CPU executor с queue budget/cancellation и метриками saturation; async runtime thread не выполняет CPU-heavy closure.
@@ -1310,8 +1323,9 @@ manifest управляет UI,
 
 ```
 http/                 тонкий HTTP-слой
-  mod.rs              routes(): Router из под-роутеров
-  import.rs edit.rs jobs.rs library.rs projects.rs health.rs
+  mod.rs              port-based system/projects routers (✅), затем остальные ресурсы
+  ports.rs policy.rs  service contracts + route control catalog (✅)
+  import.rs edit.rs jobs.rs library.rs   (следующие extraction slices)
   dto.rs              типизированные тела ответов (Serialize), конец ручным json!{}
   error.rs            AppError + IntoResponse  (маппинг кодов в одном месте)
         │
@@ -1428,15 +1442,15 @@ components/        EditPanel = тонкий контейнер + секции:
 
 | Область | Сейчас | Цель | Статус |
 |---|---|---|---|
-| ffmpeg-аргументы | `tools/args.rs` (чистый) | `ffmpeg/compile.rs` от IR | ✅ выделено, IR - позже |
+| ffmpeg-аргументы | `tools/args.rs` + typed `FilterGraph` | `ffmpeg/compile.rs` от полного `EditPlan` IR | ◐ filter DAG готов, полный IR - позже |
 | SSRF transport | `tools/{net,egress_proxy}.rs` | policy + контролируемый downloader adapter | ✅ initial/redirect/rebinding закрыты |
-| HTTP god-file | `handlers/mod.rs` + 3 группы | `http/*` по ресурсам | ◐ частично |
+| HTTP god-file | system/projects в `http/*`, jobs/edit ещё в `handlers/mod.rs` | `http/*` по ресурсам и service ports | ◐ system/projects выделены |
 | Оркестрация задач | копипаста в import/edit | `jobs::JobService::spawn` + `Task` | ☐ |
 | Ошибки | `AppError` + `{error,code}` | typed domain/job errors | ✅ HTTP boundary; job errors позже |
-| Персистентность | конкретный `Db` + `Library` JSON | трейты-репозитории + SQLite | ☐ |
-| Модель правок | плоский `EditRequest` | `EditPlan`/Timeline-IR | ☐ |
+| Персистентность | `ProjectPort` + concrete jobs/library | все repository ports + SQLite adapters | ◐ project boundary готов |
+| Модель правок | stable Timeline/operation primitives, но wire `EditRequest` ещё плоский | `EditPlan`/Timeline-IR | ◐ identity/operations готовы |
 | Конфиг | env в ~9 местах | `Config` один раз | ☐ |
-| Frontend стор | `store.ts` god-модуль | core + features composables | ☐ |
+| Frontend стор | command history/geometry вынесены, orchestration ещё в `store.ts` | core + features composables | ◐ editor domain выделяется |
 | Frontend панель | `EditPanel.vue` god-компонент | секции-компоненты | ☐ |
 
 Приоритизированный план «что делать первым» - в [recommendation.md](recommendation.md);

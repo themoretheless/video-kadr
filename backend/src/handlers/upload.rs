@@ -252,15 +252,31 @@ mod tests {
     use super::*;
 
     fn probe(format_name: &str, vcodec: Option<&str>, acodec: Option<&str>) -> ProbeInfo {
-        ProbeInfo {
-            duration: 1.0,
-            width: u32::from(vcodec.is_some()),
-            height: u32::from(vcodec.is_some()),
-            fps: None,
-            vcodec: vcodec.map(str::to_owned),
-            acodec: acodec.map(str::to_owned),
-            format_name: Some(format_name.to_owned()),
+        let mut streams = Vec::new();
+        if let Some(codec) = vcodec {
+            streams.push(serde_json::json!({
+                "index": 0,
+                "codec_type": "video",
+                "codec_name": codec,
+                "width": 1,
+                "height": 1
+            }));
         }
+        if let Some(codec) = acodec {
+            streams.push(serde_json::json!({
+                "index": 1,
+                "codec_type": "audio",
+                "codec_name": codec
+            }));
+        }
+        if streams.is_empty() {
+            streams.push(serde_json::json!({ "index": 0, "codec_type": "data" }));
+        }
+        ProbeInfo::from_ffprobe_json(&serde_json::json!({
+            "streams": streams,
+            "format": { "format_name": format_name, "duration": "1.0" }
+        }))
+        .unwrap()
     }
 
     #[test]

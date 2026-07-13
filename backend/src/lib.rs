@@ -6,8 +6,10 @@
 
 pub mod capabilities;
 pub mod db;
+pub mod domain;
 pub mod error;
 pub mod handlers;
+pub mod http;
 pub mod library;
 pub mod model;
 pub mod privacy;
@@ -17,14 +19,15 @@ pub mod telemetry;
 pub mod tools;
 
 use axum::extract::DefaultBodyLimit;
-use axum::http::{header, HeaderName, HeaderValue, Method};
-use axum::middleware;
+use std::sync::Arc;
+
+use axum::http::{header, HeaderValue, Method};
 use axum::routing::{delete, get, post};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
-use tower_http::set_header::SetResponseHeaderLayer;
 
+use http::ports::{RuntimeSystemPort, SqliteProjectPort};
 use state::AppState;
 
 /// Build the application router. `max_upload` caps the `/api/upload` body size.
@@ -34,7 +37,9 @@ use state::AppState;
 /// those directories but is intentionally not reachable via `/files`.
 pub fn build_router(state: AppState, max_upload: usize) -> Router {
     let storage = state.storage.clone();
-    let api = Router::new()
+    let system_port = Arc::new(RuntimeSystemPort::new(state.tools.clone()));
+    let project_port = Arc::new(SqliteProjectPort::new(state.db.clone()));
+    let core_api = Router::new()
         .route("/import", post(handlers::import_handler))
         .route(
             "/upload",
@@ -45,38 +50,18 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
         .route("/jobs/:id/cancel", post(handlers::cancel_handler))
         .route("/library", get(handlers::library_list_handler))
         .route("/library/:id", delete(handlers::library_delete_handler))
-        .route(
-            "/projects",
-            post(handlers::project_upsert_handler).get(handlers::project_list_handler),
-        )
-        .route(
-            "/projects/by-video/:videoId",
-            get(handlers::project_by_video_handler),
-        )
-        .route(
-            "/projects/:id",
-            get(handlers::project_get_handler).delete(handlers::project_delete_handler),
-        )
-        .route("/health", get(handlers::health_handler))
-        .route("/capabilities", get(handlers::capabilities_handler))
-        .fallback(handlers::api_not_found_handler)
-        .method_not_allowed_fallback(handlers::method_not_allowed_handler)
         .with_state(state);
+    let api = core_api
+        .merge(http::system_router(system_port))
+        .merge(http::project_router(project_port))
+        .fallback(handlers::api_not_found_handler)
+        .method_not_allowed_fallback(handlers::method_not_allowed_handler);
 
-    Router::new()
+    let router = Router::new()
         .nest("/api", api)
         .nest_service("/files/sources", ServeDir::new(storage.join("sources")))
-        .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")))
-        .layer(SetResponseHeaderLayer::overriding(
-            HeaderName::from_static("content-security-policy"),
-            HeaderValue::from_static("sandbox; default-src 'none'"),
-        ))
-        .layer(SetResponseHeaderLayer::overriding(
-            HeaderName::from_static("x-content-type-options"),
-            HeaderValue::from_static("nosniff"),
-        ))
-        .layer(middleware::from_fn(telemetry::request_context))
-        .layer(cors_layer())
+        .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")));
+    http::policy::apply_public_layers(router, cors_layer())
 }
 
 fn cors_layer() -> CorsLayer {

@@ -1,0 +1,51 @@
+{
+  "streams": [
+    {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_long_name": "H.264 / AVC",
+      "profile": "High",
+      "codec_type": "video",
+      "width": 1920,
+      "height": 1080,
+      "pix_fmt": "yuv420p",
+      "color_range": "tv",
+      "color_space": "bt709",
+      "color_transfer": "bt709",
+      "color_primaries": "bt709",
+      "r_frame_rate": "30000/1001",
+      "avg_frame_rate": "30000/1001",
+      "time_base": "1/90000",
+      "start_time": "0.000000",
+      "duration": "12.500000",
+      "nb_frames": "375",
+      "disposition": { "default": 1, "forced": 0 },
+      "side_data_list": [{ "side_data_type": "Display Matrix", "rotation": -90 }],
+      "tags": { "language": "und" }
+    },
+    {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_long_name": "AAC",
+      "profile": "LC",
+      "codec_type": "audio",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "time_base": "1/48000",
+      "start_time": "0.000000",
+      "duration_ts": 600000,
+      "disposition": { "default": 1 },
+      "tags": { "language": "eng" }
+    }
+  ],
+  "format": {
+    "format_name": "mov,mp4",
+    "format_long_name": "QuickTime / MOV",
+    "start_time": "0.000000",
+    "duration": "12.500000",
+    "size": "1234567",
+    "bit_rate": "789000",
+    "tags": { "major_brand": "isom" }
+  }
+}

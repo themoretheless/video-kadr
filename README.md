@@ -238,8 +238,9 @@ frontend показывает понятный текст ошибки inline и
 инкапсулирует статус, машинный `code`, пользовательский текст и internal cause;
 внутренние детали логируются, но не выдаются клиенту. Upload, projects, jobs,
 library, JSON/multipart extractors и `404/405` fallbacks отвечают одним JSON
-envelope. `projects.rs` дополнительно разделён на parsing/name resolution и
-persistence. Frontend использует один parser и typed `ApiError`, сохраняя
+envelope. Project HTTP parsing и persistence дополнительно разделены
+`ProjectPort`; production использует SQLite adapter, contract tests - in-memory
+fake. Frontend использует один parser и typed `ApiError`, сохраняя
 plain-text fallback для старого proxy. Regression-тесты покрывают malformed
 JSON, routing errors, body limit, скрытие internal source и HTTP 500 vs network.
 
@@ -268,6 +269,18 @@ boundaries, gzip bundle budget, fake-time polling, backendless Playwright matrix
 в [recommendation.md](recommendation.md#волны-исполнения-по-10-пунктов); модель
 upload-рисков - в [docs/threat-model-upload.md](docs/threat-model-upload.md).
 
+**Волна 2/10 (14 июля 2026): media/editor domain и HTTP ports реализованы.**
+Закрыты №784, 786, 787, 803, 814, 817, 820, 823, 825 и 826. Backend получил
+чистые модули `FilterGraph`, media-service registry, stable timeline IDs,
+normalized `ProbeResult`, geometry и keyframes; ffprobe и ffmpeg compiler уже
+используют новые границы. Frontend больше не сериализует весь `EditState` для
+undo: field-level commands и explicit pointer transactions дают один undo на
+crop/censor drag. Branded coordinate spaces и общий Rust/TS fixture corpus
+закрепляют transform/clamp/NaN invariants. System/projects маршруты работают
+через ports и in-memory contract tests, route policy централизована. В policy
+auth обозначен как local-only deployment boundary; публичные auth/ownership и
+process resource limits остаются отдельными P0.
+
 ```
 frontend (Vue 3 + Vite)
   └── POST /api/import { url }        -> { jobId }      (yt-dlp скачивает)
@@ -277,6 +290,9 @@ frontend (Vue 3 + Vite)
   └── GET  /files/outputs/<id>.mp4    -> результат
 
 backend (Rust + Axum + Tokio)
+  domain/          filter graph, timeline, probe, geometry, keyframes (pure)
+  http/            routers, service ports, route/middleware policy
+  tools/           ffmpeg/ffprobe/yt-dlp adapters
   storage/staging/  приватный карантин незавершённых upload
   storage/sources/  скачанные оригиналы
   storage/outputs/  отрендеренные результаты

@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "transformCases": [
+    {
+      "name": "identity",
+      "matrix": [1, 0, 0, 1, 0, 0],
+      "point": [12.5, 7.25],
+      "expected": [12.5, 7.25]
+    },
+    {
+      "name": "preview-scale-and-offset",
+      "matrix": [0.5, 0, 0, 0.5, 10, 20],
+      "point": [320, 180],
+      "expected": [170, 110]
+    },
+    {
+      "name": "quarter-turn",
+      "matrix": [0, 1, -1, 0, 100, 0],
+      "point": [20, 30],
+      "expected": [70, 20]
+    }
+  ],
+  "clampCases": [
+    {
+      "name": "overflow",
+      "rect": [-10, 90, 150, 30],
+      "bounds": [0, 0, 100, 100],
+      "minimum": [2, 2],
+      "expected": [0, 70, 100, 30]
+    },
+    {
+      "name": "minimum-size",
+      "rect": [99, 99, 0, 0],
+      "bounds": [0, 0, 100, 100],
+      "minimum": [16, 16],
+      "expected": [84, 84, 16, 16]
+    }
+  ]
+}

@@ -17,19 +17,10 @@ use crate::model::{Crop, EditRequest, ImportRequest, Job, JobStatus, Scale, Trim
 use crate::state::{AppState, CancelJobOutcome};
 use crate::tools::{self, Done};
 
-mod capabilities;
-mod health;
 mod library;
-mod projects;
 mod upload;
 
-pub use capabilities::capabilities_handler;
-pub use health::health_handler;
 pub use library::{library_delete_handler, library_list_handler};
-pub use projects::{
-    project_by_video_handler, project_delete_handler, project_get_handler, project_list_handler,
-    project_upsert_handler,
-};
 pub use upload::upload_handler;
 
 /// Per-job wall-clock limit (download or render), overridable via env.

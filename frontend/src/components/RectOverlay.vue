@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
+import {
+  clampRect,
+  point,
+  rect as geometryRect,
+  Transform2D,
+  type NormalizedSpace,
+  type PreviewSpace,
+  type SourceSpace,
+} from '../domain/geometry'
 import { state } from '../store'
 
-interface Rect {
+interface OverlayRect {
   x: number
   y: number
   w: number
@@ -11,7 +20,7 @@ interface Rect {
 
 const props = withDefaults(
   defineProps<{
-    rect: Rect
+    rect: OverlayRect
     color?: string
     // crop dims the area outside; mask fills the rectangle instead.
     mode?: 'crop' | 'mask'
@@ -19,7 +28,11 @@ const props = withDefaults(
   { color: 'var(--accent)', mode: 'crop' },
 )
 
-const emit = defineEmits<{ 'update:rect': [Rect] }>()
+const emit = defineEmits<{
+  'update:rect': [OverlayRect]
+  'interaction-start': []
+  'interaction-end': []
+}>()
 
 const root = ref<HTMLElement | null>(null)
 const MIN = 16
@@ -28,7 +41,7 @@ type Mode = 'move' | 'nw' | 'ne' | 'sw' | 'se'
 let dragMode: Mode | null = null
 let startX = 0
 let startY = 0
-let orig: Rect = { x: 0, y: 0, w: 0, h: 0 }
+let orig: OverlayRect = { x: 0, y: 0, w: 0, h: 0 }
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(v, hi))
@@ -38,32 +51,45 @@ function dims() {
   return { W: state.video?.width || 1, H: state.video?.height || 1 }
 }
 
-function normalizeRect(r: Rect): Rect {
+function normalizeRect(r: OverlayRect): OverlayRect {
   const { W, H } = dims()
   const minW = Math.min(MIN, W)
   const minH = Math.min(MIN, H)
-  const w = clamp(Math.round(r.w || minW), minW, W)
-  const h = clamp(Math.round(r.h || minH), minH, H)
+  const finite = (value: number, fallback: number) => (Number.isFinite(value) ? value : fallback)
+  const candidate = geometryRect<SourceSpace>(
+    Math.round(finite(r.x, 0)),
+    Math.round(finite(r.y, 0)),
+    Math.max(0, Math.round(finite(r.w, minW))),
+    Math.max(0, Math.round(finite(r.h, minH))),
+  )
+  const normalized = clampRect(
+    candidate,
+    geometryRect<SourceSpace>(0, 0, W, H),
+    [minW, minH],
+  )
   return {
-    x: clamp(Math.round(r.x || 0), 0, W - w),
-    y: clamp(Math.round(r.y || 0), 0, H - h),
-    w,
-    h,
+    x: normalized.x,
+    y: normalized.y,
+    w: normalized.width,
+    h: normalized.height,
   }
 }
 
-function emitRect(r: Rect) {
+function emitRect(r: OverlayRect) {
   emit('update:rect', normalizeRect(r))
 }
 
 const rectStyle = computed(() => {
   const { W, H } = dims()
   const c = normalizeRect(props.rect)
+  const normalized = Transform2D.scale<SourceSpace, NormalizedSpace>(1 / W, 1 / H).applyRect(
+    geometryRect<SourceSpace>(c.x, c.y, c.w, c.h),
+  )
   return {
-    left: `${(c.x / W) * 100}%`,
-    top: `${(c.y / H) * 100}%`,
-    width: `${(c.w / W) * 100}%`,
-    height: `${(c.h / H) * 100}%`,
+    left: `${normalized.x * 100}%`,
+    top: `${normalized.y * 100}%`,
+    width: `${normalized.width * 100}%`,
+    height: `${normalized.height * 100}%`,
     borderColor: props.color,
     boxShadow: props.mode === 'crop' ? '0 0 0 9999px rgba(0, 0, 0, 0.45)' : 'none',
     background: props.mode === 'mask' ? 'rgba(255, 80, 80, 0.32)' : 'transparent',
@@ -76,7 +102,9 @@ function toSrc(dxPx: number, dyPx: number) {
   const r = element.getBoundingClientRect()
   if (r.width <= 0 || r.height <= 0) return null
   const { W, H } = dims()
-  return { dx: (dxPx / r.width) * W, dy: (dyPx / r.height) * H }
+  const sourceToPreview = Transform2D.scale<SourceSpace, PreviewSpace>(r.width / W, r.height / H)
+  const delta = sourceToPreview.inverse().applyVector(point<PreviewSpace>(dxPx, dyPx))
+  return { dx: delta.x, dy: delta.y }
 }
 
 function begin(m: Mode, e: PointerEvent) {
@@ -84,6 +112,7 @@ function begin(m: Mode, e: PointerEvent) {
   startX = e.clientX
   startY = e.clientY
   orig = normalizeRect(props.rect)
+  emit('interaction-start')
   ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
@@ -129,9 +158,11 @@ function onUp() {
 }
 
 function stopDrag() {
+  const wasDragging = dragMode !== null
   dragMode = null
   window.removeEventListener('pointermove', onMove)
   window.removeEventListener('pointerup', onUp)
+  if (wasDragging) emit('interaction-end')
 }
 
 onUnmounted(stopDrag)

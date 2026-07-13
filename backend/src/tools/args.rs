@@ -3,7 +3,14 @@
 
 use std::path::Path;
 
+use crate::domain::filter_graph::{FilterGraph, MediaKind};
 use crate::model::EditRequest;
+
+fn serialize_filter_chain(media: MediaKind, filters: &[String]) -> String {
+    FilterGraph::linear(media, filters)
+        .and_then(|graph| graph.ffmpeg_linear_chain())
+        .expect("compiler emitted an invalid linear filter graph")
+}
 
 /// Map a named look preset to an ffmpeg filter string.
 fn filter_preset(name: &str) -> Option<&'static str> {
@@ -197,7 +204,7 @@ fn push_audio(args: &mut Vec<String>, edit: &EditRequest, out_dur: f64, codec: &
     let af = audio_filters(edit, out_dur);
     if !af.is_empty() {
         args.push("-af".into());
-        args.push(af.join(","));
+        args.push(serialize_filter_chain(MediaKind::Audio, &af));
     }
     args.push("-c:a".into());
     args.push(codec.into());
@@ -257,7 +264,7 @@ pub fn build_ffmpeg_args(
             let af = audio_filters(edit, out_dur);
             if !af.is_empty() {
                 args.push("-af".into());
-                args.push(af.join(","));
+                args.push(serialize_filter_chain(MediaKind::Audio, &af));
             }
             args.push("-vn".into());
             args.push("-c:a".into());
@@ -271,7 +278,7 @@ pub fn build_ffmpeg_args(
             let vf = video_filters(edit, out_dur, false);
             if !vf.is_empty() {
                 args.push("-vf".into());
-                args.push(vf.join(","));
+                args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
             args.push("-frames:v".into());
             args.push("1".into());
@@ -285,7 +292,7 @@ pub fn build_ffmpeg_args(
             parts.push(format!("fps={fps:.3}"));
             let graph = format!(
                 "{},split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
-                parts.join(",")
+                serialize_filter_chain(MediaKind::Video, &parts)
             );
             args.push("-vf".into());
             args.push(graph);
@@ -295,7 +302,7 @@ pub fn build_ffmpeg_args(
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
                 args.push("-vf".into());
-                args.push(vf.join(","));
+                args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
             push_audio(&mut args, edit, out_dur, "libopus");
             push_video_codec(&mut args, edit, "webm");
@@ -305,7 +312,7 @@ pub fn build_ffmpeg_args(
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
                 args.push("-vf".into());
-                args.push(vf.join(","));
+                args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
             push_audio(&mut args, edit, out_dur, "aac");
             args.push("-c:v".into());
@@ -325,7 +332,7 @@ pub fn build_ffmpeg_args(
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
                 args.push("-vf".into());
-                args.push(vf.join(","));
+                args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
             if edit.mute {
                 args.push("-an".into());
@@ -333,7 +340,7 @@ pub fn build_ffmpeg_args(
                 let af = audio_filters(edit, out_dur);
                 if !af.is_empty() {
                     args.push("-af".into());
-                    args.push(af.join(","));
+                    args.push(serialize_filter_chain(MediaKind::Audio, &af));
                 }
                 args.push("-c:a".into());
                 args.push("pcm_s16le".into());
@@ -351,7 +358,7 @@ pub fn build_ffmpeg_args(
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
                 args.push("-vf".into());
-                args.push(vf.join(","));
+                args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
             push_audio(&mut args, edit, out_dur, "aac");
             push_video_codec(&mut args, edit, "mp4");
@@ -470,7 +477,10 @@ fn build_concat_args(
     let vmap = if vf.is_empty() {
         "[cv]".to_string()
     } else {
-        graph.push_str(&format!(";[cv]{}[vout]", vf.join(",")));
+        graph.push_str(&format!(
+            ";[cv]{}[vout]",
+            serialize_filter_chain(MediaKind::Video, &vf)
+        ));
         "[vout]".to_string()
     };
     let amap = if muted {
@@ -480,7 +490,10 @@ fn build_concat_args(
         if af.is_empty() {
             Some("[ca]".to_string())
         } else {
-            graph.push_str(&format!(";[ca]{}[aout]", af.join(",")));
+            graph.push_str(&format!(
+                ";[ca]{}[aout]",
+                serialize_filter_chain(MediaKind::Audio, &af)
+            ));
             Some("[aout]".to_string())
         }
     };

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { state } from '../store'
+import { beginEditTransaction, endEditTransaction, state } from '../store'
 import RectOverlay from './RectOverlay.vue'
 
 const videoEl = ref<HTMLVideoElement | null>(null)
@@ -135,6 +135,8 @@ const meta = computed(() => {
         v-if="state.video && state.edit.cropEnabled"
         :rect="state.edit.crop"
         @update:rect="state.edit.crop = $event"
+        @interaction-start="beginEditTransaction('crop-drag')"
+        @interaction-end="endEditTransaction"
       />
       <RectOverlay
         v-if="state.video && state.edit.censorEnabled"
@@ -142,6 +144,8 @@ const meta = computed(() => {
         color="var(--danger)"
         mode="mask"
         @update:rect="state.edit.censor = $event"
+        @interaction-start="beginEditTransaction('censor-drag')"
+        @interaction-end="endEditTransaction"
       />
     </div>
     <div v-if="state.video" class="meta">

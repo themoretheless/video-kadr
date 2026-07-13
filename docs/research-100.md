@@ -218,12 +218,19 @@ backpressure, strict/versioned wire DTO, privacy-safe tracing, frontend dependen
 rules, bundle budget,
 deterministic async tests, cross-browser backendless smoke и upload threat model.
 
+Вторая волна закрыта 14 июля 2026: №784, 786, 787, 803, 814, 817, 820, 823,
+825 и 826. Она ввела pure media/timeline domain, normalized probe adapter,
+command history, branded/shared geometry corpus, deterministic keyframes и
+port-based HTTP contracts с route policy. FFmpeg compiler и crop/censor UI уже
+используют новые границы; public auth при этом не имитируется и остаётся P0.
+
 ## Приоритетный вывод
 
-После закрытия первой волны ближайший research-фокус - волна 2: №784/786/787
-(typed media/timeline domain), №803 (typed probe), №814/817/820/823
-(history/geometry/keyframes) и №825/826 (HTTP ports/policy). Отдельный старый P0
-перед внешней публикацией остаётся: auth, ownership и process resource limits.
+После закрытия первых двух волн ближайший research-фокус - волна 3: durable job
+events/attempts, retry taxonomy, dedupe/rate limits, transactional outbox,
+backup/search contracts и concurrency model-checking (№834-840, 842, 843, 870).
+Отдельный старый P0 перед внешней публикацией остаётся: auth, ownership и process
+resource limits.
 
 Полные формулировки и критерии приёмки находятся в
 [architecture.md](../architecture.md#исследовательский-слой-100-репозиториев-14-июля-2026),

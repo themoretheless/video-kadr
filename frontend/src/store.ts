@@ -7,6 +7,7 @@ import {
   parseTime,
   sanitizeRect,
 } from './domain/edit'
+import { cloneValue, PatchCommand } from './domain/history'
 import { toast } from './toasts'
 import type { Capabilities, EditState, Job, MediaEntry, ResultInfo, VideoInfo } from './types'
 
@@ -308,25 +309,28 @@ export async function deleteFromLibrary(id: string): Promise<void> {
 }
 
 // --- edit history (undo / redo) ---
-// Snapshots of state.edit (as JSON) are pushed onto an undo stack, debounced so
-// a drag or a burst of slider moves collapses into a single history step.
+// Commands retain only changed EditState fields. Explicit interaction
+// transactions make every pointer drag one undo step; other rapid controls are
+// grouped by the debounce boundary.
 
-export const history = reactive({ past: [] as string[], future: [] as string[] })
-let lastSnapshot = JSON.stringify(state.edit)
+type EditCommand = PatchCommand<EditState>
+export const history = reactive({ past: [] as EditCommand[], future: [] as EditCommand[] })
+let historyBaseline = cloneValue(state.edit)
 let historyTimer: ReturnType<typeof setTimeout> | null = null
+let historyTransaction: { key: string; before: EditState; depth: number } | null = null
 
-function snapshot(): string {
-  return JSON.stringify(state.edit)
+function commitHistory(command: EditCommand | null): void {
+  if (!command) return
+  history.past.push(command)
+  if (history.past.length > 100) history.past.shift()
+  history.future = []
 }
 
 function recordChange(): void {
   historyTimer = null
-  const snap = snapshot()
-  if (snap === lastSnapshot) return
-  history.past.push(lastSnapshot)
-  if (history.past.length > 100) history.past.shift()
-  history.future = []
-  lastSnapshot = snap
+  const current = cloneValue(state.edit)
+  commitHistory(PatchCommand.between(historyBaseline, current, 'debounced-edit'))
+  historyBaseline = current
 }
 
 /** Drop history and pin the baseline to the current edit (on load/open). */
@@ -337,45 +341,71 @@ export function resetHistory(): void {
   }
   history.past = []
   history.future = []
-  lastSnapshot = snapshot()
+  historyTransaction = null
+  historyBaseline = cloneValue(state.edit)
 }
 
-function applySnapshot(json: string): void {
+function applyHistory(command: EditCommand): void {
   if (historyTimer) {
     clearTimeout(historyTimer)
     historyTimer = null
   }
-  state.edit = JSON.parse(json) as EditState
-  // Pin the baseline so the watch fired by this assignment is a no-op.
-  lastSnapshot = json
+  state.edit = command.apply(state.edit)
+  // Pin the baseline so the watch fired by this assignment records no command.
+  historyBaseline = cloneValue(state.edit)
 }
 
 export function undo(): void {
   // Flush any pending edit into history before stepping back.
   flushPendingHistory()
-  const prev = history.past.pop()
-  if (prev === undefined) return
-  history.future.push(snapshot())
-  applySnapshot(prev)
+  const command = history.past.pop()
+  if (!command) return
+  history.future.push(command)
+  applyHistory(command.invert() as EditCommand)
 }
 
 export function redo(): void {
   flushPendingHistory()
-  const next = history.future.pop()
-  if (next === undefined) return
-  history.past.push(snapshot())
-  applySnapshot(next)
+  const command = history.future.pop()
+  if (!command) return
+  history.past.push(command)
+  applyHistory(command)
 }
 
 function flushPendingHistory(): void {
+  if (historyTransaction) {
+    historyTransaction.depth = 1
+    endEditTransaction()
+  }
   if (!historyTimer) return
   clearTimeout(historyTimer)
   recordChange()
 }
 
+export function beginEditTransaction(key: string): void {
+  flushPendingHistory()
+  if (historyTransaction) {
+    historyTransaction.depth++
+    return
+  }
+  historyTransaction = { key, before: cloneValue(state.edit), depth: 1 }
+}
+
+export function endEditTransaction(): void {
+  const transaction = historyTransaction
+  if (!transaction) return
+  transaction.depth--
+  if (transaction.depth > 0) return
+  const current = cloneValue(state.edit)
+  commitHistory(PatchCommand.between(transaction.before, current, transaction.key))
+  historyBaseline = current
+  historyTransaction = null
+}
+
 watch(
   () => state.edit,
   () => {
+    if (historyTransaction) return
     if (historyTimer) clearTimeout(historyTimer)
     historyTimer = setTimeout(recordChange, 350)
   },

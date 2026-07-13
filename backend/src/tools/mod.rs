@@ -24,6 +24,8 @@ use tokio_util::sync::CancellationToken;
 
 use egress_proxy::EgressProxy;
 
+pub use crate::domain::media_probe::ProbeResult as ProbeInfo;
+
 const TOOL_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -40,19 +42,6 @@ impl Error for ToolTimeout {}
 
 pub(crate) fn is_tool_timeout(error: &anyhow::Error) -> bool {
     error.downcast_ref::<ToolTimeout>().is_some()
-}
-
-/// Probed metadata about a source video.
-#[derive(Debug, Clone)]
-pub struct ProbeInfo {
-    pub duration: f64,
-    pub width: u32,
-    pub height: u32,
-    pub fps: Option<f64>,
-    pub vcodec: Option<String>,
-    pub acodec: Option<String>,
-    /// Comma-separated demuxer aliases reported by ffprobe.
-    pub format_name: Option<String>,
 }
 
 /// How a child process finished from our point of view.
@@ -355,53 +344,7 @@ pub async fn probe_video(path: &Path) -> Result<ProbeInfo> {
     let v: serde_json::Value =
         serde_json::from_slice(&output.stdout).context("failed to parse ffprobe JSON output")?;
 
-    let duration = v["format"]["duration"]
-        .as_str()
-        .and_then(|s| s.parse::<f64>().ok())
-        .unwrap_or(0.0);
-    let format_name = v["format"]["format_name"].as_str().map(str::to_owned);
-
-    let (mut width, mut height) = (0u32, 0u32);
-    let mut fps = None;
-    let mut vcodec = None;
-    let mut acodec = None;
-    if let Some(streams) = v["streams"].as_array() {
-        for s in streams {
-            match s["codec_type"].as_str() {
-                Some("video") if vcodec.is_none() => {
-                    width = s["width"].as_u64().unwrap_or(0) as u32;
-                    height = s["height"].as_u64().unwrap_or(0) as u32;
-                    fps = s["r_frame_rate"].as_str().and_then(parse_fraction);
-                    vcodec = s["codec_name"].as_str().map(|c| c.to_string());
-                }
-                Some("audio") if acodec.is_none() => {
-                    acodec = s["codec_name"].as_str().map(|c| c.to_string());
-                }
-                _ => {}
-            }
-        }
-    }
-
-    Ok(ProbeInfo {
-        duration,
-        width,
-        height,
-        fps,
-        vcodec,
-        acodec,
-        format_name,
-    })
-}
-
-/// Parse an ffprobe fraction like "30000/1001" into frames per second.
-fn parse_fraction(s: &str) -> Option<f64> {
-    let (n, d) = s.split_once('/')?;
-    let n: f64 = n.parse().ok()?;
-    let d: f64 = d.parse().ok()?;
-    if d == 0.0 {
-        return None;
-    }
-    Some(n / d)
+    ProbeInfo::from_ffprobe_json(&v).context("failed to normalize ffprobe metadata")
 }
 
 /// Run ffmpeg with the given args, streaming progress (scaled against the
