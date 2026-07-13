@@ -3,7 +3,9 @@
 Документ описывает: (1) **текущую** структуру, (2) **целевой модульный дизайн**
 «как если бы строили с нуля» с упором на слабую зацепленность, (3) **правила
 зависимостей**. Синтез 10-критического ревью; пошаговый путь миграции -
-в [docs/refactor-plan.md](docs/refactor-plan.md).
+в [docs/refactor-plan.md](docs/refactor-plan.md). Текущий исполняемый набор -
+665 рекомендаций: 565 SOLID/DRY-находок плюс 100 решений из исследования
+[100 сильных репозиториев и первичных источников](docs/research-100.md).
 
 ## Принципы
 
@@ -1136,6 +1138,147 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 781. 🟡 [баг] output_ext(Some("av1")) возвращает mp4, но non-concat путь build_ffmpeg_args не проверяет совпадение с output_ext при формировании output_path - `backend/src/handlers/mod.rs` -> Сделать build_ffmpeg_args принимать уже вычисленный output_ext как параметр вместо того, чтобы оба места independently решали расширение по строке format.
 782. 🟡 [улучшение/DIP] state.rs напрямую использует std::collections::HashMap с ручной блокировкой Mutex вместо инкапсуляции job-хранилища за отдельным типом - `backend/src/state.rs` -> Вынести JobStore { jobs: Mutex<HashMap<...>>, cancels: Mutex<HashMap<...>> } в отдельный тип со своим API, инжектируемый в AppState.
 783. 🟠 [баг] render_locks в AppState растёт неограниченно — записи никогда не удаляются после завершения рендера - `backend/src/state.rs` -> После освобождения _render_guard в edit_handler удалять запись из render_locks (например, через weak-reference или periodic sweep неиспользуемых Arc с strong_count == 1).
+
+## Исследовательский слой: 100 репозиториев (14 июля 2026)
+
+100 активных проектов с высоким рейтингом изучены по первичным репозиториям,
+архитектурным материалам, papers и стандартам. Полная выборка, точный снимок
+звёзд, методика и источники находятся в
+[docs/research-100.md](docs/research-100.md). Ниже не список зависимостей, а 100
+отдельных решений №784-883: каждое добавляет отсутствующий контракт, критерий
+приёмки или измеримый эксперимент и не меняет исторические 565 пунктов
+SOLID/DRY-раунда. Общий синхронизированный набор `architecture.md` и
+`recommendation.md` после этого слоя - 665 пунктов.
+
+### A. NLE и media pipeline (784-793)
+
+784. 🟠 [архитектура/FFmpeg] `Timeline` описан как цель, но у компилятора нет канонического типизированного media DAG - `backend/src/domain/filter_graph.rs` (target) -> Ввести `FilterGraph<Node, Pad, Edge>` с типами audio/video, topological validation, стабильной сериализацией и DOT/snapshot output; невалидная связь должна падать до запуска ffmpeg.
+785. 🟠 [архитектура/GStreamer] Preview управляется набором DOM/store-команд без явной модели жизненного цикла и media clock - `frontend/src/features/player/previewSession.ts` (target) -> Ввести состояния `Idle/Ready/Paused/Playing/Draining/Failed`, монотонный clock и таблицу допустимых переходов; race `seek/load/play` покрыть fake-time тестами.
+786. 🟡 [DIP/MLT] Целевой pipeline всё ещё описан через конкретный ffmpeg compiler, а роли источника, эффекта, перехода и потребителя не являются портами - `backend/src/domain/media_pipeline.rs` (target) -> Определить узкие `Producer/Filter/Transition/Consumer` contracts и registry адаптеров; домен не импортирует CLI/process типы.
+787. 🟠 [домен/Olive] Будущий timeline не фиксирует идентичность клипов и операций, поэтому reorder/undo/migration могут ломать ссылки - `backend/src/domain/timeline.rs` (target) -> Добавить стабильные `ClipId`/`OperationId` и immutable operation graph; тесты доказывают сохранение ссылок после reorder, undo и serialize/deserialize.
+788. 🟡 [совместимость/OpenShot] Пункт о schema versioning не задаёт проверяемую политику эволюции проектов - `backend/tests/fixtures/projects/` (target) -> Хранить golden fixture каждой версии, мигрировать в latest и делать reopen/re-save test; отдельно зафиксировать reject/preserve policy для неизвестных операций.
+789. 🟠 [perf/UX/Kdenlive] Для тяжёлых исходников нет proxy-media workflow - `backend/src/analysis/proxy.rs` (target) -> Сделать proxy производным артефактом по checksum источника с фоновой генерацией, relink и прозрачной заменой на full-resolution при export; удаление proxy не должно затрагивать проект.
+790. 🟠 [контракт/Shotcut] Статический список форматов не отражает реальные версии и возможности установленного ffmpeg - `backend/src/capabilities.rs` (target) -> Генерировать runtime manifest codecs/containers/filters/hardware с tool fingerprint и reason для unavailable; frontend показывает disabled-state, а не молча скрывает опцию.
+791. 🟡 [perf/Blender] Инвалидация render/probe/analysis cache задана отдельно для каждого хранилища - `backend/src/domain/artifact_graph.rs` (target) -> Ввести dependency graph производных артефактов и fingerprint входов; изменение edit invalidates только downstream nodes, что проверяется матрицей операций.
+792. 🟠 [SRP/OBS] Preview и export используют общую модель, но их разные latency/quality/resource policy формально не разделены - `backend/src/services/preview.rs`, `render.rs` (target) -> Оставить общий `EditPlan`, но завести разные execution profiles; тест запрещает preview-настройкам менять финальный output spec.
+793. 🟡 [масштабирование/Remotion] Рендер предполагается одним процессом и не имеет frame-level детерминизма - `backend/src/render/frame_renderer.rs` (target) -> Определить `render(frame_no, plan_hash, source_hash)` как детерминированный контракт, chunk manifest с checksum и idempotent retry; stitch стартует только при полном проверенном наборе кадров.
+
+### B. Кодеки, качество и packaging (794-803)
+
+794. 🟡 [качество/VMAF] CRF считается достаточным сигналом качества результата - `backend/src/analysis/quality.rs` (target) -> Добавить opt-in отчёт VMAF + PSNR/SSIM с явной model/viewing-condition версией и per-scene значениями; до калибровки отчёт advisory и не блокирует export.
+795. 🟡 [perf/Av1an] Длинный AV1 export нельзя продолжить с готовых сцен после сбоя - `backend/src/render/chunks.rs` (target) -> Делить по подтверждённым scene boundaries, атомарно сохранять manifest/segment checksums и перезапускать только отсутствующие chunks; итоговый mux проверяет совместимость параметров.
+796. 🟠 [ресурсы/rav1e] Настройки encoder threads/tiles/speed/memory не сведены в один бюджет - `backend/src/config/encode_budget.rs` (target) -> Ввести валидируемый `EncodeBudget`, связать его с `Config` и cgroup limits, затем зафиксировать benchmark matrix latency/RAM/quality для low/default/high profiles.
+797. 🟡 [домен/Opus] Audio export описывается разрозненными строками codec/bitrate/container - `backend/src/domain/audio_output.rs` (target) -> Ввести `AudioOutputSpec` с bitrate mode, channels, sample rate и loudness policy; contract tests отклоняют несовместимые container/codec combinations.
+798. 🟡 [OCP/Shaka Packager] Encoding и streaming packaging пока не имеют отдельной границы - `backend/src/packaging/mod.rs` (target) -> Описать `OutputBundle { manifest, segments, init, retention }` и HLS/DASH adapters после encode; обычный file export не зависит от packaging-модуля.
+799. 🟠 [корректность/libavif] Still export не проверяет сохранность color primaries/transfer/matrix, ICC, alpha и orientation - `backend/tests/media/still_metadata.rs` (target) -> Добавить round-trip fixtures и `ffprobe`-assertions; metadata-loss возвращает предупреждение или ошибку согласно выбранному profile.
+800. 🟡 [OCP/libjxl] Добавление нового still-кодека потребует менять домен и UI одновременно - `backend/src/ports/still_encoder.rs` (target) -> Ввести `StillImageEncoder` + capability descriptor; JPEG XL или другой адаптер подключается без изменения `EditPlan`, а UI строится из manifest №790.
+801. 🟠 [валидация/libheif] Container brand, image item и codec смешиваются в одной строке format - `backend/src/domain/still_container.rs` (target) -> Типизировать эти три уровня отдельно и отклонять unsupported HEIF/AVIF combinations синхронно, до process spawn.
+802. 🟡 [идея/SRT] Remote/live ingest при добавлении протокола рискует проникнуть в editor core - `backend/src/ingest/srt.rs` (target) -> Оформить внешний ingest adapter с reconnect/latency/clock budgets, который выдаёт обычный immutable source artifact; домен редактора не знает сетевой протокол.
+803. 🟠 [контракт/PyAV] Probe metadata остаётся частично сырым JSON и теряет time-base/container semantics - `backend/src/domain/media_probe.rs` (target) -> Нормализовать streams, dispositions, frame rate, time base, color и rotation в `ProbeResult`; ffprobe/PyAV-подобные реализации проходят один contract corpus.
+
+### C. Playback и streaming (804-813)
+
+804. 🟠 [DIP/Video.js] Store зависит от `HTMLVideoElement`, из-за чего playback нельзя тестировать или менять независимо - `frontend/src/ports/player.ts` (target) -> Ввести `PlayerAdapter` для source/play/pause/seek/buffered/error events и browser implementation; domain stores не импортируют DOM types.
+805. 🟠 [UX/hls.js] Playback failures не имеют recovery taxonomy - `frontend/src/features/player/errors.ts` (target) -> Разделить network/media/config/unsupported и fatal/recoverable, задать bounded retry budget и конкретное действие UI; бесконечный recovery запрещён тестом.
+806. 🟡 [контракт/Shaka Player] Неподдерживаемый codec/container/key-system может выглядеть как пустой player - `frontend/src/features/player/capabilities.ts` (target) -> Возвращать typed unsupported result с причиной и fallback; даже при отсутствии DRM capability branch остаётся явным.
+807. 🟡 [perf/dash.js] Streaming preview может выбирать качество по тем же целям, что final export - `frontend/src/features/player/representationPolicy.ts` (target) -> Отдельная политика ограничивает resolution/buffer для быстрого seek и никогда не меняет `OutputSpec`; сценарии slow-network покрыты тестами.
+808. 🟠 [a11y/Plyr] Доступность media controls не оформлена как единый контракт - `frontend/src/ui/media-controls/` (target) -> Зафиксировать keyboard map, focus order, labels и time `aria-valuetext` по WAI-ARIA; проверить screen reader semantics и touch target на desktop/mobile.
+809. 🟡 [OCP/MediaElement] Local file, progressive HTTP и будущие HLS/DASH sources создадут разные player branches - `frontend/src/adapters/player/` (target) -> Нормализовать source adapters в единый event model; один playback test suite запускается для каждого поддерживаемого source kind.
+810. 🟡 [UI/Media Chrome] `VideoPreview` рискует снова стать большим компонентом при кастомных controls - `frontend/src/ui/media-controls/` (target) -> Разделить play, seek, volume, time, fullscreen на headless primitives, состояние получать из media events; ни один primitive не читает global store.
+811. 🟡 [архитектура/MediaMTX] Live protocols нельзя обслуживать внутри основного backend без роста attack/resource surface - `services/ingest-gateway` (future boundary) -> Gateway аутентифицирует и завершает запись, а editor получает immutable artifact по узкому API; общий process pool не используется.
+812. 🟠 [ресурсы/SRS] Live ingest без load shedding способен вытеснить интерактивные export/probe задачи - `backend/src/config/resource_classes.rs` (target) -> Развести quotas/pools по классам ingest/analysis/export, ввести admission control и тест насыщения, где export сохраняет заданный p95.
+813. 🟡 [масштаб/Jellyfin] Library list синхронно зависит от уже готового metadata и не имеет incremental index contract - `backend/src/services/media_indexer.rs` (target) -> Добавить cursor scan, изоляцию повреждённых entries и eventual search index; pagination не блокируется одним плохим файлом.
+
+### D. Editor interactions и canvas (814-823)
+
+814. 🟠 [домен/Excalidraw] История хранит JSON snapshots всего `EditState`, что плохо масштабируется и скрывает семантику изменений - `frontend/src/domain/history.ts` (target) -> Команды получают `apply/invert/merge` и transaction boundary; тесты проверяют coalescing drag и точный undo без сериализации чужого состояния.
+815. 🟠 [UI/tldraw] Selection/crop/censor/pan/trim конкурируют за pointer events без общей tool state machine - `frontend/src/features/canvas/toolMachine.ts` (target) -> Ввести конечные состояния и один pointer-capture lifecycle; unmount/cancel/lost-capture завершают gesture идемпотентно.
+816. 🟡 [дизайн/Penpot] CSS tokens существуют как значения, но не как versioned public contract компонентов - `frontend/src/ui/tokens.css`, `tokens.test.ts` (target) -> Зафиксировать semantic color/space/type/motion tokens, states и contrast assertions; feature CSS не использует raw palette values.
+817. 🟠 [корректность/Fabric.js] Preview pixels, source pixels, normalized rect и export pixels не различаются типами - `frontend/src/domain/geometry.ts` (target) -> Добавить branded coordinate spaces и `Transform2D`; property tests проверяют round-trip, resize, rotation и letterbox mapping.
+818. 🟡 [UI/Konva] Media, guides, overlays и handles находятся в одной event/render плоскости - `frontend/src/features/canvas/scene.ts` (target) -> Разделить scene layers, hit testing оставить только интерактивному слою; visual layer не может перехватывать pointer.
+819. 🟡 [perf/PixiJS] Переход на GPU для waveform/overlays пока не имеет порога окупаемости - `frontend/bench/canvas/` (target) -> Сравнить DOM/Canvas2D/WebGL на длинной timeline и low-end device; WebGL вводится только при заранее заданном выигрыше и с fallback/context-loss test.
+820. 🟠 [домен/Paper.js] Геометрические clamp/intersection/bounds распределены между Rust и Vue - `shared geometry corpus`, `frontend/src/domain/geometry.ts` (target) -> Создать immutable `Rect/Point/Transform` kernel и общий fixture corpus для Rust/TS; fuzz проверяет containment и отсутствие NaN.
+821. 🟡 [OCP/TUI Image Editor] Каждый новый инструмент потребует вручную менять panel, shortcuts, availability и serialization - `frontend/src/features/tools/registry.ts` (target) -> Ввести декларативный descriptor `{ id, icon, shortcut, capability, editor, serializer }`; registry валидирует уникальность ID/shortcut.
+822. 🟡 [diagnostics/xyflow] Media DAG трудно объяснить без чтения compiler output - `frontend/src/dev/renderGraph/` (target) -> Добавить только в dev-сборку visualizer nodes/edges/cost/cache-hit/validation error; production bundle не содержит этот feature.
+823. 🟡 [домен/Motionity] Для анимации нет независимой модели keyframes/easing/interpolation - `backend/src/domain/keyframes.rs` (target) -> Ввести `KeyframeTrack<T>` с deterministic sampling и отдельными preview/ffmpeg adapters; значения между keyframes покрыть golden corpus.
+
+### E. Rust backend (824-833)
+
+824. 🔴 [надёжность/Tokio] Shutdown не владеет всеми spawned tasks и child processes как одной структурой - `backend/src/runtime/task_supervisor.rs` (target) -> Root `CancellationToken` + `TaskTracker`: закрыть intake, notify, bounded wait, затем escalation для process groups; integration test не оставляет task/child после shutdown.
+825. 🟠 [DIP/Axum] Router tests всё ещё требуют конкретный `AppState` с БД/filesystem - `backend/src/http/mod.rs` (target) -> Хендлеры зависят от узких service ports, а contract tests поднимают `Router` с in-memory fakes; HTTP DTO/status остаются одинаковыми.
+826. 🟠 [архитектура/Tower] Request ID, body limit, auth, rate limit, timeout и tracing рискуют подключаться в разном порядке по маршрутам - `backend/src/http/policy.rs` (target) -> Описать route classes и один ordered middleware stack; snapshot test фиксирует порядок и исключения для health/files.
+827. 🟡 [проектирование/Actix Web] Смена HTTP framework может быть предложена без доказанного bottleneck - `backend/benches/http_baseline.rs` (target) -> Зафиксировать Axum throughput/p50/p95/p99/RSS для upload, polling и range response; framework rewrite допустим только после профиля и ADR.
+828. 🟠 [perf/Hyper] Нет теста bounded memory при очень медленном upload/download клиенте и disconnect - `backend/tests/http_backpressure.rs` (target) -> Стримить тело с контролируемой скоростью, оборвать соединение и доказать bounded buffering, отмену reader/task и удаление staging.
+829. 🟠 [контракт/Serde] Одинаковая permissive policy может случайно примениться к wire DTO и старым persisted documents - `backend/src/http/dto.rs`, `persistence/schema.rs` (target) -> Wire types strict + versioned, storage types migration-tolerant; negative corpus фиксирует неизвестные поля для обеих границ.
+830. 🟡 [quality/SQLx] Query/schema drift обнаруживается только при выполнении теста с конкретной БД - `.github/workflows/ci.yml` (target) -> Добавить offline metadata и `cargo sqlx prepare --check`; migration + query change без обновления metadata проваливает CI.
+831. 🟠 [observability/tracing] Отдельные spans не образуют стабильный trace contract и могут утечь paths/URLs - `backend/src/telemetry/schema.rs` (target) -> Зафиксировать дерево `request -> job -> process`, allowlist полей и redaction wrapper; golden JSON-log test содержит canary secret и доказывает его отсутствие.
+832. 🟠 [perf/Rayon] Будущие thumbnail/waveform/hash вычисления могут блокировать Tokio workers - `backend/src/runtime/cpu_pool.rs` (target) -> Выделить bounded CPU executor с queue budget/cancellation и метриками saturation; async runtime thread не выполняет CPU-heavy closure.
+833. 🟠 [security/rustls] Не определено, где завершается TLS и каким proxy headers доверять - `docs/deployment-security.md` (target) -> Зафиксировать один из профилей: trusted reverse proxy + private bind/allowlist headers либо direct rustls; public plain HTTP profile запрещён readiness check.
+
+### F. Jobs и persistence (834-843)
+
+834. 🟠 [надёжность/Temporal] Текущая строка Job не позволяет детерминированно воспроизвести переходы после crash - `backend/src/jobs/event_log.rs` (target) -> Append-only события + idempotency key и reducer в состояние; fault-injection после каждой границы даёт тот же terminal result после replay.
+835. 🟠 [домен/Airflow] Повторный запуск смешивается с сущностью Job и общей строкой ошибки - `backend/src/jobs/attempt.rs` (target) -> Разделить `Job`/`JobAttempt`, execution timeout и retry policy по `ErrorKind`; validation/security errors никогда не retry.
+836. 🟠 [ops/Celery] Failed jobs нельзя просмотреть и осознанно retry/discard - `backend/src/jobs/failed_registry.rs` (target) -> Хранить reason/attempt/next_retry/tool version, добавить operator API с audit trail; retry имеет cap и новую attempt запись.
+837. 🟠 [API/BullMQ] Дубли import/edit при повторе HTTP создают независимую работу - `backend/src/jobs/dedupe.rs` (target) -> Stable idempotency/dedupe key, TTL и queue rate limiter; duplicate request возвращает существующий job ID и не запускает второй process.
+838. 🟡 [ops/RQ] Lifecycle views собираются из одного списка без явных registries/reconciliation - `backend/src/jobs/registry.rs` (target) -> Определить queued/started/deferred/failed/finished queries и startup reconciliation; зависшая started attempt получает объяснимый interrupted state.
+839. 🔴 [целостность/River] Enqueue в памяти и запись durable state могут разойтись при crash - `backend/src/jobs/outbox.rs` (target) -> Записывать job + outbox в одной SQLite transaction, dispatcher подтверждает delivery идемпотентно; crash tests исключают job без durable row и row без eventual execution.
+840. 🟠 [ops/Restic] Backup остаётся инструкцией без проверяемого артефакта и restore drill - `backend/src/bin/backup.rs` (target) -> Content-addressed snapshot DB+media, manifest/checksums/tool version и `verify`; CI fixture делает backup, удаление и полный restore.
+841. 🟡 [perf/Borg] Неизвестно, окупится ли chunk dedup на похожих source/output - `bench/backup-dedup.md` (target) -> Измерить storage/time на реальном corpus и задать prune policy; внешняя dedup dependency вводится только при зафиксированном выигрыше.
+842. 🟡 [проектирование/RocksDB] Замена SQLite может преждевременно увеличить сложность - `backend/benches/persistence.rs` (target) -> Сначала benchmark SQLite WAL при заданных N assets/jobs/cache writes и определить migration threshold; до него RocksDB явно не рассматривается.
+843. 🟡 [DIP/Meilisearch] Добавление поиска может напрямую связать library с отдельным сервером - `backend/src/ports/media_search.rs` (target) -> `MediaSearch` port с SQLite FTS default и optional external adapter после scale threshold; indexing eventual и rebuildable из source of truth.
+
+### G. Vue, frontend и testing (844-853)
+
+844. 🟠 [модульность/Vue] Feature boundaries описаны в документах, но imports их не защищают - `frontend/eslint.config.*` (target) -> Определить public API каждого feature и forbidden cross-feature imports; dependency rule падает в lint при обходе facade.
+845. 🟠 [SRP/Pinia] Разделение store остаётся намерением без контракта взаимодействия - `frontend/src/stores/` (target) -> Pilot `project` и `ui` stores с compatibility facade; каждый store зависит только от domain/api ports, cross-store действие идёт через команду, а не mutable import.
+846. 🟡 [perf/Vite] Нет бюджета initial JS/CSS и причины для lazy boundaries - `frontend/vite.config.ts`, CI (target) -> Генерировать bundle report и падать при превышении согласованного gzip budget; тяжёлые analysis/dev features загружаются отдельно.
+847. 🟠 [тесты/Vitest] Polling/autosave/history/retry тестируются реальным временем или отдельными примерами - `frontend/src/**/*.test.ts` (target) -> Fake timers + table/property cases для backoff, deadline, debounce, undo merge и cancellation; suite не содержит sleep.
+848. 🟡 [DRY/VueUse] Lifecycle-sensitive listeners/resize/online logic легко снова разойдутся по компонентам - `frontend/src/composables/` (target) -> Использовать общие composables с automatic cleanup и lint-аудит: прямой global `addEventListener` разрешён только внутри lifecycle wrapper.
+849. 🟠 [дизайн/Storybook] Состояния компонентов проверяются только внутри целого приложения - `frontend/src/**/*.stories.ts` (target) -> Каталог empty/loading/error/long text/localization/mobile/reduced-motion для каждого tool surface; a11y и screenshot checks запускаются изолированно.
+850. 🔴 [smoke/Playwright] Нет гарантии, что shell редактора открывается без backend и корректно объясняет offline - `frontend/e2e/smoke.spec.ts` (target) -> Mock API contract, Chromium/Firefox/WebKit + 390px; проверить boot, offline state, import/edit/export happy path и отсутствие overflow.
+851. 🟡 [проектирование/Cypress] Подключение второго E2E runner удвоит fixtures и ожидания - `docs/adr/e2e-runner.md` (target) -> Сравнить network-fault/debug/CI speed на одном сценарии и выбрать один runner; Playwright и Cypress одновременно не поддерживать.
+852. 🟠 [архитектура/TanStack Query] Server state library/projects/jobs смешан с mutable UI/edit state - `frontend/src/data/` (target) -> Выделить cache/invalidation/poll ownership за query-port; domain UI stores хранят только selection/draft, не копии API entities.
+853. 🟠 [UX/Floating UI] Tooltip/menu/popover рискуют по-разному решать collision, focus, Escape и outside click - `frontend/src/ui/overlay/` (target) -> Один accessible overlay primitive с focus return и visual-viewport tests; unfamiliar icon всегда получает tooltip через него.
+
+### H. Security и supply chain (854-863)
+
+854. 🔴 [security/OWASP] Upload защищён probe/allowlist, но нет одной threat matrix, проверяющей всю цепочку - `docs/threat-model-upload.md`, `backend/tests/upload_security.rs` (target) -> Extension + declared MIME + signature/probe + generated name + quarantine + storage boundary + size/count limits; каждый control связан с negative fixture.
+855. 🟠 [security/OSS-Fuzz] Parser boundary не получает непрерывного fuzzing вне обычного CI - `fuzz/oss-fuzz/` (target) -> Подготовить hermetic targets/corpus, sanitizer build и triage SLA; найденный crash автоматически становится regression fixture.
+856. 🟠 [security/cargo-fuzz] Локальный fuzz охватывает только намеченную geometry-функцию - `backend/fuzz/` (target) -> Targets для edit normalization, multipart filename/path, library JSON, URL policy и cache key; corpus versioned, panic/OOM/time budget являются failure.
+857. 🟠 [supply-chain/RustSec] `cargo audit` без policy приведёт к вечным ignore - `.cargo/audit.toml` (target) -> Каждое исключение содержит owner, rationale и expiry; просроченный advisory exception проваливает CI.
+858. 🟠 [supply-chain/cargo-deny] Нет формальной политики лицензий, git sources и duplicate crates - `deny.toml` (target) -> Allow/deny license list, запрет неизвестных sources и budget дублей; исключения ревьюятся поштучно.
+859. 🟠 [security/Trivy] Dependency audit не видит runtime image, OS packages и Compose/IaC - `.github/workflows/security.yml` (target) -> Сканировать built image/filesystem/config, публиковать SARIF; severity exception также имеет owner/expiry.
+860. 🟡 [supply-chain/OSV-Scanner] Rust и npm advisories проверяются разными правилами и могут оставить blind spot - `.github/workflows/security.yml` (target) -> OSV scan обоих lockfiles + сравнение с ecosystem-native tools; отчёт содержит package path и fixed version.
+861. 🟠 [release/Cosign] Release artifact нельзя криптографически связать с commit/SBOM/builder - `.github/workflows/release.yml` (target) -> Генерировать SBOM + SLSA provenance, подписывать digest и проверять policy перед deploy; tag без verification не публикуется.
+862. 🔴 [privacy/Gitleaks] Нет secret scan истории и специальных правил для URL query tokens - `.gitleaks.toml` (target) -> PR + history scan, custom patterns для access/token/signature params и минимальный reviewed baseline; blanket allowlist запрещён.
+863. 🟠 [secrets/SOPS] Deployment secrets могут оказаться в plaintext `.env` или diagnostic bundle - `ops/secrets/` (target) -> SOPS-encrypted manifests, внешние age/KMS keys и rotation drill; runtime decrypt не пишет plaintext на диск/в лог.
+
+### I. Observability и performance (864-873)
+
+864. 🟠 [observability/Prometheus] Пункт о `/metrics` не задаёт schema/cardinality budget - `backend/src/telemetry/metrics.rs` (target) -> Queue wait, process duration, failures, saturation, cache hit и bytes с bounded labels; `job_id`, URL и filename никогда не labels.
+865. 🟠 [privacy/Loki] Структурированные логи могут превратить чувствительные IDs/URLs в дорогие labels - `backend/src/telemetry/log_policy.rs` (target) -> Labels только service/env/level/error_kind; high-cardinality/redacted values остаются fields, проверяемыми canary test.
+866. 🟠 [observability/Jaeger] HTTP request и фоновый job теряют причинную связь после enqueue - `backend/src/telemetry/context.rs` (target) -> Сохранять trace/link context в job metadata и восстанавливать в worker; slow/error jobs sampled, normal jobs используют budget.
+867. 🟠 [DIP/OpenTelemetry] Прямое подключение Prometheus/Jaeger закрепит домен за exporter API - `backend/src/ports/telemetry.rs` (target) -> Exporter-neutral telemetry port и OpenTelemetry semantic names; noop/test/export adapters подставляются без изменения services.
+868. 🔴 [privacy/Vector] Redaction logs и будущего diagnostics bundle может разойтись - `backend/src/privacy/redaction.rs` (target) -> Один allowlist/redaction transform до любого sink; fixture с URL token, path, headers и filename не оставляет canary ни в JSON log, ни в bundle.
+869. 🟡 [perf/Parca] CPU regressions видны только по разовым локальным flamegraphs - `ops/profiling/` (target) -> Continuous profiling только staging, symbolized build и ограниченная retention; before/after profile обязателен для perf PR.
+870. 🟠 [concurrency/Loom] Стресс-тест race не перебирает все interleavings cancel/finish/lock/semaphore - `backend/src/jobs/job_cell.rs` (target) -> Сначала выделить минимальный synchronization primitive и model-check его Loom; инварианты: один terminal state, permit released once, no lost cancel.
+871. 🟡 [perf/Hyperfine] Нет версионированного corpus для быстрых CLI/API путей - `bench/perf/` (target) -> Warm/cold probe, library list, cache hit и plan compile с environment/tool metadata; хранить median/p95 и сигнализировать о согласованной регрессии.
+872. 🟡 [perf/Flamegraph] Оптимизации могут приниматься по интуиции - `docs/performance.md` (target) -> Для probe/import/edit/library workloads сохранять profile command и folded artifact; изменение hot path без baseline/profile не принимается как perf fix.
+873. 🟡 [diagnostics/tokio-console] Нет наблюдения за age/busy/polls async tasks и удержанием sync resources - `backend/src/telemetry/console.rs` (target) -> Опциональный staging-only console subscriber, runbook task-leak investigation и alert threshold; production exposure закрыт auth/network policy.
+
+### J. ML-assisted media (874-883)
+
+874. 🟡 [идея/Whisper] Transcript при добавлении легко станет невалидируемым blob внутри Project - `backend/src/analysis/transcript.rs` (target) -> Versioned derived artifact с source checksum, model/version, language, segments и confidence; смена source/model инвалидирует его независимо от edit.
+875. 🟡 [privacy/whisper.cpp] Cloud-only transcription конфликтует с локальной моделью продукта - `backend/src/adapters/asr/local.rs` (target) -> Local/offline adapter с capability/resource estimate и explicit privacy mode; отсутствие GPU не ломает editor и объясняет ожидаемое время.
+876. 🟡 [perf/faster-whisper] Выбор ASR backend/model/quantization без corpus даст случайный trade-off - `bench/asr/` (target) -> Измерить real-time factor, RAM/VRAM и word error proxy на языковом corpus; default выбирается ADR, не популярностью repo.
+877. 🟠 [UX/WhisperX] Segment timestamps недостаточны для точного text-based cut - `frontend/src/features/transcript/` (target) -> Word alignment + confidence позволяет выделять слова и создавать draft range; low-confidence boundary требует ручного preview/подтверждения.
+878. 🟡 [privacy/pyannote] Speaker diarization несёт biometric/privacy смысл и не имеет доменной границы - `backend/src/analysis/speakers.rs` (target) -> Отдельный speaker track с локальными labels, consent warning, model/version/confidence и delete action; raw embeddings не сохранять по умолчанию.
+879. 🟠 [UX/PySceneDetect] Scene detection без provenance превратит эвристику в необъяснимые автонарезки - `backend/src/analysis/scenes.rs` (target) -> Artifact `{ detector, version, threshold, metrics, ranges }`, использовать как snap/chapter suggestions; manual override и отключение обязательны.
+880. 🟡 [DIP/OpenCV] Thumbnail/blur/black-frame/motion/crop analysis может протащить OpenCV types во весь домен - `backend/src/ports/visual_analysis.rs` (target) -> Отдельный service/adapter возвращает versioned DTO artifacts; core не импортирует `Mat` и может использовать mock/native/remote implementation.
+881. 🟡 [perf/librosa] Waveform/loudness/beat/onset при каждом открытии клипа будут пересчитываться - `backend/src/analysis/audio_features.rs` (target) -> Кэшировать chunked artifact по audio fingerprint/algorithm version, отдавать progressive chunks; UI работает до полной готовности.
+882. 🟡 [идея/PaddleOCR] OCR нельзя хранить только как плоский текст без временно-пространственной привязки - `backend/src/analysis/ocr.rs` (target) -> Track с time range, bbox, language, confidence и model version; поиск/субтитры используют его через port, local-first privacy profile.
+883. 🟠 [safety/Ultralytics] Object detection не должна автоматически становиться committed crop/censor edit - `backend/src/analysis/object_tracks.rs` (target) -> Versioned tracks с confidence/model/license; follow-crop/censor создаются как previewable suggestions и применяются только после human approval.
 
 ## Целевой модульный дизайн (backend)
 

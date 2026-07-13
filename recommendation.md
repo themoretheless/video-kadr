@@ -3,7 +3,9 @@
 Приоритизированный, гранулярный план, синхронизированный с
 [architecture.md](architecture.md) (целевой дизайн),
 [docs/refactor-plan.md](docs/refactor-plan.md) (шаги рефакторинга) и
-[docs/ideas/round-13.md](docs/ideas/round-13.md) (фичи).
+[docs/ideas/round-13.md](docs/ideas/round-13.md) (фичи). Исследовательское
+обоснование новых пунктов №784-883 - в
+[docs/research-100.md](docs/research-100.md).
 
 Порядок: **корректность → дешёвая модульность → глубокий рефактор**; фичи
 параллельно. Каждая задача идёт под зелёным `make check`. **S** = часы, **M** =
@@ -260,9 +262,10 @@ P0-11, cleanup и первые безопасные frontend-срезы; рау�
 раунд 7 - upload gate, раунд 8 - `AppError`.
 Актуальный остаток - ниже.
 
-**Сверка 9 июля 2026.** Этот файл синхронизирован с `architecture.md`: здесь
-565 чекбоксов, в архитектуре - те же 565 пунктов с пояснениями, а
-`docs/audit-500.md` остаётся широким источником на 509 проблем/улучшений. Новые
+**Сверка 14 июля 2026.** Этот файл синхронизирован с `architecture.md`: здесь
+665 номерных чекбоксов - исходные 565 SOLID/DRY-пунктов и 100 research-backed
+карточек №784-883; в архитектуре - те же номера с пояснениями.
+`docs/audit-500.md` остаётся широким источником на 509 проблем/улучшений. Новый
 PR лучше делать не по всему списку, а по одному маленькому вертикальному срезу:
 один модуль, один severity-слой, один критерий приёмки.
 
@@ -916,6 +919,145 @@ parser и typed `ApiError(status, code)`, поэтому реальный HTTP 5
 - [ ] 🟡 **778.** (проблема) watch(() => [state.video, state.edit]) в автосейве триггерится на любое изменение video, включая переключение на null при deleteFromLibrary -> Разделить на два отдельных watch: один для смены клипа (сброс/восстановление проекта), другой только для state.edit (debounced autosave). `frontend/src/store.ts`
 - [ ] 🟡 **779.** (проблема) MediaEntry (frontend types.ts) не отражает поля vcodec/acodec/fps, которые есть в VideoInfo, из-за чего openFromLibrary теряет эти данные при реоткрытии клипа -> Добавить vcodec/acodec/fps в MediaEntry и в MediaEntry::from_result (library.rs:33-46), либо запрашивать полный VideoInfo отдельным эндпоинтом при открытии из библиотеки. `frontend/src/types.ts`
 - [ ] 🟡 **781.** (баг) output_ext(Some("av1")) возвращает mp4, но non-concat путь build_ffmpeg_args не проверяет совпадение с output_ext при формировании output_path -> Сделать build_ffmpeg_args принимать уже вычисленный output_ext как параметр вместо того, чтобы оба места independently решали расширение по строке format. `backend/src/handlers/mod.rs`
+
+## Исследовательский чеклист: 100 репозиториев (14 июля 2026)
+
+Это ещё 100 неповторяющихся задач №784-883 поверх исторического набора из 565
+SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, papers, стандарты и связь
+«репозиторий → решение» находятся в
+[docs/research-100.md](docs/research-100.md); полные архитектурные обоснования -
+в [architecture.md](architecture.md#исследовательский-слой-100-репозиториев-14-июля-2026).
+Брать по одной строке: сначала контракт/fixture/benchmark, затем адаптер.
+
+### A. NLE и media pipeline
+
+- [ ] 🟠 **784. FFmpeg:** Ввести typed `FilterGraph` DAG с audio/video pads, topological validation, стабильной сериализацией и DOT/snapshot output. `backend/src/domain/filter_graph.rs` (target)
+- [ ] 🟠 **785. GStreamer:** Оформить preview как `Idle/Ready/Paused/Playing/Draining/Failed` state machine с monotonic clock и fake-time race tests. `frontend/src/features/player/previewSession.ts` (target)
+- [ ] 🟡 **786. MLT:** Определить независимые `Producer/Filter/Transition/Consumer` ports и registry, не импортирующие process/CLI types в домен. `backend/src/domain/media_pipeline.rs` (target)
+- [ ] 🟠 **787. Olive:** Добавить стабильные `ClipId`/`OperationId`; проверить ссылки после reorder, undo и serialize round-trip. `backend/src/domain/timeline.rs` (target)
+- [ ] 🟡 **788. OpenShot:** Создать golden corpus версий проекта, migration-to-latest и policy test для неизвестных операций. `backend/tests/fixtures/projects/` (target)
+- [ ] 🟠 **789. Kdenlive:** Реализовать proxy-media artifact по source checksum с background generation/relink и full-res export. `backend/src/analysis/proxy.rs` (target)
+- [ ] 🟠 **790. Shotcut:** Генерировать runtime capabilities manifest с tool fingerprint и причиной unavailable для UI. `backend/src/capabilities.rs` (target)
+- [ ] 🟡 **791. Blender:** Ввести dependency graph производных артефактов и точечную downstream invalidation по fingerprint. `backend/src/domain/artifact_graph.rs` (target)
+- [ ] 🟠 **792. OBS:** Разделить execution profiles preview/export; тестом запретить preview-policy менять `OutputSpec`. `backend/src/services/{preview,render}.rs` (target)
+- [ ] 🟡 **793. Remotion:** Определить детерминированный frame-render contract, chunk manifest/checksums, idempotent retry и verified stitch. `backend/src/render/frame_renderer.rs` (target)
+
+### B. Кодеки, качество и packaging
+
+- [ ] 🟡 **794. VMAF:** Добавить opt-in VMAF+PSNR/SSIM report с model/viewing-condition version и per-scene значениями; пока advisory. `backend/src/analysis/quality.rs` (target)
+- [ ] 🟡 **795. Av1an:** Сделать scene-aware resumable encode с atomic manifest и повтором только отсутствующих chunks. `backend/src/render/chunks.rs` (target)
+- [ ] 🟠 **796. rav1e:** Свести threads/tiles/speed/memory в `EncodeBudget`, валидировать с Config/cgroup и измерить profile matrix. `backend/src/config/encode_budget.rs` (target)
+- [ ] 🟡 **797. Opus:** Ввести `AudioOutputSpec` и contract tests совместимости bitrate/channels/sample rate/loudness/container. `backend/src/domain/audio_output.rs` (target)
+- [ ] 🟡 **798. Shaka Packager:** Выделить packaging после encode в `OutputBundle` и изолированные HLS/DASH adapters. `backend/src/packaging/mod.rs` (target)
+- [ ] 🟠 **799. libavif:** Добавить still-export round-trip tests для color/ICC/alpha/orientation metadata. `backend/tests/media/still_metadata.rs` (target)
+- [ ] 🟡 **800. libjxl:** Ввести `StillImageEncoder` port + capability descriptor; новый codec не меняет `EditPlan`. `backend/src/ports/still_encoder.rs` (target)
+- [ ] 🟠 **801. libheif:** Типизировать container brand/image item/codec и отклонять несовместимые комбинации до spawn. `backend/src/domain/still_container.rs` (target)
+- [ ] 🟡 **802. SRT:** Оформить remote ingest как adapter с reconnect/latency/clock budgets, выдающий immutable source artifact. `backend/src/ingest/srt.rs` (target)
+- [ ] 🟠 **803. PyAV:** Нормализовать stream/container/time-base/color/rotation metadata в typed `ProbeResult` и общий adapter corpus. `backend/src/domain/media_probe.rs` (target)
+
+### C. Playback и streaming
+
+- [ ] 🟠 **804. Video.js:** Ввести `PlayerAdapter`; store больше не импортирует `HTMLVideoElement`. `frontend/src/ports/player.ts` (target)
+- [ ] 🟠 **805. hls.js:** Разделить playback errors на network/media/config/unsupported и fatal/recoverable, задать bounded recovery. `frontend/src/features/player/errors.ts` (target)
+- [ ] 🟡 **806. Shaka Player:** Возвращать typed unsupported-capability result с причиной/fallback вместо пустого player. `frontend/src/features/player/capabilities.ts` (target)
+- [ ] 🟡 **807. dash.js:** Выделить preview representation policy для быстрого seek; запретить ей менять export. `frontend/src/features/player/representationPolicy.ts` (target)
+- [ ] 🟠 **808. Plyr:** Зафиксировать keyboard/focus/label/`aria-valuetext` contract media controls и desktop/mobile AT tests. `frontend/src/ui/media-controls/` (target)
+- [ ] 🟡 **809. MediaElement:** Нормализовать local/progressive/HLS source adapters в один player event model и suite. `frontend/src/adapters/player/` (target)
+- [ ] 🟡 **810. Media Chrome:** Разбить custom media controls на headless primitives без чтения global store. `frontend/src/ui/media-controls/` (target)
+- [ ] 🟡 **811. MediaMTX:** Держать live ingest gateway отдельным сервисом, отдающим редактору только immutable recording artifact. `services/ingest-gateway` (future)
+- [ ] 🟠 **812. SRS:** Развести pools/quotas ingest/analysis/export и проверить, что saturation ingest не ломает export p95. `backend/src/config/resource_classes.rs` (target)
+- [ ] 🟡 **813. Jellyfin:** Добавить incremental media indexer с cursor, изоляцией bad entries и rebuildable eventual index. `backend/src/services/media_indexer.rs` (target)
+
+### D. Editor interactions и canvas
+
+- [ ] 🟠 **814. Excalidraw:** Заменить full-state snapshots на commands `apply/invert/merge` с transaction boundary и drag coalescing tests. `frontend/src/domain/history.ts` (target)
+- [ ] 🟠 **815. tldraw:** Создать tool state machine и единый идемпотентный pointer-capture lifecycle. `frontend/src/features/canvas/toolMachine.ts` (target)
+- [ ] 🟡 **816. Penpot:** Сделать semantic design tokens versioned contract с state/contrast tests и запретом raw palette в features. `frontend/src/ui/tokens.css` (target)
+- [ ] 🟠 **817. Fabric.js:** Добавить branded coordinate spaces + `Transform2D` и property tests preview/source/export round-trip. `frontend/src/domain/geometry.ts` (target)
+- [ ] 🟡 **818. Konva:** Разделить media/guides/overlays/handles на scene layers; hit testing оставить interactive layer. `frontend/src/features/canvas/scene.ts` (target)
+- [ ] 🟡 **819. PixiJS:** Измерить DOM/Canvas2D/WebGL на длинной timeline; вводить GPU только после threshold и с context-loss fallback. `frontend/bench/canvas/` (target)
+- [ ] 🟠 **820. Paper.js:** Создать immutable geometry kernel и общий Rust/TS fixture corpus с fuzz containment/NaN invariants. `frontend/src/domain/geometry.ts` + backend (target)
+- [ ] 🟡 **821. TUI Image Editor:** Ввести declarative tool descriptor registry и проверить уникальность ID/shortcut. `frontend/src/features/tools/registry.ts` (target)
+- [ ] 🟡 **822. xyflow:** Добавить dev-only render DAG visualizer; проверить отсутствие feature в production bundle. `frontend/src/dev/renderGraph/` (target)
+- [ ] 🟡 **823. Motionity:** Ввести `KeyframeTrack<T>` с deterministic sampling и отдельными preview/ffmpeg adapters. `backend/src/domain/keyframes.rs` (target)
+
+### E. Rust backend
+
+- [ ] 🔴 **824. Tokio:** Root `CancellationToken` + `TaskTracker`; shutdown закрывает intake, ждёт bounded time и эскалирует process groups. `backend/src/runtime/task_supervisor.rs` (target)
+- [ ] 🟠 **825. Axum:** Перевести Router contract tests на service ports/in-memory fakes вместо concrete `AppState`. `backend/src/http/mod.rs` (target)
+- [ ] 🟠 **826. Tower:** Описать route classes и ordered middleware policy для request ID/body/auth/rate/timeout/tracing. `backend/src/http/policy.rs` (target)
+- [ ] 🟡 **827. Actix Web:** Зафиксировать Axum throughput/p50/p95/p99/RSS baseline; запретить framework rewrite без ADR и profile. `backend/benches/http_baseline.rs` (target)
+- [ ] 🟠 **828. Hyper:** Проверить bounded memory/cancellation/cleanup на slow upload, slow range client и disconnect. `backend/tests/http_backpressure.rs` (target)
+- [ ] 🟠 **829. Serde:** Развести strict versioned wire DTO и migration-tolerant storage DTO; добавить negative corpus обеих границ. `backend/src/{http,persistence}/` (target)
+- [ ] 🟡 **830. SQLx:** Добавить offline metadata и `cargo sqlx prepare --check` против query/schema drift. `.github/workflows/ci.yml` (target)
+- [ ] 🟠 **831. tracing:** Зафиксировать span tree `request -> job -> process`, allowlist полей и canary redaction golden test. `backend/src/telemetry/schema.rs` (target)
+- [ ] 🟠 **832. Rayon:** Выделить bounded CPU executor с queue budget/cancellation/saturation metrics. `backend/src/runtime/cpu_pool.rs` (target)
+- [ ] 🟠 **833. rustls:** Принять deployment ADR для TLS termination и trusted proxy headers; запретить public plaintext profile. `docs/deployment-security.md` (target)
+
+### F. Jobs и persistence
+
+- [ ] 🟠 **834. Temporal:** Добавить replayable append-only job events + reducer и fault-injection после каждой transition boundary. `backend/src/jobs/event_log.rs` (target)
+- [ ] 🟠 **835. Airflow:** Разделить `Job`/`JobAttempt`, execution timeout и retry policy по `ErrorKind`; validation/security не retry. `backend/src/jobs/attempt.rs` (target)
+- [ ] 🟠 **836. Celery:** Создать failed-job registry и audited operator retry/discard с cap. `backend/src/jobs/failed_registry.rs` (target)
+- [ ] 🟠 **837. BullMQ:** Ввести stable idempotency/dedupe key + TTL/rate limit; duplicate request возвращает прежний job ID. `backend/src/jobs/dedupe.rs` (target)
+- [ ] 🟡 **838. RQ:** Описать lifecycle registries и startup reconciliation для зависших started attempts. `backend/src/jobs/registry.rs` (target)
+- [ ] 🔴 **839. River:** Transactional job+outbox enqueue и crash tests двух направлений рассинхронизации. `backend/src/jobs/outbox.rs` (target)
+- [ ] 🟠 **840. Restic:** Сделать content-addressed backup manifest/checksum/verify и автоматический restore drill. `backend/src/bin/backup.rs` (target)
+- [ ] 🟡 **841. Borg:** Измерить chunk dedup на media corpus и определить prune policy до добавления зависимости. `bench/backup-dedup.md` (target)
+- [ ] 🟡 **842. RocksDB:** Задать SQLite WAL benchmark и migration threshold; до порога RocksDB не внедрять. `backend/benches/persistence.rs` (target)
+- [ ] 🟡 **843. Meilisearch:** Ввести `MediaSearch` port с SQLite FTS default и внешним adapter только после scale threshold. `backend/src/ports/media_search.rs` (target)
+
+### G. Vue, frontend и testing
+
+- [ ] 🟠 **844. Vue:** Закрепить feature public APIs и forbidden cross-feature imports правилом ESLint. `frontend/eslint.config.*` (target)
+- [ ] 🟠 **845. Pinia:** Выделить pilot `project`/`ui` stores с facade и command-only cross-store interaction. `frontend/src/stores/` (target)
+- [ ] 🟡 **846. Vite:** Ввести gzip budget initial JS/CSS и отдельные chunks для analysis/dev features. `frontend/vite.config.ts` + CI (target)
+- [ ] 🟠 **847. Vitest:** Перевести backoff/deadline/debounce/history/cancel tests на fake timers и table/property cases без sleep. `frontend/src/**/*.test.ts`
+- [ ] 🟡 **848. VueUse:** Централизовать global listeners/resize/online в lifecycle-safe composables и запретить обход lint-аудитом. `frontend/src/composables/` (target)
+- [ ] 🟠 **849. Storybook:** Каталогизировать empty/loading/error/long/localized/mobile/reduced-motion states с a11y/screenshots. `frontend/src/**/*.stories.ts` (target)
+- [ ] 🔴 **850. Playwright:** Backendless mock smoke в Chromium/Firefox/WebKit и 390px: boot/offline/import/edit/export/no-overflow. `frontend/e2e/smoke.spec.ts` (target)
+- [ ] 🟡 **851. Cypress:** Сравнить один fault scenario и оформить ADR выбора ровно одного E2E runner. `docs/adr/e2e-runner.md` (target)
+- [ ] 🟠 **852. TanStack Query:** Вынести library/projects/jobs server cache/invalidation/polling из mutable UI stores. `frontend/src/data/` (target)
+- [ ] 🟠 **853. Floating UI:** Создать один tooltip/menu/popover primitive с collision/focus return/Escape/outside-click tests. `frontend/src/ui/overlay/` (target)
+
+### H. Security и supply chain
+
+- [ ] 🔴 **854. OWASP:** Связать extension/MIME/signature/probe/name/quarantine/storage/limits с negative upload fixtures. `docs/threat-model-upload.md`, `backend/tests/upload_security.rs` (target)
+- [ ] 🟠 **855. OSS-Fuzz:** Подготовить hermetic continuous fuzz targets, sanitizer build, corpus и triage SLA. `fuzz/oss-fuzz/` (target)
+- [ ] 🟠 **856. cargo-fuzz:** Targets для edit normalization, multipart path, library JSON, URL policy и cache key; crashes идут в regression corpus. `backend/fuzz/` (target)
+- [ ] 🟠 **857. RustSec:** У каждого advisory ignore должны быть owner/rationale/expiry; просрочка падает в CI. `.cargo/audit.toml` (target)
+- [ ] 🟠 **858. cargo-deny:** Ввести license/source/duplicate policy и поштучные исключения. `deny.toml` (target)
+- [ ] 🟠 **859. Trivy:** Сканировать built image/filesystem/Compose-IaC, публиковать SARIF, исключения делать expiring. `.github/workflows/security.yml` (target)
+- [ ] 🟡 **860. OSV-Scanner:** Проверять оба lockfile и сопоставлять с native audit tools, показывая fixed version/path. `.github/workflows/security.yml` (target)
+- [ ] 🟠 **861. Cosign:** Генерировать SBOM/SLSA provenance, подписывать digest и проверять policy до deploy. `.github/workflows/release.yml` (target)
+- [ ] 🔴 **862. Gitleaks:** PR+history secret scan с custom query-token rules и минимальным reviewed baseline. `.gitleaks.toml` (target)
+- [ ] 🟠 **863. SOPS:** Хранить deploy secrets зашифрованно, внешние keys, rotation drill и отсутствие plaintext на диске/в логах. `ops/secrets/` (target)
+
+### I. Observability и performance
+
+- [ ] 🟠 **864. Prometheus:** Определить low-cardinality queue/process/failure/saturation/cache/bytes metrics; запретить ID/URL/filename labels. `backend/src/telemetry/metrics.rs` (target)
+- [ ] 🟠 **865. Loki:** Labels только service/env/level/error_kind, чувствительные high-cardinality данные - redacted fields. `backend/src/telemetry/log_policy.rs` (target)
+- [ ] 🟠 **866. Jaeger:** Сохранять trace/link context в job и восстанавливать после queue boundary с sampling budget. `backend/src/telemetry/context.rs` (target)
+- [ ] 🟠 **867. OpenTelemetry:** Ввести exporter-neutral telemetry port и semantic names с noop/test/export adapters. `backend/src/ports/telemetry.rs` (target)
+- [ ] 🔴 **868. Vector:** Один allowlist/redaction transform для logs и diagnostic bundle; canary fixture не должен утечь никуда. `backend/src/privacy/redaction.rs` (target)
+- [ ] 🟡 **869. Parca:** Staging-only continuous profiling, symbolized builds, retention и before/after profile для perf PR. `ops/profiling/` (target)
+- [ ] 🟠 **870. Loom:** Выделить `JobCell` и model-check terminal/permit/cancel invariants. `backend/src/jobs/job_cell.rs` (target)
+- [ ] 🟡 **871. Hyperfine:** Версионированный warm/cold perf corpus для probe/list/cache-hit/plan compile с median/p95. `bench/perf/` (target)
+- [ ] 🟡 **872. Flamegraph:** Сохранять baseline/profile commands для hot workloads; perf fix без профиля не принимать. `docs/performance.md` (target)
+- [ ] 🟡 **873. tokio-console:** Добавить защищённый staging-only async diagnostics profile и task-leak runbook. `backend/src/telemetry/console.rs` (target)
+
+### J. ML-assisted media
+
+- [ ] 🟡 **874. Whisper:** Transcript как versioned derived artifact с source checksum/model/language/confidence/invalidation. `backend/src/analysis/transcript.rs` (target)
+- [ ] 🟡 **875. whisper.cpp:** Local/offline ASR adapter с capability/resource estimate и понятным CPU fallback. `backend/src/adapters/asr/local.rs` (target)
+- [ ] 🟡 **876. faster-whisper:** Benchmark real-time factor/RAM/VRAM/accuracy proxy по model/quantization на языковом corpus. `bench/asr/` (target)
+- [ ] 🟠 **877. WhisperX:** Word alignment + confidence для transcript range draft; low-confidence boundary требует preview/confirm. `frontend/src/features/transcript/` (target)
+- [ ] 🟡 **878. pyannote:** Speaker track с labels/segments/model/confidence/delete/privacy warning; embeddings не хранить по умолчанию. `backend/src/analysis/speakers.rs` (target)
+- [ ] 🟠 **879. PySceneDetect:** Versioned detector/threshold/metrics artifact как snap/chapter suggestions с manual override. `backend/src/analysis/scenes.rs` (target)
+- [ ] 🟡 **880. OpenCV:** `VisualAnalysis` port возвращает DTO artifacts и не пропускает OpenCV `Mat` в core. `backend/src/ports/visual_analysis.rs` (target)
+- [ ] 🟡 **881. librosa:** Chunked waveform/loudness/beat/onset cache по audio fingerprint/version с progressive UI. `backend/src/analysis/audio_features.rs` (target)
+- [ ] 🟡 **882. PaddleOCR:** OCR track с time/bbox/language/confidence/model и local-first privacy profile. `backend/src/analysis/ocr.rs` (target)
+- [ ] 🟠 **883. Ultralytics:** Object tracks создают только human-approved follow-crop/censor suggestions; фиксировать model/license/confidence. `backend/src/analysis/object_tracks.rs` (target)
 
 ## P0 - Корректность (чинить первым)
 

@@ -138,6 +138,8 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 и совместимом alias-файле [arhitecture.md](arhitecture.md).
 Пошаговый рефакторинг на слабую зацепленность - в [docs/refactor-plan.md](docs/refactor-plan.md).
 Порядок исполнения по фазам - в [plan.md](plan.md).
+Исследовательский benchmark 100 сильных media/editor/backend/security-проектов,
+papers и стандартов - в [docs/research-100.md](docs/research-100.md).
 Аудиты проблем: проверенное ядро (118 находок, поштучно верифицировано, 14
 опровергнутых) - в [docs/audit.md](docs/audit.md); расширенный широкий охват
 (509 заземлённых на код проблем) - в [docs/audit-500.md](docs/audit-500.md);
@@ -146,8 +148,10 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 `recommendation.md` как карта исправлений; источник правды по багам - `docs/audit.md`,
 порядок работ - `plan.md`. Если нужен именно большой список «500 предложений,
 улучшений, проблем и ошибок», читай так: `docs/audit-500.md` = 509 широких
-находок по коду; `architecture.md` и `recommendation.md` = 565 SOLID/DRY-пунктов,
-разбитых на 12 маленьких модулей, чтобы можно было брать по одному кусочку.
+находок по коду; `architecture.md` и `recommendation.md` = 665 активных
+рекомендаций: 565 SOLID/DRY-пунктов в 12 маленьких модулях плюс 100
+research-backed решений в 10 тематических группах. Их можно брать по одному
+кусочку.
 
 **Раунд 2 (1 июля 2026).** После 5 P0-фиксов (single-flight рендер-кэша,
 process-group kill, атомарная отмена задач, CORS/ServeDir lockdown, лимит на
@@ -228,6 +232,20 @@ envelope. `projects.rs` дополнительно разделён на parsing
 persistence. Frontend использует один parser и typed `ApiError`, сохраняя
 plain-text fallback для старого proxy. Regression-тесты покрывают malformed
 JSON, routing errors, body limit, скрытие internal source и HTTP 500 vs network.
+
+**Исследовательский раунд (14 июля 2026): ещё 100 решений.** Изучены 100
+активных высокорейтинговых репозиториев в 10 группах: NLE/media pipeline,
+кодеки/качество, playback, editor interactions, Rust backend, jobs/persistence,
+Vue/testing, security/supply chain, observability/performance и ML-assisted
+media. Выводы сверены с первичными papers и спецификациями FFmpeg, GStreamer,
+MLT, Tokio, OWASP, W3C, OpenTelemetry и SLSA. Каждый источник дал отдельную
+проверяемую карточку №784-883; популярность проекта не трактуется как команда
+добавить зависимость. Общий исполняемый набор теперь 665: исходные 565 + 100
+исследовательских. Каталог со снимком звёзд и трассировкой решений - в
+[docs/research-100.md](docs/research-100.md), формулировки - в
+[architecture.md](architecture.md#исследовательский-слой-100-репозиториев-14-июля-2026),
+чеклист - в
+[recommendation.md](recommendation.md#исследовательский-чеклист-100-репозиториев-14-июля-2026).
 
 ```
 frontend (Vue 3 + Vite)

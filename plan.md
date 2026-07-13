@@ -4,7 +4,9 @@
 проблем) - в [docs/audit-500.md](docs/audit-500.md); проверенное ядро (118,
 поштучно верифицировано) - в [docs/audit.md](docs/audit.md); гранулярные
 P0-P3-шаги с критериями приёмки - в [recommendation.md](recommendation.md);
-целевой дизайн - в [architecture.md](architecture.md).
+целевой дизайн - в [architecture.md](architecture.md); исследовательский слой
+из 100 репозиториев/papers/стандартов - в
+[docs/research-100.md](docs/research-100.md).
 
 Принцип: сначала то, что бьёт локального пользователя сейчас (функц. баги, потеря
 данных), затем безопасность перед выставлением наружу, затем надёжность/контракт,
@@ -44,10 +46,11 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] **project JSON без size cap** - `video` и `edit` ограничены 64KiB каждый; oversized autosave получает `413 Payload Too Large` до записи в SQLite. `handlers/projects.rs:21-42`
 - [x] **upload без MIME/magic/quota/concurrency cap** - body-size quota уже есть; клиентское расширение игнорируется, контейнер проходит bounded `ffprobe`/allow-list перед publish, статика получает `nosniff` + sandbox CSP; отдельный upload-pool отвечает `429` при насыщении. `handlers/upload.rs`, `state.rs`, `lib.rs`
 - [ ] **ffmpeg без CPU/RAM/threads/filesize-лимитов**; нет no-progress watchdog (из audit-500 разделов «Ресурсы»).
-- [ ] **Логировать падение задачи** - `finish_job` Err не пишет `tracing::error!`, диагностики ноль. `handlers/mod.rs:576-583`
+- [x] **Логировать падение задачи** - `finish_job` пишет `tracing::error!` с job ID, internal detail остаётся в серверном логе. `handlers/mod.rs`
 - [ ] **RectOverlay: координаты по letterbox, не по контенту видео** - при разнице пропорций crop/censor попадает мимо. Считать реальный content-box. `components/RectOverlay.vue:37-77`
 - [x] **`applyPreset` перетирает format/codec/quality** - look-presets отделены от export-настроек; старый preset больше не меняет контейнер/codec/quality. `domain/edit.ts`, `store.ts`
-- [ ] Единый `ApiError`/`IntoResponse`, `202 Accepted` на async-задачи, единая форма ошибок (из audit-500 раздела «Ошибки и API»).
+- [x] Единый `AppError`/`IntoResponse` и JSON envelope введены в раунде 8.
+- [ ] Перевести создание async-задач с `200 OK` на `202 Accepted` и закрепить contract-тестами.
 
 ## P2. Тесты (всё ниже сейчас без покрытия)
 
@@ -65,6 +68,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] Раунд 6 (11 июля 2026): закрыты SSRF redirect/DNS rebinding и custom-port egress; добавлены per-job proxy, bounded DNS/connect, реальные `yt-dlp` regression-тесты и pinned `yt-dlp` в CI.
 - [x] Раунд 7 (11 июля 2026): закрыты upload concurrency, partial-upload cleanup, probe timeout и публичный jobs_semaphore; multipart bounded с cleanup, tool probes имеют timeout с kill+wait, добавлены state/API/tool regressions.
 - [x] Раунд 8 (11 июля 2026): введены `AppError`/`AppResult`, единый JSON envelope и typed frontend `ApiError`; projects parsing отделён от persistence, extractor/404/405/body-limit ошибки покрыты regression-тестами.
+- [x] Исследовательский раунд (14 июля 2026): изучены 100 активных высокорейтинговых репозиториев и первичные papers/specs; добавлены и синхронизированы карточки №784-883. Рабочий набор теперь 665 пунктов (565 SOLID/DRY + 100 research-backed).
 - [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
 
 ---
