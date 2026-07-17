@@ -90,12 +90,12 @@ impl Library {
         Ok(())
     }
 
-    pub async fn add(&self, entry: MediaEntry) {
+    pub async fn add(&self, entry: MediaEntry) -> bool {
         // Reject malformed entries: an empty id would collapse unrelated media
         // into one slot via the dedup-by-id below (and serve a broken url).
         if entry.id.is_empty() || entry.filename.is_empty() {
             tracing::warn!("library: skipping add of entry with empty id/filename");
-            return;
+            return false;
         }
         let mut guard = self.entries.lock().await;
         let mut next = guard.clone();
@@ -105,9 +105,10 @@ impl Library {
         // save never reports success while the entry is lost on restart.
         if let Err(e) = self.save(&next).await {
             tracing::error!(error = %e, "library: persist failed on add, entry not stored");
-            return;
+            return false;
         }
         *guard = next;
+        true
     }
 
     /// Return entries newest-first, hiding any whose file is currently missing.

@@ -4,12 +4,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
+use serde_json::Value;
 use tokio::sync::{AcquireError, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::db::Db;
+use crate::jobs::{
+    EnqueueOutcome, JobCell, JobEvent, JobKind, JobPermit, QueueLimits, SqliteJobStore,
+};
 use crate::library::Library;
-use crate::model::{Job, JobStatus};
+use crate::model::Job;
+use crate::ports::{MediaDocument, MediaSearch, SqliteMediaSearch};
 use crate::runtime::TaskSupervisor;
 
 const DEFAULT_RECOVER_JOBS_LIMIT: i64 = 200;
@@ -33,11 +39,11 @@ pub struct ToolInfo {
 }
 
 /// Shared application state. Jobs live in memory as the hot path (with live
-/// progress) and are written through to SQLite on creation and at terminal
-/// states, so a restart recovers them (in-flight jobs become `interrupted`).
+/// progress). SQLite owns durable requests/events/outbox rows, while one
+/// `JobCell` per id keeps unrelated transitions from sharing a global lock.
 #[derive(Clone)]
 pub struct AppState {
-    jobs: Arc<Mutex<HashMap<String, Job>>>,
+    jobs: Arc<Mutex<HashMap<String, Arc<JobCell>>>>,
     /// Per-job cancellation handles, removed when the job finishes.
     cancels: Arc<Mutex<HashMap<String, CancellationToken>>>,
     /// Per-render-cache-key locks. They serialize identical edit requests so
@@ -51,6 +57,8 @@ pub struct AppState {
     pub tools: Arc<ToolInfo>,
     pub library: Library,
     pub db: Db,
+    pub job_store: SqliteJobStore,
+    pub media_search: Arc<dyn MediaSearch>,
     pub storage: PathBuf,
 }
 
@@ -70,6 +78,8 @@ impl AppState {
         db: Db,
     ) -> Self {
         let max_concurrent = max_concurrent.max(1);
+        let job_store = SqliteJobStore::new(db.clone());
+        let media_search = Arc::new(SqliteMediaSearch::new(db.clone()));
         AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
@@ -80,6 +90,8 @@ impl AppState {
             tools: Arc::new(tools),
             library,
             db,
+            job_store,
+            media_search,
             storage,
         }
     }
@@ -88,18 +100,74 @@ impl AppState {
         if let Err(e) = self.db.persist_job(&job).await {
             tracing::warn!("persist job {}: {e}", job.id);
         }
-        self.jobs.lock().await.insert(job.id.clone(), job);
+        if let Err(error) = self
+            .job_store
+            .record_transition(&job, &JobEvent::Created, "legacy-created", None)
+            .await
+        {
+            tracing::warn!(job.id = %job.id, %error, "persist legacy job event");
+        }
+        self.remember_job(job).await;
+    }
+
+    pub async fn enqueue_job(
+        &self,
+        id: String,
+        kind: JobKind,
+        payload: &Value,
+        dedupe_key: &str,
+    ) -> anyhow::Result<EnqueueOutcome> {
+        let outcome = self
+            .job_store
+            .enqueue(id, kind, payload, dedupe_key, queue_limits())
+            .await?;
+        if let EnqueueOutcome::Created(job) = &outcome {
+            self.remember_job(job.clone()).await;
+        }
+        Ok(outcome)
+    }
+
+    pub async fn remember_job(&self, job: Job) {
+        self.jobs
+            .lock()
+            .await
+            .insert(job.id.clone(), Arc::new(JobCell::new(job)));
+    }
+
+    pub async fn replace_job(&self, job: Job) {
+        if let Some(cell) = self.job_cell(&job.id).await {
+            cell.replace(job).await;
+        } else {
+            self.remember_job(job).await;
+        }
     }
 
     pub async fn get_job(&self, id: &str) -> Option<Job> {
-        self.jobs.lock().await.get(id).cloned()
+        if let Some(cell) = self.job_cell(id).await {
+            return Some(cell.snapshot().await);
+        }
+        let persisted = match self.db.load_job(id).await {
+            Ok(Some(job)) => job,
+            Ok(None) => return None,
+            Err(error) => {
+                tracing::warn!(job.id = id, %error, "load job on cache miss");
+                return None;
+            }
+        };
+        let cell = {
+            let mut jobs = self.jobs.lock().await;
+            jobs.entry(id.to_string())
+                .or_insert_with(|| Arc::new(JobCell::new(persisted)))
+                .clone()
+        };
+        Some(cell.snapshot().await)
     }
 
     /// Mutate a job in place if it exists. Memory-only (used for frequent progress
     /// ticks); call `persist_job` separately at status transitions.
     pub async fn update_job(&self, id: &str, f: impl FnOnce(&mut Job)) {
-        if let Some(job) = self.jobs.lock().await.get_mut(id) {
-            f(job);
+        if let Some(cell) = self.job_cell(id).await {
+            cell.update(f).await;
         }
     }
 
@@ -107,43 +175,87 @@ impl AppState {
     /// true when the update was applied. This keeps late worker completion from
     /// overwriting a user cancellation.
     pub async fn update_job_if_open(&self, id: &str, f: impl FnOnce(&mut Job)) -> bool {
-        let mut guard = self.jobs.lock().await;
-        let Some(job) = guard.get_mut(id) else {
+        let Some(cell) = self.job_cell(id).await else {
             return false;
         };
-        if job.status.is_terminal() {
+        cell.update_if_open(f).await
+    }
+
+    pub async fn transition_job(&self, id: &str, event: JobEvent) -> bool {
+        self.transition_job_with_key(id, event, &Uuid::new_v4().to_string())
+            .await
+    }
+
+    pub async fn transition_job_with_key(
+        &self,
+        id: &str,
+        event: JobEvent,
+        idempotency_key: &str,
+    ) -> bool {
+        let Some(cell) = self.job_cell(id).await else {
             return false;
+        };
+        let tool_version = match &event {
+            JobEvent::Started { stage, .. } if stage == "downloading" => {
+                self.tools.ytdlp_version.as_deref()
+            }
+            JobEvent::Started { .. } => self.tools.ffmpeg_version.as_deref(),
+            _ => None,
         }
-        f(job);
-        true
+        .map(str::to_owned);
+        let store = self.job_store.clone();
+        let persisted_event = event.clone();
+        let persisted_key = idempotency_key.to_string();
+        match cell
+            .apply_durable(&event, move |snapshot| async move {
+                let inserted = store
+                    .record_transition(
+                        &snapshot,
+                        &persisted_event,
+                        &persisted_key,
+                        tool_version.as_deref(),
+                    )
+                    .await?;
+                anyhow::ensure!(inserted, "job transition idempotency key already used");
+                Ok(())
+            })
+            .await
+        {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(error) => {
+                tracing::error!(job.id = id, %error, "persist job transition");
+                false
+            }
+        }
     }
 
     /// Write the current in-memory state of a job to the database (best-effort).
     pub async fn persist_job(&self, id: &str) {
-        let job = self.jobs.lock().await.get(id).cloned();
-        if let Some(job) = job {
+        if let Some(job) = self.get_job(id).await {
             if let Err(e) = self.db.persist_job(&job).await {
                 tracing::warn!("persist job {id}: {e}");
             }
         }
     }
 
-    /// Load persisted jobs into memory at startup. Any job that was still in
-    /// flight when the process stopped is marked `interrupted` so a polling
-    /// client gets a clear terminal state instead of a 404 or an endless spinner.
+    /// Reconcile abandoned attempts/outbox leases, then restore the bounded hot
+    /// set. Durable requests that can be retried remain pending for dispatch.
     pub async fn recover_jobs(&self) {
+        match self.job_store.reconcile_started().await {
+            Ok(report) if report.requeued > 0 || report.interrupted > 0 => tracing::info!(
+                requeued = report.requeued,
+                interrupted = report.interrupted,
+                "reconciled durable jobs"
+            ),
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "could not reconcile jobs"),
+        }
         match self.db.load_recent_jobs(recover_jobs_limit()).await {
             Ok(jobs) => {
                 let mut guard = self.jobs.lock().await;
-                for mut job in jobs {
-                    if !job.status.is_terminal() {
-                        job.status = JobStatus::Interrupted;
-                        job.stage = None;
-                        if let Err(e) = self.db.persist_job(&job).await {
-                            tracing::warn!("persist recovered job {}: {e}", job.id);
-                        }
-                    }
-                    guard.insert(job.id.clone(), job);
+                for job in jobs {
+                    guard.insert(job.id.clone(), Arc::new(JobCell::new(job)));
                 }
             }
             Err(e) => tracing::warn!("could not recover jobs: {e}"),
@@ -167,23 +279,19 @@ impl AppState {
 
     /// Atomically mark a non-terminal job as cancelled, then signal its worker.
     pub async fn cancel_open_job(&self, id: &str) -> CancelJobOutcome {
-        {
-            let mut guard = self.jobs.lock().await;
-            let Some(job) = guard.get_mut(id) else {
-                return CancelJobOutcome::NotFound;
-            };
-            if job.status.is_terminal() {
-                return CancelJobOutcome::AlreadyFinished;
-            }
-            job.status = JobStatus::Cancelled;
-            job.stage = None;
-            job.progress = None;
+        let Some(job) = self.get_job(id).await else {
+            return CancelJobOutcome::NotFound;
+        };
+        if job.status.is_terminal() {
+            return CancelJobOutcome::AlreadyFinished;
+        }
+        if !self.transition_job(id, JobEvent::Cancelled).await {
+            return CancelJobOutcome::AlreadyFinished;
         }
 
         if let Some(token) = self.cancels.lock().await.remove(id) {
             token.cancel();
         }
-        self.persist_job(id).await;
         CancelJobOutcome::Cancelled
     }
 
@@ -197,8 +305,12 @@ impl AppState {
 
     /// Wait for a download/render slot. Cancellation remains the caller's
     /// responsibility because job workers already own their cancellation token.
-    pub async fn acquire_job_slot(&self) -> Result<OwnedSemaphorePermit, AcquireError> {
-        self.jobs_semaphore.clone().acquire_owned().await
+    pub async fn acquire_job_slot(&self) -> Result<JobPermit, AcquireError> {
+        self.jobs_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map(JobPermit::new)
     }
 
     /// Stop admitting queued jobs; this is the queue-level shutdown boundary.
@@ -224,6 +336,10 @@ impl AppState {
         self.supervisor.begin_shutdown();
     }
 
+    pub fn is_shutting_down(&self) -> bool {
+        self.supervisor.is_shutting_down()
+    }
+
     pub async fn wait_for_tasks(&self, limit: Duration) -> bool {
         self.supervisor.wait(limit).await
     }
@@ -245,6 +361,29 @@ impl AppState {
     pub fn outputs_dir(&self) -> PathBuf {
         self.storage.join("outputs")
     }
+
+    pub async fn rebuild_media_search(&self) {
+        let documents: Vec<_> = self
+            .library
+            .list()
+            .await
+            .iter()
+            .map(MediaDocument::from)
+            .collect();
+        if let Err(error) = self.media_search.rebuild(&documents).await {
+            tracing::warn!(%error, "rebuild media search index");
+        }
+    }
+
+    pub async fn index_media(&self, entry: &crate::library::MediaEntry) {
+        if let Err(error) = self.media_search.index(&MediaDocument::from(entry)).await {
+            tracing::warn!(media.id = %entry.id, %error, "index media");
+        }
+    }
+
+    async fn job_cell(&self, id: &str) -> Option<Arc<JobCell>> {
+        self.jobs.lock().await.get(id).cloned()
+    }
 }
 
 fn recover_jobs_limit() -> i64 {
@@ -255,9 +394,30 @@ fn recover_jobs_limit() -> i64 {
         .unwrap_or(DEFAULT_RECOVER_JOBS_LIMIT)
 }
 
+fn queue_limits() -> QueueLimits {
+    let mut limits = QueueLimits::default();
+    if let Some(value) = env_u64("JOB_DEDUPE_TTL_SECS") {
+        limits.dedupe_ttl = Duration::from_secs(value);
+    }
+    if let Some(value) = env_u64("JOB_RATE_WINDOW_SECS") {
+        limits.rate_window = Duration::from_secs(value);
+    }
+    if let Some(value) = env_u64("JOB_RATE_LIMIT") {
+        limits.max_new_jobs = u32::try_from(value).unwrap_or(u32::MAX);
+    }
+    limits
+}
+
+fn env_u64(name: &str) -> Option<u64> {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::JobStatus;
 
     #[test]
     fn recover_jobs_limit_defaults_on_bad_values() {
@@ -349,5 +509,52 @@ mod tests {
             CancelJobOutcome::AlreadyFinished
         );
         assert_eq!(st.get_job("done").await.unwrap().status, JobStatus::Done);
+    }
+
+    #[tokio::test]
+    async fn durable_job_is_loaded_when_the_hot_set_misses() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        db.persist_job(&Job::pending("cold".into())).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+
+        assert_eq!(st.get_job("cold").await.unwrap().id, "cold");
+        assert!(st.job_cell("cold").await.is_some());
+    }
+
+    #[tokio::test]
+    async fn reused_event_key_cannot_diverge_memory_from_the_durable_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+        st.set_job(Job::pending("keyed".into())).await;
+
+        assert!(
+            st.transition_job_with_key("keyed", JobEvent::Queued, "same-key")
+                .await
+        );
+        assert!(
+            !st.transition_job_with_key(
+                "keyed",
+                JobEvent::Started {
+                    stage: "processing".into(),
+                    attempt: 1,
+                },
+                "same-key",
+            )
+            .await
+        );
+        assert_eq!(
+            st.get_job("keyed").await.unwrap().status,
+            JobStatus::Pending
+        );
+        assert_eq!(
+            st.db.load_job("keyed").await.unwrap().unwrap().status,
+            JobStatus::Pending
+        );
     }
 }

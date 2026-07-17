@@ -1,4 +1,4 @@
-.PHONY: dev backend frontend build check test lint fmt
+.PHONY: dev backend frontend build check test lint fmt bench-persistence
 
 dev:
 	bash scripts/dev.sh
@@ -36,3 +36,6 @@ lint:
 
 fmt:
 	cd backend && cargo fmt
+
+bench-persistence:
+	cd backend && cargo bench --bench persistence

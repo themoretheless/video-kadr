@@ -1,6 +1,4 @@
-//! SQLite-backed persistence. Currently holds editing **projects** so reopening
-//! a clip restores the work instead of resetting to defaults. Jobs and a render
-//! cache are slated to move here too (Phase 1 of the architecture review).
+//! SQLite-backed persistence for projects, durable jobs and the render cache.
 
 use std::path::Path;
 use std::time::Duration;
@@ -79,7 +77,32 @@ impl Db {
             .connect_with(opts)
             .await?;
         sqlx::query(SCHEMA).execute(&pool).await?;
-        Ok(Db { pool })
+        let db = Db { pool };
+        crate::jobs::SqliteJobStore::new(db.clone())
+            .migrate()
+            .await?;
+        crate::ports::SqliteMediaSearch::migrate(&db).await?;
+        Ok(db)
+    }
+
+    pub(crate) fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
+    /// Create a consistent standalone SQLite image while the WAL database may
+    /// remain open. The destination must not already exist.
+    pub async fn snapshot_to(&self, destination: &Path) -> Result<()> {
+        if destination.exists() {
+            return Err(anyhow!("database snapshot destination already exists"));
+        }
+        let destination = destination
+            .to_str()
+            .ok_or_else(|| anyhow!("database snapshot path is not UTF-8"))?;
+        sqlx::query("VACUUM INTO ?")
+            .bind(destination)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Create or update (keyed by `video_id`) the project for a clip and return it.
@@ -212,6 +235,18 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(row_to_job).collect()
+    }
+
+    /// Load one job on demand. The in-memory job map is intentionally bounded,
+    /// so status requests and outbox dispatch must be able to hydrate a miss.
+    pub async fn load_job(&self, id: &str) -> Result<Option<Job>> {
+        let row = sqlx::query(
+            "SELECT id, status, result_json, error, stage, progress FROM jobs WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_job).transpose()
     }
 
     /// Load only the most recently updated jobs. Used at startup so a long-lived
@@ -381,6 +416,8 @@ mod tests {
             "/files/outputs/x.mp4"
         );
         assert_eq!(loaded[0].progress, Some(100.0));
+        assert_eq!(db.load_job("j1").await.unwrap(), Some(j));
+        assert!(db.load_job("missing").await.unwrap().is_none());
     }
 
     #[tokio::test]

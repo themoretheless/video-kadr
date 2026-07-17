@@ -40,15 +40,14 @@ impl TaskSupervisor {
         self.tracker.close();
     }
 
+    pub fn is_shutting_down(&self) -> bool {
+        self.root.is_cancelled()
+    }
+
     pub async fn wait(&self, limit: Duration) -> bool {
         tokio::time::timeout(limit, self.tracker.wait())
             .await
             .is_ok()
-    }
-
-    #[cfg(test)]
-    fn is_cancelled(&self) -> bool {
-        self.root.is_cancelled()
     }
 }
 
@@ -73,7 +72,7 @@ mod tests {
         });
 
         supervisor.begin_shutdown();
-        assert!(supervisor.is_cancelled());
+        assert!(supervisor.is_shutting_down());
         finished.notified().await;
         assert!(supervisor.wait(Duration::from_secs(1)).await);
     }

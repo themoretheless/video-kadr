@@ -4,14 +4,17 @@
 //! router builder as a library lets the integration tests in `tests/` drive the
 //! real HTTP API with `tower::ServiceExt::oneshot`, without binding a socket.
 
+pub mod backup;
 pub mod capabilities;
 pub mod db;
 pub mod domain;
 pub mod error;
 pub mod handlers;
 pub mod http;
+pub mod jobs;
 pub mod library;
 pub mod model;
+pub mod ports;
 pub mod privacy;
 pub mod runtime;
 pub mod state;
@@ -46,9 +49,14 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
             post(handlers::upload_handler).layer(DefaultBodyLimit::max(max_upload)),
         )
         .route("/edit", post(handlers::edit_handler))
+        .route("/jobs/failed", get(handlers::failed_jobs_handler))
+        .route("/jobs/registry", get(handlers::job_registry_handler))
         .route("/jobs/:id", get(handlers::job_status_handler))
         .route("/jobs/:id/cancel", post(handlers::cancel_handler))
+        .route("/jobs/:id/retry", post(handlers::retry_job_handler))
+        .route("/jobs/:id/discard", post(handlers::discard_job_handler))
         .route("/library", get(handlers::library_list_handler))
+        .route("/library/search", get(handlers::library_search_handler))
         .route("/library/:id", delete(handlers::library_delete_handler))
         .with_state(state);
     let api = core_api

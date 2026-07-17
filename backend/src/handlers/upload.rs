@@ -110,10 +110,10 @@ pub async fn upload_handler(
         "acodec": info.acodec,
         "sizeBytes": size,
     });
-    state
-        .library
-        .add(MediaEntry::from_result("source", &body))
-        .await;
+    let entry = MediaEntry::from_result("source", &body);
+    if state.library.add(entry.clone()).await {
+        state.index_media(&entry).await;
+    }
     Ok(Json(body))
 }
 

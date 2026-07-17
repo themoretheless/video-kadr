@@ -78,7 +78,7 @@ impl JobStatus {
 }
 
 /// A unit of background work tracked in memory and polled by the frontend.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Job {
     pub id: String,
     pub status: JobStatus,
@@ -110,7 +110,7 @@ impl Job {
 /// Request body for `POST /api/import`. `start`/`end` (seconds) optionally limit
 /// the download to a section instead of fetching the whole (possibly very long)
 /// video.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImportRequest {
     #[serde(rename = "schemaVersion", default)]

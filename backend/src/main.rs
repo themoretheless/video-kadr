@@ -73,8 +73,11 @@ async fn main() -> anyhow::Result<()> {
         lib.clone(),
         db.clone(),
     );
-    // Recover jobs from a previous run; mark any that were in flight as interrupted.
+    // Reconcile durable jobs and rebuild derived state before workers can add
+    // new media; incremental indexing owns every change after this boundary.
     state.recover_jobs().await;
+    state.rebuild_media_search().await;
+    video_editor_backend::handlers::start_job_dispatcher(&state);
 
     // Optional TTL cleanup of generated/downloaded files.
     let ttl_hours: u64 = std::env::var("FILE_TTL_HOURS")
@@ -161,6 +164,7 @@ async fn shutdown_signal() {
 /// Periodically delete files in sources/ and outputs/ older than `ttl_hours`.
 fn spawn_cleanup(state: &AppState, storage: PathBuf, library: Library, db: Db, ttl_hours: u64) {
     let shutdown = state.shutdown_token();
+    let media_search = state.media_search.clone();
     state.spawn_task(async move {
         let ttl = Duration::from_secs(ttl_hours * 3600);
         let mut tick = tokio::time::interval(Duration::from_secs(30 * 60));
@@ -201,6 +205,9 @@ fn spawn_cleanup(state: &AppState, storage: PathBuf, library: Library, db: Db, t
                     if let Some(entry) = entry {
                         let entry_id = entry.id.clone();
                         if library.remove(&entry_id).await {
+                            if let Err(error) = media_search.remove(&entry_id).await {
+                                tracing::warn!(media.id = %entry_id, %error, "cleanup search index");
+                            }
                             if sub == "outputs" {
                                 let _ = db.cache_delete_filename(filename).await;
                             }

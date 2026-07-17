@@ -1162,7 +1162,7 @@ SOLID/DRY-раунда. Общий синхронизированный набо
 |---:|---|---|
 | 1 | ✅ | 790, 824, 828, 829, 831, 844, 846, 847, 850, 854 |
 | 2 | ✅ | 784, 786, 787, 803, 814, 817, 820, 823, 825, 826 |
-| 3 | ☐ | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 |
+| 3 | ✅ | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 |
 | 4 | ☐ | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 |
 | 5 | ☐ | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 |
 | 6 | ☐ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 |
@@ -1186,6 +1186,25 @@ validation до spawn. На frontend command history и branded coordinate space
 port-based routers; policy catalog фиксирует порядок controls. Текущая
 authorization policy остаётся local-only boundary: публичная auth/ownership всё
 ещё отдельный P0, а не скрытая часть этой волны.
+
+Волна 3 заменила snapshot-only jobs на модульный durable контур. HTTP enqueue
+одной SQLite-транзакцией пишет request, pending snapshot, первый event, dedupe и
+outbox; dispatcher атомарно lease'ит envelope и создаёт отдельный attempt.
+Attempt-scoped heartbeat продлевает lease во время ожидания semaphore/process;
+после crash due-retry scan закрывает окно между persisted failure и retry event.
+`JobCell` сериализует только переходы одного job, а durable write завершается до
+публикации нового in-memory snapshot. Event reducer используется и при replay,
+и при runtime transition; fault injection после каждой enqueue boundary
+подтверждает полный rollback. Error taxonomy управляет bounded retry и запрещает
+retry validation/security; failed/registry APIs дают audited retry/discard.
+Graceful shutdown сохраняет work recoverable, legacy snapshots идемпотентно
+backfill'ятся в event log, а terminal execution payload стирается; metadata остаётся
+для rate accounting и аудита.
+Derived media search вынесен в `MediaSearch` port с rebuildable SQLite FTS5.
+Backup создаёт content-addressed DB+media snapshot, проверяет manifest/checksums,
+пути и SQLite integrity до атомарного restore. RocksDB не вводится: WAL benchmark
+имеет явные scale/p95 thresholds. Terminal/cancel/permit claims model-check'ятся
+Loom.
 
 ### A. NLE и media pipeline (784-793)
 
@@ -1254,16 +1273,16 @@ authorization policy остаётся local-only boundary: публичная au
 
 ### F. Jobs и persistence (834-843)
 
-834. 🟠 [надёжность/Temporal] Текущая строка Job не позволяет детерминированно воспроизвести переходы после crash - `backend/src/jobs/event_log.rs` (target) -> Append-only события + idempotency key и reducer в состояние; fault-injection после каждой границы даёт тот же terminal result после replay.
-835. 🟠 [домен/Airflow] Повторный запуск смешивается с сущностью Job и общей строкой ошибки - `backend/src/jobs/attempt.rs` (target) -> Разделить `Job`/`JobAttempt`, execution timeout и retry policy по `ErrorKind`; validation/security errors никогда не retry.
-836. 🟠 [ops/Celery] Failed jobs нельзя просмотреть и осознанно retry/discard - `backend/src/jobs/failed_registry.rs` (target) -> Хранить reason/attempt/next_retry/tool version, добавить operator API с audit trail; retry имеет cap и новую attempt запись.
-837. 🟠 [API/BullMQ] Дубли import/edit при повторе HTTP создают независимую работу - `backend/src/jobs/dedupe.rs` (target) -> Stable idempotency/dedupe key, TTL и queue rate limiter; duplicate request возвращает существующий job ID и не запускает второй process.
-838. 🟡 [ops/RQ] Lifecycle views собираются из одного списка без явных registries/reconciliation - `backend/src/jobs/registry.rs` (target) -> Определить queued/started/deferred/failed/finished queries и startup reconciliation; зависшая started attempt получает объяснимый interrupted state.
-839. 🔴 [целостность/River] Enqueue в памяти и запись durable state могут разойтись при crash - `backend/src/jobs/outbox.rs` (target) -> Записывать job + outbox в одной SQLite transaction, dispatcher подтверждает delivery идемпотентно; crash tests исключают job без durable row и row без eventual execution.
-840. 🟠 [ops/Restic] Backup остаётся инструкцией без проверяемого артефакта и restore drill - `backend/src/bin/backup.rs` (target) -> Content-addressed snapshot DB+media, manifest/checksums/tool version и `verify`; CI fixture делает backup, удаление и полный restore.
+834. ✅ [надёжность/Temporal] Append-only `JobEvent` с contiguous sequence/idempotency key и единым reducer воспроизводит terminal snapshot; legacy snapshots backfill'ятся идемпотентно, durable publish и fault-injection rollback покрыты тестами. `backend/src/jobs/event_log.rs`, `backend/src/jobs/store.rs`
+835. ✅ [домен/Airflow] `JobAttempt`, `ErrorKind` и bounded exponential `RetryPolicy` отделены от Job; validation/security никогда не retry, timeout/process/storage/interrupted ограничены тремя attempts. `backend/src/jobs/attempt.rs`
+836. ✅ [ops/Celery] Failed registry возвращает reason/attempt/next retry/tool version; retry/discard endpoints имеют cap и durable audit actions. `backend/src/jobs/failed_registry.rs`, `backend/src/jobs/store.rs`
+837. ✅ [API/BullMQ] Stable namespaced SHA-256 dedupe, TTL и SQLite-window rate limit встроены в enqueue; duplicate import/edit возвращает существующий ID без второго process. `backend/src/jobs/dedupe.rs`, `backend/src/handlers/mod.rs`
+838. ✅ [ops/RQ] Явные queued/started/deferred/failed/finished counts и startup reconciliation освобождают abandoned lease, пишут interrupted и requeue только по policy. `backend/src/jobs/registry.rs`, `backend/src/jobs/store.rs`
+839. ✅ [целостность/River] Request + Job + Created event + dedupe + outbox коммитятся одной транзакцией; atomic claim, attempt heartbeat, due-retry recovery и shutdown reconciliation обеспечивают eventual execution, terminal execution payload стирается без обхода rate accounting, а пять injected crash boundaries не оставляют частичных строк. Orchestration изолирован от media workers. `backend/src/jobs/outbox.rs`, `backend/src/jobs/store.rs`, `backend/src/handlers/jobs.rs`
+840. ✅ [ops/Restic] CLI создаёт content-addressed DB+media snapshot с manifest/checksums/tool version; verify проверяет allowlisted paths и SQLite integrity, restore drill публикуется атомарно и исключает staging. `backend/src/backup.rs`, `backend/src/bin/backup.rs`
 841. 🟡 [perf/Borg] Неизвестно, окупится ли chunk dedup на похожих source/output - `bench/backup-dedup.md` (target) -> Измерить storage/time на реальном corpus и задать prune policy; внешняя dedup dependency вводится только при зафиксированном выигрыше.
-842. 🟡 [проектирование/RocksDB] Замена SQLite может преждевременно увеличить сложность - `backend/benches/persistence.rs` (target) -> Сначала benchmark SQLite WAL при заданных N assets/jobs/cache writes и определить migration threshold; до него RocksDB явно не рассматривается.
-843. 🟡 [DIP/Meilisearch] Добавление поиска может напрямую связать library с отдельным сервером - `backend/src/ports/media_search.rs` (target) -> `MediaSearch` port с SQLite FTS default и optional external adapter после scale threshold; indexing eventual и rebuildable из source of truth.
+842. ✅ [проектирование/RocksDB] Версионированный WAL benchmark измеряет 1000 enqueue; migration gate задан как 1M jobs, 100k media или p95 write ≥50 ms. Локальные p95-прогоны 0.241-0.632 ms, поэтому SQLite остаётся default. `backend/benches/persistence.rs`, `backend/src/jobs/persistence_profile.rs`
+843. ✅ [DIP/Meilisearch] `MediaSearch` port имеет SQLite FTS5 adapter с safe prefix query/ranking и полным rebuild из library source of truth; внешний adapter не требуется до scale gate. `backend/src/ports/media_search.rs`
 
 ### G. Vue, frontend и testing (844-853)
 
@@ -1273,7 +1292,7 @@ authorization policy остаётся local-only boundary: публичная au
 847. ✅ [тесты/Vitest] Polling terminal/cancel cases, autosave debounce и history используют fake timers/table cases без real-time sleep. `frontend/src/api.test.ts`, `frontend/src/store.test.ts`
 848. 🟡 [DRY/VueUse] Lifecycle-sensitive listeners/resize/online logic легко снова разойдутся по компонентам - `frontend/src/composables/` (target) -> Использовать общие composables с automatic cleanup и lint-аудит: прямой global `addEventListener` разрешён только внутри lifecycle wrapper.
 849. 🟠 [дизайн/Storybook] Состояния компонентов проверяются только внутри целого приложения - `frontend/src/**/*.stories.ts` (target) -> Каталог empty/loading/error/long text/localization/mobile/reduced-motion для каждого tool surface; a11y и screenshot checks запускаются изолированно.
-850. ✅ [smoke/Playwright] 9 smoke cases в Chromium/Firefox/WebKit проверяют backendless offline boot, mocked import/edit/export и отсутствие overflow на 390px. `frontend/e2e/smoke.spec.ts`
+850. ✅ [smoke/Playwright] 9 smoke cases в Chromium/Firefox/WebKit проверяют backendless offline boot, mocked import/edit/export и отсутствие overflow на 390px; strict isolated web-server не переиспользует чужой порт. `frontend/e2e/smoke.spec.ts`, `frontend/playwright.config.ts`
 851. 🟡 [проектирование/Cypress] Подключение второго E2E runner удвоит fixtures и ожидания - `docs/adr/e2e-runner.md` (target) -> Сравнить network-fault/debug/CI speed на одном сценарии и выбрать один runner; Playwright и Cypress одновременно не поддерживать.
 852. 🟠 [архитектура/TanStack Query] Server state library/projects/jobs смешан с mutable UI/edit state - `frontend/src/data/` (target) -> Выделить cache/invalidation/poll ownership за query-port; domain UI stores хранят только selection/draft, не копии API entities.
 853. 🟠 [UX/Floating UI] Tooltip/menu/popover рискуют по-разному решать collision, focus, Escape и outside click - `frontend/src/ui/overlay/` (target) -> Один accessible overlay primitive с focus return и visual-viewport tests; unfamiliar icon всегда получает tooltip через него.
@@ -1299,7 +1318,7 @@ authorization policy остаётся local-only boundary: публичная au
 867. 🟠 [DIP/OpenTelemetry] Прямое подключение Prometheus/Jaeger закрепит домен за exporter API - `backend/src/ports/telemetry.rs` (target) -> Exporter-neutral telemetry port и OpenTelemetry semantic names; noop/test/export adapters подставляются без изменения services.
 868. 🔴 [privacy/Vector] Redaction logs и будущего diagnostics bundle может разойтись - `backend/src/privacy/redaction.rs` (target) -> Один allowlist/redaction transform до любого sink; fixture с URL token, path, headers и filename не оставляет canary ни в JSON log, ни в bundle.
 869. 🟡 [perf/Parca] CPU regressions видны только по разовым локальным flamegraphs - `ops/profiling/` (target) -> Continuous profiling только staging, symbolized build и ограниченная retention; before/after profile обязателен для perf PR.
-870. 🟠 [concurrency/Loom] Стресс-тест race не перебирает все interleavings cancel/finish/lock/semaphore - `backend/src/jobs/job_cell.rs` (target) -> Сначала выделить минимальный synchronization primitive и model-check его Loom; инварианты: один terminal state, permit released once, no lost cancel.
+870. ✅ [concurrency/Loom] Per-job `JobCell` не удерживает глобальный map lock, публикует state только после durable write и model-check'ит terminal/cancel/permit single-claim interleavings через Loom. `backend/src/jobs/job_cell.rs`, `backend/src/state.rs`
 871. 🟡 [perf/Hyperfine] Нет версионированного corpus для быстрых CLI/API путей - `bench/perf/` (target) -> Warm/cold probe, library list, cache hit и plan compile с environment/tool metadata; хранить median/p95 и сигнализировать о согласованной регрессии.
 872. 🟡 [perf/Flamegraph] Оптимизации могут приниматься по интуиции - `docs/performance.md` (target) -> Для probe/import/edit/library workloads сохранять profile command и folded artifact; изменение hot path без baseline/profile не принимается как perf fix.
 873. 🟡 [diagnostics/tokio-console] Нет наблюдения за age/busy/polls async tasks и удержанием sync resources - `backend/src/telemetry/console.rs` (target) -> Опциональный staging-only console subscriber, runbook task-leak investigation и alert threshold; production exposure закрыт auth/network policy.

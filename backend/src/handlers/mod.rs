@@ -2,25 +2,33 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{Path as AxPath, State};
+use axum::extract::State;
 use axum::Json;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use tokio::sync::{mpsc, Mutex, OwnedMutexGuard, OwnedSemaphorePermit};
+use tokio::sync::{mpsc, Mutex, OwnedMutexGuard};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::error::{ApiJson, AppError, AppResult};
+use crate::jobs::{dedupe_key, EnqueueOutcome, ErrorKind, JobEvent, JobKind, JobPermit};
 use crate::library::MediaEntry;
-use crate::model::{Crop, EditRequest, ImportRequest, Job, JobStatus, Scale, Trim};
-use crate::state::{AppState, CancelJobOutcome};
+use crate::model::{Crop, EditRequest, ImportRequest, Scale, Trim};
+use crate::state::AppState;
 use crate::tools::{self, Done};
 
+mod jobs;
 mod library;
 mod upload;
 
-pub use library::{library_delete_handler, library_list_handler};
+pub use jobs::{
+    cancel_handler, discard_job_handler, failed_jobs_handler, job_registry_handler,
+    job_status_handler, resume_pending_jobs, retry_job_handler, start_job_dispatcher,
+};
+use jobs::{dispatch_job, JobLeaseHeartbeat};
+pub use library::{library_delete_handler, library_list_handler, library_search_handler};
 pub use upload::upload_handler;
 
 /// Per-job wall-clock limit (download or render), overridable via env.
@@ -32,34 +40,82 @@ fn job_timeout() -> Duration {
     Duration::from_secs(secs)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ImportWork {
+    schema_version: u32,
+    request: ImportRequest,
+    video_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EditWork {
+    schema_version: u32,
+    request: EditRequest,
+    output_id: String,
+    cache_key: String,
+}
+
 /// `POST /api/import` — accept a video URL, kick off a download in the background,
 /// and immediately return a job id to poll.
 pub async fn import_handler(
     State(state): State<AppState>,
     ApiJson(req): ApiJson<ImportRequest>,
-) -> Json<Value> {
+) -> AppResult<Json<Value>> {
     let job_id = Uuid::new_v4().to_string();
-    let video_id = Uuid::new_v4().to_string();
-    state.set_job(Job::pending(job_id.clone())).await;
-    let token = state.register_cancel(&job_id).await;
+    let work = ImportWork {
+        schema_version: 1,
+        request: req,
+        video_id: Uuid::new_v4().to_string(),
+    };
+    let key = dedupe_key("import", &work.request)
+        .map_err(|error| AppError::internal("build import dedupe key", error))?;
+    let payload = serde_json::to_value(&work)
+        .map_err(|error| AppError::internal("serialize import job", error))?;
+    let resolved_id = match state
+        .enqueue_job(job_id.clone(), JobKind::Import, &payload, &key)
+        .await
+        .map_err(|error| AppError::internal("enqueue import job", error))?
+    {
+        EnqueueOutcome::Created(_) => job_id,
+        EnqueueOutcome::Existing(existing) => existing,
+        EnqueueOutcome::RateLimited => {
+            return Err(AppError::too_many_requests(
+                "Слишком много новых задач; повторите позже",
+            ));
+        }
+    };
+    dispatch_job(&state, &resolved_id).await;
+    Ok(Json(json!({ "jobId": resolved_id })))
+}
 
+fn spawn_import_job(
+    state: AppState,
+    job_id: String,
+    work: ImportWork,
+    attempt: u32,
+    token: CancellationToken,
+    lease: JobLeaseHeartbeat,
+) {
     let st = state.clone();
     let jid = job_id.clone();
-    let vid = video_id;
+    let req = work.request;
+    let vid = work.video_id;
     let span = tracing::info_span!("job", job.id = %job_id, job.kind = "import");
     state.spawn_task(
         async move {
+            let _lease = lease;
             // Reject bad/unsafe URLs before doing any work.
             if let Err(e) = tools::validate_url(&req.url).await {
-                let updated = st
-                    .update_job_if_open(&jid, |j| {
-                        j.status = JobStatus::Error;
-                        j.error = Some(e.to_string());
-                    })
-                    .await;
-                if updated {
-                    st.persist_job(&jid).await;
-                }
+                st.transition_job(
+                    &jid,
+                    JobEvent::Failed {
+                        kind: ErrorKind::Security,
+                        message: crate::privacy::redact_text(&e.to_string()),
+                    },
+                )
+                .await;
                 st.clear_cancel(&jid).await;
                 return;
             }
@@ -78,7 +134,7 @@ pub async fn import_handler(
                 return;
             }
 
-            if !mark_running(&st, &jid, "downloading").await {
+            if !mark_running(&st, &jid, "downloading", attempt).await {
                 st.clear_cancel(&jid).await;
                 return;
             }
@@ -138,8 +194,6 @@ pub async fn import_handler(
         }
         .instrument(span),
     );
-
-    Json(json!({ "jobId": job_id }))
 }
 
 /// Content key for the render cache: a hash of the canonical (source + edit)
@@ -157,23 +211,55 @@ pub fn render_cache_key(req: &EditRequest) -> String {
 pub async fn edit_handler(
     State(state): State<AppState>,
     ApiJson(req): ApiJson<EditRequest>,
-) -> Json<Value> {
+) -> AppResult<Json<Value>> {
     let job_id = Uuid::new_v4().to_string();
-    let out_id = Uuid::new_v4().to_string();
-    state.set_job(Job::pending(job_id.clone())).await;
-    let token = state.register_cancel(&job_id).await;
-
-    // Content-addressed cache: an identical (source + edit) render is reused
-    // instead of running ffmpeg again, as long as the output file still exists.
     let cache_key = render_cache_key(&req);
-    if finish_from_render_cache(&state, &job_id, &cache_key).await {
-        return Json(json!({ "jobId": job_id }));
-    }
+    let key = dedupe_key("edit", &req)
+        .map_err(|error| AppError::internal("build edit dedupe key", error))?;
+    let work = EditWork {
+        schema_version: 1,
+        request: req,
+        output_id: Uuid::new_v4().to_string(),
+        cache_key,
+    };
+    let payload = serde_json::to_value(&work)
+        .map_err(|error| AppError::internal("serialize edit job", error))?;
+    let resolved_id = match state
+        .enqueue_job(job_id.clone(), JobKind::Edit, &payload, &key)
+        .await
+        .map_err(|error| AppError::internal("enqueue edit job", error))?
+    {
+        EnqueueOutcome::Created(_) => job_id,
+        EnqueueOutcome::Existing(existing) => existing,
+        EnqueueOutcome::RateLimited => {
+            return Err(AppError::too_many_requests(
+                "Слишком много новых задач; повторите позже",
+            ));
+        }
+    };
+    dispatch_job(&state, &resolved_id).await;
+    Ok(Json(json!({ "jobId": resolved_id })))
+}
 
+fn spawn_edit_job(
+    state: AppState,
+    job_id: String,
+    work: EditWork,
+    attempt: u32,
+    token: CancellationToken,
+    lease: JobLeaseHeartbeat,
+) {
+    let EditWork {
+        schema_version: _,
+        request: req,
+        output_id: out_id,
+        cache_key,
+    } = work;
     let st = state.clone();
     let jid = job_id.clone();
     let span = tracing::info_span!("job", job.id = %job_id, job.kind = "edit");
     state.spawn_task(async move {
+        let _lease = lease;
         if !mark_queued(&st, &jid).await {
             st.clear_cancel(&jid).await;
             return;
@@ -197,7 +283,7 @@ pub async fn edit_handler(
             return;
         }
 
-        if !mark_running(&st, &jid, "processing").await {
+        if !mark_running(&st, &jid, "processing", attempt).await {
             st.clear_cancel(&jid).await;
             return;
         }
@@ -259,31 +345,6 @@ pub async fn edit_handler(
             }
         }
     }.instrument(span));
-
-    Json(json!({ "jobId": job_id }))
-}
-
-/// `GET /api/jobs/:id` — poll the status of an import or edit job.
-pub async fn job_status_handler(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> AppResult<Json<Job>> {
-    match state.get_job(&id).await {
-        Some(job) => Ok(Json(job)),
-        None => Err(AppError::not_found("Задача не найдена")),
-    }
-}
-
-/// `POST /api/jobs/:id/cancel` — request cancellation of a running/pending job.
-pub async fn cancel_handler(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> AppResult<Json<Value>> {
-    match state.cancel_open_job(&id).await {
-        CancelJobOutcome::NotFound => Err(AppError::not_found("Задача не найдена")),
-        CancelJobOutcome::AlreadyFinished => Err(AppError::conflict("Задача уже завершена")),
-        CancelJobOutcome::Cancelled => Ok(Json(json!({ "status": "cancelled" }))),
-    }
 }
 
 pub async fn api_not_found_handler() -> AppError {
@@ -314,18 +375,19 @@ fn spawn_progress_drain(
 
 /// Atomically start an open job. Cancellation may win immediately before this
 /// transition; in that case the terminal state must never be overwritten.
-async fn mark_running(st: &AppState, jid: &str, stage: &str) -> bool {
-    st.update_job_if_open(jid, |j| {
-        j.status = JobStatus::Running;
-        j.stage = Some(stage.into());
-        j.progress = Some(0.0);
-    })
+async fn mark_running(st: &AppState, jid: &str, stage: &str, attempt: u32) -> bool {
+    st.transition_job(
+        jid,
+        JobEvent::Started {
+            stage: stage.into(),
+            attempt,
+        },
+    )
     .await
 }
 
 async fn mark_queued(st: &AppState, jid: &str) -> bool {
-    st.update_job_if_open(jid, |j| j.stage = Some("queued".into()))
-        .await
+    st.transition_job(jid, JobEvent::Queued).await
 }
 
 async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> bool {
@@ -344,18 +406,10 @@ async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> 
         return false;
     }
     let updated = st
-        .update_job_if_open(jid, |j| {
-            j.status = JobStatus::Done;
-            j.result = Some(output);
-            j.progress = Some(100.0);
-            j.stage = None;
-        })
+        .transition_job(jid, JobEvent::Succeeded { result: output })
         .await;
-    if updated {
-        st.persist_job(jid).await;
-    }
     st.clear_cancel(jid).await;
-    true
+    updated
 }
 
 fn is_plain_filename(filename: &str) -> bool {
@@ -389,7 +443,7 @@ async fn acquire_job_permit_or_cancelled(
     st: &AppState,
     jid: &str,
     token: &CancellationToken,
-) -> Option<OwnedSemaphorePermit> {
+) -> Option<JobPermit> {
     tokio::select! {
         permit = st.acquire_job_slot() => match permit {
             Ok(p) => Some(p),
@@ -406,31 +460,29 @@ async fn acquire_job_permit_or_cancelled(
 }
 
 async fn mark_cancelled(st: &AppState, jid: &str) {
-    let updated = st
-        .update_job_if_open(jid, |j| {
-            j.status = JobStatus::Cancelled;
-            j.stage = None;
-            j.progress = None;
-        })
-        .await;
-    if updated {
-        st.persist_job(jid).await;
+    // Shutdown cancellation is recoverable: keep the durable pending/running
+    // snapshot for startup reconciliation. Only a user cancellation is terminal.
+    if st.is_shutting_down() {
+        st.clear_cancel(jid).await;
+        return;
     }
+    st.transition_job(jid, JobEvent::Cancelled).await;
     st.clear_cancel(jid).await;
 }
 
 async fn mark_queue_closed(st: &AppState, jid: &str) {
-    let updated = st
-        .update_job_if_open(jid, |j| {
-            j.status = JobStatus::Error;
-            j.error = Some("очередь задач закрыта".into());
-            j.stage = None;
-            j.progress = None;
-        })
-        .await;
-    if updated {
-        st.persist_job(jid).await;
+    if st.is_shutting_down() {
+        st.clear_cancel(jid).await;
+        return;
     }
+    st.transition_job(
+        jid,
+        JobEvent::Failed {
+            kind: ErrorKind::Internal,
+            message: "очередь задач закрыта".into(),
+        },
+    )
+    .await;
     st.clear_cancel(jid).await;
 }
 
@@ -595,42 +647,77 @@ async fn finish_job(
     let updated = match outcome {
         Ok(Some(info)) => {
             let updated = st
-                .update_job_if_open(jid, |j| {
-                    j.status = JobStatus::Done;
-                    j.result = Some(info.clone());
-                    j.progress = Some(100.0);
-                    j.stage = None;
-                })
+                .transition_job(
+                    jid,
+                    JobEvent::Succeeded {
+                        result: info.clone(),
+                    },
+                )
                 .await;
             if updated {
-                st.library.add(MediaEntry::from_result(kind, &info)).await;
+                let entry = MediaEntry::from_result(kind, &info);
+                if st.library.add(entry.clone()).await {
+                    st.index_media(&entry).await;
+                }
             }
             updated
         }
-        Ok(None) => {
-            st.update_job_if_open(jid, |j| {
-                j.status = JobStatus::Cancelled;
-                j.stage = None;
-                j.progress = None;
-            })
-            .await
-        }
+        Ok(None) if st.is_shutting_down() => false,
+        Ok(None) => st.transition_job(jid, JobEvent::Cancelled).await,
         Err(e) => {
-            tracing::error!(job.id = jid, error = %crate::privacy::redact_text(&e.to_string()), "job failed");
-            st.update_job_if_open(jid, |j| {
-                j.status = JobStatus::Error;
-                j.error = Some(e.to_string());
-                j.stage = None;
-            })
-            .await
+            let kind = classify_job_error(&e);
+            let message = crate::privacy::redact_text(&e.to_string());
+            tracing::error!(job.id = jid, error.kind = kind.as_str(), error = %message, "job failed");
+            let updated = st
+                .transition_job(jid, JobEvent::Failed { kind, message })
+                .await;
+            if updated && kind.retryable() {
+                match st.job_store.schedule_retry(jid).await {
+                    Ok(Some((job, delay))) => {
+                        st.replace_job(job).await;
+                        tracing::info!(
+                            job.id = jid,
+                            retry.delay_ms = delay.as_millis(),
+                            "job retry scheduled"
+                        );
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::error!(job.id = jid, %error, "schedule job retry");
+                    }
+                }
+            }
+            updated
         }
     };
-    // Persist the terminal state so it survives a restart.
-    if updated {
-        st.persist_job(jid).await;
-    }
     st.clear_cancel(jid).await;
     updated
+}
+
+fn classify_job_error(error: &anyhow::Error) -> ErrorKind {
+    let message = error.to_string().to_lowercase();
+    if message.contains("timeout") || message.contains("deadline") || message.contains("таймаут")
+    {
+        ErrorKind::Timeout
+    } else if message.contains("недопуст")
+        || message.contains("invalid")
+        || message.contains("outside duration")
+        || (message.contains("source") && message.contains("not found"))
+    {
+        ErrorKind::Validation
+    } else if message.contains("not found")
+        || message.contains("no such file")
+        || message.contains("metadata")
+    {
+        ErrorKind::Storage
+    } else if message.contains("ffmpeg")
+        || message.contains("yt-dlp")
+        || message.contains("exit status")
+    {
+        ErrorKind::ProcessExit
+    } else {
+        ErrorKind::Internal
+    }
 }
 
 #[cfg(test)]
@@ -638,7 +725,8 @@ mod tests {
     use super::*;
     use crate::db::Db;
     use crate::library::Library;
-    use crate::state::ToolInfo;
+    use crate::model::{Job, JobStatus};
+    use crate::state::{CancelJobOutcome, ToolInfo};
     use serde_json::json;
 
     async fn state() -> (AppState, tempfile::TempDir) {
@@ -683,6 +771,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shutdown_cancellation_leaves_durable_work_recoverable() {
+        let (st, _dir) = state().await;
+        let outcome = st
+            .enqueue_job(
+                "restartable".into(),
+                JobKind::Import,
+                &json!({"schemaVersion": 1}),
+                "restartable-key",
+            )
+            .await
+            .unwrap();
+        assert!(matches!(outcome, EnqueueOutcome::Created(_)));
+
+        st.begin_shutdown();
+        mark_cancelled(&st, "restartable").await;
+        assert!(!finish_job(&st, "restartable", Ok(None), "source").await);
+        assert_eq!(
+            st.get_job("restartable").await.unwrap().status,
+            JobStatus::Pending
+        );
+        assert_eq!(
+            st.job_store.deliverable_ids().await.unwrap(),
+            vec!["restartable"]
+        );
+    }
+
+    #[tokio::test]
     async fn mark_running_does_not_revive_a_cancelled_job() {
         let (st, _dir) = state().await;
         st.set_job(Job::pending("cancelled-before-start".into()))
@@ -692,7 +807,7 @@ mod tests {
             CancelJobOutcome::Cancelled
         );
 
-        assert!(!mark_running(&st, "cancelled-before-start", "processing").await);
+        assert!(!mark_running(&st, "cancelled-before-start", "processing", 1).await);
         assert!(!mark_queued(&st, "cancelled-before-start").await);
         let job = st.get_job("cancelled-before-start").await.unwrap();
         assert_eq!(job.status, JobStatus::Cancelled);

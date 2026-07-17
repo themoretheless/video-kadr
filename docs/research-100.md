@@ -224,11 +224,23 @@ command history, branded/shared geometry corpus, deterministic keyframes и
 port-based HTTP contracts с route policy. FFmpeg compiler и crop/censor UI уже
 используют новые границы; public auth при этом не имитируется и остаётся P0.
 
+Третья волна закрыта 18 июля 2026: №834, 835, 836, 837, 838, 839, 840, 842,
+843 и 870. Она ввела append-only replayable job events, attempts и retry
+taxonomy, failed/operator registries, stable dedupe/rate limits, startup
+reconciliation и transactional SQLite outbox. Пять enqueue failpoints проверяют
+полный rollback; attempt heartbeat, due-retry scan, graceful restart и legacy
+event backfill закрывают review-сценарии, terminal payload очищается. Loom
+перебирает terminal/cancel/permit claims. Backup получил
+content-addressed manifest, checksum/integrity verify и restore drill, поиск -
+rebuildable SQLite FTS5 adapter за `MediaSearch`, а SQLite/RocksDB решение -
+измеримый WAL threshold вместо преждевременной миграции.
+
 ## Приоритетный вывод
 
-После закрытия первых двух волн ближайший research-фокус - волна 3: durable job
-events/attempts, retry taxonomy, dedupe/rate limits, transactional outbox,
-backup/search contracts и concurrency model-checking (№834-840, 842, 843, 870).
+После закрытия первых трёх волн ближайший research-фокус - волна 4: proxy media,
+artifact dependency graph, разные preview/export profiles, resumable scene
+chunks, encode budgets, bounded CPU executor и воспроизводимые performance
+baselines/profiles (№789, 791, 792, 793, 795, 796, 798, 832, 871, 872).
 Отдельный старый P0 перед внешней публикацией остаётся: auth, ownership и process
 resource limits.
 

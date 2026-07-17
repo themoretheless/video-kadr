@@ -25,7 +25,8 @@
 - Медиатека: импортированные источники и результаты сохраняются между перезапусками
   (`storage/library.json`), можно переоткрыть клип в редакторе, скачать или удалить.
 - Проекты: правки автосохраняются и восстанавливаются при переоткрытии клипа (SQLite);
-  задачи переживают перезапуск, повторный одинаковый экспорт берётся из кэша.
+  задачи имеют event history/attempts/outbox, переживают crash и штатный перезапуск,
+  а повторный одинаковый запрос получает прежний job ID и не запускает второй процесс.
 - Светлая и тёмная тема (переключатель в шапке, выбор запоминается).
 - Отмена/повтор изменений настроек (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z или Ctrl+Y, плюс кнопки).
 - Пресеты эффектов: сохрани набор (цвет, скорость, звук, формат) и применяй к другим клипам.
@@ -42,7 +43,12 @@ POST /api/edit              { videoId, trim?, crop?, ... } -> { jobId }
 POST /api/upload            multipart file               -> VideoInfo
 GET  /api/jobs/:id          -> { status, progress?, stage?, result?, error? }
 POST /api/jobs/:id/cancel   -> 200 cancelled | 404 | 409
+GET  /api/jobs/failed       -> { jobs: [ FailedJob ] }
+GET  /api/jobs/registry     -> { counts: { queued, started, deferred, failed, finished } }
+POST /api/jobs/:id/retry    -> 200 pending | 404 | 409
+POST /api/jobs/:id/discard  -> 200 discarded | 404
 GET  /api/library           -> [ MediaEntry ]  (sources + outputs, newest first)
+GET  /api/library/search?q= -> [ SearchHit ]  (SQLite FTS5, prefix/ranking)
 DELETE /api/library/:id     -> 204 | 404  (also deletes the file)
 POST /api/projects          { videoId, video, edit, name? } -> Project  (autosave/upsert by clip)
 GET  /api/projects          -> [ Project ]  (newest first)
@@ -65,6 +71,7 @@ Wire DTO строги к неизвестным полям и принимают
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
 `MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2; размер независимых job/upload
 пулов), `JOB_TIMEOUT_SECS` (1800),
+`JOB_DEDUPE_TTL_SECS` (300), `JOB_RATE_WINDOW_SECS` (60), `JOB_RATE_LIMIT` (60),
 `FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ),
 `RECOVER_JOBS_LIMIT` (200), `CORS_ALLOW_ORIGINS` (локальные dev-origin'ы через
 запятую), `RUST_LOG` (`info,tower_http=info`).
@@ -114,7 +121,9 @@ mocked import/edit/export и отсутствие overflow на 390 px в Chromi
 WebKit. Upload security и HTTP backpressure вынесены в отдельные backend suites.
 Linux CI запускает все три движка; локально на macOS Firefox можно включить
 через `PLAYWRIGHT_FIREFOX=1 npm run test:e2e` (по умолчанию остаются Chromium и
-WebKit из-за зависания teardown текущей bundled Firefox-сборки).
+WebKit из-за зависания teardown текущей bundled Firefox-сборки). E2E поднимает
+собственный strict dev-server на порту, детерминированном от пути worktree; его
+можно заменить через `PLAYWRIGHT_PORT`, чужой сервер не переиспользуется.
 
 ```
 make check   # всё как в CI: backend + frontend + bundle budget + Playwright
@@ -128,6 +137,7 @@ make fmt     # cargo fmt
 cd backend  && cargo test
 cd backend  && cargo fmt --check
 cd backend  && cargo clippy --all-targets -- -D warnings
+cd backend  && cargo bench --bench persistence
 cd frontend && npm run lint
 cd frontend && npm run typecheck
 cd frontend && npm run test
@@ -139,6 +149,26 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 и закреплённый `yt-dlp`, гоняет для бэкенда `cargo fmt --check`,
 `clippy -D warnings`, `cargo test`, а для фронтенда — lint, typecheck, тесты и
 сборку.
+
+## Backup и restore
+
+Snapshot включает консистентный `app.db`, `library.json`, `sources/` и
+`outputs/`; приватный `staging/` исключён. Имя каталога - SHA-256 содержимого,
+а manifest хранит размер/checksum каждого файла и версию backend. Restore
+публикуется только в пустой target после полной проверки checksums, безопасных
+путей и `PRAGMA integrity_check`.
+
+Активные durable import-задачи требуют исходный URL для возобновления, поэтому
+их query credentials могут находиться в `app.db` и backup. После окончательного
+success/cancel/non-retryable failure payload удаляется. Каталог backup всё равно
+считается приватным и должен храниться с теми же правами, что и `storage/`.
+
+```bash
+cd backend
+cargo run --bin backup -- create ../storage ../backups
+cargo run --bin backup -- verify ../backups/<root-hash>
+cargo run --bin backup -- restore ../backups/<root-hash> ../restored-storage
+```
 
 ## Архитектура
 
@@ -281,6 +311,24 @@ crop/censor drag. Branded coordinate spaces и общий Rust/TS fixture corpus
 auth обозначен как local-only deployment boundary; публичные auth/ownership и
 process resource limits остаются отдельными P0.
 
+**Волна 3/10 (18 июля 2026): durable jobs и persistence реализованы.**
+Закрыты №834-840, 842, 843 и 870. `backend/src/jobs/` теперь разделяет
+append-only events/reducer, `JobAttempt` и retry taxonomy, failed registry,
+dedupe/rate limits, lifecycle reconciliation, transactional outbox и per-job
+`JobCell`. Import/edit атомарно сохраняют request + job + event + outbox;
+повтор возвращает существующий ID, crash-boundary tests исключают частичные
+enqueue, а dispatcher возобновляет abandoned lease. Attempt-scoped heartbeat
+не даёт долгому ожиданию в очереди породить второй worker; crash-gap между
+failure и retry восстанавливается по `next_retry_at`, graceful shutdown не
+превращается в пользовательский cancel. Legacy snapshots мигрируют в event log,
+terminal request payload удаляется. Validation/security не retry; временные
+ошибки получают bounded backoff и максимум три attempts.
+Operator retry/discard пишутся в audit. Добавлены content-addressed backup с
+verify/restore drill, rebuildable `MediaSearch` port на SQLite FTS5 и измеримый
+порог смены SQLite; локальные benchmark-прогоны 1000 WAL enqueue дали p95
+0.241-0.632 ms при
+пороге 50 ms. Loom перебирает terminal/cancel/permit interleavings.
+
 ```
 frontend (Vue 3 + Vite)
   └── POST /api/import { url }        -> { jobId }      (yt-dlp скачивает)
@@ -291,19 +339,23 @@ frontend (Vue 3 + Vite)
 
 backend (Rust + Axum + Tokio)
   domain/          filter graph, timeline, probe, geometry, keyframes (pure)
+  jobs/            events, attempts, outbox, retry, registries, JobCell
+  handlers/jobs.rs durable dispatch, lease heartbeat и operator HTTP API
   http/            routers, service ports, route/middleware policy
+  ports/           replaceable search and application boundaries
   tools/           ffmpeg/ffprobe/yt-dlp adapters
   storage/staging/  приватный карантин незавершённых upload
   storage/sources/  скачанные оригиналы
   storage/outputs/  отрендеренные результаты
-  storage/app.db    SQLite: проекты, задачи, кэш рендеров
+  storage/app.db    SQLite: проекты, job log/outbox, FTS, кэш рендеров
 ```
 
 Импорт и экспорт идут асинхронно, фронтенд опрашивает статус. Проекты и задачи
 персистятся в SQLite (`storage/app.db`): правки автосохраняются и восстанавливаются
-при переоткрытии клипа, а задача, прерванная остановкой сервера, после перезапуска
-помечается `interrupted` (вместо вечного спиннера). Одинаковый экспорт (тот же
-источник и те же настройки) берётся из кэша рендеров без повторного запуска ffmpeg.
+при переоткрытии клипа. Задача, прерванная остановкой сервера, получает событие
+`interrupted` и либо bounded retry через durable outbox, либо объяснимое
+terminal-состояние после исчерпания policy. Одинаковый экспорт (тот же источник
+и те же настройки) берётся из кэша рендеров без повторного запуска ffmpeg.
 
 ## Ограничения и предупреждения
 

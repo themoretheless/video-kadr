@@ -2,6 +2,7 @@
 name = "video-editor-backend"
 version = "0.1.0"
 edition = "2021"
+default-run = "video-editor-backend"
 
 [dependencies]
 axum = { version = "0.7", features = ["multipart"] }
@@ -31,3 +32,8 @@ sha2 = "0.10"
 # without binding a socket. `tempfile` gives each test an isolated storage dir.
 tower = { version = "0.4", features = ["util"] }
 tempfile = "3"
+loom = "0.7"
+
+[[bench]]
+name = "persistence"
+harness = false

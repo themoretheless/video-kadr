@@ -111,6 +111,18 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "GET",
+        path: "/api/jobs/failed",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/jobs/registry",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "GET",
         path: "/api/jobs/:id",
         class: RouteClass::Query,
         controls: QUERY,
@@ -120,6 +132,24 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
         path: "/api/jobs/:id/cancel",
         class: RouteClass::JsonCommand,
         controls: JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/jobs/:id/retry",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/jobs/:id/discard",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/library/search",
+        class: RouteClass::Query,
+        controls: QUERY,
     },
     RoutePolicy {
         method: "GET",

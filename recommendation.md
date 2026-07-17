@@ -24,7 +24,7 @@
 |---:|---|---|---|
 | 1 | ✅ 10/10 | 790, 824, 828, 829, 831, 844, 846, 847, 850, 854 | Runtime/contract/security/test guardrails |
 | 2 | ✅ 10/10 | 784, 786, 787, 803, 814, 817, 820, 823, 825, 826 | Typed media/timeline domain и HTTP ports |
-| 3 | ☐ | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 | Durable jobs, outbox, replay и concurrency invariants |
+| 3 | ✅ 10/10 | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 | Durable jobs, outbox, replay и concurrency invariants |
 | 4 | ☐ | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 | Proxy/render artifacts и измеряемый media performance |
 | 5 | ☐ | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 | Player/canvas state machines и accessibility |
 | 6 | ☐ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 | Quality/codecs/design tokens и benchmarks |
@@ -33,11 +33,20 @@
 | 9 | ☐ | 874, 875, 876, 877, 878, 879, 880, 881, 882, 883 | Versioned local-first ML artifacts |
 | 10 | ☐ | 788, 802, 811, 841, 845, 848, 849, 851, 852, 853 | Compatibility, ingest и frontend completion |
 
-Волны 1-2 проверяются `make check`: backend unit/API/upload/backpressure/render
+Волны 1-3 проверяются `make check`: backend unit/API/upload/backpressure/render
 suites, frontend lint/typecheck/Vitest/build/budget и 9 Playwright сценариев.
 Волна 2 добавила pure-domain media/timeline primitives, общий Rust/TS geometry
 corpus, command history и port-based system/project routers. Детали
 upload-контролей - в [docs/threat-model-upload.md](docs/threat-model-upload.md).
+
+Волна 3 добавила replayable job events, attempts/error taxonomy, failed registry,
+dedupe/rate limit, lifecycle reconciliation и transactional outbox с пятью crash
+failpoints. Attempt heartbeat, due-retry recovery, graceful-restart semantics и
+legacy event backfill закрывают найденные review gaps; terminal payload стирается,
+но metadata остаётся в rate-accounting окне.
+`JobCell` проверяется Loom и публикует transition после durable write.
+Backup проходит checksum/integrity/restore drill, поиск работает через
+rebuildable SQLite FTS5 port, а отказ от RocksDB закреплён измеримым WAL gate.
 
 ## Синхронизированный top-200: проблема → куда чинить
 
@@ -1020,16 +1029,16 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### F. Jobs и persistence
 
-- [ ] 🟠 **834. Temporal:** Добавить replayable append-only job events + reducer и fault-injection после каждой transition boundary. `backend/src/jobs/event_log.rs` (target)
-- [ ] 🟠 **835. Airflow:** Разделить `Job`/`JobAttempt`, execution timeout и retry policy по `ErrorKind`; validation/security не retry. `backend/src/jobs/attempt.rs` (target)
-- [ ] 🟠 **836. Celery:** Создать failed-job registry и audited operator retry/discard с cap. `backend/src/jobs/failed_registry.rs` (target)
-- [ ] 🟠 **837. BullMQ:** Ввести stable idempotency/dedupe key + TTL/rate limit; duplicate request возвращает прежний job ID. `backend/src/jobs/dedupe.rs` (target)
-- [ ] 🟡 **838. RQ:** Описать lifecycle registries и startup reconciliation для зависших started attempts. `backend/src/jobs/registry.rs` (target)
-- [ ] 🔴 **839. River:** Transactional job+outbox enqueue и crash tests двух направлений рассинхронизации. `backend/src/jobs/outbox.rs` (target)
-- [ ] 🟠 **840. Restic:** Сделать content-addressed backup manifest/checksum/verify и автоматический restore drill. `backend/src/bin/backup.rs` (target)
+- [x] ✅ **834. Temporal:** Append-only event history, idempotency keys, reducer/replay, legacy backfill и crash-boundary rollback tests реализованы. `backend/src/jobs/event_log.rs`, `backend/src/jobs/store.rs`
+- [x] ✅ **835. Airflow:** Job/attempt разделены; bounded retry идёт по `ErrorKind`, validation/security не retry. `backend/src/jobs/attempt.rs`
+- [x] ✅ **836. Celery:** Failed registry и audited operator retry/discard с cap доступны через API. `backend/src/jobs/failed_registry.rs`, `backend/src/handlers/mod.rs`
+- [x] ✅ **837. BullMQ:** Stable dedupe + TTL/rate window возвращают прежний job ID и не запускают duplicate process. `backend/src/jobs/dedupe.rs`
+- [x] ✅ **838. RQ:** Lifecycle registries и startup reconciliation requeue abandoned attempts по policy. `backend/src/jobs/registry.rs`
+- [x] ✅ **839. River:** Job/request/event/dedupe/outbox enqueue атомарен; claim защищён attempt heartbeat, due retry и shutdown recovery, terminal payload очищается, пять failpoints не оставляют partial state; orchestration вынесен из media handlers. `backend/src/jobs/outbox.rs`, `backend/src/jobs/store.rs`, `backend/src/handlers/jobs.rs`
+- [x] ✅ **840. Restic:** Content-addressed backup, manifest/checksums/integrity verify и restore drill реализованы; staging исключён. `backend/src/backup.rs`, `backend/src/bin/backup.rs`
 - [ ] 🟡 **841. Borg:** Измерить chunk dedup на media corpus и определить prune policy до добавления зависимости. `bench/backup-dedup.md` (target)
-- [ ] 🟡 **842. RocksDB:** Задать SQLite WAL benchmark и migration threshold; до порога RocksDB не внедрять. `backend/benches/persistence.rs` (target)
-- [ ] 🟡 **843. Meilisearch:** Ввести `MediaSearch` port с SQLite FTS default и внешним adapter только после scale threshold. `backend/src/ports/media_search.rs` (target)
+- [x] ✅ **842. RocksDB:** SQLite WAL benchmark и migration thresholds зафиксированы; локальные p95-прогоны 0.241-0.632 ms ниже gate 50 ms. `backend/benches/persistence.rs`, `backend/src/jobs/persistence_profile.rs`
+- [x] ✅ **843. Meilisearch:** `MediaSearch` port, SQLite FTS5 default и rebuild from source of truth реализованы. `backend/src/ports/media_search.rs`
 
 ### G. Vue, frontend и testing
 
@@ -1039,7 +1048,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **847. Vitest:** Polling terminal/cancel cases используют fake timers/table cases; autosave/history suites также без real-time sleep. `frontend/src/api.test.ts`, `frontend/src/store.test.ts`
 - [ ] 🟡 **848. VueUse:** Централизовать global listeners/resize/online в lifecycle-safe composables и запретить обход lint-аудитом. `frontend/src/composables/` (target)
 - [ ] 🟠 **849. Storybook:** Каталогизировать empty/loading/error/long/localized/mobile/reduced-motion states с a11y/screenshots. `frontend/src/**/*.stories.ts` (target)
-- [x] ✅ **850. Playwright:** 9 browser smoke cases покрывают backendless offline shell, mocked import/edit/export и 390px no-overflow в трёх движках. `frontend/e2e/smoke.spec.ts`
+- [x] ✅ **850. Playwright:** 9 browser smoke cases покрывают backendless offline shell, mocked import/edit/export и 390px no-overflow в трёх движках; harness владеет strict isolated server. `frontend/e2e/smoke.spec.ts`, `frontend/playwright.config.ts`
 - [ ] 🟡 **851. Cypress:** Сравнить один fault scenario и оформить ADR выбора ровно одного E2E runner. `docs/adr/e2e-runner.md` (target)
 - [ ] 🟠 **852. TanStack Query:** Вынести library/projects/jobs server cache/invalidation/polling из mutable UI stores. `frontend/src/data/` (target)
 - [ ] 🟠 **853. Floating UI:** Создать один tooltip/menu/popover primitive с collision/focus return/Escape/outside-click tests. `frontend/src/ui/overlay/` (target)
@@ -1065,7 +1074,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [ ] 🟠 **867. OpenTelemetry:** Ввести exporter-neutral telemetry port и semantic names с noop/test/export adapters. `backend/src/ports/telemetry.rs` (target)
 - [ ] 🔴 **868. Vector:** Один allowlist/redaction transform для logs и diagnostic bundle; canary fixture не должен утечь никуда. `backend/src/privacy/redaction.rs` (target)
 - [ ] 🟡 **869. Parca:** Staging-only continuous profiling, symbolized builds, retention и before/after profile для perf PR. `ops/profiling/` (target)
-- [ ] 🟠 **870. Loom:** Выделить `JobCell` и model-check terminal/permit/cancel invariants. `backend/src/jobs/job_cell.rs` (target)
+- [x] ✅ **870. Loom:** `JobCell` и terminal/permit/cancel single-claim invariants model-check'ятся Loom. `backend/src/jobs/job_cell.rs`
 - [ ] 🟡 **871. Hyperfine:** Версионированный warm/cold perf corpus для probe/list/cache-hit/plan compile с median/p95. `bench/perf/` (target)
 - [ ] 🟡 **872. Flamegraph:** Сохранять baseline/profile commands для hot workloads; perf fix без профиля не принимать. `docs/performance.md` (target)
 - [ ] 🟡 **873. tokio-console:** Добавить защищённый staging-only async diagnostics profile и task-leak runbook. `backend/src/telemetry/console.rs` (target)

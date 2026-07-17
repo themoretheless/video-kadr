@@ -14,6 +14,8 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 use video_editor_backend::db::Db;
+use video_editor_backend::handlers::resume_pending_jobs;
+use video_editor_backend::jobs::{EnqueueOutcome, JobKind, QueueLimits};
 use video_editor_backend::library::{Library, MediaEntry};
 use video_editor_backend::model::{EditRequest, Job, JobStatus};
 use video_editor_backend::state::{AppState, ToolInfo};
@@ -156,6 +158,72 @@ async fn unknown_job_is_404() {
     let (status, body, _) = send(&app, get("/api/jobs/does-not-exist")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_api_error(&body, "not_found");
+}
+
+#[tokio::test]
+async fn duplicate_import_reuses_job_and_failed_actions_are_audited() {
+    let (state, _d) = make_state(true, true).await;
+    let app = router(state.clone());
+    let request = json!({ "url": "http://127.0.0.1/private?token=CANARY" });
+
+    let (first_status, first, _) = send(&app, post_json("/api/import", request.clone())).await;
+    let (second_status, second, _) = send(&app, post_json("/api/import", request)).await;
+    assert_eq!(first_status, StatusCode::OK);
+    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(first["jobId"], second["jobId"]);
+    let id = first["jobId"].as_str().unwrap();
+    assert_eq!(poll_terminal(&app, id).await["status"], "error");
+
+    let (status, failed, _) = send(&app, get("/api/jobs/failed")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(failed["jobs"].as_array().unwrap().len(), 1);
+    assert_eq!(failed["jobs"][0]["jobId"], id);
+    assert_eq!(failed["jobs"][0]["errorKind"], "security");
+    assert!(!failed.to_string().contains("CANARY"));
+
+    let (status, registry, _) = send(&app, get("/api/jobs/registry")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(registry["counts"]["failed"], 1);
+
+    let (status, retry, _) = send(&app, post_empty(&format!("/api/jobs/{id}/retry"))).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&retry, "conflict");
+
+    let (status, discarded, _) = send(&app, post_empty(&format!("/api/jobs/{id}/discard"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(discarded["status"], "discarded");
+    assert_eq!(state.job_store.operator_action_count(id).await.unwrap(), 1);
+    let (_, failed, _) = send(&app, get("/api/jobs/failed")).await;
+    assert!(failed["jobs"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn media_search_endpoint_uses_rebuildable_sqlite_index() {
+    let (state, _d) = make_state(true, true).await;
+    tokio::fs::write(state.sources_dir().join("interview.mp4"), b"media")
+        .await
+        .unwrap();
+    let entry = MediaEntry::from_result(
+        "source",
+        &json!({
+            "id": "interview",
+            "title": "Summer interview",
+            "filename": "interview.mp4",
+            "url": "/files/sources/interview.mp4"
+        }),
+    );
+    assert!(state.library.add(entry).await);
+    state.rebuild_media_search().await;
+    let app = router(state);
+
+    let (status, hits, _) = send(&app, get("/api/library/search?q=interv&limit=10")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hits[0]["id"], "interview");
+    assert_eq!(hits[0]["title"], "Summer interview");
+
+    let (status, empty, _) = send(&app, get("/api/library/search?q=%22%20OR%20%2A")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(empty.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -662,6 +730,58 @@ async fn jobs_survive_restart() {
     let (status, body, _) = send(&app, get("/api/jobs/run1")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "interrupted");
+}
+
+#[tokio::test]
+async fn outbox_row_created_before_a_crash_is_executed_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = dir.path().to_path_buf();
+    for subdirectory in ["sources", "outputs", "staging"] {
+        tokio::fs::create_dir_all(storage.join(subdirectory))
+            .await
+            .unwrap();
+    }
+
+    {
+        let db = Db::open(&storage).await.unwrap();
+        let store = video_editor_backend::jobs::SqliteJobStore::new(db);
+        let outcome = store
+            .enqueue(
+                "crash-job".into(),
+                JobKind::Edit,
+                &json!({
+                    "schemaVersion": 1,
+                    "request": { "videoId": "missing-source" },
+                    "outputId": "output",
+                    "cacheKey": "cache"
+                }),
+                "crash-dedupe",
+                QueueLimits::default(),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(outcome, EnqueueOutcome::Created(_)));
+        // Simulated power loss: no in-memory registration and no worker spawn.
+    }
+
+    let db = Db::open(&storage).await.unwrap();
+    let library = Library::load(storage.clone()).await;
+    let state = AppState::new(storage, 1, ToolInfo::default(), library, db);
+    state.recover_jobs().await;
+    resume_pending_jobs(&state).await;
+    let app = router(state.clone());
+    let job = poll_terminal(&app, "crash-job").await;
+    assert_eq!(job["status"], "error");
+    assert!(state.job_store.deliverable_ids().await.unwrap().is_empty());
+    assert!(
+        state
+            .job_store
+            .event_history("crash-job")
+            .await
+            .unwrap()
+            .len()
+            >= 4
+    );
 }
 
 #[tokio::test]
