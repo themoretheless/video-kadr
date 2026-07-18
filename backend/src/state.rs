@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -9,6 +9,7 @@ use tokio::sync::{AcquireError, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
 use crate::db::Db;
 use crate::jobs::{
     EnqueueOutcome, JobCell, JobEvent, JobKind, JobPermit, QueueLimits, SqliteJobStore,
@@ -16,6 +17,7 @@ use crate::jobs::{
 use crate::library::Library;
 use crate::model::Job;
 use crate::ports::{MediaDocument, MediaSearch, SqliteMediaSearch};
+use crate::runtime::cpu_pool::{CpuPool, CpuPoolConfig};
 use crate::runtime::TaskSupervisor;
 
 const DEFAULT_RECOVER_JOBS_LIMIT: i64 = 200;
@@ -48,12 +50,16 @@ pub struct AppState {
     cancels: Arc<Mutex<HashMap<String, CancellationToken>>>,
     /// Per-render-cache-key locks. They serialize identical edit requests so
     /// only one worker renders while followers wait and then reuse the cache.
-    render_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    render_locks: Arc<Mutex<HashMap<String, Weak<Mutex<()>>>>>,
     /// Downloads/renders queue here; uploads use a separate pool so a slow
     /// client cannot consume every render slot.
     jobs_semaphore: Arc<Semaphore>,
+    render_semaphore: Arc<Semaphore>,
     upload_semaphore: Arc<Semaphore>,
+    max_concurrent_renders: usize,
     supervisor: TaskSupervisor,
+    pub cpu_pool: CpuPool,
+    pub encode_budget: EncodeBudget,
     pub tools: Arc<ToolInfo>,
     pub library: Library,
     pub db: Db,
@@ -77,23 +83,57 @@ impl AppState {
         library: Library,
         db: Db,
     ) -> Self {
+        let limits = RuntimeLimits::detect();
+        let encode_budget = EncodeBudget::for_profile(EncodeProfile::Balanced, limits)
+            .expect("detected runtime limits must produce a valid encode budget");
+        Self::new_with_runtime(
+            storage,
+            max_concurrent,
+            tools,
+            library,
+            db,
+            encode_budget,
+            limits.logical_cpus.saturating_mul(2).max(2),
+        )
+        .expect("detected runtime limits must produce a CPU pool")
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_runtime(
+        storage: PathBuf,
+        max_concurrent: usize,
+        tools: ToolInfo,
+        library: Library,
+        db: Db,
+        encode_budget: EncodeBudget,
+        cpu_queue_capacity: usize,
+    ) -> anyhow::Result<Self> {
         let max_concurrent = max_concurrent.max(1);
+        let max_concurrent_renders = max_concurrent.min(encode_budget.threads).max(1);
+        let cpu_pool = CpuPool::new(CpuPoolConfig {
+            threads: encode_budget.threads,
+            queue_capacity: cpu_queue_capacity,
+        })?;
         let job_store = SqliteJobStore::new(db.clone());
         let media_search = Arc::new(SqliteMediaSearch::new(db.clone()));
-        AppState {
+        Ok(AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             render_locks: Arc::new(Mutex::new(HashMap::new())),
             jobs_semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            render_semaphore: Arc::new(Semaphore::new(max_concurrent_renders)),
             upload_semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            max_concurrent_renders,
             supervisor: TaskSupervisor::default(),
+            cpu_pool,
+            encode_budget,
             tools: Arc::new(tools),
             library,
             db,
             job_store,
             media_search,
             storage,
-        }
+        })
     }
 
     pub async fn set_job(&self, job: Job) {
@@ -297,10 +337,13 @@ impl AppState {
 
     pub async fn render_lock(&self, key: &str) -> Arc<Mutex<()>> {
         let mut guard = self.render_locks.lock().await;
-        guard
-            .entry(key.to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+        guard.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = guard.get(key).and_then(Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(Mutex::new(()));
+        guard.insert(key.to_string(), Arc::downgrade(&lock));
+        lock
     }
 
     /// Wait for a download/render slot. Cancellation remains the caller's
@@ -313,9 +356,21 @@ impl AppState {
             .map(JobPermit::new)
     }
 
+    /// Render admission is additionally capped by the process-wide encoder
+    /// thread budget. Every admitted FFmpeg process can therefore receive at
+    /// least one thread without oversubscribing the declared total.
+    pub async fn acquire_render_slot(&self) -> Result<JobPermit, AcquireError> {
+        self.render_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map(JobPermit::new)
+    }
+
     /// Stop admitting queued jobs; this is the queue-level shutdown boundary.
     pub fn close_job_queue(&self) {
         self.jobs_semaphore.close();
+        self.render_semaphore.close();
     }
 
     pub fn spawn_task<F>(&self, future: F) -> tokio::task::JoinHandle<F::Output>
@@ -332,6 +387,7 @@ impl AppState {
 
     pub fn begin_shutdown(&self) {
         self.jobs_semaphore.close();
+        self.render_semaphore.close();
         self.upload_semaphore.close();
         self.supervisor.begin_shutdown();
     }
@@ -360,6 +416,10 @@ impl AppState {
 
     pub fn outputs_dir(&self) -> PathBuf {
         self.storage.join("outputs")
+    }
+
+    pub fn render_parallelism(&self) -> usize {
+        self.max_concurrent_renders
     }
 
     pub async fn rebuild_media_search(&self) {
@@ -446,6 +506,10 @@ mod tests {
 
         assert!(Arc::ptr_eq(&a, &b));
         assert!(!Arc::ptr_eq(&a, &c));
+        drop((a, b, c));
+        let fresh = st.render_lock("fresh").await;
+        assert_eq!(st.render_locks.lock().await.len(), 1);
+        drop(fresh);
     }
 
     #[tokio::test]
@@ -464,6 +528,29 @@ mod tests {
 
         drop(upload_a);
         assert!(st.try_acquire_upload_slot().is_some());
+    }
+
+    #[tokio::test]
+    async fn render_slots_are_capped_by_encode_threads() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let budget = EncodeBudget {
+            threads: 1,
+            tiles: crate::config::encode_budget::TileLayout {
+                columns: 1,
+                rows: 1,
+            },
+            speed: 6,
+            memory_mib: 512,
+        };
+        let st = AppState::new_with_runtime(storage, 4, ToolInfo::default(), lib, db, budget, 2)
+            .unwrap();
+
+        let _render = st.acquire_render_slot().await.unwrap();
+        assert!(st.render_semaphore.try_acquire().is_err());
+        assert_eq!(st.render_parallelism(), 1);
     }
 
     #[tokio::test]

@@ -235,12 +235,23 @@ content-addressed manifest, checksum/integrity verify и restore drill, поис
 rebuildable SQLite FTS5 adapter за `MediaSearch`, а SQLite/RocksDB решение -
 измеримый WAL threshold вместо преждевременной миграции.
 
+Четвёртая волна закрыта 18 июля 2026: №789, 791, 792, 793, 795, 796, 798,
+832, 871 и 872. Она ввела proxy/frame/chunk/output artifacts с checksum и
+identity-bound paths, downstream invalidation, отдельные preview/export
+execution profiles, scene-aware resume и packaging adapters. `EncodeBudget`
+учитывает cgroup CPU/RAM, делит encoder/filter threads без округления сверх
+общего лимита и передаёт AV1 speed/tiles; CPU closures идут через bounded Rayon
+pool. Cold/warm corpus сохраняет median/p95 и environment metadata, а profile
+script - SVG и folded stacks. Пользовательская интеграция этих ports остаётся
+отдельной задачей, contract/adapter слой и adversarial tests завершены.
+
 ## Приоритетный вывод
 
-После закрытия первых трёх волн ближайший research-фокус - волна 4: proxy media,
-artifact dependency graph, разные preview/export profiles, resumable scene
-chunks, encode budgets, bounded CPU executor и воспроизводимые performance
-baselines/profiles (№789, 791, 792, 793, 795, 796, 798, 832, 871, 872).
+После закрытия первых четырёх волн ближайший research-фокус - волна 5: preview
+pipeline/player/canvas state machines и accessibility (№785, 804-810, 815,
+818). Следующие 100 проверяемых идей №884-983 и их первичные источники вынесены
+в [research-next-100.md](research-next-100.md); их P0 начинается с process
+isolation №934, 937, 939 и 943.
 Отдельный старый P0 перед внешней публикацией остаётся: auth, ownership и process
 resource limits.
 

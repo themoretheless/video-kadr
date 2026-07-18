@@ -6,8 +6,11 @@
 mod args;
 mod egress_proxy;
 mod net;
+pub mod proxy;
 
-pub use args::{build_ffmpeg_args, expected_output_secs, output_ext};
+pub use args::{
+    build_ffmpeg_args, build_ffmpeg_args_with_budget, expected_output_secs, output_ext,
+};
 pub use net::validate_url;
 
 use std::path::{Path, PathBuf};

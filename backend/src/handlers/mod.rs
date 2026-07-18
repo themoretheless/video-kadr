@@ -274,6 +274,10 @@ fn spawn_edit_job(
             return;
         }
 
+        let _render_permit = match acquire_render_permit_or_cancelled(&st, &jid, &token).await {
+            Some(p) => p,
+            None => return,
+        };
         let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
             Some(p) => p,
             None => return,
@@ -303,7 +307,14 @@ fn spawn_edit_job(
             let probe = tools::probe_video(&input).await?;
             normalize_edit_request(&mut req, probe.width, probe.height, probe.duration)?;
             let expected = tools::expected_output_secs(&req, probe.duration);
-            let args = tools::build_ffmpeg_args(&input, &output_path, &req, probe.duration);
+            let args = tools::build_ffmpeg_args_with_budget(
+                &input,
+                &output_path,
+                &req,
+                probe.duration,
+                &st.encode_budget,
+                st.render_parallelism(),
+            );
             tracing::info!(output.format = %req.format.as_deref().unwrap_or("mp4"), "starting render");
             let done = tools::run_ffmpeg(&args, expected, &tx, &token, job_timeout())
                 .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
@@ -446,6 +457,26 @@ async fn acquire_job_permit_or_cancelled(
 ) -> Option<JobPermit> {
     tokio::select! {
         permit = st.acquire_job_slot() => match permit {
+            Ok(p) => Some(p),
+            Err(_) => {
+                mark_queue_closed(st, jid).await;
+                None
+            }
+        },
+        _ = token.cancelled() => {
+            mark_cancelled(st, jid).await;
+            None
+        }
+    }
+}
+
+async fn acquire_render_permit_or_cancelled(
+    st: &AppState,
+    jid: &str,
+    token: &CancellationToken,
+) -> Option<JobPermit> {
+    tokio::select! {
+        permit = st.acquire_render_slot() => match permit {
             Ok(p) => Some(p),
             Err(_) => {
                 mark_queue_closed(st, jid).await;

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "workloads": [
+    {
+      "name": "probe",
+      "cold": "parse ffprobe JSON and normalize typed stream metadata",
+      "warm": "normalize an already-parsed ffprobe value"
+    },
+    {
+      "name": "library-list",
+      "cold": "load a 100-item library and verify media files",
+      "warm": "list and verify a loaded 100-item library"
+    },
+    {
+      "name": "cache-hit",
+      "cold": "open/migrate SQLite and read one render-cache hit",
+      "warm": "read one render-cache hit from an open SQLite pool"
+    },
+    {
+      "name": "plan-compile",
+      "cold": "parse EditRequest and compile a fingerprinted EditPlan",
+      "warm": "compile a fingerprinted EditPlan from a typed request"
+    }
+  ],
+  "encodeBudgetMatrix": [
+    {"profile": "interactive", "speed": 9, "target": "preview/proxy latency"},
+    {"profile": "balanced", "speed": 6, "target": "default export"},
+    {"profile": "quality", "speed": 3, "target": "offline quality"}
+  ],
+  "regressionPolicy": {
+    "metric": "p95Ms",
+    "relativeThresholdPercent": 20,
+    "requiredRepeatedRegressions": 3,
+    "compareOnlyMatchingEnvironment": true
+  }
+}

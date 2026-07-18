@@ -3,7 +3,9 @@
 
 use std::path::Path;
 
+use crate::config::encode_budget::EncodeBudget;
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
+use crate::domain::output::OutputSpec;
 use crate::model::EditRequest;
 
 fn serialize_filter_chain(media: MediaKind, filters: &[String]) -> String {
@@ -54,16 +56,7 @@ fn parse_aspect(s: &str) -> Option<(u32, u32)> {
 
 /// Output file extension for a requested export format.
 pub fn output_ext(format: Option<&str>) -> &'static str {
-    match format.unwrap_or("mp4") {
-        "webm" => "webm",
-        "gif" => "gif",
-        "png" => "png",
-        "jpg" => "jpg",
-        "mp3" => "mp3",
-        "prores" => "mov",
-        // av1 lives in an mp4 container.
-        _ => "mp4",
-    }
+    crate::domain::output::OutputFormat::from_request(format).extension()
 }
 
 /// Build the geometry/colour (and optionally temporal) video filter chain.
@@ -318,7 +311,12 @@ pub fn build_ffmpeg_args(
             args.push("-c:v".into());
             args.push("libsvtav1".into());
             args.push("-crf".into());
-            args.push(edit.quality.unwrap_or(32).to_string());
+            args.push(
+                OutputSpec::from_edit(edit)
+                    .crf
+                    .expect("AV1 output has CRF")
+                    .to_string(),
+            );
             args.push("-preset".into());
             args.push("6".into());
             args.push("-pix_fmt".into());
@@ -369,16 +367,42 @@ pub fn build_ffmpeg_args(
     args
 }
 
+/// Apply the process-wide encode budget to one render. The global thread budget
+/// is divided across concurrently admitted render jobs to avoid oversubscription.
+pub fn build_ffmpeg_args_with_budget(
+    input: &Path,
+    output: &Path,
+    edit: &EditRequest,
+    source_duration: f64,
+    budget: &EncodeBudget,
+    parallel_jobs: usize,
+) -> Vec<String> {
+    let mut args = build_ffmpeg_args(input, output, edit, source_duration);
+    let output = args.pop().expect("ffmpeg arguments always end in output");
+    args.extend(budget.ffmpeg_thread_args_for_job(parallel_jobs));
+    if edit.format.as_deref() == Some("av1") {
+        args.extend(budget.ffmpeg_av1_tile_args());
+        if let Some(preset) = args.iter().position(|argument| argument == "-preset") {
+            if let Some(value) = args.get_mut(preset + 1) {
+                *value = budget.speed.to_string();
+            }
+        }
+    }
+    args.push(output);
+    args
+}
+
 /// Push the video encoder and its quality/pixel-format options for `format`
 /// (VP9 for webm, otherwise H.264/H.265), then fps and (for mp4) faststart.
 /// Shared by the single-pass and concat paths so codec settings live in one place.
 fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
+    let output = OutputSpec::from_edit(edit);
     match format {
         "webm" => {
             args.push("-c:v".into());
             args.push("libvpx-vp9".into());
             args.push("-crf".into());
-            args.push(edit.quality.unwrap_or(32).to_string());
+            args.push(output.crf.expect("WebM output has CRF").to_string());
             args.push("-b:v".into());
             args.push("0".into());
             args.push("-pix_fmt".into());
@@ -389,7 +413,7 @@ fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
             args.push("-c:v".into());
             args.push("libsvtav1".into());
             args.push("-crf".into());
-            args.push(edit.quality.unwrap_or(32).to_string());
+            args.push(output.crf.expect("AV1 output has CRF").to_string());
             args.push("-preset".into());
             args.push("6".into());
             args.push("-pix_fmt".into());
@@ -408,17 +432,13 @@ fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
             push_fps(args, edit);
         }
         _ => {
-            let h265 = edit.codec.as_deref() == Some("h265");
+            let h265 = output.video_codec == Some(crate::domain::output::VideoCodec::H265);
             args.push("-c:v".into());
             args.push(if h265 { "libx265" } else { "libx264" }.into());
             args.push("-preset".into());
             args.push("veryfast".into());
             args.push("-crf".into());
-            args.push(
-                edit.quality
-                    .unwrap_or(if h265 { 28 } else { 23 })
-                    .to_string(),
-            );
+            args.push(output.crf.expect("MP4 output has CRF").to_string());
             args.push("-pix_fmt".into());
             args.push("yuv420p".into());
             if h265 {
@@ -564,6 +584,7 @@ fn format_secs(s: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::encode_budget::TileLayout;
     use serde_json::json;
 
     fn edit(v: serde_json::Value) -> EditRequest {
@@ -574,6 +595,69 @@ mod tests {
         let input = Path::new("/in.mp4");
         let output = Path::new("/out.mp4");
         build_ffmpeg_args(input, output, &edit(v), dur)
+    }
+
+    #[test]
+    fn process_budget_is_divided_across_parallel_renders() {
+        let edit = edit(json!({ "videoId": "x", "format": "av1" }));
+        let budget = EncodeBudget {
+            threads: 8,
+            tiles: TileLayout {
+                columns: 2,
+                rows: 1,
+            },
+            speed: 3,
+            memory_mib: 2048,
+        };
+        let args = build_ffmpeg_args_with_budget(
+            Path::new("/in.mp4"),
+            Path::new("/out.mp4"),
+            &edit,
+            10.0,
+            &budget,
+            2,
+        );
+        let filter_threads = args
+            .iter()
+            .position(|argument| argument == "-filter_threads")
+            .unwrap();
+        let encoder_threads = args
+            .iter()
+            .position(|argument| argument == "-threads:v")
+            .unwrap();
+        let preset = args
+            .iter()
+            .position(|argument| argument == "-preset")
+            .unwrap();
+        let tile_columns = args
+            .iter()
+            .position(|argument| argument == "-tile_columns")
+            .unwrap();
+        let tile_rows = args
+            .iter()
+            .position(|argument| argument == "-tile_rows")
+            .unwrap();
+        assert_eq!(args[filter_threads + 1], "4");
+        assert_eq!(args[encoder_threads + 1], "4");
+        assert_eq!(args[preset + 1], "3");
+        assert_eq!(args[tile_columns + 1], "1");
+        assert_eq!(args[tile_rows + 1], "0");
+    }
+
+    #[test]
+    fn process_budget_never_rounds_parallel_jobs_up_past_total() {
+        let budget = EncodeBudget {
+            threads: 8,
+            tiles: TileLayout {
+                columns: 1,
+                rows: 1,
+            },
+            speed: 6,
+            memory_mib: 1024,
+        };
+        let args = budget.ffmpeg_thread_args_for_job(3);
+        assert_eq!(args[1], "2");
+        assert_eq!(args[3], "2");
     }
 
     fn vf(args: &[String]) -> String {

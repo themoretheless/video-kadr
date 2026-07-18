@@ -26,6 +26,8 @@ libc = "0.2"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 # Hashing the (source + edit) into a render-cache key.
 sha2 = "0.10"
+# CPU-heavy hashing/analysis runs outside Tokio on a bounded local pool.
+rayon = "1"
 
 [dev-dependencies]
 # `util` brings `tower::ServiceExt::oneshot`, used to drive the router in tests

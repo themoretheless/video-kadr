@@ -179,7 +179,9 @@ cargo run --bin backup -- restore ../backups/<root-hash> ../restored-storage
 Пошаговый рефакторинг на слабую зацепленность - в [docs/refactor-plan.md](docs/refactor-plan.md).
 Порядок исполнения по фазам - в [plan.md](plan.md).
 Исследовательский benchmark 100 сильных media/editor/backend/security-проектов,
-papers и стандартов - в [docs/research-100.md](docs/research-100.md).
+papers и стандартов - в [docs/research-100.md](docs/research-100.md); следующий
+слой из 100 проверяемых идей №884-983 - в
+[docs/research-next-100.md](docs/research-next-100.md).
 Аудиты проблем: проверенное ядро (118 находок, поштучно верифицировано, 14
 опровергнутых) - в [docs/audit.md](docs/audit.md); расширенный широкий охват
 (509 заземлённых на код проблем) - в [docs/audit-500.md](docs/audit-500.md);
@@ -188,10 +190,9 @@ papers и стандартов - в [docs/research-100.md](docs/research-100.md)
 `recommendation.md` как карта исправлений; источник правды по багам - `docs/audit.md`,
 порядок работ - `plan.md`. Если нужен именно большой список «500 предложений,
 улучшений, проблем и ошибок», читай так: `docs/audit-500.md` = 509 широких
-находок по коду; `architecture.md` и `recommendation.md` = 665 активных
-рекомендаций: 565 SOLID/DRY-пунктов в 12 маленьких модулях плюс 100
-research-backed решений в 10 тематических группах. Их можно брать по одному
-кусочку.
+находок по коду; `architecture.md` и `recommendation.md` = 765 активных
+рекомендаций: 565 SOLID/DRY-пунктов в 12 маленьких модулях плюс два слоя по 100
+research-backed решений. Их можно брать по одному кусочку.
 
 **Раунд 2 (1 июля 2026).** После 5 P0-фиксов (single-flight рендер-кэша,
 process-group kill, атомарная отмена задач, CORS/ServeDir lockdown, лимит на
@@ -281,7 +282,7 @@ Vue/testing, security/supply chain, observability/performance и ML-assisted
 media. Выводы сверены с первичными papers и спецификациями FFmpeg, GStreamer,
 MLT, Tokio, OWASP, W3C, OpenTelemetry и SLSA. Каждый источник дал отдельную
 проверяемую карточку №784-883; популярность проекта не трактуется как команда
-добавить зависимость. Общий исполняемый набор теперь 665: исходные 565 + 100
+добавить зависимость. На этом этапе набор вырос до 665: исходные 565 + 100
 исследовательских. Каталог со снимком звёзд и трассировкой решений - в
 [docs/research-100.md](docs/research-100.md), формулировки - в
 [architecture.md](architecture.md#исследовательский-слой-100-репозиториев-14-июля-2026),
@@ -328,6 +329,30 @@ verify/restore drill, rebuildable `MediaSearch` port на SQLite FTS5 и изм�
 порог смены SQLite; локальные benchmark-прогоны 1000 WAL enqueue дали p95
 0.241-0.632 ms при
 пороге 50 ms. Loom перебирает terminal/cancel/permit interleavings.
+
+**Волна 4/10 (18 июля 2026): производные media artifacts и performance
+contracts реализованы.** Закрыты №789, 791, 792, 793, 795, 796, 798, 832, 871
+и 872. Появились content-addressed proxy с verified relink и обязательным
+full-resolution export, dependency graph с downstream invalidation, immutable
+`EditPlan` и независимые preview/export profiles, deterministic frame/chunk
+manifests с checksum, resumable scene chunks и verified stitch. Encoding теперь
+получает cgroup-aware `EncodeBudget`; hashing/analysis вынесены в bounded Rayon
+pool, а отдельный render admission удерживает общий encoder thread budget даже
+при большом `MAX_CONCURRENT_JOBS`. Manifest reads действительно bounded,
+artifact verification отклоняет ancestor-symlink escape, serde пересчитывает
+graph/plan/chunk identities; proxy staging сохраняет muxer suffix и не копит
+неиспользуемый progress. HLS/DASH packaging изолирован от обычного file export.
+Версионированный cold/warm perf corpus пишет median/p95 и environment metadata; profile workflow
+сохраняет SVG и folded stacks. Это завершённый contract/adapter слой: включение
+proxy/chunk/package flows в пользовательский UI остаётся отдельной интеграцией.
+
+**Следующий исследовательский слой (18 июля 2026): ещё 100 идей.** Карточки
+№884-983 разбиты на 10 пакетов: container provenance, color/HDR, audio, timed
+text/accessibility, local-first storage, process isolation, reliability,
+timeline UX, formal verification и local ML/privacy. Каждая содержит критерий
+приёмки; source inventory и порядок маленьких PR находятся в
+[docs/research-next-100.md](docs/research-next-100.md). Общий backlog теперь 765
+пунктов, а ближайший P0 - process isolation №934, 937, 939 и 943.
 
 ```
 frontend (Vue 3 + Vite)

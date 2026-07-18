@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use video_editor_backend::build_router;
+use video_editor_backend::config::AppConfig;
 use video_editor_backend::db::Db;
 use video_editor_backend::library::{Library, MediaEntry};
 use video_editor_backend::state::{AppState, ToolInfo};
@@ -20,12 +21,13 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let storage = std::env::var("STORAGE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("storage"));
+    let config = AppConfig::from_env()?;
+    let storage = config.storage.clone();
     tokio::fs::create_dir_all(storage.join("sources")).await?;
     tokio::fs::create_dir_all(storage.join("outputs")).await?;
     tokio::fs::create_dir_all(storage.join("staging")).await?;
+    tokio::fs::create_dir_all(storage.join("proxies")).await?;
+    tokio::fs::create_dir_all(storage.join("artifacts")).await?;
 
     // Probe external tools once so /api/health and the logs reflect reality.
     let (ffmpeg, ffmpeg_version) = tools::check_tool("ffmpeg", "-version").await;
@@ -59,20 +61,17 @@ async fn main() -> anyhow::Result<()> {
         ffmpeg_filters,
     };
 
-    let max_concurrent: usize = std::env::var("MAX_CONCURRENT_JOBS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2);
-
     let lib = Library::load(storage.clone()).await;
     let db = Db::open(&storage).await?;
-    let state = AppState::new(
+    let state = AppState::new_with_runtime(
         storage.clone(),
-        max_concurrent,
+        config.max_concurrent_jobs,
         tool_info,
         lib.clone(),
         db.clone(),
-    );
+        config.encode_budget.clone(),
+        config.cpu_queue_capacity,
+    )?;
     // Reconcile durable jobs and rebuild derived state before workers can add
     // new media; incremental indexing owns every change after this boundary.
     state.recover_jobs().await;
@@ -80,30 +79,16 @@ async fn main() -> anyhow::Result<()> {
     video_editor_backend::handlers::start_job_dispatcher(&state);
 
     // Optional TTL cleanup of generated/downloaded files.
-    let ttl_hours: u64 = std::env::var("FILE_TTL_HOURS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let ttl_hours = config.file_ttl_hours;
     if ttl_hours > 0 {
         spawn_cleanup(&state, storage.clone(), lib, db, ttl_hours);
         tracing::info!("file cleanup enabled: TTL {ttl_hours}h");
     }
 
     // Upload limit for local files (default 2 GiB), overridable via env.
-    let max_upload: usize = std::env::var("MAX_UPLOAD_BYTES")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2 * 1024 * 1024 * 1024);
+    let app = build_router(state.clone(), config.max_upload_bytes);
 
-    let app = build_router(state.clone(), max_upload);
-
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080);
-    let host = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1".into());
-    let ip: std::net::IpAddr = host.parse().unwrap_or_else(|_| [127, 0, 0, 1].into());
-    let addr = SocketAddr::from((ip, port));
+    let addr = SocketAddr::from((config.bind_addr, config.port));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("backend listening on http://{addr}");

@@ -4,8 +4,11 @@
 //! router builder as a library lets the integration tests in `tests/` drive the
 //! real HTTP API with `tower::ServiceExt::oneshot`, without binding a socket.
 
+pub mod analysis;
+pub mod artifacts;
 pub mod backup;
 pub mod capabilities;
+pub mod config;
 pub mod db;
 pub mod domain;
 pub mod error;
@@ -14,9 +17,12 @@ pub mod http;
 pub mod jobs;
 pub mod library;
 pub mod model;
+pub mod packaging;
 pub mod ports;
 pub mod privacy;
+pub mod render;
 pub mod runtime;
+pub mod services;
 pub mod state;
 pub mod telemetry;
 pub mod tools;

@@ -3,7 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const WIRE_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct WireSchemaVersion;
 
 impl<'de> Deserialize<'de> for WireSchemaVersion {
@@ -125,7 +125,7 @@ pub struct ImportRequest {
 /// Request body for `POST /api/edit`. Field names arrive as camelCase from the
 /// frontend (e.g. `videoId`). It is also `Serialize` so a deserialized request
 /// can be re-serialized canonically into the render-cache key.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
     #[serde(default, skip_serializing)]
@@ -224,7 +224,7 @@ fn default_one() -> f64 {
 }
 
 /// Trim the source to the region `[start, end]` (seconds).
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Trim {
     pub start: f64,
@@ -232,7 +232,7 @@ pub struct Trim {
 }
 
 /// Crop rectangle in source pixels.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Crop {
     pub x: u32,
@@ -242,7 +242,7 @@ pub struct Crop {
 }
 
 /// Target size. Use `-1` (or `-2`) for a dimension to keep aspect ratio.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Scale {
     pub w: i32,

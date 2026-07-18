@@ -1,4 +1,4 @@
-.PHONY: dev backend frontend build check test lint fmt bench-persistence
+.PHONY: dev backend frontend build check test lint fmt bench-persistence perf-baseline perf-profile
 
 dev:
 	bash scripts/dev.sh
@@ -39,3 +39,9 @@ fmt:
 
 bench-persistence:
 	cd backend && cargo bench --bench persistence
+
+perf-baseline:
+	bash bench/perf/run.sh
+
+perf-profile:
+	bash bench/perf/profile.sh $(or $(WORKLOAD),plan-compile)

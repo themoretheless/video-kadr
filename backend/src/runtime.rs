@@ -1,5 +1,7 @@
 //! Ownership boundary for application background tasks and shutdown.
 
+pub mod cpu_pool;
+
 use std::future::Future;
 use std::time::Duration;
 
