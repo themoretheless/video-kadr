@@ -145,6 +145,7 @@ fn spawn_import_job(
             let sources = st.sources_dir();
             let outcome = async {
                 let done = tools::download_video(
+                    &st.process_runtime,
                     &req.url,
                     &sources,
                     &vid,
@@ -161,7 +162,7 @@ fn spawn_import_job(
                     return Ok::<Option<Value>, anyhow::Error>(None);
                 }
                 let path = tools::find_source(&sources, &vid).await?;
-                let info = tools::probe_video(&path).await?;
+                let info = tools::probe_video(&st.process_runtime, &path).await?;
                 let title = tools::read_title(&sources, &vid).await;
                 let size = tokio::fs::metadata(&path).await.map(|m| m.len()).ok();
                 let filename = path
@@ -304,7 +305,7 @@ fn spawn_edit_job(
 
         let outcome = async {
             let input = tools::find_source(&sources, &req.video_id).await?;
-            let probe = tools::probe_video(&input).await?;
+            let probe = tools::probe_video(&st.process_runtime, &input).await?;
             normalize_edit_request(&mut req, probe.width, probe.height, probe.duration)?;
             let expected = tools::expected_output_secs(&req, probe.duration);
             let args = tools::build_ffmpeg_args_with_budget(
@@ -316,7 +317,14 @@ fn spawn_edit_job(
                 st.render_parallelism(),
             );
             tracing::info!(output.format = %req.format.as_deref().unwrap_or("mp4"), "starting render");
-            let done = tools::run_ffmpeg(&args, expected, &tx, &token, job_timeout())
+            let done = tools::run_ffmpeg(
+                &st.process_runtime,
+                &args,
+                expected,
+                &tx,
+                &token,
+                job_timeout(),
+            )
                 .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
                 .await?;
             if matches!(done, Done::Cancelled) {

@@ -1,6 +1,6 @@
 //! End-to-end render test against the real ffmpeg binary. It generates a tiny
 //! test clip with lavfi, runs it through the actual `build_ffmpeg_args` +
-//! `run_ffmpeg` pipeline, and probes the output. Skipped (not failed) when
+//! process-policy render pipeline, and probes the output. Skipped (not failed) when
 //! ffmpeg/ffprobe are not on PATH, so `cargo test` stays green without them;
 //! CI installs ffmpeg so this runs for real there.
 
@@ -10,15 +10,18 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use video_editor_backend::model::EditRequest;
+use video_editor_backend::process_control::ProcessRuntime;
 use video_editor_backend::tools::{build_ffmpeg_args, check_tool, probe_video, run_ffmpeg, Done};
 
-async fn tools_available() -> bool {
-    check_tool("ffmpeg", "-version").await.0 && check_tool("ffprobe", "-version").await.0
+async fn tools_available(runtime: &ProcessRuntime) -> bool {
+    check_tool(runtime, "ffmpeg", "-version").await.0
+        && check_tool(runtime, "ffprobe", "-version").await.0
 }
 
 #[tokio::test]
 async fn real_render_trim_scale_grayscale() {
-    if !tools_available().await {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
         eprintln!("skipping real_render_trim_scale_grayscale: ffmpeg/ffprobe not on PATH");
         return;
     }
@@ -62,13 +65,13 @@ async fn real_render_trim_scale_grayscale() {
     }))
     .unwrap();
 
-    let probe = probe_video(&input).await.unwrap();
+    let probe = probe_video(&runtime, &input).await.unwrap();
     let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
     let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
     let token = CancellationToken::new();
-    let done = run_ffmpeg(&args, 0.5, &tx, &token, Duration::from_secs(60))
+    let done = run_ffmpeg(&runtime, &args, 0.5, &tx, &token, Duration::from_secs(60))
         .await
         .unwrap();
     drop(tx);
@@ -79,14 +82,15 @@ async fn real_render_trim_scale_grayscale() {
     let meta = tokio::fs::metadata(&output).await.unwrap();
     assert!(meta.len() > 0, "output file should be non-empty");
 
-    let out = probe_video(&output).await.unwrap();
+    let out = probe_video(&runtime, &output).await.unwrap();
     assert!(out.duration > 0.0, "output should have a positive duration");
     assert_eq!(out.width, 160, "scale width should be applied");
 }
 
 #[tokio::test]
 async fn real_render_denoise_sharpen_grain_look() {
-    if !tools_available().await {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
         eprintln!("skipping real_render_denoise_sharpen_grain_look: ffmpeg/ffprobe not on PATH");
         return;
     }
@@ -121,13 +125,13 @@ async fn real_render_denoise_sharpen_grain_look() {
         "mute": true
     }))
     .unwrap();
-    let probe = probe_video(&input).await.unwrap();
+    let probe = probe_video(&runtime, &input).await.unwrap();
     let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
     let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
     let token = CancellationToken::new();
-    let done = run_ffmpeg(&args, 1.0, &tx, &token, Duration::from_secs(60))
+    let done = run_ffmpeg(&runtime, &args, 1.0, &tx, &token, Duration::from_secs(60))
         .await
         .unwrap();
     drop(tx);
@@ -139,7 +143,8 @@ async fn real_render_denoise_sharpen_grain_look() {
 
 #[tokio::test]
 async fn real_render_prores_with_audio_cleanup() {
-    if !tools_available().await {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
         eprintln!("skipping real_render_prores_with_audio_cleanup: ffmpeg/ffprobe not on PATH");
         return;
     }
@@ -177,20 +182,20 @@ async fn real_render_prores_with_audio_cleanup() {
         "highpass": true
     }))
     .unwrap();
-    let probe = probe_video(&input).await.unwrap();
+    let probe = probe_video(&runtime, &input).await.unwrap();
     let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
     let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
     let token = CancellationToken::new();
-    let done = run_ffmpeg(&args, 1.0, &tx, &token, Duration::from_secs(60))
+    let done = run_ffmpeg(&runtime, &args, 1.0, &tx, &token, Duration::from_secs(60))
         .await
         .unwrap();
     drop(tx);
     let _ = drain.await;
 
     assert!(matches!(done, Done::Completed));
-    let out = probe_video(&output).await.unwrap();
+    let out = probe_video(&runtime, &output).await.unwrap();
     assert!(out.duration > 0.0);
     assert_eq!(out.vcodec.as_deref(), Some("prores"));
 }

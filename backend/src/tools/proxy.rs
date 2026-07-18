@@ -8,11 +8,20 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::analysis::proxy::{ProxyCodec, ProxyEncoder, ProxyProfile, SourceIdentity};
+use crate::process_control::ProcessRuntime;
 
 use super::{run_ffmpeg, Done};
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct FfmpegProxyEncoder;
+#[derive(Debug, Clone)]
+pub struct FfmpegProxyEncoder {
+    runtime: ProcessRuntime,
+}
+
+impl FfmpegProxyEncoder {
+    pub fn new(runtime: ProcessRuntime) -> Self {
+        Self { runtime }
+    }
+}
 
 #[axum::async_trait]
 impl ProxyEncoder for FfmpegProxyEncoder {
@@ -29,6 +38,7 @@ impl ProxyEncoder for FfmpegProxyEncoder {
         // sends no-ops instead of retaining every update for a long encode.
         drop(receiver);
         match run_ffmpeg(
+            &self.runtime,
             &args,
             source.duration_seconds,
             &progress,

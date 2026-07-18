@@ -17,6 +17,7 @@ use crate::jobs::{
 use crate::library::Library;
 use crate::model::Job;
 use crate::ports::{MediaDocument, MediaSearch, SqliteMediaSearch};
+use crate::process_control::ProcessRuntime;
 use crate::runtime::cpu_pool::{CpuPool, CpuPoolConfig};
 use crate::runtime::TaskSupervisor;
 
@@ -60,6 +61,7 @@ pub struct AppState {
     supervisor: TaskSupervisor,
     pub cpu_pool: CpuPool,
     pub encode_budget: EncodeBudget,
+    pub process_runtime: ProcessRuntime,
     pub tools: Arc<ToolInfo>,
     pub library: Library,
     pub db: Db,
@@ -108,6 +110,29 @@ impl AppState {
         encode_budget: EncodeBudget,
         cpu_queue_capacity: usize,
     ) -> anyhow::Result<Self> {
+        Self::new_with_process_runtime(
+            storage,
+            max_concurrent,
+            tools,
+            library,
+            db,
+            encode_budget,
+            cpu_queue_capacity,
+            ProcessRuntime::local_default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_process_runtime(
+        storage: PathBuf,
+        max_concurrent: usize,
+        tools: ToolInfo,
+        library: Library,
+        db: Db,
+        encode_budget: EncodeBudget,
+        cpu_queue_capacity: usize,
+        process_runtime: ProcessRuntime,
+    ) -> anyhow::Result<Self> {
         let max_concurrent = max_concurrent.max(1);
         let max_concurrent_renders = max_concurrent.min(encode_budget.threads).max(1);
         let cpu_pool = CpuPool::new(CpuPoolConfig {
@@ -127,6 +152,7 @@ impl AppState {
             supervisor: TaskSupervisor::default(),
             cpu_pool,
             encode_budget,
+            process_runtime,
             tools: Arc::new(tools),
             library,
             db,

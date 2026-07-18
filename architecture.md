@@ -1225,6 +1225,17 @@ bounded Rayon pool. Versioned perf corpus и profile scripts закрепляю�
 profile-before-optimize workflow; подключение этих ports к пользовательскому UI
 остаётся отдельным vertical slice.
 
+Process-isolation P0 от 19 июля 2026 ввёл отдельный `process_control` boundary.
+Role, filesystem scope, network, environment, kernel и output budgets обязательны
+до появления `PreparedCommand`; raw production spawn централизован. Config
+передаёт один `ProcessRuntime` через state/handlers, local tier требует loopback,
+LAN выбирается явно, public и несуществующие NsJail/Bubblewrap adapters
+fail-closed. Environment очищается, downloader получает только pinned loopback
+proxy, FFmpeg/ffprobe ограничены offline protocol allowlist. CPU/FD/file-size
+rlimits работают на Unix, address-space limit только на Linux; PID tree,
+filesystem mounts и network namespace честно остаются открыты. Enforcement
+matrix и причины находятся в `docs/process-isolation.md`.
+
 ### A. NLE и media pipeline (784-793)
 
 784. ✅ [архитектура/FFmpeg] Реализован `FilterGraph` DAG с audio/video pads, required/single-input и topological validation, стабильным JSON/DOT; текущие ffmpeg chains сериализуются через этот граф до spawn. `backend/src/domain/filter_graph.rs`, `backend/src/tools/args.rs`
@@ -1429,16 +1440,16 @@ profile-before-optimize workflow; подключение этих ports к по�
 
 ### P. Process isolation и plugin security (934-943)
 
-934. 🔴 [security] Каждый external spawn требует `ProcessPolicy` с FS/network/env/CPU/RAM/PID/FD/output budgets.
+934. ✅ [security] Каждый production external spawn компилируется только через `PreparedCommand` с обязательным `ProcessPolicy`: role, FS/network/env, CPU/address-space/PID/FD/file-size и bounded output/line budgets; timeout и detached pipe holders завершают всю process group с TERM→KILL escalation. `backend/src/process_control/{policy,runtime,limits,execution}.rs`, `backend/src/tools/mod.rs`
 935. 🔴 [security] Public Linux profile запускает untrusted media tools через NsJail namespaces/cgroup/seccomp.
-936. 🔴 [security] Bubblewrap filesystem policy монтирует source read-only и staging writable, скрывая siblings/home.
-937. 🔴 [security] Network namespace deny-by-default для ffmpeg/ffprobe; pinned egress есть только у downloader.
+936. 🟠 [security] Typed FS scope уже различает source read-only и destination writable, `HOME` не наследуется; mount enforcement, скрытие siblings/home и Bubblewrap adapter ещё не реализованы.
+937. 🟠 [security] FFmpeg/ffprobe policy запрещает network URL и добавляет offline protocol allowlist, downloader получает только validated pinned loopback proxy. Kernel network namespace deny-by-default ещё нужен для полного закрытия.
 938. 🟠 [operations] Seccomp profile versioned по tool fingerprint и проверяется codec corpus при upgrade.
-939. 🔴 [DoS] Kernel cgroup/rlimit ограничивает CPU/RSS/PIDs/FD/file size независимо от cooperative cancel.
+939. 🟠 [DoS] Unix production spawn применяет hard `RLIMIT_CPU`, `RLIMIT_NOFILE`, `RLIMIT_FSIZE`, Linux также `RLIMIT_AS`; bounded pipes не растут в памяти. PID tree и portable RSS требуют cgroup/per-tenant uid, поэтому пункт частично открыт.
 940. 🟠 [ownership] Multi-user jobs получают отдельные uid/gid/work directories.
 941. 🟡 [OCP] Future Wasm plugins используют capability host calls, memory/fuel/epoch limits.
 942. 🟠 [security] Embedded custom shader/script/filter остаётся quarantined и требует signed descriptor + sandbox tier.
-943. 🔴 [deployment] ADR задаёт local/LAN/public isolation tiers; public bind без обязательных controls не стартует.
+943. ✅ [deployment] ADR задаёт local/LAN/public tiers: local отклоняет non-loopback bind, LAN требует явного opt-in, public и выбранный, но отсутствующий sandbox adapter останавливают startup. `docs/process-isolation.md`, `backend/src/config/mod.rs`
 
 ### Q. Reliability, tail latency и operability (944-953)
 

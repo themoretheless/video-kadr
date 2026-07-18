@@ -20,6 +20,7 @@ pub mod model;
 pub mod packaging;
 pub mod ports;
 pub mod privacy;
+pub mod process_control;
 pub mod render;
 pub mod runtime;
 pub mod services;

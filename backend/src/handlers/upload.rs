@@ -70,7 +70,7 @@ pub async fn upload_handler(
         return Err(AppError::bad_request("пустой файл"));
     }
 
-    let info = match tools::probe_video(temporary.path()).await {
+    let info = match tools::probe_video(&state.process_runtime, temporary.path()).await {
         Ok(info) if info.width > 0 || info.duration > 0.0 => info,
         Err(error) => {
             remove_quietly(temporary.path()).await;
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn probe_timeout_maps_to_gateway_timeout() {
-        let error = anyhow::Error::new(crate::tools::ToolTimeout);
+        let error = crate::process_control::test_timeout_error();
         let response = probe_error_response(&error);
 
         assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);

@@ -10,6 +10,7 @@ use video_editor_backend::build_router;
 use video_editor_backend::config::AppConfig;
 use video_editor_backend::db::Db;
 use video_editor_backend::library::{Library, MediaEntry};
+use video_editor_backend::process_control::ProcessRuntime;
 use video_editor_backend::state::{AppState, ToolInfo};
 use video_editor_backend::tools;
 
@@ -22,6 +23,14 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = AppConfig::from_env()?;
+    let process_runtime = ProcessRuntime::new(config.process_runtime.clone())?;
+    process_runtime.validate_deployment(config.bind_addr)?;
+    tracing::info!(
+        isolation.tier = %process_runtime.tier(),
+        isolation.hard_memory = process_runtime.hard_memory_limit_enforced(),
+        isolation.hard_pid_tree = process_runtime.hard_pid_limit_enforced(),
+        "external process policy validated"
+    );
     let storage = config.storage.clone();
     tokio::fs::create_dir_all(storage.join("sources")).await?;
     tokio::fs::create_dir_all(storage.join("outputs")).await?;
@@ -30,8 +39,8 @@ async fn main() -> anyhow::Result<()> {
     tokio::fs::create_dir_all(storage.join("artifacts")).await?;
 
     // Probe external tools once so /api/health and the logs reflect reality.
-    let (ffmpeg, ffmpeg_version) = tools::check_tool("ffmpeg", "-version").await;
-    let (ytdlp, ytdlp_version) = tools::check_tool("yt-dlp", "--version").await;
+    let (ffmpeg, ffmpeg_version) = tools::check_tool(&process_runtime, "ffmpeg", "-version").await;
+    let (ytdlp, ytdlp_version) = tools::check_tool(&process_runtime, "yt-dlp", "--version").await;
     if ffmpeg {
         tracing::info!("ffmpeg: {}", ffmpeg_version.clone().unwrap_or_default());
     } else {
@@ -47,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     let (ffmpeg_encoders, ffmpeg_muxers, ffmpeg_filters) = if ffmpeg {
-        tools::inspect_ffmpeg_support().await
+        tools::inspect_ffmpeg_support(&process_runtime).await
     } else {
         (Vec::new(), Vec::new(), Vec::new())
     };
@@ -63,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
 
     let lib = Library::load(storage.clone()).await;
     let db = Db::open(&storage).await?;
-    let state = AppState::new_with_runtime(
+    let state = AppState::new_with_process_runtime(
         storage.clone(),
         config.max_concurrent_jobs,
         tool_info,
@@ -71,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
         db.clone(),
         config.encode_budget.clone(),
         config.cpu_queue_capacity,
+        process_runtime.clone(),
     )?;
     // Reconcile durable jobs and rebuild derived state before workers can add
     // new media; incremental indexing owns every change after this boundary.
@@ -91,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
     let addr = SocketAddr::from((config.bind_addr, config.port));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("backend listening on http://{addr}");
+    tracing::info!(isolation.tier = %process_runtime.tier(), "backend listening on http://{addr}");
     let http_shutdown = CancellationToken::new();
     let http_shutdown_waiter = http_shutdown.clone();
     {

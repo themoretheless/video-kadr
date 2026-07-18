@@ -61,6 +61,14 @@ render admission.
 готовые proxy/chunk/package ports к пользовательским workflows; это не скрыто в
 статусе contract-слоя.
 
+Process-isolation P0 от 19 июля 2026 закрыл №934 и №943. Production spawn теперь
+возможен только через typed `ProcessPolicy`/`PreparedCommand`; config/state
+передают один runtime, environment очищается, output/lines bounded, downloader
+имеет только pinned loopback proxy, FFmpeg/ffprobe offline protocol allowlist.
+Unix rlimits закрывают CPU/FD/file size, Linux также address space. №936, 937 и
+939 остаются частично открыты до mount/network namespaces, cgroup pids/memory и
+per-tenant uid; точная матрица в `docs/process-isolation.md`.
+
 ## Синхронизированный top-200: проблема → куда чинить
 
 **Раунд 2 (1 июля 2026).** P0-1…P0-8 ниже все ✅ «Сделано» - но перепроверка
@@ -1181,16 +1189,16 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### P. Process isolation и plugin security
 
-- [ ] 🔴 **934. ProcessPolicy:** FS/network/env/CPU/RAM/PID/FD/output budget обязателен для spawn.
+- [x] ✅ **934. ProcessPolicy:** Только typed `PreparedCommand` может spawn; role, FS/network/env, kernel и bounded output/line budgets обязательны; timeout и detached pipe holders завершают process group через TERM→KILL. `backend/src/process_control/{policy,runtime,limits,execution}.rs`
 - [ ] 🔴 **935. NsJail adapter:** namespaces/cgroup/seccomp/dropped privileges в public Linux profile.
-- [ ] 🔴 **936. Filesystem allowlist:** source read-only, staging writable, siblings/home hidden.
-- [ ] 🔴 **937. Network deny:** ffmpeg/ffprobe offline; pinned egress только downloader.
+- [ ] 🟠 **936. Filesystem allowlist:** Typed read-only/read-write scope и scrubbed `HOME` готовы; mount enforcement и hidden siblings/home ждут sandbox adapter.
+- [ ] 🟠 **937. Network deny:** FFmpeg/ffprobe URL rejection + protocol allowlist и pinned downloader proxy готовы; kernel network namespace ещё открыт.
 - [ ] 🟠 **938. Versioned seccomp:** tool fingerprint + codec regression corpus.
-- [ ] 🔴 **939. Kernel limits:** cgroup/rlimit для CPU/RSS/PIDs/FD/file size.
+- [ ] 🟠 **939. Kernel limits:** Unix CPU/FD/file-size rlimits, Linux address-space и bounded pipes готовы; cgroup RSS/PID tree/per-tenant uid ещё открыты.
 - [ ] 🟠 **940. Per-tenant identity:** отдельные uid/gid/work directories.
 - [ ] 🟡 **941. Wasm capabilities:** host calls, memory/fuel/epoch limits.
 - [ ] 🟠 **942. Custom logic quarantine:** signed descriptor + sandbox tier.
-- [ ] 🔴 **943. Isolation tiers ADR:** public bind отказывается стартовать без controls.
+- [x] ✅ **943. Isolation tiers ADR:** Local требует loopback, LAN explicit, public и фиктивный sandbox adapter fail-closed. `docs/process-isolation.md`
 
 ### Q. Reliability, tail latency и operability
 

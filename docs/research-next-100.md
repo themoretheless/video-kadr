@@ -162,16 +162,16 @@ Example tests дополняются properties, model checking, mutation score 
 
 ## P. Process isolation и plugin security (934-943)
 
-934. 🔴 **ProcessPolicy port:** каждый external tool объявляет filesystem, network, env, CPU, memory, PID, FD и output limits. Приёмка: spawn невозможен без policy profile.
+934. ✅ **ProcessPolicy port:** каждый production external tool объявляет filesystem, network, env, CPU, memory, PID, FD и output limits; spawn доступен только через `PreparedCommand`. `backend/src/process_control/{policy,runtime,limits,execution}.rs`
 935. 🔴 **Linux NsJail adapter:** server profile запускает untrusted media tools в namespaces/cgroup/seccomp с dropped privileges. Приёмка: fixture не читает host home и не создаёт extra process.
-936. 🔴 **Filesystem allowlist:** Bubblewrap policy монтирует source read-only, staging writable, остальное скрыто. Приёмка: symlink/path escape test не достигает storage siblings.
-937. 🔴 **Network deny by default:** ffprobe/ffmpeg локального source не имеют network namespace; только download adapter получает pinned egress. Приёмка: crafted playlist не делает outbound request.
+936. 🟠 **Filesystem allowlist:** typed scope и scrubbed `HOME` готовы; Bubblewrap mounts source read-only/staging writable и скрытие siblings остаются открыты. Приёмка: symlink/path escape test не достигает storage siblings.
+937. 🟠 **Network deny by default:** ffprobe/ffmpeg отклоняют URL и имеют offline protocol allowlist; download adapter получает pinned egress. Kernel network namespace остаётся открыт. Приёмка: crafted playlist не делает outbound request.
 938. 🟠 **Versioned seccomp policy:** syscall profile хранит версию/tool fingerprint и regression suite реальных codecs. Приёмка: upgrade FFmpeg либо проходит corpus, либо требует review policy diff.
-939. 🔴 **Kernel resource limits:** cgroup/rlimit ограничивают CPU time, RSS, PIDs, open files и file size независимо от cooperative app cancellation. Приёмка: adversarial media не истощает host.
+939. 🟠 **Kernel resource limits:** Unix rlimit ограничивает CPU/FD/file size, Linux также address space; output bounded и process group принудительно завершается. Cgroup RSS/PID tree остаются открыты. Приёмка: adversarial media не истощает host.
 940. 🟠 **Per-tenant identity:** multi-user deployment использует отдельные uid/gid/work directories и ownership checks. Приёмка: job одного tenant не открывает path другого.
 941. 🟡 **Wasm plugin capability model:** будущие user effects получают explicit host calls, memory/fuel/epoch limits. Приёмка: plugin без media-read capability не видит source.
 942. 🟠 **Quarantine custom logic:** custom shaders/scripts/filters не входят в trusted default path и требуют signed descriptor + sandbox tier. Приёмка: project import не исполняет embedded code.
-943. 🔴 **Isolation tiers ADR:** local single-user, LAN и public multi-tenant profiles имеют разные обязательные controls и startup refusal. Приёмка: public bind без required tier не стартует.
+943. ✅ **Isolation tiers ADR:** local требует loopback, LAN выбирается явно, public и фиктивный sandbox adapter fail-closed. `docs/process-isolation.md`
 
 ## Q. Reliability, tail latency и operability (944-953)
 
@@ -244,3 +244,10 @@ Example tests дополняются properties, model checking, mutation score 
 domain contracts (884, 888, 894, 904, 906), затем R/S quality gates (954, 955,
 963, 964, 965). Collaboration и ML не должны опережать ownership, process
 isolation и Timeline-IR.
+
+Статус 19 июля 2026: первый P-срез реализован. №934 и №943 закрыты typed
+`ProcessPolicy`/`PreparedCommand`, validated config и public startup refusal.
+№936, 937 и 939 частично закрыты environment/protocol/rlimit/output controls,
+но остаются открыты до настоящих mount/network namespaces, cgroup pids/memory и
+per-tenant identity. Подробная enforcement matrix находится в
+[process-isolation.md](process-isolation.md).

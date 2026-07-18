@@ -74,7 +74,11 @@ Wire DTO строги к неизвестным полям и принимают
 `JOB_DEDUPE_TTL_SECS` (300), `JOB_RATE_WINDOW_SECS` (60), `JOB_RATE_LIMIT` (60),
 `FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ),
 `RECOVER_JOBS_LIMIT` (200), `CORS_ALLOW_ORIGINS` (локальные dev-origin'ы через
-запятую), `RUST_LOG` (`info,tower_http=info`).
+запятую), `RUST_LOG` (`info,tower_http=info`). External processes дополнительно
+управляются через `ISOLATION_TIER` (`local` по умолчанию) и
+`PROCESS_MAX_{CPU_SECONDS,MEMORY_MIB,CHILDREN,OPEN_FILES,FILE_BYTES,CAPTURE_BYTES,LINE_BYTES}`.
+Non-loopback bind требует явного `lan`; `public` fail-closed. Точная матрица
+enforcement находится в [docs/process-isolation.md](docs/process-isolation.md).
 
 ## Требования
 
@@ -182,6 +186,8 @@ cargo run --bin backup -- restore ../backups/<root-hash> ../restored-storage
 papers и стандартов - в [docs/research-100.md](docs/research-100.md); следующий
 слой из 100 проверяемых идей №884-983 - в
 [docs/research-next-100.md](docs/research-next-100.md).
+ADR по subprocess security и local/LAN/public tiers - в
+[docs/process-isolation.md](docs/process-isolation.md).
 Аудиты проблем: проверенное ядро (118 находок, поштучно верифицировано, 14
 опровергнутых) - в [docs/audit.md](docs/audit.md); расширенный широкий охват
 (509 заземлённых на код проблем) - в [docs/audit-500.md](docs/audit-500.md);
@@ -353,6 +359,17 @@ timeline UX, formal verification и local ML/privacy. Каждая содерж�
 приёмки; source inventory и порядок маленьких PR находятся в
 [docs/research-next-100.md](docs/research-next-100.md). Общий backlog теперь 765
 пунктов, а ближайший P0 - process isolation №934, 937, 939 и 943.
+
+**Process policy P0 (19 июля 2026).** Закрыты contract №934 и fail-closed tier
+№943. Каждый production subprocess теперь требует `ProcessPolicy` и только
+`PreparedCommand` может вызвать spawn. Environment очищается до allowlist,
+FFmpeg/ffprobe получают offline protocol allowlist, downloader - только pinned
+loopback proxy. Captured output и отдельная строка bounded; Unix применяет
+CPU/FD/file-size rlimits, Linux также `RLIMIT_AS`; timeout и оставшиеся потомки
+проходят ограниченный TERM grace period и затем принудительный KILL всей process
+group. №936, 937 и 939 остаются
+частично открыты до mount/network namespaces, cgroup pids/memory и per-tenant
+uid; NsJail/Bubblewrap нельзя выбрать, пока adapter реально не реализован.
 
 ```
 frontend (Vue 3 + Vite)
