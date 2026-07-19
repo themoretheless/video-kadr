@@ -777,6 +777,25 @@ body {
   .export-warning-actions .btn {
     flex: 1;
   }
+
+  .lib-item {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .lib-info {
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .lib-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .lib-actions {
+    order: 2;
+  }
 }
 
 /* Progress */
