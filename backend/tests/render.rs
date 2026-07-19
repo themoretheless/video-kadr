@@ -1,21 +1,70 @@
 //! End-to-end render test against the real ffmpeg binary. It generates a tiny
-//! test clip with lavfi, runs it through the actual `build_ffmpeg_args` +
+//! test clip with lavfi, runs it through the actual export compiler +
 //! process-policy render pipeline, and probes the output. Skipped (not failed) when
 //! ffmpeg/ffprobe are not on PATH, so `cargo test` stays green without them;
 //! CI installs ffmpeg so this runs for real there.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use video_editor_backend::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
+use video_editor_backend::domain::artifact_graph::Fingerprint;
 use video_editor_backend::model::EditRequest;
+use video_editor_backend::ports::{
+    CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest,
+};
 use video_editor_backend::process_control::ProcessRuntime;
-use video_editor_backend::tools::{build_ffmpeg_args, check_tool, probe_video, run_ffmpeg, Done};
+use video_editor_backend::services::render::{
+    EditPlan, ExportExecutionProfile, RenderExecution, SourceMediaMetadata,
+};
+use video_editor_backend::tools::{
+    check_tool, probe_video, run_ffmpeg, Done, FfmpegExportCompiler,
+};
 
 async fn tools_available(runtime: &ProcessRuntime) -> bool {
     check_tool(runtime, "ffmpeg", "-version").await.0
         && check_tool(runtime, "ffprobe", "-version").await.0
+}
+
+fn compile_export(
+    input: &std::path::Path,
+    output: &std::path::Path,
+    request: EditRequest,
+    source: &video_editor_backend::tools::ProbeInfo,
+) -> CompiledExportCommand {
+    let plan = Arc::new(
+        EditPlan::compile(
+            Fingerprint::digest(b"real-render-source"),
+            request,
+            SourceMediaMetadata::new(source.width, source.height, source.duration).unwrap(),
+        )
+        .unwrap(),
+    );
+    let execution = RenderExecution::new(
+        plan,
+        ExportExecutionProfile {
+            encode_budget: EncodeBudget::for_profile(
+                EncodeProfile::Balanced,
+                RuntimeLimits {
+                    logical_cpus: 4,
+                    memory_mib: Some(2048),
+                },
+            )
+            .unwrap(),
+            verify_checksums: true,
+        },
+    );
+    FfmpegExportCompiler
+        .compile(ExportCompileRequest {
+            input,
+            destination: output,
+            parallel_jobs: 1,
+            execution: &execution,
+        })
+        .unwrap()
 }
 
 #[tokio::test]
@@ -66,14 +115,21 @@ async fn real_render_trim_scale_grayscale() {
     .unwrap();
 
     let probe = probe_video(&runtime, &input).await.unwrap();
-    let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
+    let command = compile_export(&input, &output, req, &probe);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
     let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
     let token = CancellationToken::new();
-    let done = run_ffmpeg(&runtime, &args, 0.5, &tx, &token, Duration::from_secs(60))
-        .await
-        .unwrap();
+    let done = run_ffmpeg(
+        &runtime,
+        &command.arguments,
+        command.expected_duration_seconds,
+        &tx,
+        &token,
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
     drop(tx);
     let _ = drain.await;
 
@@ -126,14 +182,21 @@ async fn real_render_denoise_sharpen_grain_look() {
     }))
     .unwrap();
     let probe = probe_video(&runtime, &input).await.unwrap();
-    let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
+    let command = compile_export(&input, &output, req, &probe);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
     let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
     let token = CancellationToken::new();
-    let done = run_ffmpeg(&runtime, &args, 1.0, &tx, &token, Duration::from_secs(60))
-        .await
-        .unwrap();
+    let done = run_ffmpeg(
+        &runtime,
+        &command.arguments,
+        command.expected_duration_seconds,
+        &tx,
+        &token,
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
     drop(tx);
     let _ = drain.await;
 
@@ -183,14 +246,21 @@ async fn real_render_prores_with_audio_cleanup() {
     }))
     .unwrap();
     let probe = probe_video(&runtime, &input).await.unwrap();
-    let args = build_ffmpeg_args(&input, &output, &req, probe.duration);
+    let command = compile_export(&input, &output, req, &probe);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
     let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
     let token = CancellationToken::new();
-    let done = run_ffmpeg(&runtime, &args, 1.0, &tx, &token, Duration::from_secs(60))
-        .await
-        .unwrap();
+    let done = run_ffmpeg(
+        &runtime,
+        &command.arguments,
+        command.expected_duration_seconds,
+        &tx,
+        &token,
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
     drop(tx);
     let _ = drain.await;
 

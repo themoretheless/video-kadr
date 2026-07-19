@@ -48,6 +48,7 @@ impl PreviewExecution {
 #[cfg(test)]
 mod tests {
     use crate::domain::artifact_graph::Fingerprint;
+    use crate::services::render::SourceMediaMetadata;
 
     use super::*;
 
@@ -60,7 +61,14 @@ mod tests {
             "fps": 60.0
         }))
         .unwrap();
-        let plan = Arc::new(EditPlan::compile(Fingerprint::digest(b"source"), edit));
+        let plan = Arc::new(
+            EditPlan::compile(
+                Fingerprint::digest(b"source"),
+                edit,
+                SourceMediaMetadata::new(1920, 1080, 10.0).unwrap(),
+            )
+            .unwrap(),
+        );
         let preview = PreviewExecution::new(
             plan.clone(),
             PreviewExecutionProfile {

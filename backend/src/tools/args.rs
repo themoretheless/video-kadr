@@ -1,12 +1,32 @@
-//! Pure ffmpeg argument construction: maps an `EditRequest` to a `Vec<String>`
-//! command line. No I/O and no process spawning, so it is fully unit-testable.
+//! Pure FFmpeg adapter: compiles an immutable `EditPlan` into command arguments.
+//! No I/O and no process spawning, so it is fully unit-testable.
 
 use std::path::Path;
 
 use crate::config::encode_budget::EncodeBudget;
+use crate::domain::edit::{EditSpec, LookPreset, Rotation, TimeRange};
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
-use crate::domain::output::OutputSpec;
-use crate::model::EditRequest;
+use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
+use crate::ports::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
+use crate::services::render::EditPlan;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FfmpegExportCompiler;
+
+impl ExportCommandCompiler for FfmpegExportCompiler {
+    fn compile(&self, request: ExportCompileRequest<'_>) -> anyhow::Result<CompiledExportCommand> {
+        if request.parallel_jobs == 0 {
+            anyhow::bail!("invalid FFmpeg export compile request");
+        }
+        Ok(compile_ffmpeg_command_with_budget(
+            request.input,
+            request.destination,
+            request.execution.plan(),
+            &request.execution.profile.encode_budget,
+            request.parallel_jobs,
+        ))
+    }
+}
 
 fn serialize_filter_chain(media: MediaKind, filters: &[String]) -> String {
     FilterGraph::linear(media, filters)
@@ -14,140 +34,118 @@ fn serialize_filter_chain(media: MediaKind, filters: &[String]) -> String {
         .expect("compiler emitted an invalid linear filter graph")
 }
 
-/// Map a named look preset to an ffmpeg filter string.
-fn filter_preset(name: &str) -> Option<&'static str> {
-    match name {
-        "grayscale" => Some("hue=s=0"),
-        "sepia" => Some("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"),
-        "warm" => Some("colorbalance=rs=0.2:gs=0.05:bs=-0.2"),
-        "cold" => Some("colorbalance=rs=-0.2:gs=0:bs=0.2"),
+/// Map a typed look preset to its FFmpeg filter string.
+fn filter_preset(preset: LookPreset) -> &'static str {
+    match preset {
+        LookPreset::Grayscale => "hue=s=0",
+        LookPreset::Sepia => "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
+        LookPreset::Warm => "colorbalance=rs=0.2:gs=0.05:bs=-0.2",
+        LookPreset::Cold => "colorbalance=rs=-0.2:gs=0:bs=0.2",
         // Shadows toward teal, highlights toward orange (the blockbuster look).
-        "teal-orange" => Some("colorbalance=rs=-0.15:bs=0.15:rm=0.1:bm=-0.05:rh=0.15:bh=-0.15"),
+        LookPreset::TealOrange => "colorbalance=rs=-0.15:bs=0.15:rm=0.1:bm=-0.05:rh=0.15:bh=-0.15",
         // Lifted blacks + lowered whites for a flat, matte film look.
-        "faded" => Some("curves=all='0/0.08 1/0.92'"),
+        LookPreset::Faded => "curves=all='0/0.08 1/0.92'",
         // High-contrast black and white.
-        "noir" => Some("hue=s=0,eq=contrast=1.4"),
+        LookPreset::Noir => "hue=s=0,eq=contrast=1.4",
         // Warm, slightly faded vintage.
-        "vintage" => Some("curves=all='0/0.06 1/0.95',colorbalance=rs=0.15:gs=0.05:bs=-0.1"),
-        _ => None,
+        LookPreset::Vintage => "curves=all='0/0.06 1/0.95',colorbalance=rs=0.15:gs=0.05:bs=-0.1",
     }
-}
-
-/// Whitelist a censor-box colour to a safe token (default black).
-fn sanitize_color(name: Option<&str>) -> &'static str {
-    match name.unwrap_or("black") {
-        "white" => "white",
-        "gray" | "grey" => "gray",
-        "red" => "red",
-        _ => "black",
-    }
-}
-
-/// Parse an aspect like "9:16" into (w, h), only allowing small sane values.
-fn parse_aspect(s: &str) -> Option<(u32, u32)> {
-    let (a, b) = s.split_once(':')?;
-    let w: u32 = a.trim().parse().ok()?;
-    let h: u32 = b.trim().parse().ok()?;
-    if w == 0 || h == 0 || w > 100 || h > 100 {
-        return None;
-    }
-    Some((w, h))
 }
 
 /// Output file extension for a requested export format.
-pub fn output_ext(format: Option<&str>) -> &'static str {
-    crate::domain::output::OutputFormat::from_request(format).extension()
+pub fn output_ext(format: OutputFormat) -> &'static str {
+    format.extension()
 }
 
 /// Build the geometry/colour (and optionally temporal) video filter chain.
 /// Order matters: crop -> rotate -> flip -> scale -> eq -> preset -> reverse
 /// -> setpts -> fade. `temporal=false` skips speed/fade (used for still frames).
-fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String> {
+fn video_filters(edit: &EditSpec, out_dur: f64, temporal: bool) -> Vec<String> {
+    let timing = edit.timing();
+    let geometry = edit.geometry();
+    let video = edit.video();
     let mut vf: Vec<String> = Vec::new();
     // Censor box first, in source coordinates (matches the on-video selection).
-    if let Some(c) = &edit.censor {
-        let color = sanitize_color(edit.censor_color.as_deref());
+    if let Some(censor) = &geometry.censor {
+        let rect = censor.rect;
+        let color = censor.color.ffmpeg_name();
         vf.push(format!(
             "drawbox=x={}:y={}:w={}:h={}:color={color}:t=fill",
-            c.x, c.y, c.w, c.h
+            rect.x, rect.y, rect.width, rect.height
         ));
     }
-    if let Some(c) = &edit.crop {
-        // Force even dimensions; libx264 + yuv420p requires them.
-        let w = c.w & !1;
-        let h = c.h & !1;
-        vf.push(format!("crop={w}:{h}:{}:{}", c.x, c.y));
+    if let Some(crop) = geometry.crop {
+        // Force even dimensions when possible; never turn a one-pixel source
+        // edge into FFmpeg's invalid zero-sized crop.
+        let width = (crop.width & !1).max(1);
+        let height = (crop.height & !1).max(1);
+        vf.push(format!("crop={width}:{height}:{}:{}", crop.x, crop.y));
     }
-    match edit.rotate.rem_euclid(360) {
-        90 => vf.push("transpose=1".into()),
-        180 => {
+    match geometry.rotation {
+        Rotation::Clockwise90 => vf.push("transpose=1".into()),
+        Rotation::Clockwise180 => {
             vf.push("transpose=1".into());
             vf.push("transpose=1".into());
         }
-        270 => vf.push("transpose=2".into()),
-        _ => {}
+        Rotation::Clockwise270 => vf.push("transpose=2".into()),
+        Rotation::None => {}
     }
-    if edit.flip_h {
+    if geometry.flip_horizontal {
         vf.push("hflip".into());
     }
-    if edit.flip_v {
+    if geometry.flip_vertical {
         vf.push("vflip".into());
     }
-    if let Some(s) = &edit.scale {
-        vf.push(format!("scale={}:{}", s.w, s.h));
+    if let Some(scale) = geometry.scale {
+        vf.push(format!("scale={}:{}", scale.width, scale.height));
     }
     // Letterbox/pillarbox to a target aspect (adds bars, keeps whole frame).
-    if let Some((tw, th)) = edit.pad.as_deref().and_then(parse_aspect) {
+    if let Some(aspect) = geometry.pad_aspect {
+        let (tw, th) = (aspect.width, aspect.height);
         vf.push(format!(
             "pad=w='ceil(max(iw,ih*{tw}/{th})/2)*2':h='ceil(max(ih,iw*{th}/{tw})/2)*2':x='(ow-iw)/2':y='(oh-ih)/2':color=black"
         ));
     }
-    if edit.denoise {
+    if video.denoise {
         vf.push("hqdn3d".into());
     }
-    let eq_changed = edit.brightness.abs() > 1e-6
-        || (edit.contrast - 1.0).abs() > 1e-6
-        || (edit.saturation - 1.0).abs() > 1e-6;
+    let eq_changed = video.brightness.abs() > 1e-6
+        || (video.contrast - 1.0).abs() > 1e-6
+        || (video.saturation - 1.0).abs() > 1e-6;
     if eq_changed {
         vf.push(format!(
             "eq=brightness={:.3}:contrast={:.3}:saturation={:.3}",
-            edit.brightness, edit.contrast, edit.saturation
+            video.brightness, video.contrast, video.saturation
         ));
     }
-    if let Some(f) = edit.filter.as_deref().and_then(filter_preset) {
-        vf.push(f.into());
+    if let Some(look) = video.look {
+        vf.push(filter_preset(look).into());
     }
-    if edit.sharpen > 1e-6 {
-        vf.push(format!(
-            "unsharp=5:5:{:.3}:5:5:0.0",
-            edit.sharpen.clamp(0.0, 5.0)
-        ));
+    if video.sharpen > 1e-6 {
+        vf.push(format!("unsharp=5:5:{:.3}:5:5:0.0", video.sharpen));
     }
-    if edit.vignette {
+    if video.vignette {
         vf.push("vignette".into());
     }
-    if edit.grain > 1e-6 {
-        vf.push(format!(
-            "noise=alls={:.0}:allf=t",
-            edit.grain.clamp(0.0, 100.0)
-        ));
+    if video.grain > 1e-6 {
+        vf.push(format!("noise=alls={:.0}:allf=t", video.grain));
     }
-    if edit.reverse {
+    if timing.reverse {
         vf.push("reverse".into());
     }
     if temporal {
-        let speed = edit.speed;
+        let speed = timing.speed;
         if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
             vf.push(format!("setpts={:.6}*PTS", 1.0 / speed));
         }
-        if edit.fade_in > 0.0 {
-            vf.push(format!("fade=t=in:st=0:d={:.3}", edit.fade_in));
+        if timing.fade_in_seconds > 0.0 {
+            vf.push(format!("fade=t=in:st=0:d={:.3}", timing.fade_in_seconds));
         }
-        if edit.fade_out > 0.0 && out_dur > edit.fade_out {
+        if timing.fade_out_seconds > 0.0 && out_dur > timing.fade_out_seconds {
             vf.push(format!(
                 "fade=t=out:st={:.3}:d={:.3}",
-                out_dur - edit.fade_out,
-                edit.fade_out
+                out_dur - timing.fade_out_seconds,
+                timing.fade_out_seconds
             ));
         }
     }
@@ -155,42 +153,44 @@ fn video_filters(edit: &EditRequest, out_dur: f64, temporal: bool) -> Vec<String
 }
 
 /// Build the audio filter chain: areverse -> volume -> atempo -> afade.
-fn audio_filters(edit: &EditRequest, out_dur: f64) -> Vec<String> {
+fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
+    let timing = edit.timing();
+    let audio = edit.audio();
     let mut af: Vec<String> = Vec::new();
-    if edit.reverse {
+    if timing.reverse {
         af.push("areverse".into());
     }
-    if edit.highpass {
+    if audio.highpass {
         af.push("highpass=f=100".into());
     }
-    if (edit.volume - 1.0).abs() > 1e-6 {
-        af.push(format!("volume={:.3}", edit.volume.max(0.0)));
+    if (audio.volume - 1.0).abs() > 1e-6 {
+        af.push(format!("volume={:.3}", audio.volume));
     }
-    let speed = edit.speed;
+    let speed = timing.speed;
     if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
-        // atempo only accepts 0.5..=2.0; the frontend clamps speed to that range.
+        // atempo only accepts 0.5..=2.0; EditPlan validates that range.
         af.push(format!("atempo={:.6}", speed.clamp(0.5, 2.0)));
     }
-    if edit.fade_in > 0.0 {
-        af.push(format!("afade=t=in:st=0:d={:.3}", edit.fade_in));
+    if timing.fade_in_seconds > 0.0 {
+        af.push(format!("afade=t=in:st=0:d={:.3}", timing.fade_in_seconds));
     }
-    if edit.fade_out > 0.0 && out_dur > edit.fade_out {
+    if timing.fade_out_seconds > 0.0 && out_dur > timing.fade_out_seconds {
         af.push(format!(
             "afade=t=out:st={:.3}:d={:.3}",
-            out_dur - edit.fade_out,
-            edit.fade_out
+            out_dur - timing.fade_out_seconds,
+            timing.fade_out_seconds
         ));
     }
     // Loudness normalization is applied last, on the finished chain.
-    if edit.normalize_audio {
+    if audio.normalize {
         af.push("loudnorm=I=-14:TP=-1.5:LRA=11".into());
     }
     af
 }
 
 /// Append audio options: `-an` when muted, otherwise the filter chain + codec.
-fn push_audio(args: &mut Vec<String>, edit: &EditRequest, out_dur: f64, codec: &str) {
-    if edit.mute {
+fn push_audio(args: &mut Vec<String>, edit: &EditSpec, out_dur: f64, codec: &str) {
+    if edit.audio().muted {
         args.push("-an".into());
         return;
     }
@@ -205,54 +205,63 @@ fn push_audio(args: &mut Vec<String>, edit: &EditRequest, out_dur: f64, codec: &
     args.push("128k".into());
 }
 
-fn push_fps(args: &mut Vec<String>, edit: &EditRequest) {
-    if let Some(fps) = edit.fps {
-        if fps > 0.0 {
-            args.push("-r".into());
-            args.push(format!("{fps:.3}"));
-        }
+fn push_fps(args: &mut Vec<String>, output: &OutputSpec) {
+    if let Some(fps) = output.fps() {
+        args.push("-r".into());
+        args.push(format!("{fps:.3}"));
     }
 }
 
-/// Build the ffmpeg argument list for an edit request.
+/// Build the FFmpeg argument list for an immutable edit plan.
 ///
 /// Trim is applied as an *input* option (`-ss` + `-t`) so it happens before the
 /// filter graph; geometry/colour/speed/fade then operate on the trimmed stream.
-/// `source_duration` is the probed length of the input, used to time fade-outs.
 /// The output container/codecs depend on `edit.format` (mp4/webm/gif/png/mp3).
-pub fn build_ffmpeg_args(
+pub fn build_ffmpeg_args(input: &Path, destination: &Path, plan: &EditPlan) -> Vec<String> {
+    compile_ffmpeg_command(input, destination, plan).arguments
+}
+
+fn compile_ffmpeg_command(
     input: &Path,
-    output: &Path,
-    edit: &EditRequest,
-    source_duration: f64,
-) -> Vec<String> {
-    let format = edit.format.as_deref().unwrap_or("mp4");
+    destination: &Path,
+    plan: &EditPlan,
+) -> CompiledExportCommand {
+    let edit = &plan.edit;
+    let output = &plan.output;
+    let format = output.format;
+    let source_duration = plan.source.duration_seconds();
+    let out_dur = expected_output_secs(edit, source_duration);
 
     // Multi-segment edits (cut from the middle / stitch ranges) need a concat
     // filter graph; only meaningful for the video containers.
     let segs = valid_segments(edit);
-    if !segs.is_empty() && matches!(format, "mp4" | "webm" | "av1" | "prores") {
-        return build_concat_args(input, output, edit, &segs, source_duration);
+    if !segs.is_empty()
+        && matches!(
+            format,
+            OutputFormat::Mp4 | OutputFormat::Webm | OutputFormat::Av1 | OutputFormat::Prores
+        )
+    {
+        return CompiledExportCommand {
+            arguments: build_concat_args(input, destination, plan, segs, out_dur),
+            expected_duration_seconds: out_dur,
+        };
     }
 
     let mut args: Vec<String> = vec!["-y".into()];
 
     // --- input-side trim ---
-    if let Some(t) = &edit.trim {
-        let dur = (t.end - t.start).max(0.0);
+    if let Some(trim) = edit.timing().trim {
         args.push("-ss".into());
-        args.push(format_secs(t.start));
+        args.push(format_secs(trim.start_seconds()));
         args.push("-t".into());
-        args.push(format_secs(dur));
+        args.push(format_secs(trim.duration_seconds()));
     }
 
     args.push("-i".into());
     args.push(input.to_string_lossy().into_owned());
 
-    let out_dur = expected_output_secs(edit, source_duration);
-
     match format {
-        "mp3" => {
+        OutputFormat::Mp3 => {
             // Audio-only extraction.
             let af = audio_filters(edit, out_dur);
             if !af.is_empty() {
@@ -265,7 +274,7 @@ pub fn build_ffmpeg_args(
             args.push("-q:a".into());
             args.push("2".into());
         }
-        "png" | "jpg" => {
+        OutputFormat::Png | OutputFormat::Jpg => {
             // Single still frame at the trim start (positioned by -ss above).
             // The encoder is chosen by the output extension (png / mjpeg).
             let vf = video_filters(edit, out_dur, false);
@@ -277,11 +286,11 @@ pub fn build_ffmpeg_args(
             args.push("1".into());
             args.push("-an".into());
         }
-        "gif" => {
+        OutputFormat::Gif => {
             // Generate a per-clip palette for a good-looking gif (single pass
             // via split + palettegen/paletteuse).
             let mut parts = video_filters(edit, out_dur, true);
-            let fps = edit.fps.filter(|f| *f > 0.0).unwrap_or(12.0);
+            let fps = output.fps().unwrap_or(12.0);
             parts.push(format!("fps={fps:.3}"));
             let graph = format!(
                 "{},split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
@@ -291,16 +300,16 @@ pub fn build_ffmpeg_args(
             args.push(graph);
             args.push("-an".into());
         }
-        "webm" => {
+        OutputFormat::Webm => {
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
                 args.push("-vf".into());
                 args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
             push_audio(&mut args, edit, out_dur, "libopus");
-            push_video_codec(&mut args, edit, "webm");
+            push_video_codec(&mut args, output);
         }
-        "av1" => {
+        OutputFormat::Av1 => {
             // Modern, compact codec in an mp4 container (needs libsvtav1).
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
@@ -311,28 +320,23 @@ pub fn build_ffmpeg_args(
             args.push("-c:v".into());
             args.push("libsvtav1".into());
             args.push("-crf".into());
-            args.push(
-                OutputSpec::from_edit(edit)
-                    .crf
-                    .expect("AV1 output has CRF")
-                    .to_string(),
-            );
+            args.push(output.crf.expect("AV1 output has CRF").to_string());
             args.push("-preset".into());
             args.push("6".into());
             args.push("-pix_fmt".into());
             args.push("yuv420p".into());
-            push_fps(&mut args, edit);
+            push_fps(&mut args, output);
             args.push("-movflags".into());
             args.push("+faststart".into());
         }
-        "prores" => {
+        OutputFormat::Prores => {
             // Intra-only edit codec in a .mov; audio as PCM. prores_ks is built in.
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
                 args.push("-vf".into());
                 args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
-            if edit.mute {
+            if edit.audio().muted {
                 args.push("-an".into());
             } else {
                 let af = audio_filters(edit, out_dur);
@@ -349,9 +353,9 @@ pub fn build_ffmpeg_args(
             args.push("3".into());
             args.push("-pix_fmt".into());
             args.push("yuv422p10le".into());
-            push_fps(&mut args, edit);
+            push_fps(&mut args, output);
         }
-        _ => {
+        OutputFormat::Mp4 => {
             // mp4 (default): H.264 or H.265.
             let vf = video_filters(edit, out_dur, true);
             if !vf.is_empty() {
@@ -359,12 +363,15 @@ pub fn build_ffmpeg_args(
                 args.push(serialize_filter_chain(MediaKind::Video, &vf));
             }
             push_audio(&mut args, edit, out_dur, "aac");
-            push_video_codec(&mut args, edit, "mp4");
+            push_video_codec(&mut args, output);
         }
     }
 
-    args.push(output.to_string_lossy().into_owned());
-    args
+    args.push(destination.to_string_lossy().into_owned());
+    CompiledExportCommand {
+        arguments: args,
+        expected_duration_seconds: out_dur,
+    }
 }
 
 /// Apply the process-wide encode budget to one render. The global thread budget
@@ -372,33 +379,50 @@ pub fn build_ffmpeg_args(
 pub fn build_ffmpeg_args_with_budget(
     input: &Path,
     output: &Path,
-    edit: &EditRequest,
-    source_duration: f64,
+    plan: &EditPlan,
     budget: &EncodeBudget,
     parallel_jobs: usize,
 ) -> Vec<String> {
-    let mut args = build_ffmpeg_args(input, output, edit, source_duration);
-    let output = args.pop().expect("ffmpeg arguments always end in output");
-    args.extend(budget.ffmpeg_thread_args_for_job(parallel_jobs));
-    if edit.format.as_deref() == Some("av1") {
-        args.extend(budget.ffmpeg_av1_tile_args());
-        if let Some(preset) = args.iter().position(|argument| argument == "-preset") {
-            if let Some(value) = args.get_mut(preset + 1) {
+    compile_ffmpeg_command_with_budget(input, output, plan, budget, parallel_jobs).arguments
+}
+
+fn compile_ffmpeg_command_with_budget(
+    input: &Path,
+    output: &Path,
+    plan: &EditPlan,
+    budget: &EncodeBudget,
+    parallel_jobs: usize,
+) -> CompiledExportCommand {
+    let mut command = compile_ffmpeg_command(input, output, plan);
+    let destination = command
+        .arguments
+        .pop()
+        .expect("ffmpeg arguments always end in output");
+    command
+        .arguments
+        .extend(budget.ffmpeg_thread_args_for_job(parallel_jobs));
+    if plan.output.format == OutputFormat::Av1 {
+        command.arguments.extend(budget.ffmpeg_av1_tile_args());
+        if let Some(preset) = command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-preset")
+        {
+            if let Some(value) = command.arguments.get_mut(preset + 1) {
                 *value = budget.speed.to_string();
             }
         }
     }
-    args.push(output);
-    args
+    command.arguments.push(destination);
+    command
 }
 
 /// Push the video encoder and its quality/pixel-format options for `format`
 /// (VP9 for webm, otherwise H.264/H.265), then fps and (for mp4) faststart.
 /// Shared by the single-pass and concat paths so codec settings live in one place.
-fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
-    let output = OutputSpec::from_edit(edit);
-    match format {
-        "webm" => {
+fn push_video_codec(args: &mut Vec<String>, output: &OutputSpec) {
+    match output.format {
+        OutputFormat::Webm => {
             args.push("-c:v".into());
             args.push("libvpx-vp9".into());
             args.push("-crf".into());
@@ -407,9 +431,9 @@ fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
             args.push("0".into());
             args.push("-pix_fmt".into());
             args.push("yuv420p".into());
-            push_fps(args, edit);
+            push_fps(args, output);
         }
-        "av1" => {
+        OutputFormat::Av1 => {
             args.push("-c:v".into());
             args.push("libsvtav1".into());
             args.push("-crf".into());
@@ -418,21 +442,21 @@ fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
             args.push("6".into());
             args.push("-pix_fmt".into());
             args.push("yuv420p".into());
-            push_fps(args, edit);
+            push_fps(args, output);
             args.push("-movflags".into());
             args.push("+faststart".into());
         }
-        "prores" => {
+        OutputFormat::Prores => {
             args.push("-c:v".into());
             args.push("prores_ks".into());
             args.push("-profile:v".into());
             args.push("3".into());
             args.push("-pix_fmt".into());
             args.push("yuv422p10le".into());
-            push_fps(args, edit);
+            push_fps(args, output);
         }
-        _ => {
-            let h265 = output.video_codec == Some(crate::domain::output::VideoCodec::H265);
+        OutputFormat::Mp4 => {
+            let h265 = output.video_codec == Some(VideoCodec::H265);
             args.push("-c:v".into());
             args.push(if h265 { "libx265" } else { "libx264" }.into());
             args.push("-preset".into());
@@ -446,10 +470,11 @@ fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
                 args.push("-tag:v".into());
                 args.push("hvc1".into());
             }
-            push_fps(args, edit);
+            push_fps(args, output);
             args.push("-movflags".into());
             args.push("+faststart".into());
         }
+        _ => unreachable!("still, GIF, and audio-only outputs do not use video codec options"),
     }
 }
 
@@ -457,26 +482,28 @@ fn push_video_codec(args: &mut Vec<String>, edit: &EditRequest, format: &str) {
 /// then apply the usual geometry/colour/speed/fade filters to the result.
 fn build_concat_args(
     input: &Path,
-    output: &Path,
-    edit: &EditRequest,
-    segments: &[&crate::model::Trim],
-    source_duration: f64,
+    destination: &Path,
+    plan: &EditPlan,
+    segments: &[TimeRange],
+    out_dur: f64,
 ) -> Vec<String> {
-    let format = edit.format.as_deref().unwrap_or("mp4");
-    let muted = edit.mute;
+    let edit = &plan.edit;
+    let output = &plan.output;
+    let format = output.format;
+    let muted = edit.audio().muted;
     let n = segments.len();
-    let out_dur = expected_output_secs(edit, source_duration);
-
     let mut graph = String::new();
     for (i, s) in segments.iter().enumerate() {
         graph.push_str(&format!(
             "[0:v]trim=start={:.3}:end={:.3},setpts=PTS-STARTPTS[v{i}];",
-            s.start, s.end
+            s.start_seconds(),
+            s.end_seconds()
         ));
         if !muted {
             graph.push_str(&format!(
                 "[0:a]atrim=start={:.3}:end={:.3},asetpts=PTS-STARTPTS[a{i}];",
-                s.start, s.end
+                s.start_seconds(),
+                s.end_seconds()
             ));
         }
     }
@@ -532,48 +559,44 @@ fn build_concat_args(
         args.push(am.clone());
     }
 
-    push_video_codec(&mut args, edit, format);
+    push_video_codec(&mut args, output);
     if amap.is_some() {
         args.push("-c:a".into());
         args.push(
             match format {
-                "webm" => "libopus",
-                "prores" => "pcm_s16le",
+                OutputFormat::Webm => "libopus",
+                OutputFormat::Prores => "pcm_s16le",
                 _ => "aac",
             }
             .into(),
         );
-        if format != "prores" {
+        if format != OutputFormat::Prores {
             args.push("-b:a".into());
             args.push("128k".into());
         }
     }
 
-    args.push(output.to_string_lossy().into_owned());
+    args.push(destination.to_string_lossy().into_owned());
     args
 }
 
 /// Valid keep-segments (positive length), if any were requested.
-fn valid_segments(edit: &EditRequest) -> Vec<&crate::model::Trim> {
-    match &edit.segments {
-        Some(segs) => segs.iter().filter(|s| s.end - s.start > 0.01).collect(),
-        None => Vec::new(),
-    }
+fn valid_segments(edit: &EditSpec) -> &[TimeRange] {
+    &edit.timing().segments
 }
 
 /// Expected output duration (seconds) for an edit, used to scale ffmpeg progress.
-pub fn expected_output_secs(edit: &EditRequest, source_duration: f64) -> f64 {
+pub fn expected_output_secs(edit: &EditSpec, source_duration: f64) -> f64 {
     let segs = valid_segments(edit);
     let base = if !segs.is_empty() {
-        segs.iter().map(|s| (s.end - s.start).max(0.0)).sum()
+        segs.iter().map(|range| range.duration_seconds()).sum()
     } else {
-        match &edit.trim {
-            Some(t) => (t.end - t.start).max(0.0),
+        match edit.timing().trim {
+            Some(range) => range.duration_seconds(),
             None => source_duration,
         }
     };
-    let speed = if edit.speed > 0.0 { edit.speed } else { 1.0 };
-    base / speed
+    base / edit.timing().speed
 }
 
 /// Format seconds without scientific notation, trimming trailing noise.
@@ -583,23 +606,41 @@ fn format_secs(s: f64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::config::encode_budget::TileLayout;
+    use crate::domain::artifact_graph::Fingerprint;
+    use crate::model::EditRequest;
+    use crate::services::render::{ExportExecutionProfile, RenderExecution, SourceMediaMetadata};
     use serde_json::json;
 
-    fn edit(v: serde_json::Value) -> EditRequest {
-        serde_json::from_value(v).expect("valid EditRequest")
+    fn plan_for_duration(value: serde_json::Value, duration_seconds: f64) -> EditPlan {
+        let request: EditRequest = serde_json::from_value(value).expect("valid EditRequest");
+        EditPlan::compile(
+            Fingerprint::digest(b"source"),
+            request,
+            SourceMediaMetadata::new(1920, 1080, duration_seconds).unwrap(),
+        )
+        .expect("valid EditPlan")
+    }
+
+    fn plan(value: serde_json::Value) -> EditPlan {
+        plan_for_duration(value, 60.0)
     }
 
     fn args_for(v: serde_json::Value, dur: f64) -> Vec<String> {
         let input = Path::new("/in.mp4");
         let output = Path::new("/out.mp4");
-        build_ffmpeg_args(input, output, &edit(v), dur)
+        build_ffmpeg_args(input, output, &plan_for_duration(v, dur))
     }
 
     #[test]
     fn process_budget_is_divided_across_parallel_renders() {
-        let edit = edit(json!({ "videoId": "x", "format": "av1" }));
+        let plan = Arc::new(plan_for_duration(
+            json!({ "videoId": "x", "format": "av1" }),
+            10.0,
+        ));
         let budget = EncodeBudget {
             threads: 8,
             tiles: TileLayout {
@@ -609,14 +650,22 @@ mod tests {
             speed: 3,
             memory_mib: 2048,
         };
-        let args = build_ffmpeg_args_with_budget(
-            Path::new("/in.mp4"),
-            Path::new("/out.mp4"),
-            &edit,
-            10.0,
-            &budget,
-            2,
+        let execution = RenderExecution::new(
+            plan,
+            ExportExecutionProfile {
+                encode_budget: budget,
+                verify_checksums: true,
+            },
         );
+        let command = FfmpegExportCompiler
+            .compile(ExportCompileRequest {
+                input: Path::new("/in.mp4"),
+                destination: Path::new("/out.mp4"),
+                parallel_jobs: 2,
+                execution: &execution,
+            })
+            .unwrap();
+        let args = command.arguments;
         let filter_threads = args
             .iter()
             .position(|argument| argument == "-filter_threads")
@@ -642,6 +691,7 @@ mod tests {
         assert_eq!(args[preset + 1], "3");
         assert_eq!(args[tile_columns + 1], "1");
         assert_eq!(args[tile_rows + 1], "0");
+        assert_eq!(command.expected_duration_seconds, 10.0);
     }
 
     #[test]
@@ -729,6 +779,24 @@ mod tests {
     }
 
     #[test]
+    fn one_pixel_source_crop_never_compiles_zero_dimension() {
+        let request: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "crop": { "x": 0, "y": 0, "w": 1, "h": 1 }
+        }))
+        .unwrap();
+        let plan = EditPlan::compile(
+            Fingerprint::digest(b"source"),
+            request,
+            SourceMediaMetadata::new(1, 1, 10.0).unwrap(),
+        )
+        .unwrap();
+        let args = build_ffmpeg_args(Path::new("/in.mp4"), Path::new("/out.mp4"), &plan);
+
+        assert!(vf(&args).contains("crop=1:1:0:0"));
+    }
+
+    #[test]
     fn audio_chain_volume_and_speed() {
         let args = args_for(json!({ "videoId": "x", "volume": 1.5, "speed": 2.0 }), 10.0);
         let chain = af(&args).expect("has -af");
@@ -747,16 +815,15 @@ mod tests {
 
     #[test]
     fn output_ext_maps_formats() {
-        assert_eq!(output_ext(None), "mp4");
-        assert_eq!(output_ext(Some("mp4")), "mp4");
-        assert_eq!(output_ext(Some("webm")), "webm");
-        assert_eq!(output_ext(Some("gif")), "gif");
-        assert_eq!(output_ext(Some("png")), "png");
-        assert_eq!(output_ext(Some("jpg")), "jpg");
-        assert_eq!(output_ext(Some("mp3")), "mp3");
-        assert_eq!(output_ext(Some("prores")), "mov");
-        assert_eq!(output_ext(Some("av1")), "mp4");
-        assert_eq!(output_ext(Some("weird")), "mp4");
+        assert_eq!(output_ext(OutputFormat::Mp4), "mp4");
+        assert_eq!(output_ext(OutputFormat::Webm), "webm");
+        assert_eq!(output_ext(OutputFormat::Gif), "gif");
+        assert_eq!(output_ext(OutputFormat::Png), "png");
+        assert_eq!(output_ext(OutputFormat::Jpg), "jpg");
+        assert_eq!(output_ext(OutputFormat::Mp3), "mp3");
+        assert_eq!(output_ext(OutputFormat::Prores), "mov");
+        assert_eq!(output_ext(OutputFormat::Av1), "mp4");
+        assert!(OutputFormat::parse(Some("weird")).is_err());
     }
 
     #[test]
@@ -912,12 +979,18 @@ mod tests {
     }
 
     #[test]
-    fn censor_color_sanitized() {
-        let args = args_for(
+    fn unknown_censor_color_is_rejected() {
+        let request: EditRequest = serde_json::from_value(
             json!({ "videoId": "x", "censor": { "x": 0, "y": 0, "w": 10, "h": 10 }, "censorColor": "; rm -rf" }),
-            10.0,
+        )
+        .unwrap();
+        let result = EditPlan::compile(
+            Fingerprint::digest(b"source"),
+            request,
+            SourceMediaMetadata::new(1920, 1080, 10.0).unwrap(),
         );
-        assert!(vf(&args).contains("color=black"));
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -1026,29 +1099,30 @@ mod tests {
         let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
         // Whole clip.
         assert!(close(
-            expected_output_secs(&edit(json!({ "videoId": "x" })), 10.0),
+            expected_output_secs(&plan(json!({ "videoId": "x" })).edit, 10.0),
             10.0
         ));
         // Trim narrows to its length.
         assert!(close(
             expected_output_secs(
-                &edit(json!({ "videoId": "x", "trim": { "start": 2.0, "end": 7.0 } })),
+                &plan(json!({ "videoId": "x", "trim": { "start": 2.0, "end": 7.0 } })).edit,
                 10.0
             ),
             5.0
         ));
         // Speed shortens proportionally.
         assert!(close(
-            expected_output_secs(&edit(json!({ "videoId": "x", "speed": 2.0 })), 10.0),
+            expected_output_secs(&plan(json!({ "videoId": "x", "speed": 2.0 })).edit, 10.0),
             5.0
         ));
         // Segments sum their lengths (and override trim).
         assert!(close(
             expected_output_secs(
-                &edit(json!({
+                &plan(json!({
                     "videoId": "x",
                     "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 3.0, "end": 5.0 }]
-                })),
+                }))
+                .edit,
                 10.0
             ),
             3.0

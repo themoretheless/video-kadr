@@ -12,10 +12,16 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use uuid::Uuid;
 
+use crate::domain::artifact_graph::Fingerprint;
+use crate::domain::output::OutputFormat;
 use crate::error::{ApiJson, AppError, AppResult};
 use crate::jobs::{dedupe_key, EnqueueOutcome, ErrorKind, JobEvent, JobKind, JobPermit};
 use crate::library::MediaEntry;
-use crate::model::{Crop, EditRequest, ImportRequest, Scale, Trim};
+use crate::model::{EditRequest, ImportRequest};
+use crate::ports::{ExportCommandCompiler, ExportCompileRequest};
+use crate::services::render::{
+    EditPlan, ExportExecutionProfile, RenderExecution, SourceMediaMetadata,
+};
 use crate::state::AppState;
 use crate::tools::{self, Done};
 
@@ -259,7 +265,7 @@ fn spawn_edit_job(
     let st = state.clone();
     let jid = job_id.clone();
     let span = tracing::info_span!("job", job.id = %job_id, job.kind = "edit");
-    state.spawn_task(async move {
+    let task = async move {
         let _lease = lease;
         if !mark_queued(&st, &jid).await {
             st.clear_cancel(&jid).await;
@@ -298,35 +304,43 @@ fn spawn_edit_job(
 
         let sources = st.sources_dir();
         let outputs = st.outputs_dir();
-        let mut req = req;
-        let ext = tools::output_ext(req.format.as_deref());
+        let req = req;
+        let requested_format =
+            OutputFormat::parse(req.format.as_deref()).unwrap_or(OutputFormat::Mp4);
+        let ext = tools::output_ext(requested_format);
         let filename = format!("{out_id}.{ext}");
         let output_path = outputs.join(&filename);
 
         let outcome = async {
             let input = tools::find_source(&sources, &req.video_id).await?;
             let probe = tools::probe_video(&st.process_runtime, &input).await?;
-            normalize_edit_request(&mut req, probe.width, probe.height, probe.duration)?;
-            let expected = tools::expected_output_secs(&req, probe.duration);
-            let args = tools::build_ffmpeg_args_with_budget(
-                &input,
-                &output_path,
-                &req,
-                probe.duration,
-                &st.encode_budget,
-                st.render_parallelism(),
+            let source_fingerprint = Fingerprint::digest(req.video_id.as_bytes());
+            let source = SourceMediaMetadata::new(probe.width, probe.height, probe.duration)?;
+            let plan = Arc::new(EditPlan::compile(source_fingerprint, req, source)?);
+            let execution = RenderExecution::new(
+                plan,
+                ExportExecutionProfile {
+                    encode_budget: st.encode_budget.clone(),
+                    verify_checksums: true,
+                },
             );
-            tracing::info!(output.format = %req.format.as_deref().unwrap_or("mp4"), "starting render");
+            let command = tools::FfmpegExportCompiler.compile(ExportCompileRequest {
+                input: &input,
+                destination: &output_path,
+                parallel_jobs: st.render_parallelism(),
+                execution: &execution,
+            })?;
+            tracing::info!(output.format = %execution.output().format, "starting render");
             let done = tools::run_ffmpeg(
                 &st.process_runtime,
-                &args,
-                expected,
+                &command.arguments,
+                command.expected_duration_seconds,
                 &tx,
                 &token,
                 job_timeout(),
             )
-                .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
-                .await?;
+            .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
+            .await?;
             if matches!(done, Done::Cancelled) {
                 let _ = tokio::fs::remove_file(&output_path).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
@@ -363,7 +377,9 @@ fn spawn_edit_job(
                 }
             }
         }
-    }.instrument(span));
+    }
+    .instrument(span);
+    state.spawn_task(task);
 }
 
 pub async fn api_not_found_handler() -> AppError {
@@ -523,137 +539,6 @@ async fn mark_queue_closed(st: &AppState, jid: &str) {
     )
     .await;
     st.clear_cancel(jid).await;
-}
-
-fn normalize_edit_request(
-    edit: &mut EditRequest,
-    source_width: u32,
-    source_height: u32,
-    source_duration: f64,
-) -> anyhow::Result<()> {
-    let duration = finite_non_negative(source_duration, "Недопустимая длительность источника")?;
-
-    edit.speed = finite_positive(edit.speed, "Недопустимая скорость")?.clamp(0.5, 2.0);
-    edit.volume = finite_non_negative(edit.volume, "Недопустимая громкость")?.clamp(0.0, 4.0);
-    edit.fade_in = finite_non_negative(edit.fade_in, "Недопустимое появление")?.min(duration);
-    edit.fade_out = finite_non_negative(edit.fade_out, "Недопустимое затухание")?.min(duration);
-    edit.brightness = finite_number(edit.brightness, "Недопустимая яркость")?.clamp(-1.0, 1.0);
-    edit.contrast = finite_non_negative(edit.contrast, "Недопустимый контраст")?.clamp(0.0, 3.0);
-    edit.saturation =
-        finite_non_negative(edit.saturation, "Недопустимая насыщенность")?.clamp(0.0, 3.0);
-    edit.sharpen = finite_non_negative(edit.sharpen, "Недопустимая резкость")?.clamp(0.0, 5.0);
-    edit.grain = finite_non_negative(edit.grain, "Недопустимое зерно")?.clamp(0.0, 100.0);
-    normalize_trim(&mut edit.trim, duration)?;
-    normalize_segments(&mut edit.segments, duration)?;
-
-    if let Some(crop) = edit.crop.as_mut() {
-        clamp_rect_to_source(crop, source_width, source_height);
-    }
-    if let Some(censor) = edit.censor.as_mut() {
-        clamp_rect_to_source(censor, source_width, source_height);
-    }
-    if let Some(fps) = edit.fps {
-        if !fps.is_finite() || fps <= 0.0 {
-            anyhow::bail!("Недопустимый fps");
-        }
-        edit.fps = Some(fps.clamp(1.0, 240.0));
-    }
-    if let Some(scale) = &edit.scale {
-        validate_scale(scale)?;
-    }
-    Ok(())
-}
-
-fn finite_number(value: f64, msg: &str) -> anyhow::Result<f64> {
-    if value.is_finite() {
-        Ok(value)
-    } else {
-        anyhow::bail!(msg.to_string())
-    }
-}
-
-fn finite_non_negative(value: f64, msg: &str) -> anyhow::Result<f64> {
-    let value = finite_number(value, msg)?;
-    if value >= 0.0 {
-        Ok(value)
-    } else {
-        anyhow::bail!(msg.to_string())
-    }
-}
-
-fn finite_positive(value: f64, msg: &str) -> anyhow::Result<f64> {
-    let value = finite_number(value, msg)?;
-    if value > 0.0 {
-        Ok(value)
-    } else {
-        anyhow::bail!(msg.to_string())
-    }
-}
-
-fn normalize_trim(trim: &mut Option<Trim>, duration: f64) -> anyhow::Result<()> {
-    let Some(t) = trim.as_mut() else {
-        return Ok(());
-    };
-    t.start = finite_non_negative(t.start, "Недопустимое начало обрезки")?.min(duration);
-    t.end = finite_non_negative(t.end, "Недопустимый конец обрезки")?.min(duration);
-    if t.end - t.start <= 0.01 {
-        anyhow::bail!("Недопустимый диапазон обрезки");
-    }
-    Ok(())
-}
-
-fn normalize_segments(segments: &mut Option<Vec<Trim>>, duration: f64) -> anyhow::Result<()> {
-    let Some(segs) = segments.as_mut() else {
-        return Ok(());
-    };
-    let mut normalized = Vec::with_capacity(segs.len());
-    for s in segs.iter() {
-        let start = finite_non_negative(s.start, "Недопустимое начало сегмента")?.min(duration);
-        let end = finite_non_negative(s.end, "Недопустимый конец сегмента")?.min(duration);
-        if end - start > 0.01 {
-            normalized.push(Trim { start, end });
-        }
-    }
-    normalized.sort_by(|a, b| a.start.total_cmp(&b.start));
-    for pair in normalized.windows(2) {
-        if pair[1].start < pair[0].end {
-            anyhow::bail!("Сегменты не должны пересекаться");
-        }
-    }
-    *segments = (!normalized.is_empty()).then_some(normalized);
-    Ok(())
-}
-
-fn clamp_rect_to_source(rect: &mut Crop, source_width: u32, source_height: u32) {
-    if source_width == 0 || source_height == 0 {
-        return;
-    }
-
-    let min_w = if source_width >= 2 { 2 } else { 1 };
-    let min_h = if source_height >= 2 { 2 } else { 1 };
-    rect.x = rect.x.min(source_width - min_w);
-    rect.y = rect.y.min(source_height - min_h);
-
-    let max_w = source_width - rect.x;
-    let max_h = source_height - rect.y;
-    rect.w = rect.w.clamp(min_w, max_w);
-    rect.h = rect.h.clamp(min_h, max_h);
-    if min_w == 2 {
-        rect.w = (rect.w & !1).max(2);
-    }
-    if min_h == 2 {
-        rect.h = (rect.h & !1).max(2);
-    }
-}
-
-fn validate_scale(scale: &Scale) -> anyhow::Result<()> {
-    fn valid_dim(v: i32) -> bool {
-        matches!(v, -2 | -1) || (2..=7680).contains(&v)
-    }
-    if !valid_dim(scale.w) || !valid_dim(scale.h) || (scale.w < 0 && scale.h < 0) {
-        anyhow::bail!("Недопустимый размер экспорта");
-    }
-    Ok(())
 }
 
 async fn cleanup_files_with_prefix(dir: &Path, prefix: &str) {
@@ -945,109 +830,5 @@ mod tests {
         assert!(!dir.join("abc").exists());
         assert!(dir.join("abcd.mp4").exists());
         assert!(dir.join(".gitkeep").exists());
-    }
-
-    #[test]
-    fn normalize_edit_request_clamps_rectangles_to_source() {
-        let mut edit: EditRequest = serde_json::from_value(json!({
-            "videoId": "x",
-            "crop": { "x": 9999, "y": 9999, "w": 0, "h": 9999 },
-            "censor": { "x": 1919, "y": 1079, "w": 20, "h": 20 },
-            "fps": 500.0,
-            "scale": { "w": 1280, "h": -2 }
-        }))
-        .unwrap();
-
-        normalize_edit_request(&mut edit, 1920, 1080, 10.0).unwrap();
-
-        let crop = edit.crop.unwrap();
-        assert_eq!((crop.x, crop.y, crop.w, crop.h), (1918, 1078, 2, 2));
-        let censor = edit.censor.unwrap();
-        assert_eq!((censor.x, censor.y, censor.w, censor.h), (1918, 1078, 2, 2));
-        assert_eq!(edit.fps, Some(240.0));
-    }
-
-    #[test]
-    fn normalize_edit_request_rejects_invalid_fps_and_scale() {
-        let mut bad_fps: EditRequest =
-            serde_json::from_value(json!({ "videoId": "x", "fps": -1.0 })).unwrap();
-        assert!(normalize_edit_request(&mut bad_fps, 100, 100, 10.0).is_err());
-
-        let mut bad_scale: EditRequest = serde_json::from_value(json!({
-            "videoId": "x",
-            "scale": { "w": -1, "h": -2 }
-        }))
-        .unwrap();
-        assert!(normalize_edit_request(&mut bad_scale, 100, 100, 10.0).is_err());
-    }
-
-    #[test]
-    fn normalize_edit_request_clamps_timing_and_effect_numbers() {
-        let mut edit: EditRequest = serde_json::from_value(json!({
-            "videoId": "x",
-            "speed": 3.5,
-            "volume": 9.0,
-            "fadeIn": 99.0,
-            "fadeOut": 99.0,
-            "brightness": 2.0,
-            "contrast": 9.0,
-            "saturation": 9.0,
-            "sharpen": 9.0,
-            "grain": 999.0,
-            "trim": { "start": 2.0, "end": 99.0 },
-            "segments": [
-                { "start": 9.5, "end": 99.0 },
-                { "start": 0.0, "end": 1.0 },
-                { "start": 2.0, "end": 2.0 }
-            ]
-        }))
-        .unwrap();
-
-        normalize_edit_request(&mut edit, 100, 100, 10.0).unwrap();
-
-        assert_eq!(edit.speed, 2.0);
-        assert_eq!(edit.volume, 4.0);
-        assert_eq!(edit.fade_in, 10.0);
-        assert_eq!(edit.fade_out, 10.0);
-        assert_eq!(edit.brightness, 1.0);
-        assert_eq!(edit.contrast, 3.0);
-        assert_eq!(edit.saturation, 3.0);
-        assert_eq!(edit.sharpen, 5.0);
-        assert_eq!(edit.grain, 100.0);
-        let trim = edit.trim.unwrap();
-        assert_eq!((trim.start, trim.end), (2.0, 10.0));
-        let segs = edit.segments.unwrap();
-        assert_eq!(segs.len(), 2);
-        assert_eq!((segs[0].start, segs[0].end), (0.0, 1.0));
-        assert_eq!((segs[1].start, segs[1].end), (9.5, 10.0));
-    }
-
-    #[test]
-    fn normalize_edit_request_rejects_bad_timing() {
-        let mut bad_speed: EditRequest =
-            serde_json::from_value(json!({ "videoId": "x", "speed": 0.0 })).unwrap();
-        assert!(normalize_edit_request(&mut bad_speed, 100, 100, 10.0).is_err());
-
-        let mut bad_trim: EditRequest = serde_json::from_value(json!({
-            "videoId": "x",
-            "trim": { "start": 5.0, "end": 5.0 }
-        }))
-        .unwrap();
-        assert!(normalize_edit_request(&mut bad_trim, 100, 100, 10.0).is_err());
-
-        let mut overlap: EditRequest = serde_json::from_value(json!({
-            "videoId": "x",
-            "segments": [
-                { "start": 0.0, "end": 2.0 },
-                { "start": 1.0, "end": 3.0 }
-            ]
-        }))
-        .unwrap();
-        assert!(normalize_edit_request(&mut overlap, 100, 100, 10.0).is_err());
-
-        let mut non_finite: EditRequest =
-            serde_json::from_value(json!({ "videoId": "x" })).unwrap();
-        non_finite.volume = f64::INFINITY;
-        assert!(normalize_edit_request(&mut non_finite, 100, 100, 10.0).is_err());
     }
 }

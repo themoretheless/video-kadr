@@ -11,7 +11,7 @@ use video_editor_backend::domain::artifact_graph::Fingerprint;
 use video_editor_backend::domain::media_probe::ProbeResult;
 use video_editor_backend::library::{Library, MediaEntry};
 use video_editor_backend::model::EditRequest;
-use video_editor_backend::services::render::EditPlan;
+use video_editor_backend::services::render::{EditPlan, SourceMediaMetadata};
 
 const SCHEMA_VERSION: u32 = 1;
 
@@ -206,7 +206,11 @@ fn measure_plan_compile(warm: usize, cold: usize) -> Result<Vec<WorkloadStats>> 
     let source = Fingerprint::digest(b"perf-source");
     let mut checksum = 0_u64;
     let warm_samples = sample_sync(warm, || {
-        let plan = EditPlan::compile(source.clone(), black_box(edit.clone()));
+        let plan = EditPlan::compile(
+            source.clone(),
+            black_box(edit.clone()),
+            SourceMediaMetadata::new(1920, 1080, 12.5)?,
+        )?;
         checksum = checksum.wrapping_add(u64::from(plan.plan_fingerprint.as_str().as_bytes()[0]));
         Ok(())
     })?;
@@ -215,7 +219,11 @@ fn measure_plan_compile(warm: usize, cold: usize) -> Result<Vec<WorkloadStats>> 
     checksum = 0;
     let cold_samples = sample_sync(cold, || {
         let edit: EditRequest = serde_json::from_str(black_box(fixture))?;
-        let plan = EditPlan::compile(source.clone(), edit);
+        let plan = EditPlan::compile(
+            source.clone(),
+            edit,
+            SourceMediaMetadata::new(1920, 1080, 12.5)?,
+        )?;
         checksum = checksum.wrapping_add(u64::from(plan.plan_fingerprint.as_str().as_bytes()[0]));
         Ok(())
     })?;

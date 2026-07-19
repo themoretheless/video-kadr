@@ -10,6 +10,7 @@ pub mod proxy;
 
 pub use args::{
     build_ffmpeg_args, build_ffmpeg_args_with_budget, expected_output_secs, output_ext,
+    FfmpegExportCompiler,
 };
 pub use net::validate_url;
 

@@ -12,8 +12,8 @@
 
 1. **Слои с однонаправленными зависимостями.** HTTP → сервисы/домен →
    инфраструктура. Внутренний слой не знает о внешнем. Никаких циклов между модулями.
-2. **Чистое ядро.** Доменная логика (сборка ffmpeg-аргументов, валидация,
-   модель правок) - чистые функции без I/O, юнит-тестируемые без процессов и БД.
+2. **Чистое ядро.** Доменная модель и валидация не знают об HTTP, FFmpeg, БД и
+   runtime; pure adapters компилируют доменный план без I/O и процессов.
 3. **Зацепление через узкие контракты.** Хендлер/сервис зависит от трейта-порта,
    а не от конкретного типа (`Db`, `Library`). Контракт виден в сигнатуре.
 4. **Один источник правды на сущность.** Конфиг - один `Config`; контракт правок -
@@ -29,8 +29,9 @@
 Backend (Rust + Axum + Tokio)
    ├─ HTTP-слой        тонкие хендлеры: запрос ⇄ ответ
    ├─ Задачи           асинхронные джобы (импорт/рендер): очередь, прогресс, отмена
-   ├─ Домен            модель правок → компилятор в ffmpeg filter_complex
-   ├─ Инфраструктура   ffmpeg/ffprobe/yt-dlp (шелл), SQLite (sqlx), файлы на диске
+   ├─ Домен            SourceMediaSpec + EditSpec + OutputSpec
+   ├─ Сервисы/порты    wire DTO → EditPlan → ExportCommandCompiler
+   ├─ Инфраструктура   FFmpeg adapter, ffprobe/yt-dlp, SQLite, файлы на диске
    └─ Хранилище        storage/{sources,outputs}/  + storage/app.db
 ```
 
@@ -43,21 +44,26 @@ Backend (Rust + Axum + Tokio)
 - `lib.rs` - `build_router()` (сборка маршрутов), реэкспорт модулей.
 - `error.rs` - `AppError`/`AppResult`, JSON error envelope и адаптеры extractors.
 - `main.rs` - bootstrap: env, probe инструментов, открыть БД, recover задач, `serve`.
-- `domain/` - чистые media contracts: filter graph, pipeline registry, timeline,
-  normalized probe, geometry и keyframes; без HTTP/process/runtime/persistence.
+- `domain/` - чистые media contracts: versioned `EditSpec`, `OutputSpec`, filter
+  graph, pipeline registry, timeline, normalized probe, geometry и keyframes;
+  без HTTP/process/runtime/persistence.
+- `services/render.rs` - anti-corruption mapper: wire `EditRequest` + immutable
+  source metadata → source-aware, fingerprinted `EditPlan` v2.
 - `http/` - port-based system/project routers, production adapters и единый
   route/middleware policy catalog.
 - `handlers/` - оставшийся orchestration layer: `mod.rs` (import/edit/jobs +
   job-машинерия), `upload.rs`, `library.rs`; следующий split - service ports.
-- `tools/` - внешние инструменты. `args.rs` (чистая сборка ffmpeg-аргументов +
-  тесты), `net.rs` (единая URL/host/IP/port-policy), `egress_proxy.rs`
+- `ports/` - узкие application boundaries, включая `ExportCommandCompiler`.
+- `tools/` - внешние адаптеры. `args.rs` (`FfmpegExportCompiler`: pure compile
+  `EditPlan` → args + expected duration), `net.rs` (единая URL/host/IP/port-policy), `egress_proxy.rs`
   (контролируемый transport с DNS pinning на каждый request), `mod.rs`
   (process/download orchestration, ffprobe adapter и реэкспорт публичного API).
 - `state.rs` - `AppState`: горячий jobs-registry + cancels + инкапсулированные
   независимые job/upload gates + tools + library + SQLite persistence + storage.
 - `db.rs` - sqlx/SQLite: projects, jobs, render_cache.
 - `library.rs` - медиатека (JSON-файл, параллельно БД).
-- `model.rs` - `Job`/`JobStatus`, `EditRequest` (плоский DTO+домен), `Trim`/`Crop`/`Scale`.
+- `model.rs` - `Job`/`JobStatus` и wire `EditRequest`/`Trim`/`Crop`/`Scale`; media
+  invariants принадлежат `domain/edit.rs`, а не transport DTO.
 
 **Frontend** (`frontend/src/`):
 - `store.ts` - единый reactive `state` + orchestration-экшены (импорт/экспорт/
@@ -71,6 +77,30 @@ Backend (Rust + Axum + Tokio)
 Уже выровнено по целевому дизайну: `tools/{args,net,egress_proxy,mod}`,
 `handlers/{upload,projects,library,health}`, frontend `domain/edit.ts` и
 `components/edit/ExportControls.vue` (см. refactor-plan).
+
+### Реализованный typed export path (20 июля 2026)
+
+```
+HTTP EditRequest (wire only)
+  -> EditPlan::compile(source fingerprint, probe metadata)
+  -> EditPlan v2 { SourceMediaSpec, EditSpec, OutputSpec, plan fingerprint }
+  -> RenderExecution { immutable plan, ExportExecutionProfile }
+  -> ExportCommandCompiler port
+  -> FfmpegExportCompiler adapter { arguments, expected duration }
+  -> ProcessPolicy / PreparedCommand
+```
+
+`EditSpec` разделён на timing, geometry, video и audio; строки формата, кодека,
+look, rotation, aspect и цвета преобразуются в enums/smart types на единственной
+границе. Source geometry и duration входят в identity плана, поэтому adapter не
+может получить противоречащую плану длительность. Десериализация заново проверяет
+schema, диапазоны, audio/output consistency и fingerprint. HTTP handler больше
+не владеет media normalization или FFmpeg semantics.
+
+Граница сделана честно, но не завершает всю целевую архитектуру: render cache
+пока хэширует raw `EditRequest` до probe/compile, source fingerprint основан на
+стабильном media ID, а не checksum содержимого, и существующий Timeline IR ещё
+не компилируется в `EditPlan`. Это следующие маленькие независимые срезы.
 
 ## Top-200: что сделано плохо или неправильно
 
@@ -208,16 +238,16 @@ stored XSS через upload) и полный ранжированный **то�
 
 ### Доменная модель edit/render
 
-91. `EditRequest` совмещает wire DTO, domain input и cache-key normalization.
+91. ✅ `EditRequest` оставлен wire DTO; `EditPlan::compile` является единственной границей в typed domain.
 92. Эффекты представлены россыпью bool/scalar полей вместо typed effect enum.
-93. `format`, `codec`, `filter`, `pad`, colors остаются raw strings.
-94. Нет `OutputSpec` как отдельной политики формата/кодека/качества.
-95. Нет `TimeRange` type с invariant `start < end`.
-96. Нет `CropRect` type с invariant внутри source dimensions и even dimensions.
-97. Нет `ScaleSpec` type с допустимыми sentinel values `-1/-2`.
-98. Speed/volume/fade/fps bounds не централизованы в domain policy.
+93. ✅ Raw строки преобразуются в `OutputFormat`/`VideoCodec`/`LookPreset`/`AspectRatio`/`CensorColor` на compile boundary.
+94. ✅ `OutputSpec` независимо валидирует format/codec/audio/CRF/fps/dimensions.
+95. ✅ `TimeRange` фиксирует finite non-negative `start < end` и non-overlap segments.
+96. ✅ `PixelRect` плюс source-aware compiler фиксируют bounds и even dimensions.
+97. ✅ `OutputScale` централизует допустимые dimensions и sentinel values `-1/-2`.
+98. ✅ Bounds централизованы в `EditPlan::compile`, `EditSpec` и `OutputSpec`.
 99. Non-finite/edge numeric inputs не описаны как отдельная validation policy.
-100. Расчёт output duration зависит от builder logic, а не от domain plan.
+100. ✅ Source duration входит в immutable `EditPlan`; compiler возвращает args и expected duration одним результатом.
 101. Render cache key считается от serialized request, а не от normalized `EditPlan`.
 102. Cache key не учитывает ffmpeg version/capabilities/pipeline version.
 103. Cache policy не различает source provenance: URL import vs upload.
@@ -518,12 +548,12 @@ HTTP-хендлеры и роутинг (`backend/src/handlers/`, `lib.rs`). SRP
 223. ✅ [проблема] upload_handler не проходил через concurrency gate - **закрыто в раунде 7:** отдельный upload pool ограничивает multipart/probe, не занимая job slots; saturation даёт `429`. `backend/src/handlers/upload.rs`, `backend/src/state.rs`
 224. 🟡 [дизайн] upload_handler возвращает результат по первому подходящему полю формы и молча игнорирует остальные части multipart - `backend/src/handlers/mod.rs` -> Явно проверять, что multipart содержит ровно одно валидное поле файла, и возвращать 400 при лишних/нераспознанных полях.
 225. ✅ [баг] upload_handler не ограничивал время probe_video - **закрыто в раунде 7:** общий `probe_video` имеет 30-секундный timeout с kill+wait; upload удаляет staging и возвращает отдельный `504`. `backend/src/tools/mod.rs`, `backend/src/handlers/upload.rs`
-226. 🟠 [проблема/SRP] normalize_edit_request и валидаторы диапазонов — доменная логика в HTTP-слое - `backend/src/handlers/mod.rs` -> Перенести эти функции в model.rs или отдельный модуль domain/edit_validation.rs, откуда их будет импортировать edit_handler.
+226. ✅ [SRP] Media normalization и range validation удалены из HTTP-слоя: source-aware compile живёт в `services/render.rs`, инварианты — в `domain/edit.rs`/`domain/output.rs`.
 227. 🟡 [улучшение/SRP] Файловые и криптографические утилиты живут в handlers/mod.rs вперемешку с HTTP-хендлерами - `backend/src/handlers/mod.rs` -> Вынести их в backend/src/tools/fs_utils.rs или backend/src/tools/cache.rs, оставив в handlers только вызовы.
 228. 🟠 [проблема] import_handler и edit_handler игнорируют JoinHandle из tokio::spawn — паника воркера не отражается в job - `backend/src/handlers/mod.rs` -> Сохранять JoinHandle и в отдельной задаче через .await с обработкой Err(JoinError) переводить job в JobStatus::Error с сообщением о панике.
 229. 🟡 [проблема] job_timeout() читает переменную окружения JOB_TIMEOUT_SECS при каждом вызове вместо однократного чтения - `backend/src/handlers/mod.rs` -> Прочитать JOB_TIMEOUT_SECS один раз в main/build_router через std::sync::OnceLock и переиспользовать закэшированное значение.
 230. 🟡 [дизайн] Прогресс сохраняется только при шаге >=1%, без гарантии сохранения финального значения перед 100 - `backend/src/handlers/mod.rs` -> Если это осознанный компромисс — оставить как есть; иначе сохранять хотя бы последнее полученное значение перед закрытием канала независимо от порога.
-231. 🟡 [проблема/DIP] edit_handler мутирует входящий EditRequest прямо в воркере вместо получения провалидированного типа - `backend/src/handlers/mod.rs` -> Изменить normalize_edit_request на fn(EditRequest, ...) -> anyhow::Result<NormalizedEditRequest>, чтобы невалидированный EditRequest не мог случайно использоваться дальше по ошибке.
+231. ✅ [DIP] Handler передаёт wire DTO в `EditPlan::compile` и дальше использует только immutable validated plan через export port. `backend/src/services/render.rs`, `backend/src/ports/media_export.rs`
 232. 🟡 [баг] cleanup_files_with_prefix сопоставляет файлы по префиксу имени, что может задеть чужой файл при совпадении подстроки - `backend/src/handlers/mod.rs` -> Сравнивать Path::file_stem() файла целиком с prefix вместо strip_prefix, чтобы исключить любую теоретическую двусмысленность.
 233. 🟡 [проблема/SRP] project_upsert_handler вручную парсит сырой serde_json::Value вместо типизированного тела запроса - `backend/src/http/mod.rs` -> Ввести #[derive(Deserialize)] struct ProjectUpsertRequest { video_id: String, video: Value, edit: Value, name: Option<String> } и десериализовать через Json<ProjectUpsertRequest>.
 234. 🟡 [проблема/DRY] ensure_project_json_size сериализует video/edit отдельно от последующей записи в БД, дублируя сериализацию - `backend/src/http/mod.rs` -> Сериализовать video/edit один раз в project_upsert_handler, проверить длину байт и передать уже сериализованные строки в upsert_project, чтобы БД не сериализовала повторно.
@@ -596,7 +626,7 @@ Jobs, конкурентность, процессы (`state.rs`, процесс
 295. 🟠 [проблема] finish_job добавляет в library только если updated==true — если job был отменён ровно в момент завершения рендера, готовый файл остаётся на диске, но не попадает ни в library, ни в render-кэш. - `backend/src/handlers/mod.rs` -> При outcome=Ok(Some(..)) но updated==false (job уже terminal не по этой ветке) всё равно выполнять cache_put для валидного файла или удалять его, чтобы не оставлять несогласованное состояние диск/БД.
 296. 🟠 [проблема] Аналогичная orphan-файл гонка в import_handler: если скачивание успешно завершилось, но job уже был отменён к моменту finish_job, скачанный source остаётся на диске без cleanup и без записи в library. - `backend/src/handlers/mod.rs` -> В finish_job, если updated==false, но outcome содержал успешный результат, удалять только что созданные файлы (source/output) так же, как это уже делается в ветке Done::Cancelled.
 297. 🟡 [проблема] JobStatus::from_token не различает 'неизвестный статус в БД' от 'pending', что маскирует порчу данных при восстановлении. - `backend/src/model.rs` -> Вернуть Result<JobStatus, String> из from_token и залогировать warn в recover_jobs при получении ошибки вместо тихого приведения к Pending.
-298. 🟡 [проблема] EditRequest не валидирует диапазоны большинства числовых полей на уровне модели — rotate, quality, censor и другие принимают любые значения из JSON без ограничений. - `backend/src/model.rs` -> Либо добавить #[serde(deserialize_with = ...)] валидаторы на самые опасные поля (rotate, speed, quality), либо явно задокументировать в модели, что EditRequest — сырой DTO и вся валидация намеренно вынесена в normalize_edit_request.
+298. ✅ [граница] `EditRequest` намеренно сырой wire DTO; `EditPlan::compile` преобразует и проверяет rotate/quality/censor/числовые диапазоны до adapter. `backend/src/model.rs`, `backend/src/services/render.rs`
 299. 🟡 [дизайн] Job.stage — Option<String> без enum; комментарий перечисляет 3 значения, но код использует минимум 4 разных строковых литерала в разных местах без единого источника истины. - `backend/src/model.rs` -> Заменить Option<String> на Option<JobStage> enum с Serialize в те же строковые токены (serde rename_all snake_case), чтобы все места установки stage проходили проверку компилятором.
 300. 🟡 [проблема] Job.result: Option<serde_json::Value> — неограниченная по размеру и структуре полезная нагрузка хранится и в памяти, и в БД без какой-либо схемы. - `backend/src/model.rs` -> Определить конкретный enum/struct JobResult { Import { .. }, Edit { .. } } с ограниченным набором полей вместо serde_json::Value, либо задокументировать и enforced-ограничить максимальный размер сериализованного результата.
 301. 🟡 [баг] cancel_open_job зануляет job.progress перед persist, теряя последнее известное значение прогресса отменённой задачи в истории/БД. - `backend/src/state.rs` -> Не сбрасывать progress при отмене (оставить последнее известное значение) — обнулять только stage, так как прогресс сам по себе полезен для UI/истории даже у отменённой задачи.
@@ -609,7 +639,7 @@ Jobs, конкурентность, процессы (`state.rs`, процесс
 308. 🟠 [баг] persist_job считывает job из памяти уже после того, как отпустил лок в момент чтения — конкурентный update_job_if_open между чтением и записью в БД может привести к записи устаревшего снимка job. - `backend/src/state.rs` -> Это фундаментально неизбежно при чтение-затем-запись без сериализации, но можно уменьшить окно, добавив монотонный version-counter в Job и в БД делать UPDATE ... WHERE version <= ?, отбрасывая устаревшие записи вместо слепой перезаписи.
 309. 🟡 [проблема/SRP] recover_jobs выполняет чтение из БД, мутацию статуса в памяти и повторную запись в БД в одном неразделённом цикле. - `backend/src/state.rs` -> Разбить на явные шаги: собрать список job, отфильтровать non-terminal, замьютировать их в Vec, батчем персистить в БД, и только затем одним проходом вставить всё в jobs map.
 310. 🟡 [проблема] run_with_progress биасит cancel/timeout выше завершения дочернего процесса даже при успешном near-instant exit из-за biased select!. - `backend/src/tools/mod.rs` -> Либо документировать это как намеренное поведение ('отмена побеждает гонку с завершением'), либо перед выходом по cancel/timeout проверять child.try_wait() на предмет уже готового результата и предпочитать его.
-311. 🟡 [баг] cache_key в edit_handler вычисляется до normalize_edit_request, поэтому эквивалентные после клэмпинга запросы (например rotate=450 и rotate=90) не разделяют один и тот же render-кэш. - `backend/src/handlers/mod.rs` -> Вызывать normalize_edit_request до вычисления render_cache_key (например, вынести нормализацию в отдельный шаг перед постановкой в очередь) либо сериализовать в ключ только уже нормализованные поля.
+311. 🟡 [баг] cache key вычисляется до `EditPlan::compile`, поэтому эквивалентные после канонизации запросы не разделяют render cache. - `backend/src/handlers/mod.rs` -> Перенести identity на `plan_fingerprint` после probe/compile и сохранить single-flight semantics.
 312. 🟡 [проблема/SRP] clamp_rect_to_source не проверяет переполнение source_width - min_w при source_width=1, что может привести к панике/underflow на u32. - `backend/src/handlers/mod.rs` -> Использовать saturating_sub вместо прямого вычитания при вычислении верхней границы координат в clamp_rect_to_source.
 313. 🟡 [баг] run_with_progress теряет неотправленные прогресс-обновления, если progress-канал (unbounded) уже закрыт получателем (например, drain-таск завершился раньше из-за паники), так как progress.send(...) молча игнорирует ошибку. - `backend/src/tools/mod.rs` -> Логировать через tracing::debug!, когда progress.send возвращает Err, чтобы такие потери были видны в логах, а не полностью незаметны.
 314. 🟡 [улучшение/DRY] check_tool для ffmpeg и yt-dlp вызывается последовательно при старте, а не параллельно, увеличивая время запуска сервера на сумму двух health-check таймаутов. - `backend/src/tools/mod.rs` -> Добавить в tools/mod.rs обёртку pub async fn check_all_tools() -> ToolInfo, которая внутри делает tokio::join!(check_tool("ffmpeg",...), check_tool("yt-dlp",...)), инкапсулируя параллельность в одном месте.
@@ -623,19 +653,19 @@ FFmpeg domain compiler (`tools/args.rs`, геометрия в `model.rs`). Чи
 316. 🟠 [проблема/OCP] Добавление нового формата экспорта требует правки в build_ffmpeg_args, push_video_codec и build_concat_args одновременно - `backend/src/tools/args.rs` -> Свести формат к одной таблице/enum с методами video_codec()/audio_codec()/container(), используемой во всех трёх местах.
 317. 🟡 [проблема/DRY] Выбор аудиокодека по формату продублирован между push_audio-вызовами в build_ffmpeg_args и match в build_concat_args - `backend/src/tools/args.rs` -> Вынести fn audio_codec_for(format: &str) -> &'static str и использовать её в обоих местах.
 318. 🟡 [проблема/DRY] video_filters и audio_filters дублируют шаблон 'построить цепочку -> push через -vf/-af' в шести ветках формата - `backend/src/tools/args.rs` -> Добавить хелпер push_vf/push_af(args, chain), принимающий уже построенную цепочку и делающий push только если она не пуста.
-319. 🔴 [баг] edit.quality (CRF) нигде не валидируется и не клампится перед подстановкой в аргументы ffmpeg - `backend/src/model.rs` -> Добавить в normalize_edit_request кламп quality к диапазону, зависящему от кодека/формата (например 0..=63 для vp9/av1, 0..=51 для x264/x265).
-320. 🟠 [проблема] edit.codec и edit.format — произвольные строки без whitelisting на границе домена - `backend/src/model.rs` -> Валидировать format/codec в normalize_edit_request через whitelist и возвращать 400 при неизвестном значении, либо перейти на serde enum с serde(other).
-321. 🟡 [проблема] filter_preset принимает произвольную строку в edit.filter, неизвестное имя тихо игнорируется без ошибки - `backend/src/tools/args.rs` -> Либо валидировать filter в normalize_edit_request по тому же списку имён, либо возвращать ошибку из filter_preset для явно нераспознанных значений.
+319. ✅ [баг] `OutputSpec` валидирует CRF по codec-specific диапазону до FFmpeg adapter. `backend/src/domain/output.rs`
+320. ✅ [граница] `OutputFormat`/`VideoCodec` whitelist и compatibility проверяются при compile; неизвестные строки отклоняются. `backend/src/domain/output.rs`, `backend/src/services/render.rs`
+321. ✅ [валидация] `LookPreset::parse` отклоняет неизвестное имя; adapter принимает enum. `backend/src/domain/edit.rs`, `backend/src/tools/args.rs`
 322. 🟡 [дизайн] Магические числа CRF по умолчанию (32, 23, 28) разбросаны по коду без единого источника истины - `backend/src/tools/args.rs` -> Вынести именованные константы DEFAULT_CRF_WEBM/DEFAULT_CRF_AV1/DEFAULT_CRF_H264/DEFAULT_CRF_H265 в один модуль.
 323. 🟡 [улучшение/OCP] mp3/png/jpg/gif обрабатываются как особые случаи в общем match вместо единой точки расширения формата - `backend/src/tools/args.rs` -> Выделить каждую ветку в отдельную fn build_<format>_args(...) -> Vec<String>, а match оставить диспетчером.
 324. 🟡 [проблема/DRY] Аудио-кодек и битрейт 128k хардкожены в push_audio и продублированы отдельной строкой в build_concat_args - `backend/src/tools/args.rs` -> Вынести общий хелпер push_audio_codec_and_bitrate(args, format) и использовать его в обоих путях.
 325. 🟡 [проблема] parse_aspect допускает деформирующие пропорции (например 1:100) без предупреждения пользователю - `backend/src/tools/args.rs` -> Добавить проверку разумного диапазона соотношения (например 1:5..5:1) с явной ошибкой при выходе за пределы.
 326. 🟠 [баг] pad-фильтр не форсирует чётность итогового кадра, если crop/scale после него в цепочке отсутствуют - `backend/src/tools/args.rs` -> Добавить unit-тест, который явно проверяет чётность выходного w/h для pad без последующего crop/scale, чтобы застраховать формулу от регрессий.
-327. 🟠 [баг] crop с чётностью через 'w & !1' может дать w=0 при вырожденном прямоугольнике шириной 1 в args.rs, если вызвано в обход normalize_edit_request - `backend/src/tools/args.rs` -> Добавить .max(2) прямо в video_filters рядом с '& !1', не полагаясь только на вызывающий код в handlers.
+327. ✅ [баг] Even rounding больше не превращает one-pixel source edge в `crop=0`; regression test фиксирует `crop=1:1`. `backend/src/tools/args.rs`
 328. 🟡 [проблема] speed для видео (setpts) не ограничен диапазоном на уровне args.rs, хотя atempo для аудио жёстко клампится к 0.5..2.0 - `backend/src/tools/args.rs` -> Либо клампить speed внутри video_filters тем же диапазоном, что и audio_filters, либо явно задокументировать инвариант 'вызывающий обязан клампить' в doc-комментарии функции.
-329. 🟡 [проблема] Комментарий 'the frontend clamps speed to that range' в audio_filters недостоверен — на самом деле клампит backend (normalize_edit_request), а не фронтенд - `backend/src/tools/args.rs` -> Поправить комментарий на 'normalize_edit_request on the backend clamps speed to that range before this runs'.
+329. ✅ [документация] Комментарий у `atempo` ссылается на invariant `EditPlan`, а не на frontend clamp. `backend/src/tools/args.rs`
 330. 🟡 [дизайн/DIP] video_filters напрямую зависит от конкретных строковых констант ffmpeg вместо промежуточного домена фильтров - `backend/src/tools/args.rs` -> Ввести промежуточный enum VideoFilter { Crop{...}, Rotate(u32), ... } с отдельным to_ffmpeg_string(), чтобы порядок и построение синтаксиса были раздельными задачами.
-331. 🟡 [проблема] rotate: i32 в модели принимает произвольные значения, эффективно используются только четыре через rem_euclid(360) - `backend/src/model.rs` -> Валидировать rotate в normalize_edit_request через whitelist [0,90,180,270] с явной ошибкой на прочих значениях.
+331. ✅ [типизация] `Rotation` содержит четыре состояния; полные обороты канонизируются, прочие углы отклоняются. `backend/src/domain/edit.rs`
 332. 🟡 [проблема/DRY] Проверка '(speed - 1.0).abs() > 1e-6 && speed > 0.0' дословно продублирована в video_filters и audio_filters - `backend/src/tools/args.rs` -> Вынести fn speed_changed(speed: f64) -> bool и использовать в обеих функциях.
 333. 🟡 [улучшение] Эпсилон 1e-6 для сравнения f64 захардкожен в шести разных местах без общей константы - `backend/src/tools/args.rs` -> Ввести const F64_EPS: f64 = 1e-6; в начале файла и использовать её везде вместо литерала.
 334. 🟠 [проблема] expected_output_secs не учитывает fade_in/fade_out и не совпадает по сортировке сегментов с build_concat_args - `backend/src/tools/args.rs` -> Задокументировать явно, что expected_output_secs — оценка длительности контента без учёта fade, либо убрать fade из описания функции в комментарии, если он и не должен туда входить.
@@ -644,27 +674,27 @@ FFmpeg domain compiler (`tools/args.rs`, геометрия в `model.rs`). Чи
 337. 🟡 [проблема/OCP] push_fps вызывается вручную в каждой ветке push_video_codec и build_ffmpeg_args вместо единой точки в сборке видео-аргументов - `backend/src/tools/args.rs` -> Переместить единственный вызов push_fps в конец push_video_codec и убрать дублирующиеся вызовы из build_ffmpeg_args (av1/prores путь и так проходит через push_video_codec в build_concat_args, но не в build_ffmpeg_args — унифицировать эти два пути).
 338. 🟡 [дизайн] eq_changed сравнивает brightness/contrast/saturation с дефолтами 0.0/1.0/1.0, но эти дефолты не именованы как доменные константы - `backend/src/tools/args.rs` -> Явно задокументировать или связать константы дефолтов между model.rs (default_one) и args.rs (eq_changed), например через общий модуль domain-констант.
 339. 🟠 [проблема] censor и crop оба типизированы как model::Crop, хотя семантически это разные концепции (censor box vs crop rect) - `backend/src/model.rs` -> Ввести отдельный тип-алиас или newtype CensorBox(Crop), чтобы компилятор различал назначение полей.
-340. 🟡 [проблема] Crop.x/y/w/h — u32 без верхней доменной границы, полагается только на clamp_rect_to_source в handlers - `backend/src/model.rs` -> Задокументировать в model.rs, что Crop валиден только после normalize_edit_request, либо добавить конструктор/valid()-метод, чтобы инвариант был явным в типе.
-341. 🟡 [идея] Нет доменной проверки совместимости codec с format (например h265 запрошен вместе с format=webm) - `backend/src/tools/args.rs` -> Возвращать явную ошибку или warning в normalize_edit_request, если codec задан вместе с форматом, где он не имеет смысла.
+340. ✅ [граница] Wire `Crop` преобразуется в source-clamped `PixelRect`; adapter не принимает сырой DTO. `backend/src/domain/edit.rs`, `backend/src/services/render.rs`
+341. ✅ [валидация] Явный codec разрешён только для MP4; бессмысленная комбинация WebM/H.265 отклоняется regression test. `backend/src/services/render.rs`
 342. 🟡 [идея] Нет доменной валидации, что pad и crop, применённые вместе, дают осмысленный результат - `backend/src/tools/args.rs` -> Добавить интеграционный тест на комбинацию crop+pad с фиксацией ожидаемых размеров, либо предупреждение в API-ответе.
 343. 🟡 [проблема] sanitize_color whitelist жёстко ограничен 4 цветами (black/white/gray/red) без возможности расширения без правки кода - `backend/src/tools/args.rs` -> Вынести список допустимых цветов в статический массив const ALLOWED_CENSOR_COLORS, переиспользуемый и для валидации, и потенциально для описания в OpenAPI/типах фронтенда.
-344. 🟡 [дизайн/OCP] Добавление нового look-пресета требует знания имени в filter_preset, но нет единого списка допустимых имён, используемого и для валидации, и для UI - `backend/src/tools/args.rs` -> Экспортировать список имён пресетов через отдельную fn filter_preset_names() -> &'static [&'static str] и переиспользовать её при валидации в normalize_edit_request.
+344. 🟡 [дизайн/OCP] Backend использует единый `LookPreset` enum, но frontend options ещё не генерируются из этого контракта. -> Включить enum в generated Rust/TS API/options manifest. `backend/src/domain/edit.rs`, `frontend/src/domain/edit.ts`
 345. 🟡 [проблема] parse_aspect полагается только на u32::parse без учёта возможных пробелов внутри числа (не только по краям) - `backend/src/tools/args.rs` -> Добавить unit-тест на parse_aspect с граничными строками ('09:16', ' 9 : 16 ', '9:-16'), чтобы зафиксировать текущее поведение как контракт.
 346. 🟠 [проблема] censor применяется в исходных координатах до crop, но нет теста на порядок censor относительно rotate/flip - `backend/src/tools/args.rs` -> Добавить unit-тест на комбинацию censor+rotate=90, документирующий, что censor координаты — всегда в исходной (до поворота) системе координат.
 347. 🟠 [улучшение/SRP] build_ffmpeg_args совмещает выбор режима (single vs concat), диспетчеризацию формата и финальную сборку -y/-i/output в одной функции - `backend/src/tools/args.rs` -> Разбить на build_single_args/build_input_trim/dispatch_by_format, оставив build_ffmpeg_args тонким координатором.
-348. 🟠 [проблема] quality: Option<u32> используется как CRF для принципиально разных кодеков (x264 0-51, vp9/av1 0-63) без указания в типе, что диапазоны отличаются - `backend/src/model.rs` -> Документировать диапазон по кодеку в doc-комментарии и/или клампить per-codec в normalize_edit_request, как указано в отдельном пункте про отсутствие валидации quality.
-349. 🟡 [проблема] censor_color: Option<String> — строка вместо enum, хотя допустимых значений всего четыре - `backend/src/model.rs` -> Либо валидировать значение в normalize_edit_request по тому же whitelist, что и sanitize_color, либо перейти на serde enum с #[serde(rename_all)].
+348. ✅ [модель] Codec-specific CRF defaults/ranges принадлежат typed `OutputSpec`. `backend/src/domain/output.rs`
+349. ✅ [модель] `CensorColor` enum whitelist отклоняет неизвестные значения вместо silent black fallback. `backend/src/domain/edit.rs`
 350. 🟡 [проблема] filter: Option<String> в model.rs документирует только 4 из 8 реальных пресетов - `backend/src/model.rs` -> Обновить doc-комментарий в model.rs, перечислив все 8 текущих пресетов, либо сослаться на filter_preset как источник истины.
 351. 🟡 [проблема] push_fps форматирует fps с фиксированными 3 знаками после запятой даже для целых значений - `backend/src/tools/args.rs` -> Не критично технически; при желании можно использовать более компактное форматирование только для читаемости логов.
 352. 🟠 [проблема] build_concat_args не поддерживает mp3/png/jpg/gif форматы из-за жёсткого matches! в build_ffmpeg_args, хотя multi-segment gif был бы осмысленным сценарием - `backend/src/tools/args.rs` -> Либо расширить build_concat_args для аудио/still-форматов, либо явно возвращать ошибку в handler, если segments заданы вместе с неподдерживающим форматом.
-353. 🔴 [баг] render_cache_key считается по EditRequest до normalize_edit_request, а не после нормализации - `backend/src/handlers/mod.rs` -> Переместить вычисление cache_key после normalize_edit_request, либо клонировать/нормализовать req перед первым вызовом render_cache_key.
+353. 🔴 [баг] render_cache_key всё ещё считается по wire `EditRequest`, а не по normalized `EditPlan.plan_fingerprint`. - `backend/src/handlers/mod.rs` -> Перестроить cache lookup/single-flight вокруг source probe + plan compile.
 354. 🟠 [баг] scale с h=-1 может дать нечётную высоту и сломать кодирование в yuv420p - `backend/src/tools/args.rs` -> Либо запретить -1 в validate_scale и разрешить только -2 (гарантированно чётный), либо документировать пользователю разницу и не считать -1 безопасным по умолчанию.
 355. 🟡 [проблема/DRY] fps для gif применяется отдельным путём с собственным дефолтом 12.0, минуя push_fps и его защиту диапазона - `backend/src/tools/args.rs` -> Переиспользовать общую функцию resolve_fps(edit) -> f64 с единым дефолтом и диапазоном для всех форматов, включая gif.
 356. 🟡 [проблема/SRP] clamp_rect_to_source в handlers занижает минимальный размер прямоугольника до 1px для источников шириной/высотой 1 - `backend/src/handlers/mod.rs` -> Для источников шириной/высотой 1 либо отклонять crop/censor полностью, либо документировать, что вырожденные источники не поддерживают crop/censor.
 357. 🟡 [проблема/DRY] push_audio дублирует финальный шаг push_video_codec (кодек+битрейт) как отдельную самостоятельную функцию вместо общей точки сборки аудио+видео пары - `backend/src/tools/args.rs` -> Объединить в один вызов, принимающий format один раз и решающий и видео-, и аудио-кодек вместе, снижая риск рассинхрона между веткам.
 358. 🟡 [дизайн/OCP] filter_preset и sanitize_color — закрытые для расширения справочники без единого источника допустимых значений для API-документации - `backend/src/tools/args.rs` -> Добавить эндпоинт GET /api/capabilities (или аналог), отдающий списки допустимых filter/censor_color/codec/format значений, построенные на тех же константах, что использует args.rs.
 359. 🟡 [проблема/DIP] expected_output_secs игнорирует reverse и представляет длительность одинаково для reverse и не-reverse клипов - `backend/src/tools/args.rs` -> Добавить короткий doc-комментарий, поясняющий, что reverse намеренно не входит в расчёт длительности, чтобы не создавать ложное ощущение недосмотра при код-ревью.
-360. 🟡 [проблема/SRP] edit_handler читает req.format для output_ext ещё до normalize_edit_request, хотя format вообще не валидируется normalize_edit_request - `backend/src/handlers/mod.rs` -> Явно задокументировать в normalize_edit_request или рядом с ней, какие поля EditRequest она не трогает (format/codec/quality/filter/censor_color), чтобы вызывающий код не предполагал обратное.
+360. ✅ [SRP] Handler получает extension через typed `OutputFormat`; plan compiler повторно и строго валидирует format/output semantics до spawn. `backend/src/domain/output.rs`, `backend/src/handlers/mod.rs`
 361. 🟡 [улучшение/KISS] drawbox (censor) форсирует чётность неявно только через clamp_rect_to_source в handlers, а crop форсирует явно через '& !1' в args.rs — асимметричные механизмы для похожей задачи - `backend/src/tools/args.rs` -> Либо убрать дублирующий '& !1' из crop (раз чётность уже гарантирована upstream), либо добавить симметричную защиту для censor, чтобы обе ветки не полагались на разные уровни защиты.
 362. 🟡 [проблема/DRY] video_filters и build_concat_args по-разному вычисляют момент начала fade_out относительно out_dur, но сам out_dur получают из одного источника expected_output_secs - `backend/src/tools/args.rs` -> Добавить unit-тест, сравнивающий out_dur, переданный в video_filters, для эквивалентных single-trim и single-segment сценариев, чтобы зафиксировать инвариант согласованности.
 363. 🟡 [баг] gif-путь не проходит через push_fps и не наследует его защиту, дублируя логику дефолта fps отдельно от остальных форматов - `backend/src/tools/args.rs` -> Централизовать резолюцию fps (см. resolve_fps) для всех форматов включая gif, независимо от внешней нормализации.
@@ -778,7 +808,7 @@ Security и сеть (`tools/net.rs`, CORS/ServeDir в `lib.rs`, upload, Docker-
 API contract и ошибки (`model.rs` DTO, ответы хендлеров, `frontend/src/api.ts`, `types.ts`). Типизация границы wire-контракта, единый error-boundary.
 
 455. ✅ [проблема/SRP] Не было общего типа ошибки/IntoResponse - **закрыто в раунде 8:** `error.rs` централизует `AppError`/`AppResult`, safe internal logging и JSON `{error, code}` для handlers/extractors/fallbacks. `backend/src/error.rs`
-456. 🔴 [баг] Ошибка валидации EditRequest из normalize_edit_request никогда не попадает в тело HTTP-ответа POST /api/edit - `backend/src/handlers/mod.rs` -> Выполнить дешёвую часть валидации (то, что не требует probe_video) синхронно до spawn и вернуть 400 сразу, либо явно задокументировать это в контракте и убрать соответствующий фронтенд-код, ожидающий немедленной ошибки.
+456. 🔴 [баг] Ошибка `EditPlan::compile` приходит только как terminal job error, а не в тело `POST /api/edit`. - `backend/src/handlers/mod.rs` -> Выполнять source-independent DTO→domain validation до enqueue, source-aware compile оставить worker-у.
 457. ✅ [баг] cancel_handler имел отдельную форму ошибки - **закрыто в раунде 8:** not-found/conflict используют общий `AppError`. `backend/src/handlers/mod.rs`
 458. 🟠 [проблема/DRY] import_handler и upload_handler дублируют ручную сборку VideoInfo-JSON с разными допущениями о title - `backend/src/handlers/mod.rs` -> Вынести общий builder fn video_info_json(id, path, title, size) -> Value и передавать title как параметр из каждого источника.
 459. 🟠 [проблема/DRY] Ручной json!() вместо typed DTO во всех async job-хендлерах - `backend/src/handlers/mod.rs` -> Добавить в model.rs структуры VideoInfo и EditResult с Serialize и заменить json!() на них в обоих хендлерах.
@@ -793,7 +823,7 @@ API contract и ошибки (`model.rs` DTO, ответы хендлеров, `
 468. 🟠 [проблема] POST /api/edit не возвращает 404, если video_id не существует — ошибка видна только после факта в error job - `backend/src/handlers/mod.rs` -> Либо проверить существование source синхронно до spawn и вернуть 404, либо задокументировать асинхронную семантику как контракт и не пытаться её "чинить" частично.
 469. ✅ [баг] upload_handler выдавал клиенту сырой `io::Error` - **закрыто в раунде 8:** I/O source логируется как internal cause, наружу идёт безопасный `internal_error`. `backend/src/handlers/upload.rs`, `backend/src/error.rs`
 470. 🟡 [проблема] ImportRequest.start/end не валидируются на уровне модели - `backend/src/model.rs` -> Добавить #[serde(deny_unknown_fields)] и явную проверку 0 <= start < end в отдельной validate()-функции ImportRequest, вызываемой синхронно в import_handler до spawn.
-471. 🟠 [проблема/SRP] normalize_edit_request совмещает валидацию и мутацию/клэмпинг в одной функции с 10+ независимыми проверками - `backend/src/handlers/mod.rs` -> Разделить на validate_edit_request (только Err) и clamp_edit_request (только приведение к границам), вызываемые последовательно.
+471. 🟠 [проблема/SRP] `services/render.rs::normalize_request` всё ещё совмещает reject-policy и source-dependent canonicalization. -> Разделить wire validation и source normalization на два явных шага с typed error enum.
 472. ✅ [проблема] job_status_handler возвращал пустой 404 - **закрыто в раунде 8:** возвращает общий `not_found` envelope. `backend/src/handlers/mod.rs`
 473. 🟡 [проблема] getProjectByVideo — единственное место во фронте, где 404 трактуется как валидный null-результат - `frontend/src/api.ts` -> Ввести общий helper fetchOrNull/fetchOkOr404, явно кодирующий семантику "404 = ожидаемое отсутствие" одним способом для всех трёх мест.
 474. 🟠 [проблема] ProjectDto.edit — Partial<EditState> во фронте, но бэкенд хранит edit как serde_json::Value без проверки формы - `backend/src/db.rs` -> Переиспользовать EditRequest (или его подмножество) как typed Deserialize для поля edit в project_upsert_handler вместо произвольного Value.
@@ -815,7 +845,7 @@ API contract и ошибки (`model.rs` DTO, ответы хендлеров, `
 490. 🟡 [проблема/DIP] Формат Job.error — plain String — не различает пользовательскую ошибку валидации от внутренней ошибки ffmpeg/IO - `backend/src/model.rs` -> Добавить в Job поле error_kind: Option<ErrorKind> (Validation | Internal) либо разделить сообщение на user-facing и internal (логируемое отдельно через tracing) в finish_job.
 491. 🟡 [проблема/DRY] getJob и pollJob не переиспользуют список терминальных статусов, уже определённый на бэкенде через JobStatus::is_terminal - `frontend/src/api.ts` -> Добавить в types.ts функцию isTerminalStatus(status: JobStatus): boolean и использовать её и в pollJob, и в любом другом месте фронта, проверяющем завершённость job.
 492. 🟠 [баг] cancelJob проглатывает даже успешный не-2xx ответ (404/409 CancelJobOutcome), не давая вызывающему коду отличить исходы - `frontend/src/api.ts` -> Вернуть из cancelJob Promise<'cancelled'|'not_found'|'already_finished'|'network_error'> вместо void, разобрав тело/статус ответа.
-493. 🟡 [проблема/OCP] normalize_edit_request жёстко перечисляет пары (поле, русское сообщение) построчно вместо декларативного описания - `backend/src/handlers/mod.rs` -> Осознанно оставить как есть для текущего размера EditRequest (27 полей управляемо) либо ввести макрос/массив описаний только если список продолжит расти.
+493. 🟡 [проблема/OCP] `services/render.rs::normalize_request` жёстко перечисляет numeric policies и русские сообщения. -> Вводить declarative field policy только вместе с generated API/options contract, не отдельным макросом.
 494. 🟡 [проблема/ISP] ProjectDto на фронте требует video: VideoInfo целиком, хотя store.ts передаёт в saveProject произвольный state.video без структурной проверки - `frontend/src/api.ts` -> Типизировать параметр saveProject как { videoId: string; name?: string; video: VideoInfo; edit: Partial<EditState> } вместо Record<string, unknown>, чтобы TS проверял вызывающий код, а не только ответ.
 495. 🟠 [баг] project_get_handler (GET /api/projects/:id) и project_list_handler/getProjects/deleteProject объявлены и экспортированы, но не используются нигде на фронтенде - `backend/src/http/mod.rs` -> Либо удалить неиспользуемые эндпоинты/функции, либо подключить их к UI (например список сохранённых проектов), если такая фича планируется.
 496. 🟡 [проблема/SRP] finish_from_render_cache совмещает чтение кэша, валидацию имени файла, проверку существования файла на диске и обновление статуса job в одной функции - `backend/src/handlers/mod.rs` -> Вынести валидацию имени + существования файла в отдельную fn cached_output_is_usable(st, filename) -> bool и оставить в finish_from_render_cache только оркестрацию.
@@ -1008,7 +1038,7 @@ Frontend компоненты (`EditPanel.vue` и остальные `.vue`). Go
 659. 🟠 [проблема] JOB_TIMEOUT_SECS нигде не тестируется на реальное срабатывание - `backend/src/handlers/mod.rs` -> Добавить render.rs-тест, который выставляет JOB_TIMEOUT_SECS в малое значение через env и запускает заведомо долгий ffmpeg-рендер, проверяя переход job в error/timeout.
 660. 🟡 [проблема] Нет теста на восстановление после падения посреди рендера с недописанным output-файлом - `backend/tests/api.rs` -> Добавить в jobs_survive_restart создание недописанного *.part или .mp4 файла в outputs/ перед recover_jobs и проверить, что он не отдаётся как валидный результат.
 661. 🟠 [проблема] Нет теста на гонку cancel_open_job и finish_job в момент завершения worker'а - `backend/src/handlers/mod.rs` -> Добавить тест с tokio::join! на cancel_open_job и finish_job над одной job, запущенный многократно (loom или stress-repeat), чтобы отловить неатомарность.
-662. 🟡 [проблема] Нет property/fuzz-тестов для normalize_edit_request и clamp_rect_to_source - `backend/src/handlers/mod.rs` -> Добавить proptest, генерирующий source_width/height и rect в диапазоне 0..=8000, и утверждающий, что clamp_rect_to_source никогда не паникует и всегда возвращает rect внутри границ источника.
+662. 🟡 [проблема] Для `EditPlan::compile`/source geometry есть example/regression tests, но нет property/fuzz-корпуса. - `backend/src/services/render.rs` -> Добавить proptest для duration/rect/scale и проверять containment, finite identity и panic freedom.
 663. ✅ [проблема] SSRF-тесты не покрывали DNS rebinding между валидацией URL и фактическим скачиванием - **закрыто в раунде 6:** injected resolver меняет public initial answer на private download answer; тест подтверждает policy block до connect. `backend/src/tools/egress_proxy.rs`
 664. 🟡 [проблема/DRY] make_state дублируется почти дословно между api.rs и handlers/mod.rs::tests::state() - `backend/tests/api.rs` -> Вынести общую фабрику AppState для тестов в отдельный test-util модуль (например backend/src/test_support.rs с #[cfg(test)]) и переиспользовать из обоих мест.
 665. 🟡 [проблема] Нет теста на конкурентный upload двух файлов с коллизией video_id - `backend/tests/api.rs` -> Добавить тест, отправляющий два параллельных multipart upload и проверяющий, что оба файла сохраняются под разными id без порчи данных.
@@ -1092,45 +1122,47 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 <a id="module-domain"></a>
 ### Модуль: Доменная модель и архитектура целиком (cross-cutting SOLID и DRY) (48)
 
-Доменная модель и архитектура целиком (cross-cutting SOLID/DRY). Тройная роль `EditRequest`, контракт правки в 6 местах, отсутствие Timeline-IR/OutputSpec.
+Доменная модель и архитектура целиком (cross-cutting SOLID/DRY). Typed edit/output
+plan и export port реализованы; generated TS contract, Timeline compiler и
+normalized render-cache identity остаются следующими границами.
 
-736. 🔴 [проблема/SRP] EditRequest — это одновременно wire DTO, доменная модель и вход билдера ffmpeg - `backend/src/model.rs` -> Развести на EditRequestDto (serde-граница), EditPlan/EditState (валидированная доменная модель) и FfmpegSpec (вход билдера), с явным преобразованием между ними.
+736. ✅ [SRP/DIP] `EditRequest` ограничен wire boundary; `EditPlan::compile` явно преобразует его в `EditSpec` + `OutputSpec`, а FFmpeg зависит от immutable plan через `ExportCommandCompiler`. `backend/src/domain/edit.rs`, `backend/src/domain/output.rs`, `backend/src/services/render.rs`, `backend/src/ports/media_export.rs`
 737. 🔴 [проблема/DRY] Контракт полей правки продублирован в шести местах без единого источника истины - `backend/src/model.rs` -> Сгенерировать TS-тип из Rust (например, ts-rs/specta) и вывести PRESET_KEYS/дефолты из единственного описания полей.
 738. 🔴 [проблема/OCP] Новый эффект требует правок в 4+ несвязанных файлах backend - `backend/src/tools/args.rs` -> Ввести таблицу/реестр эффектов (имя, тип параметра, диапазон, генератор фильтра) как единый источник для валидации, сборки фильтров и UI.
 739. 🟠 [проблема] edit_json в проектах хранится как непроверенный serde_json::Value - `backend/src/db.rs` -> Десериализовать edit в EditState/EditRequest перед записью в БД и отклонять невалидные значения на project_upsert_handler.
 740. 🟠 [дизайн] На бэкенде нет доменного типа Project/EditState — только строка edit_json + Value на границе - `backend/src/db.rs` -> Ввести ProjectUpsertRequest { video_id, name, video: VideoInfo, edit: EditRequest } и десериализовать тело запроса в него целиком.
-741. 🟠 [проблема/SRP] normalize_edit_request мутирует EditRequest на месте, смешивая валидацию, клэмпинг и парсинг ошибок - `backend/src/handlers/mod.rs` -> Разделить на чистую функцию validate(&EditRequest) -> Result<(), ValidationError> и normalize(&mut EditRequest) без сообщений об ошибках внутри валидации.
-742. 🔴 [баг] render_cache_key считается до normalize_edit_request, что делает кэш нестабильным для эквивалентных запросов - `backend/src/handlers/mod.rs` -> Переместить вызов normalize_edit_request перед вычислением render_cache_key, до входа в spawn (после первого probe_video, если размеры нужны для клэмпа rect).
+741. ✅ [SRP] Source-dependent normalization удалена из HTTP handler и принадлежит `EditPlan::compile`; domain constructors и custom serde независимо перепроверяют инварианты. `backend/src/services/render.rs`, `backend/src/domain/edit.rs`
+742. 🔴 [баг] render_cache_key считается до `EditPlan::compile`, поэтому не использует canonical plan identity. - `backend/src/handlers/mod.rs` -> Перестроить lookup/single-flight после source probe вокруг `plan_fingerprint`.
 743. 🟠 [проблема/DRY] Форматно-специфичные наборы кодеков дублируются между push_video_codec и build_concat_args - `backend/src/tools/args.rs` -> Вынести единую функцию audio_codec_for_format(format) -> &str и переиспользовать её в push_audio-вызовах и build_concat_args.
 744. 🟡 [улучшение/OCP] filter_preset и qualityTier/tierToCrf — строковые enum без типовой защиты на границе backend/frontend - `backend/src/tools/args.rs` -> Определить общий enum LookPreset с сериализацией serde(rename_all) на бэке и сгенерировать соответствующий TS union.
-745. 🟠 [проблема] Неизвестное значение filter молча игнорируется вместо ошибки валидации - `backend/src/tools/args.rs` -> В normalize_edit_request проверять edit.filter по белому списку допустимых пресетов и возвращать anyhow::bail! при несовпадении.
+745. ✅ [валидация] Неизвестные look preset и censor color отклоняются typed parser до создания плана. `backend/src/domain/edit.rs`, `backend/src/services/render.rs`
 746. 🟡 [проблема/SRP] buildEditPayload дублирует логику default-значений, уже описанную в defaultEdit - `frontend/src/store.ts` -> Сравнивать state.edit с результатом defaultEdit() программно (diff по ключам) вместо ручного перечисления условий.
 747. 🟡 [проблема/DRY] tierToCrf дублирует пороги качества, независимо заданные как unwrap_or в push_video_codec - `frontend/src/store.ts` -> Переносить дефолтный CRF только на бэкенд и убрать qualityTier/tierToCrf с фронта, либо наоборот сделать таблицу серверной и отдавать её через /api.
 748. 🟠 [проблема/ISP] EditPanel.vue читает и пишет весь глобальный state.edit напрямую, а не через props/emit - `frontend/src/components/EditPanel.vue` -> Ввести props для конкретных секций (trim, crop, effects) и emit('update:...') вместо прямого чтения/записи в общий reactive state.
 749. 🟠 [проблема/DIP] store.ts напрямую знает о localStorage и HTTP/SQLite-эндпоинтах вместо абстракции хранилища - `frontend/src/store.ts` -> Выделить интерфейс PresetStore/ProjectStore с реализациями поверх localStorage и HTTP, инжектируемыми в store.ts.
 750. 🟡 [идея] Нет Timeline IR — EditRequest моделирует одну операцию на весь клип, а не последовательность операций - `backend/src/model.rs` -> Спроектировать Timeline { clips: Vec<ClipRef>, ops: Vec<Operation> } как отдельный IR поверх текущего EditRequest для одноклипового MVP.
-751. 🟡 [идея] Нет OutputSpec, отделённого от EditRequest — формат/кодек/качество перемешаны с эффектами обработки - `backend/src/model.rs` -> Вынести format/codec/quality в отдельный OutputSpec, передаваемый вместе с EditRequest, но независимо валидируемый и кэшируемый.
+751. ✅ [модель] `OutputSpec` отделяет format/codec/audio/CRF/fps/dimensions, имеет codec-specific defaults и invariant-preserving serde. `backend/src/domain/output.rs`
 752. 🟡 [проблема] Нет domain events / audit trail для отредактированных клипов - `backend/src/db.rs` -> При желании версионирования — добавить таблицу project_history с append-only записями вместо UPDATE по video_id.
 753. 🟡 [улучшение/KISS] capturePreset использует небезопасный `as unknown as Record<string, unknown>` вместо типобезопасного маппинга - `frontend/src/store.ts` -> Заменить на `(Object.keys(state.edit) as (keyof EditState)[])` без unknown-каста, либо явный switch по ключам с корректной типизацией.
 754. 🟡 [проблема] PRESET_KEYS не включает поля geometry (crop/censor/scale/trim/cut), но критерий 'reusable look' не проверяется тестами - `frontend/src/store.ts` -> Либо исключить censorColor из PRESET_KEYS вместе с остальной geometry, либо добавить тест, фиксирующий намеренный список полей пресета.
 755. 🟡 [проблема/SRP] JobStatus::from_token имеет неявный fallback на Pending, скрывающий реальные ошибки БД - `backend/src/model.rs` -> Вернуть Result<JobStatus, String> или залогировать tracing::warn при непойманном значении вместо тихого fallback.
 756. 🟡 [проблема/OCP] Job.stage — свободная строка без enum, допустимые значения перечислены только в комментарии - `backend/src/model.rs` -> Заменить на enum JobStage { Queued, Downloading, Processing } с serde(rename_all = "lowercase").
 757. 🟡 [проблема/DRY] censorColor whitelist (sanitize_color) не синхронизирован с UI-опциями цвета на фронте - `backend/src/tools/args.rs` -> Экспортировать список допустимых цветов с бэкенда (например, через /api/health или отдельный constants-эндпоинт) и генерировать из него select-опции на фронте.
-758. 🟠 [проблема/LSP] Trim/Crop/Scale не гарантируют инвариант end > start / w,h > 0 на уровне типа - `backend/src/model.rs` -> Ввести smart-constructor (TryFrom) для Trim/Crop/Scale, возвращающий Result при нарушении инварианта прямо на этапе десериализации.
+758. ✅ [LSP] Wire `Trim`/`Crop`/`Scale` преобразуются в `TimeRange`/`PixelRect`/`OutputScale`; создать или десериализовать невалидный `EditSpec` нельзя. `backend/src/domain/edit.rs`
 759. 🟡 [идея] Нет endpoint/типа для получения списка допустимых значений effect enum'ов клиентом - `backend/src/tools/args.rs` -> Добавить /api/edit-options, отдающий JSON с допустимыми пресетами/цветами/форматами, и генерировать UI-опции из него.
-760. 🟠 [проблема] codec='h265' проверяется строковым сравнением в двух независимых функциях - `backend/src/tools/args.rs` -> Валидировать codec по белому списку ['h264','h265'] в normalize_edit_request и завести Codec enum вместо Option<String>.
+760. ✅ [типизация] `VideoCodec` валидируется один раз; adapter получает codec из `OutputSpec`, без строкового сравнения request. `backend/src/domain/output.rs`, `backend/src/tools/args.rs`
 761. 🟡 [дизайн] qualityTier на фронте не имеет прямого отражения в EditRequest — переводится в quality: CRF асимметрично формату - `frontend/src/types.ts` -> Либо хранить qualityTier прямо в EditRequest как typed enum и переводить в CRF только на бэкенде, либо восстанавливать tier обратным поиском по CRF при загрузке проекта.
-762. 🟡 [баг] quality: Option<u32> не валидируется в normalize_edit_request вообще - `backend/src/handlers/mod.rs` -> Добавить clamp по разумному диапазону CRF (например 0..=51) в normalize_edit_request перед использованием quality.
+762. ✅ [баг] `OutputSpec` применяет codec-specific CRF defaults и пределы (H.264/H.265 0..51, VP9/AV1 0..63). `backend/src/domain/output.rs`
 763. 🟡 [проблема/DRY] format_secs — тривиальная однострочная обёртка, дублирующая format! напрямую использованный в другом месте - `backend/src/tools/args.rs` -> Использовать format_secs везде, где форматируется время в секундах внутри этого файла, либо удалить обёртку и оставить прямой format!.
 764. 🟡 [идея] Нет versioning/schema-migration стратегии для EditState, персистентно хранимого в localStorage и SQLite - `backend/src/db.rs` -> Либо реализовать фактическую миграцию по schema_version при чтении старых edit_json, либо убрать неиспользуемую колонку из схемы, чтобы не создавать ложное ощущение защиты.
-765. ✅ [модель] `EditRequest`, `Trim`, `Crop` и `Scale` реализуют `Clone`/`PartialEq`; immutable `EditPlan`, preview/export contracts и identity tests используют один typed request без повторной десериализации. `backend/src/model.rs`, `backend/src/services/render.rs`
+765. ✅ [модель] `EditPlan` v2 immutable и source-aware; identity tests покрывают source fingerprint, source metadata, typed edit/output и serde tampering. `backend/src/services/render.rs`
 766. 🟠 [баг] video_filters строит drawbox/crop по исходным координатам, но segments-путь применяет их уже после конкатенации нескольких кусков - `backend/src/tools/args.rs` -> Задокументировать явно, что censor/crop-координаты валидны только пока все сегменты берутся из одного source с постоянным разрешением.
-767. 🟠 [баг] reverse при segments переворачивает уже склеенный ролик целиком, а не порядок и содержимое каждого сегмента отдельно - `backend/src/tools/args.rs` -> Задокументировать точную семантику reverse+segments в комментарии к video_filters либо запретить их комбинацию в normalize_edit_request.
-768. 🟡 [проблема/DRY] expected_output_secs пересчитывается дважды на разных стадиях с разным клэмпом speed - `backend/src/tools/args.rs` -> Сделать expected_output_secs приватной деталью build_ffmpeg_args и возвращать (Vec<String>, f64) одним вызовом, чтобы длительность не пересчитывалась внешним кодом отдельно.
+767. 🟠 [баг] reverse при segments переворачивает уже склеенный ролик целиком, а не порядок и содержимое каждого сегмента отдельно - `backend/src/tools/args.rs` -> Зафиксировать семантику в `EditPlan::compile` либо запретить неоднозначную комбинацию.
+768. ✅ [DRY] `FfmpegExportCompiler` возвращает `CompiledExportCommand { arguments, expected_duration_seconds }` из одного compile pass. `backend/src/ports/media_export.rs`, `backend/src/tools/args.rs`
 769. 🟡 [проблема/DRY] MediaEntry::from_result парсит JSON вручную теми же ключами, что json!({...}) в handlers/mod.rs, без общего типа-источника - `backend/src/library.rs` -> Ввести общий struct ResultInfo/SourceInfo с Serialize и строить его напрямую вместо json!({...}), передавая typed-значение в MediaEntry::from_result.
-770. 🟡 [проблема/SRP] clamp_rect_to_source не обеспечивает чётность w/h в общем случае, только для источников с обеими сторонами >= 2 - `backend/src/handlers/mod.rs` -> Централизовать форсирование чётности в одном месте (либо только normalize_edit_request, либо только video_filters), не дублируя в обоих.
+770. 🟡 [проблема/SRP] Source clamp и encoder even-rounding разделены между plan compiler и FFmpeg adapter; one-pixel zero bug закрыт, но ownership policy остаётся двойным. `backend/src/services/render.rs`, `backend/src/tools/args.rs` -> Ввести encoder pixel-format capability в output compile policy.
 771. 🟡 [проблема/DRY] Job.stage строковые литералы 'queued'/'downloading'/'processing' захардкожены в handlers/mod.rs без общего источника - `backend/src/handlers/mod.rs` -> Ввести JobStage enum (см. отдельный пункт про Job.stage) и заменить строковые литералы на его варианты.
-772. 🟡 [проблема/OCP] output_ext и push_video_codec независимо перечисляют один и тот же список форматов - `backend/src/tools/args.rs` -> Определить единый Format enum с методом .extension() и .video_codec_kind(), чтобы оба свойства выводились из одного описания формата.
+772. ✅ [OCP] `OutputFormat::extension` и validated `OutputSpec.video_codec` являются единым typed source для filename и encoder. `backend/src/domain/output.rs`
 773. 🟠 [проблема/SRP] project_upsert_handler валидирует форму project JSON вручную через Value-индексацию вместо десериализации в типизированный DTO - `backend/src/http/mod.rs` -> Определить `#[derive(Deserialize)] struct ProjectUpsertRequest { video_id: String, video: Value, edit: Value, name: Option<String> }` и заменить Json<Value> на Json<ProjectUpsertRequest>.
 774. 🟡 [проблема/SRP] ensure_project_json_size сериализует video/edit ещё раз только для проверки размера, а upsert_project сериализует их снова - `backend/src/http/mod.rs` -> Сериализовать video/edit один раз в handler, передать готовые строки в Db::upsert_project (изменив сигнатуру на &str) и проверять их len() напрямую.
 775. 🟠 [проблема/SRP] Db::upsert_project делает SELECT id, затем UPDATE/INSERT, затем ещё раз SELECT * без единой транзакции - `backend/src/db.rs` -> Обернуть три запроса в одну транзакцию (pool.begin()) или использовать один INSERT ... ON CONFLICT(video_id) DO UPDATE ... RETURNING *.
@@ -1139,7 +1171,7 @@ Config/build/Docker/CI/observability. Env разбросан по местам, 
 778. 🟡 [проблема/SRP] watch(() => [state.video, state.edit]) в автосейве триггерится на любое изменение video, включая переключение на null при deleteFromLibrary - `frontend/src/store.ts` -> Разделить на два отдельных watch: один для смены клипа (сброс/восстановление проекта), другой только для state.edit (debounced autosave).
 779. 🟡 [проблема/DRY] MediaEntry (frontend types.ts) не отражает поля vcodec/acodec/fps, которые есть в VideoInfo, из-за чего openFromLibrary теряет эти данные при реоткрытии клипа - `frontend/src/types.ts` -> Добавить vcodec/acodec/fps в MediaEntry и в MediaEntry::from_result (library.rs:33-46), либо запрашивать полный VideoInfo отдельным эндпоинтом при открытии из библиотеки.
 780. 🟡 [улучшение/OCP] video_filters добавляет каждый новый эффект через последовательный if-блок, порядок эффектов задан императивно и не выражен декларативно - `backend/src/tools/args.rs` -> Вынести список эффектов как Vec<(EffectKind, impl Fn(&EditRequest) -> Option<String>)> в фиксированном порядке, чтобы порядок был декларативным и виден без чтения всего тела функции.
-781. 🟡 [баг] output_ext(Some("av1")) возвращает mp4, но non-concat путь build_ffmpeg_args не проверяет совпадение с output_ext при формировании output_path - `backend/src/handlers/mod.rs` -> Сделать build_ffmpeg_args принимать уже вычисленный output_ext как параметр вместо того, чтобы оба места independently решали расширение по строке format.
+781. ✅ [баг] Filename и adapter используют один `OutputFormat`; AV1 типизированно отображается в MP4 extension/container без независимого string fallback. `backend/src/domain/output.rs`, `backend/src/handlers/mod.rs`, `backend/src/tools/args.rs`
 782. 🟡 [улучшение/DIP] state.rs напрямую использует std::collections::HashMap с ручной блокировкой Mutex вместо инкапсуляции job-хранилища за отдельным типом - `backend/src/state.rs` -> Вынести JobStore { jobs: Mutex<HashMap<...>>, cancels: Mutex<HashMap<...>> } в отдельный тип со своим API, инжектируемый в AppState.
 783. 🟠 [баг] render_locks в AppState растёт неограниченно — записи никогда не удаляются после завершения рендера - `backend/src/state.rs` -> После освобождения _render_guard в edit_handler удалять запись из render_locks (например, через weak-reference или periodic sweep неиспользуемых Arc с strong_count == 1).
 
@@ -1246,7 +1278,7 @@ matrix и причины находятся в `docs/process-isolation.md`.
 789. ✅ [perf/UX/Kdenlive] Content-addressed proxy service проверяет source checksum, single-flight generation, verified relink и безопасное удаление; FFmpeg staging сохраняет media suffix, progress без consumer не буферизуется, export всегда разрешается в original. Пользовательское подключение preview URL остаётся отдельной integration-задачей. `backend/src/analysis/proxy.rs`, `backend/src/tools/proxy.rs`
 790. ✅ [контракт/Shotcut] Реализован runtime manifest encoders/muxers/filters/hardware с tool fingerprint и reason для unavailable; frontend блокирует неподдерживаемые форматы, кодеки и фильтры. `backend/src/capabilities.rs`, `frontend/src/components/`
 791. ✅ [perf/Blender] Typed artifact DAG связывает fingerprints и dependencies; изменение узла удаляет только downstream closure, unrelated artifacts сохраняются, а serde не может обойти key/dependency/cycle invariants. `backend/src/domain/artifact_graph.rs`
-792. ✅ [SRP/OBS] Immutable `EditPlan` общий, но preview/export execution profiles независимы; serde пересчитывает identity/output, contract test запрещает preview policy менять финальный `OutputSpec`. `backend/src/services/preview.rs`, `backend/src/services/render.rs`
+792. ✅ [SRP/DIP/OBS] Immutable source-aware `EditPlan` v2 содержит validated `EditSpec` + `OutputSpec`; preview/export profiles независимы, serde пересчитывает identity, а export проходит через `ExportCommandCompiler` port. `backend/src/domain/edit.rs`, `backend/src/domain/output.rs`, `backend/src/services/preview.rs`, `backend/src/services/render.rs`, `backend/src/ports/media_export.rs`
 793. ✅ [масштабирование/Remotion] Frame contract детерминирован по frame/plan/source/output fingerprints, single-flight publication привязывает checksum к ожидаемому path; corrupt artifact повторяется, cancellation/saturation не маскируются как corruption. `backend/src/render/frame_renderer.rs`
 
 ### B. Кодеки, качество и packaging (794-803)
@@ -1562,12 +1594,16 @@ impl IntoResponse for AppError { ... }
 
 ### Доменная модель (Timeline-IR)
 
-`EditRequest` сейчас тащит тройную роль (wire-DTO + домен + вход билдера). Цель -
-разделить:
+Нижняя typed-граница уже разделена: `EditRequest` — wire DTO, `EditPlan` v2 —
+immutable domain input, FFmpeg подключён через compiler port. Следующая цель —
+заменить одноклиповый `EditSpec` полноценной компиляцией Timeline IR:
 
 ```
 wire DTO (serde, camelCase)
-   │  to_plan()  — валидация, нормализация (trim/segments → Timeline), tier→CRF
+   │  EditPlan::compile() — source-aware validation/normalization, tier→CRF
+   ▼
+EditPlan v2 { source: SourceMediaSpec, edit: EditSpec, output: OutputSpec }  ✅
+   │  future TimelineCompiler
    ▼
 EditPlan { timeline: Timeline, output: OutputSpec }
   Timeline { segments: Vec<Segment> }            // «весь клип» = один сегмент
@@ -1575,7 +1611,7 @@ EditPlan { timeline: Timeline, output: OutputSpec }
   ScopedEffect { scope: Whole | Range(t0,t1), effect: Effect }   // задел под диапазоны
   Effect  enum { Crop/Rotate/Eq/LookPreset/Speed/Fade/... }      // эффект = 1 ветка компилятора
   OutputSpec enum { Mp4{codec,crf} | Webm{crf} | Av1{crf} | ProRes | Gif{fps} | Still | Audio }
-   │  compile(&EditPlan, &SourceProbe)  — чистая функция, без I/O
+   │  ExportCommandCompiler::compile(&RenderExecution) — чисто, без I/O
    ▼
 Vec<String>  (ffmpeg args / filter_complex)
 ```

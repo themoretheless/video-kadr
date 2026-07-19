@@ -352,6 +352,18 @@ graph/plan/chunk identities; proxy staging сохраняет muxer suffix и н
 сохраняет SVG и folded stacks. Это завершённый contract/adapter слой: включение
 proxy/chunk/package flows в пользовательский UI остаётся отдельной интеграцией.
 
+**Typed export compiler (20 июля 2026).** `EditRequest` теперь заканчивается на
+transport boundary. `EditPlan::compile` один раз нормализует запрос относительно
+probe metadata и создаёт versioned `EditPlan` из `SourceMediaSpec`, сгруппированного
+`EditSpec` и независимого `OutputSpec`. Smart types фиксируют time ranges,
+geometry, rotation, presets, format/codec, CRF, fps и mute/audio semantics;
+custom serde повторно проверяет инварианты и fingerprint. `RenderExecution`
+добавляет только resource policy, а `ExportCommandCompiler` отделяет application
+слой от `FfmpegExportCompiler`. Аргументы процесса и ожидаемая длительность
+компилируются одним результатом, без второго source-duration параметра.
+Открытыми намеренно остаются `Timeline -> EditPlan` compiler, generated Rust/TS
+contract и переход render-cache key с raw request на normalized plan hash.
+
 **Следующий исследовательский слой (18 июля 2026): ещё 100 идей.** Карточки
 №884-983 разбиты на 10 пакетов: container provenance, color/HDR, audio, timed
 text/accessibility, local-first storage, process isolation, reliability,
@@ -380,12 +392,13 @@ frontend (Vue 3 + Vite)
   └── GET  /files/outputs/<id>.mp4    -> результат
 
 backend (Rust + Axum + Tokio)
-  domain/          filter graph, timeline, probe, geometry, keyframes (pure)
+  domain/          typed edit/output/source, filter graph, timeline, media primitives
+  services/render  EditRequest + probe metadata -> immutable EditPlan v2
   jobs/            events, attempts, outbox, retry, registries, JobCell
   handlers/jobs.rs durable dispatch, lease heartbeat и operator HTTP API
-  http/            routers, service ports, route/middleware policy
-  ports/           replaceable search and application boundaries
-  tools/           ffmpeg/ffprobe/yt-dlp adapters
+  http/            wire DTO, routers и route/middleware policy
+  ports/           export compiler и replaceable application boundaries
+  tools/           FFmpeg compiler, ffprobe/yt-dlp/process adapters
   storage/staging/  приватный карантин незавершённых upload
   storage/sources/  скачанные оригиналы
   storage/outputs/  отрендеренные результаты
