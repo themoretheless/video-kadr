@@ -10,18 +10,15 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
+use crate::config::WorkloadConfig;
 use crate::db::Db;
-use crate::jobs::{
-    EnqueueOutcome, JobCell, JobEvent, JobKind, JobPermit, QueueLimits, SqliteJobStore,
-};
+use crate::jobs::{EnqueueOutcome, JobCell, JobEvent, JobKind, JobPermit, SqliteJobStore};
 use crate::library::Library;
 use crate::model::Job;
-use crate::ports::{MediaDocument, MediaSearch, SqliteMediaSearch};
+use crate::ports::{MediaDocument, MediaIndexWriter, MediaSearchQuery, SqliteMediaSearch};
 use crate::process_control::ProcessRuntime;
 use crate::runtime::cpu_pool::{CpuPool, CpuPoolConfig};
 use crate::runtime::TaskSupervisor;
-
-const DEFAULT_RECOVER_JOBS_LIMIT: i64 = 200;
 
 /// Availability and versions of the external tools we shell out to. Probed once
 /// at startup and surfaced via `/api/health`.
@@ -58,6 +55,7 @@ pub struct AppState {
     render_semaphore: Arc<Semaphore>,
     upload_semaphore: Arc<Semaphore>,
     max_concurrent_renders: usize,
+    workload: Arc<WorkloadConfig>,
     supervisor: TaskSupervisor,
     pub cpu_pool: CpuPool,
     pub encode_budget: EncodeBudget,
@@ -66,7 +64,8 @@ pub struct AppState {
     pub library: Library,
     pub db: Db,
     pub job_store: SqliteJobStore,
-    pub media_search: Arc<dyn MediaSearch>,
+    pub media_search: Arc<dyn MediaSearchQuery>,
+    pub media_index: Arc<dyn MediaIndexWriter>,
     pub storage: PathBuf,
 }
 
@@ -140,7 +139,9 @@ impl AppState {
             queue_capacity: cpu_queue_capacity,
         })?;
         let job_store = SqliteJobStore::new(db.clone());
-        let media_search = Arc::new(SqliteMediaSearch::new(db.clone()));
+        let media_adapter = Arc::new(SqliteMediaSearch::new(db.clone()));
+        let media_search: Arc<dyn MediaSearchQuery> = media_adapter.clone();
+        let media_index: Arc<dyn MediaIndexWriter> = media_adapter;
         Ok(AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
@@ -149,6 +150,7 @@ impl AppState {
             render_semaphore: Arc::new(Semaphore::new(max_concurrent_renders)),
             upload_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             max_concurrent_renders,
+            workload: Arc::new(WorkloadConfig::default()),
             supervisor: TaskSupervisor::default(),
             cpu_pool,
             encode_budget,
@@ -158,8 +160,14 @@ impl AppState {
             db,
             job_store,
             media_search,
+            media_index,
             storage,
         })
+    }
+
+    pub fn with_workload_config(mut self, workload: WorkloadConfig) -> Self {
+        self.workload = Arc::new(workload);
+        self
     }
 
     pub async fn set_job(&self, job: Job) {
@@ -185,7 +193,7 @@ impl AppState {
     ) -> anyhow::Result<EnqueueOutcome> {
         let outcome = self
             .job_store
-            .enqueue(id, kind, payload, dedupe_key, queue_limits())
+            .enqueue(id, kind, payload, dedupe_key, self.workload.queue_limits)
             .await?;
         if let EnqueueOutcome::Created(job) = &outcome {
             self.remember_job(job.clone()).await;
@@ -208,17 +216,12 @@ impl AppState {
         }
     }
 
-    pub async fn get_job(&self, id: &str) -> Option<Job> {
+    pub async fn get_job(&self, id: &str) -> anyhow::Result<Option<Job>> {
         if let Some(cell) = self.job_cell(id).await {
-            return Some(cell.snapshot().await);
+            return Ok(Some(cell.snapshot().await));
         }
-        let persisted = match self.db.load_job(id).await {
-            Ok(Some(job)) => job,
-            Ok(None) => return None,
-            Err(error) => {
-                tracing::warn!(job.id = id, %error, "load job on cache miss");
-                return None;
-            }
+        let Some(persisted) = self.db.load_job(id).await? else {
+            return Ok(None);
         };
         let cell = {
             let mut jobs = self.jobs.lock().await;
@@ -226,7 +229,7 @@ impl AppState {
                 .or_insert_with(|| Arc::new(JobCell::new(persisted)))
                 .clone()
         };
-        Some(cell.snapshot().await)
+        Ok(Some(cell.snapshot().await))
     }
 
     /// Mutate a job in place if it exists. Memory-only (used for frequent progress
@@ -247,7 +250,7 @@ impl AppState {
         cell.update_if_open(f).await
     }
 
-    pub async fn transition_job(&self, id: &str, event: JobEvent) -> bool {
+    pub async fn transition_job(&self, id: &str, event: JobEvent) -> anyhow::Result<bool> {
         self.transition_job_with_key(id, event, &Uuid::new_v4().to_string())
             .await
     }
@@ -257,9 +260,9 @@ impl AppState {
         id: &str,
         event: JobEvent,
         idempotency_key: &str,
-    ) -> bool {
+    ) -> anyhow::Result<bool> {
         let Some(cell) = self.job_cell(id).await else {
-            return false;
+            return Ok(false);
         };
         let tool_version = match &event {
             JobEvent::Started { stage, .. } if stage == "downloading" => {
@@ -287,21 +290,22 @@ impl AppState {
             })
             .await
         {
-            Ok(Some(_)) => true,
-            Ok(None) => false,
-            Err(error) => {
-                tracing::error!(job.id = id, %error, "persist job transition");
-                false
-            }
+            Ok(Some(_)) => Ok(true),
+            Ok(None) => Ok(false),
+            Err(error) => Err(error),
         }
     }
 
     /// Write the current in-memory state of a job to the database (best-effort).
     pub async fn persist_job(&self, id: &str) {
-        if let Some(job) = self.get_job(id).await {
-            if let Err(e) = self.db.persist_job(&job).await {
-                tracing::warn!("persist job {id}: {e}");
+        match self.get_job(id).await {
+            Ok(Some(job)) => {
+                if let Err(error) = self.db.persist_job(&job).await {
+                    tracing::warn!(job.id = id, %error, "persist job");
+                }
             }
+            Ok(None) => {}
+            Err(error) => tracing::warn!(job.id = id, %error, "load job before persist"),
         }
     }
 
@@ -317,7 +321,11 @@ impl AppState {
             Ok(_) => {}
             Err(error) => tracing::warn!(%error, "could not reconcile jobs"),
         }
-        match self.db.load_recent_jobs(recover_jobs_limit()).await {
+        match self
+            .db
+            .load_recent_jobs(self.workload.recover_jobs_limit)
+            .await
+        {
             Ok(jobs) => {
                 let mut guard = self.jobs.lock().await;
                 for job in jobs {
@@ -344,21 +352,21 @@ impl AppState {
     }
 
     /// Atomically mark a non-terminal job as cancelled, then signal its worker.
-    pub async fn cancel_open_job(&self, id: &str) -> CancelJobOutcome {
-        let Some(job) = self.get_job(id).await else {
-            return CancelJobOutcome::NotFound;
+    pub async fn cancel_open_job(&self, id: &str) -> anyhow::Result<CancelJobOutcome> {
+        let Some(job) = self.get_job(id).await? else {
+            return Ok(CancelJobOutcome::NotFound);
         };
         if job.status.is_terminal() {
-            return CancelJobOutcome::AlreadyFinished;
+            return Ok(CancelJobOutcome::AlreadyFinished);
         }
-        if !self.transition_job(id, JobEvent::Cancelled).await {
-            return CancelJobOutcome::AlreadyFinished;
+        if !self.transition_job(id, JobEvent::Cancelled).await? {
+            return Ok(CancelJobOutcome::AlreadyFinished);
         }
 
         if let Some(token) = self.cancels.lock().await.remove(id) {
             token.cancel();
         }
-        CancelJobOutcome::Cancelled
+        Ok(CancelJobOutcome::Cancelled)
     }
 
     pub async fn render_lock(&self, key: &str) -> Arc<Mutex<()>> {
@@ -452,6 +460,14 @@ impl AppState {
         self.max_concurrent_renders
     }
 
+    pub fn job_timeout(&self) -> Duration {
+        self.workload.job_timeout
+    }
+
+    pub fn max_download_height(&self) -> u32 {
+        self.workload.max_download_height
+    }
+
     pub async fn rebuild_media_search(&self) {
         let documents: Vec<_> = self
             .library
@@ -460,13 +476,13 @@ impl AppState {
             .iter()
             .map(MediaDocument::from)
             .collect();
-        if let Err(error) = self.media_search.rebuild(&documents).await {
+        if let Err(error) = self.media_index.rebuild(&documents).await {
             tracing::warn!(%error, "rebuild media search index");
         }
     }
 
     pub async fn index_media(&self, entry: &crate::library::MediaEntry) {
-        if let Err(error) = self.media_search.index(&MediaDocument::from(entry)).await {
+        if let Err(error) = self.media_index.index(&MediaDocument::from(entry)).await {
             tracing::warn!(media.id = %entry.id, %error, "index media");
         }
     }
@@ -476,50 +492,45 @@ impl AppState {
     }
 }
 
-fn recover_jobs_limit() -> i64 {
-    std::env::var("RECOVER_JOBS_LIMIT")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .filter(|v| *v > 0)
-        .unwrap_or(DEFAULT_RECOVER_JOBS_LIMIT)
-}
-
-fn queue_limits() -> QueueLimits {
-    let mut limits = QueueLimits::default();
-    if let Some(value) = env_u64("JOB_DEDUPE_TTL_SECS") {
-        limits.dedupe_ttl = Duration::from_secs(value);
-    }
-    if let Some(value) = env_u64("JOB_RATE_WINDOW_SECS") {
-        limits.rate_window = Duration::from_secs(value);
-    }
-    if let Some(value) = env_u64("JOB_RATE_LIMIT") {
-        limits.max_new_jobs = u32::try_from(value).unwrap_or(u32::MAX);
-    }
-    limits
-}
-
-fn env_u64(name: &str) -> Option<u64> {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jobs::QueueLimits;
     use crate::model::JobStatus;
+    use serde_json::json;
 
-    #[test]
-    fn recover_jobs_limit_defaults_on_bad_values() {
-        std::env::remove_var("RECOVER_JOBS_LIMIT");
-        assert_eq!(recover_jobs_limit(), DEFAULT_RECOVER_JOBS_LIMIT);
-        std::env::set_var("RECOVER_JOBS_LIMIT", "not-a-number");
-        assert_eq!(recover_jobs_limit(), DEFAULT_RECOVER_JOBS_LIMIT);
-        std::env::set_var("RECOVER_JOBS_LIMIT", "0");
-        assert_eq!(recover_jobs_limit(), DEFAULT_RECOVER_JOBS_LIMIT);
-        std::env::set_var("RECOVER_JOBS_LIMIT", "12");
-        assert_eq!(recover_jobs_limit(), 12);
-        std::env::remove_var("RECOVER_JOBS_LIMIT");
+    #[tokio::test]
+    async fn configured_workload_drives_job_and_import_limits() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let workload = WorkloadConfig {
+            job_timeout: Duration::from_secs(45),
+            recover_jobs_limit: 10,
+            queue_limits: QueueLimits {
+                max_new_jobs: 1,
+                ..QueueLimits::default()
+            },
+            max_download_height: 480,
+        };
+        let st =
+            AppState::new(storage, 2, ToolInfo::default(), lib, db).with_workload_config(workload);
+
+        assert_eq!(st.job_timeout(), Duration::from_secs(45));
+        assert_eq!(st.max_download_height(), 480);
+        assert!(matches!(
+            st.enqueue_job("one".into(), JobKind::Import, &json!({}), "first")
+                .await
+                .unwrap(),
+            EnqueueOutcome::Created(_)
+        ));
+        assert_eq!(
+            st.enqueue_job("two".into(), JobKind::Import, &json!({}), "second")
+                .await
+                .unwrap(),
+            EnqueueOutcome::RateLimited
+        );
     }
 
     #[tokio::test]
@@ -601,11 +612,11 @@ mod tests {
         .await;
 
         assert_eq!(
-            st.cancel_open_job("running").await,
+            st.cancel_open_job("running").await.unwrap(),
             CancelJobOutcome::Cancelled
         );
         assert!(token.is_cancelled());
-        let job = st.get_job("running").await.unwrap();
+        let job = st.get_job("running").await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Cancelled);
         assert!(job.stage.is_none());
         assert!(job.progress.is_none());
@@ -615,17 +626,20 @@ mod tests {
         );
 
         assert_eq!(
-            st.cancel_open_job("missing").await,
+            st.cancel_open_job("missing").await.unwrap(),
             CancelJobOutcome::NotFound
         );
 
         st.set_job(Job::pending("done".into())).await;
         st.update_job("done", |j| j.status = JobStatus::Done).await;
         assert_eq!(
-            st.cancel_open_job("done").await,
+            st.cancel_open_job("done").await.unwrap(),
             CancelJobOutcome::AlreadyFinished
         );
-        assert_eq!(st.get_job("done").await.unwrap().status, JobStatus::Done);
+        assert_eq!(
+            st.get_job("done").await.unwrap().unwrap().status,
+            JobStatus::Done
+        );
     }
 
     #[tokio::test]
@@ -637,8 +651,40 @@ mod tests {
         db.persist_job(&Job::pending("cold".into())).await.unwrap();
         let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
 
-        assert_eq!(st.get_job("cold").await.unwrap().id, "cold");
+        assert_eq!(st.get_job("cold").await.unwrap().unwrap().id, "cold");
         assert!(st.job_cell("cold").await.is_some());
+    }
+
+    #[tokio::test]
+    async fn job_storage_failure_is_not_reported_as_a_cache_miss() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+        st.db.pool().close().await;
+
+        assert!(st.get_job("cold").await.is_err());
+        assert!(st.cancel_open_job("cold").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn cancellation_persistence_failure_is_not_reported_as_finished() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+        st.set_job(Job::pending("running".into())).await;
+        let token = st.register_cancel("running").await;
+        st.db.pool().close().await;
+
+        assert!(st.cancel_open_job("running").await.is_err());
+        assert!(!token.is_cancelled());
+        assert_eq!(
+            st.get_job("running").await.unwrap().unwrap().status,
+            JobStatus::Pending
+        );
     }
 
     #[tokio::test]
@@ -650,12 +696,12 @@ mod tests {
         let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
         st.set_job(Job::pending("keyed".into())).await;
 
-        assert!(
-            st.transition_job_with_key("keyed", JobEvent::Queued, "same-key")
-                .await
-        );
-        assert!(
-            !st.transition_job_with_key(
+        assert!(st
+            .transition_job_with_key("keyed", JobEvent::Queued, "same-key")
+            .await
+            .unwrap());
+        assert!(st
+            .transition_job_with_key(
                 "keyed",
                 JobEvent::Started {
                     stage: "processing".into(),
@@ -664,9 +710,9 @@ mod tests {
                 "same-key",
             )
             .await
-        );
+            .is_err());
         assert_eq!(
-            st.get_job("keyed").await.unwrap().status,
+            st.get_job("keyed").await.unwrap().unwrap().status,
             JobStatus::Pending
         );
         assert_eq!(

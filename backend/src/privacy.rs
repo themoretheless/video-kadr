@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use serde_json::Value;
+
 /// Display a URL without credentials, query values or fragments.
 pub struct RedactedUrl<'a>(pub &'a str);
 
@@ -51,6 +53,48 @@ pub fn redact_text(input: &str) -> String {
     }
     output.push_str(rest);
     redact_absolute_paths(&output)
+}
+
+/// Redact sensitive values in JSON while preserving enough structure for local
+/// recovery diagnostics. Invalid JSON is treated as plain text.
+pub fn redact_json_text(input: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<Value>(input) else {
+        return redact_text(input);
+    };
+    redact_json_value(&mut value);
+    serde_json::to_string(&value).expect("redacted JSON serialization cannot fail")
+}
+
+fn redact_json_value(value: &mut Value) {
+    match value {
+        Value::String(text) => *text = redact_text(text),
+        Value::Array(values) => values.iter_mut().for_each(redact_json_value),
+        Value::Object(values) => {
+            for (key, value) in values {
+                if is_sensitive_json_key(key) {
+                    *value = Value::String("<redacted>".into());
+                } else {
+                    redact_json_value(value);
+                }
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
+}
+
+fn is_sensitive_json_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
+    [
+        "token",
+        "secret",
+        "password",
+        "authorization",
+        "cookie",
+        "apikey",
+        "signature",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
 }
 
 fn next_http_url(input: &str) -> Option<usize> {
@@ -142,5 +186,20 @@ mod tests {
             "probe <redacted-path> then <redacted-path>; url https://example.com/video"
         );
         assert!(!safe.contains("alice"));
+    }
+
+    #[test]
+    fn json_redaction_handles_nested_urls_and_named_secrets() {
+        let safe = redact_json_text(
+            r#"{"url":"https://example.test/video?token=CANARY","nested":{"api_key":"SECOND"},"items":["http://host/path?signature=THIRD"]}"#,
+        );
+        let value: Value = serde_json::from_str(&safe).unwrap();
+
+        assert_eq!(value["url"], "https://example.test/video?REDACTED");
+        assert_eq!(value["nested"]["api_key"], "<redacted>");
+        assert_eq!(value["items"][0], "http://host/path?REDACTED");
+        assert!(!safe.contains("CANARY"));
+        assert!(!safe.contains("SECOND"));
+        assert!(!safe.contains("THIRD"));
     }
 }

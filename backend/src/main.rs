@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use video_editor_backend::build_router;
+use video_editor_backend::build_router_with_cors;
 use video_editor_backend::config::AppConfig;
 use video_editor_backend::db::Db;
 use video_editor_backend::library::{Library, MediaEntry};
@@ -82,12 +82,17 @@ async fn main() -> anyhow::Result<()> {
         config.encode_budget.clone(),
         config.cpu_queue_capacity,
         process_runtime.clone(),
-    )?;
+    )?
+    .with_workload_config(config.workload);
     // Reconcile durable jobs and rebuild derived state before workers can add
     // new media; incremental indexing owns every change after this boundary.
     state.recover_jobs().await;
     state.rebuild_media_search().await;
     video_editor_backend::handlers::start_job_dispatcher(&state);
+    state.spawn_task(video_editor_backend::jobs::run_quarantine_cleanup(
+        state.job_store.clone(),
+        state.shutdown_token(),
+    ));
 
     // Optional TTL cleanup of generated/downloaded files.
     let ttl_hours = config.file_ttl_hours;
@@ -97,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Upload limit for local files (default 2 GiB), overridable via env.
-    let app = build_router(state.clone(), config.max_upload_bytes);
+    let app = build_router_with_cors(state.clone(), config.max_upload_bytes, &config.cors_origins);
 
     let addr = SocketAddr::from((config.bind_addr, config.port));
 
@@ -160,7 +165,7 @@ async fn shutdown_signal() {
 /// Periodically delete files in sources/ and outputs/ older than `ttl_hours`.
 fn spawn_cleanup(state: &AppState, storage: PathBuf, library: Library, db: Db, ttl_hours: u64) {
     let shutdown = state.shutdown_token();
-    let media_search = state.media_search.clone();
+    let media_index = state.media_index.clone();
     state.spawn_task(async move {
         let ttl = Duration::from_secs(ttl_hours * 3600);
         let mut tick = tokio::time::interval(Duration::from_secs(30 * 60));
@@ -201,7 +206,7 @@ fn spawn_cleanup(state: &AppState, storage: PathBuf, library: Library, db: Db, t
                     if let Some(entry) = entry {
                         let entry_id = entry.id.clone();
                         if library.remove(&entry_id).await {
-                            if let Err(error) = media_search.remove(&entry_id).await {
+                            if let Err(error) = media_index.remove(&entry_id).await {
                                 tracing::warn!(media.id = %entry_id, %error, "cleanup search index");
                             }
                             if sub == "outputs" {

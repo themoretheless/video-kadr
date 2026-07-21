@@ -39,7 +39,13 @@ fn compile_export(
         EditPlan::compile(
             Fingerprint::digest(b"real-render-source"),
             request,
-            SourceMediaMetadata::new(source.width, source.height, source.duration).unwrap(),
+            SourceMediaMetadata::new_with_audio(
+                source.width,
+                source.height,
+                source.duration,
+                source.acodec.is_some(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     );
@@ -410,4 +416,71 @@ async fn real_render_prores_with_audio_cleanup() {
     let out = probe_video(&runtime, &output).await.unwrap();
     assert!(out.duration > 0.0);
     assert_eq!(out.vcodec.as_deref(), Some("prores"));
+}
+
+#[tokio::test]
+async fn real_segment_render_accepts_video_without_audio() {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!(
+            "skipping real_segment_render_accepts_video_without_audio: ffmpeg/ffprobe not on PATH"
+        );
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("src.mp4");
+    let output = dir.path().join("out.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=320x240:rate=15:duration=2",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&input)
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "failed to generate video-only clip: {}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let request: EditRequest = serde_json::from_value(serde_json::json!({
+        "videoId": "x",
+        "segments": [
+            { "start": 0.0, "end": 0.5 },
+            { "start": 1.0, "end": 1.5 }
+        ],
+        "normalizeAudio": true
+    }))
+    .unwrap();
+    let source = probe_video(&runtime, &input).await.unwrap();
+    assert!(source.acodec.is_none());
+    let command = compile_export(&input, &output, request, &source);
+
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_ffmpeg(
+        &runtime,
+        &command.arguments,
+        command.expected_duration_seconds,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    drop(progress);
+    let _ = drain.await;
+
+    assert!(matches!(done, Done::Completed));
+    let rendered = probe_video(&runtime, &output).await.unwrap();
+    assert!(rendered.duration > 0.0);
+    assert!(rendered.acodec.is_none());
 }

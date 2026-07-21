@@ -4,11 +4,13 @@
 use std::path::Path;
 
 use crate::config::encode_budget::EncodeBudget;
-use crate::domain::edit::{EditSpec, LookPreset, Rotation, TimeRange, ToneCurve, ToneCurves};
+use crate::domain::edit::{EditSpec, Rotation, TimeRange, ToneCurve, ToneCurves};
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::ports::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
 use crate::services::render::EditPlan;
+
+use super::looks::look_preset_definition;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FfmpegExportCompiler;
@@ -33,24 +35,6 @@ fn serialize_filter_chain(media: MediaKind, filters: &[String]) -> String {
     FilterGraph::linear(media, filters)
         .and_then(|graph| graph.ffmpeg_linear_chain())
         .expect("compiler emitted an invalid linear filter graph")
-}
-
-/// Map a typed look preset to its FFmpeg filter string.
-fn filter_preset(preset: LookPreset) -> &'static str {
-    match preset {
-        LookPreset::Grayscale => "hue=s=0",
-        LookPreset::Sepia => "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
-        LookPreset::Warm => "colorbalance=rs=0.2:gs=0.05:bs=-0.2",
-        LookPreset::Cold => "colorbalance=rs=-0.2:gs=0:bs=0.2",
-        // Shadows toward teal, highlights toward orange (the blockbuster look).
-        LookPreset::TealOrange => "colorbalance=rs=-0.15:bs=0.15:rm=0.1:bm=-0.05:rh=0.15:bh=-0.15",
-        // Lifted blacks + lowered whites for a flat, matte film look.
-        LookPreset::Faded => "curves=all='0/0.08 1/0.92'",
-        // High-contrast black and white.
-        LookPreset::Noir => "hue=s=0,eq=contrast=1.4",
-        // Warm, slightly faded vintage.
-        LookPreset::Vintage => "curves=all='0/0.06 1/0.95',colorbalance=rs=0.15:gs=0.05:bs=-0.1",
-    }
 }
 
 /// Output file extension for a requested export format.
@@ -178,7 +162,7 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
         before_lut.push("format=gbrap16le".into());
     }
     if let Some(look) = video.look {
-        before_lut.push(filter_preset(look).into());
+        before_lut.push(look_preset_definition(look).ffmpeg_filter_chain.into());
     }
     if let Some(curves) = &video.curves {
         before_lut.push(curves_filter(curves));
@@ -312,9 +296,15 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
     af
 }
 
-/// Append audio options: `-an` when muted, otherwise the filter chain + codec.
-fn push_audio(args: &mut Vec<String>, edit: &EditSpec, out_dur: f64, codec: &str) {
-    if edit.audio().muted {
+/// Append audio options when the compiled output includes an audio stream.
+fn push_audio(
+    args: &mut Vec<String>,
+    edit: &EditSpec,
+    out_dur: f64,
+    codec: &str,
+    include_audio: bool,
+) {
+    if !include_audio {
         args.push("-an".into());
         return;
     }
@@ -357,8 +347,12 @@ fn push_video_program(args: &mut Vec<String>, program: VideoFilterProgram) -> bo
     }
 }
 
-fn map_optional_audio_for_complex_video(args: &mut Vec<String>, edit: &EditSpec, complex: bool) {
-    if complex && !edit.audio().muted {
+fn map_optional_audio_for_complex_video(
+    args: &mut Vec<String>,
+    include_audio: bool,
+    complex: bool,
+) {
+    if complex && include_audio {
         args.push("-map".into());
         args.push("0:a?".into());
     }
@@ -468,16 +462,18 @@ fn compile_ffmpeg_command(
         OutputFormat::Webm => {
             let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
             let complex = push_video_program(&mut args, program);
-            map_optional_audio_for_complex_video(&mut args, edit, complex);
-            push_audio(&mut args, edit, out_dur, "libopus");
+            let include_audio = output.audio_codec.is_some();
+            map_optional_audio_for_complex_video(&mut args, include_audio, complex);
+            push_audio(&mut args, edit, out_dur, "libopus", include_audio);
             push_video_codec(&mut args, output);
         }
         OutputFormat::Av1 => {
             // Modern, compact codec in an mp4 container (needs libsvtav1).
             let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
             let complex = push_video_program(&mut args, program);
-            map_optional_audio_for_complex_video(&mut args, edit, complex);
-            push_audio(&mut args, edit, out_dur, "aac");
+            let include_audio = output.audio_codec.is_some();
+            map_optional_audio_for_complex_video(&mut args, include_audio, complex);
+            push_audio(&mut args, edit, out_dur, "aac", include_audio);
             args.push("-c:v".into());
             args.push("libsvtav1".into());
             args.push("-crf".into());
@@ -494,8 +490,9 @@ fn compile_ffmpeg_command(
             // Intra-only edit codec in a .mov; audio as PCM. prores_ks is built in.
             let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
             let complex = push_video_program(&mut args, program);
-            map_optional_audio_for_complex_video(&mut args, edit, complex);
-            if edit.audio().muted {
+            let include_audio = output.audio_codec.is_some();
+            map_optional_audio_for_complex_video(&mut args, include_audio, complex);
+            if !include_audio {
                 args.push("-an".into());
             } else {
                 let af = audio_filters(edit, out_dur);
@@ -518,8 +515,9 @@ fn compile_ffmpeg_command(
             // mp4 (default): H.264 or H.265.
             let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
             let complex = push_video_program(&mut args, program);
-            map_optional_audio_for_complex_video(&mut args, edit, complex);
-            push_audio(&mut args, edit, out_dur, "aac");
+            let include_audio = output.audio_codec.is_some();
+            map_optional_audio_for_complex_video(&mut args, include_audio, complex);
+            push_audio(&mut args, edit, out_dur, "aac", include_audio);
             push_video_codec(&mut args, output);
         }
     }
@@ -652,7 +650,7 @@ fn build_concat_args(
     let edit = &plan.edit;
     let output = &plan.output;
     let format = output.format;
-    let muted = edit.audio().muted;
+    let include_audio = output.audio_codec.is_some();
     let n = segments.len();
     let mut graph = String::new();
     for (i, s) in segments.iter().enumerate() {
@@ -661,7 +659,7 @@ fn build_concat_args(
             s.start_seconds(),
             s.end_seconds()
         ));
-        if !muted {
+        if include_audio {
             graph.push_str(&format!(
                 "[0:a]atrim=start={:.3}:end={:.3},asetpts=PTS-STARTPTS[a{i}];",
                 s.start_seconds(),
@@ -671,14 +669,14 @@ fn build_concat_args(
     }
     for i in 0..n {
         graph.push_str(&format!("[v{i}]"));
-        if !muted {
+        if include_audio {
             graph.push_str(&format!("[a{i}]"));
         }
     }
-    if muted {
-        graph.push_str(&format!("concat=n={n}:v=1:a=0[cv]"));
-    } else {
+    if include_audio {
         graph.push_str(&format!("concat=n={n}:v=1:a=1[cv][ca]"));
+    } else {
+        graph.push_str(&format!("concat=n={n}:v=1:a=0[cv]"));
     }
 
     // Effects apply to the concatenated stream.
@@ -697,9 +695,7 @@ fn build_concat_args(
             "[vout]".to_string()
         }
     };
-    let amap = if muted {
-        None
-    } else {
+    let amap = if include_audio {
         let af = audio_filters(edit, out_dur);
         if af.is_empty() {
             Some("[ca]".to_string())
@@ -710,6 +706,8 @@ fn build_concat_args(
             ));
             Some("[aout]".to_string())
         }
+    } else {
+        None
     };
 
     let mut args: Vec<String> = vec![
@@ -797,6 +795,16 @@ mod tests {
 
     fn plan(value: serde_json::Value) -> EditPlan {
         plan_for_duration(value, 60.0)
+    }
+
+    fn plan_without_audio(value: serde_json::Value, duration_seconds: f64) -> EditPlan {
+        let request: EditRequest = serde_json::from_value(value).expect("valid EditRequest");
+        EditPlan::compile(
+            Fingerprint::digest(b"video-only-source"),
+            request,
+            SourceMediaMetadata::new_with_audio(1920, 1080, duration_seconds, false).unwrap(),
+        )
+        .expect("valid video-only EditPlan")
     }
 
     fn args_for(v: serde_json::Value, dur: f64) -> Vec<String> {
@@ -1402,19 +1410,30 @@ mod tests {
 
     #[test]
     fn look_presets_map_to_filters() {
-        assert!(vf(&args_for(
-            json!({ "videoId": "x", "filter": "faded" }),
-            10.0
-        ))
-        .contains("curves="));
-        assert!(
-            vf(&args_for(json!({ "videoId": "x", "filter": "noir" }), 10.0)).contains("hue=s=0")
-        );
-        assert!(vf(&args_for(
-            json!({ "videoId": "x", "filter": "vintage" }),
-            10.0
-        ))
-        .contains("curves="));
+        let presets = [
+            ("grayscale", "hue=s=0"),
+            (
+                "sepia",
+                "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
+            ),
+            ("warm", "colorbalance=rs=0.2:gs=0.05:bs=-0.2"),
+            ("cold", "colorbalance=rs=-0.2:gs=0:bs=0.2"),
+            (
+                "teal-orange",
+                "colorbalance=rs=-0.15:bs=0.15:rm=0.1:bm=-0.05:rh=0.15:bh=-0.15",
+            ),
+            ("faded", "curves=all='0/0.08 1/0.92'"),
+            ("noir", "hue=s=0,eq=contrast=1.4"),
+            (
+                "vintage",
+                "curves=all='0/0.06 1/0.95',colorbalance=rs=0.15:gs=0.05:bs=-0.1",
+            ),
+        ];
+
+        for (id, expected_chain) in presets {
+            let args = args_for(json!({ "videoId": "x", "filter": id }), 10.0);
+            assert_eq!(vf(&args), expected_chain, "preset {id}");
+        }
     }
 
     #[test]
@@ -1465,6 +1484,32 @@ mod tests {
         assert!(graph.contains("concat=n=2:v=1:a=0[cv]"), "{graph}");
         assert!(!graph.contains("atrim"), "{graph}");
         assert_eq!(args.iter().filter(|a| *a == "-map").count(), 1);
+    }
+
+    #[test]
+    fn segments_from_video_only_sources_never_reference_audio() {
+        for format in ["mp4", "av1", "prores"] {
+            let plan = plan_without_audio(
+                json!({
+                    "videoId": "x",
+                    "format": format,
+                    "normalizeAudio": true,
+                    "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 2.0, "end": 3.0 }]
+                }),
+                5.0,
+            );
+            assert!(plan.output.audio_codec.is_none());
+            let args = build_ffmpeg_args(Path::new("/in.mp4"), Path::new("/out.mp4"), &plan);
+            let graph = filter_complex(&args);
+            assert!(
+                graph.contains("concat=n=2:v=1:a=0[cv]"),
+                "{format}: {graph}"
+            );
+            assert!(!graph.contains("[0:a]"), "{format}: {graph}");
+            assert!(!graph.contains("atrim"), "{format}: {graph}");
+            assert_eq!(args.iter().filter(|arg| *arg == "-map").count(), 1);
+            assert!(!args.contains(&"-c:a".to_string()));
+        }
     }
 
     #[test]

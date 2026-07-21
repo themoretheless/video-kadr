@@ -5,6 +5,7 @@
 
 mod args;
 mod egress_proxy;
+pub(crate) mod looks;
 mod net;
 pub mod proxy;
 
@@ -136,6 +137,7 @@ pub async fn download_video(
     end: Option<f64>,
     progress: &UnboundedSender<f64>,
     cancel: &CancellationToken,
+    max_height: u32,
     timeout: Duration,
 ) -> Result<Done> {
     let template = sources_dir.join(format!("{id}.%(ext)s"));
@@ -145,11 +147,7 @@ pub async fn download_video(
     let proxy_url = proxy.url();
 
     // Cap download resolution so imports stay fast. "best" can be 1080p/4K and
-    // hundreds of MB; <=720 is a sensible default and is overridable via MAX_HEIGHT.
-    let max_height: u32 = std::env::var("MAX_HEIGHT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(720);
+    // hundreds of MB; the validated process configuration supplies the limit.
     let format = ytdlp_format(max_height);
 
     let mut cmd = Command::new("yt-dlp");

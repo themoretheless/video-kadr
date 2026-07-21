@@ -182,34 +182,60 @@ mod tests {
 
     #[derive(Default)]
     struct FakeProjects {
-        projects: Mutex<Vec<Project>>,
+        state: Mutex<FakeProjectState>,
+    }
+
+    #[derive(Default)]
+    struct FakeProjectState {
+        projects: Vec<Project>,
+        next_id: u64,
+        clock: i64,
     }
 
     #[axum::async_trait]
     impl ProjectPort for FakeProjects {
         async fn upsert(&self, draft: ProjectDraft) -> anyhow::Result<Project> {
+            let mut state = self.state.lock().unwrap();
+            state.clock += 1;
+            let now = state.clock;
+            if let Some(project) = state
+                .projects
+                .iter_mut()
+                .find(|project| project.video_id == draft.video_id)
+            {
+                project.name = draft.name;
+                project.video = draft.video;
+                project.edit = draft.edit;
+                project.updated_at = now;
+                return Ok(project.clone());
+            }
+
+            state.next_id += 1;
             let project = Project {
-                id: "project-1".to_owned(),
+                id: format!("project-{}", state.next_id),
                 name: draft.name,
                 video_id: draft.video_id,
                 video: draft.video,
                 edit: draft.edit,
-                created_at: 1,
-                updated_at: 1,
+                created_at: now,
+                updated_at: now,
             };
-            self.projects.lock().unwrap().push(project.clone());
+            state.projects.push(project.clone());
             Ok(project)
         }
 
         async fn list(&self) -> anyhow::Result<Vec<Project>> {
-            Ok(self.projects.lock().unwrap().clone())
+            let mut projects = self.state.lock().unwrap().projects.clone();
+            projects.sort_by_key(|project| std::cmp::Reverse(project.updated_at));
+            Ok(projects)
         }
 
         async fn get(&self, id: &str) -> anyhow::Result<Option<Project>> {
             Ok(self
-                .projects
+                .state
                 .lock()
                 .unwrap()
+                .projects
                 .iter()
                 .find(|project| project.id == id)
                 .cloned())
@@ -217,19 +243,20 @@ mod tests {
 
         async fn get_by_video(&self, video_id: &str) -> anyhow::Result<Option<Project>> {
             Ok(self
-                .projects
+                .state
                 .lock()
                 .unwrap()
+                .projects
                 .iter()
                 .find(|project| project.video_id == video_id)
                 .cloned())
         }
 
         async fn delete(&self, id: &str) -> anyhow::Result<bool> {
-            let mut projects = self.projects.lock().unwrap();
-            let before = projects.len();
-            projects.retain(|project| project.id != id);
-            Ok(projects.len() != before)
+            let mut state = self.state.lock().unwrap();
+            let before = state.projects.len();
+            state.projects.retain(|project| project.id != id);
+            Ok(state.projects.len() != before)
         }
     }
 
@@ -282,6 +309,40 @@ mod tests {
         let (status, project) = response_json(router.clone(), request).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(project["name"], "clip.mp4");
+
+        let second_request = Request::builder()
+            .method("POST")
+            .uri("/projects")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "videoId": "video-1",
+                    "name": "renamed clip",
+                    "video": { "filename": "renamed.mp4" },
+                    "edit": { "mute": false }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let (status, updated) = response_json(router.clone(), second_request).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(updated["id"], project["id"]);
+        assert_eq!(updated["createdAt"], project["createdAt"]);
+        assert!(updated["updatedAt"].as_i64() >= project["updatedAt"].as_i64());
+        assert_eq!(updated["name"], "renamed clip");
+        assert_eq!(updated["video"]["filename"], "renamed.mp4");
+        assert_eq!(updated["edit"]["mute"], false);
+
+        let (status, by_video) = response_json(
+            router.clone(),
+            Request::builder()
+                .uri("/projects/by-video/video-1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(by_video, updated);
 
         let (status, list) = response_json(
             router,

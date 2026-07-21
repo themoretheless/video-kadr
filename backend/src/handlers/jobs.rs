@@ -10,16 +10,23 @@ use crate::jobs::{ErrorKind, JobEvent, JobKind};
 use crate::model::Job;
 use crate::state::{AppState, CancelJobOutcome};
 
-use super::{job_timeout, spawn_edit_job, spawn_import_job, EditWork, ImportWork};
+use super::{apply_job_event, spawn_edit_job, spawn_import_job, EditWork, ImportWork};
 
 pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
     // The hot job map is bounded at startup. Hydrate older durable work before
     // claiming its outbox lease, otherwise a worker would have no JobCell.
-    if state.get_job(job_id).await.is_none() {
-        tracing::error!(job.id = job_id, "outbox references a missing durable job");
-        return;
+    match state.get_job(job_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            tracing::error!(job.id = job_id, "outbox references a missing durable job");
+            return;
+        }
+        Err(error) => {
+            tracing::error!(job.id = job_id, %error, "load durable job before dispatch");
+            return;
+        }
     }
-    let lease_seconds = i64::try_from(job_timeout().as_secs())
+    let lease_seconds = i64::try_from(state.job_timeout().as_secs())
         .unwrap_or(i64::MAX)
         .saturating_add(60);
     let envelope = match state.job_store.claim(job_id, lease_seconds).await {
@@ -80,15 +87,15 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
         Ok(())
     })();
     if let Err(error) = result {
-        state
-            .transition_job(
-                job_id,
-                JobEvent::Failed {
-                    kind: ErrorKind::Internal,
-                    message: "Сохранённая задача имеет несовместимый формат".into(),
-                },
-            )
-            .await;
+        apply_job_event(
+            state,
+            job_id,
+            JobEvent::Failed {
+                kind: ErrorKind::Internal,
+                message: "Сохранённая задача имеет несовместимый формат".into(),
+            },
+        )
+        .await;
         state.clear_cancel(job_id).await;
         tracing::error!(job.id = job_id, %error, "decode durable job payload");
     }
@@ -174,7 +181,11 @@ pub async fn job_status_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
 ) -> AppResult<Json<Job>> {
-    match state.get_job(&id).await {
+    match state
+        .get_job(&id)
+        .await
+        .map_err(|error| AppError::internal("load job", error))?
+    {
         Some(job) => Ok(Json(job)),
         None => Err(AppError::not_found("Задача не найдена")),
     }
@@ -185,7 +196,11 @@ pub async fn cancel_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
 ) -> AppResult<Json<Value>> {
-    match state.cancel_open_job(&id).await {
+    match state
+        .cancel_open_job(&id)
+        .await
+        .map_err(|error| AppError::internal("load job before cancellation", error))?
+    {
         CancelJobOutcome::NotFound => Err(AppError::not_found("Задача не найдена")),
         CancelJobOutcome::AlreadyFinished => Err(AppError::conflict("Задача уже завершена")),
         CancelJobOutcome::Cancelled => Ok(Json(json!({ "status": "cancelled" }))),
@@ -214,7 +229,12 @@ pub async fn retry_job_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
 ) -> AppResult<Json<Value>> {
-    if state.get_job(&id).await.is_none() {
+    if state
+        .get_job(&id)
+        .await
+        .map_err(|error| AppError::internal("load job before retry", error))?
+        .is_none()
+    {
         return Err(AppError::not_found("Задача не найдена"));
     }
     let job = state

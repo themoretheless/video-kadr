@@ -79,9 +79,15 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             }
         }
         JobEvent::Queued => {
+            if job.status != JobStatus::Pending {
+                return Err(TransitionError("only a pending job can be queued"));
+            }
             job.stage = Some("queued".into());
         }
         JobEvent::Started { stage, .. } => {
+            if job.status != JobStatus::Pending {
+                return Err(TransitionError("only a pending job can be started"));
+            }
             if stage.is_empty() {
                 return Err(TransitionError("started stage cannot be empty"));
             }
@@ -91,6 +97,9 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             job.error = None;
         }
         JobEvent::Succeeded { result } => {
+            if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
+                return Err(TransitionError("only an open job can succeed"));
+            }
             job.status = JobStatus::Done;
             job.result = Some(result.clone());
             job.error = None;
@@ -98,12 +107,18 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             job.progress = Some(100.0);
         }
         JobEvent::Failed { message, .. } => {
+            if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
+                return Err(TransitionError("only an open job can fail"));
+            }
             job.status = JobStatus::Error;
             job.error = Some(message.clone());
             job.stage = None;
             job.progress = None;
         }
         JobEvent::Cancelled => {
+            if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
+                return Err(TransitionError("only an open job can be cancelled"));
+            }
             job.status = JobStatus::Cancelled;
             job.stage = None;
             job.progress = None;
@@ -118,6 +133,9 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             job.progress = None;
         }
         JobEvent::Interrupted { reason } => {
+            if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
+                return Err(TransitionError("only an open job can be interrupted"));
+            }
             job.status = JobStatus::Interrupted;
             job.error = Some(reason.clone());
             job.stage = None;
@@ -145,6 +163,9 @@ pub fn replay(job_id: &str, events: &[RecordedJobEvent]) -> Result<Job, Transiti
         }
         if expected == 1 && !matches!(recorded.event, JobEvent::Created) {
             return Err(TransitionError("event history must start with created"));
+        }
+        if expected > 1 && matches!(recorded.event, JobEvent::Created) {
+            return Err(TransitionError("created event may only appear first"));
         }
         apply(&mut job, &recorded.event)?;
     }
@@ -203,5 +224,95 @@ mod tests {
         let mut job = Job::pending("job-1".into());
         apply(&mut job, &JobEvent::Cancelled).unwrap();
         assert!(apply(&mut job, &JobEvent::Succeeded { result: json!({}) }).is_err());
+    }
+
+    #[test]
+    fn replay_accepts_idempotent_queue_markers_after_recovery() {
+        let job = replay(
+            "job-1",
+            &[
+                record(1, JobEvent::Created),
+                record(2, JobEvent::Queued),
+                record(3, JobEvent::Queued),
+                record(
+                    4,
+                    JobEvent::Started {
+                        stage: "processing".into(),
+                        attempt: 1,
+                    },
+                ),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(job.status, JobStatus::Running);
+        assert_eq!(job.stage.as_deref(), Some("processing"));
+    }
+
+    #[test]
+    fn transition_matrix_rejects_invalid_open_state_regressions() {
+        let mut running = Job::pending("running".into());
+        apply(
+            &mut running,
+            &JobEvent::Started {
+                stage: "processing".into(),
+                attempt: 1,
+            },
+        )
+        .unwrap();
+        assert!(apply(&mut running, &JobEvent::Queued).is_err());
+        assert!(apply(
+            &mut running,
+            &JobEvent::Started {
+                stage: "processing".into(),
+                attempt: 2,
+            }
+        )
+        .is_err());
+
+        let mut pending = Job::pending("pending".into());
+        apply(&mut pending, &JobEvent::Queued).unwrap();
+        apply(&mut pending, &JobEvent::Queued).unwrap();
+        assert_eq!(pending.stage.as_deref(), Some("queued"));
+
+        assert!(replay(
+            "job-1",
+            &[record(1, JobEvent::Created), record(2, JobEvent::Created)]
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn transition_matrix_keeps_supported_shortcuts() {
+        let mut cache_hit = Job::pending("cache-hit".into());
+        apply(&mut cache_hit, &JobEvent::Queued).unwrap();
+        apply(
+            &mut cache_hit,
+            &JobEvent::Succeeded {
+                result: json!({"cached": true}),
+            },
+        )
+        .unwrap();
+        assert_eq!(cache_hit.status, JobStatus::Done);
+
+        let mut validation_failure = Job::pending("validation".into());
+        apply(
+            &mut validation_failure,
+            &JobEvent::Failed {
+                kind: ErrorKind::Timeout,
+                message: "timed out".into(),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut validation_failure,
+            &JobEvent::RetryScheduled {
+                attempt: 2,
+                available_at: 42,
+            },
+        )
+        .unwrap();
+        assert_eq!(validation_failure.status, JobStatus::Pending);
+        assert_eq!(validation_failure.stage.as_deref(), Some("deferred"));
     }
 }

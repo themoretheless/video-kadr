@@ -4,6 +4,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::state::ToolInfo;
+use crate::tools::looks::look_preset_catalog;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,44 +102,44 @@ impl Capabilities {
                 "нужен encoder libx265",
             ),
         ];
-        let mut filters: Vec<CapabilityOption> = [
-            ("grayscale", "Ч/Б", "hue"),
-            ("sepia", "Сепия", "colorchannelmixer"),
-            ("warm", "Тёплый", "colorbalance"),
-            ("cold", "Холодный", "colorbalance"),
-            ("teal-orange", "Teal-Orange", "colorbalance"),
-            ("faded", "Выцветший", "curves"),
-            ("noir", "Нуар", "hue"),
-            ("vintage", "Винтаж", "curves"),
-        ]
-        .into_iter()
-        .map(|(id, label, required)| {
+        let mut filters: Vec<CapabilityOption> = look_preset_catalog()
+            .iter()
+            .map(|definition| {
+                let missing = definition
+                    .required_filters
+                    .iter()
+                    .copied()
+                    .filter(|required| !has_filter(required))
+                    .collect::<Vec<_>>();
+                let unavailable_reason = match missing.as_slice() {
+                    [] => String::new(),
+                    [required] => format!("нужен filter {required}"),
+                    required => format!("нужны filters {}", required.join(", ")),
+                };
+
+                option(
+                    definition.id(),
+                    definition.label,
+                    missing.is_empty(),
+                    &unavailable_reason,
+                )
+            })
+            .collect();
+        filters.extend([
             option(
-                id,
-                label,
-                has_filter(required),
-                &format!("нужен filter {required}"),
-            )
-        })
-        .collect();
-        filters.push(option(
-            "custom-curves",
-            "Кривые",
-            has_filter("curves"),
-            "нужен filter curves",
-        ));
-        filters.push(option(
-            "lut3d",
-            "3D LUT",
-            has_filter("lut3d"),
-            "нужен filter lut3d",
-        ));
-        filters.push(option(
-            "lut-intensity",
-            "Частичная интенсивность 3D LUT",
-            has_filter("lut3d") && has_filter("blend"),
-            "нужны filters lut3d и blend",
-        ));
+                "custom-curves",
+                "Кривые",
+                has_filter("curves"),
+                "нужен filter curves",
+            ),
+            option("lut3d", "3D LUT", has_filter("lut3d"), "нужен filter lut3d"),
+            option(
+                "lut-intensity",
+                "Частичная интенсивность 3D LUT",
+                has_filter("lut3d") && has_filter("blend"),
+                "нужны filters lut3d и blend",
+            ),
+        ]);
         let hardware = [
             (
                 "videotoolbox-h264",
@@ -206,6 +207,32 @@ fn tool_fingerprint(tools: &ToolInfo) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn all_look_filters() -> Vec<&'static str> {
+        let mut filters = look_preset_catalog()
+            .iter()
+            .flat_map(|definition| definition.required_filters.iter().copied())
+            .collect::<Vec<_>>();
+        filters.sort_unstable();
+        filters.dedup();
+        filters
+    }
+
+    fn tools_with_look_filters(filters: &[&str]) -> ToolInfo {
+        ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: filters.iter().map(|filter| (*filter).to_owned()).collect(),
+            ..ToolInfo::default()
+        }
+    }
+
+    fn look_option<'a>(capabilities: &'a Capabilities, id: &str) -> &'a CapabilityOption {
+        capabilities
+            .filters
+            .iter()
+            .find(|option| option.id == id)
+            .unwrap_or_else(|| panic!("missing look preset capability {id}"))
+    }
 
     #[test]
     fn manifest_reports_runtime_requirements_and_stable_fingerprint() {
@@ -288,5 +315,68 @@ mod tests {
                 .unwrap()
                 .available
         );
+    }
+
+    #[test]
+    fn noir_requires_eq() {
+        let mut filters = all_look_filters();
+        filters.retain(|filter| *filter != "eq");
+
+        let capabilities = Capabilities::from_tools(&tools_with_look_filters(&filters));
+        let noir = look_option(&capabilities, "noir");
+
+        assert!(!noir.available);
+        assert_eq!(noir.reason.as_deref(), Some("нужен filter eq"));
+    }
+
+    #[test]
+    fn vintage_requires_colorbalance() {
+        let mut filters = all_look_filters();
+        filters.retain(|filter| *filter != "colorbalance");
+
+        let capabilities = Capabilities::from_tools(&tools_with_look_filters(&filters));
+        let vintage = look_option(&capabilities, "vintage");
+
+        assert!(!vintage.available);
+        assert_eq!(vintage.reason.as_deref(), Some("нужен filter colorbalance"));
+    }
+
+    #[test]
+    fn every_look_preset_uses_catalog_metadata_and_requirements() {
+        let all_filters = all_look_filters();
+        let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
+
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 3);
+        for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
+            assert_eq!(option.id, definition.id());
+            assert_eq!(option.label, definition.label);
+            assert!(option.available, "{} should be available", definition.id());
+            assert_eq!(option.reason, None);
+
+            for missing_filter in definition.required_filters {
+                let available_filters = all_filters
+                    .iter()
+                    .copied()
+                    .filter(|filter| filter != missing_filter)
+                    .collect::<Vec<_>>();
+                let without_required =
+                    Capabilities::from_tools(&tools_with_look_filters(&available_filters));
+                let unavailable = look_option(&without_required, definition.id());
+
+                assert!(
+                    !unavailable.available,
+                    "{} should require {missing_filter}",
+                    definition.id()
+                );
+                assert!(
+                    unavailable
+                        .reason
+                        .as_deref()
+                        .is_some_and(|reason| reason.contains(missing_filter)),
+                    "{} should report missing {missing_filter}",
+                    definition.id()
+                );
+            }
+        }
     }
 }

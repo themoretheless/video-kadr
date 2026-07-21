@@ -16,17 +16,27 @@ use crate::domain::edit::{
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::model::{Crop, EditRequest, Scale, Trim};
 
-const EDIT_PLAN_SCHEMA_VERSION: u32 = 2;
+const EDIT_PLAN_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SourceMediaMetadata {
     pub width: u32,
     pub height: u32,
     pub duration_seconds: f64,
+    pub has_audio: bool,
 }
 
 impl SourceMediaMetadata {
     pub fn new(width: u32, height: u32, duration_seconds: f64) -> anyhow::Result<Self> {
+        Self::new_with_audio(width, height, duration_seconds, true)
+    }
+
+    pub fn new_with_audio(
+        width: u32,
+        height: u32,
+        duration_seconds: f64,
+        has_audio: bool,
+    ) -> anyhow::Result<Self> {
         if !duration_seconds.is_finite() || duration_seconds < 0.0 {
             anyhow::bail!("Недопустимая длительность источника");
         }
@@ -34,6 +44,7 @@ impl SourceMediaMetadata {
             width,
             height,
             duration_seconds,
+            has_audio,
         })
     }
 }
@@ -44,6 +55,7 @@ pub struct SourceMediaSpec {
     pub width: u32,
     pub height: u32,
     pub duration_micros: u64,
+    pub has_audio: bool,
 }
 
 impl SourceMediaSpec {
@@ -56,6 +68,7 @@ impl SourceMediaSpec {
             width: value.width,
             height: value.height,
             duration_micros: duration_micros.round() as u64,
+            has_audio: value.has_audio,
         })
     }
 
@@ -115,7 +128,13 @@ impl EditPlan {
     ) -> anyhow::Result<Self> {
         let source = SourceMediaSpec::from_metadata(metadata)?;
         normalize_request(&mut request, source)?;
-        let (edit, output) = map_request(request)?;
+        let (edit, mut output) = map_request(request)?;
+        if !source.has_audio {
+            if output.format == OutputFormat::Mp3 {
+                anyhow::bail!("Источник не содержит аудиодорожку");
+            }
+            output.audio_codec = None;
+        }
         Self::from_domain(source_fingerprint, source, edit, output)
     }
 
@@ -143,7 +162,8 @@ impl EditPlan {
                 | OutputFormat::Av1
                 | OutputFormat::Prores
         );
-        if supports_audio && (output.audio_codec.is_none() != edit.audio().muted) {
+        let expects_audio = supports_audio && source.has_audio && !edit.audio().muted;
+        if output.audio_codec.is_some() != expects_audio {
             anyhow::bail!("edit plan audio output does not match mute semantics");
         }
         let canonical = serde_json::to_vec(&edit).expect("EditSpec serialization cannot fail");
@@ -544,6 +564,34 @@ mod tests {
             (1918, 1078, 2, 2)
         );
         assert_eq!(plan.output.fps_milli, Some(240_000));
+    }
+
+    #[test]
+    fn video_only_sources_disable_audio_and_reject_audio_only_exports() {
+        let source = SourceMediaMetadata::new_with_audio(1920, 1080, 10.0, false).unwrap();
+        let video = EditPlan::compile(
+            Fingerprint::digest(b"video-only"),
+            serde_json::from_value(serde_json::json!({
+                "videoId": "x",
+                "normalizeAudio": true
+            }))
+            .unwrap(),
+            source,
+        )
+        .unwrap();
+        assert!(!video.source.has_audio);
+        assert!(video.output.audio_codec.is_none());
+
+        let audio_only = EditPlan::compile(
+            Fingerprint::digest(b"video-only"),
+            serde_json::from_value(serde_json::json!({
+                "videoId": "x",
+                "format": "mp3"
+            }))
+            .unwrap(),
+            source,
+        );
+        assert!(audio_only.is_err());
     }
 
     #[test]

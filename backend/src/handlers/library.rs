@@ -41,7 +41,7 @@ pub async fn library_delete_handler(
 ) -> AppResult<StatusCode> {
     let entry = state.library.get(&id).await;
     if state.library.remove(&id).await {
-        if let Err(error) = state.media_search.remove(&id).await {
+        if let Err(error) = state.media_index.remove(&id).await {
             tracing::warn!(media.id = %id, %error, "remove media from search index");
         }
         if let Some(entry) = entry.filter(|e| e.kind == "output") {

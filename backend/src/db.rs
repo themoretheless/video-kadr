@@ -33,6 +33,8 @@ pub(crate) fn is_lut_quota_exceeded(error: &anyhow::Error) -> bool {
     error.downcast_ref::<LutQuotaExceeded>().is_some()
 }
 
+mod project_migration;
+
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
@@ -42,9 +44,9 @@ CREATE TABLE IF NOT EXISTS projects (
     edit_json TEXT NOT NULL,
     schema_version INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    updated_order INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_projects_video_id ON projects(video_id);
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     status TEXT NOT NULL,
@@ -107,6 +109,7 @@ impl Db {
             .connect_with(opts)
             .await?;
         sqlx::query(SCHEMA).execute(&pool).await?;
+        project_migration::migrate(&pool).await?;
         let db = Db { pool };
         crate::jobs::SqliteJobStore::new(db.clone())
             .migrate()
@@ -146,51 +149,36 @@ impl Db {
         let now = now_secs() as i64;
         let video_str = serde_json::to_string(video)?;
         let edit_str = serde_json::to_string(edit)?;
-        let existing: Option<String> =
-            sqlx::query_scalar("SELECT id FROM projects WHERE video_id = ?")
-                .bind(video_id)
-                .fetch_optional(&self.pool)
-                .await?;
-        let id = match existing {
-            Some(id) => {
-                sqlx::query(
-                    "UPDATE projects SET name = ?, video_json = ?, edit_json = ?, updated_at = ? WHERE id = ?",
-                )
-                .bind(name)
-                .bind(&video_str)
-                .bind(&edit_str)
-                .bind(now)
-                .bind(&id)
-                .execute(&self.pool)
-                .await?;
-                id
-            }
-            None => {
-                let id = Uuid::new_v4().to_string();
-                sqlx::query(
-                    "INSERT INTO projects (id, name, video_id, video_json, edit_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                )
-                .bind(&id)
-                .bind(name)
-                .bind(video_id)
-                .bind(&video_str)
-                .bind(&edit_str)
-                .bind(now)
-                .bind(now)
-                .execute(&self.pool)
-                .await?;
-                id
-            }
-        };
-        self.get_project(&id)
-            .await?
-            .ok_or_else(|| anyhow!("project vanished right after upsert"))
+        let id = Uuid::new_v4().to_string();
+        let row = sqlx::query(
+            "INSERT INTO projects \
+               (id, name, video_id, video_json, edit_json, created_at, updated_at, updated_order) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, \
+               COALESCE((SELECT MAX(updated_order) + 1 FROM projects), 1)) \
+             ON CONFLICT(video_id) DO UPDATE SET \
+               name = excluded.name, \
+               video_json = excluded.video_json, \
+               edit_json = excluded.edit_json, \
+               updated_at = excluded.updated_at, \
+               updated_order = excluded.updated_order \
+             RETURNING id, name, video_id, video_json, edit_json, created_at, updated_at",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(video_id)
+        .bind(video_str)
+        .bind(edit_str)
+        .bind(now)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await?;
+        row_to_project(row)
     }
 
     pub async fn list_projects(&self) -> Result<Vec<Project>> {
         let rows = sqlx::query(
             "SELECT id, name, video_id, video_json, edit_json, created_at, updated_at \
-             FROM projects ORDER BY updated_at DESC",
+             FROM projects ORDER BY updated_order DESC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -438,7 +426,7 @@ fn row_to_job(row: SqliteRow) -> Result<Job> {
     };
     Ok(Job {
         id: row.try_get("id")?,
-        status: JobStatus::from_token(&row.try_get::<String, _>("status")?),
+        status: JobStatus::from_token(&row.try_get::<String, _>("status")?)?,
         result,
         error: row.try_get("error")?,
         progress: row.try_get("progress")?,
@@ -480,8 +468,11 @@ fn row_to_lut(row: SqliteRow) -> Result<LutAsset> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use serde_json::json;
+    use tokio::sync::Barrier;
 
     async fn db() -> (Db, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
@@ -501,6 +492,11 @@ mod tests {
             )
             .await
             .unwrap();
+        sqlx::query("UPDATE projects SET created_at = 7 WHERE id = ?")
+            .bind(&p1.id)
+            .execute(db.pool())
+            .await
+            .unwrap();
         let p2 = db
             .upsert_project(
                 "v1",
@@ -511,9 +507,206 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(p1.id, p2.id, "same video keeps the same project");
+        assert_eq!(p2.created_at, 7, "updates preserve the creation time");
         assert_eq!(db.list_projects().await.unwrap().len(), 1);
+        assert_eq!(p2.name, "second");
+        assert_eq!(p2.video, json!({"id":"v1"}));
         assert_eq!(p2.edit["filter"], "warm");
         assert!(p2.updated_at >= p1.updated_at);
+    }
+
+    #[tokio::test]
+    async fn project_list_uses_write_order_when_timestamps_tie() {
+        let (db, _d) = db().await;
+        for video_id in ["first", "second", "first", "second"] {
+            db.upsert_project(video_id, video_id, &json!({"id": video_id}), &json!({}))
+                .await
+                .unwrap();
+        }
+        sqlx::query("UPDATE projects SET updated_at = 1")
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        let projects = db.list_projects().await.unwrap();
+        assert_eq!(projects[0].video_id, "second");
+        assert_eq!(projects[1].video_id, "first");
+        let orders: Vec<i64> =
+            sqlx::query_scalar("SELECT updated_order FROM projects ORDER BY updated_order DESC")
+                .fetch_all(db.pool())
+                .await
+                .unwrap();
+        assert!(orders[0] > orders[1]);
+    }
+
+    #[tokio::test]
+    async fn concurrent_upserts_create_one_project_and_return_each_write() {
+        const WRITERS: usize = 24;
+
+        let (db, _d) = db().await;
+        let barrier = Arc::new(Barrier::new(WRITERS));
+        let handles: Vec<_> = (0..WRITERS)
+            .map(|writer| {
+                let db = db.clone();
+                let barrier = barrier.clone();
+                tokio::spawn(async move {
+                    let name = format!("writer-{writer}");
+                    barrier.wait().await;
+                    db.upsert_project(
+                        "shared-video",
+                        &name,
+                        &json!({"writer": writer}),
+                        &json!({"revision": writer}),
+                    )
+                    .await
+                })
+            })
+            .collect();
+
+        let mut projects = Vec::with_capacity(WRITERS);
+        for (writer, handle) in handles.into_iter().enumerate() {
+            let project = handle.await.unwrap().unwrap();
+            assert_eq!(project.name, format!("writer-{writer}"));
+            assert_eq!(project.video["writer"], json!(writer));
+            assert_eq!(project.edit["revision"], json!(writer));
+            projects.push(project);
+        }
+
+        let id = projects[0].id.as_str();
+        let created_at = projects[0].created_at;
+        assert!(projects.iter().all(|project| project.id == id));
+        assert!(projects
+            .iter()
+            .all(|project| project.created_at == created_at));
+
+        let stored = db
+            .get_project_by_video("shared-video")
+            .await
+            .unwrap()
+            .unwrap();
+        let final_writer = stored.video["writer"].as_u64().unwrap();
+        assert_eq!(stored.name, format!("writer-{final_writer}"));
+        assert_eq!(stored.edit["revision"], json!(final_writer));
+        assert_eq!(db.list_projects().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn opening_legacy_database_deduplicates_projects_and_enforces_uniqueness() {
+        let dir = tempfile::tempdir().unwrap();
+        let options = SqliteConnectOptions::new()
+            .filename(dir.path().join("app.db"))
+            .create_if_missing(true);
+        let legacy = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE projects ( \
+               id TEXT PRIMARY KEY, \
+               name TEXT NOT NULL, \
+               video_id TEXT NOT NULL, \
+               video_json TEXT NOT NULL, \
+               edit_json TEXT NOT NULL, \
+               schema_version INTEGER NOT NULL DEFAULT 1, \
+               created_at INTEGER NOT NULL, \
+               updated_at INTEGER NOT NULL \
+             )",
+        )
+        .execute(&legacy)
+        .await
+        .unwrap();
+        sqlx::query("CREATE INDEX idx_projects_video_id ON projects(video_id)")
+            .execute(&legacy)
+            .await
+            .unwrap();
+        sqlx::query(
+            r#"INSERT INTO projects
+                 (id, name, video_id, video_json, edit_json, created_at, updated_at)
+               VALUES
+                 ('older', 'older project', 'legacy-video', '{"revision":1}', '{"filter":"old"}', 10, 20),
+                 ('newer', 'newer project', 'legacy-video', '{"revision":2}', '{"filter":"new"}', 11, 30),
+                 ('z-first', 'first tied project', 'tied-video', '{"revision":1}', '{}', 50, 50),
+                 ('a-second', 'second tied project', 'tied-video', '{"revision":2}', '{}', 50, 50),
+                 ('late-old', 'late insert with old timestamp', 'old-video', '{}', '{}', 1, 5)"#,
+        )
+        .execute(&legacy)
+        .await
+        .unwrap();
+        legacy.close().await;
+
+        let db = Db::open(dir.path()).await.unwrap();
+        let project = db
+            .get_project_by_video("legacy-video")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(project.id, "newer");
+        assert_eq!(project.name, "newer project");
+        assert_eq!(project.video["revision"], 2);
+        assert_eq!(project.edit["filter"], "new");
+        let tied = db
+            .get_project_by_video("tied-video")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(tied.id, "a-second", "insertion order breaks timestamp ties");
+        let projects = db.list_projects().await.unwrap();
+        assert_eq!(projects.len(), 3);
+        assert_eq!(
+            projects
+                .iter()
+                .map(|project| project.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a-second", "newer", "late-old"]
+        );
+
+        let archived = sqlx::query(
+            "SELECT name, video_json, edit_json, reason \
+             FROM project_migration_conflicts WHERE project_id = ?",
+        )
+        .bind("older")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            archived.try_get::<String, _>("name").unwrap(),
+            "older project"
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&archived.try_get::<String, _>("video_json").unwrap())
+                .unwrap()["revision"],
+            1
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&archived.try_get::<String, _>("edit_json").unwrap())
+                .unwrap()["filter"],
+            "old"
+        );
+        assert_eq!(
+            archived.try_get::<String, _>("reason").unwrap(),
+            "duplicate-video-id-v1"
+        );
+        let tied_archived: String = sqlx::query_scalar(
+            "SELECT project_id FROM project_migration_conflicts WHERE video_id = 'tied-video'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(tied_archived, "z-first");
+
+        let error = sqlx::query(
+            r#"INSERT INTO projects
+                 (id, name, video_id, video_json, edit_json, created_at, updated_at)
+               VALUES ('duplicate', 'duplicate', 'legacy-video', '{}', '{}', 40, 40)"#,
+        )
+        .execute(db.pool())
+        .await
+        .unwrap_err();
+        match error {
+            sqlx::Error::Database(error) => assert!(error.is_unique_violation()),
+            error => panic!("expected a uniqueness error, got {error}"),
+        }
     }
 
     #[tokio::test]
@@ -553,6 +746,104 @@ mod tests {
         assert_eq!(loaded[0].progress, Some(100.0));
         assert_eq!(db.load_job("j1").await.unwrap(), Some(j));
         assert!(db.load_job("missing").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn corrupt_job_status_is_rejected_instead_of_becoming_pending() {
+        let (db, _d) = db().await;
+        sqlx::query("INSERT INTO jobs (id, status, created_at, updated_at) VALUES (?, ?, ?, ?)")
+            .bind("corrupt")
+            .bind("not-a-status")
+            .bind(1_i64)
+            .bind(1_i64)
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        let error = db.load_job("corrupt").await.unwrap_err();
+        assert!(
+            error.to_string().contains("unknown job status token"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupt_job_status_is_quarantined_on_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let db = Db::open(dir.path()).await.unwrap();
+            sqlx::query(
+                "INSERT INTO jobs \
+                   (id, status, result_json, error, stage, progress, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind("corrupt")
+            .bind("future-status")
+            .bind(r#"{"unexpected":true}"#)
+            .bind("original error")
+            .bind("future-stage")
+            .bind(27.0_f64)
+            .bind(1_i64)
+            .bind(2_i64)
+            .execute(db.pool())
+            .await
+            .unwrap();
+            db.pool().close().await;
+        }
+
+        let reopened = Db::open(dir.path()).await.unwrap();
+        let job = reopened.load_job("corrupt").await.unwrap().unwrap();
+        assert_eq!(job.status, JobStatus::Interrupted);
+        assert_eq!(job.result, None);
+        assert_eq!(job.stage, None);
+        assert!(job
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("quarantined")));
+
+        let archived = sqlx::query(
+            "SELECT original_status, result_json, error, stage, progress \
+             FROM job_status_quarantine WHERE job_id = ?",
+        )
+        .bind("corrupt")
+        .fetch_one(reopened.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            archived.try_get::<String, _>("original_status").unwrap(),
+            "future-status"
+        );
+        assert_eq!(
+            archived
+                .try_get::<Option<String>, _>("result_json")
+                .unwrap(),
+            Some(r#"{"unexpected":true}"#.into())
+        );
+        assert_eq!(
+            archived.try_get::<Option<String>, _>("error").unwrap(),
+            Some("original error".into())
+        );
+        assert_eq!(
+            archived.try_get::<Option<String>, _>("stage").unwrap(),
+            Some("future-stage".into())
+        );
+        assert_eq!(
+            archived.try_get::<Option<f64>, _>("progress").unwrap(),
+            Some(27.0)
+        );
+
+        let history = crate::jobs::SqliteJobStore::new(reopened)
+            .event_history("corrupt")
+            .await
+            .unwrap();
+        assert!(matches!(
+            history.first().map(|entry| &entry.event),
+            Some(crate::jobs::JobEvent::Created)
+        ));
+        assert!(matches!(
+            history.last().map(|entry| &entry.event),
+            Some(crate::jobs::JobEvent::Interrupted { .. })
+        ));
     }
 
     #[tokio::test]

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -43,6 +45,17 @@ pub enum JobStatus {
     Interrupted,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidJobStatus(String);
+
+impl fmt::Display for InvalidJobStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown job status token: {}", self.0)
+    }
+}
+
+impl std::error::Error for InvalidJobStatus {}
+
 impl JobStatus {
     /// A job is terminal once it can no longer change state.
     pub fn is_terminal(self) -> bool {
@@ -64,15 +77,16 @@ impl JobStatus {
         }
     }
 
-    /// Parse a token read back from the database (unknown -> Pending).
-    pub fn from_token(s: &str) -> JobStatus {
+    /// Parse a stable database token without hiding storage corruption.
+    pub fn from_token(s: &str) -> Result<JobStatus, InvalidJobStatus> {
         match s {
-            "running" => JobStatus::Running,
-            "done" => JobStatus::Done,
-            "error" => JobStatus::Error,
-            "cancelled" => JobStatus::Cancelled,
-            "interrupted" => JobStatus::Interrupted,
-            _ => JobStatus::Pending,
+            "pending" => Ok(JobStatus::Pending),
+            "running" => Ok(JobStatus::Running),
+            "done" => Ok(JobStatus::Done),
+            "error" => Ok(JobStatus::Error),
+            "cancelled" => Ok(JobStatus::Cancelled),
+            "interrupted" => Ok(JobStatus::Interrupted),
+            _ => Err(InvalidJobStatus(s.to_owned())),
         }
     }
 }
@@ -295,8 +309,26 @@ mod tests {
         assert!(JobStatus::Done.is_terminal());
         assert!(JobStatus::Error.is_terminal());
         assert!(JobStatus::Cancelled.is_terminal());
+        assert!(JobStatus::Interrupted.is_terminal());
         assert!(!JobStatus::Pending.is_terminal());
         assert!(!JobStatus::Running.is_terminal());
+    }
+
+    #[test]
+    fn job_status_tokens_are_strict_and_round_trip() {
+        let statuses = [
+            JobStatus::Pending,
+            JobStatus::Running,
+            JobStatus::Done,
+            JobStatus::Error,
+            JobStatus::Cancelled,
+            JobStatus::Interrupted,
+        ];
+        for status in statuses {
+            assert_eq!(JobStatus::from_token(status.as_str()).unwrap(), status);
+        }
+        assert!(JobStatus::from_token("unknown").is_err());
+        assert!(JobStatus::from_token("").is_err());
     }
 
     #[test]

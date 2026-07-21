@@ -65,6 +65,8 @@ export const EDIT_DEFAULTS = {
   qualityTier: '',
 } satisfies EditState
 
+const SEGMENT_OUTPUT_FORMATS = new Set(['mp4', 'webm', 'av1', 'prores'])
+
 export function defaultEdit(): EditState {
   return {
     ...EDIT_DEFAULTS,
@@ -118,11 +120,11 @@ export function buildEditPayload(
     mute: edit.mute,
     speed: edit.speed,
   }
-  const videoFormat = edit.format === 'mp4' || edit.format === 'webm'
+  const supportsSegments = SEGMENT_OUTPUT_FORMATS.has(edit.format)
   const cutStart = Math.max(edit.trimStart, Math.min(edit.cut.start, edit.trimEnd))
   const cutEnd = Math.max(edit.trimStart, Math.min(edit.cut.end, edit.trimEnd))
   const segments: { start: number; end: number }[] = []
-  if (edit.cutEnabled && videoFormat && cutEnd > cutStart + 0.05) {
+  if (edit.cutEnabled && supportsSegments && cutEnd > cutStart + 0.05) {
     if (cutStart > edit.trimStart + 0.05) {
       segments.push({ start: edit.trimStart, end: cutStart })
     }

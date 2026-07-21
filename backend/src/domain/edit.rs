@@ -7,7 +7,7 @@
 use std::fmt;
 
 use serde::de::Error as _;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const EDIT_SPEC_SCHEMA_VERSION: u32 = 1;
 
@@ -178,8 +178,7 @@ impl CensorColor {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LookPreset {
     Grayscale,
     Sepia,
@@ -192,18 +191,54 @@ pub enum LookPreset {
 }
 
 impl LookPreset {
-    pub(crate) fn parse(value: &str) -> Result<Self, EditSpecError> {
-        match value {
-            "grayscale" => Ok(Self::Grayscale),
-            "sepia" => Ok(Self::Sepia),
-            "warm" => Ok(Self::Warm),
-            "cold" => Ok(Self::Cold),
-            "teal-orange" => Ok(Self::TealOrange),
-            "faded" => Ok(Self::Faded),
-            "noir" => Ok(Self::Noir),
-            "vintage" => Ok(Self::Vintage),
-            _ => Err(EditSpecError::InvalidLook),
+    pub(crate) const ALL: [Self; 8] = [
+        Self::Grayscale,
+        Self::Sepia,
+        Self::Warm,
+        Self::Cold,
+        Self::TealOrange,
+        Self::Faded,
+        Self::Noir,
+        Self::Vintage,
+    ];
+
+    pub(crate) const fn wire_id(self) -> &'static str {
+        match self {
+            Self::Grayscale => "grayscale",
+            Self::Sepia => "sepia",
+            Self::Warm => "warm",
+            Self::Cold => "cold",
+            Self::TealOrange => "teal-orange",
+            Self::Faded => "faded",
+            Self::Noir => "noir",
+            Self::Vintage => "vintage",
         }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, EditSpecError> {
+        Self::ALL
+            .into_iter()
+            .find(|preset| preset.wire_id() == value)
+            .ok_or(EditSpecError::InvalidLook)
+    }
+}
+
+impl Serialize for LookPreset {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.wire_id())
+    }
+}
+
+impl<'de> Deserialize<'de> for LookPreset {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let id = String::deserialize(deserializer)?;
+        Self::parse(&id).map_err(D::Error::custom)
     }
 }
 
@@ -694,5 +729,37 @@ mod tests {
             LutGrade::new("asset".into(), 1.1),
             Err(EditSpecError::InvalidLut)
         );
+    }
+
+    #[test]
+    fn look_preset_wire_contract_rejects_arbitrary_filters() {
+        let expected = [
+            (LookPreset::Grayscale, "grayscale"),
+            (LookPreset::Sepia, "sepia"),
+            (LookPreset::Warm, "warm"),
+            (LookPreset::Cold, "cold"),
+            (LookPreset::TealOrange, "teal-orange"),
+            (LookPreset::Faded, "faded"),
+            (LookPreset::Noir, "noir"),
+            (LookPreset::Vintage, "vintage"),
+        ];
+
+        assert_eq!(LookPreset::ALL, expected.map(|(preset, _)| preset));
+        for (preset, id) in expected {
+            assert_eq!(preset.wire_id(), id);
+            assert_eq!(LookPreset::parse(id), Ok(preset));
+            assert_eq!(serde_json::to_value(preset).unwrap(), serde_json::json!(id));
+            assert_eq!(
+                serde_json::from_value::<LookPreset>(serde_json::json!(id)).unwrap(),
+                preset
+            );
+        }
+
+        for arbitrary_filter in ["hue=s=0", "noir,eq=contrast=2", "scale"] {
+            assert_eq!(
+                LookPreset::parse(arbitrary_filter),
+                Err(EditSpecError::InvalidLook)
+            );
+        }
     }
 }

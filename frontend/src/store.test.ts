@@ -161,6 +161,17 @@ describe('buildEditPayload', () => {
     expect('trim' in p).toBe(false)
   })
 
+  it.each(['av1', 'prores'])('keeps cut segments for %s exports', (format) => {
+    state.edit.format = format
+    state.edit.cutEnabled = true
+    state.edit.cut = { start: 3, end: 6 }
+
+    expect(buildEditPayload().segments).toEqual([
+      { start: 0, end: 3 },
+      { start: 6, end: 10 },
+    ])
+  })
+
   it('only includes effects that differ from defaults', () => {
     Object.assign(state.edit, {
       rotate: 90,

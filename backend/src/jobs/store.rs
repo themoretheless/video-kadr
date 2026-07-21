@@ -14,6 +14,8 @@ use super::outbox::{JobEnvelope, JobKind};
 use super::registry::{JobLifecycle, LifecycleCounts, ReconciliationReport};
 use super::QueueLimits;
 
+mod quarantine;
+
 const JOB_SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS job_requests (
     job_id TEXT PRIMARY KEY,
@@ -95,8 +97,13 @@ impl SqliteJobStore {
 
     pub async fn migrate(&self) -> Result<()> {
         sqlx::query(JOB_SCHEMA).execute(self.db.pool()).await?;
+        quarantine::migrate(&self.db).await?;
         self.backfill_legacy_events().await?;
         Ok(())
+    }
+
+    pub async fn purge_expired_quarantine(&self) -> Result<u64> {
+        quarantine::purge(&self.db).await
     }
 
     async fn backfill_legacy_events(&self) -> Result<()> {
@@ -1059,7 +1066,7 @@ async fn insert_operator_action(
 fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Result<Job> {
     Ok(Job {
         id: row.try_get("id")?,
-        status: JobStatus::from_token(&row.try_get::<String, _>("status")?),
+        status: JobStatus::from_token(&row.try_get::<String, _>("status")?)?,
         result: row
             .try_get::<Option<String>, _>("result_json")?
             .map(|json| serde_json::from_str(&json))
@@ -1241,6 +1248,180 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(erased_payload, "null", "terminal payload must be erased");
+    }
+
+    #[tokio::test]
+    async fn quarantine_restores_a_corrupt_snapshot_from_valid_events() {
+        let (store, db, _dir) = store().await;
+        store
+            .enqueue(
+                "job".into(),
+                JobKind::Edit,
+                &json!({}),
+                "dedupe",
+                QueueLimits::default(),
+            )
+            .await
+            .unwrap();
+        let envelope = store.claim("job", 60).await.unwrap().unwrap();
+        let mut job = Job::pending("job".into());
+        let started = JobEvent::Started {
+            stage: "processing".into(),
+            attempt: envelope.attempt,
+        };
+        apply(&mut job, &started).unwrap();
+        store
+            .record_transition(&job, &started, "started", Some("ffmpeg test"))
+            .await
+            .unwrap();
+        let done = JobEvent::Succeeded {
+            result: json!({"filename": "done.mp4"}),
+        };
+        apply(&mut job, &done).unwrap();
+        store
+            .record_transition(&job, &done, "done", Some("ffmpeg test"))
+            .await
+            .unwrap();
+
+        sqlx::query(
+            "UPDATE jobs SET status = 'future-status', result_json = NULL WHERE id = 'job'",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+        quarantine::migrate(&db).await.unwrap();
+
+        let restored = db.load_job("job").await.unwrap().unwrap();
+        assert_eq!(restored.status, JobStatus::Done);
+        assert_eq!(restored.result.unwrap()["filename"], "done.mp4");
+        let original_status: String = sqlx::query_scalar(
+            "SELECT original_status FROM job_status_quarantine WHERE job_id = 'job'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(original_status, "future-status");
+    }
+
+    #[tokio::test]
+    async fn quarantine_archives_unreadable_history_and_private_request() {
+        let (store, db, _dir) = store().await;
+        let payload = json!({"url": "https://example.test/video?token=secret"});
+        store
+            .enqueue(
+                "job".into(),
+                JobKind::Import,
+                &payload,
+                "dedupe",
+                QueueLimits::default(),
+            )
+            .await
+            .unwrap();
+        store.claim("job", 60).await.unwrap().unwrap();
+        sqlx::query(
+            "UPDATE job_events SET event_json = \
+             'not-json https://events.test/path?token=EVENT_CANARY' WHERE job_id = 'job'",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE job_attempts SET error = \
+             'failed https://attempt.test/path?token=ATTEMPT_CANARY' WHERE job_id = 'job'",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+        sqlx::query("UPDATE jobs SET status = 'future-status' WHERE id = 'job'")
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        quarantine::migrate(&db).await.unwrap();
+
+        let restored = db.load_job("job").await.unwrap().unwrap();
+        assert_eq!(restored.status, JobStatus::Interrupted);
+        let history = store.event_history("job").await.unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(
+            replay("job", &history).unwrap().status,
+            JobStatus::Interrupted
+        );
+
+        let live_payload: String =
+            sqlx::query_scalar("SELECT payload_json FROM job_requests WHERE job_id = 'job'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert_eq!(live_payload, "null");
+        let archived_payload: String = sqlx::query_scalar(
+            "SELECT payload_json FROM job_request_quarantine WHERE job_id = 'job'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        let archived_payload: Value = serde_json::from_str(&archived_payload).unwrap();
+        assert_eq!(
+            archived_payload["url"],
+            "https://example.test/video?REDACTED"
+        );
+        assert!(!archived_payload.to_string().contains("secret"));
+        let archived_event: String =
+            sqlx::query_scalar("SELECT event_json FROM job_event_quarantine WHERE job_id = 'job'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert_eq!(archived_event, "not-json https://events.test/path?REDACTED");
+        assert!(!archived_event.contains("EVENT_CANARY"));
+        let archived_attempt: String =
+            sqlx::query_scalar("SELECT status FROM job_attempt_quarantine WHERE job_id = 'job'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert_eq!(archived_attempt, "claimed");
+        let archived_attempt_error: String =
+            sqlx::query_scalar("SELECT error FROM job_attempt_quarantine WHERE job_id = 'job'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert_eq!(
+            archived_attempt_error,
+            "failed https://attempt.test/path?REDACTED"
+        );
+        assert!(!archived_attempt_error.contains("ATTEMPT_CANARY"));
+        let completed_at: Option<i64> =
+            sqlx::query_scalar("SELECT completed_at FROM job_outbox WHERE job_id = 'job'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert!(completed_at.is_some());
+
+        sqlx::query("UPDATE job_status_quarantine SET quarantined_at = 0 WHERE job_id = 'job'")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let purged = store.purge_expired_quarantine().await.unwrap();
+        assert_eq!(purged, 1);
+        let expiry_index: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_index_list('job_status_quarantine') \
+             WHERE name = 'idx_job_status_quarantine_expiry'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(expiry_index, 1);
+        for table in [
+            "job_status_quarantine",
+            "job_request_quarantine",
+            "job_event_quarantine",
+            "job_attempt_quarantine",
+        ] {
+            let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+            assert_eq!(count, 0, "expired rows remain in {table}");
+        }
     }
 
     #[tokio::test]

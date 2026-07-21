@@ -1,6 +1,5 @@
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::extract::State;
 use axum::Json;
@@ -41,15 +40,6 @@ use jobs::{dispatch_job, JobLeaseHeartbeat};
 pub use library::{library_delete_handler, library_list_handler, library_search_handler};
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
 pub use upload::upload_handler;
-
-/// Per-job wall-clock limit (download or render), overridable via env.
-fn job_timeout() -> Duration {
-    let secs = std::env::var("JOB_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1800);
-    Duration::from_secs(secs)
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -127,7 +117,8 @@ fn spawn_import_job(
             let _lease = lease;
             // Reject bad/unsafe URLs before doing any work.
             if let Err(e) = tools::validate_url(&req.url).await {
-                st.transition_job(
+                apply_job_event(
+                    &st,
                     &jid,
                     JobEvent::Failed {
                         kind: ErrorKind::Security,
@@ -172,7 +163,8 @@ fn spawn_import_job(
                     req.end,
                     &tx,
                     &token,
-                    job_timeout(),
+                    st.max_download_height(),
+                    st.job_timeout(),
                 )
                 .instrument(tracing::info_span!("process", process.tool = "yt-dlp"))
                 .await?;
@@ -431,7 +423,12 @@ fn spawn_edit_job(
             let input = tools::find_source(&sources, &req.video_id).await?;
             let probe = tools::probe_video(&st.process_runtime, &input).await?;
             let source_fingerprint = Fingerprint::digest(req.video_id.as_bytes());
-            let source = SourceMediaMetadata::new(probe.width, probe.height, probe.duration)?;
+            let source = SourceMediaMetadata::new_with_audio(
+                probe.width,
+                probe.height,
+                probe.duration,
+                probe.acodec.is_some(),
+            )?;
             let plan = Arc::new(EditPlan::compile(source_fingerprint, req, source)?);
             let execution = RenderExecution::new_with_resources(
                 plan,
@@ -453,7 +450,7 @@ fn spawn_edit_job(
                 &command,
                 &tx,
                 &token,
-                job_timeout(),
+                st.job_timeout(),
             )
             .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
             .await?;
@@ -603,7 +600,8 @@ fn spawn_progress_drain(
 /// Atomically start an open job. Cancellation may win immediately before this
 /// transition; in that case the terminal state must never be overwritten.
 async fn mark_running(st: &AppState, jid: &str, stage: &str, attempt: u32) -> bool {
-    st.transition_job(
+    apply_job_event(
+        st,
         jid,
         JobEvent::Started {
             stage: stage.into(),
@@ -614,7 +612,17 @@ async fn mark_running(st: &AppState, jid: &str, stage: &str, attempt: u32) -> bo
 }
 
 async fn mark_queued(st: &AppState, jid: &str) -> bool {
-    st.transition_job(jid, JobEvent::Queued).await
+    apply_job_event(st, jid, JobEvent::Queued).await
+}
+
+async fn apply_job_event(st: &AppState, jid: &str, event: JobEvent) -> bool {
+    match st.transition_job(jid, event).await {
+        Ok(applied) => applied,
+        Err(error) => {
+            tracing::error!(job.id = jid, %error, "persist job transition");
+            false
+        }
+    }
 }
 
 async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> bool {
@@ -632,9 +640,7 @@ async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> 
         let _ = st.db.cache_delete(cache_key).await;
         return false;
     }
-    let updated = st
-        .transition_job(jid, JobEvent::Succeeded { result: output })
-        .await;
+    let updated = apply_job_event(st, jid, JobEvent::Succeeded { result: output }).await;
     st.clear_cancel(jid).await;
     updated
 }
@@ -713,7 +719,7 @@ async fn mark_cancelled(st: &AppState, jid: &str) {
         st.clear_cancel(jid).await;
         return;
     }
-    st.transition_job(jid, JobEvent::Cancelled).await;
+    apply_job_event(st, jid, JobEvent::Cancelled).await;
     st.clear_cancel(jid).await;
 }
 
@@ -722,7 +728,8 @@ async fn mark_queue_closed(st: &AppState, jid: &str) {
         st.clear_cancel(jid).await;
         return;
     }
-    st.transition_job(
+    apply_job_event(
+        st,
         jid,
         JobEvent::Failed {
             kind: ErrorKind::Internal,
@@ -762,14 +769,14 @@ async fn finish_job(
 ) -> bool {
     let updated = match outcome {
         Ok(Some(info)) => {
-            let updated = st
-                .transition_job(
-                    jid,
-                    JobEvent::Succeeded {
-                        result: info.clone(),
-                    },
-                )
-                .await;
+            let updated = apply_job_event(
+                st,
+                jid,
+                JobEvent::Succeeded {
+                    result: info.clone(),
+                },
+            )
+            .await;
             if updated {
                 let entry = MediaEntry::from_result(kind, &info);
                 if st.library.add(entry.clone()).await {
@@ -779,14 +786,12 @@ async fn finish_job(
             updated
         }
         Ok(None) if st.is_shutting_down() => false,
-        Ok(None) => st.transition_job(jid, JobEvent::Cancelled).await,
+        Ok(None) => apply_job_event(st, jid, JobEvent::Cancelled).await,
         Err(e) => {
             let kind = classify_job_error(&e);
             let message = crate::privacy::redact_text(&e.to_string());
             tracing::error!(job.id = jid, error.kind = kind.as_str(), error = %message, "job failed");
-            let updated = st
-                .transition_job(jid, JobEvent::Failed { kind, message })
-                .await;
+            let updated = apply_job_event(st, jid, JobEvent::Failed { kind, message }).await;
             if updated && kind.retryable() {
                 match st.job_store.schedule_retry(jid).await {
                     Ok(Some((job, delay))) => {
@@ -880,7 +885,7 @@ mod tests {
         .await;
 
         assert!(!updated);
-        let job = st.get_job("j1").await.unwrap();
+        let job = st.get_job("j1").await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Cancelled);
         assert!(job.result.is_none());
         assert!(st.library.list().await.is_empty());
@@ -904,7 +909,7 @@ mod tests {
         mark_cancelled(&st, "restartable").await;
         assert!(!finish_job(&st, "restartable", Ok(None), "source").await);
         assert_eq!(
-            st.get_job("restartable").await.unwrap().status,
+            st.get_job("restartable").await.unwrap().unwrap().status,
             JobStatus::Pending
         );
         assert_eq!(
@@ -919,13 +924,13 @@ mod tests {
         st.set_job(Job::pending("cancelled-before-start".into()))
             .await;
         assert_eq!(
-            st.cancel_open_job("cancelled-before-start").await,
+            st.cancel_open_job("cancelled-before-start").await.unwrap(),
             CancelJobOutcome::Cancelled
         );
 
         assert!(!mark_running(&st, "cancelled-before-start", "processing", 1).await);
         assert!(!mark_queued(&st, "cancelled-before-start").await);
-        let job = st.get_job("cancelled-before-start").await.unwrap();
+        let job = st.get_job("cancelled-before-start").await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Cancelled);
         assert!(job.stage.is_none());
         assert!(job.progress.is_none());
@@ -1032,7 +1037,7 @@ mod tests {
             .unwrap();
 
         assert!(finish_from_render_cache(&st, "valid", "valid-key").await);
-        let job = st.get_job("valid").await.unwrap();
+        let job = st.get_job("valid").await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Done);
         assert_eq!(job.progress, Some(100.0));
         assert_eq!(job.result.unwrap()["filename"], "out.mp4");
@@ -1049,7 +1054,7 @@ mod tests {
         assert!(!finish_from_render_cache(&st, "unsafe", "unsafe-key").await);
         assert!(st.db.cache_get("unsafe-key").await.unwrap().is_none());
         assert_eq!(
-            st.get_job("unsafe").await.unwrap().status,
+            st.get_job("unsafe").await.unwrap().unwrap().status,
             JobStatus::Pending
         );
 
@@ -1065,7 +1070,7 @@ mod tests {
         assert!(!finish_from_render_cache(&st, "missing", "missing-key").await);
         assert!(st.db.cache_get("missing-key").await.unwrap().is_none());
         assert_eq!(
-            st.get_job("missing").await.unwrap().status,
+            st.get_job("missing").await.unwrap().unwrap().status,
             JobStatus::Pending
         );
     }
