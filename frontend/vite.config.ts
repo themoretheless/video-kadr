@@ -1,10 +1,29 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+function ffmpegCoreAssets() {
+  const coreDirectory = resolve('node_modules/@ffmpeg/core/dist/esm')
+  return {
+    name: 'ffmpeg-core-assets',
+    apply: 'build' as const,
+    generateBundle(this: { emitFile(file: { type: 'asset'; fileName: string; source: Buffer }): void }) {
+      for (const filename of ['ffmpeg-core.js', 'ffmpeg-core.wasm']) {
+        this.emitFile({
+          type: 'asset',
+          fileName: `ffmpeg-core/${filename}`,
+          source: readFileSync(resolve(coreDirectory, filename)),
+        })
+      }
+    },
+  }
+}
 
 // In dev, proxy API and media requests to the Rust backend so the browser talks
 // to a single origin (no CORS dance).
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), ffmpegCoreAssets()],
   server: {
     port: 5173,
     proxy: {

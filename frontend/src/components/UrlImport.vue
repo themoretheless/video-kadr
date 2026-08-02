@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { state, doImport, doUpload, cancelImport } from '../store'
+import { state, doImport, doUpload, cancelImport, clientOnlyMode } from '../store'
 import ProgressBar from './ProgressBar.vue'
 
 const picker = ref<HTMLInputElement | null>(null)
@@ -49,13 +49,16 @@ function onDrop(e: DragEvent) {
       <label>по <input v-model="state.importEnd" class="time-input" placeholder="2:00" :disabled="state.importing" /></label>
       <span class="hint">диапазон импорта (мм:сс). Пусто = всё видео, для длинных роликов укажи отрезок</span>
     </div>
+    <p v-if="clientOnlyMode" class="hint link-mode-hint">
+      Импорт по ссылке сохранён для будущей полноценной версии. Сейчас выбери локальный файл — обработка выполнится прямо в браузере.
+    </p>
 
     <div class="import-or"><span>или</span></div>
 
     <button type="button" class="dropzone" :disabled="state.importing" @click="picker?.click()">
       <input ref="picker" type="file" accept="video/*" class="hidden-file" @change="onPick" />
       <span class="dropzone-icon">📁</span>
-      <span>Перетащи видеофайл сюда или нажми, чтобы выбрать</span>
+      <span>Перетащи видеофайл сюда или нажми, чтобы выбрать — загрузки на сервер не будет</span>
     </button>
 
     <ProgressBar

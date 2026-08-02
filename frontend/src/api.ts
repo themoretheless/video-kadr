@@ -1,4 +1,7 @@
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, VideoInfo } from './types'
+import * as browserMedia from './browser-media'
+
+export const clientOnlyMode = browserMedia.isBrowserProcessing()
 
 const BACKEND_DOWN = 'Сервер недоступен. Запущен ли бэкенд? (cargo run на :8080)'
 
@@ -68,15 +71,18 @@ async function postJson(path: string, body: unknown): Promise<{ jobId: string }>
 }
 
 export function importUrl(body: Record<string, unknown>): Promise<{ jobId: string }> {
+  if (clientOnlyMode) return Promise.reject(new browserMedia.LinkImportRequiresServerError())
   return postJson('/api/import', body)
 }
 
 export function edit(payload: unknown): Promise<{ jobId: string }> {
+  if (clientOnlyMode) return Promise.resolve(browserMedia.edit(payload as Record<string, unknown>))
   return postJson('/api/edit', payload)
 }
 
 /** Upload a local video file; the backend probes it and returns VideoInfo. */
 export async function uploadFile(file: File): Promise<VideoInfo> {
+  if (clientOnlyMode) return browserMedia.uploadFile(file)
   const fd = new FormData()
   fd.append('file', file)
   const res = await safeFetch('/api/upload', { method: 'POST', body: fd })
@@ -86,6 +92,7 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
 
 /** Upload and validate a 3D `.cube` LUT. */
 export async function uploadLut(file: File, signal?: AbortSignal): Promise<LutAsset> {
+  if (clientOnlyMode) return browserMedia.uploadLut(file)
   const fd = new FormData()
   fd.append('file', file)
   const res = await safeFetch('/api/luts', { method: 'POST', body: fd, signal })
@@ -95,18 +102,21 @@ export async function uploadLut(file: File, signal?: AbortSignal): Promise<LutAs
 
 /** Resolve metadata for a previously stored immutable LUT asset. */
 export async function getLut(id: string): Promise<LutAsset> {
+  if (clientOnlyMode) return browserMedia.getLut(id)
   const res = await safeFetch(`/api/luts/${encodeURIComponent(id)}`)
   await requireOk(res, `LUT lookup -> HTTP ${res.status}`)
   return res.json()
 }
 
 export async function getJob(jobId: string): Promise<Job> {
+  if (clientOnlyMode) return browserMedia.getJob(jobId)
   const res = await safeFetch(`/api/jobs/${jobId}`)
   await requireOk(res, `job poll -> HTTP ${res.status}`)
   return res.json()
 }
 
 export async function getCapabilities(): Promise<Capabilities> {
+  if (clientOnlyMode) return browserMedia.getCapabilities()
   const res = await safeFetch('/api/capabilities')
   await requireOk(res, `capabilities -> HTTP ${res.status}`)
   return res.json()
@@ -114,6 +124,7 @@ export async function getCapabilities(): Promise<Capabilities> {
 
 /** List persisted sources and outputs, newest first. */
 export async function getLibrary(): Promise<MediaEntry[]> {
+  if (clientOnlyMode) return browserMedia.getLibrary()
   const res = await safeFetch('/api/library')
   await requireOk(res, `library -> HTTP ${res.status}`)
   return res.json()
@@ -121,6 +132,10 @@ export async function getLibrary(): Promise<MediaEntry[]> {
 
 /** Delete a library entry (and its file on disk). */
 export async function deleteLibraryItem(id: string): Promise<void> {
+  if (clientOnlyMode) {
+    browserMedia.deleteLibraryItem(id)
+    return
+  }
   const res = await safeFetch(`/api/library/${id}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 404) {
     throw await responseError(res, `delete -> HTTP ${res.status}`)
@@ -140,6 +155,7 @@ export interface ProjectDto {
 
 /** Create or update (keyed by videoId) the saved project for a clip. */
 export async function saveProject(body: Record<string, unknown>): Promise<ProjectDto> {
+  if (clientOnlyMode) return browserMedia.saveProject(body)
   const res = await safeFetch('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -151,6 +167,7 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
 
 /** Fetch the saved project for a clip, or null if none exists yet. */
 export async function getProjectByVideo(videoId: string): Promise<ProjectDto | null> {
+  if (clientOnlyMode) return browserMedia.getProjectByVideo(videoId)
   const res = await safeFetch(`/api/projects/by-video/${encodeURIComponent(videoId)}`)
   if (res.status === 404) return null
   await requireOk(res, `projects -> HTTP ${res.status}`)
@@ -159,12 +176,17 @@ export async function getProjectByVideo(videoId: string): Promise<ProjectDto | n
 
 /** List saved projects, most recently updated first. */
 export async function getProjects(): Promise<ProjectDto[]> {
+  if (clientOnlyMode) return browserMedia.getProjects()
   const res = await safeFetch('/api/projects')
   await requireOk(res, `projects -> HTTP ${res.status}`)
   return res.json()
 }
 
 export async function deleteProject(id: string): Promise<void> {
+  if (clientOnlyMode) {
+    browserMedia.deleteProject(id)
+    return
+  }
   const res = await safeFetch(`/api/projects/${id}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 404) {
     throw await responseError(res, `projects -> HTTP ${res.status}`)
@@ -173,6 +195,10 @@ export async function deleteProject(id: string): Promise<void> {
 
 /** Ask the backend to cancel a running/pending job. Best-effort. */
 export async function cancelJob(jobId: string): Promise<void> {
+  if (clientOnlyMode) {
+    browserMedia.cancelJob(jobId)
+    return
+  }
   try {
     await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' })
   } catch {

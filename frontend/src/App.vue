@@ -14,6 +14,7 @@ import {
   toggleTheme,
   undo,
   redo,
+  clientOnlyMode,
 } from './store'
 import UrlImport from './components/UrlImport.vue'
 import VideoPreview from './components/VideoPreview.vue'
@@ -92,7 +93,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   <div class="app">
     <header class="topbar">
       <div class="topbar-row">
-        <h1>🎬 Видеоредактор</h1>
+        <h1>🎬 Video Kadr</h1>
         <div class="topbar-actions">
           <span
             v-if="state.backendStatus === 'offline'"
@@ -100,6 +101,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             role="status"
           >
             Сервер недоступен
+          </span>
+          <span v-else-if="state.backendStatus === 'client'" class="backend-status" role="status">
+            Обработка в браузере
           </span>
           <button
             class="btn ghost sm theme-toggle"
@@ -110,7 +114,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           </button>
         </div>
       </div>
-      <p class="sub">Вставь ссылку на видео (например, VK Видео), обрежь и скачай результат.</p>
+      <p class="sub">
+        {{ clientOnlyMode
+          ? 'Выбери видео с устройства, отредактируй и экспортируй — файл никуда не загружается.'
+          : 'Вставь ссылку на видео (например, VK Видео), обрежь и скачай результат.' }}
+      </p>
     </header>
 
     <UrlImport />
@@ -128,7 +136,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
     </main>
 
     <footer class="foot">
-      Локальный MVP · скачивание через yt-dlp · обработка через ffmpeg ·
+      {{ clientOnlyMode ? 'Статическая версия · обработка через ffmpeg.wasm на этом устройстве' : 'Полная версия · скачивание через yt-dlp · обработка через ffmpeg' }} ·
       <span class="kbd-hint">горячие клавиши: Space, I, O, ←/→, , .</span>
     </footer>
 

@@ -49,6 +49,7 @@ vi.mock('./api', () => {
   class BackendUnavailableError extends Error {}
 
   return {
+    clientOnlyMode: false,
     ApiError,
     BackendUnavailableError,
     importUrl: vi.fn(),

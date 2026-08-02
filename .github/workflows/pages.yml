@@ -38,6 +38,8 @@ jobs:
 
       - name: Build frontend for the Pages base path
         working-directory: frontend
+        env:
+          VITE_PROCESSING_MODE: browser
         run: npm run build -- --base "${{ steps.pages.outputs.base_path }}/"
 
       - name: Upload GitHub Pages artifact

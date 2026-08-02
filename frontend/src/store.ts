@@ -31,6 +31,7 @@ export {
 } from './domain/edit'
 
 export const MAX_LUT_UPLOAD_BYTES = 16 * 1024 * 1024
+export const clientOnlyMode = api.clientOnlyMode
 
 export const state = reactive({
   url: '',
@@ -55,7 +56,7 @@ export const state = reactive({
   result: null as ResultInfo | null,
   library: [] as MediaEntry[],
   capabilities: null as Capabilities | null,
-  backendStatus: 'checking' as 'checking' | 'online' | 'offline',
+  backendStatus: (clientOnlyMode ? 'client' : 'checking') as 'checking' | 'online' | 'offline' | 'client',
   // Player bridge: VideoPreview owns the <video>; the rest of the app talks to
   // it through these fields.
   playerTime: 0,
@@ -96,7 +97,7 @@ export async function doImport(): Promise<void> {
 
   state.importing = true
   state.importError = ''
-  state.importStatus = 'Отправляю ссылку…'
+  state.importStatus = clientOnlyMode ? 'Проверяю режим импорта…' : 'Отправляю ссылку…'
   state.importProgress = null
   state.importStage = null
   state.result = null
@@ -150,7 +151,7 @@ export async function doUpload(file: File): Promise<void> {
   if (state.importing) return
   state.importing = true
   state.importError = ''
-  state.importStatus = 'Загружаю файл…'
+  state.importStatus = clientOnlyMode ? 'Читаю файл на устройстве…' : 'Загружаю файл…'
   state.importProgress = null
   state.importStage = 'uploading'
   state.result = null
@@ -348,7 +349,7 @@ export async function loadLibrary(): Promise<void> {
 export async function loadCapabilities(): Promise<void> {
   try {
     state.capabilities = await api.getCapabilities()
-    state.backendStatus = 'online'
+    state.backendStatus = clientOnlyMode ? 'client' : 'online'
   } catch (error) {
     // Older/offline backends keep the existing optimistic UI as a fallback.
     state.capabilities = null
