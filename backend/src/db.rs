@@ -1,5 +1,6 @@
 //! SQLite-backed persistence for projects, durable jobs and the render cache.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
@@ -10,6 +11,10 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use crate::domain::project::{
+    ProjectDocument, ProjectEnvelope, PROJECT_DOCUMENT_SCHEMA_VERSION,
+    PROJECT_ENVELOPE_SCHEMA_VERSION,
+};
 use crate::library::now_secs;
 use crate::luts::{LutAsset, LUT_SCHEMA_VERSION};
 use crate::model::{Job, JobStatus};
@@ -33,6 +38,29 @@ pub(crate) fn is_lut_quota_exceeded(error: &anyhow::Error) -> bool {
     error.downcast_ref::<LutQuotaExceeded>().is_some()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectRevisionConflict {
+    pub project_id: String,
+    pub expected_revision: u64,
+    pub actual_revision: Option<u64>,
+}
+
+impl std::fmt::Display for ProjectRevisionConflict {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "project {} revision conflict: expected {}, actual {:?}",
+            self.project_id, self.expected_revision, self.actual_revision
+        )
+    }
+}
+
+impl std::error::Error for ProjectRevisionConflict {}
+
+pub fn is_project_revision_conflict(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<ProjectRevisionConflict>().is_some()
+}
+
 mod project_migration;
 
 const SCHEMA: &str = "
@@ -42,7 +70,9 @@ CREATE TABLE IF NOT EXISTS projects (
     video_id TEXT NOT NULL,
     video_json TEXT NOT NULL,
     edit_json TEXT NOT NULL,
+    document_json TEXT,
     schema_version INTEGER NOT NULL DEFAULT 1,
+    revision INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     updated_order INTEGER NOT NULL DEFAULT 0
@@ -149,30 +179,178 @@ impl Db {
         let now = now_secs() as i64;
         let video_str = serde_json::to_string(video)?;
         let edit_str = serde_json::to_string(edit)?;
-        let id = Uuid::new_v4().to_string();
-        let row = sqlx::query(
-            "INSERT INTO projects \
-               (id, name, video_id, video_json, edit_json, created_at, updated_at, updated_order) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, \
-               COALESCE((SELECT MAX(updated_order) + 1 FROM projects), 1)) \
-             ON CONFLICT(video_id) DO UPDATE SET \
-               name = excluded.name, \
-               video_json = excluded.video_json, \
-               edit_json = excluded.edit_json, \
-               updated_at = excluded.updated_at, \
-               updated_order = excluded.updated_order \
-             RETURNING id, name, video_id, video_json, edit_json, created_at, updated_at",
+        let document = ProjectDocument::from_legacy(
+            name.to_owned(),
+            video_id.to_owned(),
+            video.clone(),
+            edit.clone(),
+        )?;
+        let document_str = serde_json::to_string(&document)?;
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let existing = sqlx::query(
+            "SELECT id, document_json FROM projects \
+             WHERE video_id = ? ORDER BY updated_order DESC LIMIT 1",
         )
-        .bind(id)
-        .bind(name)
         .bind(video_id)
-        .bind(video_str)
-        .bind(edit_str)
-        .bind(now)
-        .bind(now)
-        .fetch_one(&self.pool)
+        .fetch_optional(&mut *transaction)
         .await?;
-        row_to_project(row)
+        let row = if let Some(existing) = existing {
+            let existing_id: String = existing.try_get("id")?;
+            let mut canonical = match existing.try_get::<Option<String>, _>("document_json")? {
+                Some(json) => ProjectDocument::migrate(serde_json::from_str(&json)?)?,
+                None => document.clone(),
+            };
+            canonical.update_legacy_values(name, video.clone(), edit.clone())?;
+            let canonical_json = serde_json::to_string(&canonical)?;
+            sqlx::query(
+                "UPDATE projects SET name = ?, video_json = ?, edit_json = ?, \
+                   document_json = ?, schema_version = ?, revision = revision + 1, updated_at = ?, \
+                   updated_order = COALESCE((SELECT MAX(p.updated_order) + 1 FROM projects p), 1) \
+                 WHERE id = ? \
+                 RETURNING id, name, video_id, video_json, edit_json, created_at, updated_at",
+            )
+            .bind(name)
+            .bind(&video_str)
+            .bind(&edit_str)
+            .bind(canonical_json)
+            .bind(i64::from(PROJECT_DOCUMENT_SCHEMA_VERSION))
+            .bind(now)
+            .bind(existing_id)
+            .fetch_one(&mut *transaction)
+            .await?
+        } else {
+            sqlx::query(
+                "INSERT INTO projects \
+                   (id, name, video_id, video_json, edit_json, document_json, schema_version, \
+                    revision, created_at, updated_at, updated_order) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, \
+                   COALESCE((SELECT MAX(updated_order) + 1 FROM projects), 1)) \
+                 RETURNING id, name, video_id, video_json, edit_json, created_at, updated_at",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(name)
+            .bind(video_id)
+            .bind(video_str)
+            .bind(edit_str)
+            .bind(document_str)
+            .bind(i64::from(PROJECT_DOCUMENT_SCHEMA_VERSION))
+            .bind(now)
+            .bind(now)
+            .fetch_one(&mut *transaction)
+            .await?
+        };
+        let project = row_to_project(row)?;
+        transaction.commit().await?;
+        Ok(project)
+    }
+
+    /// Create (`expected_revision == 0`) or compare-and-swap an existing
+    /// canonical document by stable project ID. A stale or missing revision is
+    /// reported without overwriting the stored document.
+    pub async fn cas_upsert_project_document(
+        &self,
+        project_id: &str,
+        expected_revision: u64,
+        document: &ProjectDocument,
+    ) -> Result<ProjectEnvelope> {
+        document.validate()?;
+        let now = now_secs() as i64;
+        // Validate the persistence key before any write reaches SQLite.
+        ProjectEnvelope::new(project_id.to_owned(), document.clone(), now)?;
+        let document_json = serde_json::to_string(document)?;
+        let (video, edit) = document.legacy_video_and_edit();
+        let video_json = serde_json::to_string(&video)?;
+        let edit_json = serde_json::to_string(&edit)?;
+
+        if expected_revision == 0 {
+            let row = sqlx::query(
+                "INSERT INTO projects \
+                   (id, name, video_id, video_json, edit_json, document_json, schema_version, \
+                    revision, created_at, updated_at, updated_order) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, \
+                   COALESCE((SELECT MAX(updated_order) + 1 FROM projects), 1)) \
+                 ON CONFLICT(id) DO NOTHING \
+                 RETURNING id, document_json, revision, created_at, updated_at",
+            )
+            .bind(project_id)
+            .bind(&document.name)
+            .bind(&document.primary_media_id)
+            .bind(video_json)
+            .bind(edit_json)
+            .bind(document_json)
+            .bind(i64::from(PROJECT_DOCUMENT_SCHEMA_VERSION))
+            .bind(now)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await?;
+            return match row {
+                Some(row) => row_to_project_envelope(row),
+                None => Err(self.project_revision_conflict(project_id, 0).await?.into()),
+            };
+        }
+
+        let expected = i64::try_from(expected_revision)
+            .context("project expected revision exceeds SQLite INTEGER")?;
+        if expected == i64::MAX {
+            return Err(anyhow!("project revision overflow"));
+        }
+        let row = sqlx::query(
+            "UPDATE projects SET \
+               name = ?, video_id = ?, video_json = ?, edit_json = ?, document_json = ?, \
+               schema_version = ?, revision = revision + 1, updated_at = ?, \
+               updated_order = COALESCE((SELECT MAX(p.updated_order) + 1 FROM projects p), 1) \
+             WHERE id = ? AND revision = ? \
+             RETURNING id, document_json, revision, created_at, updated_at",
+        )
+        .bind(&document.name)
+        .bind(&document.primary_media_id)
+        .bind(video_json)
+        .bind(edit_json)
+        .bind(document_json)
+        .bind(i64::from(PROJECT_DOCUMENT_SCHEMA_VERSION))
+        .bind(now)
+        .bind(project_id)
+        .bind(expected)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
+            Some(row) => row_to_project_envelope(row),
+            None => Err(self
+                .project_revision_conflict(project_id, expected_revision)
+                .await?
+                .into()),
+        }
+    }
+
+    pub async fn get_project_document(&self, project_id: &str) -> Result<Option<ProjectEnvelope>> {
+        let row = sqlx::query(
+            "SELECT id, document_json, revision, created_at, updated_at \
+             FROM projects WHERE id = ?",
+        )
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_project_envelope).transpose()
+    }
+
+    async fn project_revision_conflict(
+        &self,
+        project_id: &str,
+        expected_revision: u64,
+    ) -> Result<ProjectRevisionConflict> {
+        let actual_revision =
+            sqlx::query_scalar::<_, i64>("SELECT revision FROM projects WHERE id = ?")
+                .bind(project_id)
+                .fetch_optional(&self.pool)
+                .await?
+                .map(u64::try_from)
+                .transpose()
+                .context("stored project revision is negative")?;
+        Ok(ProjectRevisionConflict {
+            project_id: project_id.to_owned(),
+            expected_revision,
+            actual_revision,
+        })
     }
 
     pub async fn list_projects(&self) -> Result<Vec<Project>> {
@@ -446,6 +624,29 @@ fn row_to_project(row: SqliteRow) -> Result<Project> {
     })
 }
 
+fn row_to_project_envelope(row: SqliteRow) -> Result<ProjectEnvelope> {
+    let project_id: String = row.try_get("id")?;
+    let document_json: String = row
+        .try_get::<Option<String>, _>("document_json")?
+        .ok_or_else(|| anyhow!("project {project_id} has no canonical document"))?;
+    let document = ProjectDocument::migrate(
+        serde_json::from_str(&document_json).context("decode stored project document")?,
+    )?;
+    let revision = u64::try_from(row.try_get::<i64, _>("revision")?)
+        .context("stored project revision is negative")?;
+    let envelope = ProjectEnvelope {
+        schema_version: PROJECT_ENVELOPE_SCHEMA_VERSION,
+        project_id,
+        revision,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+        document,
+        extra: BTreeMap::new(),
+    };
+    envelope.validate()?;
+    Ok(envelope)
+}
+
 fn row_to_lut(row: SqliteRow) -> Result<LutAsset> {
     let cube_size = u32::try_from(row.try_get::<i64, _>("cube_size")?)
         .context("invalid LUT cube size in database")?;
@@ -513,6 +714,83 @@ mod tests {
         assert_eq!(p2.video, json!({"id":"v1"}));
         assert_eq!(p2.edit["filter"], "warm");
         assert!(p2.updated_at >= p1.updated_at);
+        let envelope = db.get_project_document(&p2.id).await.unwrap().unwrap();
+        assert_eq!(envelope.revision, 2);
+        assert_eq!(envelope.document.name, "second");
+        assert_eq!(
+            envelope.document.legacy_video_and_edit().1["filter"],
+            "warm"
+        );
+    }
+
+    #[tokio::test]
+    async fn canonical_project_document_uses_project_id_and_revision_cas() {
+        let (db, directory) = db().await;
+        let mut first = ProjectDocument::from_legacy(
+            "First",
+            "media-cas",
+            json!({"id":"media-cas", "duration": 10}),
+            json!({"filter":"sepia"}),
+        )
+        .unwrap();
+        first
+            .extra
+            .insert("pluginState".into(), json!({"keep": true}));
+
+        let created = db
+            .cas_upsert_project_document("project-cas", 0, &first)
+            .await
+            .unwrap();
+        assert_eq!(created.project_id, "project-cas");
+        assert_eq!(created.revision, 1);
+        assert_eq!(created.document.extra["pluginState"]["keep"], true);
+
+        let second = ProjectDocument::from_legacy(
+            "Second",
+            "media-cas",
+            json!({"id":"media-cas", "duration": 10}),
+            json!({"filter":"warm"}),
+        )
+        .unwrap();
+        let updated = db
+            .cas_upsert_project_document("project-cas", 1, &second)
+            .await
+            .unwrap();
+        assert_eq!(updated.revision, 2);
+        assert_eq!(updated.document.name, "Second");
+
+        let error = db
+            .cas_upsert_project_document("project-cas", 1, &first)
+            .await
+            .unwrap_err();
+        assert!(is_project_revision_conflict(&error));
+        let conflict = error.downcast_ref::<ProjectRevisionConflict>().unwrap();
+        assert_eq!(conflict.expected_revision, 1);
+        assert_eq!(conflict.actual_revision, Some(2));
+
+        let stored = db
+            .get_project_document("project-cas")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.revision, 2);
+        assert_eq!(stored.document.legacy_video_and_edit().1["filter"], "warm");
+
+        let sibling = db
+            .cas_upsert_project_document("project-same-media", 0, &first)
+            .await
+            .unwrap();
+        assert_eq!(sibling.document.primary_media_id, "media-cas");
+        assert_eq!(db.list_projects().await.unwrap().len(), 2);
+        let reopened = Db::open(directory.path()).await.unwrap();
+        assert_eq!(reopened.list_projects().await.unwrap().len(), 2);
+
+        let missing = db
+            .cas_upsert_project_document("missing-project", 1, &first)
+            .await
+            .unwrap_err();
+        let conflict = missing.downcast_ref::<ProjectRevisionConflict>().unwrap();
+        assert_eq!(conflict.actual_revision, None);
     }
 
     #[tokio::test]
@@ -645,6 +923,13 @@ mod tests {
         assert_eq!(project.name, "newer project");
         assert_eq!(project.video["revision"], 2);
         assert_eq!(project.edit["filter"], "new");
+        let envelope = db.get_project_document("newer").await.unwrap().unwrap();
+        assert_eq!(envelope.revision, 1);
+        assert_eq!(
+            envelope.document.schema_version,
+            PROJECT_DOCUMENT_SCHEMA_VERSION
+        );
+        assert_eq!(envelope.document.legacy_video_and_edit().1["filter"], "new");
         let tied = db
             .get_project_by_video("tied-video")
             .await
@@ -695,18 +980,15 @@ mod tests {
         .unwrap();
         assert_eq!(tied_archived, "z-first");
 
-        let error = sqlx::query(
+        let inserted = sqlx::query(
             r#"INSERT INTO projects
                  (id, name, video_id, video_json, edit_json, created_at, updated_at)
                VALUES ('duplicate', 'duplicate', 'legacy-video', '{}', '{}', 40, 40)"#,
         )
         .execute(db.pool())
         .await
-        .unwrap_err();
-        match error {
-            sqlx::Error::Database(error) => assert!(error.is_unique_violation()),
-            error => panic!("expected a uniqueness error, got {error}"),
-        }
+        .unwrap();
+        assert_eq!(inserted.rows_affected(), 1);
     }
 
     #[tokio::test]
@@ -889,6 +1171,68 @@ mod tests {
         let db2 = Db::open(dir.path()).await.unwrap();
         let p = db2.get_project_by_video("v1").await.unwrap().unwrap();
         assert_eq!(p.edit["filter"], "sepia");
+    }
+
+    #[tokio::test]
+    async fn corrupt_future_project_document_is_quarantined_without_blocking_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let raw_future = r#"{"schemaVersion":999,"opaque":{"keep":true}}"#;
+        let project_id;
+        {
+            let db = Db::open(directory.path()).await.unwrap();
+            let project = db
+                .upsert_project(
+                    "media-future",
+                    "Fallback",
+                    &json!({"id":"media-future", "duration":1}),
+                    &json!({"filter":"sepia"}),
+                )
+                .await
+                .unwrap();
+            project_id = project.id;
+            sqlx::query("UPDATE projects SET document_json = ? WHERE id = ?")
+                .bind(raw_future)
+                .bind(&project_id)
+                .execute(db.pool())
+                .await
+                .unwrap();
+        }
+
+        let reopened = Db::open(directory.path()).await.unwrap();
+        let error = reopened
+            .get_project_document(&project_id)
+            .await
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("unsupported project schemaVersion 999"));
+        let (raw, reason): (String, String) = sqlx::query_as(
+            "SELECT document_json, reason FROM project_document_quarantine WHERE project_id = ?",
+        )
+        .bind(&project_id)
+        .fetch_one(reopened.pool())
+        .await
+        .unwrap();
+        assert_eq!(raw, raw_future);
+        assert!(reason.contains("newer than this application"));
+        let active_raw: String =
+            sqlx::query_scalar("SELECT document_json FROM projects WHERE id = ?")
+                .bind(&project_id)
+                .fetch_one(reopened.pool())
+                .await
+                .unwrap();
+        assert_eq!(active_raw, raw_future);
+        drop(reopened);
+
+        let reopened_again = Db::open(directory.path()).await.unwrap();
+        let quarantine_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM project_document_quarantine WHERE project_id = ?",
+        )
+        .bind(project_id)
+        .fetch_one(reopened_again.pool())
+        .await
+        .unwrap();
+        assert_eq!(quarantine_count, 1);
     }
 
     #[tokio::test]

@@ -12,6 +12,17 @@ export interface VideoInfo {
   sizeBytes?: number | null
 }
 
+export type {
+  ProjectClip,
+  ProjectDocument,
+  ProjectEffect,
+  ProjectEnvelope,
+  ProjectMedia,
+  ProjectSequence,
+  ProjectTrack,
+  SequenceSettings,
+} from './project-schema'
+
 export interface CapabilityOption {
   id: string
   label: string

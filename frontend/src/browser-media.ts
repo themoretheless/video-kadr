@@ -7,6 +7,8 @@ import type {
   VideoInfo,
 } from './types'
 import type { ProjectDto } from './api'
+import { allProjects, compareAndSwapProject, projectByVideo, removeProject } from './browser-project-store'
+import { createProjectDocumentFromLegacy, migrateProjectDocument } from './project-schema'
 
 type EditPayload = Record<string, unknown>
 
@@ -38,6 +40,13 @@ export class LinkImportRequiresServerError extends Error {
   constructor() {
     super('Импорт по ссылке будет доступен в полноценной версии сайта. В статической версии выберите файл с устройства.')
     this.name = 'LinkImportRequiresServerError'
+  }
+}
+
+export class ProjectRevisionConflictError extends Error {
+  constructor() {
+    super('Проект уже изменён в другой вкладке. Перезагрузите последнюю версию перед сохранением.')
+    this.name = 'ProjectRevisionConflictError'
   }
 }
 
@@ -424,33 +433,52 @@ export function deleteLibraryItem(itemId: string): void {
   sources.delete(itemId)
 }
 
-export function saveProject(body: Record<string, unknown>): ProjectDto {
+export async function saveProject(body: Record<string, unknown>): Promise<ProjectDto> {
   const videoId = String(body.videoId)
   const now = Date.now()
-  const previous = projects.get(videoId)
-  const project: ProjectDto = {
-    id: previous?.id ?? id(),
-    name: String(body.name || 'Проект'),
+  const expectedRevision = typeof body.expectedRevision === 'number' ? body.expectedRevision : undefined
+  const requestedProjectId = typeof body.projectId === 'string' && body.projectId ? body.projectId : undefined
+  const project = await compareAndSwapProject(
     videoId,
-    video: body.video as VideoInfo,
-    edit: body.edit as ProjectDto['edit'],
-    createdAt: previous?.createdAt ?? now,
-    updatedAt: now,
-  }
-  projects.set(videoId, project)
+    requestedProjectId,
+    expectedRevision,
+    (previous) => ({
+      id: requestedProjectId ?? previous?.id ?? id(),
+      name: String(body.name || 'Проект'),
+      videoId,
+      video: body.video as VideoInfo,
+      edit: body.edit as ProjectDto['edit'],
+      document: body.document
+        ? migrateProjectDocument(body.document)
+        : createProjectDocumentFromLegacy(
+            videoId,
+            String(body.name || 'Проект'),
+            body.video as Record<string, unknown>,
+            body.edit as Record<string, unknown>,
+          ),
+      revision: (previous?.revision ?? 0) + 1,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+    }),
+    () => new ProjectRevisionConflictError(),
+  )
+  projects.set(project.id, project)
   return project
 }
 
-export function getProjectByVideo(videoId: string): ProjectDto | null {
-  return projects.get(videoId) ?? null
+export async function getProjectByVideo(videoId: string): Promise<ProjectDto | null> {
+  const project = [...projects.values()].find((item) => item.videoId === videoId) ?? await projectByVideo(videoId)
+  if (project) projects.set(project.id, project)
+  return project
 }
 
-export function getProjects(): ProjectDto[] {
+export async function getProjects(): Promise<ProjectDto[]> {
+  const persisted = await allProjects()
+  for (const project of persisted) projects.set(project.id, project)
   return [...projects.values()].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-export function deleteProject(projectId: string): void {
-  for (const [videoId, project] of projects) {
-    if (project.id === projectId) projects.delete(videoId)
-  }
+export async function deleteProject(projectId: string): Promise<void> {
+  projects.delete(projectId)
+  await removeProject(projectId)
 }

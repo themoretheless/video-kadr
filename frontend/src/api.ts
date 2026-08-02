@@ -1,5 +1,6 @@
-import type { Capabilities, EditState, Job, LutAsset, MediaEntry, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ProjectEnvelope, VideoInfo } from './types'
 import * as browserMedia from './browser-media'
+import { decodeProjectEnvelope } from './project-schema'
 
 export const clientOnlyMode = browserMedia.isBrowserProcessing()
 
@@ -149,6 +150,9 @@ export interface ProjectDto {
   videoId: string
   video: VideoInfo
   edit: Partial<EditState>
+  document?: ProjectDocument
+  /** Monotonic autosave revision; absent only on legacy responses. */
+  revision?: number
   createdAt: number
   updatedAt: number
 }
@@ -163,6 +167,68 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
   })
   await requireOk(res, `projects -> HTTP ${res.status}`)
   return res.json()
+}
+
+/** CAS-save the canonical multitrack document. `expectedRevision: 0` creates it. */
+export async function saveProjectDocument(
+  projectId: string,
+  expectedRevision: number,
+  document: ProjectDocument,
+): Promise<ProjectEnvelope> {
+  if (clientOnlyMode) {
+    let saved: ProjectDto
+    try {
+      saved = await browserMedia.saveProject({
+        projectId,
+        expectedRevision,
+        videoId: document.primaryMediaId,
+        name: document.name,
+        video: document.media.find((media) => media.id === document.primaryMediaId)?.metadata ?? {},
+        edit: {},
+        document,
+      })
+    } catch (error) {
+      if (error instanceof browserMedia.ProjectRevisionConflictError) {
+        throw new ApiError(error.message, 409, 'project_revision_conflict')
+      }
+      throw error
+    }
+    return decodeProjectEnvelope({
+      schemaVersion: 1,
+      projectId: saved.id,
+      revision: saved.revision ?? 1,
+      createdAt: saved.createdAt,
+      updatedAt: saved.updatedAt,
+      document: saved.document ?? document,
+    })
+  }
+  const response = await safeFetch('/api/projects/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, expectedRevision, document }),
+  })
+  await requireOk(response, `project document -> HTTP ${response.status}`)
+  return decodeProjectEnvelope(await response.json())
+}
+
+export async function getProjectDocument(projectId: string): Promise<ProjectEnvelope | null> {
+  if (clientOnlyMode) {
+    const projects = await browserMedia.getProjects()
+    const saved = projects.find((project) => project.id === projectId)
+    if (!saved?.document) return null
+    return decodeProjectEnvelope({
+      schemaVersion: 1,
+      projectId: saved.id,
+      revision: saved.revision ?? 1,
+      createdAt: saved.createdAt,
+      updatedAt: saved.updatedAt,
+      document: saved.document,
+    })
+  }
+  const response = await safeFetch(`/api/projects/documents/${encodeURIComponent(projectId)}`)
+  if (response.status === 404) return null
+  await requireOk(response, `project document -> HTTP ${response.status}`)
+  return decodeProjectEnvelope(await response.json())
 }
 
 /** Fetch the saved project for a clip, or null if none exists yet. */
@@ -184,7 +250,7 @@ export async function getProjects(): Promise<ProjectDto[]> {
 
 export async function deleteProject(id: string): Promise<void> {
   if (clientOnlyMode) {
-    browserMedia.deleteProject(id)
+    await browserMedia.deleteProject(id)
     return
   }
   const res = await safeFetch(`/api/projects/${id}`, { method: 'DELETE' })

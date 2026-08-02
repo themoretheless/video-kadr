@@ -11,8 +11,13 @@ import {
   sanitizeRect,
 } from './domain/edit'
 import { cloneValue, PatchCommand } from './domain/history'
+import {
+  createProjectDocumentFromLegacy,
+  legacyProjectValues,
+  updateLegacyProjectValues,
+} from './project-schema'
 import { toast } from './toasts'
-import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ResultInfo, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ResultInfo, VideoInfo } from './types'
 
 export {
   defaultEdit,
@@ -108,6 +113,7 @@ export async function doImport(): Promise<void> {
     state.importStatus = 'Скачиваю видео (это может занять время)…'
     const job = await api.pollJob(jobId, onImportTick)
     const v = job.result as VideoInfo
+    resetProjectPersistenceContext()
     state.video = v
 
     // Reset edit controls to the full clip.
@@ -158,6 +164,7 @@ export async function doUpload(file: File): Promise<void> {
 
   try {
     const v = await api.uploadFile(file)
+    resetProjectPersistenceContext()
     state.video = v
     const edit = defaultEdit()
     edit.trimEnd = v.duration
@@ -419,6 +426,7 @@ export function openFromLibrary(entry: MediaEntry): void {
     title: entry.title ?? null,
     sizeBytes: entry.sizeBytes ?? null,
   }
+  resetProjectPersistenceContext()
   state.video = v
   state.result = null
   const edit = defaultEdit()
@@ -713,6 +721,18 @@ let projectSaveTimer: ReturnType<typeof setTimeout> | null = null
 let restoringProjectFor: string | null = null
 let restoredProjectFor: string | null = null
 let projectRestoreSequence = 0
+let activeProjectId: string | null = null
+let activeProjectRevision = 0
+let activeProjectDocument: ProjectDocument | null = null
+let projectSaveInFlight: Promise<void> | null = null
+let projectSaveQueued = false
+
+function resetProjectPersistenceContext(): void {
+  activeProjectId = null
+  activeProjectRevision = 0
+  activeProjectDocument = null
+  projectSaveQueued = false
+}
 
 function clearProjectSaveTimer(): void {
   if (projectSaveTimer) {
@@ -724,6 +744,7 @@ function clearProjectSaveTimer(): void {
 /** Load the saved project for a clip (if any) and apply its edit recipe. */
 async function restoreProject(videoId: string): Promise<void> {
   const sequence = ++projectRestoreSequence
+  resetProjectPersistenceContext()
   const startingRevision = editRevision
   const baseEdit = cloneValue(state.edit)
   let applied = false
@@ -732,7 +753,10 @@ async function restoreProject(videoId: string): Promise<void> {
     // Guard against a clip switch while the lookup was in flight.
     if (!p?.edit || state.video?.id !== videoId || sequence !== projectRestoreSequence) return
     if (editRevision !== startingRevision) return
-    const restored = sanitizeEditState(p.edit, baseEdit)
+    const envelope = await api.getProjectDocument(p.id)
+    const document = envelope?.document ?? p.document ?? null
+    const persistedEdit = document ? legacyProjectValues(document).edit : p.edit
+    const restored = sanitizeEditState(persistedEdit, baseEdit)
     const missingLut = await resolvePersistedLut(restored)
     if (
       state.video?.id !== videoId ||
@@ -742,6 +766,9 @@ async function restoreProject(videoId: string): Promise<void> {
       return
     }
     state.edit = restored
+    activeProjectId = p.id
+    activeProjectRevision = envelope?.revision ?? p.revision ?? 0
+    activeProjectDocument = document
     resetHistory()
     applied = true
     if (missingLut) toastMissingLut(missingLut)
@@ -754,7 +781,7 @@ async function restoreProject(videoId: string): Promise<void> {
       sequence === projectRestoreSequence
     ) {
       const changedWhileLoading = !applied && editRevision !== startingRevision
-      restoredProjectFor = changedWhileLoading ? null : videoId
+      restoredProjectFor = applied && !changedWhileLoading ? videoId : null
       restoringProjectFor = null
       clearProjectSaveTimer()
       if (changedWhileLoading) scheduleProjectSave()
@@ -786,19 +813,59 @@ function toastMissingLut(label: string): void {
   toast('info', `LUT «${label}» больше недоступен и был отключён`)
 }
 
-async function persistProject(): Promise<void> {
+async function performProjectSave(): Promise<void> {
   const v = state.video
   if (!v) return
   try {
-    await api.saveProject({
-      videoId: v.id,
-      video: v,
-      edit: state.edit,
-      name: v.title || v.filename,
-    })
-  } catch {
+    const projectId = activeProjectId ?? crypto.randomUUID()
+    const document = activeProjectDocument
+      ? updateLegacyProjectValues(
+          activeProjectDocument,
+          v.title || v.filename,
+          cloneValue(v) as unknown as Record<string, unknown>,
+          cloneValue(state.edit) as unknown as Record<string, unknown>,
+        )
+      : createProjectDocumentFromLegacy(
+          v.id,
+          v.title || v.filename,
+          cloneValue(v) as unknown as Record<string, unknown>,
+          cloneValue(state.edit) as unknown as Record<string, unknown>,
+    )
+    const saved = await api.saveProjectDocument(projectId, activeProjectRevision, document)
+    if (state.video?.id !== v.id) return
+    activeProjectId = saved.projectId
+    activeProjectRevision = saved.revision
+    activeProjectDocument = saved.document
+  } catch (error) {
+    if (error instanceof api.ApiError && error.status === 409) {
+      toast('info', 'Проект изменён в другой вкладке; автосохранение приостановлено')
+    }
     // Non-fatal: the next edit change retries the autosave.
   }
+}
+
+function persistProject(): Promise<void> {
+  if (projectSaveInFlight) {
+    projectSaveQueued = true
+    return projectSaveInFlight
+  }
+  const run = (async () => {
+    do {
+      projectSaveQueued = false
+      await performProjectSave()
+    } while (projectSaveQueued)
+  })()
+  const tracked = run.finally(() => {
+    if (projectSaveInFlight === tracked) projectSaveInFlight = null
+  })
+  projectSaveInFlight = tracked
+  return tracked
+}
+
+/** Flush pending autosave work, coalescing with any save already in flight. */
+export async function flushProjectSave(): Promise<void> {
+  clearProjectSaveTimer()
+  await persistProject()
 }
 
 function scheduleProjectSave(): void {

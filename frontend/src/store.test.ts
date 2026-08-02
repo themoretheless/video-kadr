@@ -30,6 +30,7 @@ import {
   sampleCurvePchip,
   sanitizeCurve,
   sanitizeEditState,
+  flushProjectSave,
 } from './store'
 import type { EditState, VideoInfo } from './types'
 
@@ -63,6 +64,17 @@ vi.mock('./api', () => {
     getLibrary: vi.fn(() => Promise.resolve([])),
     deleteLibraryItem: vi.fn(),
     saveProject: vi.fn(() => Promise.resolve({})),
+    saveProjectDocument: vi.fn((projectId: string, expectedRevision: number, document: unknown) =>
+      Promise.resolve({
+        schemaVersion: 1,
+        projectId,
+        revision: expectedRevision + 1,
+        createdAt: 1,
+        updatedAt: 1,
+        document,
+      }),
+    ),
+    getProjectDocument: vi.fn(() => Promise.resolve(null)),
     getProjectByVideo: vi.fn(() => Promise.resolve(null)),
     getProjects: vi.fn(() => Promise.resolve([])),
     deleteProject: vi.fn(),
@@ -694,6 +706,30 @@ describe('project restore autosave', () => {
     expect(api.saveProject).not.toHaveBeenCalled()
   })
 
+  it('autosaves the first edit when no persisted project exists', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'new-project',
+      kind: 'source',
+      filename: 'new.mp4',
+      url: '/files/sources/new.mp4',
+      duration: 10,
+      width: 1280,
+      height: 720,
+      createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+    vi.mocked(api.saveProjectDocument).mockClear()
+
+    state.edit.filter = 'sepia'
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(api.saveProjectDocument).toHaveBeenCalledTimes(1)
+  })
+
   it('detaches only a missing LUT while restoring the remaining colour grade', async () => {
     const curves = identityCurves()
     curves.blue = [
@@ -721,6 +757,7 @@ describe('project restore autosave', () => {
       height: 360,
       createdAt: 1,
     })
+    await Promise.resolve()
     await Promise.resolve()
     await Promise.resolve()
     await nextTick()
@@ -765,9 +802,73 @@ describe('project restore autosave', () => {
     expect(state.edit.filter).toBe('warm')
     expect(state.edit.lutId).toBeNull()
     await vi.advanceTimersByTimeAsync(1000)
-    expect(api.saveProject).toHaveBeenCalledWith(
-      expect.objectContaining({ edit: expect.objectContaining({ filter: 'warm' }) }),
+    expect(api.saveProjectDocument).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Number),
+      expect.objectContaining({ name: expect.any(String) }),
     )
+  })
+
+  it('coalesces an edit made while autosave is in flight into the next revision', async () => {
+    openFromLibrary({
+      id: 'single-flight',
+      kind: 'source',
+      filename: 'single-flight.mp4',
+      url: '/files/sources/single-flight.mp4',
+      duration: 10,
+      width: 1280,
+      height: 720,
+      createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    await flushProjectSave()
+    await Promise.resolve()
+    await Promise.resolve()
+    vi.mocked(api.saveProjectDocument).mockClear()
+    let resolveFirst: (value: Awaited<ReturnType<typeof api.saveProjectDocument>>) => void = () => {}
+    vi.mocked(api.saveProjectDocument)
+      .mockImplementationOnce(() =>
+        new Promise((resolve) => {
+          resolveFirst = resolve
+        }) as ReturnType<typeof api.saveProjectDocument>,
+      )
+      .mockImplementationOnce((projectId, expectedRevision, document) =>
+        Promise.resolve({
+          schemaVersion: 1,
+          projectId,
+          revision: expectedRevision + 1,
+          createdAt: 1,
+          updatedAt: 2,
+          document,
+        }),
+      )
+
+    state.edit.filter = 'sepia'
+    const firstSave = flushProjectSave()
+    await Promise.resolve()
+    expect(api.saveProjectDocument).toHaveBeenCalledTimes(1)
+    const [projectId, expectedRevision, firstDocument] = vi.mocked(api.saveProjectDocument).mock.calls[0]!
+
+    state.edit.filter = 'warm'
+    const secondSave = flushProjectSave()
+    expect(api.saveProjectDocument).toHaveBeenCalledTimes(1)
+
+    resolveFirst({
+      schemaVersion: 1,
+      projectId,
+      revision: expectedRevision + 1,
+      createdAt: 1,
+      updatedAt: 1,
+      document: firstDocument,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.all([firstSave, secondSave])
+
+    expect(api.saveProjectDocument).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(api.saveProjectDocument).mock.calls[1]?.[1]).toBe(expectedRevision + 1)
   })
 })
 

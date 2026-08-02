@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::capabilities::Capabilities;
 use crate::db::{Db, Project};
+use crate::domain::project::{ProjectDocument, ProjectEnvelope};
 use crate::state::ToolInfo;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -69,6 +70,13 @@ pub trait ProjectPort: Send + Sync {
     async fn get(&self, id: &str) -> Result<Option<Project>>;
     async fn get_by_video(&self, video_id: &str) -> Result<Option<Project>>;
     async fn delete(&self, id: &str) -> Result<bool>;
+    async fn upsert_document(
+        &self,
+        project_id: &str,
+        expected_revision: u64,
+        document: &ProjectDocument,
+    ) -> Result<ProjectEnvelope>;
+    async fn get_document(&self, project_id: &str) -> Result<Option<ProjectEnvelope>>;
 }
 
 #[derive(Clone)]
@@ -104,5 +112,20 @@ impl ProjectPort for SqliteProjectPort {
 
     async fn delete(&self, id: &str) -> Result<bool> {
         self.db.delete_project(id).await
+    }
+
+    async fn upsert_document(
+        &self,
+        project_id: &str,
+        expected_revision: u64,
+        document: &ProjectDocument,
+    ) -> Result<ProjectEnvelope> {
+        self.db
+            .cas_upsert_project_document(project_id, expected_revision, document)
+            .await
+    }
+
+    async fn get_document(&self, project_id: &str) -> Result<Option<ProjectEnvelope>> {
+        self.db.get_project_document(project_id).await
     }
 }

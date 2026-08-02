@@ -14,13 +14,15 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::capabilities::Capabilities;
-use crate::db::Project;
+use crate::db::{Project, ProjectRevisionConflict};
+use crate::domain::project::{ProjectDocument, ProjectEnvelope};
 use crate::error::{ApiJson, AppError, AppResult};
 use crate::model::WireSchemaVersion;
 
 use ports::{HealthStatus, ProjectDraft, ProjectPort, SystemPort};
 
 const MAX_PROJECT_JSON_BYTES: usize = 64 * 1024;
+const MAX_PROJECT_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
 
 pub fn system_router(port: Arc<dyn SystemPort>) -> Router {
     Router::new()
@@ -36,6 +38,8 @@ pub fn project_router(port: Arc<dyn ProjectPort>) -> Router {
             post(project_upsert_handler).get(project_list_handler),
         )
         .route("/projects/by-video/:videoId", get(project_by_video_handler))
+        .route("/projects/documents", post(project_document_upsert_handler))
+        .route("/projects/documents/:id", get(project_document_get_handler))
         .route(
             "/projects/:id",
             get(project_get_handler).delete(project_delete_handler),
@@ -64,6 +68,47 @@ struct ProjectUpsertRequest {
     video: Option<Value>,
     #[serde(default)]
     edit: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ProjectDocumentUpsertRequest {
+    project_id: String,
+    expected_revision: u64,
+    document: Value,
+}
+
+async fn project_document_upsert_handler(
+    State(port): State<Arc<dyn ProjectPort>>,
+    ApiJson(body): ApiJson<ProjectDocumentUpsertRequest>,
+) -> AppResult<Json<ProjectEnvelope>> {
+    if body.project_id.trim().is_empty() {
+        return Err(AppError::bad_request("projectId обязателен"));
+    }
+    ensure_json_size("document", &body.document, MAX_PROJECT_DOCUMENT_BYTES)?;
+    let document = ProjectDocument::migrate(body.document)
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    port.upsert_document(&body.project_id, body.expected_revision, &document)
+        .await
+        .map(Json)
+        .map_err(|error| {
+            if let Some(conflict) = error.downcast_ref::<ProjectRevisionConflict>() {
+                AppError::revision_conflict(conflict.expected_revision, conflict.actual_revision)
+            } else {
+                AppError::internal("upsert project document", error)
+            }
+        })
+}
+
+async fn project_document_get_handler(
+    State(port): State<Arc<dyn ProjectPort>>,
+    AxPath(id): AxPath<String>,
+) -> AppResult<Json<ProjectEnvelope>> {
+    port.get_document(&id)
+        .await
+        .map_err(|error| AppError::internal("get project document", error))?
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("Проект не найден"))
 }
 
 async fn project_upsert_handler(
@@ -155,12 +200,16 @@ fn parse_project_body(body: ProjectUpsertRequest) -> AppResult<ProjectDraft> {
 }
 
 fn ensure_project_json_size(field: &str, value: &Value) -> AppResult<()> {
+    ensure_json_size(field, value, MAX_PROJECT_JSON_BYTES)
+}
+
+fn ensure_json_size(field: &str, value: &Value, maximum: usize) -> AppResult<()> {
     let size = serde_json::to_vec(value)
         .map_err(|error| AppError::internal("serialize project field", error))?
         .len();
-    if size > MAX_PROJECT_JSON_BYTES {
+    if size > maximum {
         return Err(AppError::payload_too_large(format!(
-            "{field} больше {MAX_PROJECT_JSON_BYTES} байт"
+            "{field} больше {maximum} байт"
         )));
     }
     Ok(())
@@ -188,6 +237,7 @@ mod tests {
     #[derive(Default)]
     struct FakeProjectState {
         projects: Vec<Project>,
+        documents: Vec<ProjectEnvelope>,
         next_id: u64,
         clock: i64,
     }
@@ -257,6 +307,57 @@ mod tests {
             let before = state.projects.len();
             state.projects.retain(|project| project.id != id);
             Ok(state.projects.len() != before)
+        }
+
+        async fn upsert_document(
+            &self,
+            project_id: &str,
+            expected_revision: u64,
+            document: &ProjectDocument,
+        ) -> anyhow::Result<ProjectEnvelope> {
+            let mut state = self.state.lock().unwrap();
+            state.clock += 1;
+            let now = state.clock;
+            if let Some(index) = state
+                .documents
+                .iter()
+                .position(|envelope| envelope.project_id == project_id)
+            {
+                let current = &state.documents[index];
+                if current.revision != expected_revision {
+                    return Err(crate::db::ProjectRevisionConflict {
+                        project_id: project_id.to_owned(),
+                        expected_revision,
+                        actual_revision: Some(current.revision),
+                    }
+                    .into());
+                }
+                let next = current.next_revision(document.clone(), now)?;
+                state.documents[index] = next.clone();
+                return Ok(next);
+            }
+            if expected_revision != 0 {
+                return Err(crate::db::ProjectRevisionConflict {
+                    project_id: project_id.to_owned(),
+                    expected_revision,
+                    actual_revision: None,
+                }
+                .into());
+            }
+            let envelope = ProjectEnvelope::new(project_id, document.clone(), now)?;
+            state.documents.push(envelope.clone());
+            Ok(envelope)
+        }
+
+        async fn get_document(&self, project_id: &str) -> anyhow::Result<Option<ProjectEnvelope>> {
+            Ok(self
+                .state
+                .lock()
+                .unwrap()
+                .documents
+                .iter()
+                .find(|envelope| envelope.project_id == project_id)
+                .cloned())
         }
     }
 
@@ -354,5 +455,60 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(list.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn canonical_document_contract_rejects_stale_revision_without_overwrite() {
+        let router = project_router(Arc::new(FakeProjects::default()));
+        let document = serde_json::to_value(
+            ProjectDocument::from_legacy(
+                "Монтаж",
+                "video-1",
+                json!({"id":"video-1", "duration": 1}),
+                json!({"filter":"sepia"}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let save = |expected_revision: u64, document: Value| {
+            Request::builder()
+                .method("POST")
+                .uri("/projects/documents")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "projectId":"project-1",
+                        "expectedRevision":expected_revision,
+                        "document":document
+                    })
+                    .to_string(),
+                ))
+                .unwrap()
+        };
+
+        let (status, created) = response_json(router.clone(), save(0, document.clone())).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(created["revision"], 1);
+
+        let (status, updated) = response_json(router.clone(), save(1, document.clone())).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(updated["revision"], 2);
+
+        let (status, conflict) = response_json(router.clone(), save(1, document)).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(conflict["code"], "project_revision_conflict");
+        assert_eq!(conflict["expectedRevision"], 1);
+        assert_eq!(conflict["actualRevision"], 2);
+
+        let (status, stored) = response_json(
+            router,
+            Request::builder()
+                .uri("/projects/documents/project-1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(stored["revision"], 2);
     }
 }

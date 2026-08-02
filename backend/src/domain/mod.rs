@@ -9,4 +9,5 @@ pub mod keyframes;
 pub mod media_pipeline;
 pub mod media_probe;
 pub mod output;
+pub mod project;
 pub mod timeline;

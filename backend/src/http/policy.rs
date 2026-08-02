@@ -176,6 +176,18 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
         controls: JSON,
     },
     RoutePolicy {
+        method: "POST",
+        path: "/api/projects/documents",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/projects/documents/:id",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
         method: "GET",
         path: "/api/projects/by-video/:videoId",
         class: RouteClass::Query,

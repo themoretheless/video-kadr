@@ -15,6 +15,8 @@ pub struct AppError {
     code: &'static str,
     message: String,
     internal: Option<InternalError>,
+    expected_revision: Option<u64>,
+    actual_revision: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -24,9 +26,14 @@ struct InternalError {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ApiErrorBody {
     error: String,
     code: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_revision: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actual_revision: Option<u64>,
 }
 
 impl AppError {
@@ -36,6 +43,8 @@ impl AppError {
             code,
             message: message.into(),
             internal: None,
+            expected_revision: None,
+            actual_revision: None,
         }
     }
 
@@ -65,6 +74,17 @@ impl AppError {
 
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::client(StatusCode::CONFLICT, "conflict", message)
+    }
+
+    pub fn revision_conflict(expected_revision: u64, actual_revision: Option<u64>) -> Self {
+        let mut error = Self::client(
+            StatusCode::CONFLICT,
+            "project_revision_conflict",
+            "Проект уже изменён; загрузите последнюю revision",
+        );
+        error.expected_revision = Some(expected_revision);
+        error.actual_revision = actual_revision;
+        error
     }
 
     pub fn method_not_allowed(message: impl Into<String>) -> Self {
@@ -108,6 +128,8 @@ impl AppError {
                 context,
                 source: source.into(),
             }),
+            expected_revision: None,
+            actual_revision: None,
         }
     }
 
@@ -137,6 +159,8 @@ impl IntoResponse for AppError {
             Json(ApiErrorBody {
                 error: self.message,
                 code: self.code,
+                expected_revision: self.expected_revision,
+                actual_revision: self.actual_revision,
             }),
         )
             .into_response()
