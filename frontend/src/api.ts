@@ -1,4 +1,4 @@
-import type { Capabilities, EditState, Job, MediaEntry, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, LutAsset, MediaEntry, VideoInfo } from './types'
 
 const BACKEND_DOWN = 'Сервер недоступен. Запущен ли бэкенд? (cargo run на :8080)'
 
@@ -81,6 +81,22 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
   fd.append('file', file)
   const res = await safeFetch('/api/upload', { method: 'POST', body: fd })
   await requireOk(res, `upload -> HTTP ${res.status}`)
+  return res.json()
+}
+
+/** Upload and validate a 3D `.cube` LUT. */
+export async function uploadLut(file: File, signal?: AbortSignal): Promise<LutAsset> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await safeFetch('/api/luts', { method: 'POST', body: fd, signal })
+  await requireOk(res, `LUT upload -> HTTP ${res.status}`)
+  return res.json()
+}
+
+/** Resolve metadata for a previously stored immutable LUT asset. */
+export async function getLut(id: string): Promise<LutAsset> {
+  const res = await safeFetch(`/api/luts/${encodeURIComponent(id)}`)
+  await requireOk(res, `LUT lookup -> HTTP ${res.status}`)
   return res.json()
 }
 

@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 
 use egress_proxy::EgressProxy;
 
+use crate::ports::CompiledExportCommand;
 use crate::process_control::{
     capture_output, is_process_timeout, stream_with_progress, ProcessRuntime, ProcessStatus,
 };
@@ -333,6 +334,39 @@ pub async fn run_ffmpeg(
     cancel: &CancellationToken,
     timeout: Duration,
 ) -> Result<Done> {
+    run_ffmpeg_scoped(runtime, args, &[], expected_secs, progress, cancel, timeout).await
+}
+
+/// Execute a compiled command while carrying its explicit auxiliary read scope.
+/// New adapters should prefer this over passing only the argument vector.
+pub async fn run_compiled_ffmpeg(
+    runtime: &ProcessRuntime,
+    command: &CompiledExportCommand,
+    progress: &UnboundedSender<f64>,
+    cancel: &CancellationToken,
+    timeout: Duration,
+) -> Result<Done> {
+    run_ffmpeg_scoped(
+        runtime,
+        &command.arguments,
+        &command.read_only_files,
+        command.expected_duration_seconds,
+        progress,
+        cancel,
+        timeout,
+    )
+    .await
+}
+
+async fn run_ffmpeg_scoped(
+    runtime: &ProcessRuntime,
+    args: &[String],
+    explicit_read_only: &[PathBuf],
+    expected_secs: f64,
+    progress: &UnboundedSender<f64>,
+    cancel: &CancellationToken,
+    timeout: Duration,
+) -> Result<Done> {
     let mut cmd = Command::new("ffmpeg");
     cmd.arg("-protocol_whitelist")
         .arg(OFFLINE_PROTOCOLS)
@@ -350,7 +384,10 @@ pub async fn run_ffmpeg(
         Some((us / 1_000_000.0) / expected * 100.0)
     };
 
-    let (inputs, output) = ffmpeg_filesystem_scope(args)?;
+    let (mut inputs, output) = ffmpeg_filesystem_scope(args)?;
+    inputs.extend(explicit_read_only.iter().cloned());
+    inputs.sort();
+    inputs.dedup();
     let policy = runtime.render_policy(inputs, output);
     let (status, stderr) =
         stream_with_progress(runtime, cmd, policy, parse, progress, cancel, timeout)
@@ -366,11 +403,18 @@ pub async fn run_ffmpeg(
 }
 
 fn ffmpeg_filesystem_scope(args: &[String]) -> Result<(Vec<PathBuf>, PathBuf)> {
-    let inputs: Vec<_> = args
+    let mut inputs: Vec<_> = args
         .windows(2)
         .filter(|window| window[0] == "-i")
         .map(|window| PathBuf::from(&window[1]))
         .collect();
+    for window in args.windows(2) {
+        if matches!(window[0].as_str(), "-vf" | "-filter_complex") {
+            inputs.extend(lut_paths_from_filtergraph(&window[1])?);
+        }
+    }
+    inputs.sort();
+    inputs.dedup();
     let output = args
         .last()
         .filter(|value| !value.is_empty() && !value.starts_with("pipe:"))
@@ -380,6 +424,44 @@ fn ffmpeg_filesystem_scope(args: &[String]) -> Result<(Vec<PathBuf>, PathBuf)> {
         return Err(anyhow!("ffmpeg command requires at least one input"));
     }
     Ok((inputs, output))
+}
+
+/// Extract backend-generated quoted `lut3d=file='…'` resources. This keeps the
+/// compatibility `run_ffmpeg(args, …)` path safe; compiled callers additionally
+/// carry the same paths explicitly in `CompiledExportCommand`.
+fn lut_paths_from_filtergraph(graph: &str) -> Result<Vec<PathBuf>> {
+    const MARKER: &str = "lut3d=file=";
+    let mut remaining = graph;
+    let mut paths = Vec::new();
+    while let Some(index) = remaining.find(MARKER) {
+        remaining = &remaining[index + MARKER.len()..];
+        let Some(rest) = remaining.strip_prefix('\'') else {
+            return Err(anyhow!("lut3d resource path must be quoted"));
+        };
+        let mut value = String::new();
+        let mut escaped = false;
+        let mut closing = None;
+        for (offset, character) in rest.char_indices() {
+            if escaped {
+                value.push(character);
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '\'' {
+                closing = Some(offset + character.len_utf8());
+                break;
+            } else {
+                value.push(character);
+            }
+        }
+        let consumed = closing.ok_or_else(|| anyhow!("unterminated lut3d resource path"))?;
+        if value.is_empty() {
+            return Err(anyhow!("lut3d resource path is empty"));
+        }
+        paths.push(PathBuf::from(value));
+        remaining = &rest[consumed..];
+    }
+    Ok(paths)
 }
 
 /// Keep the last `n` non-empty lines of a log blob.
@@ -430,6 +512,32 @@ mod tests {
             [PathBuf::from("/media/a.mp4"), PathBuf::from("/media/b.wav")]
         );
         assert_eq!(output, PathBuf::from("/output/final.mp4"));
+    }
+
+    #[test]
+    fn ffmpeg_policy_scope_includes_lut3d_filter_resources() {
+        let args = vec![
+            "-i".into(),
+            "/media/input.mp4".into(),
+            "-filter_complex".into(),
+            "[0:v]lut3d=file='/private/luts/look\\:one.cube':interp=tetrahedral[vout]".into(),
+            "/output/final.mp4".into(),
+        ];
+        let (inputs, output) = ffmpeg_filesystem_scope(&args).unwrap();
+        assert_eq!(
+            inputs,
+            [
+                PathBuf::from("/media/input.mp4"),
+                PathBuf::from("/private/luts/look:one.cube")
+            ]
+        );
+        assert_eq!(output, PathBuf::from("/output/final.mp4"));
+    }
+
+    #[test]
+    fn lut_filter_resource_parser_rejects_unquoted_or_unterminated_paths() {
+        assert!(lut_paths_from_filtergraph("lut3d=file=/tmp/look.cube").is_err());
+        assert!(lut_paths_from_filtergraph("lut3d=file='/tmp/look.cube").is_err());
     }
 
     #[test]

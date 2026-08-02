@@ -7,6 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 use tokio::sync::{mpsc, Mutex, OwnedMutexGuard};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -17,16 +18,19 @@ use crate::domain::output::OutputFormat;
 use crate::error::{ApiJson, AppError, AppResult};
 use crate::jobs::{dedupe_key, EnqueueOutcome, ErrorKind, JobEvent, JobKind, JobPermit};
 use crate::library::MediaEntry;
+use crate::luts::MAX_LUT_FILE_BYTES;
 use crate::model::{EditRequest, ImportRequest};
 use crate::ports::{ExportCommandCompiler, ExportCompileRequest};
 use crate::services::render::{
-    EditPlan, ExportExecutionProfile, RenderExecution, SourceMediaMetadata,
+    validate_color_grade_request, EditPlan, ExportExecutionProfile, RenderExecution,
+    RenderResources, SourceMediaMetadata,
 };
-use crate::state::AppState;
+use crate::state::{AppState, ToolInfo};
 use crate::tools::{self, Done};
 
 mod jobs;
 mod library;
+mod luts;
 mod upload;
 
 pub use jobs::{
@@ -35,6 +39,7 @@ pub use jobs::{
 };
 use jobs::{dispatch_job, JobLeaseHeartbeat};
 pub use library::{library_delete_handler, library_list_handler, library_search_handler};
+pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
 pub use upload::upload_handler;
 
 /// Per-job wall-clock limit (download or render), overridable via env.
@@ -61,6 +66,14 @@ struct EditWork {
     request: EditRequest,
     output_id: String,
     cache_key: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditDedupeIdentity<'a> {
+    pipeline_version: &'static str,
+    runtime_fingerprint: &'a str,
+    request: &'a EditRequest,
 }
 
 /// `POST /api/import` — accept a video URL, kick off a download in the background,
@@ -206,23 +219,87 @@ fn spawn_import_job(
 /// Content key for the render cache: a hash of the canonical (source + edit)
 /// request. Re-serializing the deserialized `EditRequest` normalises omitted
 /// defaults, so two equivalent requests map to the same key.
+const RENDER_CACHE_PIPELINE_VERSION: &str = "render-cache-v2-color-pipeline-v2";
+
 pub fn render_cache_key(req: &EditRequest) -> String {
+    render_cache_key_with_context(req, None, None)
+}
+
+pub fn render_cache_key_for_tools(req: &EditRequest, tools: &ToolInfo) -> String {
+    let fingerprint = render_runtime_fingerprint(tools);
+    render_cache_key_with_context(req, Some(&fingerprint), None)
+}
+
+fn render_cache_key_with_context(
+    req: &EditRequest,
+    runtime_fingerprint: Option<&str>,
+    lut_sha256: Option<&str>,
+) -> String {
     let canonical = serde_json::to_string(req).unwrap_or_default();
     let mut hasher = Sha256::new();
+    hasher.update(RENDER_CACHE_PIPELINE_VERSION.as_bytes());
+    hasher.update([0]);
+    hasher.update(runtime_fingerprint.unwrap_or("missing").as_bytes());
+    hasher.update([0]);
+    hasher.update(lut_sha256.unwrap_or("no-lut").as_bytes());
+    hasher.update([0]);
     hasher.update(canonical.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+fn render_runtime_fingerprint(tools: &ToolInfo) -> String {
+    let mut encoders = tools.ffmpeg_encoders.clone();
+    let mut muxers = tools.ffmpeg_muxers.clone();
+    let mut filters = tools.ffmpeg_filters.clone();
+    encoders.sort();
+    muxers.sort();
+    filters.sort();
+
+    let mut hash = Sha256::new();
+    hash.update(tools.ffmpeg_version.as_deref().unwrap_or("missing"));
+    for values in [&encoders, &muxers, &filters] {
+        hash.update([0]);
+        for value in values {
+            hash.update(value.as_bytes());
+            hash.update([0]);
+        }
+    }
+    format!("{:x}", hash.finalize())
 }
 
 /// `POST /api/edit` — apply trim/crop/scale/mute/speed to a previously imported
 /// video and return a job id to poll for the rendered result.
 pub async fn edit_handler(
     State(state): State<AppState>,
-    ApiJson(req): ApiJson<EditRequest>,
+    ApiJson(mut req): ApiJson<EditRequest>,
 ) -> AppResult<Json<Value>> {
+    // Audio-only exports have no video filter graph. Canonicalise video-only
+    // colour fields before validation, durable dedupe, and cache identity.
+    if req.format.as_deref() == Some("mp3") {
+        req.lut = None;
+        req.curves = None;
+    } else if req
+        .lut
+        .as_ref()
+        .is_some_and(|lut| (0.0..=1e-9).contains(&lut.intensity))
+    {
+        req.lut = None;
+    }
+    validate_color_grade_request(&req)
+        .map_err(|_| AppError::bad_request("некорректные параметры LUT или кривых"))?;
+    validate_color_grade_capabilities(&state, &req)?;
     let job_id = Uuid::new_v4().to_string();
-    let cache_key = render_cache_key(&req);
-    let key = dedupe_key("edit", &req)
-        .map_err(|error| AppError::internal("build edit dedupe key", error))?;
+    let runtime_fingerprint = render_runtime_fingerprint(state.tools.as_ref());
+    let cache_key = render_cache_key_with_context(&req, Some(&runtime_fingerprint), None);
+    let key = dedupe_key(
+        "edit",
+        &EditDedupeIdentity {
+            pipeline_version: RENDER_CACHE_PIPELINE_VERSION,
+            runtime_fingerprint: &runtime_fingerprint,
+            request: &req,
+        },
+    )
+    .map_err(|error| AppError::internal("build edit dedupe key", error))?;
     let work = EditWork {
         schema_version: 1,
         request: req,
@@ -248,6 +325,35 @@ pub async fn edit_handler(
     Ok(Json(json!({ "jobId": resolved_id })))
 }
 
+fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) -> AppResult<()> {
+    let has_filter = |name: &str| {
+        state.tools.ffmpeg
+            && state
+                .tools
+                .ffmpeg_filters
+                .iter()
+                .any(|candidate| candidate == name)
+    };
+    if request.curves.is_some() && !has_filter("curves") {
+        return Err(AppError::bad_request(
+            "кривые недоступны: FFmpeg filter curves не найден",
+        ));
+    }
+    if let Some(lut) = request.lut.as_ref().filter(|lut| lut.intensity > 1e-9) {
+        if !has_filter("lut3d") {
+            return Err(AppError::bad_request(
+                "3D LUT недоступны: FFmpeg filter lut3d не найден",
+            ));
+        }
+        if lut.intensity < 1.0 - 1e-9 && !has_filter("blend") {
+            return Err(AppError::bad_request(
+                "частичная интенсивность LUT недоступна: FFmpeg filter blend не найден",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn spawn_edit_job(
     state: AppState,
     job_id: String,
@@ -260,7 +366,7 @@ fn spawn_edit_job(
         schema_version: _,
         request: req,
         output_id: out_id,
-        cache_key,
+        cache_key: _,
     } = work;
     let st = state.clone();
     let jid = job_id.clone();
@@ -271,6 +377,16 @@ fn spawn_edit_job(
             st.clear_cancel(&jid).await;
             return;
         }
+        let resources = match resolve_render_resources(&st, &req).await {
+            Ok(resources) => resources,
+            Err(error) => {
+                finish_job(&st, &jid, Err(error), "output").await;
+                return;
+            }
+        };
+        let runtime_fingerprint = render_runtime_fingerprint(st.tools.as_ref());
+        let cache_key =
+            render_cache_key_with_context(&req, Some(&runtime_fingerprint), resources.lut_sha256());
         let render_lock = st.render_lock(&cache_key).await;
         let _render_guard =
             match acquire_render_lock_or_cancelled(&st, &jid, &token, render_lock).await {
@@ -317,12 +433,13 @@ fn spawn_edit_job(
             let source_fingerprint = Fingerprint::digest(req.video_id.as_bytes());
             let source = SourceMediaMetadata::new(probe.width, probe.height, probe.duration)?;
             let plan = Arc::new(EditPlan::compile(source_fingerprint, req, source)?);
-            let execution = RenderExecution::new(
+            let execution = RenderExecution::new_with_resources(
                 plan,
                 ExportExecutionProfile {
                     encode_budget: st.encode_budget.clone(),
                     verify_checksums: true,
                 },
+                resources,
             );
             let command = tools::FfmpegExportCompiler.compile(ExportCompileRequest {
                 input: &input,
@@ -331,10 +448,9 @@ fn spawn_edit_job(
                 execution: &execution,
             })?;
             tracing::info!(output.format = %execution.output().format, "starting render");
-            let done = tools::run_ffmpeg(
+            let done = tools::run_compiled_ffmpeg(
                 &st.process_runtime,
-                &command.arguments,
-                command.expected_duration_seconds,
+                &command,
                 &tx,
                 &token,
                 job_timeout(),
@@ -380,6 +496,82 @@ fn spawn_edit_job(
     }
     .instrument(span);
     state.spawn_task(task);
+}
+
+/// Resolve client-visible immutable asset ids to private, regular files. The
+/// renderer never accepts a path from the wire request, and the resolved path
+/// is carried separately from the serializable edit plan.
+async fn resolve_render_resources(
+    state: &AppState,
+    request: &EditRequest,
+) -> anyhow::Result<RenderResources> {
+    // Audio-only exports do not compile a video filter graph. Do not require or
+    // grant read access to a LUT that the MP3 command cannot consume.
+    if request.format.as_deref() == Some("mp3") {
+        return Ok(RenderResources::default());
+    }
+    let Some(selection) = request.lut.as_ref() else {
+        return Ok(RenderResources::default());
+    };
+    // An intensity of zero is canonicalised to a bypass by EditPlan. Avoid
+    // requiring an asset that the resulting plan will not read.
+    if selection.intensity <= 1e-9 {
+        return Ok(RenderResources::default());
+    }
+    Uuid::parse_str(&selection.id).map_err(|_| anyhow::anyhow!("LUT не найден"))?;
+    let asset = state
+        .db
+        .get_lut(&selection.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("LUT не найден"))?;
+    anyhow::ensure!(asset.id == selection.id, "Некорректная ссылка на LUT");
+    let expected_filename = format!("{}.cube", asset.id);
+    anyhow::ensure!(
+        asset.filename == expected_filename,
+        "Некорректная ссылка на файл LUT"
+    );
+    let luts_dir = tokio::fs::canonicalize(state.luts_dir())
+        .await
+        .map_err(|_| anyhow::anyhow!("Хранилище LUT недоступно"))?;
+    let path = state.luts_dir().join(&asset.filename);
+    let metadata = tokio::fs::symlink_metadata(&path)
+        .await
+        .map_err(|_| anyhow::anyhow!("Файл LUT не найден"))?;
+    anyhow::ensure!(
+        metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
+        "Файл LUT имеет недопустимый тип"
+    );
+    anyhow::ensure!(
+        metadata.len() <= MAX_LUT_FILE_BYTES as u64 && metadata.len() == asset.size_bytes,
+        "Файл LUT повреждён"
+    );
+    let canonical_path = tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|_| anyhow::anyhow!("Файл LUT не найден"))?;
+    anyhow::ensure!(
+        canonical_path.parent() == Some(luts_dir.as_path()),
+        "Файл LUT находится вне хранилища"
+    );
+
+    let file = tokio::fs::File::open(&canonical_path)
+        .await
+        .map_err(|_| anyhow::anyhow!("Файл LUT не найден"))?;
+    let mut reader = file.take(MAX_LUT_FILE_BYTES as u64 + 1);
+    let mut bytes = Vec::with_capacity(asset.size_bytes as usize);
+    reader
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|_| anyhow::anyhow!("Не удалось проверить файл LUT"))?;
+    anyhow::ensure!(
+        bytes.len() as u64 == asset.size_bytes && bytes.len() <= MAX_LUT_FILE_BYTES,
+        "Файл LUT повреждён"
+    );
+    let actual_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    anyhow::ensure!(actual_sha256 == asset.sha256, "Файл LUT повреждён");
+    Ok(RenderResources::with_verified_lut(
+        canonical_path,
+        actual_sha256,
+    ))
 }
 
 pub async fn api_not_found_handler() -> AppError {
@@ -737,6 +929,75 @@ mod tests {
         assert_eq!(job.status, JobStatus::Cancelled);
         assert!(job.stage.is_none());
         assert!(job.progress.is_none());
+    }
+
+    #[tokio::test]
+    async fn mp3_render_does_not_resolve_an_unused_lut() {
+        let (st, _dir) = state().await;
+        let request: EditRequest = serde_json::from_value(json!({
+            "videoId": "source",
+            "format": "mp3",
+            "lut": { "id": "missing-lut", "intensity": 1.0 }
+        }))
+        .unwrap();
+
+        let resources = resolve_render_resources(&st, &request).await.unwrap();
+        assert!(resources.lut_path().is_none());
+    }
+
+    #[tokio::test]
+    async fn resolved_lut_is_uuid_scoped_and_content_verified() {
+        let (st, _dir) = state().await;
+        tokio::fs::create_dir_all(st.luts_dir()).await.unwrap();
+        let id = "11111111-1111-4111-8111-111111111111";
+        let filename = format!("{id}.cube");
+        let bytes = b"LUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n";
+        let sha256 = format!("{:x}", Sha256::digest(bytes));
+        tokio::fs::write(st.luts_dir().join(&filename), bytes)
+            .await
+            .unwrap();
+        st.db
+            .insert_or_get_lut(&crate::luts::LutAsset::new(
+                id.into(),
+                "Verified".into(),
+                filename,
+                2,
+                bytes.len() as u64,
+                sha256.clone(),
+                1,
+            ))
+            .await
+            .unwrap();
+        let request: EditRequest = serde_json::from_value(json!({
+            "videoId": "source",
+            "lut": { "id": id, "intensity": 1.0 }
+        }))
+        .unwrap();
+
+        let resources = resolve_render_resources(&st, &request).await.unwrap();
+        assert_eq!(resources.lut_sha256(), Some(sha256.as_str()));
+
+        let mut corrupt = bytes.to_vec();
+        let last_value = corrupt.len() - 2;
+        corrupt[last_value] = b'0';
+        tokio::fs::write(st.luts_dir().join(format!("{id}.cube")), corrupt)
+            .await
+            .unwrap();
+        assert!(resolve_render_resources(&st, &request).await.is_err());
+    }
+
+    #[test]
+    fn render_cache_identity_includes_runtime_and_lut_content() {
+        let request: EditRequest = serde_json::from_value(json!({ "videoId": "source" })).unwrap();
+        let baseline = render_cache_key_with_context(&request, None, None);
+        assert_ne!(
+            baseline,
+            render_cache_key_with_context(&request, Some("ffmpeg 8.1"), None)
+        );
+        assert_ne!(
+            baseline,
+            render_cache_key_with_context(&request, None, Some("lut-sha"))
+        );
     }
 
     #[test]

@@ -16,7 +16,7 @@ pub const UPLOAD_LIMIT: usize = 64 * 1024 * 1024;
 pub async fn make_state(ffmpeg: bool, ytdlp: bool) -> (AppState, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let storage = dir.path().to_path_buf();
-    for directory in ["sources", "outputs", "staging"] {
+    for directory in ["sources", "outputs", "staging", "luts"] {
         tokio::fs::create_dir_all(storage.join(directory))
             .await
             .unwrap();
@@ -64,6 +64,8 @@ pub async fn make_state(ffmpeg: bool, ytdlp: bool) -> (AppState, tempfile::TempD
                 "colorchannelmixer",
                 "colorbalance",
                 "curves",
+                "lut3d",
+                "blend",
             ]
             .into_iter()
             .map(str::to_owned)

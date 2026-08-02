@@ -13,13 +13,30 @@ import {
   savePreset,
   applyPreset,
   deletePreset,
+  resetColor,
+  beginEditTransaction,
+  endEditTransaction,
 } from '../store'
 import type { Preset } from '../store'
 import TrimSlider from './TrimSlider.vue'
+import CurvesEditor from './edit/CurvesEditor.vue'
 import ExportControls from './edit/ExportControls.vue'
+import LutControl from './edit/LutControl.vue'
 
 const canUndo = computed(() => history.past.length > 0)
 const canRedo = computed(() => history.future.length > 0)
+
+const curvesCapability = computed(() =>
+  state.capabilities?.filters?.find((option) =>
+    ['curves', 'color-curves', 'custom-curves'].includes(option.id.toLowerCase()),
+  ),
+)
+const curvesUnavailableReason = computed(() => {
+  if (!state.capabilities) return ''
+  const option = curvesCapability.value
+  if (!option) return 'Нужен обновлённый сервер с поддержкой кривых'
+  return option.available ? '' : option.reason || 'Кривые недоступны в текущей сборке сервера'
+})
 
 const presetName = ref('')
 function onSavePreset() {
@@ -27,7 +44,7 @@ function onSavePreset() {
   presetName.value = ''
 }
 function onApplyPreset(p: Preset) {
-  applyPreset(p)
+  void applyPreset(p)
 }
 
 const duration = computed(() => state.video?.duration ?? 0)
@@ -218,16 +235,6 @@ const fpsPresets = [
   { v: 24, label: '24' },
   { v: 15, label: '15' },
 ]
-
-function resetColor() {
-  state.edit.brightness = 0
-  state.edit.contrast = 1
-  state.edit.saturation = 1
-  state.edit.filter = ''
-  state.edit.denoise = false
-  state.edit.sharpen = 0
-  state.edit.grain = 0
-}
 
 const censorColors = [
   { v: 'black', label: 'Чёрный' },
@@ -592,6 +599,23 @@ function applyPlatform(name: string) {
             <input type="range" min="0" max="3" step="0.05" v-model.number="state.edit.saturation" />
           </label>
           <button class="btn ghost sm reset-color" @click="resetColor">Сбросить цвет</button>
+        </div>
+      </div>
+      <div class="advanced-color-stack">
+        <LutControl />
+        <template v-if="!curvesUnavailableReason">
+          <CurvesEditor
+            v-model="state.edit.curves"
+            @interaction-start="beginEditTransaction('curves')"
+            @interaction-end="endEditTransaction"
+          />
+          <p class="advanced-color-note">
+            Кривые не отображаются в предпросмотре; точный результат виден после экспорта.
+          </p>
+        </template>
+        <div v-else class="color-tool is-unavailable curves-unavailable" role="status">
+          <strong>Кривые недоступны</strong>
+          <span>{{ curvesUnavailableReason }}</span>
         </div>
       </div>
       <div class="field inline">

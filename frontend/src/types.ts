@@ -35,6 +35,29 @@ export interface ResultInfo {
   sizeBytes?: number | null
 }
 
+/** Metadata returned after the backend validates and stores a 3D `.cube` LUT. */
+export interface LutAsset {
+  id: string
+  name: string
+  cubeSize: number
+  sizeBytes: number
+  sha256?: string
+}
+
+export interface CurvePoint {
+  /** Input code value, inclusive 0..255. */
+  x: number
+  /** Output code value, inclusive 0..255. */
+  y: number
+}
+
+export interface ColorCurves {
+  master: CurvePoint[]
+  red: CurvePoint[]
+  green: CurvePoint[]
+  blue: CurvePoint[]
+}
+
 export interface EditState {
   trimStart: number
   trimEnd: number
@@ -59,6 +82,12 @@ export interface EditState {
   contrast: number
   saturation: number
   filter: string
+  /** Stored LUT asset reference. File bytes never enter edit/project JSON. */
+  lutId: string | null
+  lutName: string
+  lutSize: number | null
+  lutIntensity: number
+  curves: ColorCurves
   reverse: boolean
   fps: number | null
   censorEnabled: boolean

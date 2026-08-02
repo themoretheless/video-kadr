@@ -39,6 +39,35 @@ fn post_json(uri: &str, body: Value) -> Request<Body> {
         .unwrap()
 }
 
+fn post_identity_lut() -> Request<Body> {
+    const BOUNDARY: &str = "API_EDIT_LUT_BRIDGE";
+    const IDENTITY_CUBE: &str = "LUT_3D_SIZE 2\n\
+0 0 0\n\
+1 0 0\n\
+0 1 0\n\
+1 1 0\n\
+0 0 1\n\
+1 0 1\n\
+0 1 1\n\
+1 1 1\n";
+    let body = format!(
+        "--{BOUNDARY}\r\n\
+Content-Disposition: form-data; name=\"file\"; filename=\"identity.cube\"\r\n\
+Content-Type: application/octet-stream\r\n\r\n\
+{IDENTITY_CUBE}\r\n\
+--{BOUNDARY}--\r\n"
+    );
+    Request::builder()
+        .method("POST")
+        .uri("/api/luts")
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
+        .body(Body::from(body))
+        .unwrap()
+}
+
 fn delete(uri: &str) -> Request<Body> {
     Request::builder()
         .method("DELETE")
@@ -398,12 +427,212 @@ async fn edit_with_missing_source_fails_job() {
 }
 
 #[tokio::test]
+async fn color_grade_path_like_lut_id_is_rejected_before_enqueue() {
+    let (state, storage) = make_state(true, true).await;
+    let outside = storage.path().join("outside.cube");
+    tokio::fs::write(&outside, b"path-canary").await.unwrap();
+    let app = router(state);
+
+    let (status, queued, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": "missing-source-behind-lut",
+                "lut": { "id": "../outside", "intensity": 1.0 }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&queued, "bad_request");
+    assert!(queued.get("jobId").is_none());
+    assert_eq!(tokio::fs::read(outside).await.unwrap(), b"path-canary");
+}
+
+#[tokio::test]
+async fn color_grade_unknown_well_formed_lut_fails_before_source_lookup() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let (status, queued, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": "missing-source-behind-lut",
+                "lut": {
+                    "id": "00000000-0000-4000-8000-000000000000",
+                    "intensity": 1.0
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = queued["jobId"].as_str().expect("edit should be enqueued");
+    let job = poll_terminal(&app, id).await;
+    assert_eq!(job["status"], "error");
+    assert_eq!(job["error"], "LUT не найден");
+}
+
+#[tokio::test]
+async fn color_grade_zero_intensity_lut_bypasses_asset_resolution() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let source_id = "missing-source-after-zero-lut";
+
+    let (status, queued, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": source_id,
+                "lut": { "id": "missing-lut", "intensity": 0.0 }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = queued["jobId"].as_str().expect("edit should be enqueued");
+    let job = poll_terminal(&app, id).await;
+    assert_eq!(job["status"], "error");
+    assert!(job["error"].as_str().unwrap().contains(source_id));
+    assert!(!job["error"].as_str().unwrap().contains("LUT"));
+
+    let (plain_status, plain, _) = send(
+        &app,
+        post_json("/api/edit", json!({ "videoId": source_id })),
+    )
+    .await;
+    assert_eq!(plain_status, StatusCode::OK);
+    assert_eq!(plain["jobId"], queued["jobId"]);
+}
+
+#[tokio::test]
+async fn mp3_canonicalizes_video_grading_before_validation_and_dedupe() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let (first_status, first, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": "missing-audio-source",
+                "format": "mp3",
+                "lut": { "id": "../ignored.cube", "intensity": 2.0 },
+                "curves": {
+                    "master": (0..17).map(|index| {
+                        let value = index as f64 / 16.0;
+                        json!({ "x": value, "y": value })
+                    }).collect::<Vec<_>>()
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(first_status, StatusCode::OK);
+
+    let (second_status, second, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({ "videoId": "missing-audio-source", "format": "mp3" }),
+        ),
+    )
+    .await;
+    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(first["jobId"], second["jobId"]);
+}
+
+#[tokio::test]
+async fn color_grade_invalid_curve_wire_payload_is_rejected_before_enqueue() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": "curve-source",
+                "curves": {
+                    "red": [
+                        { "x": 0.0, "y": 0.0 },
+                        { "x": 1.0, "y": 1.0, "unexpected": true }
+                    ]
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
+    assert!(body.get("jobId").is_none());
+}
+
+#[tokio::test]
+async fn color_grade_curve_cardinality_is_rejected_before_enqueue() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let points: Vec<_> = (0..17)
+        .map(|index| {
+            let value = index as f64 / 16.0;
+            json!({ "x": value, "y": value })
+        })
+        .collect();
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": "curve-source",
+                "curves": { "master": points }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+    assert!(body.get("jobId").is_none());
+}
+
+#[tokio::test]
+async fn color_grade_uploaded_lut_is_resolved_before_the_source_lookup() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let (upload_status, uploaded, _) = send(&app, post_identity_lut()).await;
+    assert_eq!(upload_status, StatusCode::CREATED);
+    let lut_id = uploaded["id"].as_str().expect("uploaded LUT id");
+    let source_id = "missing-source-after-resolved-lut";
+
+    let (status, queued, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": source_id,
+                "lut": { "id": lut_id, "intensity": 1.0 }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = queued["jobId"].as_str().expect("edit should be enqueued");
+    let job = poll_terminal(&app, id).await;
+    assert_eq!(job["status"], "error");
+    assert!(job["error"].as_str().unwrap().contains(source_id));
+    assert!(!job["error"].as_str().unwrap().contains("LUT"));
+}
+
+#[tokio::test]
 async fn edit_cache_hit_returns_existing_output() {
     let (state, _d) = make_state(true, true).await;
     // Pre-seed the render cache for a specific edit, with its output file present.
     let req_json = json!({ "videoId": "vidX", "trim": { "start": 0.0, "end": 5.0 } });
     let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
-    let key = video_editor_backend::handlers::render_cache_key(&req);
+    let key =
+        video_editor_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
     let filename = "cached.mp4";
     tokio::fs::write(state.outputs_dir().join(filename), b"x")
         .await
@@ -437,7 +666,8 @@ async fn edit_stale_render_cache_entry_is_evicted() {
     let (state, _d) = make_state(true, true).await;
     let req_json = json!({ "videoId": "missing-video", "trim": { "start": 0.0, "end": 5.0 } });
     let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
-    let key = video_editor_backend::handlers::render_cache_key(&req);
+    let key =
+        video_editor_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
     state
         .db
         .cache_put(

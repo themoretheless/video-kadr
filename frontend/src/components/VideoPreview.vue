@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { beginEditTransaction, endEditTransaction, state } from '../store'
+import { beginEditTransaction, endEditTransaction, isIdentityCurves, state } from '../store'
 import RectOverlay from './RectOverlay.vue'
 
 const videoEl = ref<HTMLVideoElement | null>(null)
@@ -57,6 +57,15 @@ const videoStyle = computed(() => {
     filter: f.length ? f.join(' ') : undefined,
     transform: sx !== 1 || sy !== 1 ? `scaleX(${sx}) scaleY(${sy})` : undefined,
   }
+})
+
+const advancedColorNotice = computed(() => {
+  const lutActive = Boolean(state.edit.lutId) && state.edit.lutIntensity > 0
+  const curvesActive = !isIdentityCurves(state.edit.curves)
+  if (lutActive && curvesActive) return 'LUT и кривые включены.'
+  if (lutActive) return 'LUT включён.'
+  if (curvesActive) return 'Кривые включены.'
+  return ''
 })
 
 // Reload the player when a new source is imported.
@@ -151,6 +160,10 @@ const meta = computed(() => {
     <div v-if="state.video" class="meta">
       <span v-for="(m, i) in meta" :key="i" class="meta-chip">{{ m }}</span>
     </div>
+    <p v-if="advancedColorNotice" class="preview-color-notice" role="status">
+      <strong>{{ advancedColorNotice }}</strong> Эти настройки не отображаются в предпросмотре;
+      точный результат виден после экспорта.
+    </p>
     <p v-if="state.video" class="hint">Превью показывает оригинал, обрезка зациклена внутри выбранного отрезка.</p>
   </div>
 </template>

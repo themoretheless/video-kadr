@@ -101,7 +101,7 @@ impl Capabilities {
                 "нужен encoder libx265",
             ),
         ];
-        let filters = [
+        let mut filters: Vec<CapabilityOption> = [
             ("grayscale", "Ч/Б", "hue"),
             ("sepia", "Сепия", "colorchannelmixer"),
             ("warm", "Тёплый", "colorbalance"),
@@ -121,6 +121,24 @@ impl Capabilities {
             )
         })
         .collect();
+        filters.push(option(
+            "custom-curves",
+            "Кривые",
+            has_filter("curves"),
+            "нужен filter curves",
+        ));
+        filters.push(option(
+            "lut3d",
+            "3D LUT",
+            has_filter("lut3d"),
+            "нужен filter lut3d",
+        ));
+        filters.push(option(
+            "lut-intensity",
+            "Частичная интенсивность 3D LUT",
+            has_filter("lut3d") && has_filter("blend"),
+            "нужны filters lut3d и blend",
+        ));
         let hardware = [
             (
                 "videotoolbox-h264",
@@ -240,6 +258,33 @@ mod tests {
                 .codecs
                 .iter()
                 .find(|option| option.id == "h264")
+                .unwrap()
+                .available
+        );
+    }
+
+    #[test]
+    fn full_lut_does_not_require_the_partial_intensity_blend_filter() {
+        let tools = ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["lut3d".into()],
+            ..ToolInfo::default()
+        };
+
+        let capabilities = Capabilities::from_tools(&tools);
+        assert!(
+            capabilities
+                .filters
+                .iter()
+                .find(|option| option.id == "lut3d")
+                .unwrap()
+                .available
+        );
+        assert!(
+            !capabilities
+                .filters
+                .iter()
+                .find(|option| option.id == "lut-intensity")
                 .unwrap()
                 .available
         );

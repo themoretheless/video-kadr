@@ -1,5 +1,6 @@
 //! Offline render service contract: immutable edit plan plus resource policy.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::de::Error as _;
@@ -9,7 +10,8 @@ use crate::config::encode_budget::EncodeBudget;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::edit::{
     AspectRatio, AudioEffects, CensorColor, CensorSpec, EditSpec, GeometrySpec, LookPreset,
-    OutputScale, PixelRect, Rotation, TimeRange, TimingSpec, VideoEffects,
+    LutGrade, OutputScale, PixelRect, Rotation, TimeRange, TimingSpec, ToneCurve, ToneCurvePoint,
+    ToneCurves, VideoEffects,
 };
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::model::{Crop, EditRequest, Scale, Trim};
@@ -325,6 +327,23 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
         .as_deref()
         .map(LookPreset::parse)
         .transpose()?;
+    let curves = request
+        .curves
+        .map(|value| {
+            Ok::<_, anyhow::Error>(ToneCurves::new(
+                value.master.map(map_curve).transpose()?,
+                value.red.map(map_curve).transpose()?,
+                value.green.map(map_curve).transpose()?,
+                value.blue.map(map_curve).transpose()?,
+            ))
+        })
+        .transpose()?
+        .flatten();
+    let lut = request
+        .lut
+        .map(|value| LutGrade::new(value.id, value.intensity))
+        .transpose()?
+        .flatten();
     let pad_aspect = request.pad.as_deref().map(AspectRatio::parse).transpose()?;
     let edit = EditSpec::new(
         TimingSpec {
@@ -353,6 +372,8 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             denoise: request.denoise,
             sharpen: request.sharpen,
             grain: request.grain,
+            curves,
+            lut,
         },
         AudioEffects {
             muted: request.mute,
@@ -378,21 +399,99 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
     Ok((edit, output))
 }
 
+fn map_curve(points: Vec<crate::model::CurvePoint>) -> anyhow::Result<ToneCurve> {
+    ToneCurve::new(
+        points
+            .into_iter()
+            .map(|point| ToneCurvePoint::new(point.x, point.y))
+            .collect(),
+    )
+    .map_err(Into::into)
+}
+
+/// Validate the wire-level colour payload before it is persisted as durable
+/// work. Source-dependent geometry is still validated when the full edit plan
+/// is compiled, but LUT/curve bounds do not need media metadata.
+pub fn validate_color_grade_request(request: &EditRequest) -> anyhow::Result<()> {
+    if let Some(curves) = &request.curves {
+        let validated = ToneCurves::new(
+            curves.master.clone().map(map_curve).transpose()?,
+            curves.red.clone().map(map_curve).transpose()?,
+            curves.green.clone().map(map_curve).transpose()?,
+            curves.blue.clone().map(map_curve).transpose()?,
+        );
+        anyhow::ensure!(validated.is_some(), "Кривые не содержат ни одного канала");
+    }
+    if let Some(lut) = &request.lut {
+        LutGrade::new(lut.id.clone(), lut.intensity)?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExportExecutionProfile {
     pub encode_budget: EncodeBudget,
     pub verify_checksums: bool,
 }
 
+/// Private filesystem resources resolved by an HTTP/application adapter. Asset
+/// ids stay in the immutable edit plan; only this execution envelope owns paths.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RenderResources {
+    lut_path: Option<PathBuf>,
+    lut_sha256: Option<String>,
+}
+
+impl RenderResources {
+    pub fn with_lut_path(path: impl Into<PathBuf>) -> Self {
+        Self {
+            lut_path: Some(path.into()),
+            lut_sha256: None,
+        }
+    }
+
+    pub fn with_verified_lut(path: impl Into<PathBuf>, sha256: String) -> Self {
+        Self {
+            lut_path: Some(path.into()),
+            lut_sha256: Some(sha256),
+        }
+    }
+
+    pub fn lut_path(&self) -> Option<&Path> {
+        self.lut_path.as_deref()
+    }
+
+    pub fn lut_sha256(&self) -> Option<&str> {
+        self.lut_sha256.as_deref()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderExecution {
     plan: Arc<EditPlan>,
     pub profile: ExportExecutionProfile,
+    resources: RenderResources,
 }
 
 impl RenderExecution {
     pub fn new(plan: Arc<EditPlan>, profile: ExportExecutionProfile) -> Self {
-        Self { plan, profile }
+        Self {
+            plan,
+            profile,
+            resources: RenderResources::default(),
+        }
+    }
+
+    pub fn new_with_resources(
+        plan: Arc<EditPlan>,
+        profile: ExportExecutionProfile,
+        resources: RenderResources,
+    ) -> Self {
+        Self {
+            plan,
+            profile,
+            resources,
+        }
     }
 
     pub fn plan(&self) -> &EditPlan {
@@ -401,6 +500,10 @@ impl RenderExecution {
 
     pub fn output(&self) -> &OutputSpec {
         &self.plan.output
+    }
+
+    pub fn resources(&self) -> &RenderResources {
+        &self.resources
     }
 }
 
@@ -584,12 +687,47 @@ mod tests {
             serde_json::json!({"videoId": "source", "format": "webm", "codec": "h265"}),
             serde_json::json!({"videoId": "source", "rotate": 45}),
             serde_json::json!({"videoId": "source", "quality": 99}),
+            serde_json::json!({"videoId": "source", "lut": {"id": "../look", "intensity": 1.0}}),
+            serde_json::json!({"videoId": "source", "lut": {"id": "look", "intensity": 1.1}}),
+            serde_json::json!({"videoId": "source", "curves": {"red": [{"x": 0.1, "y": 0.0}, {"x": 1.0, "y": 1.0}]}}),
         ] {
             let request = serde_json::from_value(value).unwrap();
             assert!(
                 EditPlan::compile(Fingerprint::digest(b"source"), request, self::source()).is_err()
             );
         }
+    }
+
+    #[test]
+    fn compiler_maps_valid_lut_and_all_curve_channels() {
+        let plan = compile(serde_json::json!({
+            "videoId": "source",
+            "lut": {"id": "look-1", "intensity": 0.4},
+            "curves": {
+                "master": [{"x": 0.0, "y": 0.05}, {"x": 1.0, "y": 0.95}],
+                "red": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}],
+                "green": [{"x": 0.0, "y": 0.0}, {"x": 0.5, "y": 0.55}, {"x": 1.0, "y": 1.0}],
+                "blue": [{"x": 0.0, "y": 0.1}, {"x": 1.0, "y": 0.9}]
+            }
+        }))
+        .unwrap();
+
+        let video = plan.edit.video();
+        assert_eq!(video.lut.as_ref().unwrap().id(), "look-1");
+        assert_eq!(video.lut.as_ref().unwrap().intensity(), 0.4);
+        let curves = video.curves.as_ref().unwrap();
+        assert_eq!(curves.master().unwrap().points().len(), 2);
+        assert_eq!(curves.green().unwrap().points().len(), 3);
+    }
+
+    #[test]
+    fn zero_intensity_lut_is_canonicalized_to_bypass() {
+        let plan = compile(serde_json::json!({
+            "videoId": "source",
+            "lut": {"id": "look-1", "intensity": 0.0}
+        }))
+        .unwrap();
+        assert!(plan.edit.video().lut.is_none());
     }
 
     #[test]

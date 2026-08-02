@@ -37,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::fs::create_dir_all(storage.join("staging")).await?;
     tokio::fs::create_dir_all(storage.join("proxies")).await?;
     tokio::fs::create_dir_all(storage.join("artifacts")).await?;
+    tokio::fs::create_dir_all(storage.join("luts")).await?;
 
     // Probe external tools once so /api/health and the logs reflect reality.
     let (ffmpeg, ffmpeg_version) = tools::check_tool(&process_runtime, "ffmpeg", "-version").await;

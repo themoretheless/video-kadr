@@ -200,6 +200,13 @@ pub struct EditRequest {
     /// Film grain amount (0 = off, ~0..100 noise strength).
     #[serde(default)]
     pub grain: f64,
+    /// Optional immutable LUT asset selected by id. The HTTP adapter resolves
+    /// the id to a private filesystem path before the FFmpeg adapter runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lut: Option<LutSelection>,
+    /// User-authored normalized tone curves. Missing channels are identities.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curves: Option<CustomCurves>,
     /// Letterbox/pillarbox to a target aspect like "9:16" (pad, no cropping).
     #[serde(default)]
     pub pad: Option<String>,
@@ -213,6 +220,35 @@ pub struct EditRequest {
     /// Quality as CRF (lower = better). Defaults per format/codec.
     #[serde(default)]
     pub quality: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LutSelection {
+    pub id: String,
+    /// 0 = bypass, 1 = full LUT.
+    #[serde(default = "default_one")]
+    pub intensity: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CurvePoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CustomCurves {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub master: Option<Vec<CurvePoint>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub red: Option<Vec<CurvePoint>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub green: Option<Vec<CurvePoint>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blue: Option<Vec<CurvePoint>>,
 }
 
 fn default_speed() -> f64 {
@@ -304,6 +340,32 @@ mod tests {
         assert!(e.flip_h);
         assert_eq!(e.fade_in, 1.5);
         assert_eq!(e.censor_color.as_deref(), Some("white"));
+    }
+
+    #[test]
+    fn edit_request_reads_lut_and_custom_curves() {
+        let e: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "lut": { "id": "lut-1", "intensity": 0.65 },
+            "curves": {
+                "master": [{"x": 0.0, "y": 0.1}, {"x": 1.0, "y": 0.9}],
+                "red": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}]
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(e.lut.as_ref().unwrap().id, "lut-1");
+        assert_eq!(e.lut.as_ref().unwrap().intensity, 0.65);
+        assert_eq!(e.curves.as_ref().unwrap().master.as_ref().unwrap().len(), 2);
+        assert!(e.curves.as_ref().unwrap().green.is_none());
+    }
+
+    #[test]
+    fn optional_color_grade_fields_do_not_change_default_serialization() {
+        let e: EditRequest = serde_json::from_value(json!({ "videoId": "x" })).unwrap();
+        let value = serde_json::to_value(e).unwrap();
+        assert!(value.get("lut").is_none());
+        assert!(value.get("curves").is_none());
     }
 
     #[test]

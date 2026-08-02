@@ -503,6 +503,182 @@ body {
   align-self: end;
 }
 
+/* LUT and custom curve controls share a compact, clearly export-oriented area. */
+.advanced-color-stack {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 18px;
+}
+
+.color-tool {
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.color-tool.is-unavailable {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+}
+
+.color-tool-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.color-tool-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.color-tool-head p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.color-tool-badge {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lut-upload {
+  width: 100%;
+}
+
+.lut-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lut-selected-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lut-selected-copy strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lut-selected-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lut-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.lut-remove {
+  color: var(--danger);
+}
+
+.lut-intensity {
+  margin-top: 14px;
+}
+
+.lut-intensity-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.lut-intensity-head output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lut-intensity input[type='range'] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.lut-status,
+.lut-capability {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.lut-status {
+  color: var(--accent);
+}
+
+.lut-capability {
+  color: var(--warn);
+}
+
+.lut-error {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.lut-note {
+  margin-top: 10px;
+}
+
+.curves-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.curves-unavailable span {
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.advanced-color-note,
+.preview-color-notice {
+  margin: 0;
+  padding: 9px 11px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.preview-color-notice {
+  margin-top: 10px;
+}
+
+.preview-color-notice strong {
+  color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .lut-selected {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lut-actions .btn {
+    flex: 1;
+  }
+}
+
 /* Chips / segmented controls */
 .chips {
   display: flex;

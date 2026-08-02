@@ -2,7 +2,7 @@
 //! external-tool command. Paths and resource profiles belong to the request;
 //! codec/filter semantics remain owned by the selected adapter.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
@@ -19,6 +19,9 @@ pub struct ExportCompileRequest<'a> {
 pub struct CompiledExportCommand {
     pub arguments: Vec<String>,
     pub expected_duration_seconds: f64,
+    /// Auxiliary immutable files referenced from filter options rather than
+    /// regular `-i` arguments (for example a private `.cube` LUT).
+    pub read_only_files: Vec<PathBuf>,
 }
 
 pub trait ExportCommandCompiler: Send + Sync {

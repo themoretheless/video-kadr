@@ -444,6 +444,10 @@ impl AppState {
         self.storage.join("outputs")
     }
 
+    pub fn luts_dir(&self) -> PathBuf {
+        self.storage.join("luts")
+    }
+
     pub fn render_parallelism(&self) -> usize {
         self.max_concurrent_renders
     }

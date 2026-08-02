@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, BackendUnavailableError, getProjects, pollJob } from './api'
+import { ApiError, BackendUnavailableError, getLut, getProjects, pollJob, uploadLut } from './api'
+
+const TEST_LUT_ID = '11111111-1111-4111-8111-111111111111'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -44,6 +46,70 @@ describe('API error boundary', () => {
     await expect(request).rejects.toThrow('Сервер недоступен')
     await expect(request).rejects.toBeInstanceOf(BackendUnavailableError)
     await expect(request).rejects.not.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('LUT upload', () => {
+  it('posts the cube as multipart data and returns its metadata', async () => {
+    const asset = {
+      id: TEST_LUT_ID,
+      name: 'Cinema',
+      cubeSize: 33,
+      sizeBytes: 1024,
+      sha256: 'deadbeef',
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(asset), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const file = new File(['LUT_3D_SIZE 2'], 'cinema.cube', { type: 'text/plain' })
+    const controller = new AbortController()
+
+    await expect(uploadLut(file, controller.signal)).resolves.toEqual(asset)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(path).toBe('/api/luts')
+    expect(init.method).toBe('POST')
+    expect(init.signal).toBe(controller.signal)
+    expect(init.body).toBeInstanceOf(FormData)
+    expect((init.body as FormData).get('file')).toBe(file)
+    expect(init.headers).toBeUndefined()
+  })
+
+  it('resolves stored LUT metadata by encoded id', async () => {
+    const asset = { id: TEST_LUT_ID, name: 'Cinema', cubeSize: 33, sizeBytes: 1024 }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(asset), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getLut(TEST_LUT_ID)).resolves.toEqual(asset)
+    expect(fetchMock).toHaveBeenCalledWith(`/api/luts/${TEST_LUT_ID}`, undefined)
+  })
+
+  it('surfaces the structured backend validation error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'Некорректный LUT', code: 'invalid_lut' }), {
+          status: 422,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    )
+
+    await expect(uploadLut(new File(['bad'], 'bad.cube'))).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'Некорректный LUT',
+      status: 422,
+      code: 'invalid_lut',
+    })
   })
 })
 

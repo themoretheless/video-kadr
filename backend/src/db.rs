@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use serde_json::Value;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow};
@@ -11,7 +11,27 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::library::now_secs;
+use crate::luts::{LutAsset, LUT_SCHEMA_VERSION};
 use crate::model::{Job, JobStatus};
+
+pub const MAX_LUT_ASSET_COUNT: i64 = 256;
+pub const MAX_LUT_STORAGE_BYTES: u64 = 256 * 1024 * 1024;
+pub const MAX_LUT_LIST_RESULTS: i64 = 256;
+
+#[derive(Debug)]
+struct LutQuotaExceeded;
+
+impl std::fmt::Display for LutQuotaExceeded {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("LUT storage quota exceeded")
+    }
+}
+
+impl std::error::Error for LutQuotaExceeded {}
+
+pub(crate) fn is_lut_quota_exceeded(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<LutQuotaExceeded>().is_some()
+}
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS projects (
@@ -43,6 +63,16 @@ CREATE TABLE IF NOT EXISTS render_cache (
     created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_render_cache_created_at ON render_cache(created_at DESC);
+CREATE TABLE IF NOT EXISTS color_luts (
+    id TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL UNIQUE,
+    filename TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    cube_size INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_color_luts_created_at ON color_luts(created_at DESC);
 ";
 
 /// A saved editing project: a clip plus its full edit recipe. `video` and `edit`
@@ -314,6 +344,91 @@ impl Db {
             .await?;
         Ok(res.rows_affected())
     }
+
+    /// Persist an immutable LUT, deduplicating canonical file contents by SHA-256.
+    /// The bool is true when this call inserted the returned asset.
+    pub async fn insert_or_get_lut(&self, asset: &LutAsset) -> Result<(LutAsset, bool)> {
+        let cube_size = i64::from(asset.cube_size);
+        let size_bytes =
+            i64::try_from(asset.size_bytes).context("LUT size exceeds SQLite range")?;
+        let created_at = i64::try_from(asset.created_at).context("LUT timestamp overflow")?;
+        if asset.size_bytes > MAX_LUT_STORAGE_BYTES {
+            return Err(LutQuotaExceeded.into());
+        }
+        let remaining_bytes = i64::try_from(MAX_LUT_STORAGE_BYTES - asset.size_bytes)
+            .context("LUT quota exceeds SQLite range")?;
+        let mut transaction = self.pool.begin().await?;
+        let result = sqlx::query(
+            "INSERT INTO color_luts \
+             (id, sha256, filename, display_name, cube_size, size_bytes, created_at) \
+             SELECT ?, ?, ?, ?, ?, ?, ? \
+             WHERE (SELECT COUNT(*) FROM color_luts) < ? \
+               AND (SELECT COALESCE(SUM(size_bytes), 0) FROM color_luts) <= ? \
+             ON CONFLICT(sha256) DO NOTHING",
+        )
+        .bind(&asset.id)
+        .bind(&asset.sha256)
+        .bind(&asset.filename)
+        .bind(&asset.name)
+        .bind(cube_size)
+        .bind(size_bytes)
+        .bind(created_at)
+        .bind(MAX_LUT_ASSET_COUNT)
+        .bind(remaining_bytes)
+        .execute(&mut *transaction)
+        .await?;
+        if result.rows_affected() == 1 {
+            transaction.commit().await?;
+            return Ok((asset.clone(), true));
+        }
+        let existing = sqlx::query(
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
+             FROM color_luts WHERE sha256 = ?",
+        )
+        .bind(&asset.sha256)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .map(row_to_lut)
+        .transpose()?;
+        transaction.commit().await?;
+        match existing {
+            Some(existing) => Ok((existing, false)),
+            None => Err(LutQuotaExceeded.into()),
+        }
+    }
+
+    pub async fn get_lut(&self, id: &str) -> Result<Option<LutAsset>> {
+        let row = sqlx::query(
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
+             FROM color_luts WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_lut).transpose()
+    }
+
+    pub async fn get_lut_by_sha256(&self, sha256: &str) -> Result<Option<LutAsset>> {
+        let row = sqlx::query(
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
+             FROM color_luts WHERE sha256 = ?",
+        )
+        .bind(sha256)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_lut).transpose()
+    }
+
+    pub async fn list_luts(&self) -> Result<Vec<LutAsset>> {
+        let rows = sqlx::query(
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
+             FROM color_luts ORDER BY created_at DESC, id LIMIT ?",
+        )
+        .bind(MAX_LUT_LIST_RESULTS)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(row_to_lut).collect()
+    }
 }
 
 fn row_to_job(row: SqliteRow) -> Result<Job> {
@@ -340,6 +455,26 @@ fn row_to_project(row: SqliteRow) -> Result<Project> {
         edit: serde_json::from_str(&row.try_get::<String, _>("edit_json")?)?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
+    })
+}
+
+fn row_to_lut(row: SqliteRow) -> Result<LutAsset> {
+    let cube_size = u32::try_from(row.try_get::<i64, _>("cube_size")?)
+        .context("invalid LUT cube size in database")?;
+    let size_bytes = u64::try_from(row.try_get::<i64, _>("size_bytes")?)
+        .context("invalid LUT byte size in database")?;
+    let created_at = u64::try_from(row.try_get::<i64, _>("created_at")?)
+        .context("invalid LUT timestamp in database")?;
+    Ok(LutAsset {
+        schema_version: LUT_SCHEMA_VERSION,
+        id: row.try_get("id")?,
+        name: row.try_get("display_name")?,
+        kind: "cube3d".into(),
+        cube_size,
+        size_bytes,
+        sha256: row.try_get("sha256")?,
+        created_at,
+        filename: row.try_get("filename")?,
     })
 }
 
@@ -463,5 +598,84 @@ mod tests {
         let db2 = Db::open(dir.path()).await.unwrap();
         let p = db2.get_project_by_video("v1").await.unwrap().unwrap();
         assert_eq!(p.edit["filter"], "sepia");
+    }
+
+    #[tokio::test]
+    async fn immutable_luts_roundtrip_and_deduplicate_by_hash() {
+        let (db, _d) = db().await;
+        let first = LutAsset::new(
+            "first".into(),
+            "First".into(),
+            "first.cube".into(),
+            2,
+            100,
+            "abc".into(),
+            10,
+        );
+        let (inserted, created) = db.insert_or_get_lut(&first).await.unwrap();
+        assert!(created);
+        assert_eq!(inserted, first);
+
+        let duplicate = LutAsset::new(
+            "second".into(),
+            "Second".into(),
+            "second.cube".into(),
+            2,
+            100,
+            "abc".into(),
+            20,
+        );
+        let (resolved, created) = db.insert_or_get_lut(&duplicate).await.unwrap();
+        assert!(!created);
+        assert_eq!(resolved.id, "first");
+        assert_eq!(db.get_lut("first").await.unwrap(), Some(first));
+        assert!(db.get_lut("second").await.unwrap().is_none());
+        assert_eq!(db.list_luts().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn lut_quota_is_atomic_and_still_allows_deduplication() {
+        let (db, _d) = db().await;
+        for index in 0..MAX_LUT_ASSET_COUNT {
+            let asset = LutAsset::new(
+                format!("id-{index}"),
+                format!("LUT {index}"),
+                format!("id-{index}.cube"),
+                2,
+                1,
+                format!("sha-{index}"),
+                index as u64,
+            );
+            assert!(db.insert_or_get_lut(&asset).await.unwrap().1);
+        }
+
+        let overflow = LutAsset::new(
+            "overflow".into(),
+            "Overflow".into(),
+            "overflow.cube".into(),
+            2,
+            1,
+            "new-sha".into(),
+            999,
+        );
+        let error = db.insert_or_get_lut(&overflow).await.unwrap_err();
+        assert!(is_lut_quota_exceeded(&error));
+
+        let duplicate = LutAsset::new(
+            "duplicate".into(),
+            "Duplicate".into(),
+            "duplicate.cube".into(),
+            2,
+            1,
+            "sha-0".into(),
+            1_000,
+        );
+        let (resolved, created) = db.insert_or_get_lut(&duplicate).await.unwrap();
+        assert!(!created);
+        assert_eq!(resolved.id, "id-0");
+        assert_eq!(
+            db.list_luts().await.unwrap().len(),
+            MAX_LUT_LIST_RESULTS as usize
+        );
     }
 }

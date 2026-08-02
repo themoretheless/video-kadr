@@ -16,7 +16,11 @@
 - Удаление звука, регулировка громкости, нормализация громкости (loudnorm) и highpass-фильтр против гула.
 - Изменение скорости (0.5×–2×, со звуком через `atempo`).
 - Эффекты: поворот (90/180/270), отражение, реверс, fade in/out, частота кадров.
-- Цвет: яркость/контраст/насыщенность, пресеты (ч/б, сепия, тёплый, холодный, teal-orange, выцветший, нуар, винтаж), виньетка, шумодав, резкость и зерно.
+- Цвет: яркость/контраст/насыщенность, пресеты (ч/б, сепия, тёплый, холодный,
+  teal-orange, выцветший, нуар, винтаж), 3D LUT `.cube` с интенсивностью и
+  кривые Master/R/G/B (до 16 точек на канал), виньетка, шумодав, резкость и
+  зерно. LUT и кривые точно применяются при экспорте; встроенный предпросмотр
+  их не отображает и явно сообщает об этом.
 - Замазать область прямоугольником (выбор рамкой на видео), поля под пропорции (letterbox 9:16, 1:1, и т.д.).
 - Экспорт в MP4 (H.264/H.265 + AAC), WebM (VP9 + Opus), AV1, ProRes (.mov), GIF,
   стоп-кадр PNG/JPG или аудио MP3; выбор качества и пресеты под платформы
@@ -41,6 +45,9 @@
 POST /api/import            { url, start?, end? }        -> { jobId }
 POST /api/edit              { videoId, trim?, crop?, ... } -> { jobId }
 POST /api/upload            multipart file               -> VideoInfo
+POST /api/luts              multipart 3D .cube            -> LutAsset
+GET  /api/luts                                             -> [ LutAsset ]
+GET  /api/luts/:id                                         -> LutAsset | 404
 GET  /api/jobs/:id          -> { status, progress?, stage?, result?, error? }
 POST /api/jobs/:id/cancel   -> 200 cancelled | 404 | 409
 GET  /api/jobs/failed       -> { jobs: [ FailedJob ] }
@@ -67,6 +74,14 @@ GET  /files/outputs/...     -> результаты (с поддержкой Ran
 используется только при сетевой ошибке, а не для настоящего HTTP `5xx`.
 Wire DTO строги к неизвестным полям и принимают опциональный `schemaVersion: 1`;
 вложенные JSON-документы сохранённых проектов остаются migration-tolerant.
+
+LUT API принимает только 3D `.cube` размером до 16 МиБ с `LUT_3D_SIZE` от 2 до
+65; одномерные LUT отклоняются. `/api/edit` ссылается на сохранённый LUT по
+`lut: { id, intensity }`, где интенсивность лежит в диапазоне 0–1, и принимает
+`curves` с каналами `master`, `red`, `green`, `blue`; координаты точек
+нормализованы в диапазон 0–1. Приватное хранилище ограничено 256 LUT и 256 МиБ
+суммарно; повторная загрузка того же содержимого переиспользует существующий
+ресурс.
 
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
 `MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2; размер независимых job/upload
@@ -154,10 +169,29 @@ CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` став�
 `clippy -D warnings`, `cargo test`, а для фронтенда — lint, typecheck, тесты и
 сборку.
 
+## GitHub Pages
+
+Официальный Pages workflow-шаблон находится в
+`.github/workflows/pages.yml`. На каждый push в `main` (или вручную через
+`workflow_dispatch`) он собирает `frontend/dist` с базовым путём, который
+возвращает `actions/configure-pages`, загружает Pages artifact и публикует его
+через `actions/deploy-pages`.
+
+Перед первым запуском в GitHub открой **Settings → Pages → Build and
+deployment** и выбери **Source: GitHub Actions**. Путь репозитория и custom
+domain учитываются автоматически, поэтому отдельная правка `vite.config.ts` не
+нужна.
+
+GitHub Pages размещает только статический Vue-интерфейс. Rust/FFmpeg backend,
+загрузка файлов, LUT и экспорт требуют отдельно запущенный backend; сам Pages
+их выполнить не может.
+
 ## Backup и restore
 
-Snapshot включает консистентный `app.db`, `library.json`, `sources/` и
-`outputs/`; приватный `staging/` исключён. Имя каталога - SHA-256 содержимого,
+Snapshot включает консистентный `app.db`, `library.json`, `sources/`, `outputs/`
+и приватные LUT из `luts/`; `staging/` исключён. LUT-файлы хранятся отдельно от
+JSON проектов, а проекты и edit-запросы содержат только ID LUT и интенсивность.
+Имя каталога - SHA-256 содержимого,
 а manifest хранит размер/checksum каждого файла и версию backend. Restore
 публикуется только в пустой target после полной проверки checksums, безопасных
 путей и `PRAGMA integrity_check`.

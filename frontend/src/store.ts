@@ -4,14 +4,33 @@ import {
   buildEditPayload as buildPayload,
   defaultEdit,
   hasMeaningfulChanges as hasMeaningfulEditChanges,
+  isIdentityCurves,
   parseTime,
+  resetColorAdjustments,
+  sanitizeEditState,
   sanitizeRect,
 } from './domain/edit'
 import { cloneValue, PatchCommand } from './domain/history'
 import { toast } from './toasts'
-import type { Capabilities, EditState, Job, MediaEntry, ResultInfo, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ResultInfo, VideoInfo } from './types'
 
-export { defaultEdit, parseTime, tierToCrf } from './domain/edit'
+export {
+  defaultEdit,
+  identityCurve,
+  identityCurves,
+  isIdentityCurve,
+  isIdentityCurves,
+  parseTime,
+  sanitizeCurve,
+  sanitizeCurves,
+  sanitizeEditState,
+  sanitizeLutIntensity,
+  sanitizeLutId,
+  sampleCurvePchip,
+  tierToCrf,
+} from './domain/edit'
+
+export const MAX_LUT_UPLOAD_BYTES = 16 * 1024 * 1024
 
 export const state = reactive({
   url: '',
@@ -25,6 +44,8 @@ export const state = reactive({
   importJobId: null as string | null,
   video: null as VideoInfo | null,
   edit: defaultEdit(),
+  lutUploading: false,
+  lutUploadError: '',
   exporting: false,
   exportStatus: '',
   exportError: '',
@@ -41,6 +62,17 @@ export const state = reactive({
   seekTo: null as number | null,
   playToggle: 0,
 })
+
+// A synchronous revision guard lets async lookups prove that the user has not
+// edited the current recipe while a response was in flight.
+let editRevision = 0
+watch(
+  () => state.edit,
+  () => {
+    editRevision += 1
+  },
+  { deep: true, flush: 'sync' },
+)
 
 function isCancel(e: unknown): boolean {
   return e instanceof Error && e.message === 'cancelled'
@@ -144,6 +176,74 @@ export async function doUpload(file: File): Promise<void> {
     state.importProgress = null
     state.importStage = null
   }
+}
+
+function lutFileValidationError(file: File): string | null {
+  if (!file.name.toLowerCase().endsWith('.cube')) return 'Выберите LUT в формате .cube'
+  if (file.size <= 0) return 'Файл LUT пуст'
+  if (file.size > MAX_LUT_UPLOAD_BYTES) return 'Файл LUT превышает лимит 16 МБ'
+  return null
+}
+
+/** Upload a LUT and attach its durable asset reference to the current edit. */
+export async function doUploadLut(file: File): Promise<LutAsset | null> {
+  if (state.lutUploading) return null
+  const validationError = lutFileValidationError(file)
+  if (validationError) {
+    state.lutUploadError = validationError
+    toast('error', validationError)
+    return null
+  }
+
+  const targetVideoId = state.video?.id ?? null
+  const targetEdit = state.edit
+  state.lutUploading = true
+  state.lutUploadError = ''
+  try {
+    const asset = await api.uploadLut(file)
+    const id = typeof asset.id === 'string' ? asset.id.trim() : ''
+    const cubeSize = Number.isFinite(asset.cubeSize) ? Math.round(asset.cubeSize) : 0
+    if (!id || cubeSize < 2 || cubeSize > 65) {
+      throw new Error('Сервер вернул некорректные данные LUT')
+    }
+    if (state.video?.id !== targetVideoId || state.edit !== targetEdit) {
+      toast('info', 'LUT загружен, но не применён: открыт другой клип')
+      return asset
+    }
+    beginEditTransaction('lut-upload')
+    state.edit.lutId = id
+    state.edit.lutName =
+      typeof asset.name === 'string' && asset.name.trim() ? asset.name.trim() : file.name
+    state.edit.lutSize = cubeSize
+    state.edit.lutIntensity = 1
+    endEditTransaction()
+    toast('success', `LUT «${state.edit.lutName}» загружен`)
+    return asset
+  } catch (error) {
+    state.lutUploadError = error instanceof Error ? error.message : String(error)
+    toast('error', state.lutUploadError)
+    return null
+  } finally {
+    state.lutUploading = false
+  }
+}
+
+/** Detach a LUT without deleting the shared stored asset. */
+export function clearLut(): void {
+  beginEditTransaction('lut-clear')
+  state.edit.lutId = null
+  state.edit.lutName = ''
+  state.edit.lutSize = null
+  state.edit.lutIntensity = 1
+  endEditTransaction()
+  state.lutUploadError = ''
+}
+
+/** Reset the complete colour stack as one undoable action. */
+export function resetColor(): void {
+  beginEditTransaction('color-reset')
+  resetColorAdjustments(state.edit)
+  endEditTransaction()
 }
 
 export function buildEditPayload(): Record<string, unknown> {
@@ -262,11 +362,45 @@ export function selectedExportUnavailableReason(): string | null {
   const format = state.capabilities?.formats.find((option) => option.id === state.edit.format)
   if (format && !format.available) return format.reason || 'Выбранный формат недоступен'
 
+  if (state.edit.format === 'mp3') return null
+
   if (state.edit.format === 'mp4') {
     const codec = state.capabilities?.codecs.find((option) => option.id === state.edit.codec)
     if (codec && !codec.available) return codec.reason || 'Выбранный кодек недоступен'
   }
+
+  if (state.edit.lutId && state.edit.lutIntensity > 0) {
+    const reason = colorCapabilityUnavailableReason(
+      ['lut', 'lut3d', 'cube-lut'],
+      '3D LUT недоступны: нужен обновлённый сервер',
+    )
+    if (reason) return reason
+    if (state.edit.lutIntensity < 1 - 1e-9) {
+      const intensityReason = colorCapabilityUnavailableReason(
+        ['lut-intensity', 'lut3d-blend'],
+        'Частичная интенсивность LUT недоступна: нужен обновлённый сервер',
+      )
+      if (intensityReason) return intensityReason
+    }
+  }
+  if (!isIdentityCurves(state.edit.curves)) {
+    const reason = colorCapabilityUnavailableReason(
+      ['curves', 'color-curves', 'custom-curves'],
+      'Кривые недоступны: нужен обновлённый сервер',
+    )
+    if (reason) return reason
+  }
   return null
+}
+
+function colorCapabilityUnavailableReason(ids: string[], missing: string): string | null {
+  const capabilities = state.capabilities
+  if (!capabilities) return missing
+  const option = capabilities.filters.find((candidate) =>
+    ids.includes(candidate.id.toLowerCase()),
+  )
+  if (!option) return missing
+  return option.available ? null : option.reason || missing
 }
 
 /** Reopen a stored source clip in the editor. */
@@ -436,6 +570,11 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'contrast',
   'saturation',
   'filter',
+  'lutId',
+  'lutName',
+  'lutSize',
+  'lutIntensity',
+  'curves',
   'reverse',
   'fps',
   'vignette',
@@ -447,11 +586,12 @@ const PRESET_KEYS: (keyof EditState)[] = [
 ]
 
 export const presets = reactive({ list: [] as Preset[] })
+let presetApplySequence = 0
 
 function capturePreset(): Partial<EditState> {
   const e = state.edit as unknown as Record<string, unknown>
   const out: Record<string, unknown> = {}
-  for (const k of PRESET_KEYS) out[k] = e[k]
+  for (const k of PRESET_KEYS) out[k] = cloneValue(e[k])
   return out as Partial<EditState>
 }
 
@@ -474,12 +614,32 @@ export function savePreset(name: string): void {
   toast('success', `Пресет «${n}» сохранён`)
 }
 
-export function applyPreset(p: Preset): void {
+export async function applyPreset(p: Preset): Promise<void> {
+  const sequence = ++presetApplySequence
+  const targetVideoId = state.video?.id ?? null
+  const targetEdit = state.edit
+  const startingRevision = editRevision
   const source = p.edit as Record<string, unknown>
-  const target = state.edit as unknown as Record<string, unknown>
-  for (const key of PRESET_KEYS) {
-    if (Object.hasOwn(source, key)) target[key] = source[key]
+  const target = targetEdit as unknown as Record<string, unknown>
+  const sanitizedEdit = sanitizeEditState(source, targetEdit)
+  const missingLut = Object.hasOwn(source, 'lutId')
+    ? await resolvePersistedLut(sanitizedEdit)
+    : null
+  if (
+    sequence !== presetApplySequence ||
+    state.video?.id !== targetVideoId ||
+    state.edit !== targetEdit ||
+    editRevision !== startingRevision
+  ) {
+    return
   }
+  const sanitized = sanitizedEdit as unknown as Record<string, unknown>
+  beginEditTransaction('preset-apply')
+  for (const key of PRESET_KEYS) {
+    if (Object.hasOwn(source, key)) target[key] = cloneValue(sanitized[key])
+  }
+  endEditTransaction()
+  if (missingLut) toastMissingLut(missingLut)
   toast('info', `Пресет «${p.name}» применён`)
 }
 
@@ -491,7 +651,24 @@ export function deletePreset(name: string): void {
 export function loadPresets(): void {
   try {
     const raw = localStorage.getItem('ve_presets')
-    if (raw) presets.list = JSON.parse(raw) as Preset[]
+    if (!raw) return
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return
+    presets.list = parsed.flatMap((candidate): Preset[] => {
+      if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return []
+      const record = candidate as Record<string, unknown>
+      if (typeof record.name !== 'string' || !record.name.trim()) return []
+      const source =
+        typeof record.edit === 'object' && record.edit !== null && !Array.isArray(record.edit)
+          ? record.edit as Record<string, unknown>
+          : {}
+      const sanitized = sanitizeEditState(source) as unknown as Record<string, unknown>
+      const edit: Record<string, unknown> = {}
+      for (const key of PRESET_KEYS) {
+        if (Object.hasOwn(source, key)) edit[key] = cloneValue(sanitized[key])
+      }
+      return [{ name: record.name.trim(), edit: edit as Partial<EditState> }]
+    })
   } catch {
     // Ignore malformed storage; start with an empty preset list.
   }
@@ -534,6 +711,7 @@ export function toggleTheme(): void {
 let projectSaveTimer: ReturnType<typeof setTimeout> | null = null
 let restoringProjectFor: string | null = null
 let restoredProjectFor: string | null = null
+let projectRestoreSequence = 0
 
 function clearProjectSaveTimer(): void {
   if (projectSaveTimer) {
@@ -544,22 +722,67 @@ function clearProjectSaveTimer(): void {
 
 /** Load the saved project for a clip (if any) and apply its edit recipe. */
 async function restoreProject(videoId: string): Promise<void> {
+  const sequence = ++projectRestoreSequence
+  const startingRevision = editRevision
+  const baseEdit = cloneValue(state.edit)
+  let applied = false
   try {
     const p = await api.getProjectByVideo(videoId)
     // Guard against a clip switch while the lookup was in flight.
-    if (p && p.edit && state.video?.id === videoId) {
-      state.edit = { ...defaultEdit(), ...p.edit }
-      resetHistory()
+    if (!p?.edit || state.video?.id !== videoId || sequence !== projectRestoreSequence) return
+    if (editRevision !== startingRevision) return
+    const restored = sanitizeEditState(p.edit, baseEdit)
+    const missingLut = await resolvePersistedLut(restored)
+    if (
+      state.video?.id !== videoId ||
+      sequence !== projectRestoreSequence ||
+      editRevision !== startingRevision
+    ) {
+      return
     }
+    state.edit = restored
+    resetHistory()
+    applied = true
+    if (missingLut) toastMissingLut(missingLut)
   } catch {
     // Non-fatal: keep the default edit if the lookup fails.
   } finally {
-    if (state.video?.id === videoId && restoringProjectFor === videoId) {
-      restoredProjectFor = videoId
+    if (
+      state.video?.id === videoId &&
+      restoringProjectFor === videoId &&
+      sequence === projectRestoreSequence
+    ) {
+      const changedWhileLoading = !applied && editRevision !== startingRevision
+      restoredProjectFor = changedWhileLoading ? null : videoId
       restoringProjectFor = null
       clearProjectSaveTimer()
+      if (changedWhileLoading) scheduleProjectSave()
     }
   }
+}
+
+async function resolvePersistedLut(edit: EditState): Promise<string | null> {
+  const id = edit.lutId
+  if (!id) return null
+  try {
+    const asset = await api.getLut(id)
+    if (edit.lutId !== id) return null
+    edit.lutName = asset.name
+    edit.lutSize = asset.cubeSize
+  } catch (error) {
+    if (!(error instanceof api.ApiError) || error.status !== 404 || edit.lutId !== id) return null
+    const label = edit.lutName || id
+    edit.lutId = null
+    edit.lutName = ''
+    edit.lutSize = null
+    edit.lutIntensity = 1
+    return label
+  }
+  return null
+}
+
+function toastMissingLut(label: string): void {
+  toast('info', `LUT «${label}» больше недоступен и был отключён`)
 }
 
 async function persistProject(): Promise<void> {
@@ -577,6 +800,14 @@ async function persistProject(): Promise<void> {
   }
 }
 
+function scheduleProjectSave(): void {
+  clearProjectSaveTimer()
+  projectSaveTimer = setTimeout(() => {
+    projectSaveTimer = null
+    void persistProject()
+  }, 1000)
+}
+
 watch(
   () => [state.video, state.edit],
   () => {
@@ -590,11 +821,7 @@ watch(
       clearProjectSaveTimer()
       return
     }
-    clearProjectSaveTimer()
-    projectSaveTimer = setTimeout(() => {
-      projectSaveTimer = null
-      void persistProject()
-    }, 1000)
+    scheduleProjectSave()
   },
   { deep: true },
 )

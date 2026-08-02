@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use crate::config::encode_budget::EncodeBudget;
-use crate::domain::edit::{EditSpec, LookPreset, Rotation, TimeRange};
+use crate::domain::edit::{EditSpec, LookPreset, Rotation, TimeRange, ToneCurve, ToneCurves};
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::ports::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
@@ -18,13 +18,14 @@ impl ExportCommandCompiler for FfmpegExportCompiler {
         if request.parallel_jobs == 0 {
             anyhow::bail!("invalid FFmpeg export compile request");
         }
-        Ok(compile_ffmpeg_command_with_budget(
+        compile_ffmpeg_command_with_budget(
             request.input,
             request.destination,
             request.execution.plan(),
             &request.execution.profile.encode_budget,
             request.parallel_jobs,
-        ))
+            request.execution.resources().lut_path(),
+        )
     }
 }
 
@@ -57,19 +58,81 @@ pub fn output_ext(format: OutputFormat) -> &'static str {
     format.extension()
 }
 
-/// Build the geometry/colour (and optionally temporal) video filter chain.
-/// Order matters: crop -> rotate -> flip -> scale -> eq -> preset -> reverse
-/// -> setpts -> fade. `temporal=false` skips speed/fade (used for still frames).
-fn video_filters(edit: &EditSpec, out_dur: f64, temporal: bool) -> Vec<String> {
+#[derive(Debug)]
+struct VideoFilterParts {
+    before_lut: Vec<String>,
+    after_lut: Vec<String>,
+}
+
+#[derive(Debug)]
+enum VideoFilterProgram {
+    Linear(Vec<String>),
+    Complex(String),
+}
+
+fn tone_curve_points(curve: &ToneCurve) -> String {
+    curve
+        .points()
+        .iter()
+        // f64 Display uses the shortest round-tripping representation. Fixed
+        // six-decimal output could collapse distinct, validated x coordinates.
+        .map(|point| format!("{}/{}", point.x(), point.y()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn curves_filter(curves: &ToneCurves) -> String {
+    let mut options = Vec::new();
+    for (name, curve) in [
+        ("master", curves.master()),
+        ("red", curves.red()),
+        ("green", curves.green()),
+        ("blue", curves.blue()),
+    ] {
+        if let Some(curve) = curve {
+            options.push(format!("{name}='{}'", tone_curve_points(curve)));
+        }
+    }
+    options.push("interp=pchip".into());
+    format!("curves={}", options.join(":"))
+}
+
+/// Escape a path for one quoted FFmpeg filter option. This is filtergraph
+/// escaping, not shell escaping: the command is still passed as an argv vector.
+fn escape_filter_value(path: &Path) -> anyhow::Result<String> {
+    let value = path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("LUT path is not valid UTF-8"))?;
+    let mut escaped = String::with_capacity(value.len() + 8);
+    for character in value.chars() {
+        if matches!(character, '\\' | '\'' | ':' | ',' | ';' | '[' | ']') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    Ok(format!("'{escaped}'"))
+}
+
+fn lut3d_filter(path: &Path) -> anyhow::Result<String> {
+    Ok(format!(
+        "lut3d=file={}:interp=tetrahedral",
+        escape_filter_value(path)?
+    ))
+}
+
+/// Build filters before and after the LUT mix point. The original branch of a
+/// partial-intensity LUT already contains geometry, eq, presets and curves; only
+/// the LUT itself is blended, then temporal/post effects run once.
+fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFilterParts {
     let timing = edit.timing();
     let geometry = edit.geometry();
     let video = edit.video();
-    let mut vf: Vec<String> = Vec::new();
+    let mut before_lut: Vec<String> = Vec::new();
     // Censor box first, in source coordinates (matches the on-video selection).
     if let Some(censor) = &geometry.censor {
         let rect = censor.rect;
         let color = censor.color.ffmpeg_name();
-        vf.push(format!(
+        before_lut.push(format!(
             "drawbox=x={}:y={}:w={}:h={}:color={color}:t=fill",
             rect.x, rect.y, rect.width, rect.height
         ));
@@ -79,77 +142,138 @@ fn video_filters(edit: &EditSpec, out_dur: f64, temporal: bool) -> Vec<String> {
         // edge into FFmpeg's invalid zero-sized crop.
         let width = (crop.width & !1).max(1);
         let height = (crop.height & !1).max(1);
-        vf.push(format!("crop={width}:{height}:{}:{}", crop.x, crop.y));
+        before_lut.push(format!("crop={width}:{height}:{}:{}", crop.x, crop.y));
     }
     match geometry.rotation {
-        Rotation::Clockwise90 => vf.push("transpose=1".into()),
+        Rotation::Clockwise90 => before_lut.push("transpose=1".into()),
         Rotation::Clockwise180 => {
-            vf.push("transpose=1".into());
-            vf.push("transpose=1".into());
+            before_lut.push("transpose=1".into());
+            before_lut.push("transpose=1".into());
         }
-        Rotation::Clockwise270 => vf.push("transpose=2".into()),
+        Rotation::Clockwise270 => before_lut.push("transpose=2".into()),
         Rotation::None => {}
     }
     if geometry.flip_horizontal {
-        vf.push("hflip".into());
+        before_lut.push("hflip".into());
     }
     if geometry.flip_vertical {
-        vf.push("vflip".into());
-    }
-    if let Some(scale) = geometry.scale {
-        vf.push(format!("scale={}:{}", scale.width, scale.height));
-    }
-    // Letterbox/pillarbox to a target aspect (adds bars, keeps whole frame).
-    if let Some(aspect) = geometry.pad_aspect {
-        let (tw, th) = (aspect.width, aspect.height);
-        vf.push(format!(
-            "pad=w='ceil(max(iw,ih*{tw}/{th})/2)*2':h='ceil(max(ih,iw*{th}/{tw})/2)*2':x='(ow-iw)/2':y='(oh-ih)/2':color=black"
-        ));
+        before_lut.push("vflip".into());
     }
     if video.denoise {
-        vf.push("hqdn3d".into());
+        before_lut.push("hqdn3d".into());
     }
     let eq_changed = video.brightness.abs() > 1e-6
         || (video.contrast - 1.0).abs() > 1e-6
         || (video.saturation - 1.0).abs() > 1e-6;
     if eq_changed {
-        vf.push(format!(
+        before_lut.push(format!(
             "eq=brightness={:.3}:contrast={:.3}:saturation={:.3}",
             video.brightness, video.contrast, video.saturation
         ));
     }
+    // Curves and 3D LUT mixing share an explicit high-bit RGB(A) working
+    // format. Besides avoiding 8-bit curve-point quantisation, retaining alpha
+    // here prevents still-image grades from silently becoming opaque.
+    if video.curves.is_some() || video.lut.is_some() {
+        before_lut.push("format=gbrap16le".into());
+    }
     if let Some(look) = video.look {
-        vf.push(filter_preset(look).into());
+        before_lut.push(filter_preset(look).into());
+    }
+    if let Some(curves) = &video.curves {
+        before_lut.push(curves_filter(curves));
+    }
+    let mut after_lut = Vec::new();
+    // Resize after nonlinear colour work so a grade is independent of export
+    // resolution. Spatial finishing effects intentionally run at output size.
+    if let Some(scale) = geometry.scale {
+        after_lut.push(format!("scale={}:{}", scale.width, scale.height));
     }
     if video.sharpen > 1e-6 {
-        vf.push(format!("unsharp=5:5:{:.3}:5:5:0.0", video.sharpen));
+        after_lut.push(format!("unsharp=5:5:{:.3}:5:5:0.0", video.sharpen));
     }
     if video.vignette {
-        vf.push("vignette".into());
+        after_lut.push("vignette".into());
     }
     if video.grain > 1e-6 {
-        vf.push(format!("noise=alls={:.0}:allf=t", video.grain));
+        after_lut.push(format!("noise=alls={:.0}:allf=t", video.grain));
+    }
+    // Add letterbox/pillarbox after every visual effect so generated bars stay
+    // truly black instead of being lifted, tinted, sharpened, or given grain.
+    if let Some(aspect) = geometry.pad_aspect {
+        let (tw, th) = (aspect.width, aspect.height);
+        after_lut.push(format!(
+            "pad=w='ceil(max(iw,ih*{tw}/{th})/2)*2':h='ceil(max(ih,iw*{th}/{tw})/2)*2':x='(ow-iw)/2':y='(oh-ih)/2':color=black"
+        ));
     }
     if timing.reverse {
-        vf.push("reverse".into());
+        after_lut.push("reverse".into());
     }
     if temporal {
         let speed = timing.speed;
         if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
-            vf.push(format!("setpts={:.6}*PTS", 1.0 / speed));
+            after_lut.push(format!("setpts={:.6}*PTS", 1.0 / speed));
         }
         if timing.fade_in_seconds > 0.0 {
-            vf.push(format!("fade=t=in:st=0:d={:.3}", timing.fade_in_seconds));
+            after_lut.push(format!("fade=t=in:st=0:d={:.3}", timing.fade_in_seconds));
         }
         if timing.fade_out_seconds > 0.0 && out_dur > timing.fade_out_seconds {
-            vf.push(format!(
+            after_lut.push(format!(
                 "fade=t=out:st={:.3}:d={:.3}",
                 out_dur - timing.fade_out_seconds,
                 timing.fade_out_seconds
             ));
         }
     }
-    vf
+    VideoFilterParts {
+        before_lut,
+        after_lut,
+    }
+}
+
+fn video_filter_program(
+    edit: &EditSpec,
+    out_dur: f64,
+    temporal: bool,
+    lut_path: Option<&Path>,
+    input_label: &str,
+    output_label: &str,
+) -> anyhow::Result<VideoFilterProgram> {
+    let mut parts = video_filter_parts(edit, out_dur, temporal);
+    let Some(lut) = &edit.video().lut else {
+        parts.before_lut.extend(parts.after_lut);
+        return Ok(VideoFilterProgram::Linear(parts.before_lut));
+    };
+    let path = lut_path.ok_or_else(|| {
+        anyhow::anyhow!(
+            "render plan selects LUT '{}' without a resolved LUT path",
+            lut.id()
+        )
+    })?;
+    let lut_filter = lut3d_filter(path)?;
+    if lut.intensity() >= 1.0 - 1e-9 {
+        parts.before_lut.push(lut_filter);
+        parts.before_lut.extend(parts.after_lut);
+        return Ok(VideoFilterProgram::Linear(parts.before_lut));
+    }
+
+    let mut graph = format!("[{input_label}]");
+    if !parts.before_lut.is_empty() {
+        graph.push_str(&serialize_filter_chain(MediaKind::Video, &parts.before_lut));
+        graph.push(',');
+    }
+    graph.push_str("split=2[lut_base][lut_input];");
+    graph.push_str(&format!("[lut_input]{lut_filter}[lut_applied];"));
+    let intensity = lut.intensity();
+    graph.push_str(&format!(
+        "[lut_base][lut_applied]blend=all_expr='A*(1-{intensity:.6})+B*{intensity:.6}'"
+    ));
+    if !parts.after_lut.is_empty() {
+        graph.push(',');
+        graph.push_str(&serialize_filter_chain(MediaKind::Video, &parts.after_lut));
+    }
+    graph.push_str(&format!("[{output_label}]"));
+    Ok(VideoFilterProgram::Complex(graph))
 }
 
 /// Build the audio filter chain: areverse -> volume -> atempo -> afade.
@@ -212,20 +336,51 @@ fn push_fps(args: &mut Vec<String>, output: &OutputSpec) {
     }
 }
 
+/// Add a single-output video program. Returns true when an explicit complex
+/// video mapping was added, in which case callers must also map optional audio.
+fn push_video_program(args: &mut Vec<String>, program: VideoFilterProgram) -> bool {
+    match program {
+        VideoFilterProgram::Linear(filters) => {
+            if !filters.is_empty() {
+                args.push("-vf".into());
+                args.push(serialize_filter_chain(MediaKind::Video, &filters));
+            }
+            false
+        }
+        VideoFilterProgram::Complex(graph) => {
+            args.push("-filter_complex".into());
+            args.push(graph);
+            args.push("-map".into());
+            args.push("[vout]".into());
+            true
+        }
+    }
+}
+
+fn map_optional_audio_for_complex_video(args: &mut Vec<String>, edit: &EditSpec, complex: bool) {
+    if complex && !edit.audio().muted {
+        args.push("-map".into());
+        args.push("0:a?".into());
+    }
+}
+
 /// Build the FFmpeg argument list for an immutable edit plan.
 ///
 /// Trim is applied as an *input* option (`-ss` + `-t`) so it happens before the
 /// filter graph; geometry/colour/speed/fade then operate on the trimmed stream.
 /// The output container/codecs depend on `edit.format` (mp4/webm/gif/png/mp3).
 pub fn build_ffmpeg_args(input: &Path, destination: &Path, plan: &EditPlan) -> Vec<String> {
-    compile_ffmpeg_command(input, destination, plan).arguments
+    compile_ffmpeg_command(input, destination, plan, None)
+        .expect("build_ffmpeg_args requires all selected render resources")
+        .arguments
 }
 
 fn compile_ffmpeg_command(
     input: &Path,
     destination: &Path,
     plan: &EditPlan,
-) -> CompiledExportCommand {
+    lut_path: Option<&Path>,
+) -> anyhow::Result<CompiledExportCommand> {
     let edit = &plan.edit;
     let output = &plan.output;
     let format = output.format;
@@ -241,10 +396,11 @@ fn compile_ffmpeg_command(
             OutputFormat::Mp4 | OutputFormat::Webm | OutputFormat::Av1 | OutputFormat::Prores
         )
     {
-        return CompiledExportCommand {
-            arguments: build_concat_args(input, destination, plan, segs, out_dur),
+        return Ok(CompiledExportCommand {
+            arguments: build_concat_args(input, destination, plan, segs, out_dur, lut_path)?,
             expected_duration_seconds: out_dur,
-        };
+            read_only_files: lut_path.into_iter().map(Path::to_path_buf).collect(),
+        });
     }
 
     let mut args: Vec<String> = vec!["-y".into()];
@@ -277,11 +433,8 @@ fn compile_ffmpeg_command(
         OutputFormat::Png | OutputFormat::Jpg => {
             // Single still frame at the trim start (positioned by -ss above).
             // The encoder is chosen by the output extension (png / mjpeg).
-            let vf = video_filters(edit, out_dur, false);
-            if !vf.is_empty() {
-                args.push("-vf".into());
-                args.push(serialize_filter_chain(MediaKind::Video, &vf));
-            }
+            let program = video_filter_program(edit, out_dur, false, lut_path, "0:v", "vout")?;
+            push_video_program(&mut args, program);
             args.push("-frames:v".into());
             args.push("1".into());
             args.push("-an".into());
@@ -289,33 +442,41 @@ fn compile_ffmpeg_command(
         OutputFormat::Gif => {
             // Generate a per-clip palette for a good-looking gif (single pass
             // via split + palettegen/paletteuse).
-            let mut parts = video_filters(edit, out_dur, true);
             let fps = output.fps().unwrap_or(12.0);
-            parts.push(format!("fps={fps:.3}"));
-            let graph = format!(
-                "{},split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
-                serialize_filter_chain(MediaKind::Video, &parts)
-            );
-            args.push("-vf".into());
-            args.push(graph);
+            match video_filter_program(edit, out_dur, true, lut_path, "0:v", "graded")? {
+                VideoFilterProgram::Linear(mut parts) => {
+                    parts.push(format!("fps={fps:.3}"));
+                    let graph = format!(
+                        "{},split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                        serialize_filter_chain(MediaKind::Video, &parts)
+                    );
+                    args.push("-vf".into());
+                    args.push(graph);
+                }
+                VideoFilterProgram::Complex(mut graph) => {
+                    graph.push_str(&format!(
+                        ";[graded]fps={fps:.3},split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle[vout]"
+                    ));
+                    args.push("-filter_complex".into());
+                    args.push(graph);
+                    args.push("-map".into());
+                    args.push("[vout]".into());
+                }
+            }
             args.push("-an".into());
         }
         OutputFormat::Webm => {
-            let vf = video_filters(edit, out_dur, true);
-            if !vf.is_empty() {
-                args.push("-vf".into());
-                args.push(serialize_filter_chain(MediaKind::Video, &vf));
-            }
+            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let complex = push_video_program(&mut args, program);
+            map_optional_audio_for_complex_video(&mut args, edit, complex);
             push_audio(&mut args, edit, out_dur, "libopus");
             push_video_codec(&mut args, output);
         }
         OutputFormat::Av1 => {
             // Modern, compact codec in an mp4 container (needs libsvtav1).
-            let vf = video_filters(edit, out_dur, true);
-            if !vf.is_empty() {
-                args.push("-vf".into());
-                args.push(serialize_filter_chain(MediaKind::Video, &vf));
-            }
+            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let complex = push_video_program(&mut args, program);
+            map_optional_audio_for_complex_video(&mut args, edit, complex);
             push_audio(&mut args, edit, out_dur, "aac");
             args.push("-c:v".into());
             args.push("libsvtav1".into());
@@ -331,11 +492,9 @@ fn compile_ffmpeg_command(
         }
         OutputFormat::Prores => {
             // Intra-only edit codec in a .mov; audio as PCM. prores_ks is built in.
-            let vf = video_filters(edit, out_dur, true);
-            if !vf.is_empty() {
-                args.push("-vf".into());
-                args.push(serialize_filter_chain(MediaKind::Video, &vf));
-            }
+            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let complex = push_video_program(&mut args, program);
+            map_optional_audio_for_complex_video(&mut args, edit, complex);
             if edit.audio().muted {
                 args.push("-an".into());
             } else {
@@ -357,21 +516,20 @@ fn compile_ffmpeg_command(
         }
         OutputFormat::Mp4 => {
             // mp4 (default): H.264 or H.265.
-            let vf = video_filters(edit, out_dur, true);
-            if !vf.is_empty() {
-                args.push("-vf".into());
-                args.push(serialize_filter_chain(MediaKind::Video, &vf));
-            }
+            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let complex = push_video_program(&mut args, program);
+            map_optional_audio_for_complex_video(&mut args, edit, complex);
             push_audio(&mut args, edit, out_dur, "aac");
             push_video_codec(&mut args, output);
         }
     }
 
     args.push(destination.to_string_lossy().into_owned());
-    CompiledExportCommand {
+    Ok(CompiledExportCommand {
         arguments: args,
         expected_duration_seconds: out_dur,
-    }
+        read_only_files: lut_path.into_iter().map(Path::to_path_buf).collect(),
+    })
 }
 
 /// Apply the process-wide encode budget to one render. The global thread budget
@@ -383,7 +541,9 @@ pub fn build_ffmpeg_args_with_budget(
     budget: &EncodeBudget,
     parallel_jobs: usize,
 ) -> Vec<String> {
-    compile_ffmpeg_command_with_budget(input, output, plan, budget, parallel_jobs).arguments
+    compile_ffmpeg_command_with_budget(input, output, plan, budget, parallel_jobs, None)
+        .expect("build_ffmpeg_args_with_budget requires all selected render resources")
+        .arguments
 }
 
 fn compile_ffmpeg_command_with_budget(
@@ -392,8 +552,9 @@ fn compile_ffmpeg_command_with_budget(
     plan: &EditPlan,
     budget: &EncodeBudget,
     parallel_jobs: usize,
-) -> CompiledExportCommand {
-    let mut command = compile_ffmpeg_command(input, output, plan);
+    lut_path: Option<&Path>,
+) -> anyhow::Result<CompiledExportCommand> {
+    let mut command = compile_ffmpeg_command(input, output, plan, lut_path)?;
     let destination = command
         .arguments
         .pop()
@@ -414,7 +575,7 @@ fn compile_ffmpeg_command_with_budget(
         }
     }
     command.arguments.push(destination);
-    command
+    Ok(command)
 }
 
 /// Push the video encoder and its quality/pixel-format options for `format`
@@ -486,7 +647,8 @@ fn build_concat_args(
     plan: &EditPlan,
     segments: &[TimeRange],
     out_dur: f64,
-) -> Vec<String> {
+    lut_path: Option<&Path>,
+) -> anyhow::Result<Vec<String>> {
     let edit = &plan.edit;
     let output = &plan.output;
     let format = output.format;
@@ -520,15 +682,20 @@ fn build_concat_args(
     }
 
     // Effects apply to the concatenated stream.
-    let vf = video_filters(edit, out_dur, true);
-    let vmap = if vf.is_empty() {
-        "[cv]".to_string()
-    } else {
-        graph.push_str(&format!(
-            ";[cv]{}[vout]",
-            serialize_filter_chain(MediaKind::Video, &vf)
-        ));
-        "[vout]".to_string()
+    let vmap = match video_filter_program(edit, out_dur, true, lut_path, "cv", "vout")? {
+        VideoFilterProgram::Linear(vf) if vf.is_empty() => "[cv]".to_string(),
+        VideoFilterProgram::Linear(vf) => {
+            graph.push_str(&format!(
+                ";[cv]{}[vout]",
+                serialize_filter_chain(MediaKind::Video, &vf)
+            ));
+            "[vout]".to_string()
+        }
+        VideoFilterProgram::Complex(lut_graph) => {
+            graph.push(';');
+            graph.push_str(&lut_graph);
+            "[vout]".to_string()
+        }
     };
     let amap = if muted {
         None
@@ -577,7 +744,7 @@ fn build_concat_args(
     }
 
     args.push(destination.to_string_lossy().into_owned());
-    args
+    Ok(args)
 }
 
 /// Valid keep-segments (positive length), if any were requested.
@@ -606,13 +773,16 @@ fn format_secs(s: f64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use super::*;
     use crate::config::encode_budget::TileLayout;
     use crate::domain::artifact_graph::Fingerprint;
     use crate::model::EditRequest;
-    use crate::services::render::{ExportExecutionProfile, RenderExecution, SourceMediaMetadata};
+    use crate::services::render::{
+        ExportExecutionProfile, RenderExecution, RenderResources, SourceMediaMetadata,
+    };
     use serde_json::json;
 
     fn plan_for_duration(value: serde_json::Value, duration_seconds: f64) -> EditPlan {
@@ -633,6 +803,20 @@ mod tests {
         let input = Path::new("/in.mp4");
         let output = Path::new("/out.mp4");
         build_ffmpeg_args(input, output, &plan_for_duration(v, dur))
+    }
+
+    fn command_with_lut(
+        value: serde_json::Value,
+        duration: f64,
+        lut_path: &Path,
+    ) -> CompiledExportCommand {
+        compile_ffmpeg_command(
+            Path::new("/in.mp4"),
+            Path::new("/out.mp4"),
+            &plan_for_duration(value, duration),
+            Some(lut_path),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -773,9 +957,264 @@ mod tests {
         let order = |s: &str| chain.find(s).unwrap();
         assert!(order("crop") < order("transpose=1"));
         assert!(order("transpose=1") < order("hflip"));
-        assert!(order("hflip") < order("scale"));
-        assert!(order("scale") < order("hue=s=0"));
+        assert!(order("hflip") < order("hue=s=0"));
+        assert!(order("hue=s=0") < order("scale"));
         assert!(chain.contains("fade=t=out:st=9.000:d=1.000"), "{chain}");
+    }
+
+    #[test]
+    fn custom_curves_emit_normalized_channels_before_post_effects() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "curves": {
+                    "master": [{"x": 0.0, "y": 0.05}, {"x": 1.0, "y": 0.95}],
+                    "red": [{"x": 0.0, "y": 0.0}, {"x": 0.500000123456789, "y": 0.6}, {"x": 1.0, "y": 1.0}],
+                    "green": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}],
+                    "blue": [{"x": 0.0, "y": 0.1}, {"x": 1.0, "y": 0.9}]
+                },
+                "sharpen": 1.0
+            }),
+            10.0,
+        );
+        let chain = vf(&args);
+        assert!(chain.contains("master='0/0.05 1/0.95'"), "{chain}");
+        assert!(
+            chain.contains("red='0/0 0.500000123456789/0.6 1/1'"),
+            "{chain}"
+        );
+        assert!(chain.contains("green='0/0 1/1'"), "{chain}");
+        assert!(chain.contains("blue='0/0.1 1/0.9'"), "{chain}");
+        assert!(chain.contains("interp=pchip"), "{chain}");
+        assert!(chain.find("format=gbrap16le").unwrap() < chain.find("curves=").unwrap());
+        assert!(chain.find("curves=").unwrap() < chain.find("unsharp=").unwrap());
+    }
+
+    #[test]
+    fn full_intensity_lut_is_linear_and_declared_read_only() {
+        let path = Path::new("/private/luts/look.cube");
+        let command = command_with_lut(
+            json!({"videoId": "x", "lut": {"id": "look-1", "intensity": 1.0}}),
+            10.0,
+            path,
+        );
+        let chain = vf(&command.arguments);
+        assert!(chain.starts_with("format=gbrap16le,lut3d="), "{chain}");
+        assert!(chain.contains("lut3d=file='/private/luts/look.cube':interp=tetrahedral"));
+        assert!(!chain.contains("split=2"));
+        assert_eq!(command.read_only_files, [path.to_path_buf()]);
+    }
+
+    #[test]
+    fn partial_lut_uses_split_lut3d_blend_and_preserves_audio_mapping() {
+        let command = command_with_lut(
+            json!({
+                "videoId": "x",
+                "brightness": 0.1,
+                "lut": {"id": "look-1", "intensity": 0.35},
+                "scale": {"w": 640, "h": 360},
+                "sharpen": 1.0,
+                "vignette": true,
+                "grain": 5.0,
+                "pad": "4:3",
+                "fadeOut": 1.0
+            }),
+            10.0,
+            Path::new("/private/luts/look.cube"),
+        );
+        let graph = filter_complex(&command.arguments);
+        assert!(graph.starts_with("[0:v]eq="), "{graph}");
+        let working_format = graph.find("format=gbrap16le").unwrap();
+        let split = graph.find("split=2[lut_base][lut_input]").unwrap();
+        assert!(working_format < split, "{graph}");
+        assert!(graph.contains("split=2[lut_base][lut_input]"), "{graph}");
+        assert!(graph.contains("[lut_input]lut3d=file="), "{graph}");
+        assert!(
+            graph.contains("blend=all_expr='A*(1-0.350000)+B*0.350000'"),
+            "{graph}"
+        );
+        let blend = graph.find("blend=").unwrap();
+        let scale = graph.find("scale=640:360").unwrap();
+        let sharpen = graph.find("unsharp=").unwrap();
+        let vignette = graph.find("vignette").unwrap();
+        let grain = graph.find("noise=").unwrap();
+        let pad = graph.find("pad=").unwrap();
+        let fade = graph.find("fade=t=out").unwrap();
+        assert!(blend < scale, "{graph}");
+        assert!(
+            scale < sharpen && sharpen < vignette && vignette < grain,
+            "{graph}"
+        );
+        assert!(grain < pad && pad < fade, "{graph}");
+        assert!(command
+            .arguments
+            .windows(2)
+            .any(|pair| pair == ["-map", "[vout]"]));
+        assert!(command
+            .arguments
+            .windows(2)
+            .any(|pair| pair == ["-map", "0:a?"]));
+    }
+
+    #[test]
+    fn partial_lut_is_embedded_after_concat() {
+        let command = command_with_lut(
+            json!({
+                "videoId": "x",
+                "segments": [{"start": 0.0, "end": 1.0}, {"start": 2.0, "end": 3.0}],
+                "lut": {"id": "look-1", "intensity": 0.5}
+            }),
+            5.0,
+            Path::new("/private/luts/look.cube"),
+        );
+        let graph = filter_complex(&command.arguments);
+        let concat = graph.find("concat=n=2:v=1:a=1[cv][ca]").unwrap();
+        let split = graph
+            .find("[cv]format=gbrap16le,split=2[lut_base][lut_input]")
+            .unwrap();
+        assert!(concat < split, "{graph}");
+        assert!(
+            graph.contains("blend=all_expr='A*(1-0.500000)+B*0.500000'[vout]"),
+            "{graph}"
+        );
+    }
+
+    #[test]
+    fn full_and_partial_lut_curves_compile_for_every_video_output_format() {
+        let path = Path::new("/private/luts/look.cube");
+        for format in ["mp4", "webm", "av1", "prores", "gif", "png", "jpg"] {
+            for intensity in [1.0, 0.5] {
+                let command = command_with_lut(
+                    json!({
+                        "videoId": "x",
+                        "format": format,
+                        "lut": {"id": "look-1", "intensity": intensity},
+                        "curves": {
+                            "master": [{"x": 0.0, "y": 0.05}, {"x": 1.0, "y": 0.95}]
+                        }
+                    }),
+                    10.0,
+                    path,
+                );
+                let graph = command
+                    .arguments
+                    .windows(2)
+                    .find(|pair| pair[0] == "-vf" || pair[0] == "-filter_complex")
+                    .map(|pair| pair[1].as_str())
+                    .unwrap_or_default();
+                assert!(graph.contains("curves="), "{format} {intensity}: {graph}");
+                assert!(graph.contains("lut3d="), "{format} {intensity}: {graph}");
+                assert_eq!(command.read_only_files, [path.to_path_buf()]);
+                if intensity < 1.0 {
+                    assert!(graph.contains("split=2"), "{format}: {graph}");
+                    assert!(command
+                        .arguments
+                        .iter()
+                        .any(|value| value == "-filter_complex"));
+                }
+                if intensity < 1.0 && matches!(format, "mp4" | "webm" | "av1" | "prores") {
+                    assert!(command
+                        .arguments
+                        .windows(2)
+                        .any(|pair| pair == ["-map", "0:a?"]));
+                }
+                if matches!(format, "gif" | "png" | "jpg") {
+                    assert!(command.arguments.iter().any(|value| value == "-an"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn export_compiler_requires_and_accepts_explicit_lut_resource() {
+        let plan = Arc::new(plan_for_duration(
+            json!({"videoId": "x", "lut": {"id": "look-1", "intensity": 1.0}}),
+            10.0,
+        ));
+        let profile = ExportExecutionProfile {
+            encode_budget: EncodeBudget {
+                threads: 2,
+                tiles: TileLayout {
+                    columns: 1,
+                    rows: 1,
+                },
+                speed: 6,
+                memory_mib: 512,
+            },
+            verify_checksums: true,
+        };
+        let missing = RenderExecution::new(plan.clone(), profile.clone());
+        assert!(FfmpegExportCompiler
+            .compile(ExportCompileRequest {
+                input: Path::new("/in.mp4"),
+                destination: Path::new("/out.mp4"),
+                parallel_jobs: 1,
+                execution: &missing,
+            })
+            .is_err());
+
+        let resolved = RenderExecution::new_with_resources(
+            plan,
+            profile,
+            RenderResources::with_lut_path("/private/luts/look.cube"),
+        );
+        let command = FfmpegExportCompiler
+            .compile(ExportCompileRequest {
+                input: Path::new("/in.mp4"),
+                destination: Path::new("/out.mp4"),
+                parallel_jobs: 1,
+                execution: &resolved,
+            })
+            .unwrap();
+        assert_eq!(
+            command.read_only_files,
+            [PathBuf::from("/private/luts/look.cube")]
+        );
+    }
+
+    #[test]
+    fn mp3_bypasses_video_grading_without_a_lut_resource() {
+        let plan = Arc::new(plan_for_duration(
+            json!({
+                "videoId": "x",
+                "format": "mp3",
+                "lut": {"id": "look-1", "intensity": 1.0},
+                "curves": {
+                    "master": [{"x": 0.0, "y": 0.1}, {"x": 1.0, "y": 0.9}]
+                }
+            }),
+            10.0,
+        ));
+        let execution = RenderExecution::new(
+            plan,
+            ExportExecutionProfile {
+                encode_budget: EncodeBudget {
+                    threads: 2,
+                    tiles: TileLayout {
+                        columns: 1,
+                        rows: 1,
+                    },
+                    speed: 6,
+                    memory_mib: 512,
+                },
+                verify_checksums: true,
+            },
+        );
+        let command = FfmpegExportCompiler
+            .compile(ExportCompileRequest {
+                input: Path::new("/in.mp4"),
+                destination: Path::new("/out.mp3"),
+                parallel_jobs: 1,
+                execution: &execution,
+            })
+            .unwrap();
+
+        assert!(command.read_only_files.is_empty());
+        assert!(command.arguments.contains(&"-vn".to_string()));
+        assert!(!command
+            .arguments
+            .iter()
+            .any(|argument| argument.contains("curves=") || argument.contains("lut3d=")));
     }
 
     #[test]

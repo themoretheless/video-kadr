@@ -16,6 +16,7 @@ pub mod handlers;
 pub mod http;
 pub mod jobs;
 pub mod library;
+pub mod luts;
 pub mod model;
 pub mod packaging;
 pub mod ports;
@@ -55,6 +56,13 @@ pub fn build_router(state: AppState, max_upload: usize) -> Router {
             "/upload",
             post(handlers::upload_handler).layer(DefaultBodyLimit::max(max_upload)),
         )
+        .route(
+            "/luts",
+            get(handlers::lut_list_handler)
+                .post(handlers::lut_upload_handler)
+                .layer(DefaultBodyLimit::max(handlers::MAX_LUT_BODY_BYTES)),
+        )
+        .route("/luts/:id", get(handlers::lut_get_handler))
         .route("/edit", post(handlers::edit_handler))
         .route("/jobs/failed", get(handlers::failed_jobs_handler))
         .route("/jobs/registry", get(handlers::job_registry_handler))
