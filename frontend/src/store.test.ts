@@ -31,6 +31,9 @@ import {
   sanitizeCurve,
   sanitizeEditState,
   flushProjectSave,
+  timelineState,
+  executeTimelineCommand,
+  undoTimeline,
 } from './store'
 import type { EditState, VideoInfo } from './types'
 
@@ -730,6 +733,166 @@ describe('project restore autosave', () => {
     expect(api.saveProjectDocument).toHaveBeenCalledTimes(1)
   })
 
+  it('persists a structural timeline edit in the canonical document', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'timeline-save',
+      kind: 'source',
+      filename: 'timeline.mp4',
+      url: '/files/sources/timeline.mp4',
+      duration: 10,
+      width: 1280,
+      height: 720,
+      createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+    vi.mocked(api.saveProjectDocument).mockClear()
+    const document = timelineState.document!
+    const clip = document.sequences[0]!.tracks[0]!.clips[0]!
+    expect(
+      executeTimelineCommand({
+        kind: 'trim_clip',
+        sequenceId: document.activeSequenceId,
+        clipId: clip.id,
+        sourceInTick: 1_000_000,
+        sourceOutTick: 9_000_000,
+        timelineStartTick: 1_000_000,
+      }),
+    ).toBe(true)
+    await flushProjectSave()
+
+    const saved = vi.mocked(api.saveProjectDocument).mock.calls.at(-1)?.[2]
+    const savedClip = saved?.sequences[0]?.tracks[0]?.clips[0]
+    expect(savedClip).toMatchObject({
+      sourceInTick: 1_000_000,
+      sourceOutTick: 9_000_000,
+      timelineStartTick: 1_000_000,
+      durationTicks: 8_000_000,
+    })
+  })
+
+  it('does not let a stale autosave response overwrite a newer structural edit', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'timeline-race',
+      kind: 'source',
+      filename: 'timeline-race.mp4',
+      url: '/files/sources/timeline-race.mp4',
+      duration: 10,
+      width: 1280,
+      height: 720,
+      createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+    vi.mocked(api.saveProjectDocument).mockClear()
+
+    let resolveFirst!: (value: Awaited<ReturnType<typeof api.saveProjectDocument>>) => void
+    vi.mocked(api.saveProjectDocument)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          }),
+      )
+      .mockImplementation((projectId, expectedRevision, document) =>
+        Promise.resolve({
+          schemaVersion: 1,
+          projectId,
+          revision: expectedRevision + 1,
+          createdAt: 1,
+          updatedAt: 1,
+          document,
+        }),
+      )
+
+    const document = timelineState.document!
+    const clip = document.sequences[0]!.tracks[0]!.clips[0]!
+    expect(
+      executeTimelineCommand({
+        kind: 'trim_clip',
+        sequenceId: document.activeSequenceId,
+        clipId: clip.id,
+        sourceInTick: 1_000_000,
+        sourceOutTick: 9_000_000,
+        timelineStartTick: 1_000_000,
+      }),
+    ).toBe(true)
+    const saving = flushProjectSave()
+    await Promise.resolve()
+    const firstCall = vi.mocked(api.saveProjectDocument).mock.calls[0]!
+
+    expect(
+      executeTimelineCommand({
+        kind: 'trim_clip',
+        sequenceId: document.activeSequenceId,
+        clipId: clip.id,
+        sourceInTick: 2_000_000,
+        sourceOutTick: 8_000_000,
+        timelineStartTick: 2_000_000,
+      }),
+    ).toBe(true)
+    resolveFirst({
+      schemaVersion: 1,
+      projectId: firstCall[0],
+      revision: firstCall[1] + 1,
+      createdAt: 1,
+      updatedAt: 1,
+      document: firstCall[2],
+    })
+    await saving
+
+    expect(api.saveProjectDocument).toHaveBeenCalledTimes(2)
+    const newest = vi.mocked(api.saveProjectDocument).mock.calls[1]![2]
+    expect(newest.sequences[0]!.tracks[0]!.clips[0]).toMatchObject({
+      sourceInTick: 2_000_000,
+      sourceOutTick: 8_000_000,
+      timelineStartTick: 2_000_000,
+    })
+    expect(timelineState.document?.sequences[0]!.tracks[0]!.clips[0]).toMatchObject({
+      sourceInTick: 2_000_000,
+      sourceOutTick: 8_000_000,
+      timelineStartTick: 2_000_000,
+    })
+  })
+
+  it('saves an empty timeline after deleting the last clip and saves its undo', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'timeline-empty',
+      kind: 'source',
+      filename: 'timeline-empty.mp4',
+      url: '/files/sources/timeline-empty.mp4',
+      duration: 10,
+      width: 1280,
+      height: 720,
+      createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+    vi.mocked(api.saveProjectDocument).mockClear()
+    const document = timelineState.document!
+    const track = document.sequences[0]!.tracks[0]!
+    expect(executeTimelineCommand({
+      kind: 'remove_clip',
+      sequenceId: document.activeSequenceId,
+      trackId: track.id,
+      clipId: track.clips[0]!.id,
+    })).toBe(true)
+    await flushProjectSave()
+    expect(vi.mocked(api.saveProjectDocument).mock.calls.at(-1)![2]
+      .sequences[0]!.tracks[0]!.clips).toHaveLength(0)
+
+    expect(undoTimeline()).toBe(true)
+    await flushProjectSave()
+    expect(vi.mocked(api.saveProjectDocument).mock.calls.at(-1)![2]
+      .sequences[0]!.tracks[0]!.clips).toHaveLength(1)
+  })
+
   it('detaches only a missing LUT while restoring the remaining colour grade', async () => {
     const curves = identityCurves()
     curves.blue = [
@@ -848,7 +1011,7 @@ describe('project restore autosave', () => {
     state.edit.filter = 'sepia'
     const firstSave = flushProjectSave()
     await Promise.resolve()
-    expect(api.saveProjectDocument).toHaveBeenCalledTimes(1)
+    expect(api.saveProjectDocument, timelineState.error).toHaveBeenCalledTimes(1)
     const [projectId, expectedRevision, firstDocument] = vi.mocked(api.saveProjectDocument).mock.calls[0]!
 
     state.edit.filter = 'warm'

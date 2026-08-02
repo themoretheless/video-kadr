@@ -39,6 +39,10 @@ export interface ProjectTrack extends JsonObject {
   kind: string
   name: string
   clips: ProjectClip[]
+  muted?: boolean
+  solo?: boolean
+  locked?: boolean
+  hidden?: boolean
 }
 
 export interface ProjectClip extends JsonObject {
@@ -114,11 +118,13 @@ export function validateProjectDocument(document: ProjectDocument): void {
   }
 
   const mediaIds = new Set<string>()
+  const mediaById = new Map<string, ProjectMedia>()
   for (const media of document.media) {
     validateId(media.id, 'media.id')
     validateToken(media.kind, 'media.kind')
     asObject(media.metadata, 'media.metadata')
     addUnique(mediaIds, media.id)
+    mediaById.set(media.id, media)
   }
   if (!mediaIds.has(document.primaryMediaId)) {
     throw new Error(`missing project reference ${document.primaryMediaId}`)
@@ -151,12 +157,22 @@ export function validateProjectDocument(document: ProjectDocument): void {
       validateId(track.id, 'track.id')
       validateToken(track.kind, 'track.kind')
       if (typeof track.name !== 'string') throw new Error('invalid track.name')
+      for (const key of ['muted', 'solo', 'locked', 'hidden'] as const) {
+        if (track[key] !== undefined && typeof track[key] !== 'boolean') {
+          throw new Error(`invalid track.${key}`)
+        }
+      }
       addUnique(trackIds, track.id)
       if (!Array.isArray(track.clips)) throw new Error('invalid project clips')
       for (const clip of track.clips) {
         validateId(clip.id, 'clip.id')
         addUnique(clipIds, clip.id)
-        if (!mediaIds.has(clip.mediaId)) throw new Error(`missing project reference ${clip.mediaId}`)
+        const media = mediaById.get(clip.mediaId)
+        if (!media) throw new Error(`missing project reference ${clip.mediaId}`)
+        const compatible =
+          (track.kind === 'video' && (media.kind === 'video' || media.kind === 'image')) ||
+          (track.kind === 'audio' && media.kind === 'audio')
+        if (!compatible) throw new Error('incompatible project media and track')
         if (
           !isNonNegativeInteger(clip.timelineStartTick) ||
           !isPositiveInteger(clip.durationTicks) ||
@@ -168,6 +184,10 @@ export function validateProjectDocument(document: ProjectDocument): void {
         ) {
           throw new Error('invalid project clip range')
         }
+        const sourceDuration = sourceDurationTicks(media.metadata, sequence.settings.timeBase)
+        if (sourceDuration !== undefined && clip.sourceOutTick > sourceDuration) {
+          throw new Error('invalid project clip source range')
+        }
         if (!Array.isArray(clip.effects)) throw new Error('invalid project effects')
         for (const effect of clip.effects) {
           validateId(effect.id, 'effect.id')
@@ -177,11 +197,28 @@ export function validateProjectDocument(document: ProjectDocument): void {
           asObject(effect.parameters, 'effect.parameters')
         }
       }
+      const orderedClips = [...track.clips].sort(
+        (left, right) => left.timelineStartTick - right.timelineStartTick,
+      )
+      for (let index = 1; index < orderedClips.length; index++) {
+        const previous = orderedClips[index - 1]!
+        const current = orderedClips[index]!
+        if (previous.timelineStartTick + previous.durationTicks > current.timelineStartTick) {
+          throw new Error('overlapping project clips')
+        }
+      }
     }
   }
   if (!sequenceIds.has(document.activeSequenceId)) {
     throw new Error(`missing project reference ${document.activeSequenceId}`)
   }
+}
+
+function sourceDurationTicks(metadata: JsonObject, timeBase: number): number | undefined {
+  const duration = metadata.duration
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) return undefined
+  const ticks = Math.round(duration * timeBase)
+  return Number.isSafeInteger(ticks) ? ticks : undefined
 }
 
 export function legacyProjectValues(document: ProjectDocument): {
@@ -205,7 +242,7 @@ export function updateLegacyProjectValues(
   video: JsonObject,
   edit: JsonObject,
 ): ProjectDocument {
-  const next = structuredClone(document)
+  const next = cloneJson(document)
   next.name = name
   const media = next.media.find((item) => item.id === next.primaryMediaId)
   if (!media) throw new Error(`missing project reference ${next.primaryMediaId}`)
@@ -217,15 +254,52 @@ export function updateLegacyProjectValues(
     .find((item) => item.kind === 'legacy_edit')
   if (!effect) {
     const clip = sequence?.tracks.flatMap((track) => track.clips).find((item) => item.mediaId === next.primaryMediaId)
-    if (!clip) throw new Error('active project has no editable primary-media clip')
-    const usedIds = new Set(next.sequences.flatMap((item) => item.tracks).flatMap((track) => track.clips).flatMap((item) => item.effects).map((item) => item.id))
-    let suffix = 0
-    let effectId = 'effect-legacy-edit'
-    while (usedIds.has(effectId)) effectId = `effect-legacy-edit-${++suffix}`
-    effect = { id: effectId, kind: 'legacy_edit', enabled: true, parameters: {} }
-    clip.effects.push(effect)
+    if (clip) {
+      const usedIds = new Set(next.sequences.flatMap((item) => item.tracks).flatMap((track) => track.clips).flatMap((item) => item.effects).map((item) => item.id))
+      let suffix = 0
+      let effectId = 'effect-legacy-edit'
+      while (usedIds.has(effectId)) effectId = `effect-legacy-edit-${++suffix}`
+      effect = { id: effectId, kind: 'legacy_edit', enabled: true, parameters: {} }
+      clip.effects.push(effect)
+    }
   }
-  effect.parameters = { ...effect.parameters, ...edit }
+  if (effect) effect.parameters = { ...effect.parameters, ...edit }
+  validateProjectDocument(next)
+  return next
+}
+
+export function ensureCreatorTrackLayout(
+  document: ProjectDocument,
+  sequenceId = document.activeSequenceId,
+): ProjectDocument {
+  const next = cloneJson(document)
+  const sequence = next.sequences.find((item) => item.id === sequenceId)
+  if (!sequence) throw new Error(`missing project reference ${sequenceId}`)
+  const usedIds = new Set(next.sequences.flatMap((item) => item.tracks).map((track) => track.id))
+  for (const [kind, label] of [
+    ['video', 'Видео'],
+    ['audio', 'Аудио'],
+  ] as const) {
+    let count = sequence.tracks.filter((track) => track.kind === kind).length
+    while (count < 4) {
+      const ordinal = count + 1
+      let suffix = ordinal
+      let id = `track-${kind}-${suffix}`
+      while (usedIds.has(id)) id = `track-${kind}-${++suffix}`
+      usedIds.add(id)
+      sequence.tracks.push({
+        id,
+        kind,
+        name: `${label} ${ordinal}`,
+        clips: [],
+        muted: false,
+        solo: false,
+        locked: false,
+        hidden: false,
+      })
+      count++
+    }
+  }
   validateProjectDocument(next)
   return next
 }
@@ -413,4 +487,8 @@ function durationToTicks(value: unknown): number {
   if (duration === undefined) return 1
   const ticks = Math.round(duration * PROJECT_TIME_BASE)
   return isPositiveInteger(ticks) ? ticks : 1
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }

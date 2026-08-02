@@ -10,6 +10,8 @@ pub const PROJECT_DOCUMENT_SCHEMA_VERSION: u32 = 2;
 pub const PROJECT_ENVELOPE_SCHEMA_VERSION: u32 = 1;
 pub const PROJECT_TIME_BASE: u32 = 1_000_000;
 pub const PROJECT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+pub const CREATOR_VIDEO_TRACK_COUNT: usize = 4;
+pub const CREATOR_AUDIO_TRACK_COUNT: usize = 4;
 
 /// Persistence metadata is kept outside the editable document so autosave can
 /// advance a revision without mutating timeline content.
@@ -412,6 +414,15 @@ impl ProjectDocument {
             for track in &sequence.tracks {
                 validate_id("track.id", &track.id)?;
                 validate_token("track.kind", &track.kind)?;
+                for key in ["muted", "solo", "locked", "hidden"] {
+                    if track
+                        .extra
+                        .get(key)
+                        .is_some_and(|value| !value.is_boolean())
+                    {
+                        return Err(ProjectDocumentError::InvalidField("track.state"));
+                    }
+                }
                 if !track_ids.insert(track.id.as_str()) {
                     return Err(ProjectDocumentError::DuplicateId(track.id.clone()));
                 }
@@ -424,6 +435,31 @@ impl ProjectDocument {
                         return Err(ProjectDocumentError::MissingReference(
                             clip.media_id.clone(),
                         ));
+                    }
+                    let media = self
+                        .media
+                        .iter()
+                        .find(|media| media.id == clip.media_id)
+                        .expect("media reference was checked");
+                    let compatible = match track.kind.as_str() {
+                        "video" => matches!(media.kind.as_str(), "video" | "image"),
+                        "audio" => media.kind == "audio",
+                        _ => false,
+                    };
+                    if !compatible {
+                        return Err(ProjectDocumentError::InvalidField("clip.trackKind"));
+                    }
+                    if let Some(source_duration) = self
+                        .media
+                        .iter()
+                        .find(|media| media.id == clip.media_id)
+                        .and_then(|media| {
+                            source_duration_ticks(&media.metadata, sequence.settings.time_base)
+                        })
+                    {
+                        if clip.source_out_tick > source_duration {
+                            return Err(ProjectDocumentError::InvalidField("clip.sourceRange"));
+                        }
                     }
                     if clip.duration_ticks == 0
                         || clip.timeline_start_tick > PROJECT_MAX_SAFE_INTEGER
@@ -453,6 +489,19 @@ impl ProjectDocument {
                         }
                     }
                 }
+                let mut ordered_clips = track.clips.iter().collect::<Vec<_>>();
+                ordered_clips.sort_by_key(|clip| clip.timeline_start_tick);
+                for clips in ordered_clips.windows(2) {
+                    let previous = clips[0];
+                    let current = clips[1];
+                    let previous_end = previous
+                        .timeline_start_tick
+                        .checked_add(previous.duration_ticks)
+                        .ok_or(ProjectDocumentError::InvalidField("clip.timelineRange"))?;
+                    if previous_end > current.timeline_start_tick {
+                        return Err(ProjectDocumentError::InvalidField("clip.overlap"));
+                    }
+                }
             }
         }
         if !sequence_ids.contains(self.active_sequence_id.as_str()) {
@@ -461,6 +510,71 @@ impl ProjectDocument {
             ));
         }
         Ok(())
+    }
+
+    /// Add missing video/audio tracks without replacing legacy tracks, clips,
+    /// ordering, or extension data. Track IDs remain globally unique across
+    /// every sequence in the document.
+    pub fn ensure_track_capacity(
+        &self,
+        sequence_id: &str,
+        video_tracks: usize,
+        audio_tracks: usize,
+    ) -> Result<Self, ProjectDocumentError> {
+        let mut next = self.clone();
+        let mut used_ids = next
+            .sequences
+            .iter()
+            .flat_map(|sequence| &sequence.tracks)
+            .map(|track| track.id.clone())
+            .collect::<BTreeSet<_>>();
+        let sequence = next
+            .sequences
+            .iter_mut()
+            .find(|sequence| sequence.id == sequence_id)
+            .ok_or_else(|| ProjectDocumentError::MissingReference(sequence_id.to_owned()))?;
+
+        for (kind, minimum, label) in [
+            ("video", video_tracks, "Видео"),
+            ("audio", audio_tracks, "Аудио"),
+        ] {
+            let mut count = sequence
+                .tracks
+                .iter()
+                .filter(|track| track.kind == kind)
+                .count();
+            while count < minimum {
+                let ordinal = count + 1;
+                let mut suffix = ordinal;
+                let mut id = format!("track-{kind}-{suffix}");
+                while used_ids.contains(&id) {
+                    suffix += 1;
+                    id = format!("track-{kind}-{suffix}");
+                }
+                used_ids.insert(id.clone());
+                sequence.tracks.push(ProjectTrack {
+                    id,
+                    kind: kind.to_owned(),
+                    name: format!("{label} {ordinal}"),
+                    clips: Vec::new(),
+                    extra: BTreeMap::new(),
+                });
+                count += 1;
+            }
+        }
+        next.validate()?;
+        Ok(next)
+    }
+
+    pub fn ensure_creator_track_layout(
+        &self,
+        sequence_id: &str,
+    ) -> Result<Self, ProjectDocumentError> {
+        self.ensure_track_capacity(
+            sequence_id,
+            CREATOR_VIDEO_TRACK_COUNT,
+            CREATOR_AUDIO_TRACK_COUNT,
+        )
     }
 
     /// Compatibility projection used by the current single-clip editor while
@@ -563,6 +677,15 @@ fn legacy_duration_ticks(video: &Value) -> u64 {
         .filter(|ticks| ticks.is_finite() && *ticks >= 1.0 && *ticks <= u64::MAX as f64)
         .map(|ticks| ticks as u64)
         .unwrap_or(1)
+}
+
+fn source_duration_ticks(metadata: &Value, time_base: u32) -> Option<u64> {
+    finite_positive_f64(metadata.get("duration"))
+        .map(|seconds| (seconds * f64::from(time_base)).round())
+        .filter(|ticks| {
+            ticks.is_finite() && *ticks >= 1.0 && *ticks <= PROJECT_MAX_SAFE_INTEGER as f64
+        })
+        .map(|ticks| ticks as u64)
 }
 
 fn finite_positive_f64(value: Option<&Value>) -> Option<f64> {

@@ -5,7 +5,8 @@
 
 ## Текущая точка
 
-Video Kadr уже умеет одноклиповую обрезку, crop/scale/rotate, скорость, базовый
+Video Kadr уже умеет канонический project document, неразрушающий per-clip trim,
+структурный undo/redo, crop/scale/rotate, скорость, базовый
 звук, цветовые пресеты, 3D LUT, RGB-кривые, маску-прямоугольник и экспорт через
 native FFmpeg либо `ffmpeg.wasm`. Не хватает главного признака NLE: проекта с
 несколькими клипами и дорожками, временной шкалы, слоёв, текста, переходов,
@@ -49,11 +50,11 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 | 6 | Snapping | Нет | Playhead/edges/clip markers, threshold в px/frames и временное отключение | M |
 | 7 | Timeline zoom и горизонтальная навигация | Нет | Zoom around cursor, fit project, scroll/trackpad без потери позиции | M |
 | 8 | Frame-accurate playhead/timecode | Частично в preview | Project FPS, drop/non-drop timecode, mixed-FPS sources и одинаковый кадр preview/export | L |
-| 9 | Неразрушающая trim-модель клипа | Trim одного source | In/out каждого timeline clip без перезаписи source и с handle limits | L |
+| 9 | Неразрушающая trim-модель клипа ✅ | Реализованы независимые source in/out, source-duration limits, left trim и exact undo | In/out каждого timeline clip без перезаписи source и с handle limits | L |
 | 10 | Единый project document ✅ | Реализован canonical v2 в Rust/TypeScript, SQLite/IndexedDB CAS, legacy migration, quarantine и structured conflicts | Canonical versioned schema, N→N+1 migration, unknown-field preservation/version rejection | XL |
 | 11 | Autosave и crash recovery | Server autosave частично; Pages — память вкладки | Atomic IndexedDB snapshot/journal, recovery prompt и rollback повреждённой записи | L |
 | 12 | Персистентное локальное media storage | Pages теряет media после reload | OPFS/FSA matrix для Chrome/Firefox/Safari, private mode, revoked handles, eviction и relink | XL |
-| 13 | Timeline undo/redo | Undo только параметров edit | Structural command history, grouped drags, memory budget и recovery после failed command | L |
+| 13 | Timeline undo/redo ✅ | Реализованы atomic batch-команды, focus-scoped undo/redo, byte budget, CAS-safe autosave и recovery после failed command | Structural command history, grouped drags, memory budget и recovery после failed command | L |
 | 14 | Thumbnail strip на timeline | Нет UI | Асинхронные thumbnails с cache, отменой и bounded memory | L |
 | 15 | Audio waveform на timeline | Нет UI | Channel/downmix policy, peaks-per-pixel levels, zoom-aware cache и known-signal golden test | L |
 | 16 | Track controls | Нет | Mute/solo/lock/hide, rename, reorder и состояние в project schema | M |

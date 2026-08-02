@@ -11,8 +11,10 @@ import {
   sanitizeRect,
 } from './domain/edit'
 import { cloneValue, PatchCommand } from './domain/history'
+import { StructuralHistory, type TimelineCommand } from './domain/timeline'
 import {
   createProjectDocumentFromLegacy,
+  ensureCreatorTrackLayout,
   legacyProjectValues,
   updateLegacyProjectValues,
 } from './project-schema'
@@ -123,6 +125,7 @@ export async function doImport(): Promise<void> {
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
     resetHistory()
+    initializeTimelineDocument(v)
     state.importStatus = ''
     void loadLibrary()
     toast('success', v.title ? `Загружено: ${v.title}` : 'Видео загружено')
@@ -172,6 +175,7 @@ export async function doUpload(file: File): Promise<void> {
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
     resetHistory()
+    initializeTimelineDocument(v)
     state.importStatus = ''
     void loadLibrary()
     toast('success', v.title ? `Загружено: ${v.title}` : 'Файл загружен')
@@ -435,6 +439,7 @@ export function openFromLibrary(entry: MediaEntry): void {
   edit.scale = { w: v.width, h: -2 }
   state.edit = edit
   resetHistory()
+  initializeTimelineDocument(v)
   // Restore any saved edit for this clip (overrides the defaults above).
   void restoreProject(v.id)
   toast('info', v.title ? `Открыто: ${v.title}` : 'Клип открыт')
@@ -727,11 +732,93 @@ let activeProjectDocument: ProjectDocument | null = null
 let projectSaveInFlight: Promise<void> | null = null
 let projectSaveQueued = false
 
+export const timelineState = reactive({
+  document: null as ProjectDocument | null,
+  selectedClipId: null as string | null,
+  error: '',
+  revision: 0,
+  canUndo: false,
+  canRedo: false,
+})
+const structuralHistory = new StructuralHistory(32 * 1024 * 1024)
+
+function initializeTimelineDocument(video: VideoInfo): void {
+  const document = ensureCreatorTrackLayout(createProjectDocumentFromLegacy(
+    video.id,
+    video.title || video.filename,
+    cloneValue(video) as unknown as Record<string, unknown>,
+    cloneValue(state.edit) as unknown as Record<string, unknown>,
+  ))
+  timelineState.document = document
+  timelineState.selectedClipId = document.sequences[0]?.tracks[0]?.clips[0]?.id ?? null
+  timelineState.error = ''
+  timelineState.revision++
+  syncStructuralHistoryState()
+}
+
+function syncStructuralHistoryState(): void {
+  timelineState.canUndo = structuralHistory.canUndo
+  timelineState.canRedo = structuralHistory.canRedo
+}
+
+export function executeTimelineCommand(command: TimelineCommand, group?: string): boolean {
+  const document = timelineState.document
+  if (!document) return false
+  try {
+    timelineState.document = structuralHistory.execute(document, command, group)
+    timelineState.error = ''
+    timelineState.revision++
+    syncStructuralHistoryState()
+    scheduleProjectSave()
+    return true
+  } catch (error) {
+    timelineState.error = error instanceof Error ? error.message : String(error)
+    return false
+  }
+}
+
+export function undoTimeline(): boolean {
+  const document = timelineState.document
+  if (!document || !structuralHistory.canUndo) return false
+  try {
+    timelineState.document = structuralHistory.undo(document)
+    timelineState.revision++
+    timelineState.error = ''
+    syncStructuralHistoryState()
+    scheduleProjectSave()
+    return true
+  } catch (error) {
+    timelineState.error = error instanceof Error ? error.message : String(error)
+    return false
+  }
+}
+
+export function redoTimeline(): boolean {
+  const document = timelineState.document
+  if (!document || !structuralHistory.canRedo) return false
+  try {
+    timelineState.document = structuralHistory.redo(document)
+    timelineState.revision++
+    timelineState.error = ''
+    syncStructuralHistoryState()
+    scheduleProjectSave()
+    return true
+  } catch (error) {
+    timelineState.error = error instanceof Error ? error.message : String(error)
+    return false
+  }
+}
+
 function resetProjectPersistenceContext(): void {
   activeProjectId = null
   activeProjectRevision = 0
   activeProjectDocument = null
   projectSaveQueued = false
+  timelineState.document = null
+  timelineState.selectedClipId = null
+  timelineState.error = ''
+  structuralHistory.clear()
+  syncStructuralHistoryState()
 }
 
 function clearProjectSaveTimer(): void {
@@ -744,7 +831,6 @@ function clearProjectSaveTimer(): void {
 /** Load the saved project for a clip (if any) and apply its edit recipe. */
 async function restoreProject(videoId: string): Promise<void> {
   const sequence = ++projectRestoreSequence
-  resetProjectPersistenceContext()
   const startingRevision = editRevision
   const baseEdit = cloneValue(state.edit)
   let applied = false
@@ -769,6 +855,14 @@ async function restoreProject(videoId: string): Promise<void> {
     activeProjectId = p.id
     activeProjectRevision = envelope?.revision ?? p.revision ?? 0
     activeProjectDocument = document
+    if (document) {
+      timelineState.document = ensureCreatorTrackLayout(document)
+      timelineState.selectedClipId =
+        document.sequences[0]?.tracks.flatMap((track) => track.clips)[0]?.id ?? null
+      timelineState.revision++
+      structuralHistory.clear()
+      syncStructuralHistoryState()
+    }
     resetHistory()
     applied = true
     if (missingLut) toastMissingLut(missingLut)
@@ -816,11 +910,13 @@ function toastMissingLut(label: string): void {
 async function performProjectSave(): Promise<void> {
   const v = state.video
   if (!v) return
+  const timelineRevisionAtStart = timelineState.revision
   try {
     const projectId = activeProjectId ?? crypto.randomUUID()
-    const document = activeProjectDocument
+    const baseDocument = timelineState.document ?? activeProjectDocument
+    const document = baseDocument
       ? updateLegacyProjectValues(
-          activeProjectDocument,
+          baseDocument,
           v.title || v.filename,
           cloneValue(v) as unknown as Record<string, unknown>,
           cloneValue(state.edit) as unknown as Record<string, unknown>,
@@ -836,7 +932,16 @@ async function performProjectSave(): Promise<void> {
     activeProjectId = saved.projectId
     activeProjectRevision = saved.revision
     activeProjectDocument = saved.document
+    if (timelineState.revision === timelineRevisionAtStart) {
+      timelineState.document = structuredClone(saved.document)
+      timelineState.revision++
+    } else {
+      // A structural edit landed while this immutable snapshot was in flight.
+      // Keep the newer local document and immediately CAS-save it at the new revision.
+      projectSaveQueued = true
+    }
   } catch (error) {
+    timelineState.error = error instanceof Error ? error.message : String(error)
     if (error instanceof api.ApiError && error.status === 409) {
       toast('info', 'Проект изменён в другой вкладке; автосохранение приостановлено')
     }

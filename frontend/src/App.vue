@@ -15,6 +15,8 @@ import {
   undo,
   redo,
   clientOnlyMode,
+  undoTimeline,
+  redoTimeline,
 } from './store'
 import UrlImport from './components/UrlImport.vue'
 import VideoPreview from './components/VideoPreview.vue'
@@ -22,6 +24,7 @@ import EditPanel from './components/EditPanel.vue'
 import ResultPanel from './components/ResultPanel.vue'
 import MediaLibrary from './components/MediaLibrary.vue'
 import Toasts from './components/Toasts.vue'
+import TimelineEditor from './components/TimelineEditor.vue'
 
 function isTyping(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null
@@ -35,13 +38,19 @@ function onKey(e: KeyboardEvent) {
   // Undo / redo (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Ctrl+Y).
   if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
     e.preventDefault()
-    if (e.shiftKey) redo()
+    const inTimeline = (e.target as HTMLElement | null)?.closest('.timeline-editor') !== null
+    if (e.shiftKey) {
+      if (inTimeline) redoTimeline()
+      else redo()
+    } else if (inTimeline) undoTimeline()
     else undo()
     return
   }
   if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) {
     e.preventDefault()
-    redo()
+    const inTimeline = (e.target as HTMLElement | null)?.closest('.timeline-editor') !== null
+    if (inTimeline) redoTimeline()
+    else redo()
     return
   }
   const fps = state.video.fps || 30
@@ -134,6 +143,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         <ResultPanel v-if="state.result || state.exporting || state.exportError" />
       </section>
     </main>
+
+    <TimelineEditor v-if="state.video" />
 
     <footer class="foot">
       {{ clientOnlyMode ? 'Статическая версия · обработка через ffmpeg.wasm на этом устройстве' : 'Полная версия · скачивание через yt-dlp · обработка через ffmpeg' }} ·

@@ -96,4 +96,35 @@ describe('project document schema', () => {
     invalidRange.sequences[0]!.tracks[0]!.clips[0]!.sourceOutTick = 2
     expect(() => migrateProjectDocument(invalidRange)).toThrow('invalid project clip range')
   })
+
+  it('rejects source overflow, incompatible tracks and same-track overlap', () => {
+    const value = migrateProjectDocument({
+      videoId: 'video-1',
+      video: { id: 'video-1', duration: 1 },
+      edit: {},
+    })
+
+    const sourceOverflow = structuredClone(value)
+    const overflowClip = sourceOverflow.sequences[0]!.tracks[0]!.clips[0]!
+    overflowClip.durationTicks = 2_000_000
+    overflowClip.sourceOutTick = 2_000_000
+    expect(() => migrateProjectDocument(sourceOverflow)).toThrow(
+      'invalid project clip source range',
+    )
+
+    const incompatible = structuredClone(value)
+    incompatible.media[0]!.kind = 'audio'
+    expect(() => migrateProjectDocument(incompatible)).toThrow(
+      'incompatible project media and track',
+    )
+
+    const overlap = structuredClone(value)
+    const track = overlap.sequences[0]!.tracks[0]!
+    track.clips.push({
+      ...structuredClone(track.clips[0]!),
+      id: 'clip-overlap',
+      effects: [],
+    })
+    expect(() => migrateProjectDocument(overlap)).toThrow('overlapping project clips')
+  })
 })

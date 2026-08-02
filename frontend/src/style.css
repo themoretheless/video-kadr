@@ -1197,3 +1197,147 @@ body {
   color: var(--danger);
   background: var(--panel-3);
 }
+
+.timeline-editor {
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.timeline-toolbar,
+.timeline-actions,
+.track-header,
+.track-controls,
+.timeline-trim-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-toolbar {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.timeline-toolbar h2 {
+  margin: 0;
+}
+
+.timeline-body {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.timeline-track {
+  display: grid;
+  grid-template-columns: 170px minmax(700px, 1fr);
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline-track:last-child {
+  border-bottom: 0;
+}
+
+.timeline-track.locked .track-lane {
+  opacity: 0.62;
+}
+
+.timeline-track.hidden .timeline-clip {
+  opacity: 0.35;
+}
+
+.track-header {
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.track-header > span {
+  max-width: 78px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-controls {
+  gap: 3px;
+}
+
+.track-controls button {
+  min-width: 23px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-3);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.track-controls button[aria-pressed='true'] {
+  color: white;
+  background: var(--accent);
+}
+
+.track-lane {
+  position: relative;
+  min-height: 48px;
+  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
+  background-size: 10% 100%;
+}
+
+.timeline-clip {
+  position: absolute;
+  inset-block: 5px;
+  overflow: hidden;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 75%, white);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 34%, var(--panel-3));
+  color: var(--text);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.timeline-clip.selected {
+  outline: 2px solid white;
+  outline-offset: 1px;
+}
+
+.timeline-trim-controls {
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.timeline-trim-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.timeline-trim-controls input {
+  width: 100px;
+}
+
+.timeline-error {
+  margin: 8px 0 0;
+  color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .timeline-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .timeline-track {
+    grid-template-columns: 135px minmax(560px, 1fr);
+  }
+}
