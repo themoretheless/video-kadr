@@ -589,6 +589,18 @@ function applyPlatform(name: string) {
       </div>
       <div class="field">
         <div class="grid2">
+          <label>Температура: {{ state.edit.temperature.toFixed(2) }}
+            <input aria-label="Температура" type="range" min="-1" max="1" step="0.05" v-model.number="state.edit.temperature" />
+          </label>
+          <label>Оттенок: {{ state.edit.tint.toFixed(2) }}
+            <input aria-label="Оттенок" type="range" min="-1" max="1" step="0.05" v-model.number="state.edit.tint" />
+          </label>
+          <label>Света: {{ state.edit.highlights.toFixed(2) }}
+            <input aria-label="Света" type="range" min="-1" max="1" step="0.05" v-model.number="state.edit.highlights" />
+          </label>
+          <label>Тени: {{ state.edit.shadows.toFixed(2) }}
+            <input aria-label="Тени" type="range" min="-1" max="1" step="0.05" v-model.number="state.edit.shadows" />
+          </label>
           <label>Яркость: {{ state.edit.brightness.toFixed(2) }}
             <input type="range" min="-1" max="1" step="0.05" v-model.number="state.edit.brightness" />
           </label>

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { beginEditTransaction, buildEditPayload, clientOnlyMode, endEditTransaction, isIdentityCurves, setProjectProxyPolicy, state, timelineState, type ProjectProxyPolicy } from '../store'
+import {
+  applyPrimaryCorrectionsToImageData,
+  primaryCorrectionsActive,
+} from '../domain/primary-color'
 import { derivedTaskState, regenerateMissingBrowserProxy } from '../derived-task-center'
 import { browserProxyCapability, deleteBrowserProxyArtifact, resolveBrowserPreviewSource, type ProxyPreviewSource } from '../browser-proxy-artifacts'
 import { invalidateBackendProxyArtifact, resolveBackendPreviewSource } from '../proxy-preview'
@@ -62,7 +66,7 @@ function frameIdentity(seconds: number) {
   const settings: PreviewRenderSettings = {
     width, height, pixelRatioMilli: 1000,
     sourceMode: previewSource.value.usingProxy ? 'proxy' : 'original',
-    rendererCompatibility: `browser-canvas-srgb-v1:${previewSource.value.mappingIdentity ?? 'original'}:${previewMappingGeneration}`,
+    rendererCompatibility: `browser-canvas-linear-primary-v2:${previewSource.value.mappingIdentity ?? 'original'}:${previewMappingGeneration}`,
   }
   const graphVersion = previewGraphFingerprint(video.fingerprint, {
     edit: state.edit,
@@ -92,7 +96,21 @@ async function captureCurrentFrame(mediaTime?: number): Promise<void> {
     const context = surface.getContext('2d')
     if (!context) return
     context.drawImage(el, 0, 0, surface.width, surface.height)
-    decodedFrameCache.put(previewFrameKey(identity), await createImageBitmap(surface))
+    if (primaryCorrectionsActive(state.edit)) {
+      const pixels = context.getImageData(0, 0, surface.width, surface.height)
+      applyPrimaryCorrectionsToImageData(pixels, state.edit)
+      context.putImageData(pixels, 0, 0)
+    }
+    const key = previewFrameKey(identity)
+    decodedFrameCache.put(key, await createImageBitmap(surface))
+    if (el.paused) {
+      const cached = decodedFrameCache.get(key)
+      if (cached) {
+        cachedFrameNeedsCss.value = true
+        drawCachedFrame(cached)
+        optimizedPreviewStatus.value = 'ready'
+      }
+    }
   } catch { /* preview cache is disposable */ }
 }
 
@@ -159,8 +177,8 @@ function trackPresentedFrames(): void {
 }
 
 function onPreviewPaused(event: Event): void {
-  if (clientOnlyMode) return
   const el = event.currentTarget as HTMLVideoElement
+  if (clientOnlyMode) { void captureCurrentFrame(el.currentTime); return }
   requestCurrentBackendFrame(el)
 }
 
@@ -252,12 +270,25 @@ const videoStyle = computed(() => {
 })
 
 const advancedColorNotice = computed(() => {
+  const primaryActive = primaryCorrectionsActive(state.edit)
   const lutActive = Boolean(state.edit.lutId) && state.edit.lutIntensity > 0
   const curvesActive = !isIdentityCurves(state.edit.curves)
-  if (lutActive && curvesActive) return 'LUT и кривые включены.'
-  if (lutActive) return 'LUT включён.'
-  if (curvesActive) return 'Кривые включены.'
-  return ''
+  const active: string[] = []
+  if (primaryActive) active.push('Температура / оттенок / света / тени')
+  if (lutActive) active.push('LUT')
+  if (curvesActive) active.push('кривые')
+  return active.length ? `${active.join(', ')} включены.` : ''
+})
+
+const advancedColorDetail = computed(() => {
+  if (!clientOnlyMode) return 'Точный кадр появляется после остановки или перемотки; во время воспроизведения используется быстрый fallback.'
+  const primaryActive = primaryCorrectionsActive(state.edit)
+  const advancedActive = Boolean(state.edit.lutId) && state.edit.lutIntensity > 0
+    || !isIdentityCurves(state.edit.curves)
+  const details: string[] = []
+  if (primaryActive) details.push('Точная primary-коррекция появляется на кадре после паузы или перемотки; во время воспроизведения она не имитируется CSS.')
+  if (advancedActive) details.push('Точный LUT и кривые доступны после экспорта.')
+  return details.join(' ')
 })
 
 // Reload the player when a new source is imported.
@@ -273,11 +304,13 @@ watch(
     optimizedPreviewController?.abort(); optimizedPreviewController = null; optimizedPreviewGeneration++; activeOptimizedPreviewKey = null; cachedFrameVisible.value = false; optimizedPreviewStatus.value = 'idle'
     if (pausedPreviewTimer) clearTimeout(pausedPreviewTimer)
     const el = videoEl.value
-    if (el?.paused && !clientOnlyMode) {
+    if (el?.paused) {
       pausedPreviewTimer = setTimeout(() => {
         pausedPreviewTimer = null
         const current = videoEl.value
-        if (current?.paused) requestCurrentBackendFrame(current)
+        if (!current?.paused) return
+        if (clientOnlyMode) void captureCurrentFrame(current.currentTime)
+        else requestCurrentBackendFrame(current)
       }, 180)
     }
   },
@@ -458,7 +491,7 @@ const meta = computed(() => {
     </p>
     <p v-if="advancedColorNotice" class="preview-color-notice" role="status">
       <strong>{{ advancedColorNotice }}</strong>
-      {{ clientOnlyMode ? 'Точный результат доступен после экспорта.' : 'Точный кадр появляется после остановки или перемотки; во время воспроизведения используется быстрый fallback.' }}
+      {{ advancedColorDetail }}
     </p>
     <p v-if="state.video" class="hint">Обрезка зациклена внутри выбранного отрезка. Экспорт всегда читает оригинал.</p>
   </div>

@@ -201,6 +201,10 @@ fn normalize_request(edit: &mut EditRequest, source: SourceMediaSpec) -> anyhow:
     edit.contrast = finite_non_negative(edit.contrast, "Недопустимый контраст")?.clamp(0.0, 3.0);
     edit.saturation =
         finite_non_negative(edit.saturation, "Недопустимая насыщенность")?.clamp(0.0, 3.0);
+    edit.temperature = finite_number(edit.temperature, "Недопустимая температура")?;
+    edit.tint = finite_number(edit.tint, "Недопустимый оттенок")?;
+    edit.highlights = finite_number(edit.highlights, "Недопустимые света")?;
+    edit.shadows = finite_number(edit.shadows, "Недопустимые тени")?;
     edit.sharpen = finite_non_negative(edit.sharpen, "Недопустимая резкость")?.clamp(0.0, 5.0);
     edit.grain = finite_non_negative(edit.grain, "Недопустимое зерно")?.clamp(0.0, 100.0);
     normalize_trim(&mut edit.trim, duration)?;
@@ -387,6 +391,10 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             brightness: request.brightness,
             contrast: request.contrast,
             saturation: request.saturation,
+            temperature: request.temperature,
+            tint: request.tint,
+            highlights: request.highlights,
+            shadows: request.shadows,
             look,
             vignette: request.vignette,
             denoise: request.denoise,
@@ -605,6 +613,10 @@ mod tests {
             "brightness": 2.0,
             "contrast": 9.0,
             "saturation": 9.0,
+            "temperature": 1.0,
+            "tint": -1.0,
+            "highlights": 1.0,
+            "shadows": -1.0,
             "sharpen": 9.0,
             "grain": 999.0,
             "trim": { "start": 2.0, "end": 99.0 },
@@ -623,6 +635,10 @@ mod tests {
         assert_eq!(plan.edit.video().brightness, 1.0);
         assert_eq!(plan.edit.video().contrast, 3.0);
         assert_eq!(plan.edit.video().saturation, 3.0);
+        assert_eq!(plan.edit.video().temperature, 1.0);
+        assert_eq!(plan.edit.video().tint, -1.0);
+        assert_eq!(plan.edit.video().highlights, 1.0);
+        assert_eq!(plan.edit.video().shadows, -1.0);
         assert_eq!(plan.edit.video().sharpen, 5.0);
         assert_eq!(plan.edit.video().grain, 100.0);
         assert_eq!(
@@ -636,6 +652,23 @@ mod tests {
                 TimeRange::new(9.5, 10.0).unwrap()
             ]
         );
+    }
+
+    #[test]
+    fn compiler_rejects_primary_corrections_outside_wire_range() {
+        for (field, value) in [
+            ("temperature", 1.000_001),
+            ("tint", -1.000_001),
+            ("highlights", 2.0),
+            ("shadows", -2.0),
+        ] {
+            let mut request = serde_json::json!({"videoId": "x"});
+            request[field] = serde_json::json!(value);
+            assert!(
+                compile(request).is_err(),
+                "{field}={value} must be rejected"
+            );
+        }
     }
 
     #[test]

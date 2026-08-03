@@ -448,6 +448,14 @@ pub struct VideoEffects {
     pub(crate) brightness: f64,
     pub(crate) contrast: f64,
     pub(crate) saturation: f64,
+    #[serde(default)]
+    pub(crate) temperature: f64,
+    #[serde(default)]
+    pub(crate) tint: f64,
+    #[serde(default)]
+    pub(crate) highlights: f64,
+    #[serde(default)]
+    pub(crate) shadows: f64,
     pub(crate) look: Option<LookPreset>,
     pub(crate) vignette: bool,
     pub(crate) denoise: bool,
@@ -576,6 +584,14 @@ impl EditSpec {
             || !(0.0..=3.0).contains(&self.video.contrast)
             || !self.video.saturation.is_finite()
             || !(0.0..=3.0).contains(&self.video.saturation)
+            || !self.video.temperature.is_finite()
+            || !(-1.0..=1.0).contains(&self.video.temperature)
+            || !self.video.tint.is_finite()
+            || !(-1.0..=1.0).contains(&self.video.tint)
+            || !self.video.highlights.is_finite()
+            || !(-1.0..=1.0).contains(&self.video.highlights)
+            || !self.video.shadows.is_finite()
+            || !(-1.0..=1.0).contains(&self.video.shadows)
             || !self.video.sharpen.is_finite()
             || !(0.0..=5.0).contains(&self.video.sharpen)
             || !self.video.grain.is_finite()
@@ -650,6 +666,10 @@ mod tests {
                 brightness: 0.0,
                 contrast: 1.0,
                 saturation: 1.0,
+                temperature: 0.0,
+                tint: 0.0,
+                highlights: 0.0,
+                shadows: 0.0,
                 look: None,
                 vignette: false,
                 denoise: false,

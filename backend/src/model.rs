@@ -188,6 +188,15 @@ pub struct EditRequest {
     pub contrast: f64,
     #[serde(default = "default_one")]
     pub saturation: f64,
+    /// Primary colour/tonal controls. Neutral is 0; accepted range is -1..1.
+    #[serde(default)]
+    pub temperature: f64,
+    #[serde(default)]
+    pub tint: f64,
+    #[serde(default)]
+    pub highlights: f64,
+    #[serde(default)]
+    pub shadows: f64,
     /// Named look: "grayscale" | "sepia" | "warm" | "cold".
     #[serde(default)]
     pub filter: Option<String>,
@@ -352,6 +361,10 @@ mod tests {
         assert_eq!(e.contrast, 1.0);
         assert_eq!(e.saturation, 1.0);
         assert_eq!(e.brightness, 0.0);
+        assert_eq!(e.temperature, 0.0);
+        assert_eq!(e.tint, 0.0);
+        assert_eq!(e.highlights, 0.0);
+        assert_eq!(e.shadows, 0.0);
         assert_eq!(e.rotate, 0);
         assert!(!e.mute);
         assert!(!e.flip_h);

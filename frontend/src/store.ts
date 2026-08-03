@@ -21,6 +21,7 @@ import {
   sanitizeRect,
 } from './domain/edit'
 import { cloneValue, PatchCommand } from './domain/history'
+import { primaryCorrectionsActive } from './domain/primary-color'
 import { StructuralHistory, type TimelineCommand } from './domain/timeline'
 import {
   createProjectDocumentFromLegacy,
@@ -581,6 +582,14 @@ export function selectedExportUnavailableReason(): string | null {
     if (codec && !codec.available) return codec.reason || 'Выбранный кодек недоступен'
   }
 
+  if (primaryCorrectionsActive(state.edit)) {
+    const reason = colorCapabilityUnavailableReason(
+      ['primary-corrections'],
+      'Температура, оттенок, света и тени недоступны: нужен обновлённый сервер',
+    )
+    if (reason) return reason
+  }
+
   if (state.edit.lutId && state.edit.lutIntensity > 0) {
     const reason = colorCapabilityUnavailableReason(
       ['lut', 'lut3d', 'cube-lut'],
@@ -1062,6 +1071,10 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'brightness',
   'contrast',
   'saturation',
+  'temperature',
+  'tint',
+  'highlights',
+  'shadows',
   'filter',
   'lutId',
   'lutName',

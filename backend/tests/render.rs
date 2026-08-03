@@ -329,7 +329,7 @@ async fn real_render_partial_lut_with_master_and_rgb_curves() {
         graph.find("format=gbrap16le").unwrap() < graph.find("split=2").unwrap(),
         "{graph}"
     );
-    assert!(graph.find("curves=").unwrap() < graph.find("split=2").unwrap());
+    assert!(graph.find("split=2").unwrap() < graph.find("curves=").unwrap());
     assert_eq!(
         command.read_only_files.as_slice(),
         std::slice::from_ref(&lut_path)

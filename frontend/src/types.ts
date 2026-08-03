@@ -106,6 +106,11 @@ export interface EditState {
   brightness: number
   contrast: number
   saturation: number
+  /** Primary corrections; neutral 0, canonical range -1..1. */
+  temperature: number
+  tint: number
+  highlights: number
+  shadows: number
   filter: string
   /** Stored LUT asset reference. File bytes never enter edit/project JSON. */
   lutId: string | null

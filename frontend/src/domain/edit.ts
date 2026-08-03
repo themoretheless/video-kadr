@@ -44,6 +44,10 @@ export const EDIT_DEFAULTS = {
   brightness: 0,
   contrast: 1,
   saturation: 1,
+  temperature: 0,
+  tint: 0,
+  highlights: 0,
+  shadows: 0,
   filter: '',
   lutId: null,
   lutName: '',
@@ -150,6 +154,14 @@ export function buildEditPayload(
   if (edit.brightness !== EDIT_DEFAULTS.brightness) payload.brightness = edit.brightness
   if (edit.contrast !== EDIT_DEFAULTS.contrast) payload.contrast = edit.contrast
   if (edit.saturation !== EDIT_DEFAULTS.saturation) payload.saturation = edit.saturation
+  const temperature = sanitizePrimaryCorrection(edit.temperature)
+  const tint = sanitizePrimaryCorrection(edit.tint)
+  const highlights = sanitizePrimaryCorrection(edit.highlights)
+  const shadows = sanitizePrimaryCorrection(edit.shadows)
+  if (temperature !== EDIT_DEFAULTS.temperature) payload.temperature = temperature
+  if (tint !== EDIT_DEFAULTS.tint) payload.tint = tint
+  if (highlights !== EDIT_DEFAULTS.highlights) payload.highlights = highlights
+  if (shadows !== EDIT_DEFAULTS.shadows) payload.shadows = shadows
   if (edit.filter) payload.filter = edit.filter
   const lutId = sanitizeLutId(edit.lutId)
   const lutIntensity = sanitizeLutIntensity(edit.lutIntensity)
@@ -206,6 +218,11 @@ export function sanitizeLutId(value: unknown): string | null {
 
 export function sanitizeLutIntensity(value: unknown): number {
   return Math.max(0, Math.min(1, finiteOr(value, EDIT_DEFAULTS.lutIntensity)))
+}
+
+/** Canonical primary correction amount shared by persistence and payloads. */
+export function sanitizePrimaryCorrection(value: unknown): number {
+  return Math.max(-1, Math.min(1, finiteOr(value, 0)))
 }
 
 /**
@@ -389,6 +406,10 @@ export function sanitizeEditState(value: unknown, base: EditState = defaultEdit(
     lutName: lutId && typeof rawLutName === 'string' ? rawLutName.trim() : '',
     lutSize: lutId ? lutSize : null,
     lutIntensity: sanitizeLutIntensity(source.lutIntensity ?? base.lutIntensity),
+    temperature: sanitizePrimaryCorrection(source.temperature ?? base.temperature),
+    tint: sanitizePrimaryCorrection(source.tint ?? base.tint),
+    highlights: sanitizePrimaryCorrection(source.highlights ?? base.highlights),
+    shadows: sanitizePrimaryCorrection(source.shadows ?? base.shadows),
     curves: sanitizeCurves(source.curves ?? base.curves),
   }
 }
@@ -398,6 +419,10 @@ export function resetColorAdjustments(edit: EditState): void {
   edit.brightness = EDIT_DEFAULTS.brightness
   edit.contrast = EDIT_DEFAULTS.contrast
   edit.saturation = EDIT_DEFAULTS.saturation
+  edit.temperature = EDIT_DEFAULTS.temperature
+  edit.tint = EDIT_DEFAULTS.tint
+  edit.highlights = EDIT_DEFAULTS.highlights
+  edit.shadows = EDIT_DEFAULTS.shadows
   edit.filter = EDIT_DEFAULTS.filter
   edit.lutId = EDIT_DEFAULTS.lutId
   edit.lutName = EDIT_DEFAULTS.lutName

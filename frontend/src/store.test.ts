@@ -213,6 +213,10 @@ describe('buildEditPayload', () => {
       rotate: 90,
       volume: 1.5,
       brightness: 0.2,
+      temperature: 0.5,
+      tint: -0.25,
+      highlights: 0.4,
+      shadows: -0.3,
       filter: 'sepia',
       vignette: true,
     })
@@ -220,6 +224,10 @@ describe('buildEditPayload', () => {
     expect(p.rotate).toBe(90)
     expect(p.volume).toBe(1.5)
     expect(p.brightness).toBe(0.2)
+    expect(p.temperature).toBe(0.5)
+    expect(p.tint).toBe(-0.25)
+    expect(p.highlights).toBe(0.4)
+    expect(p.shadows).toBe(-0.3)
     expect(p.filter).toBe('sepia')
     expect(p.vignette).toBe(true)
     expect('contrast' in p).toBe(false)
@@ -282,7 +290,23 @@ describe('buildEditPayload', () => {
     const payload = buildEditPayload()
     expect('lut' in payload).toBe(false)
     expect('curves' in payload).toBe(false)
+    expect('temperature' in payload).toBe(false)
+    expect('tint' in payload).toBe(false)
+    expect('highlights' in payload).toBe(false)
+    expect('shadows' in payload).toBe(false)
     expect(hasMeaningfulChanges()).toBe(false)
+  })
+
+  it('clamps primary corrections and drops non-finite values from the wire', () => {
+    Object.assign(state.edit, {
+      temperature: 3,
+      tint: -4,
+      highlights: Number.NaN,
+      shadows: Number.POSITIVE_INFINITY,
+    })
+    expect(buildEditPayload()).toMatchObject({ temperature: 1, tint: -1 })
+    expect(buildEditPayload()).not.toHaveProperty('highlights')
+    expect(buildEditPayload()).not.toHaveProperty('shadows')
   })
 
   it('maps denoise/sharpen/grain only when set', () => {
@@ -371,11 +395,16 @@ describe('colour state sanitation', () => {
       lutSize: 999,
       lutIntensity: Number.POSITIVE_INFINITY,
       curves: { master: [{ x: 128, y: 80 }] },
+      temperature: 5,
+      tint: -5,
+      highlights: Number.NaN,
+      shadows: Number.POSITIVE_INFINITY,
     })
     expect(edit.lutId).toBe(TEST_LUT_ID)
     expect(edit.lutName).toBe('Look')
     expect(edit.lutSize).toBe(65)
     expect(edit.lutIntensity).toBe(1)
+    expect(edit).toMatchObject({ temperature: 1, tint: -1, highlights: 0, shadows: 0 })
     expect(edit.curves.master).toEqual([
       { x: 0, y: 0 },
       { x: 128, y: 80 },
@@ -482,6 +511,10 @@ describe('LUT store actions', () => {
   it('clears LUT alone and resets the complete colour stack', () => {
     Object.assign(state.edit, {
       brightness: 0.4,
+      temperature: 0.8,
+      tint: -0.7,
+      highlights: 0.6,
+      shadows: -0.5,
       filter: 'warm',
       lutId: TEST_LUT_ID,
       lutName: 'Look',
@@ -506,6 +539,10 @@ describe('LUT store actions', () => {
       brightness: 0,
       contrast: 1,
       saturation: 1,
+      temperature: 0,
+      tint: 0,
+      highlights: 0,
+      shadows: 0,
       filter: '',
       lutId: null,
       lutName: '',
@@ -616,6 +653,25 @@ describe('runtime capabilities', () => {
       label: 'Частичная интенсивность 3D LUT',
       available: true,
     })
+    expect(selectedExportUnavailableReason()).toBeNull()
+  })
+
+  it('fails closed when primary corrections are unsupported', () => {
+    state.capabilities = {
+      schemaVersion: 1,
+      toolFingerprint: 'fixture',
+      formats: [{ id: 'mp4', label: 'MP4', available: true }],
+      codecs: [{ id: 'h264', label: 'H.264', available: true }],
+      filters: [],
+      hardware: [],
+    }
+    state.edit.temperature = 0.25
+    expect(selectedExportUnavailableReason()).toContain('обновлённый сервер')
+    state.capabilities.filters.push({
+      id: 'primary-corrections', label: 'Primary corrections', available: false, reason: 'нет geq',
+    })
+    expect(selectedExportUnavailableReason()).toBe('нет geq')
+    state.capabilities.filters[0]!.available = true
     expect(selectedExportUnavailableReason()).toBeNull()
   })
 })
@@ -1395,6 +1451,10 @@ describe('effect presets', () => {
     Object.assign(state.edit, {
       filter: 'sepia',
       speed: 1.5,
+      temperature: 0.4,
+      tint: -0.3,
+      highlights: 0.2,
+      shadows: -0.1,
       trimStart: 3,
       cropEnabled: true,
       format: 'webm',
@@ -1415,6 +1475,7 @@ describe('effect presets', () => {
     const p = presets.list[0]
     expect(p.edit.filter).toBe('sepia')
     expect(p.edit.speed).toBe(1.5)
+    expect(p.edit).toMatchObject({ temperature: 0.4, tint: -0.3, highlights: 0.2, shadows: -0.1 })
     expect('trimStart' in p.edit).toBe(false)
     expect('crop' in p.edit).toBe(false)
     expect('format' in p.edit).toBe(false)

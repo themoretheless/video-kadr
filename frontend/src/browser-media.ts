@@ -35,6 +35,7 @@ import {
   planBrowserExport,
   runtimeResourceCapabilities,
 } from './browser-resource-plan'
+import { browserColorFilterPlan, browserVideoFilterArgs } from './browser-color-pipeline'
 
 type EditPayload = Record<string, unknown>
 
@@ -366,39 +367,6 @@ function record(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-function escapeFilterPath(path: string): string {
-  return path.replace(/([\\':,;[\]])/g, '\\$1')
-}
-
-function curvePoints(value: unknown): string {
-  if (!Array.isArray(value)) return '0/0 1/1'
-  return value
-    .map(record)
-    .filter((point): point is Record<string, unknown> => Boolean(point))
-    .map((point) => {
-      const normalize = (coordinate: unknown) => {
-        const value = number(coordinate)
-        return Math.max(0, Math.min(1, value > 1 ? value / 255 : value))
-      }
-      return `${normalize(point.x)}/${normalize(point.y)}`
-    })
-    .join(' ')
-}
-
-function presetFilter(name: string): string | null {
-  const presets: Record<string, string> = {
-    grayscale: 'hue=s=0',
-    sepia: 'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131',
-    warm: 'colorbalance=rs=.08:bs=-.06',
-    cold: 'colorbalance=rs=-.06:bs=.08',
-    'teal-orange': 'colorbalance=rs=.05:gs=-.02:bs=.05',
-    faded: 'eq=contrast=.85:brightness=.04:saturation=.9',
-    noir: 'hue=s=0,eq=contrast=1.4',
-    vintage: 'curves=vintage',
-  }
-  return presets[name] ?? null
-}
-
 function outputSpec(payload: EditPayload): { filename: string; mime: string; args: string[] } {
   const format = String(payload.format || 'mp4')
   const quality = number(payload.quality, 23)
@@ -479,74 +447,62 @@ async function buildArgs(
   }
   args.push('-i', inputName)
 
-  const videoFilters: string[] = []
+  const videoFiltersBeforeColor: string[] = []
+  const videoFiltersAfterColor: string[] = []
   const audioFilters: string[] = []
   const segments = Array.isArray(payload.segments) ? payload.segments.map(record).filter(Boolean) : []
   if (segments.length === 2) {
     const cutStart = number(segments[0]?.end)
     const cutEnd = number(segments[1]?.start)
-    videoFilters.push(`select=not(between(t\\,${cutStart}\\,${cutEnd}))`, 'setpts=N/FRAME_RATE/TB')
+    videoFiltersBeforeColor.push(`select=not(between(t\\,${cutStart}\\,${cutEnd}))`, 'setpts=N/FRAME_RATE/TB')
     audioFilters.push(`aselect=not(between(t\\,${cutStart}\\,${cutEnd}))`, 'asetpts=N/SR/TB')
   }
 
   const crop = record(payload.crop)
-  if (crop) videoFilters.push(`crop=${number(crop.w)}:${number(crop.h)}:${number(crop.x)}:${number(crop.y)}`)
+  if (crop) videoFiltersBeforeColor.push(`crop=${number(crop.w)}:${number(crop.h)}:${number(crop.x)}:${number(crop.y)}`)
   const scale = record(payload.scale)
-  if (scale) videoFilters.push(`scale=${number(scale.w)}:${number(scale.h, -2)}`)
+  if (scale) videoFiltersBeforeColor.push(`scale=${number(scale.w)}:${number(scale.h, -2)}`)
   switch (number(payload.rotate)) {
-    case 90: videoFilters.push('transpose=1'); break
-    case 180: videoFilters.push('hflip', 'vflip'); break
-    case 270: videoFilters.push('transpose=2'); break
+    case 90: videoFiltersBeforeColor.push('transpose=1'); break
+    case 180: videoFiltersBeforeColor.push('hflip', 'vflip'); break
+    case 270: videoFiltersBeforeColor.push('transpose=2'); break
   }
-  if (payload.flipH) videoFilters.push('hflip')
-  if (payload.flipV) videoFilters.push('vflip')
+  if (payload.flipH) videoFiltersBeforeColor.push('hflip')
+  if (payload.flipV) videoFiltersBeforeColor.push('vflip')
 
   const speed = Math.max(0.5, Math.min(2, number(payload.speed, 1)))
   if (speed !== 1) {
-    videoFilters.push(`setpts=PTS/${speed}`)
+    videoFiltersBeforeColor.push(`setpts=PTS/${speed}`)
     audioFilters.push(`atempo=${speed}`)
   }
-  const brightness = number(payload.brightness)
-  const contrast = number(payload.contrast, 1)
-  const saturation = number(payload.saturation, 1)
-  if (brightness || contrast !== 1 || saturation !== 1) {
-    videoFilters.push(`eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`)
-  }
-  const preset = presetFilter(String(payload.filter || ''))
-  if (preset) videoFilters.push(preset)
-
+  let lutName: string | undefined
   const lut = record(payload.lut)
-  if (lut) {
+  const lutIntensity = lut ? Math.max(0, Math.min(1, number(lut.intensity, 1))) : 0
+  if (lut && lutIntensity > 1e-9) {
     const lutRecord = luts.get(String(lut.id))
     if (!lutRecord) throw new Error('LUT больше недоступен — загрузите файл повторно')
-    const lutName = `lut-${id()}.cube`
+    lutName = `lut-${id()}.cube`
     await ffmpeg.writeFile(lutName, new Uint8Array(await lutRecord.file.arrayBuffer()))
     temporaryFiles.push(lutName)
-    videoFilters.push(`lut3d=file='${escapeFilterPath(lutName)}'`)
   }
-  const curves = record(payload.curves)
-  if (curves) {
-    videoFilters.push(
-      `curves=interp=pchip:master='${curvePoints(curves.master)}':r='${curvePoints(curves.red)}':g='${curvePoints(curves.green)}':b='${curvePoints(curves.blue)}'`,
-    )
-  }
+  const colorPlan = browserColorFilterPlan(payload, lutName)
   if (payload.reverse) {
-    videoFilters.push('reverse')
+    videoFiltersAfterColor.push('reverse')
     audioFilters.push('areverse')
   }
-  if (payload.fps) videoFilters.push(`fps=${number(payload.fps)}`)
+  if (payload.fps) videoFiltersAfterColor.push(`fps=${number(payload.fps)}`)
   const censor = record(payload.censor)
   if (censor) {
-    videoFilters.push(`drawbox=x=${number(censor.x)}:y=${number(censor.y)}:w=${number(censor.w)}:h=${number(censor.h)}:color=${String(payload.censorColor || 'black')}:t=fill`)
+    videoFiltersAfterColor.push(`drawbox=x=${number(censor.x)}:y=${number(censor.y)}:w=${number(censor.w)}:h=${number(censor.h)}:color=${String(payload.censorColor || 'black')}:t=fill`)
   }
-  if (payload.vignette) videoFilters.push('vignette')
-  if (payload.denoise) videoFilters.push('hqdn3d')
-  if (number(payload.sharpen) > 0) videoFilters.push(`unsharp=5:5:${number(payload.sharpen)}`)
-  if (number(payload.grain) > 0) videoFilters.push(`noise=alls=${Math.round(number(payload.grain) * 30)}:allf=t`)
+  if (payload.vignette) videoFiltersAfterColor.push('vignette')
+  if (payload.denoise) videoFiltersAfterColor.push('hqdn3d')
+  if (number(payload.sharpen) > 0) videoFiltersAfterColor.push(`unsharp=5:5:${number(payload.sharpen)}`)
+  if (number(payload.grain) > 0) videoFiltersAfterColor.push(`noise=alls=${Math.round(number(payload.grain) * 30)}:allf=t`)
   const pad = String(payload.pad || '')
   if (/^\d+:\d+$/.test(pad)) {
     const [rw, rh] = pad.split(':').map(Number)
-    videoFilters.push(`pad=w=max(iw\\,ih*${rw}/${rh}):h=max(ih\\,iw*${rh}/${rw}):x=(ow-iw)/2:y=(oh-ih)/2:color=black`)
+    videoFiltersAfterColor.push(`pad=w=max(iw\\,ih*${rw}/${rh}):h=max(ih\\,iw*${rh}/${rw}):x=(ow-iw)/2:y=(oh-ih)/2:color=black`)
   }
 
   if (number(payload.volume, 1) !== 1) audioFilters.push(`volume=${number(payload.volume, 1)}`)
@@ -559,7 +515,14 @@ async function buildArgs(
     audioFilters.push(`afade=t=out:st=${Math.max(0, duration - fade)}:d=${fade}`)
   }
 
-  if (videoFilters.length && String(payload.format || 'mp4') !== 'mp3') args.push('-vf', videoFilters.join(','))
+  const format = String(payload.format || 'mp4')
+  if (format !== 'mp3') {
+    args.push(...browserVideoFilterArgs(colorPlan, {
+      prefixFilters: videoFiltersBeforeColor,
+      suffixFilters: videoFiltersAfterColor,
+      mapAudio: !payload.mute && (format === 'mp4' || format === 'webm'),
+    }))
+  }
   if (audioFilters.length && !payload.mute) args.push('-af', audioFilters.join(','))
   if (payload.mute) args.push('-an')
   const output = outputSpec(payload)
@@ -926,8 +889,9 @@ export function getCapabilities(): Capabilities {
       disabled('h265', 'H.265', 'Недоступно в браузерной сборке'),
     ],
     filters: [
+      local('primary-corrections', 'Температура / Tint / Света / Тени'),
       ...['grayscale', 'sepia', 'warm', 'cold', 'teal-orange', 'faded', 'noir', 'vintage', 'lut3d', 'curves'].map((name) => enabled(name)),
-      disabled('lut3d-blend', 'Интенсивность LUT', 'В браузере LUT применяется с интенсивностью 100%'),
+      local('lut3d-blend', 'Интенсивность LUT'),
     ],
     hardware: [disabled('native', 'Аппаратное ускорение', 'Используется WebAssembly')],
     runtime: {

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "workingSpace": "linear-srgb-d65",
+  "parameterRange": {"temperature": [-1, 1], "tint": [-1, 1], "highlights": [-1, 1], "shadows": [-1, 1]},
+  "defaults": {"temperature": 0, "tint": 0, "highlights": 0, "shadows": 0},
+  "order": ["decode-transfer", "temperature-tint", "shadows-highlights", "encode-transfer", "brightness-contrast-saturation", "preset", "lut", "curves"],
+  "formula": {
+    "channelGains": ["exp2(0.25*temperature-0.10*tint)", "exp2(0.20*tint)", "exp2(-0.25*temperature-0.10*tint)"],
+    "luma": "0.2126*r+0.7152*g+0.0722*b after channel gains",
+    "shadowMask": "1-smoothstep(0,0.5,luma)",
+    "highlightMask": "smoothstep(0.5,1,luma)",
+    "tonalGain": "exp2(0.75*(shadows*shadowMask+highlights*highlightMask))",
+    "clamp": "finite intermediate; clamp RGB to [0,1] only after tonal gain"
+  },
+  "samples": [
+    {"rgb":[0.18,0.18,0.18],"temperature":0,"tint":0,"highlights":0,"shadows":0,"expected":[0.18,0.18,0.18]},
+    {"rgb":[0.18,0.18,0.18],"temperature":1,"tint":0,"highlights":0,"shadows":0,"expected":[0.214057281,0.18,0.151361355]},
+    {"rgb":[0.18,0.18,0.18],"temperature":0,"tint":1,"highlights":0,"shadows":0,"expected":[0.167945938,0.206765704,0.167945938]},
+    {"rgb":[0.05,0.05,0.05],"temperature":0,"tint":0,"highlights":0,"shadows":1,"expected":[0.08287449,0.08287449,0.08287449]},
+    {"rgb":[0.9,0.9,0.9],"temperature":0,"tint":0,"highlights":-1,"shadows":0,"expected":[0.564872396,0.564872396,0.564872396]},
+    {"rgb":[0.2,0.4,0.8],"temperature":-0.5,"tint":0.25,"highlights":0.4,"shadows":-0.3,"expected":[0.177156197,0.406998063,0.842701638]}
+  ],
+  "tolerances": {"cpuAbsolute": 1e-8, "webglAbsolute": 0.00002, "ffmpeg8BitCodeValues": 1, "ffmpeg10BitCodeValues": 2}
+}

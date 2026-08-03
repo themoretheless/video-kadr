@@ -347,6 +347,15 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
                 .iter()
                 .any(|candidate| candidate == name)
     };
+    let primary_corrections = request.temperature.abs() > 1e-9
+        || request.tint.abs() > 1e-9
+        || request.highlights.abs() > 1e-9
+        || request.shadows.abs() > 1e-9;
+    if primary_corrections && (!has_filter("geq") || !has_filter("format")) {
+        return Err(AppError::bad_request(
+            "primary-коррекция недоступна: нужны FFmpeg filters geq и format",
+        ));
+    }
     if request.curves.is_some() && !has_filter("curves") {
         return Err(AppError::bad_request(
             "кривые недоступны: FFmpeg filter curves не найден",

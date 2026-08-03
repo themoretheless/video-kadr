@@ -81,6 +81,44 @@ fn curves_filter(curves: &ToneCurves) -> String {
     format!("curves={}", options.join(":"))
 }
 
+fn primary_correction_filter(temperature: f64, tint: f64, highlights: f64, shadows: f64) -> String {
+    let gains = [
+        2_f64.powf(0.25 * temperature - 0.10 * tint),
+        2_f64.powf(0.20 * tint),
+        2_f64.powf(-0.25 * temperature - 0.10 * tint),
+    ];
+    let linear = |channel: &str, gain: f64| {
+        let normalized = format!("({channel}(X,Y)/65535)");
+        format!(
+            "(if(lte({normalized},0.04045),{normalized}/12.92,pow(({normalized}+0.055)/1.055,2.4))*{gain:.12})"
+        )
+    };
+    let lr = linear("r", gains[0]);
+    let lg = linear("g", gains[1]);
+    let lb = linear("b", gains[2]);
+    let luma = format!("(0.2126*{lr}+0.7152*{lg}+0.0722*{lb})");
+    let smooth = |value: &str, low: f64, high: f64| {
+        let t = format!("clip(({value}-{low})/({high}-{low}),0,1)");
+        format!("({t}*{t}*(3-2*{t}))")
+    };
+    let shadow_mask = format!("(1-{})", smooth(&luma, 0.0, 0.5));
+    let highlight_mask = smooth(&luma, 0.5, 1.0);
+    let tonal_gain =
+        format!("pow(2,0.75*({shadows:.12}*{shadow_mask}+{highlights:.12}*{highlight_mask}))");
+    let encode = |linear_channel: &str| {
+        let corrected = format!("clip(({linear_channel})*{tonal_gain},0,1)");
+        format!(
+            "65535*if(lte({corrected},0.0031308),12.92*{corrected},1.055*pow({corrected},0.416666666666667)-0.055)"
+        )
+    };
+    format!(
+        "geq=r='{}':g='{}':b='{}'",
+        encode(&lr),
+        encode(&lg),
+        encode(&lb)
+    )
+}
+
 /// Escape a path for one quoted FFmpeg filter option. This is filtergraph
 /// escaping, not shell escaping: the command is still passed as an argv vector.
 fn escape_filter_value(path: &Path) -> anyhow::Result<String> {
@@ -146,6 +184,24 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
     if video.denoise {
         before_lut.push("hqdn3d".into());
     }
+    // Curves and 3D LUT mixing share an explicit high-bit RGB(A) working
+    // format. Besides avoiding 8-bit curve-point quantisation, retaining alpha
+    // here prevents still-image grades from silently becoming opaque.
+    let primary_changed = video.temperature.abs() > 1e-6
+        || video.tint.abs() > 1e-6
+        || video.highlights.abs() > 1e-6
+        || video.shadows.abs() > 1e-6;
+    if video.curves.is_some() || video.lut.is_some() || primary_changed {
+        before_lut.push("format=gbrap16le".into());
+    }
+    if primary_changed {
+        before_lut.push(primary_correction_filter(
+            video.temperature,
+            video.tint,
+            video.highlights,
+            video.shadows,
+        ));
+    }
     let eq_changed = video.brightness.abs() > 1e-6
         || (video.contrast - 1.0).abs() > 1e-6
         || (video.saturation - 1.0).abs() > 1e-6;
@@ -155,19 +211,13 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
             video.brightness, video.contrast, video.saturation
         ));
     }
-    // Curves and 3D LUT mixing share an explicit high-bit RGB(A) working
-    // format. Besides avoiding 8-bit curve-point quantisation, retaining alpha
-    // here prevents still-image grades from silently becoming opaque.
-    if video.curves.is_some() || video.lut.is_some() {
-        before_lut.push("format=gbrap16le".into());
-    }
     if let Some(look) = video.look {
         before_lut.push(look_preset_definition(look).ffmpeg_filter_chain.into());
     }
-    if let Some(curves) = &video.curves {
-        before_lut.push(curves_filter(curves));
-    }
     let mut after_lut = Vec::new();
+    if let Some(curves) = &video.curves {
+        after_lut.push(curves_filter(curves));
+    }
     // Resize after nonlinear colour work so a grade is independent of export
     // resolution. Spatial finishing effects intentionally run at output size.
     if let Some(scale) = geometry.scale {
@@ -999,6 +1049,136 @@ mod tests {
     }
 
     #[test]
+    fn primary_colour_controls_have_stable_order_before_curves_and_lut() {
+        let command = command_with_lut(
+            json!({
+                "videoId": "x",
+                "brightness": 0.1,
+                "temperature": 0.5,
+                "tint": -0.25,
+                "highlights": 0.5,
+                "shadows": -0.5,
+                "curves": {"master": [{"x":0.0,"y":0.0},{"x":1.0,"y":1.0}]},
+                "lut": {"id":"look","intensity":1.0}
+            }),
+            10.0,
+            Path::new("/private/luts/look.cube"),
+        );
+        let chain = vf(&command.arguments);
+        assert!(chain.contains("geq=r='"), "{chain}");
+        assert!(chain.contains("r(X,Y)/65535"), "{chain}");
+        assert!(chain.contains("65535*if("), "{chain}");
+        assert!(chain.contains("pow(2,0.75*(-0.500000000000*"), "{chain}");
+        assert!(chain.contains("+0.500000000000*"), "{chain}");
+        let format = chain.find("format=gbrap16le").unwrap();
+        let primary = chain.find("geq=r=").unwrap();
+        let eq = chain.find("eq=").unwrap();
+        let lut = chain.find("lut3d=").unwrap();
+        let authored = chain.find("curves=master=").unwrap();
+        assert!(
+            format < primary && primary < eq && eq < lut && lut < authored,
+            "{chain}"
+        );
+    }
+
+    #[test]
+    fn neutral_primary_colour_controls_emit_no_filters() {
+        let neutral = args_for(json!({"videoId":"x"}), 10.0).join(" ");
+        assert!(!neutral.contains("geq=r="), "{neutral}");
+    }
+
+    #[test]
+    fn partial_lut_blend_still_precedes_authored_curves() {
+        let command = command_with_lut(
+            json!({
+                "videoId":"x", "temperature":0.25,
+                "lut":{"id":"look","intensity":0.5},
+                "curves":{"master":[{"x":0.0,"y":0.0},{"x":1.0,"y":1.0}]}
+            }),
+            10.0,
+            Path::new("/private/luts/look.cube"),
+        );
+        let graph = filter_complex(&command.arguments);
+        let primary = graph.find("geq=r=").unwrap();
+        let split = graph.find("split=2").unwrap();
+        let lut = graph.find("lut3d=").unwrap();
+        let blend = graph.find("blend=").unwrap();
+        let curves = graph.find("curves=master=").unwrap();
+        assert!(
+            primary < split && split < lut && lut < blend && blend < curves,
+            "{graph}"
+        );
+    }
+
+    #[test]
+    fn ffmpeg_primary_adapter_matches_fixture_math_within_eight_bit_tolerance() {
+        if std::process::Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("input.ppm");
+        let output = directory.path().join("output.png");
+        let mut ppm = b"P6\n4 4\n255\n".to_vec();
+        ppm.extend(std::iter::repeat_n(46_u8, 4 * 4 * 3));
+        std::fs::write(&input, ppm).unwrap();
+        let edit = plan_for_duration(json!({"videoId":"x","temperature":1.0,"format":"png"}), 1.0);
+        let arguments = build_ffmpeg_args(&input, &output, &edit);
+        let status = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error"])
+            .args(arguments)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let decoded = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-i"])
+            .arg(&output)
+            .args([
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "pipe:1",
+            ])
+            .output()
+            .unwrap();
+        assert!(decoded.status.success());
+        let source = 46.0 / 255.0;
+        let decode = |value: f64| {
+            if value <= 0.04045 {
+                value / 12.92
+            } else {
+                ((value + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let encode = |value: f64| {
+            if value <= 0.0031308 {
+                12.92 * value
+            } else {
+                1.055 * value.powf(1.0 / 2.4) - 0.055
+            }
+        };
+        let expected = [
+            encode(decode(source) * 2_f64.powf(0.25)),
+            encode(decode(source)),
+            encode(decode(source) * 2_f64.powf(-0.25)),
+        ]
+        .map(|value| (value * 255.0).round() as i16);
+        for (actual, expected) in decoded.stdout[..3].iter().zip(expected) {
+            assert!(
+                (i16::from(*actual) - expected).abs() <= 1,
+                "actual={:?}, expected={expected:?}",
+                &decoded.stdout[..3]
+            );
+        }
+    }
+
+    #[test]
     fn full_intensity_lut_is_linear_and_declared_read_only() {
         let path = Path::new("/private/luts/look.cube");
         let command = command_with_lut(
@@ -1031,10 +1211,11 @@ mod tests {
             Path::new("/private/luts/look.cube"),
         );
         let graph = filter_complex(&command.arguments);
-        assert!(graph.starts_with("[0:v]eq="), "{graph}");
+        assert!(graph.starts_with("[0:v]format=gbrap16le,eq="), "{graph}");
+        let eq = graph.find("eq=").unwrap();
         let working_format = graph.find("format=gbrap16le").unwrap();
         let split = graph.find("split=2[lut_base][lut_input]").unwrap();
-        assert!(working_format < split, "{graph}");
+        assert!(working_format < eq && eq < split, "{graph}");
         assert!(graph.contains("split=2[lut_base][lut_input]"), "{graph}");
         assert!(graph.contains("[lut_input]lut3d=file="), "{graph}");
         assert!(
