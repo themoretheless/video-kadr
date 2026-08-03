@@ -245,7 +245,7 @@ export function applyTimelineCommand(
 
 function compatibleMediaDescriptor(left: ProjectMedia, right: ProjectMedia): boolean {
   if (left.kind !== right.kind) return false
-  for (const key of ['url', 'filename', 'duration', 'width', 'height', 'fps', 'vcodec', 'acodec']) {
+  for (const key of ['filename', 'duration', 'width', 'height', 'fps', 'vcodec', 'acodec']) {
     const leftValue = left.metadata[key]
     const rightValue = right.metadata[key]
     if (leftValue !== undefined && rightValue !== undefined && leftValue !== rightValue) return false

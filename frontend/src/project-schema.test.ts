@@ -58,6 +58,36 @@ describe('project document schema', () => {
     )
   })
 
+  it('never persists runtime media locators in the canonical document', () => {
+    const document = migrateProjectDocument({
+      videoId: 'video-1',
+      video: {
+        id: 'video-1', filename: 'clip.mp4', duration: 1,
+        url: 'blob:old-tab', path: '/private/source.mp4', assetId: 'video-1',
+      },
+      edit: {},
+    })
+    expect(document.media[0]!.metadata).toMatchObject({ assetId: 'video-1' })
+    expect(document.media[0]!.metadata).not.toHaveProperty('url')
+    expect(document.media[0]!.metadata).not.toHaveProperty('path')
+    const savedV2 = structuredClone(document)
+    savedV2.media[0]!.metadata.url = 'blob:v2-primary'
+    savedV2.media[0]!.metadata.availability = 'ready'
+    savedV2.media.push({
+      id: 'secondary', kind: 'video',
+      metadata: { duration: 2, url: 'blob:v2-secondary', path: '/tmp/secondary.mp4' },
+    })
+    const reopened = migrateProjectDocument(savedV2)
+    expect(reopened.media.every((media) =>
+      !('url' in media.metadata) && !('path' in media.metadata) && !('availability' in media.metadata),
+    )).toBe(true)
+    const updated = updateLegacyProjectValues(
+      savedV2, 'Updated', { url: 'blob:new-tab', duration: 1 }, {},
+    )
+    expect(updated.media[0]!.metadata).not.toHaveProperty('url')
+    expect(updated.media[0]!.metadata).not.toHaveProperty('availability')
+  })
+
   it('keeps project identity while advancing persistence revision', () => {
     const document = migrateProjectDocument({
       videoId: 'video-1',

@@ -52,6 +52,9 @@ function onDrop(e: DragEvent) {
     <p v-if="clientOnlyMode" class="hint link-mode-hint">
       Импорт по ссылке сохранён для будущей полноценной версии. Сейчас выбери локальный файл — обработка выполнится прямо в браузере.
     </p>
+    <p v-if="state.browserStorageWarning" class="error" role="status">
+      {{ state.browserStorageWarning }}
+    </p>
 
     <div class="import-or"><span>или</span></div>
 

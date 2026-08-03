@@ -228,8 +228,11 @@ impl ProjectDocument {
         match version {
             1 => Self::migrate_v1(value),
             PROJECT_DOCUMENT_SCHEMA_VERSION => {
-                let document: Self = serde_json::from_value(value)
+                let mut document: Self = serde_json::from_value(value)
                     .map_err(|error| ProjectDocumentError::Malformed(error.to_string()))?;
+                for media in &mut document.media {
+                    strip_runtime_locators(&mut media.metadata);
+                }
                 document.validate()?;
                 Ok(document)
             }
@@ -285,7 +288,7 @@ impl ProjectDocument {
     fn from_legacy_parts(
         name: String,
         video_id: String,
-        video: Value,
+        mut video: Value,
         edit: Value,
         legacy_fields: BTreeMap<String, Value>,
     ) -> Result<Self, ProjectDocumentError> {
@@ -295,6 +298,7 @@ impl ProjectDocument {
         if !edit.is_object() {
             return Err(ProjectDocumentError::InvalidField("edit"));
         }
+        strip_runtime_locators(&mut video);
         let duration_ticks = legacy_duration_ticks(&video);
         let primary_kind = match video.get("mediaKind").and_then(Value::as_str) {
             Some("audio") => "audio",
@@ -625,13 +629,14 @@ impl ProjectDocument {
     pub fn update_legacy_values(
         &mut self,
         name: impl Into<String>,
-        video: Value,
+        mut video: Value,
         edit: Value,
     ) -> Result<(), ProjectDocumentError> {
         if !video.is_object() || !edit.is_object() {
             return Err(ProjectDocumentError::InvalidField("legacy values"));
         }
         self.name = name.into();
+        strip_runtime_locators(&mut video);
         let media = self
             .media
             .iter_mut()
@@ -691,6 +696,14 @@ impl ProjectDocument {
 fn merge_objects(target: &mut Value, update: Value) {
     if let (Some(target), Some(update)) = (target.as_object_mut(), update.as_object()) {
         target.extend(update.clone());
+    }
+}
+
+fn strip_runtime_locators(value: &mut Value) {
+    if let Some(object) = value.as_object_mut() {
+        for key in ["url", "path", "file", "availability"] {
+            object.remove(key);
+        }
     }
 }
 
@@ -811,12 +824,16 @@ mod tests {
                 "width": 0,
                 "height": 0,
                 "mediaKind": "audio",
-                "acodec": "pcm_s16le"
+                "acodec": "pcm_s16le",
+                "url": "blob:old-tab",
+                "path": "/private/voice.wav"
             },
             "edit": {}
         }))
         .unwrap();
         assert_eq!(document.media[0].kind, "audio");
+        assert!(document.media[0].metadata.get("url").is_none());
+        assert!(document.media[0].metadata.get("path").is_none());
         let sequence = &document.sequences[0];
         assert!(sequence
             .tracks
@@ -945,7 +962,10 @@ mod tests {
             "edit": {"filter": "sepia"}
         }))
         .unwrap();
-        let reopened = ProjectDocument::migrate(serde_json::to_value(&migrated).unwrap()).unwrap();
+        let mut encoded = serde_json::to_value(&migrated).unwrap();
+        encoded["media"][0]["metadata"]["url"] = json!("blob:v2");
+        encoded["media"][0]["metadata"]["availability"] = json!("ready");
+        let reopened = ProjectDocument::migrate(encoded).unwrap();
         assert_eq!(reopened, migrated);
     }
 

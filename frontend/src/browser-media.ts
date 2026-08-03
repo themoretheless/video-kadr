@@ -9,6 +9,15 @@ import type {
 import type { ProjectDto } from './api'
 import { allProjects, compareAndSwapProject, projectByVideo, removeProject } from './browser-project-store'
 import { createProjectDocumentFromLegacy, migrateProjectDocument } from './project-schema'
+import {
+  auditBrowserAssets,
+  deleteBrowserAsset,
+  getBrowserAsset,
+  putBrowserAsset,
+  prepareBrowserStorage,
+  relinkBrowserAsset,
+} from './browser-asset-store'
+import type { BrowserStorageEstimate } from './browser-asset-store'
 
 type EditPayload = Record<string, unknown>
 
@@ -26,6 +35,23 @@ interface BrowserJob extends Job {
   cancelled?: boolean
 }
 
+let fallbackProjectAssetLock = Promise.resolve()
+
+async function withProjectAssetLock<T>(operation: () => Promise<T>): Promise<T> {
+  if (navigator.locks) {
+    return navigator.locks.request('video-kadr-project-assets', { mode: 'exclusive' }, operation)
+  }
+  const previous = fallbackProjectAssetLock
+  let release!: () => void
+  fallbackProjectAssetLock = new Promise<void>((resolve) => { release = resolve })
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+  }
+}
+
 const sources = new Map<string, SourceRecord>()
 const luts = new Map<string, LutRecord>()
 const jobs = new Map<string, BrowserJob>()
@@ -35,6 +61,7 @@ const projects = new Map<string, ProjectDto>()
 let ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null
 let ffmpegLoading: Promise<import('@ffmpeg/ffmpeg').FFmpeg> | null = null
 let activeJobId: string | null = null
+let lastStorageEstimate: BrowserStorageEstimate | null = null
 
 export class LinkImportRequiresServerError extends Error {
   constructor() {
@@ -112,6 +139,7 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
   const isVideo = file.type.startsWith('video/')
   const isAudio = file.type.startsWith('audio/')
   if (!isVideo && !isAudio) throw new Error('Выберите видео- или аудиофайл')
+  lastStorageEstimate = await prepareBrowserStorage(file.size)
   const metadata = isVideo ? await probeVideo(file) : await probeAudio(file)
   const sourceId = id()
   const info: VideoInfo = {
@@ -120,6 +148,24 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
     filename: file.name,
     mediaKind: isVideo ? 'video' : 'audio',
     ...metadata,
+  }
+  const createdAt = Date.now()
+  const durableInfo = { ...info }
+  delete (durableInfo as Partial<VideoInfo>).url
+  try {
+    const manifest = await putBrowserAsset({
+      id: sourceId,
+      file,
+      filename: file.name,
+      fileType: file.type,
+      info: durableInfo as Omit<VideoInfo, 'url'>,
+      createdAt,
+    })
+    info.assetId = manifest.id
+    info.fingerprint = manifest.fingerprint
+  } catch (error) {
+    URL.revokeObjectURL(info.url)
+    throw error
   }
   sources.set(sourceId, { file, info })
   library.unshift({
@@ -136,7 +182,7 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
     acodec: info.acodec,
     mediaKind: info.mediaKind,
     sizeBytes: file.size,
-    createdAt: Date.now(),
+    createdAt,
   })
   return info
 }
@@ -352,7 +398,8 @@ async function buildArgs(ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg, source: Source
 async function runJob(jobId: string, payload: EditPayload): Promise<void> {
   const job = jobs.get(jobId)
   if (!job) return
-  const source = sources.get(String(payload.videoId))
+  const sourceId = String(payload.videoId)
+  const source = sources.get(sourceId) ?? await resolveSourceRecord(sourceId).catch(() => null)
   if (!source) {
     Object.assign(job, { status: 'error', error: 'Исходный файл больше недоступен — выберите его повторно' })
     return
@@ -449,50 +496,131 @@ export function getCapabilities(): Capabilities {
   }
 }
 
-export function getLibrary(): MediaEntry[] {
+export function getStorageStatus(): BrowserStorageEstimate | null {
+  return lastStorageEstimate
+}
+
+export async function getLibrary(): Promise<MediaEntry[]> {
+  const persisted = await auditBrowserAssets()
+  for (const asset of persisted) {
+    const existing = library.find((entry) => entry.id === asset.id)
+    const info = sources.get(asset.id)?.info
+    const entry: MediaEntry = {
+      ...asset.info,
+      kind: 'source',
+      url: info?.url ?? '',
+      availability: asset.availability,
+      assetId: asset.id,
+      fingerprint: asset.fingerprint,
+      createdAt: asset.createdAt,
+    }
+    if (existing) Object.assign(existing, entry)
+    else library.push(entry)
+  }
+  library.sort((left, right) => right.createdAt - left.createdAt)
   return [...library]
 }
 
-export function deleteLibraryItem(itemId: string): void {
+async function resolveSourceRecord(sourceId: string): Promise<SourceRecord> {
+  const cached = sources.get(sourceId)
+  if (cached) return cached
+  const asset = await getBrowserAsset(sourceId)
+  const file = new File([asset.file], asset.filename, { type: asset.fileType })
+  const info: VideoInfo = {
+    ...asset.info,
+    assetId: asset.id,
+    fingerprint: asset.fingerprint,
+    url: objectUrl(file),
+  }
+  const record = { file, info }
+  sources.set(sourceId, record)
+  const entry = library.find((candidate) => candidate.id === sourceId)
+  if (entry) entry.url = info.url
+  return record
+}
+
+/** Lazily materialize bytes and a fresh runtime URL for an opened source. */
+export async function resolveSource(sourceId: string): Promise<VideoInfo> {
+  return (await resolveSourceRecord(sourceId)).info
+}
+
+export async function relinkSource(sourceId: string, file: File): Promise<VideoInfo> {
+  return withProjectAssetLock(async () => {
+  await relinkBrowserAsset(sourceId, file)
+  const cached = sources.get(sourceId)
+  if (cached) URL.revokeObjectURL(cached.info.url)
+  sources.delete(sourceId)
+  return resolveSource(sourceId)
+  })
+}
+
+export async function deleteLibraryItem(itemId: string): Promise<void> {
+  return withProjectAssetLock(async () => {
+  const referencingProject = (await allProjects()).find((project) =>
+    project.videoId === itemId
+      || project.document?.media.some((media) => media.id === itemId),
+  )
+  if (referencingProject) {
+    throw new Error(`Файл используется в проекте «${referencingProject.name}»`)
+  }
   const index = library.findIndex((entry) => entry.id === itemId)
+  await deleteBrowserAsset(itemId)
   if (index >= 0) {
     URL.revokeObjectURL(library[index]!.url)
     library.splice(index, 1)
   }
   sources.delete(itemId)
+  })
 }
 
 export async function saveProject(body: Record<string, unknown>): Promise<ProjectDto> {
+  return withProjectAssetLock(async () => {
   const videoId = String(body.videoId)
   const now = Date.now()
   const expectedRevision = typeof body.expectedRevision === 'number' ? body.expectedRevision : undefined
   const requestedProjectId = typeof body.projectId === 'string' && body.projectId ? body.projectId : undefined
+  const readyAssetIds = new Set(
+    (await auditBrowserAssets())
+      .filter((asset) => asset.availability === 'ready')
+      .map((asset) => asset.id),
+  )
   const project = await compareAndSwapProject(
     videoId,
     requestedProjectId,
     expectedRevision,
-    (previous) => ({
-      id: requestedProjectId ?? previous?.id ?? id(),
-      name: String(body.name || 'Проект'),
-      videoId,
-      video: body.video as VideoInfo,
-      edit: body.edit as ProjectDto['edit'],
-      document: body.document
+    (previous) => {
+      const document = body.document
         ? migrateProjectDocument(body.document)
         : createProjectDocumentFromLegacy(
             videoId,
             String(body.name || 'Проект'),
             body.video as Record<string, unknown>,
             body.edit as Record<string, unknown>,
-          ),
+          )
+      const previousMediaIds = new Set(previous?.document?.media.map((media) => media.id) ?? [])
+      const missingNewAsset = document.media.find((media) =>
+        !previousMediaIds.has(media.id) && !readyAssetIds.has(media.id),
+      )
+      if (missingNewAsset) {
+        throw new Error(`Исходный файл «${missingNewAsset.id}» больше недоступен — найдите его повторно`)
+      }
+      return {
+      id: requestedProjectId ?? previous?.id ?? id(),
+      name: String(body.name || 'Проект'),
+      videoId,
+      video: body.video as VideoInfo,
+      edit: body.edit as ProjectDto['edit'],
+      document,
       revision: (previous?.revision ?? 0) + 1,
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
-    }),
+      }
+    },
     () => new ProjectRevisionConflictError(),
   )
   projects.set(project.id, project)
   return project
+  })
 }
 
 export async function getProjectByVideo(videoId: string): Promise<ProjectDto | null> {

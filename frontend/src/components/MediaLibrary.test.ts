@@ -60,4 +60,23 @@ describe('MediaLibrary project actions', () => {
     const element = mountLibrary()
     expect(element.querySelector('[aria-label^="Добавить"]')).toBeNull()
   })
+
+  it('shows an actionable offline state without dropping the library item', () => {
+    timelineState.document = ensureCreatorTrackLayout(migrateProjectDocument({
+      videoId: 'primary',
+      video: { id: 'primary', filename: 'primary.mp4', duration: 5, width: 1280, height: 720 },
+      edit: {},
+    }))
+    state.library = [{
+      id: 'offline', kind: 'source', filename: 'offline.mp4', url: '',
+      duration: 1, width: 640, height: 360, mediaKind: 'video',
+      availability: 'offline', fingerprint: 'abc', createdAt: 1,
+    }]
+    const element = mountLibrary()
+    expect(element.querySelector('[role="status"]')?.textContent).toContain('недоступен')
+    expect(element.textContent).toContain('Найти файл')
+    expect(element.querySelector<HTMLButtonElement>('[aria-label^="Добавить"]')?.disabled).toBe(true)
+    expect(state.library).toHaveLength(1)
+    expect(timelineState.document.media.map((media) => media.id)).toEqual(['primary'])
+  })
 })

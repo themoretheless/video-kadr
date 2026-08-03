@@ -10,6 +10,8 @@ export interface VideoInfo {
   vcodec?: string | null
   acodec?: string | null
   mediaKind?: 'video' | 'audio'
+  assetId?: string
+  fingerprint?: string
   sizeBytes?: number | null
 }
 
@@ -129,6 +131,9 @@ export interface MediaEntry {
   vcodec?: string | null
   acodec?: string | null
   mediaKind?: 'video' | 'audio'
+  assetId?: string
+  availability?: 'ready' | 'offline' | 'session'
+  fingerprint?: string
   sizeBytes?: number | null
   createdAt: number
 }

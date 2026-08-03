@@ -131,10 +131,39 @@ export async function getLibrary(): Promise<MediaEntry[]> {
   return res.json()
 }
 
+export async function resolveLibrarySource(entry: MediaEntry): Promise<VideoInfo> {
+  if (clientOnlyMode) return browserMedia.resolveSource(entry.id)
+  return {
+    id: entry.id,
+    url: entry.url,
+    filename: entry.filename,
+    duration: entry.duration ?? 0,
+    width: entry.width ?? 0,
+    height: entry.height ?? 0,
+    title: entry.title,
+    fps: entry.fps,
+    vcodec: entry.vcodec,
+    acodec: entry.acodec,
+    mediaKind: entry.mediaKind,
+    assetId: entry.assetId,
+    fingerprint: entry.fingerprint,
+    sizeBytes: entry.sizeBytes,
+  }
+}
+
+export async function relinkLibrarySource(id: string, file: File): Promise<VideoInfo> {
+  if (!clientOnlyMode) throw new Error('Relink через браузер доступен только в статической версии')
+  return browserMedia.relinkSource(id, file)
+}
+
+export function getBrowserStorageStatus() {
+  return clientOnlyMode ? browserMedia.getStorageStatus() : null
+}
+
 /** Delete a library entry (and its file on disk). */
 export async function deleteLibraryItem(id: string): Promise<void> {
   if (clientOnlyMode) {
-    browserMedia.deleteLibraryItem(id)
+    await browserMedia.deleteLibraryItem(id)
     return
   }
   const res = await safeFetch(`/api/library/${id}`, { method: 'DELETE' })

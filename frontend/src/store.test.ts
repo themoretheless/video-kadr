@@ -1,6 +1,7 @@
 import { nextTick } from 'vue'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as api from './api'
+import { ensureCreatorTrackLayout, migrateProjectDocument } from './project-schema'
 import {
   state,
   defaultEdit,
@@ -86,6 +87,9 @@ vi.mock('./api', () => {
     deleteProject: vi.fn(),
     cancelJob: vi.fn(),
     getCapabilities: vi.fn(() => Promise.resolve(null)),
+    getBrowserStorageStatus: vi.fn(() => null),
+    resolveLibrarySource: vi.fn(),
+    relinkLibrarySource: vi.fn(),
   }
 })
 
@@ -1007,6 +1011,7 @@ describe('project restore autosave', () => {
         fps: [23.976, 25, 29.97, 59.94][index % 4],
         vcodec: index === 19 ? null : 'h264',
         acodec: 'aac',
+        availability: index === 0 ? 'ready' : undefined,
         createdAt: index + 2,
       })).toBe(true)
     }
@@ -1034,8 +1039,30 @@ describe('project restore autosave', () => {
     const saved = vi.mocked(api.saveProjectDocument).mock.calls.at(-1)![2]
     expect(saved.primaryMediaId).toBe('primary-media')
     expect(saved.media).toHaveLength(21)
+    expect(saved.media.find((media) => media.id === 'secondary-0')?.metadata)
+      .not.toHaveProperty('availability')
     expect(saved.sequences[0]!.tracks.flatMap((track) => track.clips)).toHaveLength(22)
     expect(selectedExportUnavailableReason()).toContain('render graph')
+  })
+
+  it('rejects offline media without mutating the active project or history', () => {
+    timelineState.document = ensureCreatorTrackLayout(migrateProjectDocument({
+      videoId: 'primary',
+      video: { id: 'primary', filename: 'primary.mp4', duration: 5, width: 1280, height: 720 },
+      edit: {},
+    }))
+    const before = JSON.stringify(timelineState.document)
+    const canUndoBefore = timelineState.canUndo
+
+    expect(addMediaToTimeline({
+      id: 'offline', kind: 'source', filename: 'offline.mp4', url: '',
+      duration: 3, width: 1920, height: 1080, mediaKind: 'video',
+      availability: 'offline', createdAt: 2,
+    })).toBe(false)
+
+    expect(timelineState.error).toContain('найдите исходный файл')
+    expect(JSON.stringify(timelineState.document)).toBe(before)
+    expect(timelineState.canUndo).toBe(canUndoBefore)
   })
 
   it('bulk upload adds every successful file to the same active project', async () => {

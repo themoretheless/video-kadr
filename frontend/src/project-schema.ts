@@ -91,7 +91,12 @@ export function migrateProjectDocument(value: unknown): ProjectDocument {
       `unsupported project schemaVersion ${rawVersion}; latest supported is ${PROJECT_DOCUMENT_SCHEMA_VERSION}`,
     )
   }
-  const document = object as ProjectDocument
+  const document = cloneJson(object) as ProjectDocument
+  for (const media of document.media ?? []) {
+    if (media && typeof media === 'object' && media.metadata) {
+      media.metadata = durableMediaMetadata(media.metadata)
+    }
+  }
   validateProjectDocument(document)
   return document
 }
@@ -247,7 +252,7 @@ export function updateLegacyProjectValues(
   next.name = name
   const media = next.media.find((item) => item.id === next.primaryMediaId)
   if (!media) throw new Error(`missing project reference ${next.primaryMediaId}`)
-  media.metadata = { ...media.metadata, ...video }
+  media.metadata = durableMediaMetadata({ ...media.metadata, ...video })
   const sequence = next.sequences.find((item) => item.id === next.activeSequenceId)
   let effect = sequence?.tracks
     .flatMap((track) => track.clips)
@@ -369,7 +374,7 @@ function validateProjectEnvelope(envelope: ProjectEnvelope): void {
 }
 
 function migrateV1(value: JsonObject): ProjectDocument {
-  const video = asObject(value.video, 'video')
+  const video = durableMediaMetadata(asObject(value.video, 'video'))
   const edit = asObject(value.edit, 'edit')
   const videoId = stringValue(value.videoId) ?? stringValue(video.id)
   if (!videoId) throw new Error('missing project videoId')
@@ -503,4 +508,13 @@ function durationToTicks(value: unknown): number {
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
+}
+
+function durableMediaMetadata(metadata: JsonObject): JsonObject {
+  const durable = cloneJson(metadata)
+  delete durable.url
+  delete durable.path
+  delete durable.file
+  delete durable.availability
+  return durable
 }

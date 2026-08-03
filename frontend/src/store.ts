@@ -64,6 +64,7 @@ export const state = reactive({
   library: [] as MediaEntry[],
   capabilities: null as Capabilities | null,
   backendStatus: (clientOnlyMode ? 'client' : 'checking') as 'checking' | 'online' | 'offline' | 'client',
+  browserStorageWarning: '',
   // Player bridge: VideoPreview owns the <video>; the rest of the app talks to
   // it through these fields.
   playerTime: 0,
@@ -179,6 +180,10 @@ export async function doUploadFiles(files: readonly File[]): Promise<void> {
       state.importStatus = `${clientOnlyMode ? 'Читаю' : 'Загружаю'} ${index + 1} из ${files.length}: ${file.name}`
       try {
         const v = await api.uploadFile(file)
+        const storageStatus = api.getBrowserStorageStatus()
+        state.browserStorageWarning = storageStatus && !storageStatus.persisted
+          ? 'Браузер не гарантировал постоянное хранение. При очистке данных файлы станут offline; используйте «Найти файл» для восстановления.'
+          : ''
         if (projectSessionId !== targetSessionId) {
           throw new Error('проект изменился во время загрузки; файл оставлен в медиатеке')
         }
@@ -229,6 +234,10 @@ export function addMediaToTimeline(source: VideoInfo | MediaEntry): boolean {
     timelineState.error = 'Сначала откройте или создайте проект'
     return false
   }
+  if ('availability' in source && source.availability === 'offline') {
+    timelineState.error = 'Сначала найдите исходный файл заново'
+    return false
+  }
   if (restoringProjectFor === document.primaryMediaId) {
     timelineState.error = 'Дождитесь загрузки сохранённого проекта'
     return false
@@ -270,6 +279,7 @@ export function addMediaToTimeline(source: VideoInfo | MediaEntry): boolean {
   )
   const clipId = `clip-${crypto.randomUUID()}`
   const metadata = cloneValue(source) as unknown as Record<string, unknown>
+  for (const key of ['url', 'path', 'file', 'availability']) delete metadata[key]
   const inserted = executeTimelineCommand({
     kind: 'insert_media_clip',
     sequenceId: sequence.id,
@@ -528,6 +538,16 @@ function colorCapabilityUnavailableReason(ids: string[], missing: string): strin
 /** Reopen a stored source clip in the editor. */
 export function openFromLibrary(entry: MediaEntry): void {
   if (entry.kind !== 'source') return
+  if (!entry.url) {
+    void api.resolveLibrarySource(entry).then((source) => {
+      openFromLibrary({ ...entry, ...source, kind: 'source' })
+    }).catch((error: unknown) => {
+      entry.availability = 'offline'
+      const message = error instanceof Error ? error.message : String(error)
+      toast('error', `Не удалось открыть файл: ${message}`)
+    })
+    return
+  }
   restoringProjectFor = entry.id
   clearProjectSaveTimer()
   const v: VideoInfo = {
@@ -543,6 +563,8 @@ export function openFromLibrary(entry: MediaEntry): void {
     vcodec: entry.vcodec ?? null,
     acodec: entry.acodec ?? null,
     mediaKind: entry.mediaKind,
+    assetId: entry.assetId,
+    fingerprint: entry.fingerprint,
   }
   resetProjectPersistenceContext()
   state.video = v
@@ -557,6 +579,20 @@ export function openFromLibrary(entry: MediaEntry): void {
   // Restore any saved edit for this clip (overrides the defaults above).
   void restoreProject(v.id)
   toast('info', v.title ? `Открыто: ${v.title}` : 'Клип открыт')
+}
+
+export async function relinkLibraryMedia(entry: MediaEntry, file: File): Promise<boolean> {
+  try {
+    const source = await api.relinkLibrarySource(entry.id, file)
+    Object.assign(entry, source, { availability: 'ready' as const })
+    if (state.video?.id === entry.id) state.video = source
+    toast('success', `Файл перепривязан: ${entry.filename}`)
+    return true
+  } catch (error) {
+    entry.availability = 'offline'
+    toast('error', error instanceof Error ? error.message : String(error))
+    return false
+  }
 }
 
 export async function deleteFromLibrary(id: string): Promise<void> {

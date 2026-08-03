@@ -284,6 +284,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.lib-offline {
+  margin-top: 0.2rem;
+  color: var(--danger);
+  font-size: 0.78rem;
+}
+
 .lib-actions {
   display: flex;
   gap: 6px;

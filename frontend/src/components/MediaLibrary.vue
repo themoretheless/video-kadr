@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { state, openFromLibrary, deleteFromLibrary, addMediaToTimeline, timelineState } from '../store'
+import {
+  state,
+  openFromLibrary,
+  deleteFromLibrary,
+  addMediaToTimeline,
+  relinkLibraryMedia,
+  timelineState,
+} from '../store'
 import type { MediaEntry } from '../types'
 
 function label(e: MediaEntry): string {
@@ -33,6 +40,13 @@ function meta(e: MediaEntry): string {
 function ext(e: MediaEntry): string {
   return e.filename.split('.').pop()?.toUpperCase() || ''
 }
+
+function onRelink(event: Event, entry: MediaEntry): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) void relinkLibraryMedia(entry, file)
+  input.value = ''
+}
 </script>
 
 <template>
@@ -44,6 +58,9 @@ function ext(e: MediaEntry): string {
         <div class="lib-info">
           <div class="lib-name" :title="label(e)">{{ label(e) }}</div>
           <div class="lib-meta">{{ ext(e) }}<template v-if="meta(e)"> · {{ meta(e) }}</template></div>
+          <div v-if="e.availability === 'offline'" class="lib-offline" role="status">
+            Файл недоступен — выберите исходник повторно
+          </div>
         </div>
         <div class="lib-actions">
           <button v-if="e.kind === 'source'" class="btn ghost sm" @click="openFromLibrary(e)">Открыть как проект</button>
@@ -51,8 +68,14 @@ function ext(e: MediaEntry): string {
             v-if="e.kind === 'source' && timelineState.document"
             class="btn ghost sm"
             :aria-label="`Добавить ${label(e)} в текущий проект`"
+            :disabled="e.availability === 'offline'"
+            :title="e.availability === 'offline' ? 'Сначала найдите исходный файл заново' : undefined"
             @click="addMediaToTimeline(e)"
           >Добавить</button>
+          <label v-if="e.kind === 'source' && e.availability === 'offline'" class="btn ghost sm">
+            Найти файл
+            <input class="hidden-file" type="file" @change="onRelink($event, e)">
+          </label>
           <a v-if="e.kind === 'output'" class="btn ghost sm" :href="e.url" :download="e.filename">Скачать</a>
           <button class="btn ghost sm danger" title="Удалить" @click="deleteFromLibrary(e.id)">✕</button>
         </div>
