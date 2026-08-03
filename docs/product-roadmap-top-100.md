@@ -146,7 +146,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 | 87 | ✅ Temperature/tint/highlights/shadows (P1) | Единый linear-sRGB contract для Rust/browser, accessible sliders, neutral reset, bounded wire validation и capability gates; exact paused/seek preview и FFmpeg export | Порядок закреплён: primary → EQ → preset → LUT/full-or-blend → authored curves; live playback честно не имитирует нелинейную коррекцию CSS | L |
 | 88 | ✅ Color wheels | Lift/Gamma/Gain wheels with Master/R/G/B controls, accessible drag/keyboard/reset gestures, exact shared linear-sRGB preview/export math, persistence and capability gating | Exact paused/seek preview; live playback does not fake nonlinear grading in CSS | L |
 | 89 | ✅ HSL selective color | Circular hue-range picker with feather, H/S/L adjustments, exact encoded-sRGB browser/backend math and UI-only mask preview | Runtime-smoked FFmpeg/wasm capability, alpha/parity/order fixtures, canonical persistence and dedupe | XL |
-| 90 | Video scopes | Нет | Signal pre/post effects, sampling precision/rate budget, waveform/parade/vector/histogram | XL |
+| 90 | ✅ Video scopes | Exact encoded-sRGB pre/post taps, deterministic worker analyzer and Histogram/Waveform/RGB Parade/Vectorscope panel | Alpha-weighted bounded sampling, 8 Hz latest-wins live budget, provenance fencing and honest held/unavailable states | XL |
 | 91 | Минимальный SDR color pipeline → color management | Нет | P0/P1: BT.709/sRGB range/matrix/transfer policy до blend/key/LUT; HDR расширение позже | XL |
 | 92 | LUT browser/export | Upload есть | Preview/search/favorites и отдельный capability-gated `.cube` 33³ baker | XL |
 | 93 | Multicam editing (P2) | Нет | Sync по audio/timecode/marker, angle viewer, live switching и flattened export | XL |

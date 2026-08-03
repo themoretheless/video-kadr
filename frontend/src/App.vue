@@ -23,6 +23,7 @@ import {
 } from './store'
 import UrlImport from './components/UrlImport.vue'
 import VideoPreview from './components/VideoPreview.vue'
+import VideoScopesPanel from './components/VideoScopesPanel.vue'
 import EditPanel from './components/EditPanel.vue'
 import ResultPanel from './components/ResultPanel.vue'
 import MediaLibrary from './components/MediaLibrary.vue'
@@ -169,6 +170,7 @@ onUnmounted(() => {
       <section class="left">
         <div :class="{ 'preview-gated': !legacyInspectorAvailable }">
           <VideoPreview />
+          <VideoScopesPanel v-if="legacyInspectorAvailable" />
         </div>
       </section>
       <section class="right">

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "descriptor": "straight-rgba8-encoded-srgb",
+  "width": 2,
+  "height": 2,
+  "rgba": [255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 64, 128, 128, 128, 0],
+  "expected": {
+    "sampledPixels": 4,
+    "alphaWeight": 447,
+    "histogram": {
+      "y": [[18, 64], [54, 255], [183, 128]],
+      "r": [[0, 192], [255, 255]],
+      "g": [[0, 319], [255, 128]],
+      "b": [[0, 383], [255, 64]]
+    },
+    "waveform": [[0, 201, 255], [0, 237, 64], [256, 72, 128]],
+    "parade": {
+      "r": [[0, 0, 255], [0, 255, 64], [256, 255, 128]],
+      "g": [[0, 255, 319], [256, 0, 128]],
+      "b": [[0, 0, 64], [0, 255, 255], [256, 255, 128]]
+    },
+    "vectorscope": [[255, 157, 255], [11, 226, 128], [116, 0, 64]]
+  },
+  "oddStrideCase": { "width": 513, "height": 513, "rate": "paused", "expectedStride": 2, "expectedOffset": 1, "expectedColumns": 256, "expectedRows": 256 }
+}

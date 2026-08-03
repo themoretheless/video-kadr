@@ -17,6 +17,8 @@ import { derivedTaskState, regenerateMissingBrowserProxy } from '../derived-task
 import { browserProxyCapability, deleteBrowserProxyArtifact, resolveBrowserPreviewSource, type ProxyPreviewSource } from '../browser-proxy-artifacts'
 import { invalidateBackendProxyArtifact, resolveBackendPreviewSource } from '../proxy-preview'
 import { PreviewFrameCache, legacySingleClipPreviewEligible, previewFrameKey, previewGraphFingerprint, previewTimelineTick, requestBackendPreviewFrame, sourceMediaTimeToEditedSeconds, type PreviewRenderSettings } from '../optimized-preview-cache'
+import { videoScopeFrameBroker, type ScopeAccuracy, type ScopeTapId } from '../video-scopes/frame-broker'
+import { videoScopesController } from '../video-scopes/controller'
 import RectOverlay from './RectOverlay.vue'
 
 const videoEl = ref<HTMLVideoElement | null>(null)
@@ -26,12 +28,14 @@ const cachedFrameNeedsCss = ref(true)
 const optimizedPreviewStatus = ref<'idle' | 'loading' | 'ready' | 'fallback'>('idle')
 const decodedFrameCache = new PreviewFrameCache()
 let optimizedPreviewController: AbortController | null = null
+let scopeTapController: AbortController | null = null
 let optimizedPreviewGeneration = 0
 let activeOptimizedPreviewKey: string | null = null
 let previewMappingGeneration = 0
 let pausedPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let lastPresentedMediaTime: number | null = null
 let frameTrackingId: number | null = null
+let lastLiveScopeCaptureAt = 0
 const previewSource = ref<ProxyPreviewSource>({ url: '', usingProxy: false, status: 'original' })
 const proxyError = ref('')
 let previewGeneration = 0
@@ -91,6 +95,148 @@ function drawCachedFrame(frame: { bitmap: ImageBitmap; width: number; height: nu
   cachedFrameVisible.value = true
 }
 
+function scopeTapIdentity(identity: NonNullable<ReturnType<typeof frameIdentity>>, tapId: ScopeTapId) {
+  return {
+    sourceFingerprint: identity.sourceFingerprint,
+    timelineTick: identity.timelineTick,
+    graphVersion: identity.graphVersion,
+    tapId,
+    colorDescriptorId: 'straight-rgba8-encoded-srgb' as const,
+    width: identity.settings.width,
+    height: identity.settings.height,
+    sourceMode: identity.settings.sourceMode,
+    mappingIdentity: previewSource.value.mappingIdentity ?? identity.settings.sourceMode,
+  }
+}
+
+function scopeGeometryUnavailableReason(): string | null {
+  const edit = state.edit
+  if (edit.denoise) return 'Pre/Post scopes недоступны: browser preview не применяет denoise точно.'
+  if (edit.cropEnabled || edit.rotate || edit.flipH || edit.flipV || edit.censorEnabled) {
+    return 'Pre/Post scopes недоступны: browser tap не содержит точную геометрию кадра.'
+  }
+  return null
+}
+
+function postGradeUnavailableReason(): string | null {
+  const geometry = scopeGeometryUnavailableReason()
+  if (geometry) return geometry
+  const edit = state.edit
+  if (edit.brightness !== 0 || edit.contrast !== 1 || edit.saturation !== 1 || edit.filter) {
+    return 'Post-grade scope ждёт точный кадр: CSS color fallback не анализируется.'
+  }
+  if (edit.lutId && edit.lutIntensity > 0) return 'Post-grade scope ждёт точный кадр после LUT.'
+  if (!isIdentityCurves(edit.curves)) return 'Post-grade scope ждёт точный кадр после кривых.'
+  return null
+}
+
+function publishScopePixels(
+  identity: NonNullable<ReturnType<typeof frameIdentity>>,
+  tapId: ScopeTapId,
+  accuracy: ScopeAccuracy,
+  pixels: ImageData,
+): void {
+  if (!videoScopesController.state.enabled || videoScopesController.state.tapId !== tapId) return
+  videoScopeFrameBroker.publish({
+    identity: scopeTapIdentity(identity, tapId),
+    accuracy,
+    rgba: new Uint8ClampedArray(pixels.data),
+  })
+}
+
+function renderAnalysisSurface(el: HTMLVideoElement, identity: NonNullable<ReturnType<typeof frameIdentity>>) {
+  const surface = document.createElement('canvas')
+  surface.width = identity.settings.width
+  surface.height = identity.settings.height
+  const context = surface.getContext('2d')
+  if (!context) return null
+  context.drawImage(el, 0, 0, surface.width, surface.height)
+  return { surface, context }
+}
+
+function publishExactClientTaps(
+  identity: NonNullable<ReturnType<typeof frameIdentity>>,
+  sourcePixels: ImageData,
+  accuracy: ScopeAccuracy,
+): ImageData {
+  const geometryReason = scopeGeometryUnavailableReason()
+  if (!geometryReason) publishScopePixels(identity, 'pre-grade', accuracy, sourcePixels)
+  else videoScopeFrameBroker.unavailable('pre-grade', geometryReason)
+
+  const graded = new ImageData(new Uint8ClampedArray(sourcePixels.data), sourcePixels.width, sourcePixels.height)
+  const linearActive = primaryCorrectionsActive(state.edit) || colorWheelsActive(state.edit)
+  const selectiveActive = hslSelectiveActive(state.edit.hslSelective)
+  if (linearActive || selectiveActive) applyPausedColorStages(graded, linearActive, selectiveActive, false)
+  const postReason = postGradeUnavailableReason()
+  if (!postReason) publishScopePixels(identity, 'post-grade', accuracy, graded)
+  else videoScopeFrameBroker.unavailable('post-grade', postReason)
+  return graded
+}
+
+function captureLiveScopeTaps(mediaTime: number): void {
+  if (!videoScopesController.state.enabled || !videoScopesController.state.visible) return
+  const now = performance.now()
+  if (now - lastLiveScopeCaptureAt < 125) return
+  lastLiveScopeCaptureAt = now
+  const el = videoEl.value
+  if (!el || el.readyState < 2) return
+  const identity = frameIdentity(mediaTime)
+  if (!identity) return
+  const rendered = renderAnalysisSurface(el, identity)
+  if (!rendered) return
+  const pixels = rendered.context.getImageData(0, 0, rendered.surface.width, rendered.surface.height)
+  publishExactClientTaps(identity, pixels, 'exact-live')
+}
+
+const GRADE_PAYLOAD_KEYS = [
+  'temperature', 'tint', 'highlights', 'shadows', 'colorWheels', 'hslSelective',
+  'brightness', 'contrast', 'saturation', 'filter', 'lut', 'curves',
+] as const
+const FINISHING_PAYLOAD_KEYS = ['sharpen', 'vignette', 'grain', 'pad'] as const
+
+function backendScopePayload(tapId: ScopeTapId): Record<string, unknown> {
+  const payload = { ...buildEditPayload() }
+  for (const key of FINISHING_PAYLOAD_KEYS) delete payload[key]
+  if (tapId === 'pre-grade') for (const key of GRADE_PAYLOAD_KEYS) delete payload[key]
+  return payload
+}
+
+async function requestBackendScopeTap(seconds: number): Promise<void> {
+  if (clientOnlyMode || !videoScopesController.state.enabled || !videoScopesController.state.visible) return
+  const tapId = videoScopesController.state.tapId
+  const identity = frameIdentity(seconds)
+  if (!identity) return
+  scopeTapController?.abort()
+  const controller = new AbortController()
+  scopeTapController = controller
+  const requestIdentity = {
+    ...identity,
+    settings: {
+      ...identity.settings,
+      rendererCompatibility: `video-scopes-v1:${tapId}:${identity.settings.rendererCompatibility}`,
+    },
+  }
+  try {
+    const { blob } = await requestBackendPreviewFrame(backendScopePayload(tapId), requestIdentity, controller.signal)
+    const bitmap = await createImageBitmap(blob)
+    if (controller.signal.aborted || scopeTapController !== controller) { bitmap.close(); return }
+    const surface = document.createElement('canvas')
+    surface.width = requestIdentity.settings.width
+    surface.height = requestIdentity.settings.height
+    const context = surface.getContext('2d')
+    if (!context) { bitmap.close(); return }
+    context.drawImage(bitmap, 0, 0, surface.width, surface.height)
+    bitmap.close()
+    publishScopePixels(identity, tapId, 'exact-paused', context.getImageData(0, 0, surface.width, surface.height))
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      videoScopeFrameBroker.unavailable(tapId, error instanceof Error ? error.message : 'Exact backend scope tap недоступен.')
+    }
+  } finally {
+    if (scopeTapController === controller) scopeTapController = null
+  }
+}
+
 function applyPausedColorStages(
   pixels: ImageData,
   linearActive: boolean,
@@ -132,22 +278,21 @@ async function captureCurrentFrame(mediaTime?: number): Promise<void> {
   const identity = frameIdentity(mediaTime ?? el.currentTime)
   if (!identity) return
   try {
-    const surface = document.createElement('canvas')
-    surface.width = identity.settings.width
-    surface.height = identity.settings.height
-    const context = surface.getContext('2d')
-    if (!context) return
-    context.drawImage(el, 0, 0, surface.width, surface.height)
+    const rendered = renderAnalysisSurface(el, identity)
+    if (!rendered) return
+    const { surface, context } = rendered
+    const sourcePixels = context.getImageData(0, 0, surface.width, surface.height)
+    const gradedPixels = publishExactClientTaps(identity, sourcePixels, 'exact-paused')
     const linearActive = primaryCorrectionsActive(state.edit) || colorWheelsActive(state.edit)
     const selectiveActive = hslSelectiveActive(state.edit.hslSelective)
-    if (linearActive || selectiveActive || state.hslMaskPreview) {
-      const pixels = context.getImageData(0, 0, surface.width, surface.height)
+    if (state.hslMaskPreview) {
+      const pixels = new ImageData(new Uint8ClampedArray(sourcePixels.data), sourcePixels.width, sourcePixels.height)
       // Keep the encoded-sRGB HSL stage directly after the primary/LGG encode,
       // with a single byte write at the end so the two stages do not quantise
       // the intermediate colour independently.
       applyPausedColorStages(pixels, linearActive, selectiveActive, state.hslMaskPreview)
       context.putImageData(pixels, 0, 0)
-    }
+    } else context.putImageData(gradedPixels, 0, 0)
     const key = previewFrameKey(identity)
     decodedFrameCache.put(key, await createImageBitmap(surface))
     if (el.paused) {
@@ -162,6 +307,7 @@ async function captureCurrentFrame(mediaTime?: number): Promise<void> {
 }
 
 function showCachedOrRequest(seconds: number): void {
+  if (videoScopesController.state.enabled && !clientOnlyMode) void requestBackendScopeTap(seconds)
   optimizedPreviewController?.abort()
   optimizedPreviewController = null
   const generation = ++optimizedPreviewGeneration
@@ -219,6 +365,7 @@ function trackPresentedFrames(): void {
   frameTrackingId = el.requestVideoFrameCallback((_now, metadata) => {
     frameTrackingId = null
     lastPresentedMediaTime = metadata.mediaTime
+    captureLiveScopeTaps(metadata.mediaTime)
     if (!el.paused) trackPresentedFrames()
   })
 }
@@ -295,6 +442,7 @@ function applyPlayback(el: HTMLVideoElement) {
 watch(
   () => [state.edit.speed, state.edit.volume],
   () => {
+    videoScopeFrameBroker.invalidate()
     if (videoEl.value) applyPlayback(videoEl.value)
   },
 )
@@ -382,6 +530,7 @@ watch(
 )
 
 watch(() => previewSource.value.url, () => {
+  videoScopeFrameBroker.invalidate()
   const el = videoEl.value
   if (!el) return
   const frameAware = el as HTMLVideoElement & { cancelVideoFrameCallback?: (id: number) => void }
@@ -410,6 +559,21 @@ watch(() => previewSource.value.url, () => {
   el.addEventListener('loadedmetadata', restore, { once: true })
 })
 
+watch(
+  () => [
+    videoScopesController.state.enabled,
+    videoScopesController.state.visible,
+    videoScopesController.state.tapId,
+    videoScopesController.state.kinds.join('|'),
+  ],
+  () => {
+    const el = videoEl.value
+    if (!videoScopesController.state.enabled || !videoScopesController.state.visible || !el?.paused) return
+    if (clientOnlyMode || state.hslMaskPreview) void captureCurrentFrame(el.currentTime)
+    else void requestBackendScopeTap(el.currentTime)
+  },
+)
+
 function onPreviewError(): void {
   if (!previewSource.value.usingProxy || !state.video) return
   const previous = previewSource.value
@@ -427,6 +591,9 @@ function onPreviewError(): void {
 }
 
 onBeforeUnmount(() => {
+  videoScopeFrameBroker.invalidate()
+  scopeTapController?.abort()
+  scopeTapController = null
   previewGeneration++
   pendingRestoreCleanup?.()
   pendingSwitch?.revoke?.()
