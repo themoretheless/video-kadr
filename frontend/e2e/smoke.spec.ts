@@ -1,6 +1,17 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 const TEST_LUT_ID = '11111111-1111-4111-8111-111111111111'
+const PROXY_KEY = 'a'.repeat(64)
+
+function silentWav(): Buffer {
+  const samples = 800
+  const buffer = Buffer.alloc(44 + samples * 2)
+  buffer.write('RIFF', 0); buffer.writeUInt32LE(buffer.length - 8, 4); buffer.write('WAVEfmt ', 8)
+  buffer.writeUInt32LE(16, 16); buffer.writeUInt16LE(1, 20); buffer.writeUInt16LE(1, 22)
+  buffer.writeUInt32LE(8_000, 24); buffer.writeUInt32LE(16_000, 28); buffer.writeUInt16LE(2, 32); buffer.writeUInt16LE(16, 34)
+  buffer.write('data', 36); buffer.writeUInt32LE(samples * 2, 40)
+  return buffer
+}
 
 const capabilities = {
   schemaVersion: 1,
@@ -37,8 +48,21 @@ async function mockApi(page: Page): Promise<void> {
     let status = 200
     let body: unknown = {}
 
+    if (path === `/api/proxies/${PROXY_KEY}/preview`) {
+      await route.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav() })
+      return
+    }
     if (path === '/api/capabilities') body = capabilities
     else if (path === '/api/library') body = []
+    else if (path === '/api/derived-jobs') body = [{
+      taskId: 'proxy-task', artifactKey: PROXY_KEY, kind: 'proxy', projectId: 'media:clip-1',
+      consumerProjectIds: ['media:clip-1'], state: 'succeeded', priority: 0, priorityRevision: 0,
+      generation: 1, attempt: 1, enqueuedAt: 1, availableAt: 1, dependencies: [],
+    }]
+    else if (path === `/api/proxies/${PROXY_KEY}/status`) body = {
+      state: 'ready', artifactKey: PROXY_KEY, sourceId: 'clip-1', sourceFingerprint: 'b'.repeat(64),
+      previewUrl: `/api/proxies/${PROXY_KEY}/preview`, sourceMedia: {}, proxyMedia: { audioCodec: 'aac' },
+    }
     else if (path === '/api/import' && request.method() === 'POST') body = { jobId: 'import-1' }
     else if (path === '/api/luts' && request.method() === 'POST') {
       body = {
@@ -113,6 +137,8 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
   await page.getByPlaceholder('https://vkvideo.ru/video-220018529_456248395').fill('https://example.com/video')
   await page.getByRole('button', { name: 'Импорт' }).click()
   await expect(page.getByRole('heading', { name: 'Fixture clip' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Proxy' })).toContainText('Proxy')
+  await expect(page.locator('video.player')).toHaveAttribute('src', new RegExp(`/api/proxies/${PROXY_KEY}/preview`))
 
   await page.getByLabel('Выбрать LUT в формате CUBE').setInputFiles({
     name: 'fixture-look.cube',

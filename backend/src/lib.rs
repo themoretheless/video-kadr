@@ -95,6 +95,9 @@ pub fn build_router_with_cors(
             post(handlers::cancel_derived_job),
         )
         .route("/derived-jobs/:id/retry", post(handlers::retry_derived_job))
+        .route("/proxies/:key/status", get(handlers::proxy_status))
+        .route("/proxies/:key/preview", get(handlers::proxy_preview))
+        .route("/proxies/:key/invalidate", post(handlers::invalidate_proxy))
         .route("/library", get(handlers::library_list_handler))
         .route("/library/search", get(handlers::library_search_handler))
         .route("/library/:id", delete(handlers::library_delete_handler))

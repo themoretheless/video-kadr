@@ -12,6 +12,7 @@ export interface ProjectDocument extends JsonObject {
   media: ProjectMedia[]
   sequences: ProjectSequence[]
   legacyFields?: JsonObject
+  proxyPolicy?: 'auto' | 'original' | 'proxy'
 }
 
 export interface ProjectMedia extends JsonObject {
@@ -95,6 +96,7 @@ export function migrateProjectDocument(value: unknown): ProjectDocument {
     )
   }
   const document = cloneJson(object) as ProjectDocument
+  document.proxyPolicy ??= 'auto'
   for (const media of document.media ?? []) {
     if (media && typeof media === 'object' && media.metadata) {
       media.metadata = durableMediaMetadata(media.metadata)
@@ -121,6 +123,7 @@ export function validateProjectDocument(document: ProjectDocument): void {
   validateId(document.activeSequenceId, 'activeSequenceId')
   if (!document.name.trim()) throw new Error('invalid project name')
   if (document.legacyFields !== undefined) asObject(document.legacyFields, 'legacyFields')
+  if (document.proxyPolicy !== undefined && !['auto', 'original', 'proxy'].includes(document.proxyPolicy)) throw new Error('invalid project proxyPolicy')
   if (!Array.isArray(document.media) || !Array.isArray(document.sequences)) {
     throw new Error('invalid project collections')
   }
@@ -431,6 +434,7 @@ function migrateV1(value: JsonObject): ProjectDocument {
   )
   const document: ProjectDocument = {
     schemaVersion: PROJECT_DOCUMENT_SCHEMA_VERSION,
+    proxyPolicy: 'auto',
     name,
     primaryMediaId: videoId,
     activeSequenceId: 'sequence-main',
@@ -471,6 +475,7 @@ function migrateV1(value: JsonObject): ProjectDocument {
 function migrateV2(value: JsonObject): ProjectDocument {
   const document = cloneJson(value) as unknown as ProjectDocument
   document.schemaVersion = PROJECT_DOCUMENT_SCHEMA_VERSION
+  document.proxyPolicy ??= 'auto'
   for (const media of document.media ?? []) {
     const metadata = durableMediaMetadata(asObject(media.metadata, 'media.metadata'))
     media.assetRef = stringValue(media.assetRef) ?? stringValue(metadata.assetId) ?? media.id

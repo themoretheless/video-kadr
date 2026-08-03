@@ -33,6 +33,8 @@ pub struct MediaEntry {
     pub media_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
     pub created_at: u64,
 }
 
@@ -53,6 +55,7 @@ impl MediaEntry {
             acodec: v["acodec"].as_str().map(str::to_owned),
             media_kind: v["mediaKind"].as_str().map(str::to_owned),
             size_bytes: v["sizeBytes"].as_u64(),
+            fingerprint: v["fingerprint"].as_str().map(str::to_owned),
             created_at: now_secs(),
         }
     }
@@ -148,6 +151,23 @@ impl Library {
             .cloned()
     }
 
+    pub async fn set_fingerprint(&self, id: &str, fingerprint: String) -> bool {
+        let mut guard = self.entries.lock().await;
+        let mut next = guard.clone();
+        let Some(entry) = next.iter_mut().find(|entry| entry.id == id) else {
+            return false;
+        };
+        if entry.fingerprint.as_deref() == Some(&fingerprint) {
+            return true;
+        }
+        entry.fingerprint = Some(fingerprint);
+        if self.save(&next).await.is_err() {
+            return false;
+        }
+        *guard = next;
+        true
+    }
+
     /// Remove an entry and delete its file. Returns true if it existed and the
     /// removal was persisted. The file is deleted only after a successful save,
     /// so a persist failure never deletes a file the stored library still lists.
@@ -220,6 +240,7 @@ mod tests {
             acodec: None,
             media_kind: None,
             size_bytes: None,
+            fingerprint: None,
             created_at,
         }
     }

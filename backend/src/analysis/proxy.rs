@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -16,10 +18,25 @@ use crate::artifacts::{
     DEFAULT_MANIFEST_LIMIT,
 };
 use crate::domain::artifact_graph::Fingerprint;
+use crate::domain::media_probe::{ProbeResult, Rational, StreamKind};
 use crate::runtime::cpu_pool::CpuPool;
 use crate::runtime::TaskSupervisor;
 
-const PROXY_SCHEMA_VERSION: u32 = 1;
+const PROXY_SCHEMA_VERSION: u32 = 3;
+pub const FFMPEG_PROXY_COMPATIBILITY: &str = "ffmpeg-proxy-v3-common-origin";
+
+#[derive(Clone)]
+struct VerifiedProxyFile {
+    size: u64,
+    modified: SystemTime,
+    sha256: Fingerprint,
+}
+
+static VERIFIED_PROXY_FILES: OnceLock<Mutex<HashMap<String, VerifiedProxyFile>>> = OnceLock::new();
+
+fn verified_proxy_files() -> &'static Mutex<HashMap<String, VerifiedProxyFile>> {
+    VERIFIED_PROXY_FILES.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -107,7 +124,34 @@ pub struct ProxyArtifact {
     pub source_id: String,
     pub source_fingerprint: Fingerprint,
     pub profile: ProxyProfile,
+    pub producer_compatibility: String,
+    pub source_media: ProxyMediaProvenance,
+    pub proxy_media: ProxyMediaProvenance,
     pub file: ArtifactFile,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MediaClock {
+    pub time_base: Rational,
+    pub duration_ticks: i64,
+    pub start_ticks: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProxyMediaProvenance {
+    pub clock: MediaClock,
+    pub audio_clock: Option<MediaClock>,
+    pub coded_width: u32,
+    pub coded_height: u32,
+    pub display_width: u32,
+    pub display_height: u32,
+    pub video_codec: String,
+    pub frame_rate: Option<Rational>,
+    pub audio_codec: Option<String>,
+    pub audio_sample_rate: Option<u32>,
+    pub audio_channels: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +162,8 @@ pub enum MediaIntent {
 
 #[axum::async_trait]
 pub trait ProxyEncoder: Send + Sync {
+    fn producer_compatibility(&self) -> &'static str;
+
     async fn generate(
         &self,
         source: &SourceIdentity,
@@ -125,6 +171,8 @@ pub trait ProxyEncoder: Send + Sync {
         staging_path: &Path,
         cancellation: &CancellationToken,
     ) -> Result<()>;
+
+    async fn probe(&self, path: &Path) -> Result<ProbeResult>;
 }
 
 pub struct ProxyService<E: ?Sized> {
@@ -153,6 +201,10 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
             encoder,
             key_locks: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub fn producer_compatibility(&self) -> &'static str {
+        self.encoder.producer_compatibility()
     }
 
     pub async fn inspect_source(
@@ -196,7 +248,17 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         cancellation: CancellationToken,
     ) -> Result<ProxyArtifact> {
         profile.validate()?;
-        let key = proxy_key(&source, &profile);
+        let current = fingerprint_file(
+            &self.cpu_pool,
+            source.original_path.clone(),
+            cancellation.child_token(),
+        )
+        .await?;
+        if current.sha256 != source.fingerprint {
+            return Err(anyhow!("proxy source changed after it was scheduled"));
+        }
+        let compatibility = self.encoder.producer_compatibility();
+        let key = proxy_key(&source, &profile, compatibility);
         let lock = self.key_lock(&key).await;
         let _guard = lock.lock().await;
         let result = self
@@ -205,6 +267,76 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         drop(_guard);
         self.release_key_lock(&key, &lock).await;
         result
+    }
+
+    /// Resolve a catalog entry by content key without accepting a filesystem
+    /// path from the caller. The returned path is checksum-verified and
+    /// contained below the proxy root.
+    pub async fn validated_artifact(
+        &self,
+        key: &Fingerprint,
+        cancellation: CancellationToken,
+    ) -> Result<(ProxyArtifact, PathBuf)> {
+        let manifest = self.root.join(proxy_manifest_path(key));
+        let artifact: ProxyArtifact = read_json_bounded(&manifest, DEFAULT_MANIFEST_LIMIT).await?;
+        if artifact.schema_version != PROXY_SCHEMA_VERSION
+            || artifact.key != *key
+            || artifact.producer_compatibility != self.encoder.producer_compatibility()
+            || proxy_key_from_parts(
+                &artifact.source_fingerprint,
+                &artifact.profile,
+                &artifact.producer_compatibility,
+            ) != *key
+            || validate_proxy_media(
+                &artifact.source_media,
+                &artifact.proxy_media,
+                &artifact.profile,
+            )
+            .is_err()
+        {
+            return Err(anyhow!("proxy artifact is stale"));
+        }
+        let expected = proxy_relative_path(key, &artifact.profile);
+        if path_token(&expected)? != artifact.file.path {
+            return Err(anyhow!("proxy artifact locator is invalid"));
+        }
+        let expected_path = self.root.join(&expected);
+        let metadata = tokio::fs::metadata(&expected_path).await?;
+        let modified = metadata.modified().ok();
+        let cache_key = format!("{}:{key}", self.root.display());
+        let cached = if let Some(modified) = modified {
+            verified_proxy_files()
+                .lock()
+                .await
+                .get(&cache_key)
+                .is_some_and(|entry| {
+                    entry.size == metadata.len()
+                        && entry.modified == modified
+                        && entry.sha256 == artifact.file.sha256
+                })
+        } else {
+            false
+        };
+        let path = if cached {
+            expected_path
+        } else {
+            let verified = artifact
+                .file
+                .verify(&self.root, &self.cpu_pool, cancellation)
+                .await?;
+            if let Some(modified) = modified {
+                verified_proxy_files().lock().await.insert(
+                    cache_key,
+                    VerifiedProxyFile {
+                        size: metadata.len(),
+                        modified,
+                        sha256: artifact.file.sha256.clone(),
+                    },
+                );
+            }
+            verified
+        };
+        Ok((artifact, path))
     }
 
     async fn ensure_locked(
@@ -287,6 +419,24 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         Ok(())
     }
 
+    /// Remove a catalog entry by content key before a durable queue re-run.
+    /// The artifact path is always re-derived from the trusted key/profile;
+    /// a locator stored in an invalid manifest is never followed.
+    pub async fn invalidate_key(&self, key: &Fingerprint) -> Result<()> {
+        let manifest_path = self.root.join(proxy_manifest_path(key));
+        if let Ok(artifact) =
+            read_json_bounded::<ProxyArtifact>(&manifest_path, DEFAULT_MANIFEST_LIMIT).await
+        {
+            remove_if_exists(&self.root.join(proxy_relative_path(key, &artifact.profile))).await?;
+        }
+        remove_if_exists(&manifest_path).await?;
+        verified_proxy_files()
+            .lock()
+            .await
+            .remove(&format!("{}:{key}", self.root.display()));
+        Ok(())
+    }
+
     async fn load_ready(
         &self,
         source: &SourceIdentity,
@@ -315,7 +465,18 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         let metadata_valid = artifact.schema_version == PROXY_SCHEMA_VERSION
             && artifact.key == *key
             && artifact.source_fingerprint == source.fingerprint
-            && artifact.profile == *profile;
+            && artifact.profile == *profile
+            && artifact.producer_compatibility == self.encoder.producer_compatibility()
+            && proxy_key_from_parts(
+                &artifact.source_fingerprint,
+                &artifact.profile,
+                &artifact.producer_compatibility,
+            ) == *key
+            && path_token(&proxy_relative_path(key, profile))
+                .ok()
+                .as_deref()
+                == Some(artifact.file.path.as_str())
+            && validate_proxy_media(&artifact.source_media, &artifact.proxy_media, profile).is_ok();
         let file_valid = if metadata_valid {
             match artifact
                 .file
@@ -347,8 +508,26 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         staging: &Path,
         cancellation: CancellationToken,
     ) -> Result<ProxyArtifact> {
-        let identity =
-            fingerprint_file(&self.cpu_pool, staging.to_path_buf(), cancellation).await?;
+        let identity = fingerprint_file(
+            &self.cpu_pool,
+            staging.to_path_buf(),
+            cancellation.child_token(),
+        )
+        .await?;
+        let source_probe = self.encoder.probe(&source.original_path).await?;
+        let proxy_probe = self.encoder.probe(staging).await?;
+        let source_media = media_provenance(&source_probe)?;
+        let proxy_media = media_provenance(&proxy_probe)?;
+        validate_proxy_media(&source_media, &proxy_media, &profile)?;
+        let current_source = fingerprint_file(
+            &self.cpu_pool,
+            source.original_path.clone(),
+            cancellation.child_token(),
+        )
+        .await?;
+        if current_source.sha256 != source.fingerprint {
+            return Err(anyhow!("proxy source changed while it was being encoded"));
+        }
         let relative = proxy_relative_path(&key, &profile);
         let final_path = self.root.join(&relative);
         let parent = final_path
@@ -362,6 +541,9 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
             source_id: source.id.clone(),
             source_fingerprint: source.fingerprint.clone(),
             profile,
+            producer_compatibility: self.encoder.producer_compatibility().to_owned(),
+            source_media,
+            proxy_media,
             file: ArtifactFile {
                 path: path_token(&relative)?,
                 size: identity.size,
@@ -397,12 +579,164 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
     }
 }
 
-pub fn proxy_key(source: &SourceIdentity, profile: &ProxyProfile) -> Fingerprint {
+pub fn proxy_key(
+    source: &SourceIdentity,
+    profile: &ProxyProfile,
+    producer_compatibility: &str,
+) -> Fingerprint {
+    proxy_key_from_parts(&source.fingerprint, profile, producer_compatibility)
+}
+
+fn proxy_key_from_parts(
+    source_fingerprint: &Fingerprint,
+    profile: &ProxyProfile,
+    producer_compatibility: &str,
+) -> Fingerprint {
     Fingerprint::combine([
-        b"proxy-v1".as_slice(),
-        source.fingerprint.as_str().as_bytes(),
+        b"proxy-v3".as_slice(),
+        source_fingerprint.as_str().as_bytes(),
         profile.fingerprint().as_str().as_bytes(),
+        producer_compatibility.as_bytes(),
     ])
+}
+
+fn media_provenance(probe: &ProbeResult) -> Result<ProxyMediaProvenance> {
+    let video = probe
+        .streams
+        .iter()
+        .find(|stream| stream.kind == StreamKind::Video)
+        .ok_or_else(|| anyhow!("proxy media has no video stream"))?;
+    let time_base = video
+        .time_base
+        .ok_or_else(|| anyhow!("proxy video time base is missing"))?;
+    if time_base.numerator <= 0 || time_base.denominator <= 0 {
+        return Err(anyhow!("proxy video time base is invalid"));
+    }
+    let seconds_per_tick = time_base.as_f64();
+    let duration = video.duration_seconds.unwrap_or(probe.duration);
+    let start = video
+        .start_time_seconds
+        .or(probe.container.start_time_seconds)
+        .unwrap_or(0.0);
+    if !duration.is_finite() || duration <= 0.0 || !start.is_finite() {
+        return Err(anyhow!("proxy media clock is invalid"));
+    }
+    let coded_width = video.width.unwrap_or(probe.width);
+    let coded_height = video.height.unwrap_or(probe.height);
+    if coded_width == 0 || coded_height == 0 {
+        return Err(anyhow!("proxy video dimensions are invalid"));
+    }
+    let (display_width, display_height) = if matches!(video.rotation_degrees, 90 | 270) {
+        (coded_height, coded_width)
+    } else {
+        (coded_width, coded_height)
+    };
+    let audio = probe
+        .streams
+        .iter()
+        .find(|stream| stream.kind == StreamKind::Audio);
+    Ok(ProxyMediaProvenance {
+        clock: MediaClock {
+            time_base,
+            duration_ticks: (duration / seconds_per_tick).round() as i64,
+            start_ticks: (start / seconds_per_tick).round() as i64,
+        },
+        audio_clock: audio
+            .map(|stream| {
+                let time_base = stream
+                    .time_base
+                    .ok_or_else(|| anyhow!("proxy audio time base is missing"))?;
+                let duration = stream.duration_seconds.unwrap_or(probe.duration);
+                let start = stream
+                    .start_time_seconds
+                    .or(probe.container.start_time_seconds)
+                    .unwrap_or(0.0);
+                if !duration.is_finite() || duration <= 0.0 || !start.is_finite() {
+                    return Err(anyhow!("proxy audio clock is invalid"));
+                }
+                Ok(MediaClock {
+                    time_base,
+                    duration_ticks: (duration / time_base.as_f64()).round() as i64,
+                    start_ticks: (start / time_base.as_f64()).round() as i64,
+                })
+            })
+            .transpose()?,
+        coded_width,
+        coded_height,
+        display_width,
+        display_height,
+        video_codec: video
+            .codec_name
+            .clone()
+            .ok_or_else(|| anyhow!("proxy video codec is missing"))?,
+        frame_rate: video.frame_rate,
+        audio_codec: audio.and_then(|stream| stream.codec_name.clone()),
+        audio_sample_rate: audio.and_then(|stream| stream.sample_rate),
+        audio_channels: audio.and_then(|stream| stream.channels),
+    })
+}
+
+fn validate_proxy_media(
+    source: &ProxyMediaProvenance,
+    proxy: &ProxyMediaProvenance,
+    profile: &ProxyProfile,
+) -> Result<()> {
+    let mapping_tolerance = media_mapping_tolerance(source, proxy);
+    if timeline_start_seconds(proxy).abs() > mapping_tolerance {
+        return Err(anyhow!("proxy timestamps are not normalized to zero"));
+    }
+    if proxy.display_width > profile.max_width
+        || proxy.display_width == 0
+        || proxy.display_height == 0
+    {
+        return Err(anyhow!("proxy dimensions violate the profile"));
+    }
+    if (!profile.include_audio && proxy.audio_codec.is_some())
+        || (profile.include_audio && source.audio_codec.is_some() && proxy.audio_codec.is_none())
+    {
+        return Err(anyhow!("proxy audio policy was not preserved"));
+    }
+    if let (Some(source_audio), Some(proxy_audio)) = (&source.audio_clock, &proxy.audio_clock) {
+        let source_offset = clock_start_seconds(source_audio) - clock_start_seconds(&source.clock);
+        let proxy_offset = clock_start_seconds(proxy_audio) - clock_start_seconds(&proxy.clock);
+        if (source_offset - proxy_offset).abs() > mapping_tolerance {
+            return Err(anyhow!("proxy audio/video offset diverges from source"));
+        }
+    }
+    let source_seconds = source.clock.duration_ticks as f64 * source.clock.time_base.as_f64();
+    let proxy_seconds = proxy.clock.duration_ticks as f64 * proxy.clock.time_base.as_f64();
+    let frame_tolerance = source
+        .frame_rate
+        .or(proxy.frame_rate)
+        .map(|rate| 1.0 / rate.as_f64())
+        .unwrap_or(0.1)
+        .max(0.001);
+    if (source_seconds - proxy_seconds).abs() > frame_tolerance {
+        return Err(anyhow!("proxy duration diverges from source"));
+    }
+    Ok(())
+}
+
+fn clock_start_seconds(clock: &MediaClock) -> f64 {
+    clock.start_ticks as f64 * clock.time_base.as_f64()
+}
+
+fn timeline_start_seconds(media: &ProxyMediaProvenance) -> f64 {
+    media
+        .audio_clock
+        .as_ref()
+        .map(clock_start_seconds)
+        .unwrap_or_else(|| clock_start_seconds(&media.clock))
+        .min(clock_start_seconds(&media.clock))
+}
+
+fn media_mapping_tolerance(source: &ProxyMediaProvenance, proxy: &ProxyMediaProvenance) -> f64 {
+    source
+        .frame_rate
+        .or(proxy.frame_rate)
+        .map(|rate| 1.0 / rate.as_f64())
+        .unwrap_or(0.05)
+        .max(0.05)
 }
 
 fn proxy_relative_path(key: &Fingerprint, profile: &ProxyProfile) -> PathBuf {
@@ -445,6 +779,10 @@ mod tests {
 
     #[axum::async_trait]
     impl ProxyEncoder for FakeEncoder {
+        fn producer_compatibility(&self) -> &'static str {
+            "fake-proxy-v2"
+        }
+
         async fn generate(
             &self,
             source: &SourceIdentity,
@@ -459,6 +797,16 @@ mod tests {
             )
             .await?;
             Ok(())
+        }
+
+        async fn probe(&self, _path: &Path) -> Result<ProbeResult> {
+            Ok(ProbeResult::from_ffprobe_json(&serde_json::json!({
+                "format": {"duration":"10.0", "start_time":"0"},
+                "streams": [
+                    {"index":0,"codec_type":"video","codec_name":"h264","width":960,"height":540,"avg_frame_rate":"30/1","time_base":"1/90000","start_time":"0","duration":"10.0"},
+                    {"index":1,"codec_type":"audio","codec_name":"aac","sample_rate":"48000","channels":2,"time_base":"1/48000","start_time":"0","duration":"10.0"}
+                ]
+            }))?)
         }
     }
 
@@ -556,6 +904,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn source_change_after_scheduling_is_rejected_before_encode_or_reuse() {
+        let root = tempfile::tempdir().unwrap();
+        let source_path = root.path().join("source.mp4");
+        tokio::fs::write(&source_path, b"scheduled bytes")
+            .await
+            .unwrap();
+        let encoder = Arc::new(FakeEncoder {
+            calls: AtomicUsize::new(0),
+        });
+        let service = ProxyService::new(root.path().to_path_buf(), pool(), encoder.clone());
+        let source = service
+            .inspect_source(
+                SourceMedia {
+                    id: "source".into(),
+                    original_path: source_path.clone(),
+                    duration_seconds: 10.0,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        tokio::fs::write(&source_path, b"changed bytes")
+            .await
+            .unwrap();
+        assert!(service
+            .ensure(source, ProxyProfile::default(), CancellationToken::new())
+            .await
+            .is_err());
+        assert_eq!(encoder.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn proxy_delete_and_relink_leave_original_source_untouched() {
         let root = tempfile::tempdir().unwrap();
         let original = root.path().join("source.mp4");
@@ -643,5 +1023,62 @@ mod tests {
             .relink_verified(&source, wrong, CancellationToken::new())
             .await
             .is_err());
+    }
+
+    #[test]
+    fn compatibility_changes_identity_and_validation_rejects_bad_time_mapping() {
+        let source = SourceIdentity {
+            id: "source".into(),
+            original_path: PathBuf::from("source.mp4"),
+            duration_seconds: 10.0,
+            fingerprint: Fingerprint::digest(b"source"),
+        };
+        let profile = ProxyProfile::default();
+        assert_ne!(
+            proxy_key(&source, &profile, "producer-a"),
+            proxy_key(&source, &profile, "producer-b")
+        );
+        let media = ProxyMediaProvenance {
+            clock: MediaClock {
+                time_base: Rational {
+                    numerator: 1,
+                    denominator: 90_000,
+                },
+                duration_ticks: 900_000,
+                start_ticks: 0,
+            },
+            audio_clock: Some(MediaClock {
+                time_base: Rational {
+                    numerator: 1,
+                    denominator: 48_000,
+                },
+                duration_ticks: 480_000,
+                start_ticks: 0,
+            }),
+            coded_width: 960,
+            coded_height: 540,
+            display_width: 960,
+            display_height: 540,
+            video_codec: "h264".into(),
+            frame_rate: Some(Rational {
+                numerator: 30,
+                denominator: 1,
+            }),
+            audio_codec: Some("aac".into()),
+            audio_sample_rate: Some(48_000),
+            audio_channels: Some(2),
+        };
+        assert!(validate_proxy_media(&media, &media, &profile).is_ok());
+        let mut shifted = media.clone();
+        shifted.clock.start_ticks = 9_000;
+        assert!(validate_proxy_media(&media, &shifted, &profile).is_err());
+        let mut short = media.clone();
+        short.clock.duration_ticks /= 2;
+        assert!(validate_proxy_media(&media, &short, &profile).is_err());
+        let mut source_offset = media.clone();
+        source_offset.audio_clock.as_mut().unwrap().start_ticks = 4_800;
+        let mut proxy_lost_offset = media.clone();
+        proxy_lost_offset.audio_clock.as_mut().unwrap().start_ticks = 0;
+        assert!(validate_proxy_media(&source_offset, &proxy_lost_offset, &profile).is_err());
     }
 }

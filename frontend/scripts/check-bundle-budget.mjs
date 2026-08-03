@@ -17,9 +17,11 @@ const budgets = {
   // policy and chunk-streaming FSA fallback are the #85 crash-safety layer.
   // The #84 persistent DAG/task-center contract adds IndexedDB recovery,
   // priority/cancel controls and the server queue adapter.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 100 * 1024),
+  // The #82 proxy selector adds a durable artifact registry, provenance
+  // resolver and fail-closed original fallback to the preview bootstrap.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 105 * 1024),
   css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 5.5 * 1024),
-  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 106 * 1024),
+  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 110 * 1024),
 }
 
 const files = await readdir(assetDirectory)

@@ -184,12 +184,36 @@ export function cancelStreamingOutput(): void {
   if (clientOnlyMode) browserMedia.cancelStreamingOutput()
 }
 
-interface BackendDerivedTask {
+export interface BackendDerivedTask {
   taskId: string; artifactKey: string; kind: DerivedTask['kind']; projectId: string
   consumerProjectIds: string[]
   state: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked'
   priority: number; priorityRevision: number; generation: number; attempt: number
   enqueuedAt: number; availableAt: number; leaseUntil?: number; result?: unknown; error?: string; dependencies: string[]
+}
+
+export interface BackendProxyStatus {
+  state: 'ready' | 'stale'
+  artifactKey: string
+  sourceId: string
+  sourceFingerprint: string
+  previewUrl: string | null
+  sourceMedia: unknown
+  proxyMedia: { audioCodec?: string | null }
+}
+
+export async function getProxyStatus(key: string, sourceId: string, sourceFingerprint?: string): Promise<BackendProxyStatus> {
+  const params = new URLSearchParams({ sourceId })
+  if (sourceFingerprint) params.set('sourceFingerprint', sourceFingerprint)
+  const query = `?${params.toString()}`
+  const response = await safeFetch(`/api/proxies/${encodeURIComponent(key)}/status${query}`)
+  await requireOk(response, `proxy status -> HTTP ${response.status}`)
+  return response.json()
+}
+
+export async function invalidateProxy(key: string): Promise<void> {
+  const response = await safeFetch(`/api/proxies/${encodeURIComponent(key)}/invalidate`, { method: 'POST' })
+  await requireOk(response, `proxy invalidate -> HTTP ${response.status}`)
 }
 
 export async function listDerivedJobs(projectId?: string): Promise<BackendDerivedTask[]> {

@@ -96,6 +96,19 @@ pub async fn upload_handler(
     }
 
     let size = tokio::fs::metadata(&path).await.map(|meta| meta.len()).ok();
+    let fingerprint = match crate::artifacts::fingerprint_file(
+        &state.cpu_pool,
+        path.clone(),
+        state.shutdown_token().child_token(),
+    )
+    .await
+    {
+        Ok(identity) => identity.sha256.to_string(),
+        Err(error) => {
+            remove_quietly(&path).await;
+            return Err(AppError::internal("fingerprint uploaded file", error));
+        }
+    };
     let title = received.original_name.as_deref().map(display_title);
     let body = json!({
         "id": video_id,
@@ -110,6 +123,7 @@ pub async fn upload_handler(
         "acodec": info.acodec,
         "mediaKind": if info.width > 0 { "video" } else { "audio" },
         "sizeBytes": size,
+        "fingerprint": fingerprint,
     });
     let entry = MediaEntry::from_result("source", &body);
     if state.library.add(entry.clone()).await {

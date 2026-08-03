@@ -1,10 +1,15 @@
-use axum::extract::{Path, Query, State};
+use axum::body::Body;
+use axum::extract::{Path, Query, Request, State};
+use axum::response::Response;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_util::sync::CancellationToken;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 use uuid::Uuid;
 
 use crate::analysis::proxy::{ProxyProfile, ProxyService, SourceIdentity};
@@ -29,6 +34,167 @@ pub struct DerivedListQuery {
 pub struct PriorityRequest {
     priority: i64,
     expected_revision: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProxyStatusQuery {
+    source_fingerprint: Option<String>,
+    source_id: Option<String>,
+}
+
+async fn proxy_source_is_current(
+    state: &AppState,
+    artifact: &crate::analysis::proxy::ProxyArtifact,
+    query: &ProxyStatusQuery,
+) -> bool {
+    if query
+        .source_fingerprint
+        .as_deref()
+        .is_some_and(|expected| expected != artifact.source_fingerprint.as_str())
+    {
+        return false;
+    }
+    let Some(source_id) = query.source_id.as_deref() else {
+        return query.source_fingerprint.is_some();
+    };
+    match state
+        .library
+        .get(source_id)
+        .await
+        .and_then(|entry| state.library.source_path(&entry))
+    {
+        Some(path) => fingerprint_file(&state.cpu_pool, path, state.shutdown_token().child_token())
+            .await
+            .is_ok_and(|identity| identity.sha256 == artifact.source_fingerprint),
+        None => false,
+    }
+}
+
+pub(crate) fn proxy_service(state: &AppState) -> ProxyService<FfmpegProxyEncoder> {
+    ProxyService::new(
+        state.storage.clone(),
+        state.cpu_pool.clone(),
+        Arc::new(FfmpegProxyEncoder::new(state.process_runtime.clone())),
+    )
+}
+
+pub(crate) async fn gc_proxy_if_unreferenced(
+    state: &AppState,
+    key: &Fingerprint,
+) -> anyhow::Result<bool> {
+    let mut tx = state.db.pool().begin_with("BEGIN IMMEDIATE").await?;
+    let consumers: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM derived_graph_tasks gt JOIN derived_tasks t ON t.task_id=gt.task_id WHERE t.artifact_key=?")
+        .bind(key.as_str()).fetch_one(&mut *tx).await?;
+    if consumers == 0 {
+        proxy_service(state).invalidate_key(key).await?;
+    }
+    tx.commit().await?;
+    Ok(consumers == 0)
+}
+
+pub async fn proxy_status(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+    Query(query): Query<ProxyStatusQuery>,
+) -> AppResult<Json<Value>> {
+    let key =
+        Fingerprint::parse(key).map_err(|_| AppError::bad_request("Некорректный proxy key"))?;
+    let (artifact, _) = match proxy_service(&state)
+        .validated_artifact(&key, state.shutdown_token().child_token())
+        .await
+    {
+        Ok(value) => value,
+        Err(error) => return Err(AppError::not_found(format!("Proxy недоступен: {error}"))),
+    };
+    if query.source_fingerprint.is_none() && query.source_id.is_none() {
+        return Err(AppError::bad_request(
+            "sourceFingerprint или sourceId обязателен",
+        ));
+    }
+    let stale = !proxy_source_is_current(&state, &artifact, &query).await;
+    let preview_source_id = query.source_id.as_deref().unwrap_or(&artifact.source_id);
+    let preview_query = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("sourceId", preview_source_id)
+        .finish();
+    Ok(Json(json!({
+        "state": if stale { "stale" } else { "ready" },
+        "artifactKey": artifact.key,
+        "sourceId": artifact.source_id,
+        "sourceFingerprint": artifact.source_fingerprint,
+        "profile": artifact.profile,
+        "producerCompatibility": artifact.producer_compatibility,
+        "sourceMedia": artifact.source_media,
+        "proxyMedia": artifact.proxy_media,
+        "previewUrl": if stale { Value::Null } else { json!(format!("/api/proxies/{}/preview?{}", key, preview_query)) },
+    })))
+}
+
+pub async fn proxy_preview(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+    Query(query): Query<ProxyStatusQuery>,
+    request: Request,
+) -> AppResult<Response> {
+    let key =
+        Fingerprint::parse(key).map_err(|_| AppError::bad_request("Некорректный proxy key"))?;
+    if query.source_id.is_none() {
+        return Err(AppError::bad_request(
+            "sourceId обязателен для proxy preview",
+        ));
+    }
+    let (artifact, path) = match proxy_service(&state)
+        .validated_artifact(&key, state.shutdown_token().child_token())
+        .await
+    {
+        Ok(value) => value,
+        Err(error) => return Err(AppError::not_found(format!("Proxy недоступен: {error}"))),
+    };
+    if !proxy_source_is_current(&state, &artifact, &query).await {
+        return Err(AppError::not_found("Proxy устарел относительно source"));
+    }
+    Ok(ServeFile::new(path)
+        .oneshot(request)
+        .await
+        .expect("ServeFile is infallible")
+        .map(Body::new))
+}
+
+pub async fn invalidate_proxy(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> AppResult<Json<Value>> {
+    let key =
+        Fingerprint::parse(key).map_err(|_| AppError::bad_request("Некорректный proxy key"))?;
+    // Hold SQLite's writer transaction across the canonical filesystem delete.
+    // A worker cannot claim the new pending generation, and a concurrent POST
+    // cannot delete its output, until this transition commits.
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let mut tx = state
+        .db
+        .pool()
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(|error| AppError::internal("begin proxy invalidation", error))?;
+    let changed = sqlx::query("UPDATE derived_tasks SET state='pending',attempt=0,generation=generation+1,available_at=?,result_json=NULL,error='proxy artifact failed validation',lease_owner=NULL,lease_until=NULL,updated_at=? WHERE artifact_key=? AND kind='proxy' AND state='succeeded' AND EXISTS (SELECT 1 FROM derived_graph_tasks gt WHERE gt.task_id=derived_tasks.task_id)")
+        .bind(now).bind(now).bind(key.as_str()).execute(&mut *tx).await
+        .map_err(|error| AppError::internal("gate proxy invalidation", error))?
+        .rows_affected() == 1;
+    if changed {
+        proxy_service(&state)
+            .invalidate_key(&key)
+            .await
+            .map_err(|error| AppError::internal("remove invalid proxy", error))?;
+    }
+    tx.commit()
+        .await
+        .map_err(|error| AppError::internal("commit proxy invalidation", error))?;
+    Ok(Json(
+        json!({ "artifactKey": key, "regenerationQueued": changed }),
+    ))
 }
 
 pub async fn enqueue_derived_graph(
@@ -173,6 +339,7 @@ pub fn schedule_source_graph(state: &AppState, entry: MediaEntry) {
             Err(error) => { tracing::warn!(media.id = %entry.id, %error, "fingerprint source for derived graph"); return; }
         };
         let fingerprint = identity.sha256.to_string();
+        let _ = worker.library.set_fingerprint(&entry.id, fingerprint.clone()).await;
         let profile = ProxyProfile::default();
         let probe_key = Fingerprint::combine([b"probe-v1".as_slice(), fingerprint.as_bytes()]).to_string();
         let mut tasks = vec![DerivedTaskSpec {
@@ -183,7 +350,11 @@ pub fn schedule_source_graph(state: &AppState, entry: MediaEntry) {
         if entry.width.unwrap_or(0) > 0 {
             let profile_json = serde_json::to_value(&profile).expect("proxy profile serializes");
             let source = SourceIdentity { id: entry.id.clone(), original_path: path.clone(), duration_seconds: entry.duration.unwrap_or(0.0), fingerprint: identity.sha256.clone() };
-            let proxy_key = crate::analysis::proxy::proxy_key(&source, &profile).to_string();
+            let proxy_key = crate::analysis::proxy::proxy_key(
+                &source,
+                &profile,
+                crate::analysis::proxy::FFMPEG_PROXY_COMPATIBILITY,
+            ).to_string();
             tasks.push(DerivedTaskSpec {
                 key: "proxy".into(), artifact_key: proxy_key, kind: DerivedTaskKind::Proxy,
                 payload: json!({ "sourceId": entry.id, "sourceFingerprint": fingerprint, "profile": profile_json }),
@@ -237,10 +408,18 @@ async fn run_claim(state: &AppState, worker_id: &str, claim: ClaimedDerivedTask)
     };
     match outcome {
         Ok(result) => {
-            let _ = state
+            let completed = state
                 .derived_job_store
                 .complete(&claim.task_id, claim.generation, worker_id, &result)
-                .await;
+                .await
+                .unwrap_or(false);
+            if !completed && claim.kind == DerivedTaskKind::Proxy {
+                if let Some(key) = result.get("key").and_then(Value::as_str) {
+                    if let Ok(key) = Fingerprint::parse(key) {
+                        let _ = gc_proxy_if_unreferenced(state, &key).await;
+                    }
+                }
+            }
         }
         Err(error) => {
             let message = crate::privacy::redact_text(&error.to_string());
@@ -310,14 +489,20 @@ async fn execute_claim(
                 duration_seconds: entry.duration.unwrap_or(0.0),
                 fingerprint,
             };
-            let service = ProxyService::new(
-                state.storage.clone(),
-                state.cpu_pool.clone(),
-                Arc::new(FfmpegProxyEncoder::new(state.process_runtime.clone())),
+            let service = proxy_service(state);
+            let expected_key = crate::analysis::proxy::proxy_key(
+                &source,
+                &profile,
+                service.producer_compatibility(),
             );
-            Ok(serde_json::to_value(
-                service.ensure(source, profile, cancellation).await?,
-            )?)
+            if expected_key.as_str() != claim.artifact_key {
+                anyhow::bail!("derived proxy claim has an invalid semantic artifact key")
+            }
+            let artifact = service.ensure(source, profile, cancellation).await?;
+            if artifact.key.as_str() != claim.artifact_key {
+                anyhow::bail!("derived proxy artifact key does not match the claimed task")
+            }
+            Ok(serde_json::to_value(artifact)?)
         }
         _ => anyhow::bail!(
             "derived executor {} is unavailable",

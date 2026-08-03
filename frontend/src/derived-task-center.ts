@@ -3,6 +3,7 @@ import { BrowserDerivedQueue, DerivedPermissionRequiredError, type DerivedTask, 
 import * as browserMedia from './browser-media'
 import type { VideoInfo } from './types'
 import * as api from './api'
+import { browserProxyCapability, browserProxyKey, browserProxyProfileFingerprint, fingerprintBrowserProxy, getBrowserProxyArtifact, probeBrowserProxyBlob, putBrowserProxyArtifact, validateBrowserProxyProbe } from './browser-proxy-artifacts'
 
 const queue = new BrowserDerivedQueue()
 let pumping: Promise<void> | null = null
@@ -62,7 +63,8 @@ async function resolveDerivedSource(mediaId: string, fingerprint?: string): Prom
 }
 
 async function createBrowserProxy(mediaId: string, fingerprint: string | undefined, signal: AbortSignal): Promise<unknown> {
-  if (typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream) throw new Error('Браузер не поддерживает фоновый proxy recorder')
+  const capability = browserProxyCapability()
+  if (!capability.supported) throw new Error(`Браузер не поддерживает proxy: ${capability.reason}`)
   const info = await resolveDerivedSource(mediaId, fingerprint)
   const video = document.createElement('video'); video.playsInline = true; video.muted = true; video.src = info.url
   const canvas = document.createElement('canvas')
@@ -93,7 +95,22 @@ async function createBrowserProxy(mediaId: string, fingerprint: string | undefin
     await video.play(); await finished
     const blob = new Blob(chunks, { type: mimeType })
     if (!blob.size) throw new Error('Proxy recorder создал пустой artifact')
-    return { schemaVersion: 1, kind: 'proxy', width: canvas.width, height: canvas.height, duration: info.duration, mimeType, sizeBytes: blob.size, blob }
+    if (!info.fingerprint) throw new Error('Proxy нельзя опубликовать без fingerprint исходника')
+    const measured = await probeBrowserProxyBlob(blob)
+    validateBrowserProxyProbe(measured, { duration: info.duration, width: canvas.width, height: canvas.height })
+    const profileFingerprint = browserProxyProfileFingerprint()
+    const descriptor = {
+      schemaVersion: 1 as const, key: browserProxyKey(info.fingerprint, profileFingerprint),
+      sourceFingerprint: info.fingerprint, profileFingerprint, mimeType,
+      width: measured.width, height: measured.height,
+      durationTicks: Math.round(measured.duration * 1_000_000),
+      sourceDurationTicks: Math.round(info.duration * 1_000_000), startTicks: 0 as const,
+      mappingTimeBase: 1_000_000 as const,
+      nominalFps: 15, hasAudio: false, sizeBytes: blob.size,
+      artifactFingerprint: await fingerprintBrowserProxy(blob), createdAt: Date.now(),
+    }
+    await putBrowserProxyArtifact({ descriptor, blob })
+    return descriptor
   } finally {
     if (drawing !== undefined) window.clearInterval(drawing)
     signal.removeEventListener('abort', abort); stop(); stream.getTracks().forEach(track => track.stop())
@@ -126,6 +143,14 @@ export async function initializeDerivedTasks(): Promise<void> {
       for (const source of (await browserMedia.getLibrary()).filter(entry => entry.kind === 'source')) {
         await enqueueSourceAnalysis(source as VideoInfo, `media:${source.assetId ?? source.id}`, false).catch(() => undefined)
       }
+      if (browserProxyCapability().supported) {
+        for (const task of (await queue.list()).filter(item => item.kind === 'proxy' && item.state === 'succeeded')) {
+          const fingerprint = (task.payload as { fingerprint?: unknown }).fingerprint
+          if (typeof fingerprint === 'string' && !await getBrowserProxyArtifact(fingerprint)) {
+            await queue.invalidateSucceeded(task.id, 'proxy artifact missing or corrupt')
+          }
+        }
+      }
     }
     await refresh()
     if (api.clientOnlyMode) void pump()
@@ -136,6 +161,14 @@ export async function initializeDerivedTasks(): Promise<void> {
   } catch (error) {
     derivedTaskState.message = `Очередь фоновых задач недоступна: ${error instanceof Error ? error.message : String(error)}`
   } finally { derivedTaskState.restoring = false }
+}
+
+export async function regenerateMissingBrowserProxy(sourceFingerprint: string): Promise<void> {
+  if (!api.clientOnlyMode || !browserProxyCapability().supported) return
+  const task = (await queue.list()).find(item => item.kind === 'proxy' && item.state === 'succeeded' && (item.payload as { fingerprint?: unknown }).fingerprint === sourceFingerprint)
+  if (task && await queue.invalidateSucceeded(task.id, 'proxy artifact missing or corrupt')) {
+    await refresh(); void pump()
+  }
 }
 
 async function pollServer(): Promise<void> {
@@ -153,7 +186,7 @@ export async function enqueueSourceAnalysis(video: VideoInfo, projectId: string,
     idempotencyKey: `probe:v1:${identity}`, payloadVersion: 1,
     payload: { mediaId: video.id, fingerprint: video.fingerprint }, priority: 10,
   }]
-  if (video.width > 0) tasks.push({
+  if (video.width > 0 && browserProxyCapability().supported) tasks.push({
     id: crypto.randomUUID(), projectId, kind: 'proxy', idempotencyKey: `proxy:vp8-640-v1:${identity}`,
     payloadVersion: 1, payload: { mediaId: video.id, fingerprint: video.fingerprint }, priority: -10, dependencies: [probeId],
   })

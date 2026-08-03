@@ -212,6 +212,15 @@ export class BrowserDerivedQueue {
     task.state = task.dependencies.length ? 'blocked' : 'queued'; task.availableAt = this.now(); delete task.error; store.put(task); await transactionDone(tx); return true
   }
 
+  async invalidateSucceeded(id: string, reason: string): Promise<boolean> {
+    const db = await this.open(), tx = db.transaction(TASKS, 'readwrite'), store = tx.objectStore(TASKS)
+    const task = await request(store.get(id)) as DerivedTask | undefined
+    if (!task || task.state !== 'succeeded') { await transactionDone(tx); return false }
+    task.state = task.dependencies.length ? 'blocked' : 'queued'; task.generation++; task.attempt = 0
+    task.availableAt = this.now(); task.error = reason; delete task.result; store.put(task)
+    await transactionDone(tx); return true
+  }
+
   async recoverExpired(): Promise<number> {
     const db = await this.open(), tx = db.transaction(TASKS, 'readwrite'), store = tx.objectStore(TASKS)
     const tasks = await request(store.getAll()) as DerivedTask[]; let count = 0; const now = this.now()

@@ -41,6 +41,7 @@ import {
   relinkLibraryMedia,
   relinkState,
   openSavedProject,
+  setProjectProxyPolicy,
 } from './store'
 import type { EditState, VideoInfo } from './types'
 
@@ -168,6 +169,15 @@ describe('buildEditPayload', () => {
     expect('trim' in p).toBe(false)
     expect('segments' in p).toBe(false)
     expect('crop' in p).toBe(false)
+  })
+
+  it('never routes the persisted proxy preference into an export payload', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    setProjectProxyPolicy('proxy')
+    const payload = buildEditPayload()
+    expect(payload.videoId).toBe('vid')
+    expect(JSON.stringify(payload)).not.toContain('proxy')
+    expect(JSON.stringify(payload)).not.toContain('/api/proxies/')
   })
 
   it('emits a trim when the clip is narrowed', () => {

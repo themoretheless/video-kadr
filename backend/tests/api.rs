@@ -7,13 +7,17 @@ mod support;
 
 use std::time::Duration;
 
-use axum::body::Body;
+use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use axum::Router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+use video_editor_backend::analysis::proxy::{
+    proxy_key, ProxyProfile, SourceIdentity, FFMPEG_PROXY_COMPATIBILITY,
+};
 use video_editor_backend::db::Db;
+use video_editor_backend::domain::artifact_graph::Fingerprint;
 use video_editor_backend::handlers::resume_pending_jobs;
 use video_editor_backend::jobs::{EnqueueOutcome, JobKind, QueueLimits};
 use video_editor_backend::library::{Library, MediaEntry};
@@ -124,11 +128,24 @@ async fn health_reflects_tool_availability() {
 async fn derived_graph_api_persists_dag_priority_and_cancel() {
     let (state, _dir) = make_state(false, false).await;
     let app = router(state.clone());
+    let source_fingerprint = Fingerprint::digest(b"derived-source");
+    let proxy_profile = ProxyProfile::default();
+    let proxy_artifact_key = proxy_key(
+        &SourceIdentity {
+            id: "source".into(),
+            original_path: state.storage.join("unused.mp4"),
+            duration_seconds: 1.0,
+            fingerprint: source_fingerprint.clone(),
+        },
+        &proxy_profile,
+        FFMPEG_PROXY_COMPATIBILITY,
+    )
+    .to_string();
     let graph = json!({
         "projectId": "project-a",
         "tasks": [
             { "key": "probe", "artifactKey": "probe-content-v1", "kind": "probe", "payload": {"sourceId":"source"}, "dependencies": [], "priority": 0 },
-            { "key": "proxy", "artifactKey": "proxy-content-v1", "kind": "proxy", "payload": {"sourceId":"source"}, "dependencies": ["probe"], "priority": -10 }
+            { "key": "proxy", "artifactKey": proxy_artifact_key, "kind": "proxy", "payload": {"sourceId":"source", "sourceFingerprint": source_fingerprint, "profile": proxy_profile}, "dependencies": ["probe"], "priority": -10 }
         ]
     });
     let (status, body, _) = send(&app, post_json("/api/derived-graphs", graph)).await;
@@ -215,6 +232,122 @@ async fn derived_shared_task_cancel_detaches_each_project_through_api() {
     let (_, tasks, _) = send(&app, get("/api/derived-jobs")).await;
     assert_eq!(tasks[0]["state"], "cancelled");
     assert_eq!(tasks[0]["consumerProjectIds"], json!([]));
+}
+
+#[tokio::test]
+async fn proxy_catalog_rejects_untrusted_keys_before_filesystem_resolution() {
+    let (state, _dir) = make_state(false, false).await;
+    let app = router(state);
+    let (status, body, _) = send(&app, get("/api/proxies/../../app.db/status")).await;
+    assert!(matches!(
+        status,
+        StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND
+    ));
+    assert!(body.get("path").is_none());
+
+    let (status, body, _) = send(&app, get("/api/proxies/not-a-fingerprint/status")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn proxy_catalog_serves_only_a_checksum_verified_ready_artifact_with_range() {
+    let (state, _dir) = make_state(false, false).await;
+    let bytes = b"verified proxy bytes";
+    let source_fingerprint = Fingerprint::digest(b"source").to_string();
+    tokio::fs::create_dir_all(state.storage.join("sources"))
+        .await
+        .unwrap();
+    tokio::fs::write(state.storage.join("sources/source.mp4"), b"source")
+        .await
+        .unwrap();
+    assert!(state
+        .library
+        .add(video_editor_backend::library::MediaEntry::from_result(
+            "source",
+            &json!({"id":"source","filename":"source.mp4","url":"/media/source.mp4","fingerprint":source_fingerprint.clone()}),
+        ))
+        .await);
+    let key = proxy_key(
+        &SourceIdentity {
+            id: "source".into(),
+            original_path: state.storage.join("unused-source.mp4"),
+            duration_seconds: 10.0,
+            fingerprint: Fingerprint::parse(&source_fingerprint).unwrap(),
+        },
+        &ProxyProfile::default(),
+        FFMPEG_PROXY_COMPATIBILITY,
+    )
+    .to_string();
+    let relative = format!("proxies/{key}.mp4");
+    tokio::fs::create_dir_all(state.storage.join("proxies"))
+        .await
+        .unwrap();
+    tokio::fs::write(state.storage.join(&relative), bytes)
+        .await
+        .unwrap();
+    let clock = json!({"timeBase":{"numerator":1,"denominator":90000},"durationTicks":900000,"startTicks":0});
+    let media = json!({
+        "clock": clock, "codedWidth": 640, "codedHeight": 360,
+        "displayWidth": 640, "displayHeight": 360, "videoCodec":"h264",
+        "frameRate":{"numerator":30,"denominator":1}, "audioCodec":"aac",
+        "audioSampleRate":48000, "audioChannels":2
+    });
+    let manifest = json!({
+        "schemaVersion":3, "key":key, "sourceId":"source", "sourceFingerprint":source_fingerprint,
+        "profile":{"maxWidth":960,"codec":"h264","quality":28,"includeAudio":true},
+        "producerCompatibility":"ffmpeg-proxy-v3-common-origin", "sourceMedia":media, "proxyMedia":media,
+        "file":{"path":relative,"size":bytes.len(),"sha256":Fingerprint::digest(bytes)}
+    });
+    tokio::fs::write(
+        state.storage.join(format!("proxies/{key}.json")),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .await
+    .unwrap();
+    let app = router(state);
+    let (status, body, _) = send(
+        &app,
+        get(&format!("/api/proxies/{key}/status?sourceId=source")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["state"], "ready");
+    assert_eq!(
+        body["previewUrl"],
+        format!("/api/proxies/{key}/preview?sourceId=source")
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/proxies/{key}/preview?sourceId=source"))
+                .header("range", "bytes=0-7")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+        response.headers()["content-range"],
+        format!("bytes 0-7/{}", bytes.len())
+    );
+    assert_eq!(
+        &to_bytes(response.into_body(), 1024).await.unwrap()[..],
+        b"verified"
+    );
+
+    let (status, body, _) = send(&app, post_empty(&format!("/api/proxies/{key}/invalidate"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["regenerationQueued"], false);
+    let (status, _, _) = send(
+        &app,
+        get(&format!("/api/proxies/{key}/status?sourceId=source")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
 }
 
 #[tokio::test]

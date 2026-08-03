@@ -5,6 +5,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 
+use crate::domain::artifact_graph::Fingerprint;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -41,6 +42,24 @@ pub async fn library_delete_handler(
 ) -> AppResult<StatusCode> {
     let entry = state.library.get(&id).await;
     if state.library.remove(&id).await {
+        if entry.as_ref().is_some_and(|entry| entry.kind == "source") {
+            match state.derived_job_store.detach_media_project(&id).await {
+                Ok(proxy_keys) => {
+                    for key in proxy_keys {
+                        if let Ok(key) = Fingerprint::parse(key) {
+                            if let Err(error) =
+                                super::derived::gc_proxy_if_unreferenced(&state, &key).await
+                            {
+                                tracing::warn!(proxy.key = %key, %error, "garbage collect detached proxy");
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(media.id = %id, %error, "detach deleted source media jobs")
+                }
+            }
+        }
         if let Err(error) = state.media_index.remove(&id).await {
             tracing::warn!(media.id = %id, %error, "remove media from search index");
         }

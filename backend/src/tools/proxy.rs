@@ -7,7 +7,9 @@ use anyhow::{anyhow, Result};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::analysis::proxy::FFMPEG_PROXY_COMPATIBILITY;
 use crate::analysis::proxy::{ProxyCodec, ProxyEncoder, ProxyProfile, SourceIdentity};
+use crate::domain::media_probe::ProbeResult;
 use crate::process_control::ProcessRuntime;
 
 use super::{run_ffmpeg, Done};
@@ -25,6 +27,10 @@ impl FfmpegProxyEncoder {
 
 #[axum::async_trait]
 impl ProxyEncoder for FfmpegProxyEncoder {
+    fn producer_compatibility(&self) -> &'static str {
+        FFMPEG_PROXY_COMPATIBILITY
+    }
+
     async fn generate(
         &self,
         source: &SourceIdentity,
@@ -51,6 +57,10 @@ impl ProxyEncoder for FfmpegProxyEncoder {
             Done::Cancelled => Err(anyhow!("proxy generation cancelled")),
         }
     }
+
+    async fn probe(&self, path: &Path) -> Result<ProbeResult> {
+        super::probe_video(&self.runtime, path).await
+    }
 }
 
 pub fn build_proxy_args(input: &Path, output: &Path, profile: &ProxyProfile) -> Vec<String> {
@@ -58,14 +68,22 @@ pub fn build_proxy_args(input: &Path, output: &Path, profile: &ProxyProfile) -> 
         "-y".into(),
         "-i".into(),
         input.to_string_lossy().into_owned(),
+        "-map".into(),
+        "0:v:0".into(),
         "-vf".into(),
         format!("scale='min({},iw)':-2", profile.max_width),
+        "-copyts".into(),
+        "-start_at_zero".into(),
+        "-avoid_negative_ts".into(),
+        "make_zero".into(),
     ];
     match profile.codec {
         ProxyCodec::H264 => {
             args.extend([
                 "-c:v".into(),
                 "libx264".into(),
+                "-bf".into(),
+                "0".into(),
                 "-preset".into(),
                 "veryfast".into(),
                 "-crf".into(),
@@ -88,7 +106,14 @@ pub fn build_proxy_args(input: &Path, output: &Path, profile: &ProxyProfile) -> 
         }
     }
     if profile.include_audio {
-        args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "96k".into()]);
+        args.extend([
+            "-map".into(),
+            "0:a:0?".into(),
+            "-c:a".into(),
+            "aac".into(),
+            "-b:a".into(),
+            "96k".into(),
+        ]);
     } else {
         args.push("-an".into());
     }
@@ -110,6 +135,8 @@ mod tests {
         assert_eq!(args.first().map(String::as_str), Some("-y"));
         assert!(args.contains(&"libx264".into()));
         assert!(args.contains(&"scale='min(960,iw)':-2".into()));
+        assert!(args.contains(&"-copyts".into()));
+        assert!(args.contains(&"-start_at_zero".into()));
         assert_eq!(args.last().map(String::as_str), Some("/staging/proxy.mp4"));
     }
 }

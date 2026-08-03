@@ -172,4 +172,13 @@ describe('BrowserDerivedQueue', () => {
     await running
     expect((await q.list())[0]!.state).toBe('succeeded')
   })
+
+  it('revives a succeeded artifact after catalog validation fails', async () => {
+    const q = queue(); await q.enqueueGraph([task('proxy-ready')])
+    const running = (await q.claim())!
+    await q.complete(running.id, running.generation, { descriptor: true })
+    expect(await q.invalidateSucceeded(running.id, 'checksum mismatch')).toBe(true)
+    expect((await q.list())[0]).toMatchObject({ state: 'queued', attempt: 0, error: 'checksum mismatch' })
+    expect((await q.list())[0]?.result).toBeUndefined()
+  })
 })

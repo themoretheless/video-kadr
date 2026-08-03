@@ -1197,6 +1197,17 @@ export const timelineState = reactive({
   canUndo: false,
   canRedo: false,
 })
+
+export type ProjectProxyPolicy = 'auto' | 'original' | 'proxy'
+
+export function setProjectProxyPolicy(policy: ProjectProxyPolicy): void {
+  if (!['auto', 'original', 'proxy'].includes(policy)) return
+  const document = timelineState.document
+  if (!document || (document.proxyPolicy ?? 'auto') === policy) return
+  document.proxyPolicy = policy
+  timelineState.revision++
+  scheduleProjectSave()
+}
 const structuralHistory = new StructuralHistory(32 * 1024 * 1024)
 
 function initializeTimelineDocument(video: VideoInfo): void {

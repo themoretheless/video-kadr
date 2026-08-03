@@ -12,7 +12,9 @@ use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::analysis::proxy::{proxy_key, ProxyProfile, SourceIdentity, FFMPEG_PROXY_COMPATIBILITY};
 use crate::db::Db;
+use crate::domain::artifact_graph::Fingerprint;
 use crate::library::now_secs;
 
 pub const MAX_GRAPH_NODES: usize = 256;
@@ -145,6 +147,14 @@ pub struct DerivedTaskSpec {
     pub priority: i64,
     #[serde(default = "default_max_attempts")]
     pub max_attempts: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ProxyTaskPayload {
+    source_id: String,
+    source_fingerprint: String,
+    profile: ProxyProfile,
 }
 
 fn default_max_attempts() -> u32 {
@@ -527,6 +537,20 @@ impl DerivedJobStore {
         Ok(changed)
     }
 
+    /// A derived catalog resolver calls this after a supposedly-ready artifact
+    /// fails manifest/checksum validation. The durable succeeded row is revived
+    /// so fallback playback and background regeneration happen together.
+    pub async fn invalidate_succeeded_artifact(
+        &self,
+        artifact_key: &str,
+        reason: &str,
+    ) -> Result<bool> {
+        let now = now_secs() as i64;
+        Ok(sqlx::query("UPDATE derived_tasks SET state='pending',attempt=0,generation=generation+1,available_at=?,result_json=NULL,error=?,lease_owner=NULL,lease_until=NULL,updated_at=? WHERE artifact_key=? AND kind='proxy' AND state='succeeded' AND EXISTS (SELECT 1 FROM derived_graph_tasks gt WHERE gt.task_id=derived_tasks.task_id)")
+            .bind(now).bind(reason).bind(now).bind(artifact_key)
+            .execute(self.db.pool()).await?.rows_affected() == 1)
+    }
+
     /// Cancels a task and durably propagates blockage to every non-terminal descendant.
     pub async fn cancel(&self, task_id: &str) -> Result<u64> {
         let now = now_secs() as i64;
@@ -642,6 +666,58 @@ impl DerivedJobStore {
         Ok(cancelled)
     }
 
+    /// Detach all automatically scheduled graphs for deleted source media and
+    /// return now-unreferenced proxy keys for canonical filesystem GC.
+    pub async fn detach_media_project(&self, media_id: &str) -> Result<Vec<String>> {
+        let project_id = format!("media:{media_id}");
+        let now = now_secs() as i64;
+        let mut tx = self.db.pool().begin_with("BEGIN IMMEDIATE").await?;
+        let task_ids: Vec<String> = sqlx::query_scalar("SELECT DISTINCT gt.task_id FROM derived_graphs g JOIN derived_graph_tasks gt ON gt.graph_id=g.graph_id WHERE g.project_id=?")
+            .bind(&project_id).fetch_all(&mut *tx).await?;
+        sqlx::query("INSERT INTO derived_cancelled_projects(project_id,cancelled_at) VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET cancelled_at=excluded.cancelled_at")
+            .bind(&project_id).bind(now).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM derived_graph_tasks WHERE graph_id IN (SELECT graph_id FROM derived_graphs WHERE project_id=?)")
+            .bind(&project_id).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM derived_graphs WHERE project_id=?")
+            .bind(&project_id)
+            .execute(&mut *tx)
+            .await?;
+        let mut proxy_keys = Vec::new();
+        for task_id in task_ids {
+            let consumers: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM derived_graph_tasks WHERE task_id=?")
+                    .bind(&task_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if consumers == 0 {
+                if let Some(key) = sqlx::query_scalar::<_, String>(
+                    "SELECT artifact_key FROM derived_tasks WHERE task_id=? AND kind='proxy'",
+                )
+                .bind(&task_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                {
+                    proxy_keys.push(key);
+                }
+                sqlx::query("UPDATE derived_tasks SET state='cancelled',generation=generation+1,lease_owner=NULL,lease_until=NULL,error='source media deleted',updated_at=? WHERE task_id=? AND state<>'cancelled'")
+                    .bind(now).bind(&task_id).execute(&mut *tx).await?;
+            } else if let Some(replacement) = sqlx::query_scalar::<_, String>("SELECT substr(g.project_id,7) FROM derived_graph_tasks gt JOIN derived_graphs g ON g.graph_id=gt.graph_id WHERE gt.task_id=? AND g.project_id LIKE 'media:%' ORDER BY g.created_at LIMIT 1")
+                .bind(&task_id).fetch_optional(&mut *tx).await? {
+                let row = sqlx::query("SELECT payload_json,state FROM derived_tasks WHERE task_id=?")
+                    .bind(&task_id).fetch_one(&mut *tx).await?;
+                let mut payload: Value = serde_json::from_str(row.try_get("payload_json")?)?;
+                if payload.get("sourceId").and_then(Value::as_str) == Some(media_id) {
+                    payload["sourceId"] = Value::String(replacement);
+                    let running = row.try_get::<String, _>("state")? == "running";
+                    sqlx::query("UPDATE derived_tasks SET payload_json=?,state=CASE WHEN ? THEN 'pending' ELSE state END,generation=generation+?,lease_owner=CASE WHEN ? THEN NULL ELSE lease_owner END,lease_until=CASE WHEN ? THEN NULL ELSE lease_until END,updated_at=? WHERE task_id=?")
+                        .bind(serde_json::to_string(&payload)?).bind(running).bind(i64::from(running)).bind(running).bind(running).bind(now).bind(&task_id).execute(&mut *tx).await?;
+                }
+            }
+        }
+        tx.commit().await?;
+        Ok(proxy_keys)
+    }
+
     pub async fn project_cancelled(&self, project_id: &str) -> Result<bool> {
         Ok(sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM derived_cancelled_projects WHERE project_id=?",
@@ -650,6 +726,11 @@ impl DerivedJobStore {
         .fetch_one(self.db.pool())
         .await?
             > 0)
+    }
+
+    pub async fn artifact_has_consumers(&self, artifact_key: &str) -> Result<bool> {
+        Ok(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM derived_graph_tasks gt JOIN derived_tasks t ON t.task_id=gt.task_id WHERE t.artifact_key=?")
+            .bind(artifact_key).fetch_one(self.db.pool()).await? > 0)
     }
 
     pub async fn state(&self, task_id: &str) -> Result<Option<DerivedTaskState>> {
@@ -802,6 +883,29 @@ fn validate_graph(spec: &DerivedGraphSpec) -> Result<()> {
             "task and artifact keys are required"
         );
         ensure!(task.max_attempts > 0, "max attempts must be positive");
+        if task.kind == DerivedTaskKind::Proxy {
+            let payload: ProxyTaskPayload = serde_json::from_value(task.payload.clone())?;
+            ensure!(
+                !payload.source_id.trim().is_empty(),
+                "proxy sourceId is required"
+            );
+            let fingerprint = Fingerprint::parse(&payload.source_fingerprint)?;
+            payload.profile.validate()?;
+            let expected = proxy_key(
+                &SourceIdentity {
+                    id: String::new(),
+                    original_path: std::path::PathBuf::new(),
+                    duration_seconds: 0.0,
+                    fingerprint,
+                },
+                &payload.profile,
+                FFMPEG_PROXY_COMPATIBILITY,
+            );
+            ensure!(
+                expected.as_str() == task.artifact_key,
+                "proxy artifact key does not match its semantic payload"
+            );
+        }
         ensure!(
             (-100..=100).contains(&task.priority),
             "priority must be within -100..=100"
@@ -971,6 +1075,71 @@ mod tests {
         assert_eq!(
             store.claim_next("w", 60).await.unwrap().unwrap().task_id,
             id
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_catalog_artifact_revives_succeeded_producer() {
+        let (_dir, store) = store().await;
+        let mut proxy = task("a", &[], 0);
+        proxy.kind = DerivedTaskKind::Proxy;
+        let fingerprint = Fingerprint::digest(b"source");
+        let profile = ProxyProfile::default();
+        proxy.artifact_key = proxy_key(
+            &SourceIdentity {
+                id: "source".into(),
+                original_path: std::path::PathBuf::new(),
+                duration_seconds: 1.0,
+                fingerprint: fingerprint.clone(),
+            },
+            &profile,
+            FFMPEG_PROXY_COMPATIBILITY,
+        )
+        .to_string();
+        let artifact_key = proxy.artifact_key.clone();
+        proxy.payload = serde_json::json!({ "sourceId": "source", "sourceFingerprint": fingerprint, "profile": profile });
+        let ready = store.enqueue_graph(&graph("p", vec![proxy])).await.unwrap();
+        let id = ready.tasks["a"].clone();
+        let claim = store.claim_next("w", 60).await.unwrap().unwrap();
+        assert!(store
+            .complete(
+                &id,
+                claim.generation,
+                "w",
+                &serde_json::json!({"ready":true})
+            )
+            .await
+            .unwrap());
+        assert!(store
+            .invalidate_succeeded_artifact(&artifact_key, "checksum mismatch")
+            .await
+            .unwrap());
+        assert_eq!(
+            store.state(&id).await.unwrap(),
+            Some(DerivedTaskState::Pending)
+        );
+        assert_eq!(
+            store.claim_next("w2", 60).await.unwrap().unwrap().task_id,
+            id
+        );
+
+        let probe = store
+            .enqueue_graph(&graph("p2", vec![task("probe", &[], 0)]))
+            .await
+            .unwrap();
+        let probe_id = probe.tasks["probe"].clone();
+        let claim = store.claim_next("probe-worker", 60).await.unwrap().unwrap();
+        assert!(store
+            .complete(&probe_id, claim.generation, "probe-worker", &Value::Null)
+            .await
+            .unwrap());
+        assert!(!store
+            .invalidate_succeeded_artifact("artifact-probe", "hostile request")
+            .await
+            .unwrap());
+        assert_eq!(
+            store.state(&probe_id).await.unwrap(),
+            Some(DerivedTaskState::Succeeded)
         );
     }
 

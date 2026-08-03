@@ -425,6 +425,9 @@ body {
   gap: 6px;
 }
 
+.proxy-controls { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; color: var(--muted); font-size: .85rem; }
+.proxy-controls select { width: auto; min-width: 7rem; }
+
 .meta-chip {
   background: var(--panel-2);
   border: 1px solid var(--border);

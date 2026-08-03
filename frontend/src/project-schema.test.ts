@@ -23,6 +23,7 @@ describe('project document schema', () => {
     expect(document.sequences[0]?.tracks).toHaveLength(2)
     expect(document.sequences[0]?.tracks[0]?.clips[0]?.durationTicks).toBe(12_500_000)
     expect(document.legacyFields?.pluginState).toEqual({ revision: 7 })
+    expect(document.proxyPolicy).toBe('auto')
   })
 
   it('migrates v2 asset identity to v3 without changing media order or extensions', () => {
@@ -46,6 +47,7 @@ describe('project document schema', () => {
     expect(document.media[0]!.metadata).not.toHaveProperty('url')
     expect(document.media[0]!.metadata).not.toHaveProperty('assetId')
     expect(document.pluginTop).toEqual({ keep: true })
+    expect(document.proxyPolicy).toBe('auto')
   })
 
   it('creates an audio primary asset on an audio track', () => {
@@ -127,6 +129,15 @@ describe('project document schema', () => {
       createdAt: 10,
       updatedAt: 20,
     })
+  })
+
+  it('round-trips a project proxy policy without persisting an artifact locator', () => {
+    const document = migrateProjectDocument({ videoId: 'video-1', video: { id: 'video-1', duration: 1 }, edit: {} })
+    document.proxyPolicy = 'proxy'
+    const reopened = migrateProjectDocument(JSON.parse(JSON.stringify(document)))
+    expect(reopened.proxyPolicy).toBe('proxy')
+    expect(JSON.stringify(reopened)).not.toContain('/api/proxies/')
+    expect(JSON.stringify(reopened)).not.toContain('blob:')
   })
 
   it('patches legacy values without losing nested unknown fields', () => {

@@ -13,6 +13,15 @@ pub const PROJECT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 pub const CREATOR_VIDEO_TRACK_COUNT: usize = 4;
 pub const CREATOR_AUDIO_TRACK_COUNT: usize = 4;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyPolicy {
+    #[default]
+    Auto,
+    Original,
+    Proxy,
+}
+
 /// Persistence metadata is kept outside the editable document so autosave can
 /// advance a revision without mutating timeline content.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,6 +44,8 @@ pub struct ProjectDocument {
     pub name: String,
     pub primary_media_id: String,
     pub active_sequence_id: String,
+    #[serde(default)]
+    pub proxy_policy: ProxyPolicy,
     pub media: Vec<ProjectMedia>,
     pub sequences: Vec<ProjectSequence>,
     /// Fields unknown to the v1 reader are retained when that payload is
@@ -391,6 +402,7 @@ impl ProjectDocument {
             name,
             primary_media_id: video_id.clone(),
             active_sequence_id: "sequence-main".to_owned(),
+            proxy_policy: ProxyPolicy::default(),
             media: vec![ProjectMedia {
                 id: video_id.clone(),
                 kind: primary_kind.to_owned(),

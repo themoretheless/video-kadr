@@ -35,8 +35,8 @@ mod upload;
 
 pub use derived::{
     cancel_derived_graph, cancel_derived_job, derived_graph, enqueue_derived_graph,
-    list_derived_jobs, reprioritize_derived_job, retry_derived_job, schedule_source_graph,
-    start_derived_dispatcher,
+    invalidate_proxy, list_derived_jobs, proxy_preview, proxy_status, reprioritize_derived_job,
+    retry_derived_job, schedule_source_graph, start_derived_dispatcher,
 };
 pub use jobs::{
     cancel_handler, discard_job_handler, failed_jobs_handler, job_registry_handler,
@@ -182,6 +182,14 @@ fn spawn_import_job(
                 let info = tools::probe_video(&st.process_runtime, &path).await?;
                 let title = tools::read_title(&sources, &vid).await;
                 let size = tokio::fs::metadata(&path).await.map(|m| m.len()).ok();
+                let fingerprint = crate::artifacts::fingerprint_file(
+                    &st.cpu_pool,
+                    path.clone(),
+                    token.child_token(),
+                )
+                .await?
+                .sha256
+                .to_string();
                 let filename = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -198,6 +206,7 @@ fn spawn_import_job(
                     "vcodec": info.vcodec,
                     "acodec": info.acodec,
                     "sizeBytes": size,
+                    "fingerprint": fingerprint,
                 })))
             }
             .await;

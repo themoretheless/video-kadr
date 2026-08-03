@@ -1,9 +1,56 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { beginEditTransaction, endEditTransaction, isIdentityCurves, state } from '../store'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { beginEditTransaction, clientOnlyMode, endEditTransaction, isIdentityCurves, setProjectProxyPolicy, state, timelineState, type ProjectProxyPolicy } from '../store'
+import { derivedTaskState, regenerateMissingBrowserProxy } from '../derived-task-center'
+import { browserProxyCapability, deleteBrowserProxyArtifact, resolveBrowserPreviewSource, type ProxyPreviewSource } from '../browser-proxy-artifacts'
+import { invalidateBackendProxyArtifact, resolveBackendPreviewSource } from '../proxy-preview'
 import RectOverlay from './RectOverlay.vue'
 
 const videoEl = ref<HTMLVideoElement | null>(null)
+const previewSource = ref<ProxyPreviewSource>({ url: '', usingProxy: false, status: 'original' })
+const proxyError = ref('')
+let previewGeneration = 0
+let pendingSwitch: { time: number; playing: boolean; revoke?: () => void } | null = null
+let pendingRestoreCleanup: (() => void) | null = null
+
+const proxyPolicy = computed<ProjectProxyPolicy>(() => timelineState.document?.proxyPolicy ?? 'auto')
+const proxyCapability = computed(() => {
+  if (!clientOnlyMode) return true
+  return browserProxyCapability().supported
+})
+
+function releasePreview(source = previewSource.value): void { source.revoke?.() }
+
+async function resolvePreview(): Promise<void> {
+  const video = state.video
+  const generation = ++previewGeneration
+  const original = video?.url ?? ''
+  if (!video) {
+    releasePreview(); previewSource.value = { url: '', usingProxy: false, status: 'original' }; return
+  }
+  let next: ProxyPreviewSource = { url: original, usingProxy: false, status: 'missing' }
+  proxyError.value = ''
+  try {
+    if (clientOnlyMode) {
+      next = await resolveBrowserPreviewSource(video, proxyPolicy.value, proxyCapability.value)
+      if (next.status === 'missing' && video.fingerprint) void regenerateMissingBrowserProxy(video.fingerprint)
+    } else {
+      next = await resolveBackendPreviewSource(video, proxyPolicy.value, derivedTaskState.tasks)
+    }
+  } catch (error) {
+    proxyError.value = error instanceof Error ? error.message : String(error)
+  }
+  if (generation !== previewGeneration || state.video?.id !== video.id) { next.revoke?.(); return }
+  const previous = previewSource.value
+  const el = videoEl.value
+  pendingSwitch = { time: el?.currentTime ?? state.playerTime, playing: Boolean(el && !el.paused), revoke: previous.revoke }
+  previewSource.value = next
+  if (previous.url === next.url) { pendingSwitch = null; previous.revoke?.() }
+}
+
+function changeProxyPolicy(event: Event): void {
+  setProjectProxyPolicy((event.target as HTMLSelectElement).value as ProjectProxyPolicy)
+}
 
 // While playing, loop within the trim region so the preview reflects the cut.
 function onTimeUpdate() {
@@ -70,11 +117,59 @@ const advancedColorNotice = computed(() => {
 
 // Reload the player when a new source is imported.
 watch(
-  () => state.video?.url,
-  () => {
-    videoEl.value?.load()
-  },
+  () => [state.video?.id, state.video?.url, state.video?.fingerprint, proxyPolicy.value,
+    derivedTaskState.tasks.map(task => `${task.id}:${task.state}:${task.idempotencyKey}`).join('|')],
+  () => void resolvePreview(), { immediate: true },
 )
+
+watch(() => previewSource.value.url, () => {
+  const el = videoEl.value
+  if (!el) return
+  pendingRestoreCleanup?.()
+  const switching = pendingSwitch ?? { time: el.currentTime, playing: !el.paused }
+  pendingSwitch = null
+  el.load()
+  let released = false
+  const release = () => { if (!released) { released = true; switching.revoke?.() } }
+  const restore = () => {
+    el.currentTime = Math.min(switching.time, Number.isFinite(el.duration) ? el.duration : switching.time)
+    applyPlayback(el)
+    if (switching.playing) void el.play().catch(() => undefined)
+    release()
+    pendingRestoreCleanup = null
+  }
+  const cleanup = () => {
+    el.removeEventListener('loadedmetadata', restore)
+    release()
+    if (pendingRestoreCleanup === cleanup) pendingRestoreCleanup = null
+  }
+  pendingRestoreCleanup = cleanup
+  el.addEventListener('loadedmetadata', restore, { once: true })
+})
+
+function onPreviewError(): void {
+  if (!previewSource.value.usingProxy || !state.video) return
+  const previous = previewSource.value
+  previewSource.value = { url: state.video.url, usingProxy: false, status: 'stale' }
+  previous.revoke?.()
+  proxyError.value = 'Proxy недоступен; предпросмотр продолжен с оригинала.'
+  if (clientOnlyMode && state.video.fingerprint) {
+    const failedFingerprint = state.video.fingerprint
+    void deleteBrowserProxyArtifact(failedFingerprint)
+      .catch(() => undefined)
+      .finally(() => regenerateMissingBrowserProxy(failedFingerprint))
+  } else if (previous.artifactKey) {
+    void invalidateBackendProxyArtifact(previous.artifactKey).catch(() => undefined)
+  }
+}
+
+onBeforeUnmount(() => {
+  previewGeneration++
+  pendingRestoreCleanup?.()
+  pendingSwitch?.revoke?.()
+  pendingSwitch = null
+  releasePreview()
+})
 
 // Player bridge: react to seek requests and play/pause toggles from hotkeys.
 watch(
@@ -133,12 +228,13 @@ const meta = computed(() => {
       <video
         ref="videoEl"
         class="player"
-        :src="state.video?.url"
+        :src="previewSource.url || state.video?.url"
         :style="videoStyle"
         :muted="state.edit.mute"
         controls
         playsinline
         @timeupdate="onTimeUpdate"
+        @error="onPreviewError"
       ></video>
       <RectOverlay
         v-if="state.video && state.edit.cropEnabled"
@@ -160,10 +256,25 @@ const meta = computed(() => {
     <div v-if="state.video" class="meta">
       <span v-for="(m, i) in meta" :key="i" class="meta-chip">{{ m }}</span>
     </div>
+    <div v-if="state.video" class="proxy-controls">
+      <label for="proxy-policy">Источник предпросмотра</label>
+      <select id="proxy-policy" :value="proxyPolicy" @change="changeProxyPolicy">
+        <option value="auto">Авто</option>
+        <option value="proxy">Proxy</option>
+        <option value="original">Оригинал</option>
+      </select>
+      <span class="meta-chip" role="status">
+        {{ previewSource.usingProxy ? 'Proxy' : previewSource.status === 'unsupported' ? 'Proxy не поддерживается' : previewSource.status === 'stale' ? 'Proxy устарел — оригинал' : previewSource.status === 'missing' ? 'Proxy готовится — оригинал' : 'Оригинал' }}
+      </span>
+    </div>
+    <p v-if="proxyError" class="hint" role="status">{{ proxyError }}</p>
+    <p v-if="previewSource.usingProxy && previewSource.hasAudio === false" class="hint" role="status">
+      Этот browser proxy без аудиодорожки; выберите «Оригинал» для контроля звука.
+    </p>
     <p v-if="advancedColorNotice" class="preview-color-notice" role="status">
       <strong>{{ advancedColorNotice }}</strong> Эти настройки не отображаются в предпросмотре;
       точный результат виден после экспорта.
     </p>
-    <p v-if="state.video" class="hint">Превью показывает оригинал, обрезка зациклена внутри выбранного отрезка.</p>
+    <p v-if="state.video" class="hint">Обрезка зациклена внутри выбранного отрезка. Экспорт всегда читает оригинал.</p>
   </div>
 </template>
