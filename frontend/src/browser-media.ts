@@ -9,6 +9,7 @@ import type {
 import type { ProjectDto } from './api'
 import { allProjects, compareAndSwapProject, projectByVideo, removeProject } from './browser-project-store'
 import { createProjectDocumentFromLegacy, migrateProjectDocument } from './project-schema'
+import type { ProjectMedia } from './project-schema'
 import {
   auditBrowserAssets,
   BrowserAssetStorageError,
@@ -564,8 +565,10 @@ export async function getLibrary(): Promise<MediaEntry[]> {
   }
   const savedProjects = await allProjects()
   const expectedFingerprints = new Map<string, Set<string>>()
+  const expectedProjectMedia = new Map<string, ProjectMedia>()
   for (const project of savedProjects) for (const media of project.document?.media ?? []) {
     const assetRef = media.assetRef ?? media.id
+    if (!expectedProjectMedia.has(assetRef)) expectedProjectMedia.set(assetRef, media)
     if (!media.contentFingerprint) continue
     const values = expectedFingerprints.get(assetRef) ?? new Set<string>()
     values.add(media.contentFingerprint)
@@ -573,7 +576,13 @@ export async function getLibrary(): Promise<MediaEntry[]> {
   }
   for (const asset of persisted) {
     const expected = expectedFingerprints.get(asset.id)
+    const projectMedia = expectedProjectMedia.get(asset.id)
     const fingerprintConflict = Boolean(expected && (expected.size > 1 || !expected.has(asset.fingerprint)))
+    const projectFingerprint = expected?.size === 1 ? [...expected][0] : undefined
+    const projectMetadata = projectMedia?.metadata
+    const projectSize = typeof projectMetadata?.sizeBytes === 'number' && Number.isFinite(projectMetadata.sizeBytes)
+      ? projectMetadata.sizeBytes
+      : undefined
     const existing = library.find((entry) => entry.id === asset.id)
     const info = sources.get(asset.id)?.info
     const entry: MediaEntry = {
@@ -582,7 +591,8 @@ export async function getLibrary(): Promise<MediaEntry[]> {
       url: info?.url ?? '',
       availability: fingerprintConflict ? 'offline' : asset.availability,
       assetId: asset.id,
-      fingerprint: fingerprintConflict ? undefined : asset.fingerprint,
+      fingerprint: fingerprintConflict ? projectFingerprint : asset.fingerprint,
+      sizeBytes: fingerprintConflict ? projectSize : asset.info.sizeBytes,
       createdAt: asset.createdAt,
     }
     if (existing) Object.assign(existing, entry)
@@ -630,8 +640,26 @@ export async function getLibrary(): Promise<MediaEntry[]> {
 
 async function resolveSourceRecord(sourceId: string): Promise<SourceRecord> {
   const cached = sources.get(sourceId)
+  const expected = new Set(
+    (await allProjects()).flatMap((project) => project.document?.media ?? [])
+      .filter((media) => (media.assetRef ?? media.id) === sourceId && media.contentFingerprint)
+      .map((media) => media.contentFingerprint!),
+  )
+  const actualFingerprint = cached?.info.fingerprint
+  if (expected.size > 1 || (expected.size === 1 && actualFingerprint && !expected.has(actualFingerprint))) {
+    throw new BrowserAssetStorageError(
+      'Fingerprint исходника не совпадает с сохранённым проектом. Выполните точный relink.',
+      'fingerprint',
+    )
+  }
   if (cached) return cached
   const asset = await getBrowserAsset(sourceId)
+  if (expected.size === 1 && !expected.has(asset.fingerprint)) {
+    throw new BrowserAssetStorageError(
+      'Fingerprint исходника не совпадает с сохранённым проектом. Выполните точный relink.',
+      'fingerprint',
+    )
+  }
   const file = new File([asset.file], asset.filename, { type: asset.fileType })
   const info: VideoInfo = {
     ...asset.info,
@@ -737,6 +765,30 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
         body.edit as Record<string, unknown>,
       )
   const persistedBeforeSave = await projectByVideo(videoId)
+  const identitiesByAssetRef = (items: ProjectMedia[]) => {
+    const identities = new Map<string, Set<string>>()
+    for (const media of items) {
+      const assetRef = media.assetRef ?? media.id
+      const values = identities.get(assetRef) ?? new Set<string>()
+      values.add(media.contentFingerprint ?? '')
+      identities.set(assetRef, values)
+    }
+    return identities
+  }
+  const previousIdentities = identitiesByAssetRef(persistedBeforeSave?.document?.media ?? [])
+  const nextIdentities = identitiesByAssetRef(document.media)
+  for (const [assetRef, nextFingerprints] of nextIdentities) {
+    if (nextFingerprints.size > 1) {
+      throw new Error(`Исходник «${assetRef}» имеет конфликтующие fingerprints`)
+    }
+    const previousFingerprints = previousIdentities.get(assetRef)
+    if (previousFingerprints && (
+      previousFingerprints.size !== nextFingerprints.size
+      || [...previousFingerprints].some((value) => !nextFingerprints.has(value))
+    )) {
+      throw new Error(`Идентичность исходника «${assetRef}» нельзя изменить обычным сохранением; используйте relink`)
+    }
+  }
   const previousMediaIdsBeforeSave = new Set(
     persistedBeforeSave?.document?.media.map((media) => media.assetRef ?? media.id) ?? [],
   )

@@ -55,13 +55,35 @@ function evictBytes(id: string): Promise<void> {
   })
 }
 
+function blobKeys(): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('video-kadr-media', 4)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const database = request.result
+      const keys = database.transaction('blobs', 'readonly').objectStore('blobs').getAllKeys()
+      keys.onsuccess = () => { database.close(); resolve(keys.result.map(String)) }
+      keys.onerror = () => reject(keys.error)
+    }
+  })
+}
+
 describe('browser asset persistence', () => {
   const originalStorage = Object.getOwnPropertyDescriptor(navigator, 'storage')
-  beforeEach(clearDatabase)
+  const originalLocks = Object.getOwnPropertyDescriptor(navigator, 'locks')
+  beforeEach(async () => {
+    await clearDatabase()
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request: (_name: string, _options: unknown, operation: () => Promise<unknown>) => operation() },
+    })
+  })
   afterEach(() => {
     vi.unstubAllGlobals()
     if (originalStorage) Object.defineProperty(navigator, 'storage', originalStorage)
     else Reflect.deleteProperty(navigator, 'storage')
+    if (originalLocks) Object.defineProperty(navigator, 'locks', originalLocks)
+    else Reflect.deleteProperty(navigator, 'locks')
   })
 
   it('commits a lightweight manifest and reads bytes lazily', async () => {
@@ -93,6 +115,18 @@ describe('browser asset persistence', () => {
     await expect(getBrowserAsset('alias-b')).resolves.toMatchObject({ id: 'alias-b' })
     await deleteBrowserAsset('alias-b')
     await expect(getBrowserAsset('alias-b')).rejects.toMatchObject({ reason: 'missing' })
+  })
+
+  it('reclaims the previous immutable object when an asset changes content', async () => {
+    const first = await putBrowserAsset(asset('replace-me'))
+    const replacementFile = new Blob(['replacement bytes'], { type: 'video/mp4' })
+    const second = await putBrowserAsset({
+      ...asset('replace-me'), file: replacementFile,
+      info: { ...asset('replace-me').info, sizeBytes: replacementFile.size },
+    })
+    expect(second.objectKey).not.toBe(first.objectKey)
+    expect(await blobKeys()).toEqual([second.objectKey])
+    await expect(getBrowserAsset('replace-me')).resolves.toMatchObject({ fingerprint: second.fingerprint })
   })
 
   it('relinks only the exact fingerprint without changing asset identity', async () => {
@@ -172,6 +206,34 @@ describe('browser asset persistence', () => {
     await expect(getBrowserAsset('corrupt-opfs')).rejects.toMatchObject({ reason: 'missing' })
   })
 
+  it('rejects a same-size corrupted content-addressed OPFS object before dedup commit', async () => {
+    const files = new Map<string, Blob>()
+    const mediaDirectory = {
+      getFileHandle: async (id: string, options?: { create?: boolean }) => {
+        if (!files.has(id) && !options?.create) throw new DOMException('missing', 'NotFoundError')
+        return {
+          createWritable: async () => ({
+            write: async (blob: Blob) => { files.set(id, blob) },
+            close: async () => undefined,
+            abort: async () => undefined,
+          }),
+          getFile: async () => new File([files.get(id)!], id),
+        }
+      },
+      removeEntry: async (id: string) => { files.delete(id) },
+    }
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => mediaDirectory }) },
+    })
+    const first = await putBrowserAsset(asset('cas-a'))
+    files.set(first.objectKey!, new Blob(['xxxxxxxxxxxxx']))
+    await expect(putBrowserAsset(asset('cas-b'))).rejects.toMatchObject({ reason: 'integrity' })
+    expect(await allBrowserAssetManifests()).toEqual([
+      expect.objectContaining({ id: 'cas-a' }),
+    ])
+  })
+
   it('routes large media to a worker without materializing the whole Blob', async () => {
     const arrayBuffer = vi.fn()
     const large = { size: 129 * 1024 * 1024, arrayBuffer } as unknown as Blob
@@ -236,6 +298,30 @@ describe('browser asset persistence', () => {
     await committed
     database.close()
 
+    await reconcileBrowserAssetIngests()
+    expect(removed).toEqual([])
+  })
+
+  it('does no physical reconciliation when Web Locks are unavailable', async () => {
+    const removed: string[] = []
+    Reflect.deleteProperty(navigator, 'locks')
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+        removeEntry: async (id: string) => { removed.push(id) },
+      }) }) },
+    })
+    await allBrowserAssetManifests()
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('video-kadr-media', 4)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const transaction = database.transaction('ingests', 'readwrite')
+    const committed = new Promise<void>((resolve) => { transaction.oncomplete = () => resolve() })
+    transaction.objectStore('ingests').put({ id: 'old-orphan', startedAt: 1 })
+    await committed
+    database.close()
     await reconcileBrowserAssetIngests()
     expect(removed).toEqual([])
   })

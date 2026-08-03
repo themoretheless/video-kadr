@@ -150,6 +150,20 @@ describe('project document schema', () => {
     expect(updated.sequences[0]!.tracks[0]!.vendorTrack).toEqual({ keep: true })
   })
 
+  it('does not silently retarget durable media identity during legacy field updates', () => {
+    const fingerprint = 'a'.repeat(64)
+    const document = migrateProjectDocument({
+      videoId: 'clip-1', video: { id: 'clip-1', assetId: 'asset-original', fingerprint }, edit: {},
+    })
+    const updated = updateLegacyProjectValues(document, 'Same source', {
+      id: 'clip-1', assetId: 'asset-other', fingerprint: 'b'.repeat(64), duration: 2,
+    }, {})
+    expect(updated.media[0]).toMatchObject({
+      assetRef: 'asset-original', contentFingerprint: fingerprint,
+      metadata: expect.objectContaining({ duration: 2 }),
+    })
+  })
+
   it('matches Rust boundary validation for dimensions, timebase and ranges', () => {
     const value = migrateProjectDocument({
       videoId: 'video-1',

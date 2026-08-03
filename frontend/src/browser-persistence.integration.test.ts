@@ -119,6 +119,58 @@ describe('browser persistence lifecycle', () => {
     await expect(assetStore.getBrowserAsset('asset-1')).resolves.toMatchObject({ id: 'asset-1' })
   })
 
+  it('fails closed when persisted project identity diverges from its manifest', async () => {
+    const assetStore = await import('./browser-asset-store')
+    const projectStore = await import('./browser-project-store')
+    const schema = await import('./project-schema')
+    const media = await import('./browser-media')
+    const file = new Blob(['identity-a'], { type: 'video/mp4' })
+    const manifest = await assetStore.putBrowserAsset({
+      id: 'identity-asset', file, filename: 'identity.mp4', fileType: file.type,
+      info: { id: 'identity-asset', filename: 'identity.mp4', duration: 1, width: 10, height: 10, mediaKind: 'video' },
+      createdAt: 1,
+    })
+    const document = schema.migrateProjectDocument({
+      videoId: 'identity-asset',
+      video: { id: 'identity-asset', assetId: 'identity-asset', fingerprint: manifest.fingerprint, filename: 'identity.mp4' },
+      edit: {},
+    })
+    const saved = await media.saveProject({
+      videoId: 'identity-asset', name: 'Identity', video: { id: 'identity-asset' }, edit: {}, document,
+    })
+    const changed = structuredClone(saved)
+    const replacement = new File(['correct project identity with another size'], 'identity.mp4', { type: 'video/mp4' })
+    const replacementFingerprint = await assetStore.fingerprintBlob(replacement)
+    changed.document!.media[0]!.contentFingerprint = replacementFingerprint
+    changed.document!.media[0]!.metadata.sizeBytes = replacement.size
+    changed.document!.media[0]!.id = 'identity-new-local-id'
+    changed.document!.primaryMediaId = 'identity-new-local-id'
+    for (const sequence of changed.document!.sequences) for (const track of sequence.tracks) {
+      for (const clip of track.clips) clip.mediaId = 'identity-new-local-id'
+    }
+    await expect(media.saveProject({
+      ...changed, projectId: changed.id, expectedRevision: changed.revision,
+    })).rejects.toThrow('нельзя изменить обычным сохранением')
+
+    // Simulate a legacy/corrupt persisted row that predates the invariant.
+    await projectStore.putProject(changed)
+    vi.resetModules()
+    const reloaded = await import('./browser-media')
+    await expect(reloaded.resolveSource('identity-asset')).rejects.toMatchObject({ reason: 'fingerprint' })
+    expect(await reloaded.getLibrary()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'identity-asset', availability: 'offline',
+        fingerprint: replacementFingerprint, sizeBytes: replacement.size,
+      }),
+    ]))
+    await expect(reloaded.relinkSource('identity-asset', replacement)).resolves.toMatchObject({
+      fingerprint: replacementFingerprint,
+    })
+    await expect(reloaded.resolveSource('identity-asset')).resolves.toMatchObject({
+      fingerprint: replacementFingerprint,
+    })
+  })
+
   it('recreates an offline anchor from a project and exact-relinks after manifest eviction', async () => {
     const assetStore = await import('./browser-asset-store')
     const schema = await import('./project-schema')

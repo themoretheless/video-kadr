@@ -64,6 +64,10 @@ interface IngestJournalEntry {
 
 const storageLockName = 'video-kadr-media-maintenance'
 
+function supportsWebLocks(): boolean {
+  return typeof (navigator as unknown as { locks?: { request?: unknown } }).locks?.request === 'function'
+}
+
 async function withStorageLock<T>(callback: () => Promise<T>): Promise<T> {
   const locks = navigator.locks
   if (!locks?.request) return callback()
@@ -313,6 +317,9 @@ async function clearIngest(journalId: string): Promise<void> {
 
 /** Remove bytes left by a tab/process crash before its manifest commit. */
 export async function reconcileBrowserAssetIngests(): Promise<void> {
+  // Destructive cleanup must never race another tab. Browsers without Web
+  // Locks keep orphan bytes (safe leak) instead of risking live-media loss.
+  if (!supportsWebLocks()) return
   return withStorageLock(reconcileBrowserAssetIngestsUnlocked)
 }
 
@@ -457,11 +464,19 @@ async function putBrowserAssetUnlocked(
       const staged = await readOpfs(ingest.stagingKey!)
       const existingCandidate = await readOpfs(objectKey)
       const existing = existingCandidate?.size === 0 && staged && staged.size > 0 ? null : existingCandidate
-      if (!staged || staged.size !== asset.file.size) {
+      if (!staged || staged.size !== asset.file.size || await fingerprintBlob(staged) !== fingerprint) {
         throw new BrowserAssetStorageError('Не удалось опубликовать staged media object.', 'unavailable')
       }
-      if (!existing && !await writeOpfs(objectKey, staged)) throw new BrowserAssetStorageError('Не удалось опубликовать staged media object.', 'unavailable')
-      if (existing && existing.size !== staged.size) throw new BrowserAssetStorageError('Конфликт content-addressed media object.', 'integrity')
+      if (existing && (existing.size !== staged.size || await fingerprintBlob(existing) !== fingerprint)) {
+        throw new BrowserAssetStorageError('Конфликт content-addressed media object.', 'integrity')
+      }
+      if (!existing) {
+        if (!await writeOpfs(objectKey, staged)) throw new BrowserAssetStorageError('Не удалось опубликовать staged media object.', 'unavailable')
+        const published = await readOpfs(objectKey)
+        if (!published || published.size !== staged.size || await fingerprintBlob(published) !== fingerprint) {
+          throw new BrowserAssetStorageError('Проверка опубликованного media object не пройдена.', 'integrity')
+        }
+      }
       await deleteOpfs(ingest.stagingKey!)
     }
   } catch (error) {
@@ -501,7 +516,7 @@ async function putBrowserAssetUnlocked(
     transaction.objectStore(INGESTS).delete(ingest.id)
     await committed
     const previousKey = previousManifest?.objectKey ?? previousManifest?.id
-    if (previousKey && previousKey !== objectKey) {
+    if (supportsWebLocks() && previousKey && previousKey !== objectKey) {
       const referenced = (await allBrowserAssetManifests())
         .some((candidate) => (candidate.objectKey ?? candidate.id) === previousKey)
       if (!referenced) {
@@ -685,8 +700,8 @@ export async function relinkBrowserAsset(
 ): Promise<StoredBrowserAssetManifest> {
   const current = await getBrowserAssetManifest(id)
   const fingerprint = await fingerprintBlob(file)
-  const expectedFingerprint = current?.fingerprint ?? recovery?.fingerprint
-  const expectedByteLength = current?.byteLength ?? recovery?.byteLength
+  const expectedFingerprint = recovery?.fingerprint ?? current?.fingerprint
+  const expectedByteLength = recovery?.byteLength ?? current?.byteLength
   if (
     !expectedFingerprint
     || fingerprint !== expectedFingerprint
@@ -695,7 +710,8 @@ export async function relinkBrowserAsset(
     throw new BrowserAssetStorageError('Выбран другой файл: fingerprint не совпадает.', 'fingerprint')
   }
   if (!current && !recovery) throw new BrowserAssetStorageError('Manifest для relink не найден.', 'missing')
-  const base = current ?? {
+  const currentMatchesRecovery = !recovery || current?.fingerprint === recovery.fingerprint
+  const base = current && currentMatchesRecovery ? current : {
     id: recovery!.id,
     filename: recovery!.filename,
     fileType: recovery!.fileType || file.type,
@@ -742,7 +758,7 @@ async function deleteBrowserAssetUnlocked(id: string): Promise<void> {
   }
   const stillReferenced = (await allBrowserAssetManifests())
     .some((candidate) => (candidate.objectKey ?? candidate.id) === objectKey)
-  if (!stillReferenced) {
+  if (supportsWebLocks() && !stillReferenced) {
     if (manifest?.storage === 'opfs') await deleteOpfs(objectKey)
     const cleanup = await openDatabase()
     try {
