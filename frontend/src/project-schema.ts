@@ -1,4 +1,4 @@
-export const PROJECT_DOCUMENT_SCHEMA_VERSION = 3 as const
+export const PROJECT_DOCUMENT_SCHEMA_VERSION = 4 as const
 export const PROJECT_ENVELOPE_SCHEMA_VERSION = 1 as const
 export const PROJECT_TIME_BASE = 1_000_000
 
@@ -11,8 +11,25 @@ export interface ProjectDocument extends JsonObject {
   activeSequenceId: string
   media: ProjectMedia[]
   sequences: ProjectSequence[]
+  multicamGroups: ProjectMulticamGroup[]
   legacyFields?: JsonObject
   proxyPolicy?: 'auto' | 'original' | 'proxy'
+}
+
+export interface ProjectMulticamGroup extends JsonObject {
+  contract: 'multicam-v1'
+  id: string
+  name: string
+  timeBase: number
+  durationTicks: number
+  referenceAngleId: string
+  audioAngleId: string
+  sync: { method: 'audio' | 'timecode' | 'marker'; algorithmVersion: string; confidence?: number }
+  angles: Array<{
+    id: string; mediaId: string; label: string; sourceOriginTick: number
+    rate: { numerator: number; denominator: number }; enabled: boolean
+  }>
+  decisions: Array<{ id: string; offsetTick: number; angleId: string }>
 }
 
 export interface ProjectMedia extends JsonObject {
@@ -58,6 +75,7 @@ export interface ProjectClip extends JsonObject {
   sourceInTick: number
   sourceOutTick: number
   effects: ProjectEffect[]
+  multicamGroupId?: string
 }
 
 export interface ProjectEffect extends JsonObject {
@@ -92,12 +110,14 @@ export function migrateProjectDocument(value: unknown): ProjectDocument {
   }
   if (rawVersion === 1) return migrateV1(object)
   if (rawVersion === 2) return migrateV2(object)
+  if (rawVersion === 3) return migrateV3(object)
   if (rawVersion !== PROJECT_DOCUMENT_SCHEMA_VERSION) {
     throw new Error(
       `unsupported project schemaVersion ${rawVersion}; latest supported is ${PROJECT_DOCUMENT_SCHEMA_VERSION}`,
     )
   }
   const document = cloneJson(object) as ProjectDocument
+  document.multicamGroups ??= []
   document.proxyPolicy ??= 'auto'
   for (const sequence of document.sequences ?? []) sequence.settings.outputColorPolicy ??= 'auto-sdr-v1'
   for (const media of document.media ?? []) {
@@ -130,6 +150,7 @@ export function validateProjectDocument(document: ProjectDocument): void {
   if (!Array.isArray(document.media) || !Array.isArray(document.sequences)) {
     throw new Error('invalid project collections')
   }
+  if (!Array.isArray(document.multicamGroups)) throw new Error('invalid project multicamGroups')
 
   const mediaIds = new Set<string>()
   const mediaById = new Map<string, ProjectMedia>()
@@ -211,6 +232,7 @@ export function validateProjectDocument(document: ProjectDocument): void {
           throw new Error('invalid project clip source range')
         }
         if (!Array.isArray(clip.effects)) throw new Error('invalid project effects')
+        if (clip.multicamGroupId !== undefined) validateId(clip.multicamGroupId, 'clip.multicamGroupId')
         for (const effect of clip.effects) {
           validateId(effect.id, 'effect.id')
           validateToken(effect.kind, 'effect.kind')
@@ -234,6 +256,68 @@ export function validateProjectDocument(document: ProjectDocument): void {
   if (!sequenceIds.has(document.activeSequenceId)) {
     throw new Error(`missing project reference ${document.activeSequenceId}`)
   }
+  validateMulticamGroups(document, mediaById)
+  const multicamIds = new Set(document.multicamGroups.map(group => group.id))
+  for (const clip of document.sequences.flatMap(sequence => sequence.tracks).flatMap(track => track.clips)) {
+    if (clip.multicamGroupId !== undefined && !multicamIds.has(clip.multicamGroupId)) throw new Error('missing project multicam reference')
+  }
+  for (const sequence of document.sequences) {
+    if (sequence.tracks.flatMap(track => track.clips).filter(clip => clip.multicamGroupId).length > 1) throw new Error('ambiguous project multicam attachment')
+  }
+}
+
+function validateMulticamGroups(document: ProjectDocument, mediaById: Map<string, ProjectMedia>): void {
+  if (document.multicamGroups.length > 32) throw new Error('invalid project multicamGroups count')
+  const validLabel = (value: unknown) => typeof value === 'string' && value.trim().length > 0
+    && [...value].length <= 256 && ![...value].some(character => /\p{Cc}/u.test(character))
+  const exactId = (value: unknown, field: string) => {
+    validateId(value, field)
+    if (value.trim() !== value || new TextEncoder().encode(value).byteLength > 128) throw new Error(`invalid ${field}`)
+  }
+  const ids = new Set<string>()
+  for (const group of document.multicamGroups) {
+    exactId(group.id, 'multicam.id')
+    addUnique(ids, group.id)
+    if (group.contract !== 'multicam-v1' || !validLabel(group.name) || !isPositiveInteger(group.timeBase)
+      || !isPositiveInteger(group.durationTicks) || !Array.isArray(group.angles)
+      || group.angles.length < 2 || group.angles.length > 9 || !Array.isArray(group.decisions)
+      || group.decisions.length < 1 || group.decisions.length > 10_000
+      || !['audio', 'timecode', 'marker'].includes(group.sync?.method)
+      || typeof group.sync?.algorithmVersion !== 'string' || !group.sync.algorithmVersion
+      || group.sync.algorithmVersion.trim() !== group.sync.algorithmVersion
+      || new TextEncoder().encode(group.sync.algorithmVersion).byteLength > 128
+      || (group.sync.confidence !== undefined && (!Number.isFinite(group.sync.confidence) || group.sync.confidence < 0 || group.sync.confidence > 1))) throw new Error('invalid project multicam group')
+    const angleIds = new Set<string>(); const usedMedia = new Set<string>()
+    for (const angle of group.angles) {
+      exactId(angle.id, 'multicam.angle.id'); addUnique(angleIds, angle.id)
+      if (usedMedia.has(angle.mediaId) || mediaById.get(angle.mediaId)?.kind !== 'video') throw new Error('invalid project multicam media')
+      usedMedia.add(angle.mediaId)
+      if (!validLabel(angle.label) || !isNonNegativeInteger(angle.sourceOriginTick) || typeof angle.enabled !== 'boolean'
+        || !isPositiveInteger(angle.rate?.numerator) || !isPositiveInteger(angle.rate?.denominator)
+        || gcd(angle.rate.numerator, angle.rate.denominator) !== 1
+        || angle.rate.numerator > angle.rate.denominator * 16
+        || angle.rate.denominator > angle.rate.numerator * 16) throw new Error('invalid project multicam angle')
+      const duration = sourceDurationTicks(mediaById.get(angle.mediaId)!.metadata, group.timeBase)
+      const endNumerator = BigInt(angle.sourceOriginTick) * BigInt(angle.rate.denominator)
+        + BigInt(group.durationTicks) * BigInt(angle.rate.numerator)
+      if (duration === undefined || endNumerator > BigInt(duration) * BigInt(angle.rate.denominator)) throw new Error('invalid project multicam source range')
+    }
+    if (!angleIds.has(group.referenceAngleId) || !angleIds.has(group.audioAngleId)) throw new Error('invalid project multicam reference')
+    let previous = -1; let previousAngle = ''; const decisionIds = new Set<string>()
+    for (const decision of group.decisions) {
+      exactId(decision.id, 'multicam.decision.id'); addUnique(decisionIds, decision.id)
+      if (!angleIds.has(decision.angleId) || group.angles.find(angle => angle.id === decision.angleId)?.enabled !== true || !isNonNegativeInteger(decision.offsetTick)
+        || decision.offsetTick >= group.durationTicks || decision.offsetTick <= previous
+        || decision.angleId === previousAngle) throw new Error('invalid project multicam decision')
+      previous = decision.offsetTick; previousAngle = decision.angleId
+    }
+    if (group.decisions[0]?.offsetTick !== 0) throw new Error('invalid project multicam coverage')
+  }
+}
+
+function gcd(left: number, right: number): number {
+  while (right) [left, right] = [right, left % right]
+  return Math.abs(left)
 }
 
 function sourceDurationTicks(metadata: JsonObject, timeBase: number): number | undefined {
@@ -472,6 +556,7 @@ function migrateV1(value: JsonObject): ProjectDocument {
         ],
       },
     ],
+    multicamGroups: [],
   }
   if (Object.keys(legacyFields).length) document.legacyFields = legacyFields
   validateProjectDocument(document)
@@ -481,6 +566,7 @@ function migrateV1(value: JsonObject): ProjectDocument {
 function migrateV2(value: JsonObject): ProjectDocument {
   const document = cloneJson(value) as unknown as ProjectDocument
   document.schemaVersion = PROJECT_DOCUMENT_SCHEMA_VERSION
+  document.multicamGroups = []
   document.proxyPolicy ??= 'auto'
   for (const media of document.media ?? []) {
     const metadata = durableMediaMetadata(asObject(media.metadata, 'media.metadata'))
@@ -490,6 +576,16 @@ function migrateV2(value: JsonObject): ProjectDocument {
     else delete media.contentFingerprint
     media.metadata = withoutAssetIdentity(metadata)
   }
+  for (const sequence of document.sequences ?? []) sequence.settings.outputColorPolicy ??= 'auto-sdr-v1'
+  validateProjectDocument(document)
+  return document
+}
+
+function migrateV3(value: JsonObject): ProjectDocument {
+  const document = cloneJson(value) as unknown as ProjectDocument
+  document.schemaVersion = PROJECT_DOCUMENT_SCHEMA_VERSION
+  document.multicamGroups = []
+  document.proxyPolicy ??= 'auto'
   for (const sequence of document.sequences ?? []) sequence.settings.outputColorPolicy ??= 'auto-sdr-v1'
   validateProjectDocument(document)
   return document

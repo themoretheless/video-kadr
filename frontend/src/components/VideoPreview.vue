@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { beginEditTransaction, buildEditPayload, clientOnlyMode, endEditTransaction, isIdentityCurves, setProjectProxyPolicy, state, timelineState, type ProjectProxyPolicy } from '../store'
+import { beginEditTransaction, buildEditPayload, clientOnlyMode, endEditTransaction, isIdentityCurves, publishPlayerState, setProjectProxyPolicy, state, timelineState, type ProjectProxyPolicy } from '../store'
 import {
   primaryCorrectionsActive,
 } from '../domain/primary-color'
@@ -15,6 +15,7 @@ import {
 } from '../domain/hsl-selective'
 import { derivedTaskState, regenerateMissingBrowserProxy } from '../derived-task-center'
 import { browserProxyCapability, deleteBrowserProxyArtifact, resolveBrowserPreviewSource, type ProxyPreviewSource } from '../browser-proxy-artifacts'
+import { attachedMulticamOutputBounds, attachedMulticamOutputSeconds, attachedMulticamProgram, resolveAttachedMulticamProgramAt, resolveMulticamAngleSource } from '../multicam'
 import { invalidateBackendProxyArtifact, resolveBackendPreviewSource } from '../proxy-preview'
 import { PreviewFrameCache, legacySingleClipPreviewEligible, previewFrameKey, previewGraphFingerprint, previewTimelineTick, requestBackendPreviewFrame, sourceMediaTimeToEditedSeconds, type PreviewRenderSettings } from '../optimized-preview-cache'
 import { videoScopeFrameBroker, type ScopeAccuracy, type ScopeTapId } from '../video-scopes/frame-broker'
@@ -33,6 +34,20 @@ let scopeTapController: AbortController | null = null
 let optimizedPreviewGeneration = 0
 let activeOptimizedPreviewKey: string | null = null
 let previewMappingGeneration = 0
+let programAngleId: string | null = null
+let programPlaybackRate = 1
+const multicamProgramKey = computed(() => {
+  const program = attachedMulticamProgram()
+  return program ? `${program.groupId}:${program.angleId}` : ''
+})
+const multicamGapActive = computed(() => {
+  const bounds = attachedMulticamOutputBounds()
+  return Boolean(bounds && (state.playerTime < bounds.start || state.playerTime >= bounds.end))
+})
+
+function outputPlayerTime(sourceTime: number): number {
+  return programAngleId ? attachedMulticamOutputSeconds(programAngleId, sourceTime) ?? sourceTime : sourceTime
+}
 let pausedPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let lastPresentedMediaTime: number | null = null
 let frameTrackingId: number | null = null
@@ -42,6 +57,47 @@ const proxyError = ref('')
 let previewGeneration = 0
 let pendingSwitch: { time: number; playing: boolean; revoke?: () => void } | null = null
 let pendingRestoreCleanup: (() => void) | null = null
+let outputSeekGeneration = 0
+let pendingOutputSeek: { generation: number; outputTime: number; sourceTime: number; angleId: string } | null = null
+
+async function seekOutputTime(outputTime: number): Promise<void> {
+  const generation = ++outputSeekGeneration
+  const target = await resolveAttachedMulticamProgramAt(outputTime)
+  if (generation !== outputSeekGeneration) return
+  const el = videoEl.value
+  if (!target) {
+    const previous = previewSource.value
+    const original = state.video?.url ?? ''
+    if (programAngleId || previewSource.value.url !== original) {
+      pendingSwitch = { time: outputTime, playing: Boolean(el && !el.paused), revoke: previous.revoke }
+      previewSource.value = { url: original, usingProxy: false, status: 'original' }
+      programAngleId = null
+      programPlaybackRate = 1
+      previewMappingGeneration++
+    } else if (el) el.currentTime = outputTime
+    return
+  }
+  pendingOutputSeek = { generation, outputTime, sourceTime: target.sourceSeconds, angleId: target.angleId }
+  publishPlayerState({ time: outputTime, seeking: true })
+  const playing = Boolean(el && !el.paused)
+  if (programAngleId === target.angleId && previewSource.value.url === target.url) {
+    programPlaybackRate = target.rate
+    if (el) {
+      applyPlayback(el)
+      if (Math.abs(el.currentTime - target.sourceSeconds) < 0.001) {
+        pendingOutputSeek = null
+        publishPlayerState({ time: outputTime, seeking: false })
+      } else el.currentTime = target.sourceSeconds
+    }
+    return
+  }
+  const previous = previewSource.value
+  pendingSwitch = { time: target.sourceSeconds, playing, revoke: previous.revoke }
+  previewSource.value = { url: target.url, usingProxy: false, status: 'original' }
+  programAngleId = target.angleId
+  programPlaybackRate = target.rate
+  previewMappingGeneration++
+}
 
 const proxyPolicy = computed<ProjectProxyPolicy>(() => timelineState.document?.proxyPolicy ?? 'auto')
 const proxyCapability = computed(() => {
@@ -338,7 +394,13 @@ function showCachedOrRequest(seconds: number): void {
   })
 }
 
-function onPreviewSeeked(): void {
+function onPreviewSeeked(event: Event): void {
+  const mediaTime = (event.currentTarget as HTMLVideoElement).currentTime
+  const pending = pendingOutputSeek
+  if (pending && pending.angleId === programAngleId && Math.abs(mediaTime - pending.sourceTime) < 0.05) {
+    pendingOutputSeek = null
+    publishPlayerState({ time: pending.outputTime, seeking: false })
+  } else if (!pending) publishPlayerState({ time: outputPlayerTime(mediaTime), seeking: false })
   const el = videoEl.value as (HTMLVideoElement & { requestVideoFrameCallback?: (callback: (_now: number, metadata: { mediaTime: number }) => void) => number }) | null
   if (clientOnlyMode || state.hslMaskPreview) cachedFrameVisible.value = false
   if (el?.requestVideoFrameCallback) {
@@ -352,6 +414,7 @@ function onPreviewSeeked(): void {
 }
 
 function onPreviewSeeking(event: Event): void {
+  if (!pendingOutputSeek) publishPlayerState({ time: outputPlayerTime((event.currentTarget as HTMLVideoElement).currentTime), seeking: true })
   if (clientOnlyMode || state.hslMaskPreview) showCachedOrRequest((event.currentTarget as HTMLVideoElement).currentTime)
   else { optimizedPreviewController?.abort(); cachedFrameVisible.value = false; optimizedPreviewStatus.value = 'idle' }
 }
@@ -373,6 +436,7 @@ function trackPresentedFrames(): void {
 
 function onPreviewPaused(event: Event): void {
   const el = event.currentTarget as HTMLVideoElement
+  if (!pendingOutputSeek) publishPlayerState({ time: outputPlayerTime(el.currentTime), playing: false })
   if (clientOnlyMode || state.hslMaskPreview) { void captureCurrentFrame(el.currentTime); return }
   requestCurrentBackendFrame(el)
 }
@@ -383,19 +447,25 @@ function onPreviewPlaying(): void {
     el?.pause()
     return
   }
+  if (el && !pendingOutputSeek) publishPlayerState({ time: outputPlayerTime(el.currentTime), playing: true, seeking: el.seeking })
   trackPresentedFrames()
 }
 
 async function resolvePreview(): Promise<void> {
   const video = state.video
   const generation = ++previewGeneration
-  const original = video?.url ?? ''
+  const program = attachedMulticamProgram()
+  let original = video?.url ?? ''
   if (!video) {
     releasePreview(); previewSource.value = { url: '', usingProxy: false, status: 'original' }; return
   }
   let next: ProxyPreviewSource = { url: original, usingProxy: false, status: 'missing' }
   proxyError.value = ''
   try {
+    if (program) {
+      original = await resolveMulticamAngleSource(program.groupId, program.angleId)
+      next = { url: original, usingProxy: false, status: 'original' }
+    } else
     if (clientOnlyMode) {
       next = await resolveBrowserPreviewSource(video, proxyPolicy.value, proxyCapability.value)
       if (next.status === 'missing' && video.fingerprint) void regenerateMissingBrowserProxy(video.fingerprint)
@@ -408,8 +478,10 @@ async function resolvePreview(): Promise<void> {
   if (generation !== previewGeneration || state.video?.id !== video.id) { next.revoke?.(); return }
   const previous = previewSource.value
   const el = videoEl.value
-  pendingSwitch = { time: el?.currentTime ?? state.playerTime, playing: Boolean(el && !el.paused), revoke: previous.revoke }
+  pendingSwitch = { time: program?.sourceSeconds ?? el?.currentTime ?? state.playerTime, playing: Boolean(el && !el.paused), revoke: previous.revoke }
   previewSource.value = next
+  programAngleId = program?.angleId ?? null
+  programPlaybackRate = program?.rate ?? 1
   previewMappingGeneration++
   if (previous.url === next.url) { pendingSwitch = null; previous.revoke?.() }
 }
@@ -423,18 +495,22 @@ function onTimeUpdate() {
   const el = videoEl.value
   if (!el) return
   if (!el.paused) cachedFrameVisible.value = false
-  state.playerTime = el.currentTime
+  if (pendingOutputSeek) return
+  const outputTime = outputPlayerTime(el.currentTime)
+  publishPlayerState({ time: outputTime, playing: !el.paused, seeking: el.seeking })
   applyPlayback(el)
   if (el.paused) return
-  const { trimStart, trimEnd } = state.edit
-  if (el.currentTime > trimEnd) {
-    el.currentTime = trimStart
+  const bounds = attachedMulticamOutputBounds()
+  const trimStart = bounds?.start ?? state.edit.trimStart
+  const trimEnd = bounds?.end ?? state.edit.trimEnd
+  if (outputTime >= trimEnd) {
+    void seekOutputTime(trimStart)
   }
 }
 
 // Live preview of speed/volume; lightweight colour and flip effects use videoStyle.
 function applyPlayback(el: HTMLVideoElement) {
-  const s = state.edit.speed
+  const s = state.edit.speed * programPlaybackRate
   if (s > 0 && el.playbackRate !== s) el.playbackRate = s
   const v = Math.min(1, Math.max(0, state.edit.volume))
   if (el.volume !== v) el.volume = v
@@ -447,6 +523,8 @@ watch(
     if (videoEl.value) applyPlayback(videoEl.value)
   },
 )
+
+watch(multicamProgramKey, () => void resolvePreview())
 
 // CSS approximation of the colour/flip effects so the user sees them live.
 const videoStyle = computed(() => {
@@ -576,6 +654,9 @@ watch(
 )
 
 function onPreviewError(): void {
+  outputSeekGeneration++
+  pendingOutputSeek = null
+  publishPlayerState({ playing: false, seeking: false })
   if (!previewSource.value.usingProxy || !state.video) return
   const previous = previewSource.value
   previewSource.value = { url: state.video.url, usingProxy: false, status: 'stale' }
@@ -592,6 +673,9 @@ function onPreviewError(): void {
 }
 
 onBeforeUnmount(() => {
+  outputSeekGeneration++
+  pendingOutputSeek = null
+  publishPlayerState({ playing: false, seeking: false })
   videoScopeFrameBroker.invalidate()
   scopeTapController?.abort()
   scopeTapController = null
@@ -615,8 +699,7 @@ watch(
   () => state.seekTo,
   (t) => {
     if (t != null && videoEl.value) {
-      if (clientOnlyMode) showCachedOrRequest(t)
-      videoEl.value.currentTime = t
+      void seekOutputTime(t)
       state.seekTo = null
     }
   },
@@ -670,7 +753,7 @@ const outputColor = computed(() => outputColorStatus(state.edit.format))
       <video
         ref="videoEl"
         class="player"
-        :src="previewSource.url || state.video?.url"
+        :src="programAngleId ? previewSource.url : (previewSource.url || state.video?.url)"
         :style="videoStyle"
         :muted="state.edit.mute"
         controls
@@ -682,6 +765,7 @@ const outputColor = computed(() => outputColorStatus(state.edit.format))
         @seeked="onPreviewSeeked"
         @error="onPreviewError"
       ></video>
+      <div v-if="multicamGapActive" class="multicam-gap" role="status" aria-live="polite">Вне multicam-клипа</div>
       <canvas v-show="cachedFrameVisible" ref="cachedFrameCanvas" class="preview-frame-cache" :style="cachedFrameNeedsCss ? videoStyle : undefined" aria-hidden="true"></canvas>
       <RectOverlay
         v-if="state.video && state.edit.cropEnabled"
@@ -739,3 +823,16 @@ const outputColor = computed(() => outputColorStatus(state.edit.format))
     <p v-if="state.video" class="hint">Обрезка зациклена внутри выбранного отрезка. Экспорт всегда читает оригинал.</p>
   </div>
 </template>
+
+<style scoped>
+.multicam-gap {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: #000;
+  color: var(--muted);
+  pointer-events: none;
+}
+</style>

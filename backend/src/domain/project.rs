@@ -5,13 +5,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// Version 1 was the legacy `{ videoId, video, edit }` autosave payload.
-/// Version 2 introduced canonical multitrack documents; version 3 adds durable asset identity.
-pub const PROJECT_DOCUMENT_SCHEMA_VERSION: u32 = 3;
+/// Version 2 introduced canonical multitrack documents; version 3 added durable
+/// asset identity; version 4 adds explicit, stable multicam edit decisions.
+pub const PROJECT_DOCUMENT_SCHEMA_VERSION: u32 = 4;
 pub const PROJECT_ENVELOPE_SCHEMA_VERSION: u32 = 1;
 pub const PROJECT_TIME_BASE: u32 = 1_000_000;
 pub const PROJECT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 pub const CREATOR_VIDEO_TRACK_COUNT: usize = 4;
 pub const CREATOR_AUDIO_TRACK_COUNT: usize = 4;
+pub const MAX_MULTICAM_GROUPS: usize = 32;
+pub const MAX_MULTICAM_ANGLES: usize = 9;
+pub const MAX_MULTICAM_DECISIONS: usize = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -48,6 +52,8 @@ pub struct ProjectDocument {
     pub proxy_policy: ProxyPolicy,
     pub media: Vec<ProjectMedia>,
     pub sequences: Vec<ProjectSequence>,
+    #[serde(default)]
+    pub multicam_groups: Vec<MulticamGroup>,
     /// Fields unknown to the v1 reader are retained when that payload is
     /// migrated. They cannot always remain at the top level because a future
     /// v1 extension may now have the same name as a canonical v2 field.
@@ -121,6 +127,74 @@ pub struct ProjectClip {
     pub source_out_tick: u64,
     #[serde(default)]
     pub effects: Vec<ProjectEffect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multicam_group_id: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MulticamGroup {
+    pub contract: String,
+    pub id: String,
+    pub name: String,
+    pub time_base: u64,
+    pub duration_ticks: u64,
+    pub reference_angle_id: String,
+    pub audio_angle_id: String,
+    pub sync: MulticamSync,
+    pub angles: Vec<MulticamAngle>,
+    pub decisions: Vec<MulticamDecision>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MulticamSync {
+    pub method: MulticamSyncMethod,
+    pub algorithm_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MulticamSyncMethod {
+    Audio,
+    Timecode,
+    Marker,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MulticamRate {
+    pub numerator: u64,
+    pub denominator: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MulticamAngle {
+    pub id: String,
+    pub media_id: String,
+    pub label: String,
+    pub source_origin_tick: u64,
+    pub rate: MulticamRate,
+    pub enabled: bool,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MulticamDecision {
+    pub id: String,
+    pub offset_tick: u64,
+    pub angle_id: String,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -243,6 +317,7 @@ impl ProjectDocument {
         match version {
             1 => Self::migrate_v1(value),
             2 => Self::migrate_v2(value),
+            3 => Self::migrate_v3(value),
             PROJECT_DOCUMENT_SCHEMA_VERSION => {
                 let mut document: Self = serde_json::from_value(value)
                     .map_err(|error| ProjectDocumentError::Malformed(error.to_string()))?;
@@ -283,6 +358,17 @@ impl ProjectDocument {
                         .and_then(|value| value.as_str().map(str::to_owned))
                 })
                 .filter(|value| valid_fingerprint(value));
+            strip_runtime_locators(&mut media.metadata);
+        }
+        document.validate()?;
+        Ok(document)
+    }
+
+    fn migrate_v3(value: Value) -> Result<Self, ProjectDocumentError> {
+        let mut document: Self = serde_json::from_value(value)
+            .map_err(|error| ProjectDocumentError::Malformed(error.to_string()))?;
+        document.schema_version = PROJECT_DOCUMENT_SCHEMA_VERSION;
+        for media in &mut document.media {
             strip_runtime_locators(&mut media.metadata);
         }
         document.validate()?;
@@ -367,6 +453,7 @@ impl ProjectDocument {
             duration_ticks,
             source_in_tick: 0,
             source_out_tick: duration_ticks,
+            multicam_group_id: None,
             effects: vec![ProjectEffect {
                 id: "effect-legacy-edit".to_owned(),
                 kind: "legacy_edit".to_owned(),
@@ -441,6 +528,7 @@ impl ProjectDocument {
                 ],
                 extra: BTreeMap::new(),
             }],
+            multicam_groups: Vec::new(),
             legacy_fields,
             extra: BTreeMap::new(),
         };
@@ -485,6 +573,17 @@ impl ProjectDocument {
             return Err(ProjectDocumentError::MissingReference(
                 self.primary_media_id.clone(),
             ));
+        }
+
+        if self.multicam_groups.len() > MAX_MULTICAM_GROUPS {
+            return Err(ProjectDocumentError::InvalidField("multicamGroups.count"));
+        }
+        let mut multicam_group_ids = BTreeSet::new();
+        for group in &self.multicam_groups {
+            validate_multicam_group(group, &self.media)?;
+            if !multicam_group_ids.insert(group.id.as_str()) {
+                return Err(ProjectDocumentError::DuplicateId(group.id.clone()));
+            }
         }
 
         let mut sequence_ids = BTreeSet::new();
@@ -532,6 +631,12 @@ impl ProjectDocument {
                     validate_id("clip.id", &clip.id)?;
                     if !clip_ids.insert(clip.id.as_str()) {
                         return Err(ProjectDocumentError::DuplicateId(clip.id.clone()));
+                    }
+                    if let Some(group_id) = &clip.multicam_group_id {
+                        validate_id("clip.multicamGroupId", group_id)?;
+                        if !multicam_group_ids.contains(group_id.as_str()) {
+                            return Err(ProjectDocumentError::MissingReference(group_id.clone()));
+                        }
                     }
                     if !media_ids.contains(clip.media_id.as_str()) {
                         return Err(ProjectDocumentError::MissingReference(
@@ -604,6 +709,18 @@ impl ProjectDocument {
                         return Err(ProjectDocumentError::InvalidField("clip.overlap"));
                     }
                 }
+            }
+            if sequence
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .filter(|clip| clip.multicam_group_id.is_some())
+                .count()
+                > 1
+            {
+                return Err(ProjectDocumentError::InvalidField(
+                    "sequence.multicamAttachment",
+                ));
             }
         }
         if !sequence_ids.contains(self.active_sequence_id.as_str()) {
@@ -817,6 +934,150 @@ fn legacy_duration_ticks(video: &Value) -> u64 {
         .unwrap_or(1)
 }
 
+fn validate_multicam_group(
+    group: &MulticamGroup,
+    media: &[ProjectMedia],
+) -> Result<(), ProjectDocumentError> {
+    validate_exact_id("multicamGroup.id", &group.id)?;
+    validate_label("multicamGroup.name", &group.name)?;
+    if group.contract != "multicam-v1"
+        || group.time_base == 0
+        || group.time_base > PROJECT_MAX_SAFE_INTEGER
+        || group.duration_ticks == 0
+        || group.duration_ticks > PROJECT_MAX_SAFE_INTEGER
+        || !(2..=MAX_MULTICAM_ANGLES).contains(&group.angles.len())
+        || group.decisions.is_empty()
+        || group.decisions.len() > MAX_MULTICAM_DECISIONS
+    {
+        return Err(ProjectDocumentError::InvalidField("multicamGroup.range"));
+    }
+    validate_exact_id(
+        "multicamGroup.sync.algorithmVersion",
+        &group.sync.algorithm_version,
+    )?;
+    if group
+        .sync
+        .confidence
+        .is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value))
+    {
+        return Err(ProjectDocumentError::InvalidField(
+            "multicamGroup.sync.confidence",
+        ));
+    }
+
+    let mut angle_ids = BTreeSet::new();
+    let mut angle_media_ids = BTreeSet::new();
+    for angle in &group.angles {
+        validate_exact_id("multicamAngle.id", &angle.id)?;
+        validate_label("multicamAngle.label", &angle.label)?;
+        if !angle_ids.insert(angle.id.as_str()) {
+            return Err(ProjectDocumentError::DuplicateId(angle.id.clone()));
+        }
+        if !angle_media_ids.insert(angle.media_id.as_str()) {
+            return Err(ProjectDocumentError::InvalidField("multicamAngle.mediaId"));
+        }
+        let source = media
+            .iter()
+            .find(|candidate| candidate.id == angle.media_id)
+            .ok_or_else(|| ProjectDocumentError::MissingReference(angle.media_id.clone()))?;
+        if source.kind != "video"
+            || angle.source_origin_tick > PROJECT_MAX_SAFE_INTEGER
+            || angle.rate.numerator == 0
+            || angle.rate.denominator == 0
+            || angle.rate.numerator > PROJECT_MAX_SAFE_INTEGER
+            || angle.rate.denominator > PROJECT_MAX_SAFE_INTEGER
+            || gcd(angle.rate.numerator, angle.rate.denominator) != 1
+            || u128::from(angle.rate.numerator) > u128::from(angle.rate.denominator) * 16
+            || u128::from(angle.rate.denominator) > u128::from(angle.rate.numerator) * 16
+        {
+            return Err(ProjectDocumentError::InvalidField("multicamAngle.source"));
+        }
+        let duration = source_duration_ticks_u64(&source.metadata, group.time_base).ok_or(
+            ProjectDocumentError::InvalidField("multicamAngle.mediaDuration"),
+        )?;
+        let denominator = u128::from(angle.rate.denominator);
+        let end_numerator = u128::from(angle.source_origin_tick) * denominator
+            + u128::from(group.duration_ticks) * u128::from(angle.rate.numerator);
+        if end_numerator > u128::from(duration) * denominator {
+            return Err(ProjectDocumentError::InvalidField(
+                "multicamAngle.sourceRange",
+            ));
+        }
+    }
+    if !angle_ids.contains(group.reference_angle_id.as_str())
+        || !angle_ids.contains(group.audio_angle_id.as_str())
+    {
+        return Err(ProjectDocumentError::InvalidField(
+            "multicamGroup.angleReference",
+        ));
+    }
+
+    let enabled = group
+        .angles
+        .iter()
+        .filter(|angle| angle.enabled)
+        .map(|angle| angle.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut decision_ids = BTreeSet::new();
+    let mut previous_tick = None;
+    let mut previous_angle = None;
+    for decision in &group.decisions {
+        validate_exact_id("multicamDecision.id", &decision.id)?;
+        if !decision_ids.insert(decision.id.as_str()) {
+            return Err(ProjectDocumentError::DuplicateId(decision.id.clone()));
+        }
+        if !enabled.contains(decision.angle_id.as_str())
+            || decision.offset_tick >= group.duration_ticks
+            || previous_tick.is_some_and(|tick| decision.offset_tick <= tick)
+            || previous_angle == Some(decision.angle_id.as_str())
+        {
+            return Err(ProjectDocumentError::InvalidField(
+                "multicamGroup.decisions",
+            ));
+        }
+        previous_tick = Some(decision.offset_tick);
+        previous_angle = Some(decision.angle_id.as_str());
+    }
+    if group.decisions[0].offset_tick != 0 {
+        return Err(ProjectDocumentError::InvalidField(
+            "multicamGroup.decisionCoverage",
+        ));
+    }
+    Ok(())
+}
+
+fn gcd(mut left: u64, mut right: u64) -> u64 {
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    left
+}
+
+fn source_duration_ticks_u64(metadata: &Value, time_base: u64) -> Option<u64> {
+    finite_positive_f64(metadata.get("duration"))
+        .map(|seconds| (seconds * time_base as f64).round())
+        .filter(|ticks| {
+            ticks.is_finite() && *ticks >= 1.0 && *ticks <= PROJECT_MAX_SAFE_INTEGER as f64
+        })
+        .map(|ticks| ticks as u64)
+}
+
+fn validate_exact_id(field: &'static str, value: &str) -> Result<(), ProjectDocumentError> {
+    validate_id(field, value)?;
+    if value.trim() != value {
+        return Err(ProjectDocumentError::InvalidField(field));
+    }
+    Ok(())
+}
+
+fn validate_label(field: &'static str, value: &str) -> Result<(), ProjectDocumentError> {
+    if value.trim().is_empty() || value.chars().count() > 256 || value.chars().any(char::is_control)
+    {
+        return Err(ProjectDocumentError::InvalidField(field));
+    }
+    Ok(())
+}
+
 fn source_duration_ticks(metadata: &Value, time_base: u32) -> Option<u64> {
     finite_positive_f64(metadata.get("duration"))
         .map(|seconds| (seconds * f64::from(time_base)).round())
@@ -899,7 +1160,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn migrates_v1_to_v3_and_preserves_unknown_fields() {
+    fn migrates_v1_to_v4_and_preserves_unknown_fields() {
         let document = ProjectDocument::migrate(json!({
             "schemaVersion": 1,
             "videoId": "video-1",
@@ -923,7 +1184,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v2_asset_identity_to_v3_preserving_order_and_extensions() {
+    fn migrates_v2_asset_identity_to_v4_preserving_order_and_extensions() {
         let fingerprint = "ab".repeat(32);
         let document = ProjectDocument::migrate(json!({
             "schemaVersion": 2,
@@ -936,7 +1197,7 @@ mod tests {
             ],
             "sequences":[{"id":"main", "name":"Main", "settings":{"timeBase":1000000}, "tracks":[]}]
         })).unwrap();
-        assert_eq!(document.schema_version, 3);
+        assert_eq!(document.schema_version, 4);
         assert_eq!(
             document
                 .media
@@ -1031,9 +1292,9 @@ mod tests {
 
     #[test]
     fn rejects_forward_versions_explicitly() {
-        let error = ProjectDocument::migrate(json!({"schemaVersion": 4})).unwrap_err();
-        assert_eq!(error, ProjectDocumentError::UnsupportedSchema(4));
-        assert!(error.to_string().contains("latest supported is 3"));
+        let error = ProjectDocument::migrate(json!({"schemaVersion": 5})).unwrap_err();
+        assert_eq!(error, ProjectDocumentError::UnsupportedSchema(5));
+        assert!(error.to_string().contains("latest supported is 4"));
     }
 
     #[test]
@@ -1167,6 +1428,163 @@ mod tests {
             (0..8)
                 .map(|index| format!("track-{index}"))
                 .collect::<Vec<_>>()
+        );
+    }
+
+    fn valid_multicam_document() -> ProjectDocument {
+        let mut document = ProjectDocument::from_legacy(
+            "Multicam",
+            "camera-a",
+            json!({"id":"camera-a", "duration":20, "mediaKind":"video"}),
+            json!({}),
+        )
+        .unwrap();
+        let mut second = document.media[0].clone();
+        second.id = "camera-b".into();
+        second.asset_ref = Some("camera-b".into());
+        second.metadata["id"] = json!("camera-b");
+        document.media.push(second);
+        document.multicam_groups.push(MulticamGroup {
+            contract: "multicam-v1".into(),
+            id: "multicam-main".into(),
+            name: "Interview".into(),
+            time_base: u64::from(PROJECT_TIME_BASE),
+            duration_ticks: 10_000_000,
+            reference_angle_id: "angle-a".into(),
+            audio_angle_id: "angle-a".into(),
+            sync: MulticamSync {
+                method: MulticamSyncMethod::Marker,
+                algorithm_version: "marker-v1".into(),
+                confidence: Some(1.0),
+                extra: BTreeMap::new(),
+            },
+            angles: vec![
+                MulticamAngle {
+                    id: "angle-a".into(),
+                    media_id: "camera-a".into(),
+                    label: "Camera A".into(),
+                    source_origin_tick: 1_000_000,
+                    rate: MulticamRate {
+                        numerator: 1,
+                        denominator: 1,
+                    },
+                    enabled: true,
+                    extra: BTreeMap::new(),
+                },
+                MulticamAngle {
+                    id: "angle-b".into(),
+                    media_id: "camera-b".into(),
+                    label: "Camera B".into(),
+                    source_origin_tick: 2_000_000,
+                    rate: MulticamRate {
+                        numerator: 1,
+                        denominator: 1,
+                    },
+                    enabled: true,
+                    extra: BTreeMap::new(),
+                },
+            ],
+            decisions: vec![
+                MulticamDecision {
+                    id: "decision-start".into(),
+                    offset_tick: 0,
+                    angle_id: "angle-a".into(),
+                    extra: BTreeMap::new(),
+                },
+                MulticamDecision {
+                    id: "decision-cut".into(),
+                    offset_tick: 5_000_000,
+                    angle_id: "angle-b".into(),
+                    extra: BTreeMap::new(),
+                },
+            ],
+            extra: BTreeMap::from([("vendor.group".into(), json!({"keep":true}))]),
+        });
+        document
+    }
+
+    #[test]
+    fn v3_migrates_to_v4_without_inventing_multicam_state() {
+        let document =
+            ProjectDocument::from_legacy("Legacy v3", "video-1", json!({"duration":1}), json!({}))
+                .unwrap();
+        let mut value = serde_json::to_value(document).unwrap();
+        value["schemaVersion"] = json!(3);
+        value.as_object_mut().unwrap().remove("multicamGroups");
+        let migrated = ProjectDocument::migrate(value).unwrap();
+        assert_eq!(migrated.schema_version, 4);
+        assert!(migrated.multicam_groups.is_empty());
+    }
+
+    #[test]
+    fn multicam_v4_round_trips_stable_ids_mappings_and_decisions() {
+        let document = valid_multicam_document();
+        document.validate().unwrap();
+        let encoded = serde_json::to_value(&document).unwrap();
+        let reopened = ProjectDocument::migrate(encoded).unwrap();
+        assert_eq!(reopened, document);
+        let group = &reopened.multicam_groups[0];
+        assert_eq!(
+            group
+                .angles
+                .iter()
+                .map(|angle| angle.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["angle-a", "angle-b"]
+        );
+        assert_eq!(group.decisions[1].id, "decision-cut");
+        assert_eq!(group.extra["vendor.group"]["keep"], true);
+    }
+
+    #[test]
+    fn multicam_rejects_ambiguous_or_noncanonical_decisions() {
+        let mut zero_cut = valid_multicam_document();
+        zero_cut.multicam_groups[0].decisions[1].offset_tick = 0;
+        assert_eq!(
+            zero_cut.validate(),
+            Err(ProjectDocumentError::InvalidField(
+                "multicamGroup.decisions"
+            ))
+        );
+
+        let mut no_op = valid_multicam_document();
+        no_op.multicam_groups[0].decisions[1].angle_id = "angle-a".into();
+        assert_eq!(
+            no_op.validate(),
+            Err(ProjectDocumentError::InvalidField(
+                "multicamGroup.decisions"
+            ))
+        );
+
+        let mut missing_reference = valid_multicam_document();
+        missing_reference.multicam_groups[0].reference_angle_id = "gone".into();
+        assert_eq!(
+            missing_reference.validate(),
+            Err(ProjectDocumentError::InvalidField(
+                "multicamGroup.angleReference"
+            ))
+        );
+    }
+
+    #[test]
+    fn multicam_rejects_nonreduced_rate_and_source_overrun() {
+        let mut rate = valid_multicam_document();
+        rate.multicam_groups[0].angles[0].rate = MulticamRate {
+            numerator: 2,
+            denominator: 2,
+        };
+        assert_eq!(
+            rate.validate(),
+            Err(ProjectDocumentError::InvalidField("multicamAngle.source"))
+        );
+
+        let mut overrun = valid_multicam_document();
+        overrun.multicam_groups[0].duration_ticks = 20_000_000;
+        assert_eq!(
+            overrun.validate(),
+            Err(ProjectDocumentError::InvalidField(
+                "multicamAngle.sourceRange"
+            ))
         );
     }
 }

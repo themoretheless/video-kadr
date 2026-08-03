@@ -80,10 +80,9 @@ pub fn bake(request: &BakeRequest) -> Result<ParsedCube, &'static str> {
         .curves
         .iter()
         .flat_map(|curves| [&curves.master, &curves.red, &curves.green, &curves.blue])
+        .flatten()
     {
-        if let Some(points) = curve {
-            validate_curve(points)?;
-        }
+        validate_curve(curve)?;
     }
 
     let size = request.size as usize;

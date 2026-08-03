@@ -42,7 +42,10 @@ import {
   relinkState,
   openSavedProject,
   setProjectProxyPolicy,
+  publishPlayerState,
+  buildActiveMulticamFlattenPayload,
 } from './store'
+import { parseBrowserMulticamFlatten } from './browser-multicam-export'
 import type { EditState, VideoInfo } from './types'
 
 const TEST_LUT_ID = '11111111-1111-4111-8111-111111111111'
@@ -131,6 +134,31 @@ function memoryStorage(): Storage {
   }
 }
 
+describe('player state bridge', () => {
+  beforeEach(() => {
+    state.playerTime = 0
+    state.playerPlaying = false
+    state.playerSeeking = false
+  })
+
+  it('publishes media element time, playback and seeking state atomically', () => {
+    publishPlayerState({ time: 4.25, playing: true, seeking: true })
+    expect({ time: state.playerTime, playing: state.playerPlaying, seeking: state.playerSeeking })
+      .toEqual({ time: 4.25, playing: true, seeking: true })
+
+    publishPlayerState({ time: 5, playing: false, seeking: false })
+    expect({ time: state.playerTime, playing: state.playerPlaying, seeking: state.playerSeeking })
+      .toEqual({ time: 5, playing: false, seeking: false })
+  })
+
+  it('ignores invalid clocks without dropping valid status changes', () => {
+    publishPlayerState({ time: 3, playing: true })
+    publishPlayerState({ time: Number.NaN, playing: false, seeking: true })
+    expect({ time: state.playerTime, playing: state.playerPlaying, seeking: state.playerSeeking })
+      .toEqual({ time: 3, playing: false, seeking: true })
+  })
+})
+
 describe('parseTime', () => {
   it('parses seconds, mm:ss, hh:mm:ss and fractions', () => {
     expect(parseTime('5')).toBe(5)
@@ -184,6 +212,31 @@ describe('buildEditPayload', () => {
     state.edit.trimStart = 2
     state.edit.trimEnd = 8
     expect(buildEditPayload().trim).toEqual({ start: 2, end: 8 })
+  })
+
+  it('builds a parser-valid sliced multicam payload across a decision', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    const document = timelineState.document
+    document.sequences[0]!.settings.frameRate = 25
+    document.media[0]!.contentFingerprint = 'a'.repeat(64)
+    document.media.push({ id: 'cam-b', kind: 'video', assetRef: 'cam-b-asset', contentFingerprint: 'b'.repeat(64), metadata: { duration: 10, width: 1920, height: 1080, fps: 30 } })
+    document.multicamGroups = [{
+      contract: 'multicam-v1', id: 'group', name: 'Group', timeBase: 1_000_000, durationTicks: 9_000_000,
+      referenceAngleId: 'angle-a', audioAngleId: 'angle-a', sync: { method: 'marker', algorithmVersion: 'test-v1' },
+      angles: [
+        { id: 'angle-a', mediaId: 'vid', label: 'A', sourceOriginTick: 0, rate: { numerator: 1, denominator: 1 }, enabled: true },
+        { id: 'angle-b', mediaId: 'cam-b', label: 'B', sourceOriginTick: 500_000, rate: { numerator: 1, denominator: 1 }, enabled: true },
+      ],
+      decisions: [{ id: 'cut-a', offsetTick: 0, angleId: 'angle-a' }, { id: 'cut-b', offsetTick: 3_000_000, angleId: 'angle-b' }],
+    }]
+    const clip = document.sequences[0]!.tracks[0]!.clips[0]!
+    Object.assign(clip, { timelineStartTick: 2_000_000, sourceInTick: 1_000_000, sourceOutTick: 8_000_000, durationTicks: 7_000_000, multicamGroupId: 'group' })
+    const parsed = parseBrowserMulticamFlatten(buildActiveMulticamFlattenPayload())
+    expect(parsed.sourceStartTick).toBe(1_000_000)
+    expect(parsed.timelineStartTick).toBe(2_000_000)
+    expect(parsed.durationTicks).toBe(7_000_000)
+    expect(parsed.intervals.map(interval => [interval.outputStartTick, interval.durationTicks])).toEqual([[0, 2_000_000], [2_000_000, 5_000_000]])
+    timelineState.document = null
   })
 
   it('turns a middle cut into keep-segments', () => {

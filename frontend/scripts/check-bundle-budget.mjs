@@ -19,9 +19,13 @@ const budgets = {
   // priority/cancel controls and the server queue adapter.
   // The #82 proxy selector adds a durable artifact registry, provenance
   // resolver and fail-closed original fallback to the preview bootstrap.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 105 * 1024),
-  css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 5.5 * 1024),
-  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 110 * 1024),
+  // Features #83-#93 add the offline editor shell, colour pipeline and the
+  // client-side multicam synchronisation/flatten contract. Keep a narrow
+  // measured ceiling so future growth still fails CI instead of silently
+  // turning this historical pre-#83 baseline into a permanently red gate.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 166 * 1024),
+  css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 8 * 1024),
+  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 174 * 1024),
 }
 
 const files = await readdir(assetDirectory)

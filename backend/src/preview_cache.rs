@@ -600,7 +600,7 @@ async fn secure_read_locator(
     {
         let root = root.to_owned();
         let locator = locator.to_owned();
-        return tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             use std::os::fd::AsRawFd;
             let (parent, name) = open_parent_dir(&root, &locator)?;
             let fd = unsafe {
@@ -624,7 +624,7 @@ async fn secure_read_locator(
             Ok(bytes)
         })
         .await
-        .map_err(|error| anyhow!("preview read task failed: {error}"))?;
+        .map_err(|error| anyhow!("preview read task failed: {error}"))?
     }
     #[cfg(not(unix))]
     Err(anyhow!(
@@ -637,7 +637,7 @@ async fn secure_unlink_locator(root: &std::path::Path, locator: &str) -> Result<
     {
         let root = root.to_owned();
         let locator = locator.to_owned();
-        return tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             use std::os::fd::AsRawFd;
             let (parent, name) = open_parent_dir(&root, &locator)?;
             for target in [
@@ -661,7 +661,7 @@ async fn secure_unlink_locator(root: &std::path::Path, locator: &str) -> Result<
             Ok(())
         })
         .await
-        .map_err(|error| anyhow!("preview unlink task failed: {error}"))?;
+        .map_err(|error| anyhow!("preview unlink task failed: {error}"))?
     }
     #[cfg(not(unix))]
     Err(anyhow!(

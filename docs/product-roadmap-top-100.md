@@ -149,7 +149,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 | 90 | ✅ Video scopes | Exact encoded-sRGB pre/post taps, deterministic worker analyzer and Histogram/Waveform/RGB Parade/Vectorscope panel | Alpha-weighted bounded sampling, 8 Hz latest-wins live budget, provenance fencing and honest held/unavailable states | XL |
 | 91 | ✅ Минимальный SDR color pipeline → color management | Typed source/proxy/output descriptors, explicit BT.709 ↔ encoded-sRGB boundaries before creative blend/LUT and format-aware egress | HDR/WCG fail closed; legacy/browser provenance visible; plan/cache/proxy identity bound; output tags re-probed | XL |
 | 92 | ✅ LUT browser/export | Immutable SHA catalog, Unicode search, persistent favorites, strict browser/server CUBE codec and multicolor reference preview | Separate capability-gated deterministic `.cube` 33³ baker with Rust/TS parity, fail-closed point-color recipes and verified downloads | XL |
-| 93 | Multicam editing (P2) | Нет | Sync по audio/timecode/marker, angle viewer, live switching и flattened export | XL |
+| 93 | Multicam editing (P2) | Да | Sync по audio/timecode/marker, angle viewer, live switching и flattened browser export с bounded audio analysis | XL |
 
 ### P2/P3 — delivery, templates, capture, AI и collaboration
 

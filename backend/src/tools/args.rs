@@ -458,6 +458,7 @@ fn video_filter_parts(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn video_filter_program(
     edit: &EditSpec,
     out_dur: f64,

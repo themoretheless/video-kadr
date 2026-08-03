@@ -25,6 +25,8 @@ import { cloneValue, PatchCommand } from './domain/history'
 import { primaryCorrectionsActive } from './domain/primary-color'
 import { hslSelectiveActive } from './domain/hsl-selective'
 import { StructuralHistory, type TimelineCommand } from './domain/timeline'
+import { compileFlattenedMulticamIntervals } from './domain/multicam'
+import { projectFrameDurationTicks } from './domain/timeline'
 import {
   createProjectDocumentFromLegacy,
   ensureCreatorTrackLayout,
@@ -87,6 +89,8 @@ export const state = reactive({
   // Player bridge: VideoPreview owns the <video>; the rest of the app talks to
   // it through these fields.
   playerTime: 0,
+  playerPlaying: false,
+  playerSeeking: false,
   seekTo: null as number | null,
   playToggle: 0,
 })
@@ -425,7 +429,16 @@ export async function doExport(): Promise<void> {
   state.result = null
 
   try {
-    const { jobId } = await api.edit(buildEditPayload())
+    const payload = buildEditPayload()
+    const multicamFlatten = buildActiveMulticamFlattenPayload()
+    if (multicamFlatten) {
+      payload.multicamFlatten = multicamFlatten
+      const duration = Number(multicamFlatten.durationTicks) / Number(multicamFlatten.timeBase)
+      const trim = payload.trim as { start?: number; end?: number } | undefined
+      payload.trim = { start: Math.max(0, Math.min(duration, Number(trim?.start ?? 0))), end: Math.max(0, Math.min(duration, Number(trim?.end ?? duration))) }
+      if ((payload.trim as { end: number }).end <= (payload.trim as { start: number }).start) payload.trim = { start: 0, end: duration }
+    }
+    const { jobId } = await api.edit(payload)
     state.exportJobId = jobId
     const job = await api.pollJob(jobId, onExportTick)
     state.result = job.result as ResultInfo
@@ -500,6 +513,19 @@ export function togglePlay(): void {
   state.playToggle++
 }
 
+/** Publish runtime state from the media element owned by VideoPreview. */
+export function publishPlayerState(update: {
+  time?: number
+  playing?: boolean
+  seeking?: boolean
+}): void {
+  if (update.time !== undefined && Number.isFinite(update.time) && update.time >= 0) {
+    state.playerTime = update.time
+  }
+  if (update.playing !== undefined) state.playerPlaying = update.playing
+  if (update.seeking !== undefined) state.playerSeeking = update.seeking
+}
+
 export function setTrimStartFromPlayer(): void {
   if (!state.video) return
   state.edit.trimStart = Math.max(0, Math.min(state.playerTime, state.edit.trimEnd - 0.1))
@@ -568,6 +594,14 @@ export async function loadCapabilities(): Promise<void> {
 export function selectedExportUnavailableReason(): string | null {
   const document = timelineState.document
   if (document) {
+    const attached = activeAttachedMulticamContext()
+    if (document.multicamGroups.length > 0 && !attached) {
+      return 'Выберите multicam-клип на timeline перед экспортом'
+    }
+    if (attached && !clientOnlyMode) {
+      return 'Multicam export пока доступен в статической версии через локальный FFmpeg; серверный render path ещё не подключён'
+    }
+    if (attached && state.edit.format === 'mp3') return 'Multicam flattened export требует видеоформат'
     const activeSequence = document.sequences.find(
       (sequence) => sequence.id === document.activeSequenceId,
     )
@@ -634,6 +668,61 @@ export function selectedExportUnavailableReason(): string | null {
   const resourcePlan = currentBrowserExportPlan()
   if (resourcePlan?.risk === 'blocked') return resourcePlan.reason
   return null
+}
+
+function activeAttachedMulticamContext() {
+  const document = timelineState.document
+  const sequence = document?.sequences.find(item => item.id === document.activeSequenceId)
+  const attached = sequence?.tracks.flatMap(track => track.clips).filter(clip => clip.multicamGroupId) ?? []
+  if (attached.length > 1) throw new Error('На активной sequence должно быть не больше одного multicam-клипа')
+  const clip = attached[0]
+  const group = clip?.multicamGroupId ? document?.multicamGroups.find(group => group.id === clip.multicamGroupId) ?? null : null
+  return group && clip ? { group, clip } : null
+}
+
+export function buildActiveMulticamFlattenPayload(): Record<string, unknown> | null {
+  const document = timelineState.document
+  const context = activeAttachedMulticamContext()
+  const group = context?.group
+  const sequence = document?.sequences.find(item => item.id === document.activeSequenceId)
+  if (!document || !group || !sequence) return null
+  const fullIntervals = compileFlattenedMulticamIntervals(group, group.decisions, projectFrameDurationTicks(sequence.settings))
+  const clipStart = context.clip.sourceInTick
+  const clipEnd = context.clip.sourceOutTick
+  const angleById = new Map(group.angles.map(angle => [angle.id, angle]))
+  const intervals = fullIntervals.flatMap(interval => {
+    const start = Math.max(interval.outputStartTick, clipStart)
+    const end = Math.min(interval.outputStartTick + interval.durationTicks, clipEnd)
+    if (end <= start) return []
+    const angle = angleById.get(interval.angleId)!
+    const source = (tick: number) => ({
+      numerator: (BigInt(angle.sourceOriginTick) * BigInt(angle.rate.denominator) + BigInt(tick) * BigInt(angle.rate.numerator)).toString(),
+      denominator: angle.rate.denominator,
+    })
+    return [{ ...interval, decisionId: `${interval.decisionId}:clip`, outputStartTick: start - clipStart, durationTicks: end - start, sourceStart: source(start), sourceEnd: source(end) }]
+  })
+  return {
+    contract: 'multicam-flatten-v1',
+    timeBase: group.timeBase,
+    durationTicks: context.clip.durationTicks,
+    timelineStartTick: context.clip.timelineStartTick,
+    sourceStartTick: clipStart,
+    audioAngleId: group.audioAngleId,
+    target: {
+      width: sequence.settings.width ?? state.video?.width ?? 1920,
+      height: sequence.settings.height ?? state.video?.height ?? 1080,
+      fps: state.edit.fps ?? sequence.settings.frameRate ?? state.video?.fps ?? 30,
+    },
+    angles: group.angles.map(angle => {
+      const media = document.media.find(item => item.id === angle.mediaId)
+      if (!media?.contentFingerprint) throw new Error(`Нет fingerprint для ракурса ${angle.label}`)
+      return {
+        id: angle.id, mediaId: angle.mediaId, assetRef: media.assetRef ?? media.id,
+        fingerprint: media.contentFingerprint, sourceOriginTick: angle.sourceOriginTick, rate: angle.rate,
+      }
+    }),
+    intervals,
+  }
 }
 
 export function currentBrowserExportPlan(): ExportResourcePlan | null {

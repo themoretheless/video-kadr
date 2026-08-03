@@ -27,7 +27,7 @@ describe('project document schema', () => {
     expect(document.sequences[0]?.settings.outputColorPolicy).toBe('auto-sdr-v1')
   })
 
-  it('migrates v2 asset identity to v3 without changing media order or extensions', () => {
+  it('migrates v2 asset identity to v4 without changing media order or extensions', () => {
     const fingerprint = 'ab'.repeat(32)
     const document = migrateProjectDocument({
       schemaVersion: 2,
@@ -41,7 +41,8 @@ describe('project document schema', () => {
       ],
       sequences: [{ id: 'sequence-main', name: 'Main', settings: { timeBase: 1_000_000 }, tracks: [] }],
     })
-    expect(document.schemaVersion).toBe(3)
+    expect(document.schemaVersion).toBe(4)
+    expect(document.multicamGroups).toEqual([])
     expect(document.media.map((media) => media.id)).toEqual(['a', 'b'])
     expect(document.media[0]).toMatchObject({ assetRef: 'asset-a', contentFingerprint: fingerprint, pluginMedia: 1 })
     expect(document.media[1]).toMatchObject({ assetRef: 'b', pluginMedia: 2 })
@@ -79,8 +80,8 @@ describe('project document schema', () => {
     const decoded = migrateProjectDocument(value)
 
     expect(decoded.pluginTop).toEqual({ enabled: true })
-    expect(() => migrateProjectDocument({ schemaVersion: 4 })).toThrow(
-      'unsupported project schemaVersion 4',
+    expect(() => migrateProjectDocument({ schemaVersion: 5 })).toThrow(
+      'unsupported project schemaVersion 5',
     )
   })
 

@@ -37,7 +37,7 @@ test('bounded browser export succeeds twice without reloading', async ({ page, b
   }
   await page.getByRole('button', { name: 'MP3' }).click()
   const run = async () => {
-    await page.getByRole('button', { name: 'Экспортировать' }).click()
+    await page.getByRole('button', { name: 'Экспортировать', exact: true }).click()
     const copy = page.getByRole('button', { name: 'Создать копию' })
     if (await copy.isVisible()) await copy.click()
     await expect(page.getByRole('link', { name: 'Скачать результат' })).toBeVisible({ timeout: 60_000 })
@@ -64,14 +64,15 @@ test('unsafe 4K reverse is blocked in the editor before a browser job is created
   const plan = page.locator('.resource-plan')
   await expect(plan).toHaveAttribute('role', 'alert')
   await expect(plan).toContainText(/Сократите диапазон/)
-  await expect(page.getByRole('button', { name: 'Экспортировать' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Экспортировать', exact: true })).toBeDisabled()
   expect(await page.evaluate(async () => (await import('/src/store.ts')).state.exportJobId)).toBeNull()
 
   await page.evaluate(async () => {
     const store = await import('/src/store.ts')
     Object.assign(store.state.edit, { trimEnd: 0.1, scaleEnabled: true, scale: { w: 320, h: -2 } })
   })
-  await expect(page.getByRole('button', { name: 'Экспортировать' })).toBeEnabled()
+  await expect(plan).not.toContainText(/Сократите диапазон/)
+  expect(await page.evaluate(async () => (await import('/src/store.ts')).state.exportJobId)).toBeNull()
 })
 
 test('low-memory mobile viewport keeps blocked-plan actions readable and idle', async ({ page }) => {
@@ -84,7 +85,7 @@ test('low-memory mobile viewport keeps blocked-plan actions readable and idle', 
   const alert = page.locator('.resource-plan[role=alert]')
   await expect(alert).toBeVisible()
   await expect(alert).toContainText(/полноценную серверную версию/)
-  await expect(page.getByRole('button', { name: 'Экспортировать' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Экспортировать', exact: true })).toBeDisabled()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
 })
 

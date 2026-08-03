@@ -106,7 +106,7 @@ pub enum UnsupportedColorReasonV1 {
     ContradictoryMetadata,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ColorManagementStatusV1 {
     Supported {
@@ -116,13 +116,8 @@ pub enum ColorManagementStatusV1 {
     Unsupported {
         reason: UnsupportedColorReasonV1,
     },
+    #[default]
     NotApplicable,
-}
-
-impl Default for ColorManagementStatusV1 {
-    fn default() -> Self {
-        Self::NotApplicable
-    }
 }
 
 impl ColorManagementStatusV1 {

@@ -240,6 +240,11 @@ export function streamingOutputSupported(): boolean {
   return clientOnlyMode && browserMedia.streamingOutputSupported()
 }
 
+export function extractAudioSyncEnvelope(id: string, expectedFingerprint?: string): Promise<{ samples: Float32Array; secondsPerSample: number }> {
+  if (!clientOnlyMode) return Promise.reject(new Error('Audio sync extraction доступен только в локальном браузерном режиме'))
+  return browserMedia.extractAudioSyncEnvelope(id, expectedFingerprint)
+}
+
 export function streamOriginalRange(payload: Record<string, unknown>): Promise<ResultInfo> {
   if (!clientOnlyMode) return Promise.reject(new Error('Потоковый fallback предназначен для статической версии'))
   return browserMedia.streamOriginalRange(payload)

@@ -59,13 +59,14 @@ fn shared_lift_gamma_gain_fixture_matches_reference_math() {
     assert_eq!(fixture.parameter_range, [-1.0, 1.0]);
     for sample in &fixture.samples {
         let actual = reference(sample);
-        for channel in 0..3 {
+        for (channel, (actual_channel, expected_channel)) in
+            actual.iter().zip(sample.expected.iter()).enumerate()
+        {
             assert!(
-                (actual[channel] - sample.expected[channel]).abs()
-                    <= fixture.tolerances.cpu_absolute,
+                (actual_channel - expected_channel).abs() <= fixture.tolerances.cpu_absolute,
                 "channel {channel}: {} != {}",
-                actual[channel],
-                sample.expected[channel]
+                actual_channel,
+                expected_channel
             );
         }
     }

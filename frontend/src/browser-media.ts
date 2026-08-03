@@ -6,6 +6,7 @@ import type {
   ResultInfo,
   VideoInfo,
 } from './types'
+import { AUDIO_SYNC_MAX_SAMPLES, browserAudioSyncExtractionArgs } from './browser-audio-sync'
 import type { ProjectDto } from './api'
 import { allProjects, compareAndSwapProject, projectById, projectByVideo, removeProject } from './browser-project-store'
 import { createProjectDocumentFromLegacy, migrateProjectDocument } from './project-schema'
@@ -38,6 +39,7 @@ import {
 import { browserColorFilterPlan, browserSdrExportBoundary, browserVideoFilterArgs, selectiveHslFfmpegFilter } from './browser-color-pipeline'
 import { BROWSER_DECODED_SRGB_STATUS } from './domain/color-management'
 import { bakeEditCube33 } from './domain/lut-baker'
+import { browserMulticamTiming, buildBrowserMulticamFfmpegArgv, parseBrowserMulticamFlatten, type MaterializedMulticamInput } from './browser-multicam-export'
 import {
   getBrowserLut,
   listBrowserLuts,
@@ -399,6 +401,47 @@ async function loadFfmpeg(): Promise<import('@ffmpeg/ffmpeg').FFmpeg> {
   }
 }
 
+export async function extractAudioSyncEnvelope(sourceId: string, expectedFingerprint?: string): Promise<{ samples: Float32Array; secondsPerSample: number }> {
+  return withBrowserRenderLock(async () => {
+    const source = await resolveSourceRecord(sourceId, expectedFingerprint)
+    const runtime = runtimeResourceCapabilities()
+    const memfsLimit = 64 * 1024 * 1024
+    if (!runtime.workerFs && source.file.size > memfsLimit) throw new Error('Audio sync требует WORKERFS; MEMFS fallback ограничен 64 МБ')
+    let ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg | null = null
+    try {
+      ffmpeg = await loadFfmpeg()
+      const output = `audio-sync-${id()}.f32le`
+      let input: string
+      if (runtime.workerFs && typeof ffmpeg.mount === 'function') {
+        const { FFFSType } = await import('@ffmpeg/ffmpeg')
+        const mount = `/audio-sync-${id()}`
+        await ffmpeg.createDir(mount)
+        const extension = source.file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'media'
+        const file = new File([source.file], `source.${extension}`, { type: source.file.type })
+        const mounted = await boundedEnginePhase(ffmpeg.mount(FFFSType.WORKERFS, { files: [file] }, mount), 'WORKERFS audio sync mount', 10_000, () => ffmpeg?.terminate())
+        if (mounted === false) throw new Error('WORKERFS audio sync mount отклонён движком')
+        input = `${mount}/${file.name}`
+      } else {
+        input = `audio-sync-input-${id()}`
+        await boundedEnginePhase(ffmpeg.writeFile(input, new Uint8Array(await source.file.arrayBuffer())), 'подготовка audio sync', 30_000, () => ffmpeg?.terminate())
+      }
+      const exitCode = await boundedEnginePhase(ffmpeg.exec(
+        browserAudioSyncExtractionArgs(input, output),
+      ), 'извлечение audio sync', 120_000, () => ffmpeg?.terminate())
+      if (exitCode !== 0) throw new Error(`Не удалось извлечь звуковую дорожку (FFmpeg ${exitCode})`)
+      const data = await boundedEnginePhase(ffmpeg.readFile(output), 'чтение audio sync', 10_000, () => ffmpeg?.terminate())
+      const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data)
+      if (bytes.byteLength < 128 * 4 || bytes.byteLength > AUDIO_SYNC_MAX_SAMPLES * 4 || bytes.byteLength % 4 !== 0) throw new Error('Звуковая дорожка слишком короткая или повреждена для синхронизации')
+      const samples = new Float32Array(bytes.slice().buffer)
+      if (![...samples].every(Number.isFinite)) throw new Error('Звуковая дорожка содержит некорректные samples')
+      return { samples, secondsPerSample: 1 / 50 }
+    } finally {
+      if (ffmpeg?.loaded) ffmpeg.terminate()
+      if (ffmpegInstance === ffmpeg) ffmpegInstance = null
+    }
+  })
+}
+
 async function probeBrowserHslSelectiveV1(): Promise<boolean> {
   if (hslSelectiveV1Smoke) return hslSelectiveV1Smoke
   hslSelectiveV1Smoke = (async () => {
@@ -634,6 +677,147 @@ async function buildArgs(
   return { ffmpegArgs: args, inputName, filename: output.filename, mime: output.mime, mountPoint, temporaryFiles }
 }
 
+async function buildMulticamArgs(
+  ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg,
+  payload: EditPayload,
+  resources: FfmpegJobResources,
+): Promise<FfmpegJobSpec> {
+  const contract = parseBrowserMulticamFlatten(payload.multicamFlatten)
+  const records = new Map<string, SourceRecord>()
+  for (const angle of contract.angles) {
+    if (!records.has(angle.assetRef)) records.set(angle.assetRef, await resolveSourceRecord(angle.assetRef, angle.fingerprint))
+  }
+  const runtime = runtimeResourceCapabilities()
+  const inputs = new Map<string, MaterializedMulticamInput>()
+  const orderedRefs = [...records.keys()].sort()
+  let mountPoint: string | undefined
+  if (runtime.workerFs && typeof ffmpeg.mount === 'function') {
+    const { FFFSType } = await import('@ffmpeg/ffmpeg')
+    mountPoint = `/multicam-${id()}`
+    resources.mountPoint = mountPoint
+    await ffmpeg.createDir(mountPoint)
+    const files = orderedRefs.map((ref, index) => {
+      const source = records.get(ref)!
+      const extension = source.file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'mp4'
+      return new File([source.file], `angle-${index}.${extension}`, { type: source.file.type })
+    })
+    const mounted = await boundedEnginePhase(ffmpeg.mount(FFFSType.WORKERFS, { files }, mountPoint), 'WORKERFS multicam mount', 10_000, () => ffmpeg.terminate())
+    if (mounted === false) throw new Error('WORKERFS multicam mount отклонён движком')
+    orderedRefs.forEach((ref, index) => {
+      const source = records.get(ref)!
+      inputs.set(ref, { path: `${mountPoint}/${files[index]!.name}`, sizeBytes: source.file.size, hasAudio: Boolean(source.info.acodec) })
+    })
+  } else {
+    for (const [index, ref] of orderedRefs.entries()) {
+      const source = records.get(ref)!
+      const extension = source.file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'mp4'
+      const path = `multicam-${index}.${extension}`
+      inputs.set(ref, { path, sizeBytes: source.file.size, hasAudio: Boolean(source.info.acodec) })
+    }
+  }
+
+  const format = String(payload.format || 'mp4')
+  const boundary = browserSdrExportBoundary(format, format === 'mp3' || await probeBrowserSdrV1())
+  if (boundary.bypassVideo) throw new Error('Multicam требует видеоформат')
+  let lutName: string | undefined
+  const lut = record(payload.lut)
+  if (lut && number(lut.intensity, 1) > 1e-9) {
+    let lutRecord = luts.get(String(lut.id))
+    if (!lutRecord) {
+      const { asset, blob } = await getBrowserLut(String(lut.id))
+      lutRecord = { file: blob, asset: { ...asset, favorite: false } }
+      luts.set(asset.id, lutRecord)
+    }
+    lutName = `multicam-lut-${id()}.cube`
+    await ffmpeg.writeFile(lutName, new Uint8Array(await lutRecord.file.arrayBuffer()))
+    resources.temporaryFiles.push(lutName)
+  }
+  const color = browserColorFilterPlan(payload, lutName)
+  const geometry: string[] = []
+  const crop = record(payload.crop)
+  if (crop && payload.cropEnabled) geometry.push(`crop=${number(crop.w)}:${number(crop.h)}:${number(crop.x)}:${number(crop.y)}`)
+  const scale = record(payload.scale)
+  if (scale && payload.scaleEnabled) geometry.push(`scale=${number(scale.w)}:${number(scale.h, -2)}`)
+  switch (number(payload.rotate)) {
+    case 90: geometry.push('transpose=1'); break
+    case 180: geometry.push('hflip', 'vflip'); break
+    case 270: geometry.push('transpose=2'); break
+  }
+  if (payload.flipH) geometry.push('hflip')
+  if (payload.flipV) geometry.push('vflip')
+  const postEffects: string[] = []
+  const timing = browserMulticamTiming(contract, payload)
+  const multicamTimelineSeconds = (contract.timelineStartTick + contract.durationTicks) / contract.timeBase
+  if (timing.trimStartSeconds > 0 || timing.trimEndSeconds < multicamTimelineSeconds) {
+    postEffects.push(`trim=start=${timing.trimStartSeconds}:end=${timing.trimEndSeconds}`, 'setpts=PTS-STARTPTS')
+  }
+  if (timing.cutStartSeconds !== null && timing.cutEndSeconds !== null) {
+    postEffects.push(`select=not(between(t\\,${timing.cutStartSeconds}\\,${timing.cutEndSeconds}))`, 'setpts=N/FRAME_RATE/TB')
+  }
+  const speed = Math.max(0.5, Math.min(2, number(payload.speed, 1)))
+  if (speed !== 1) postEffects.push(`setpts=PTS/${speed}`)
+  if (payload.reverse) postEffects.push('reverse')
+  const censor = record(payload.censor)
+  if (censor && payload.censorEnabled) postEffects.push(`drawbox=x=${number(censor.x)}:y=${number(censor.y)}:w=${number(censor.w)}:h=${number(censor.h)}:color=${String(payload.censorColor || 'black')}:t=fill`)
+  if (payload.vignette) postEffects.push('vignette')
+  if (payload.denoise) postEffects.push('hqdn3d')
+  if (number(payload.sharpen) > 0) postEffects.push(`unsharp=5:5:${number(payload.sharpen)}`)
+  if (number(payload.grain) > 0) postEffects.push(`noise=alls=${Math.round(number(payload.grain) * 30)}:allf=t`)
+  const pad = String(payload.pad || '')
+  if (/^\d+:\d+$/.test(pad)) {
+    const [rw, rh] = pad.split(':').map(Number)
+    postEffects.push(`pad=w=max(iw\\,ih*${rw}/${rh}):h=max(ih\\,iw*${rh}/${rw}):x=(ow-iw)/2:y=(oh-ih)/2:color=black`)
+  }
+  const postVideoFilters = [...geometry, boundary.inputFilter!, ...color.beforeLut]
+  const postVideoAfterLutFilters = [...color.afterLut, ...postEffects, boundary.outputFilter!]
+  const postAudioFilters: string[] = []
+  if (timing.trimStartSeconds > 0 || timing.trimEndSeconds < multicamTimelineSeconds) {
+    postAudioFilters.push(`atrim=start=${timing.trimStartSeconds}:end=${timing.trimEndSeconds}`, 'asetpts=PTS-STARTPTS')
+  }
+  if (timing.cutStartSeconds !== null && timing.cutEndSeconds !== null) {
+    postAudioFilters.push(`aselect=not(between(t\\,${timing.cutStartSeconds}\\,${timing.cutEndSeconds}))`, 'asetpts=N/SR/TB')
+  }
+  if (speed !== 1) postAudioFilters.push(`atempo=${speed}`)
+  if (payload.reverse) postAudioFilters.push('areverse')
+  if (number(payload.volume, 1) !== 1) postAudioFilters.push(`volume=${number(payload.volume, 1)}`)
+  if (payload.normalizeAudio) postAudioFilters.push('loudnorm')
+  if (payload.highpass) postAudioFilters.push('highpass=f=100')
+  if (number(payload.fadeIn) > 0) postAudioFilters.push(`afade=t=in:st=0:d=${number(payload.fadeIn)}`)
+  if (number(payload.fadeOut) > 0) {
+    const duration = timing.outputSeconds
+    const fade = Math.min(number(payload.fadeOut), duration)
+    postAudioFilters.push(`afade=t=out:st=${Math.max(0, duration - fade)}:d=${fade}`)
+  }
+  const output = outputSpec(payload)
+  if (payload.reverse) {
+    const seconds = multicamTimelineSeconds
+    const reverseBytes = contract.target.width * contract.target.height * contract.target.fps * seconds * 4
+    if (reverseBytes > browserMemoryBudget(runtime) * .7) throw new Error('Reverse multicam превышает bounded memory budget; сократите длительность или разрешение')
+  }
+  const plan = buildBrowserMulticamFfmpegArgv(contract, {
+    inputs,
+    workerFs: Boolean(mountPoint),
+    memoryBudgetBytes: browserMemoryBudget(runtime),
+    postVideoFilters,
+    lutFilter: color.lutFilter,
+    lutIntensity: color.lutIntensity,
+    postVideoAfterLutFilters,
+    postAudioFilters,
+    output: { filename: output.filename, args: [...boundary.outputArgs, ...output.args] },
+    muteAudio: Boolean(payload.mute),
+  })
+  if (!mountPoint) {
+    for (const ref of plan.inputAssetRefs) {
+      const input = inputs.get(ref)!
+      const source = records.get(ref)!
+      resources.temporaryFiles.push(input.path)
+      await ffmpeg.writeFile(input.path, new Uint8Array(await source.file.arrayBuffer()))
+    }
+  }
+  resources.temporaryFiles.push(output.filename)
+  return { ffmpegArgs: plan.argv, inputName: inputs.values().next().value?.path ?? '', filename: output.filename, mime: output.mime, mountPoint, temporaryFiles: resources.temporaryFiles }
+}
+
 async function runJobUnlocked(jobId: string, payload: EditPayload): Promise<void> {
   const job = jobs.get(jobId)
   if (!job) return
@@ -660,7 +844,9 @@ async function runJobUnlocked(jobId: string, payload: EditPayload): Promise<void
     }
     ffmpeg.on('progress', onProgress)
     job.stage = `Подготавливаю исходник ${Math.ceil(source.file.size / (1024 * 1024))} МБ…`
-    spec = await boundedEnginePhase(buildArgs(ffmpeg, source, payload, resources), 'подготовка файлов движка', 60_000, () => ffmpeg?.terminate())
+    spec = await boundedEnginePhase(payload.multicamFlatten
+      ? buildMulticamArgs(ffmpeg, payload, resources)
+      : buildArgs(ffmpeg, source, payload, resources), 'подготовка файлов движка', 60_000, () => ffmpeg?.terminate())
     job.stage = 'Кодирую на этом устройстве…'
     const exitCode = await boundedEnginePhase(ffmpeg.exec(spec.ffmpegArgs), 'кодирование', 30 * 60_000, () => ffmpeg?.terminate())
     ffmpeg.off('progress', onProgress)
@@ -678,7 +864,8 @@ async function runJobUnlocked(jobId: string, payload: EditPayload): Promise<void
       const validationText = typeof validationData === 'string' ? validationData : new TextDecoder().decode(validationData)
       const outTime = [...validationText.matchAll(/^out_time_us=(\d+)$/gm)].at(-1)?.[1]
       const duration = outTime ? Number(outTime) / 1_000_000 : Number.NaN
-      const expected = planBrowserExport(source.info, payload)
+      const multicam = payload.multicamFlatten ? parseBrowserMulticamFlatten(payload.multicamFlatten) : null
+      const expected = multicam ? { estimatedOutputSeconds: browserMulticamTiming(multicam, payload).outputSeconds } : planBrowserExport(source.info, payload)
       const tolerance = String(payload.format || 'mp4') === 'mp3'
         ? 0.1
         : 1 / Math.max(1, number(payload.fps, source.info.fps ?? 30))
@@ -735,6 +922,7 @@ export function edit(payload: EditPayload): { jobId: string } {
   if (activeJobId) throw new Error('Дождитесь завершения текущего экспорта')
   const source = sources.get(String(payload.videoId))
   if (!source) throw new Error('Исходный файл больше недоступен — выберите его повторно')
+  if (payload.multicamFlatten) parseBrowserMulticamFlatten(payload.multicamFlatten)
   const plan = planBrowserExport(source.info, payload)
   if (plan.risk === 'blocked') throw new Error(`${plan.reason} ${plan.suggestions.join(' · ')}`)
   const jobId = id()

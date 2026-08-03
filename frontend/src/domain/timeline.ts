@@ -1,8 +1,10 @@
-import type { ProjectClip, ProjectDocument, ProjectMedia, ProjectTrack, SequenceSettings } from '../project-schema'
+import type { ProjectClip, ProjectDocument, ProjectMedia, ProjectMulticamGroup, ProjectTrack, SequenceSettings } from '../project-schema'
 import { validateProjectDocument } from '../project-schema'
 
 export type TimelineCommand =
   | { kind: 'batch'; commands: TimelineCommand[] }
+  | { kind: 'set_multicam_groups'; groups: ProjectMulticamGroup[] }
+  | { kind: 'attach_multicam_group'; sequenceId: string; clipId: string; groupId: string | null }
   | {
       kind: 'insert_media_clip'
       sequenceId: string
@@ -150,6 +152,11 @@ export function applyTimelineCommand(
   command: TimelineCommand,
 ): ProjectDocument {
   const next = cloneJson(document)
+  if (command.kind === 'set_multicam_groups') {
+    next.multicamGroups = cloneJson(command.groups)
+    validateProjectDocument(next)
+    return next
+  }
   if (command.kind === 'batch') {
     if (command.commands.length === 0) throw new Error('empty timeline batch')
     return command.commands.reduce(
@@ -161,6 +168,16 @@ export function applyTimelineCommand(
   if (!sequence) throw new Error(`missing sequence ${command.sequenceId}`)
 
   switch (command.kind) {
+    case 'attach_multicam_group': {
+      const located = locateClip(sequence.tracks, command.clipId)
+      ensureUnlocked(located.track)
+      if (command.groupId === null) delete located.clip.multicamGroupId
+      else {
+        if (!next.multicamGroups.some(group => group.id === command.groupId)) throw new Error(`missing multicam group ${command.groupId}`)
+        located.clip.multicamGroupId = command.groupId
+      }
+      break
+    }
     case 'insert_media_clip': {
       const track = requiredTrack(sequence.tracks, command.trackId)
       ensureUnlocked(track)

@@ -135,7 +135,7 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
   await page.goto('/')
 
   await page.getByPlaceholder('https://vkvideo.ru/video-220018529_456248395').fill('https://example.com/video')
-  await page.getByRole('button', { name: 'Импорт' }).click()
+  await page.getByRole('button', { name: 'Импорт', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Fixture clip' })).toBeVisible()
   await expect(page.getByRole('status').filter({ hasText: 'Proxy' })).toContainText('Proxy')
   await expect(page.locator('video.player')).toHaveAttribute('src', new RegExp(`/api/proxies/${PROXY_KEY}/preview`))
@@ -173,7 +173,7 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
     (request) =>
       new URL(request.url()).pathname === '/api/edit' && request.method() === 'POST',
   )
-  await page.getByRole('button', { name: 'Экспортировать' }).click()
+  await page.getByRole('button', { name: 'Экспортировать', exact: true }).click()
   const editPayload = (await editRequestPromise).postDataJSON() as {
     lut?: { id: string; intensity: number }
     curves?: Record<string, Array<{ x: number; y: number }>>

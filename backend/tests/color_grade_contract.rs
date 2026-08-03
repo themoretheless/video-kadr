@@ -45,12 +45,14 @@ fn shared_primary_correction_fixture_matches_reference_math() {
     assert_eq!(fixture.working_space, "linear-srgb-d65");
     for sample in &fixture.samples {
         let actual = reference(sample);
-        for channel in 0..3 {
+        for (channel, (actual_channel, expected_channel)) in
+            actual.iter().zip(sample.expected.iter()).enumerate()
+        {
             assert!(
-                (actual[channel] - sample.expected[channel]).abs() <= 1e-8,
+                (actual_channel - expected_channel).abs() <= 1e-8,
                 "channel {channel}: {} != {}",
-                actual[channel],
-                sample.expected[channel]
+                actual_channel,
+                expected_channel
             );
         }
     }
