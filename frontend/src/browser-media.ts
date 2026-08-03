@@ -890,6 +890,7 @@ export function getCapabilities(): Capabilities {
     ],
     filters: [
       local('primary-corrections', 'Температура / Tint / Света / Тени'),
+      local('color-wheels', 'Lift / Gamma / Gain'),
       ...['grayscale', 'sepia', 'warm', 'cold', 'teal-orange', 'faded', 'noir', 'vintage', 'lut3d', 'curves'].map((name) => enabled(name)),
       local('lut3d-blend', 'Интенсивность LUT'),
     ],

@@ -9,14 +9,14 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::config::encode_budget::EncodeBudget;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::edit::{
-    AspectRatio, AudioEffects, CensorColor, CensorSpec, EditSpec, GeometrySpec, LookPreset,
-    LutGrade, OutputScale, PixelRect, Rotation, TimeRange, TimingSpec, ToneCurve, ToneCurvePoint,
-    ToneCurves, VideoEffects,
+    AspectRatio, AudioEffects, CensorColor, CensorSpec, ColorWheel, ColorWheels, EditSpec,
+    GeometrySpec, LookPreset, LutGrade, OutputScale, PixelRect, Rotation, TimeRange, TimingSpec,
+    ToneCurve, ToneCurvePoint, ToneCurves, VideoEffects,
 };
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::model::{Crop, EditRequest, Scale, Trim};
 
-const EDIT_PLAN_SCHEMA_VERSION: u32 = 3;
+const EDIT_PLAN_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SourceMediaMetadata {
@@ -205,6 +205,9 @@ fn normalize_request(edit: &mut EditRequest, source: SourceMediaSpec) -> anyhow:
     edit.tint = finite_number(edit.tint, "Недопустимый оттенок")?;
     edit.highlights = finite_number(edit.highlights, "Недопустимые света")?;
     edit.shadows = finite_number(edit.shadows, "Недопустимые тени")?;
+    if edit.color_wheels.is_some_and(|value| value.is_neutral()) {
+        edit.color_wheels = None;
+    }
     edit.sharpen = finite_non_negative(edit.sharpen, "Недопустимая резкость")?.clamp(0.0, 5.0);
     edit.grain = finite_non_negative(edit.grain, "Недопустимое зерно")?.clamp(0.0, 100.0);
     normalize_trim(&mut edit.trim, duration)?;
@@ -316,6 +319,17 @@ fn validate_scale(scale: &Scale) -> anyhow::Result<()> {
 }
 
 fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
+    let map_wheel = |wheel: crate::model::ColorWheelRequest| ColorWheel {
+        master: wheel.master,
+        red: wheel.red,
+        green: wheel.green,
+        blue: wheel.blue,
+    };
+    let color_wheels = request.color_wheels.map(|wheels| ColorWheels {
+        lift: map_wheel(wheels.lift),
+        gamma: map_wheel(wheels.gamma),
+        gain: map_wheel(wheels.gain),
+    });
     let trim = request
         .trim
         .map(|value| TimeRange::new(value.start, value.end))
@@ -395,6 +409,7 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             tint: request.tint,
             highlights: request.highlights,
             shadows: request.shadows,
+            color_wheels,
             look,
             vignette: request.vignette,
             denoise: request.denoise,
@@ -672,6 +687,41 @@ mod tests {
     }
 
     #[test]
+    fn compiler_canonicalizes_neutral_wheels_and_rejects_out_of_range_components() {
+        let neutral = compile(serde_json::json!({
+            "videoId": "x",
+            "colorWheels": {"lift": {}, "gamma": {}, "gain": {}}
+        }))
+        .unwrap();
+        assert!(neutral.edit.video().color_wheels.is_none());
+
+        let extremes = compile(serde_json::json!({
+            "videoId": "x",
+            "colorWheels": {
+                "lift": {"master": 1, "red": -1},
+                "gamma": {"green": 1},
+                "gain": {"blue": -1}
+            }
+        }))
+        .unwrap();
+        assert!(extremes.edit.video().color_wheels.is_some());
+
+        for (wheel, channel, value) in [
+            ("lift", "master", 1.000_001),
+            ("gamma", "red", -1.000_001),
+            ("gain", "green", 2.0),
+            ("gain", "blue", -2.0),
+        ] {
+            let mut request = serde_json::json!({
+                "videoId": "x",
+                "colorWheels": {"lift": {}, "gamma": {}, "gain": {}}
+            });
+            request["colorWheels"][wheel][channel] = serde_json::json!(value);
+            assert!(compile(request).is_err(), "{wheel}.{channel}={value}");
+        }
+    }
+
+    #[test]
     fn compiler_rejects_bad_timing_fps_scale_and_non_finite_values() {
         for value in [
             serde_json::json!({"videoId": "x", "speed": 0.0}),
@@ -704,11 +754,52 @@ mod tests {
         .unwrap();
         let source = Fingerprint::digest(b"source-a");
         let first = EditPlan::compile(source.clone(), edit.clone(), self::source()).unwrap();
-        let second = EditPlan::compile(source, edit.clone(), self::source()).unwrap();
-        let other =
-            EditPlan::compile(Fingerprint::digest(b"source-b"), edit, self::source()).unwrap();
+        let second = EditPlan::compile(source.clone(), edit.clone(), self::source()).unwrap();
+        let other = EditPlan::compile(
+            Fingerprint::digest(b"source-b"),
+            edit.clone(),
+            self::source(),
+        )
+        .unwrap();
         assert_eq!(first.plan_fingerprint, second.plan_fingerprint);
         assert_ne!(first.plan_fingerprint, other.plan_fingerprint);
+
+        let neutral: EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "source",
+            "trim": {"start": 1.0, "end": 2.0},
+            "colorWheels": {"lift": {}, "gamma": {}, "gain": {}}
+        }))
+        .unwrap();
+        let active: EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "source",
+            "trim": {"start": 1.0, "end": 2.0},
+            "colorWheels": {"lift": {"red": 0.25}, "gamma": {}, "gain": {}}
+        }))
+        .unwrap();
+        let baseline = EditPlan::compile(source.clone(), edit.clone(), self::source()).unwrap();
+        let neutral = EditPlan::compile(source.clone(), neutral, self::source()).unwrap();
+        let active = EditPlan::compile(source.clone(), active, self::source()).unwrap();
+        assert_eq!(baseline.plan_fingerprint, neutral.plan_fingerprint);
+        assert_ne!(baseline.plan_fingerprint, active.plan_fingerprint);
+
+        let negative_zero: EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "source",
+            "trim": {"start": 1.0, "end": 2.0},
+            "colorWheels": { "lift": { "red": -0.0 } }
+        }))
+        .unwrap();
+        let tiny_nonzero: EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "source",
+            "trim": {"start": 1.0, "end": 2.0},
+            "colorWheels": { "lift": { "red": 5e-10 } }
+        }))
+        .unwrap();
+        let negative_zero =
+            EditPlan::compile(source.clone(), negative_zero, self::source()).unwrap();
+        let tiny_nonzero = EditPlan::compile(source, tiny_nonzero, self::source()).unwrap();
+        assert_eq!(baseline.plan_fingerprint, negative_zero.plan_fingerprint);
+        assert_ne!(baseline.plan_fingerprint, tiny_nonzero.plan_fingerprint);
+        assert!(tiny_nonzero.edit.video().color_wheels.is_some());
     }
 
     #[test]

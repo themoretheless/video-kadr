@@ -133,6 +133,12 @@ impl Capabilities {
                 "нужны filters geq и format",
             ),
             option(
+                "color-wheels",
+                "Lift / Gamma / Gain",
+                has_filter("geq") && has_filter("format"),
+                "нужны filters geq и format",
+            ),
+            option(
                 "custom-curves",
                 "Кривые",
                 has_filter("curves"),
@@ -355,6 +361,37 @@ mod tests {
     }
 
     #[test]
+    fn color_wheels_require_geq_and_format() {
+        let available = Capabilities::from_tools(&ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["geq".into(), "format".into()],
+            ..ToolInfo::default()
+        });
+        assert!(
+            available
+                .filters
+                .iter()
+                .find(|option| option.id == "color-wheels")
+                .unwrap()
+                .available
+        );
+
+        let unavailable = Capabilities::from_tools(&ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["format".into()],
+            ..ToolInfo::default()
+        });
+        assert!(
+            !unavailable
+                .filters
+                .iter()
+                .find(|option| option.id == "color-wheels")
+                .unwrap()
+                .available
+        );
+    }
+
+    #[test]
     fn noir_requires_eq() {
         let mut filters = all_look_filters();
         filters.retain(|filter| *filter != "eq");
@@ -383,7 +420,7 @@ mod tests {
         let all_filters = all_look_filters();
         let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
 
-        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 4);
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 5);
         for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
             assert_eq!(option.id, definition.id());
             assert_eq!(option.label, definition.label);

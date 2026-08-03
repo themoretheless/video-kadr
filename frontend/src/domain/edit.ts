@@ -1,4 +1,4 @@
-import type { ColorCurves, CurvePoint, EditState, VideoInfo } from '../types'
+import type { ColorCurves, ColorWheelChannels, CurvePoint, EditState, VideoInfo } from '../types'
 
 const CURVE_MIN = 0
 const CURVE_MAX = 255
@@ -20,6 +20,10 @@ export function identityCurves(): ColorCurves {
     green: identityCurve(),
     blue: identityCurve(),
   }
+}
+
+export function neutralColorWheel(): ColorWheelChannels {
+  return { master: 0, red: 0, green: 0, blue: 0 }
 }
 
 export const EDIT_DEFAULTS = {
@@ -48,6 +52,9 @@ export const EDIT_DEFAULTS = {
   tint: 0,
   highlights: 0,
   shadows: 0,
+  lift: neutralColorWheel(),
+  gamma: neutralColorWheel(),
+  gain: neutralColorWheel(),
   filter: '',
   lutId: null,
   lutName: '',
@@ -78,6 +85,9 @@ export function defaultEdit(): EditState {
     crop: { ...EDIT_DEFAULTS.crop },
     scale: { ...EDIT_DEFAULTS.scale },
     censor: { ...EDIT_DEFAULTS.censor },
+    lift: { ...EDIT_DEFAULTS.lift },
+    gamma: { ...EDIT_DEFAULTS.gamma },
+    gain: { ...EDIT_DEFAULTS.gain },
     curves: cloneCurves(EDIT_DEFAULTS.curves),
   }
 }
@@ -162,6 +172,12 @@ export function buildEditPayload(
   if (tint !== EDIT_DEFAULTS.tint) payload.tint = tint
   if (highlights !== EDIT_DEFAULTS.highlights) payload.highlights = highlights
   if (shadows !== EDIT_DEFAULTS.shadows) payload.shadows = shadows
+  const lift = sanitizeColorWheel(edit.lift)
+  const gamma = sanitizeColorWheel(edit.gamma)
+  const gain = sanitizeColorWheel(edit.gain)
+  if (colorWheelsActive({ lift, gamma, gain })) {
+    payload.colorWheels = { lift, gamma, gain }
+  }
   if (edit.filter) payload.filter = edit.filter
   const lutId = sanitizeLutId(edit.lutId)
   const lutIntensity = sanitizeLutIntensity(edit.lutIntensity)
@@ -223,6 +239,29 @@ export function sanitizeLutIntensity(value: unknown): number {
 /** Canonical primary correction amount shared by persistence and payloads. */
 export function sanitizePrimaryCorrection(value: unknown): number {
   return Math.max(-1, Math.min(1, finiteOr(value, 0)))
+}
+
+export function sanitizeColorWheel(value: unknown): ColorWheelChannels {
+  const source = isRecord(value) ? value : {}
+  return {
+    master: sanitizePrimaryCorrection(source.master),
+    red: sanitizePrimaryCorrection(source.red),
+    green: sanitizePrimaryCorrection(source.green),
+    blue: sanitizePrimaryCorrection(source.blue),
+  }
+}
+
+export function colorWheelActive(value: ColorWheelChannels): boolean {
+  const safe = sanitizeColorWheel(value)
+  return safe.master !== 0 || safe.red !== 0 || safe.green !== 0 || safe.blue !== 0
+}
+
+export function colorWheelsActive(value: {
+  lift: ColorWheelChannels
+  gamma: ColorWheelChannels
+  gain: ColorWheelChannels
+}): boolean {
+  return colorWheelActive(value.lift) || colorWheelActive(value.gamma) || colorWheelActive(value.gain)
 }
 
 /**
@@ -410,6 +449,9 @@ export function sanitizeEditState(value: unknown, base: EditState = defaultEdit(
     tint: sanitizePrimaryCorrection(source.tint ?? base.tint),
     highlights: sanitizePrimaryCorrection(source.highlights ?? base.highlights),
     shadows: sanitizePrimaryCorrection(source.shadows ?? base.shadows),
+    lift: sanitizeColorWheel(source.lift ?? base.lift),
+    gamma: sanitizeColorWheel(source.gamma ?? base.gamma),
+    gain: sanitizeColorWheel(source.gain ?? base.gain),
     curves: sanitizeCurves(source.curves ?? base.curves),
   }
 }
@@ -423,6 +465,9 @@ export function resetColorAdjustments(edit: EditState): void {
   edit.tint = EDIT_DEFAULTS.tint
   edit.highlights = EDIT_DEFAULTS.highlights
   edit.shadows = EDIT_DEFAULTS.shadows
+  edit.lift = neutralColorWheel()
+  edit.gamma = neutralColorWheel()
+  edit.gain = neutralColorWheel()
   edit.filter = EDIT_DEFAULTS.filter
   edit.lutId = EDIT_DEFAULTS.lutId
   edit.lutName = EDIT_DEFAULTS.lutName

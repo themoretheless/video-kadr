@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { beginEditTransaction, buildEditPayload, clientOnlyMode, endEditTransaction, isIdentityCurves, setProjectProxyPolicy, state, timelineState, type ProjectProxyPolicy } from '../store'
 import {
-  applyPrimaryCorrectionsToImageData,
   primaryCorrectionsActive,
 } from '../domain/primary-color'
+import { applyPrimaryAndWheelsToImageData } from '../domain/color-wheels'
+import { colorWheelsActive } from '../domain/edit'
 import { derivedTaskState, regenerateMissingBrowserProxy } from '../derived-task-center'
 import { browserProxyCapability, deleteBrowserProxyArtifact, resolveBrowserPreviewSource, type ProxyPreviewSource } from '../browser-proxy-artifacts'
 import { invalidateBackendProxyArtifact, resolveBackendPreviewSource } from '../proxy-preview'
@@ -66,7 +67,7 @@ function frameIdentity(seconds: number) {
   const settings: PreviewRenderSettings = {
     width, height, pixelRatioMilli: 1000,
     sourceMode: previewSource.value.usingProxy ? 'proxy' : 'original',
-    rendererCompatibility: `browser-canvas-linear-primary-v2:${previewSource.value.mappingIdentity ?? 'original'}:${previewMappingGeneration}`,
+    rendererCompatibility: `browser-canvas-linear-primary-wheels-v3:${previewSource.value.mappingIdentity ?? 'original'}:${previewMappingGeneration}`,
   }
   const graphVersion = previewGraphFingerprint(video.fingerprint, {
     edit: state.edit,
@@ -96,9 +97,9 @@ async function captureCurrentFrame(mediaTime?: number): Promise<void> {
     const context = surface.getContext('2d')
     if (!context) return
     context.drawImage(el, 0, 0, surface.width, surface.height)
-    if (primaryCorrectionsActive(state.edit)) {
+    if (primaryCorrectionsActive(state.edit) || colorWheelsActive(state.edit)) {
       const pixels = context.getImageData(0, 0, surface.width, surface.height)
-      applyPrimaryCorrectionsToImageData(pixels, state.edit)
+      applyPrimaryAndWheelsToImageData(pixels, state.edit, state.edit)
       context.putImageData(pixels, 0, 0)
     }
     const key = previewFrameKey(identity)
@@ -271,10 +272,12 @@ const videoStyle = computed(() => {
 
 const advancedColorNotice = computed(() => {
   const primaryActive = primaryCorrectionsActive(state.edit)
+  const wheelsActive = colorWheelsActive(state.edit)
   const lutActive = Boolean(state.edit.lutId) && state.edit.lutIntensity > 0
   const curvesActive = !isIdentityCurves(state.edit.curves)
   const active: string[] = []
   if (primaryActive) active.push('Температура / оттенок / света / тени')
+  if (wheelsActive) active.push('Lift / Gamma / Gain')
   if (lutActive) active.push('LUT')
   if (curvesActive) active.push('кривые')
   return active.length ? `${active.join(', ')} включены.` : ''
@@ -283,10 +286,11 @@ const advancedColorNotice = computed(() => {
 const advancedColorDetail = computed(() => {
   if (!clientOnlyMode) return 'Точный кадр появляется после остановки или перемотки; во время воспроизведения используется быстрый fallback.'
   const primaryActive = primaryCorrectionsActive(state.edit)
+  const wheelsActive = colorWheelsActive(state.edit)
   const advancedActive = Boolean(state.edit.lutId) && state.edit.lutIntensity > 0
     || !isIdentityCurves(state.edit.curves)
   const details: string[] = []
-  if (primaryActive) details.push('Точная primary-коррекция появляется на кадре после паузы или перемотки; во время воспроизведения она не имитируется CSS.')
+  if (primaryActive || wheelsActive) details.push('Точная линейная primary/Lift/Gamma/Gain-коррекция появляется на кадре после паузы или перемотки; во время воспроизведения она не имитируется CSS.')
   if (advancedActive) details.push('Точный LUT и кривые доступны после экспорта.')
   return details.join(' ')
 })

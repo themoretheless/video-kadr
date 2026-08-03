@@ -20,6 +20,7 @@ import {
 import type { Preset } from '../store'
 import TrimSlider from './TrimSlider.vue'
 import CurvesEditor from './edit/CurvesEditor.vue'
+import ColorWheel from './edit/ColorWheel.vue'
 import ExportControls from './edit/ExportControls.vue'
 import LutControl from './edit/LutControl.vue'
 
@@ -614,6 +615,38 @@ function applyPlatform(name: string) {
         </div>
       </div>
       <div class="advanced-color-stack">
+        <div class="color-wheels-tool color-tool">
+          <div class="color-tool-head">
+            <div>
+              <h3>Lift / Gamma / Gain</h3>
+              <p>Цветовой круг управляет оттенком и насыщенностью; Master и RGB доступны численно.</p>
+            </div>
+            <span class="color-tool-badge">linear RGB</span>
+          </div>
+          <div class="color-wheels-grid">
+            <ColorWheel
+              v-model="state.edit.lift"
+              label="Lift"
+              @interaction-start="beginEditTransaction('color-wheel-lift')"
+              @interaction-end="endEditTransaction"
+            />
+            <ColorWheel
+              v-model="state.edit.gamma"
+              label="Gamma"
+              @interaction-start="beginEditTransaction('color-wheel-gamma')"
+              @interaction-end="endEditTransaction"
+            />
+            <ColorWheel
+              v-model="state.edit.gain"
+              label="Gain"
+              @interaction-start="beginEditTransaction('color-wheel-gain')"
+              @interaction-end="endEditTransaction"
+            />
+          </div>
+          <p class="advanced-color-note">
+            Точный результат появляется в предпросмотре после паузы или перемотки.
+          </p>
+        </div>
         <LutControl />
         <template v-if="!curvesUnavailableReason">
           <CurvesEditor

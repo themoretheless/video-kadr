@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "workingSpace": "linear-srgb-d65",
+  "parameterRange": [-1, 1],
+  "defaults": {
+    "lift": {"master": 0, "red": 0, "green": 0, "blue": 0},
+    "gamma": {"master": 0, "red": 0, "green": 0, "blue": 0},
+    "gain": {"master": 0, "red": 0, "green": 0, "blue": 0}
+  },
+  "order": ["decode-transfer", "primary-corrections", "lift", "gamma", "gain", "encode-transfer", "brightness-contrast-saturation", "preset", "lut", "curves"],
+  "formula": {
+    "effectiveControl": "wheel.master + wheel.channel",
+    "lift": "u=max(0, input + 0.25*(lift.master+lift.channel))",
+    "gamma": "v=pow(u, exp2(-(gamma.master+gamma.channel)))",
+    "gain": "output=v*exp2(gain.master+gain.channel)",
+    "gamut": "the max(0,...) before fractional power is the only intermediate floor; clamp RGB to [0,1] once after gain"
+  },
+  "samples": [
+    {"rgb":[0.18,0.18,0.18],"lift":{"master":0,"red":0,"green":0,"blue":0},"gamma":{"master":0,"red":0,"green":0,"blue":0},"gain":{"master":0,"red":0,"green":0,"blue":0},"expected":[0.18,0.18,0.18]},
+    {"rgb":[0.18,0.18,0.18],"lift":{"master":0.4,"red":0,"green":0,"blue":0},"gamma":{"master":0,"red":0,"green":0,"blue":0},"gain":{"master":0,"red":0,"green":0,"blue":0},"expected":[0.28,0.28,0.28]},
+    {"rgb":[0.18,0.18,0.18],"lift":{"master":0,"red":0,"green":0,"blue":0},"gamma":{"master":0.5,"red":0,"green":0,"blue":0},"gain":{"master":0,"red":0,"green":0,"blue":0},"expected":[0.2974391547175208,0.2974391547175208,0.2974391547175208]},
+    {"rgb":[0.18,0.18,0.18],"lift":{"master":0,"red":0,"green":0,"blue":0},"gamma":{"master":0,"red":0,"green":0,"blue":0},"gain":{"master":0.5,"red":0,"green":0,"blue":0},"expected":[0.2545584412271571,0.2545584412271571,0.2545584412271571]},
+    {"rgb":[0.2,0.4,0.8],"lift":{"master":-0.1,"red":0.2,"green":0,"blue":-0.2},"gamma":{"master":0.15,"red":-0.3,"green":0.1,"blue":0},"gain":{"master":-0.2,"red":0.4,"green":0,"blue":-0.1},"expected":[0.2194863405987536,0.38159126163653395,0.6078837936303195]},
+    {"rgb":[0.05,0.5,0.95],"lift":{"master":-0.5,"red":0,"green":0,"blue":0},"gamma":{"master":0.2,"red":0,"green":0,"blue":0},"gain":{"master":0.8,"red":0,"green":0,"blue":0},"expected":[0,0.7413045686910084,1]}
+  ],
+  "tolerances": {"cpuAbsolute": 1e-12, "webglAbsolute": 0.00002, "ffmpeg8BitCodeValues": 1, "ffmpeg10BitCodeValues": 2}
+}

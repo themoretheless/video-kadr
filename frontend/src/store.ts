@@ -12,6 +12,7 @@ import {
 } from './browser-project-store'
 import {
   buildEditPayload as buildPayload,
+  colorWheelsActive,
   defaultEdit,
   hasMeaningfulChanges as hasMeaningfulEditChanges,
   isIdentityCurves,
@@ -590,6 +591,14 @@ export function selectedExportUnavailableReason(): string | null {
     if (reason) return reason
   }
 
+  if (colorWheelsActive(state.edit)) {
+    const reason = colorCapabilityUnavailableReason(
+      ['color-wheels', 'lift-gamma-gain'],
+      'Lift, Gamma и Gain недоступны: нужен обновлённый сервер',
+    )
+    if (reason) return reason
+  }
+
   if (state.edit.lutId && state.edit.lutIntensity > 0) {
     const reason = colorCapabilityUnavailableReason(
       ['lut', 'lut3d', 'cube-lut'],
@@ -1075,6 +1084,9 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'tint',
   'highlights',
   'shadows',
+  'lift',
+  'gamma',
+  'gain',
   'filter',
   'lutId',
   'lutName',

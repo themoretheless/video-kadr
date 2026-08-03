@@ -83,6 +83,13 @@ export interface ColorCurves {
   blue: CurvePoint[]
 }
 
+export interface ColorWheelChannels {
+  master: number
+  red: number
+  green: number
+  blue: number
+}
+
 export interface EditState {
   trimStart: number
   trimEnd: number
@@ -111,6 +118,10 @@ export interface EditState {
   tint: number
   highlights: number
   shadows: number
+  /** Lift/Gamma/Gain controls in linear sRGB; every channel is neutral at 0. */
+  lift: ColorWheelChannels
+  gamma: ColorWheelChannels
+  gain: ColorWheelChannels
   filter: string
   /** Stored LUT asset reference. File bytes never enter edit/project JSON. */
   lutId: string | null

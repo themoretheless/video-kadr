@@ -4,7 +4,9 @@
 use std::path::Path;
 
 use crate::config::encode_budget::EncodeBudget;
-use crate::domain::edit::{EditSpec, Rotation, TimeRange, ToneCurve, ToneCurves};
+use crate::domain::edit::{
+    ColorWheel, EditSpec, Rotation, TimeRange, ToneCurve, ToneCurves, VideoEffects,
+};
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::ports::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
@@ -81,11 +83,11 @@ fn curves_filter(curves: &ToneCurves) -> String {
     format!("curves={}", options.join(":"))
 }
 
-fn primary_correction_filter(temperature: f64, tint: f64, highlights: f64, shadows: f64) -> String {
+fn primary_correction_filter(video: &VideoEffects) -> String {
     let gains = [
-        2_f64.powf(0.25 * temperature - 0.10 * tint),
-        2_f64.powf(0.20 * tint),
-        2_f64.powf(-0.25 * temperature - 0.10 * tint),
+        2_f64.powf(0.25 * video.temperature - 0.10 * video.tint),
+        2_f64.powf(0.20 * video.tint),
+        2_f64.powf(-0.25 * video.temperature - 0.10 * video.tint),
     ];
     let linear = |channel: &str, gain: f64| {
         let normalized = format!("({channel}(X,Y)/65535)");
@@ -103,19 +105,40 @@ fn primary_correction_filter(temperature: f64, tint: f64, highlights: f64, shado
     };
     let shadow_mask = format!("(1-{})", smooth(&luma, 0.0, 0.5));
     let highlight_mask = smooth(&luma, 0.5, 1.0);
-    let tonal_gain =
-        format!("pow(2,0.75*({shadows:.12}*{shadow_mask}+{highlights:.12}*{highlight_mask}))");
-    let encode = |linear_channel: &str| {
-        let corrected = format!("clip(({linear_channel})*{tonal_gain},0,1)");
+    let tonal_gain = format!(
+        "pow(2,0.75*({:.12}*{shadow_mask}+{:.12}*{highlight_mask}))",
+        video.shadows, video.highlights
+    );
+    let primary = [lr, lg, lb].map(|channel| format!("clip(({channel})*{tonal_gain},0,1)"));
+    let wheel_value = |wheel: ColorWheel, index: usize| {
+        let channel = wheel.values()[index + 1];
+        wheel.master + channel
+    };
+    let corrected = primary.map(|channel| channel);
+    let corrected = if let Some(wheels) = video.color_wheels {
+        std::array::from_fn(|index| {
+            let lift = wheel_value(wheels.lift, index);
+            let gamma = wheel_value(wheels.gamma, index);
+            let gain = wheel_value(wheels.gain, index);
+            let lifted = format!("max(0,({})+0.25*{lift:.12})", corrected[index]);
+            format!(
+                "clip(pow({lifted},pow(2,{:.12}))*pow(2,{gain:.12}),0,1)",
+                -gamma
+            )
+        })
+    } else {
+        corrected
+    };
+    let encode = |corrected: &str| {
         format!(
             "65535*if(lte({corrected},0.0031308),12.92*{corrected},1.055*pow({corrected},0.416666666666667)-0.055)"
         )
     };
     format!(
-        "geq=r='{}':g='{}':b='{}'",
-        encode(&lr),
-        encode(&lg),
-        encode(&lb)
+        "geq=r='{}':g='{}':b='{}':a='alpha(X,Y)'",
+        encode(&corrected[0]),
+        encode(&corrected[1]),
+        encode(&corrected[2])
     )
 }
 
@@ -191,16 +214,12 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
         || video.tint.abs() > 1e-6
         || video.highlights.abs() > 1e-6
         || video.shadows.abs() > 1e-6;
-    if video.curves.is_some() || video.lut.is_some() || primary_changed {
+    let wheels_changed = video.color_wheels.is_some();
+    if video.curves.is_some() || video.lut.is_some() || primary_changed || wheels_changed {
         before_lut.push("format=gbrap16le".into());
     }
-    if primary_changed {
-        before_lut.push(primary_correction_filter(
-            video.temperature,
-            video.tint,
-            video.highlights,
-            video.shadows,
-        ));
+    if primary_changed || wheels_changed {
+        before_lut.push(primary_correction_filter(video));
     }
     let eq_changed = video.brightness.abs() > 1e-6
         || (video.contrast - 1.0).abs() > 1e-6
@@ -1088,10 +1107,57 @@ mod tests {
     }
 
     #[test]
+    fn lift_gamma_gain_are_nested_in_fixture_order_before_eq_lut_and_curves() {
+        let command = command_with_lut(
+            json!({
+                "videoId": "x",
+                "brightness": 0.1,
+                "colorWheels": {
+                    "lift": {"master": -0.1, "red": 0.2},
+                    "gamma": {"master": 0.15, "red": -0.3},
+                    "gain": {"master": -0.2, "red": 0.4}
+                },
+                "lut": {"id":"look","intensity":1.0},
+                "curves": {"master": [{"x":0.0,"y":0.0},{"x":1.0,"y":1.0}]}
+            }),
+            10.0,
+            Path::new("/private/luts/look.cube"),
+        );
+        let chain = vf(&command.arguments);
+        let wheel = chain.find("geq=r=").unwrap();
+        let lift = chain.find("+0.25*0.100000000000").unwrap();
+        let gamma = chain.find("pow(2,0.150000000000)").unwrap();
+        let gain = chain.find("pow(2,0.200000000000)").unwrap();
+        let eq = chain.find("eq=").unwrap();
+        let lut = chain.find("lut3d=").unwrap();
+        let curves = chain.find("curves=master=").unwrap();
+        assert!(wheel < lift && lift < gamma && gamma < gain, "{chain}");
+        assert!(wheel < eq && eq < lut && lut < curves, "{chain}");
+    }
+
+    #[test]
+    fn neutral_color_wheels_emit_no_filter() {
+        let neutral = args_for(
+            json!({
+                "videoId":"x",
+                "colorWheels":{"lift":{},"gamma":{},"gain":{}}
+            }),
+            10.0,
+        )
+        .join(" ");
+        assert!(!neutral.contains("geq=r="), "{neutral}");
+    }
+
+    #[test]
     fn partial_lut_blend_still_precedes_authored_curves() {
         let command = command_with_lut(
             json!({
                 "videoId":"x", "temperature":0.25,
+                "colorWheels": {
+                    "lift":{"red":0.2},
+                    "gamma":{"green":-0.1},
+                    "gain":{"blue":0.15}
+                },
                 "lut":{"id":"look","intensity":0.5},
                 "curves":{"master":[{"x":0.0,"y":0.0},{"x":1.0,"y":1.0}]}
             }),
@@ -1100,6 +1166,7 @@ mod tests {
         );
         let graph = filter_complex(&command.arguments);
         let primary = graph.find("geq=r=").unwrap();
+        assert!(graph.contains("+0.25*0.200000000000"), "{graph}");
         let split = graph.find("split=2").unwrap();
         let lut = graph.find("lut3d=").unwrap();
         let blend = graph.find("blend=").unwrap();
@@ -1111,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    fn ffmpeg_primary_adapter_matches_fixture_math_within_eight_bit_tolerance() {
+    fn ffmpeg_primary_and_wheels_adapter_matches_fixture_math_within_eight_bit_tolerance() {
         if std::process::Command::new("ffmpeg")
             .arg("-version")
             .output()
@@ -1120,12 +1187,27 @@ mod tests {
             return;
         }
         let directory = tempfile::tempdir().unwrap();
-        let input = directory.path().join("input.ppm");
+        let input = directory.path().join("input.pam");
         let output = directory.path().join("output.png");
-        let mut ppm = b"P6\n4 4\n255\n".to_vec();
-        ppm.extend(std::iter::repeat_n(46_u8, 4 * 4 * 3));
-        std::fs::write(&input, ppm).unwrap();
-        let edit = plan_for_duration(json!({"videoId":"x","temperature":1.0,"format":"png"}), 1.0);
+        let mut pam =
+            b"P7\nWIDTH 4\nHEIGHT 4\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n".to_vec();
+        for _ in 0..(4 * 4) {
+            pam.extend([46_u8, 46, 46, 77]);
+        }
+        std::fs::write(&input, pam).unwrap();
+        let edit = plan_for_duration(
+            json!({
+                "videoId":"x",
+                "temperature":1.0,
+                "colorWheels": {
+                    "lift":{"master":-0.1,"red":0.2,"green":0.0,"blue":-0.2},
+                    "gamma":{"master":0.15,"red":-0.3,"green":0.1,"blue":0.0},
+                    "gain":{"master":-0.2,"red":0.4,"green":0.0,"blue":-0.1}
+                },
+                "format":"png"
+            }),
+            1.0,
+        );
         let arguments = build_ffmpeg_args(&input, &output, &edit);
         let status = std::process::Command::new("ffmpeg")
             .args(["-hide_banner", "-loglevel", "error"])
@@ -1142,7 +1224,7 @@ mod tests {
                 "-f",
                 "rawvideo",
                 "-pix_fmt",
-                "rgb24",
+                "rgba",
                 "pipe:1",
             ])
             .output()
@@ -1163,11 +1245,19 @@ mod tests {
                 1.055 * value.powf(1.0 / 2.4) - 0.055
             }
         };
-        let expected = [
-            encode(decode(source) * 2_f64.powf(0.25)),
-            encode(decode(source)),
-            encode(decode(source) * 2_f64.powf(-0.25)),
-        ]
+        let primary = [
+            decode(source) * 2_f64.powf(0.25),
+            decode(source),
+            decode(source) * 2_f64.powf(-0.25),
+        ];
+        let lift = [0.1, -0.1, -0.3];
+        let gamma = [-0.15, 0.25, 0.15];
+        let gain = [0.2, -0.2, -0.3];
+        let expected: [i16; 3] = std::array::from_fn(|index| {
+            let lifted = (primary[index] + 0.25 * lift[index]).max(0.0);
+            let corrected = lifted.powf(2_f64.powf(-gamma[index])) * 2_f64.powf(gain[index]);
+            encode(corrected.clamp(0.0, 1.0))
+        })
         .map(|value| (value * 255.0).round() as i16);
         for (actual, expected) in decoded.stdout[..3].iter().zip(expected) {
             assert!(
@@ -1176,6 +1266,7 @@ mod tests {
                 &decoded.stdout[..3]
             );
         }
+        assert_eq!(decoded.stdout[3], 77, "alpha must survive the geq grade");
     }
 
     #[test]

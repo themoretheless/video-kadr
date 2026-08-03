@@ -242,6 +242,20 @@ describe('buildEditPayload', () => {
 
     expect(second.curves).toEqual(identityCurves())
     expect(second.curves.red).not.toBe(first.curves.red)
+    first.lift.red = 0.8
+    expect(second.lift.red).toBe(0)
+    expect(second.lift).not.toBe(first.lift)
+  })
+
+  it('emits one canonical colorWheels object and omits a neutral stack', () => {
+    expect(buildEditPayload()).not.toHaveProperty('colorWheels')
+    state.edit.lift = { master: 0.2, red: 4, green: Number.NaN, blue: -4 }
+    state.edit.gamma = { master: 0, red: 0, green: 0.25, blue: 0 }
+    expect(buildEditPayload().colorWheels).toEqual({
+      lift: { master: 0.2, red: 1, green: 0, blue: -1 },
+      gamma: { master: 0, red: 0, green: 0.25, blue: 0 },
+      gain: { master: 0, red: 0, green: 0, blue: 0 },
+    })
   })
 
   it('emits a sanitized deterministic LUT and curves payload', () => {
@@ -399,12 +413,16 @@ describe('colour state sanitation', () => {
       tint: -5,
       highlights: Number.NaN,
       shadows: Number.POSITIVE_INFINITY,
+      lift: { master: 5, red: -5, green: Number.NaN, blue: 0.4 },
+      gamma: null,
     })
     expect(edit.lutId).toBe(TEST_LUT_ID)
     expect(edit.lutName).toBe('Look')
     expect(edit.lutSize).toBe(65)
     expect(edit.lutIntensity).toBe(1)
     expect(edit).toMatchObject({ temperature: 1, tint: -1, highlights: 0, shadows: 0 })
+    expect(edit.lift).toEqual({ master: 1, red: -1, green: 0, blue: 0.4 })
+    expect(edit.gamma).toEqual({ master: 0, red: 0, green: 0, blue: 0 })
     expect(edit.curves.master).toEqual([
       { x: 0, y: 0 },
       { x: 128, y: 80 },
@@ -524,6 +542,9 @@ describe('LUT store actions', () => {
       denoise: true,
       sharpen: 2,
       grain: 10,
+      lift: { master: 0.2, red: -0.3, green: 0.4, blue: 0 },
+      gamma: { master: -0.2, red: 0, green: 0, blue: 0 },
+      gain: { master: 0, red: 0, green: 0.5, blue: 0 },
     })
     state.edit.curves.blue = [
       { x: 0, y: 10 },
@@ -543,6 +564,9 @@ describe('LUT store actions', () => {
       tint: 0,
       highlights: 0,
       shadows: 0,
+      lift: { master: 0, red: 0, green: 0, blue: 0 },
+      gamma: { master: 0, red: 0, green: 0, blue: 0 },
+      gain: { master: 0, red: 0, green: 0, blue: 0 },
       filter: '',
       lutId: null,
       lutName: '',
@@ -672,6 +696,23 @@ describe('runtime capabilities', () => {
     })
     expect(selectedExportUnavailableReason()).toBe('нет geq')
     state.capabilities.filters[0]!.available = true
+    expect(selectedExportUnavailableReason()).toBeNull()
+  })
+
+  it('fails closed when Lift/Gamma/Gain are unsupported', () => {
+    state.capabilities = {
+      schemaVersion: 1,
+      toolFingerprint: 'fixture',
+      formats: [{ id: 'mp4', label: 'MP4', available: true }],
+      codecs: [{ id: 'h264', label: 'H.264', available: true }],
+      filters: [],
+      hardware: [],
+    }
+    state.edit.gain.red = 0.25
+    expect(selectedExportUnavailableReason()).toContain('обновлённый сервер')
+    state.capabilities.filters.push({
+      id: 'color-wheels', label: 'Lift/Gamma/Gain', available: true,
+    })
     expect(selectedExportUnavailableReason()).toBeNull()
   })
 })
@@ -1455,6 +1496,9 @@ describe('effect presets', () => {
       tint: -0.3,
       highlights: 0.2,
       shadows: -0.1,
+      lift: { master: 0.2, red: 0.1, green: 0, blue: -0.1 },
+      gamma: { master: -0.2, red: 0, green: 0, blue: 0 },
+      gain: { master: 0.3, red: 0, green: 0.1, blue: 0 },
       trimStart: 3,
       cropEnabled: true,
       format: 'webm',
@@ -1476,6 +1520,9 @@ describe('effect presets', () => {
     expect(p.edit.filter).toBe('sepia')
     expect(p.edit.speed).toBe(1.5)
     expect(p.edit).toMatchObject({ temperature: 0.4, tint: -0.3, highlights: 0.2, shadows: -0.1 })
+    expect(p.edit.lift).toEqual({ master: 0.2, red: 0.1, green: 0, blue: -0.1 })
+    expect(p.edit.gamma?.master).toBe(-0.2)
+    expect(p.edit.gain?.green).toBe(0.1)
     expect('trimStart' in p.edit).toBe(false)
     expect('crop' in p.edit).toBe(false)
     expect('format' in p.edit).toBe(false)

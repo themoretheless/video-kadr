@@ -442,6 +442,49 @@ pub struct GeometrySpec {
     pub(crate) censor: Option<CensorSpec>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheel {
+    pub(crate) master: f64,
+    pub(crate) red: f64,
+    pub(crate) green: f64,
+    pub(crate) blue: f64,
+}
+
+impl ColorWheel {
+    pub(crate) fn values(self) -> [f64; 4] {
+        [self.master, self.red, self.green, self.blue]
+    }
+
+    fn validate(self) -> Result<(), EditSpecError> {
+        if self
+            .values()
+            .into_iter()
+            .all(|value| value.is_finite() && (-1.0..=1.0).contains(&value))
+        {
+            Ok(())
+        } else {
+            Err(EditSpecError::InvalidVideoEffect)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheels {
+    pub(crate) lift: ColorWheel,
+    pub(crate) gamma: ColorWheel,
+    pub(crate) gain: ColorWheel,
+}
+
+impl ColorWheels {
+    fn validate(self) -> Result<(), EditSpecError> {
+        self.lift.validate()?;
+        self.gamma.validate()?;
+        self.gain.validate()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoEffects {
@@ -456,6 +499,8 @@ pub struct VideoEffects {
     pub(crate) highlights: f64,
     #[serde(default)]
     pub(crate) shadows: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color_wheels: Option<ColorWheels>,
     pub(crate) look: Option<LookPreset>,
     pub(crate) vignette: bool,
     pub(crate) denoise: bool,
@@ -602,6 +647,9 @@ impl EditSpec {
         if let Some(curves) = &self.video.curves {
             curves.validate()?;
         }
+        if let Some(wheels) = self.video.color_wheels {
+            wheels.validate()?;
+        }
         if let Some(lut) = &self.video.lut {
             lut.validate()?;
         }
@@ -670,6 +718,7 @@ mod tests {
                 tint: 0.0,
                 highlights: 0.0,
                 shadows: 0.0,
+                color_wheels: None,
                 look: None,
                 vignette: false,
                 denoise: false,

@@ -1209,6 +1209,15 @@ async fn mp3_canonicalizes_video_grading_before_validation_and_dedupe() {
             json!({
                 "videoId": "missing-audio-source",
                 "format": "mp3",
+                "temperature": 2.0,
+                "tint": -2.0,
+                "highlights": 2.0,
+                "shadows": -2.0,
+                "colorWheels": {
+                    "lift": {"master": 2.0},
+                    "gamma": {"red": -2.0},
+                    "gain": {"blue": 2.0}
+                },
                 "lut": { "id": "../ignored.cube", "intensity": 2.0 },
                 "curves": {
                     "master": (0..17).map(|index| {

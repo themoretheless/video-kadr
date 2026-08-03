@@ -1,4 +1,8 @@
-import { sanitizePrimaryCorrection } from './domain/edit'
+import {
+  colorWheelsActive,
+  sanitizePrimaryCorrection,
+} from './domain/edit'
+import { sanitizeLiftGammaGain } from './domain/color-wheels'
 
 type EditPayload = Record<string, unknown>
 
@@ -60,13 +64,21 @@ function escapeFilterPath(path: string): string {
   return path.replace(/([\\':,;[\]])/g, '\\$1')
 }
 
-/** Exact fixture-defined linear-sRGB correction expressed for FFmpeg geq. */
-export function primaryCorrectionFfmpegFilter(payload: EditPayload): string | null {
+/** Primary + Lift/Gamma/Gain in one linear-sRGB decode/encode pass. */
+export function linearColorCorrectionFfmpegFilter(payload: EditPayload): string | null {
   const temperature = sanitizePrimaryCorrection(payload.temperature)
   const tint = sanitizePrimaryCorrection(payload.tint)
   const highlights = sanitizePrimaryCorrection(payload.highlights)
   const shadows = sanitizePrimaryCorrection(payload.shadows)
-  if (temperature === 0 && tint === 0 && highlights === 0 && shadows === 0) return null
+  const primaryActive = temperature !== 0 || tint !== 0 || highlights !== 0 || shadows !== 0
+  const colorWheels = record(payload.colorWheels)
+  const wheels = sanitizeLiftGammaGain({
+    lift: record(colorWheels?.lift) ?? undefined,
+    gamma: record(colorWheels?.gamma) ?? undefined,
+    gain: record(colorWheels?.gain) ?? undefined,
+  })
+  const wheelsActive = colorWheelsActive(wheels)
+  if (!primaryActive && !wheelsActive) return null
   const gains = [
     2 ** (0.25 * temperature - 0.10 * tint),
     2 ** (0.20 * tint),
@@ -87,26 +99,43 @@ export function primaryCorrectionFfmpegFilter(payload: EditPayload): string | nu
   const shadowMask = `(1-${smooth(luma, 0, 0.5)})`
   const highlightMask = smooth(luma, 0.5, 1)
   const tonalGain = `pow(2,0.75*(${shadows.toFixed(12)}*${shadowMask}+${highlights.toFixed(12)}*${highlightMask}))`
-  const encode = (channel: string) => {
-    const corrected = `clip((${channel})*${tonalGain},0,1)`
+  const primaryChannels = [red, green, blue].map(channel =>
+    primaryActive ? `clip((${channel})*${tonalGain},0,1)` : channel,
+  )
+  const channelNames = ['red', 'green', 'blue'] as const
+  const correctedChannels = primaryChannels.map((channel, index) => {
+    const name = channelNames[index]!
+    const lift = wheels.lift.master + wheels.lift[name]
+    const gamma = wheels.gamma.master + wheels.gamma[name]
+    const gain = wheels.gain.master + wheels.gain[name]
+    const lifted = `max(0,(${channel})+0.25*${lift.toFixed(12)})`
+    const gammaCorrected = `pow(${lifted},pow(2,${(-gamma).toFixed(12)}))`
+    return `clip((${gammaCorrected})*pow(2,${gain.toFixed(12)}),0,1)`
+  })
+  const encode = (corrected: string) => {
     return `65535*if(lte(${corrected},0.0031308),12.92*${corrected},1.055*pow(${corrected},0.416666666666667)-0.055)`
   }
-  return `geq=r='${encode(red)}':g='${encode(green)}':b='${encode(blue)}'`
+  return `geq=r='${encode(correctedChannels[0]!)}':g='${encode(correctedChannels[1]!)}':b='${encode(correctedChannels[2]!)}':a='alpha(X,Y)'`
+}
+
+/** Compatibility export for callers/tests that only supply primary controls. */
+export function primaryCorrectionFfmpegFilter(payload: EditPayload): string | null {
+  return linearColorCorrectionFfmpegFilter({ ...payload, colorWheels: undefined })
 }
 
 /** Color-only filter plan. Ordering is primary → EQ → preset → LUT → curves. */
 export function browserColorFilterPlan(payload: EditPayload, lutFilename?: string): BrowserColorFilterPlan {
   const beforeLut: string[] = []
   const afterLut: string[] = []
-  const primary = primaryCorrectionFfmpegFilter(payload)
+  const linearCorrection = linearColorCorrectionFfmpegFilter(payload)
   const lut = record(payload.lut)
   const lutIntensity = lut
     ? Math.max(0, Math.min(1, number(lut.intensity, 1)))
     : 0
   const lutActive = Boolean(lut) && lutIntensity > 1e-9
   const curves = record(payload.curves)
-  if (primary || lutActive || curves) beforeLut.push('format=gbrap16le')
-  if (primary) beforeLut.push(primary)
+  if (linearCorrection || lutActive || curves) beforeLut.push('format=gbrap16le')
+  if (linearCorrection) beforeLut.push(linearCorrection)
 
   const brightness = number(payload.brightness)
   const contrast = number(payload.contrast, 1)

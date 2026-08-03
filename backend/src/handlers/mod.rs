@@ -291,6 +291,11 @@ pub async fn edit_handler(
     if req.format.as_deref() == Some("mp3") {
         req.lut = None;
         req.curves = None;
+        req.temperature = 0.0;
+        req.tint = 0.0;
+        req.highlights = 0.0;
+        req.shadows = 0.0;
+        req.color_wheels = None;
     } else if req
         .lut
         .as_ref()
@@ -354,6 +359,14 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
     if primary_corrections && (!has_filter("geq") || !has_filter("format")) {
         return Err(AppError::bad_request(
             "primary-коррекция недоступна: нужны FFmpeg filters geq и format",
+        ));
+    }
+    let color_wheels = request
+        .color_wheels
+        .is_some_and(|wheels| !wheels.is_neutral());
+    if color_wheels && (!has_filter("geq") || !has_filter("format")) {
+        return Err(AppError::bad_request(
+            "цветовые колёса недоступны: нужны FFmpeg filters geq и format",
         ));
     }
     if request.curves.is_some() && !has_filter("curves") {

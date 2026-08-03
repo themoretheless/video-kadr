@@ -592,6 +592,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.color-wheels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.color-wheels-tool .advanced-color-note {
+  margin-top: 10px;
+}
+
 .lut-upload {
   width: 100%;
 }
@@ -711,6 +721,10 @@ body {
 }
 
 @media (max-width: 560px) {
+  .color-wheels-grid {
+    grid-template-columns: 1fr;
+  }
+
   .lut-selected {
     align-items: stretch;
     flex-direction: column;

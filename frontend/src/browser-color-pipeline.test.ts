@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   browserColorFilterPlan,
   browserVideoFilterArgs,
+  linearColorCorrectionFfmpegFilter,
   primaryCorrectionFfmpegFilter,
 } from './browser-color-pipeline'
 
@@ -29,6 +30,7 @@ describe('browser color filter plan', () => {
     expect(filters[1]).toMatch(/^geq=/)
     expect(filters[1]).toContain('r(X,Y)/65535')
     expect(filters[1]).toContain('65535*if(')
+    expect(filters[1]).toContain(":a='alpha(X,Y)'")
     expect(filters[2]).toMatch(/^eq=/)
     expect(filters[3]).toMatch(/^colorbalance=/)
     expect(filters[4]).toBe("lut3d=file='look.cube':interp=tetrahedral")
@@ -48,6 +50,27 @@ describe('browser color filter plan', () => {
     })
   })
 
+  it('compiles Lift, Gamma, and Gain into the same linear geq stage before EQ', () => {
+    const payload = {
+      colorWheels: {
+        lift: { master: -0.1, red: 0.2, green: 0, blue: -0.2 },
+        gamma: { master: 0.15, red: -0.3, green: 0.1, blue: 0 },
+        gain: { master: -0.2, red: 0.4, green: 0, blue: -0.1 },
+      },
+      brightness: 0.1,
+    }
+    const filter = linearColorCorrectionFfmpegFilter(payload)
+    expect(filter).toMatch(/^geq=/)
+    expect(filter).toContain('max(0,')
+    expect(filter).toContain('+0.25*0.100000000000')
+    expect(filter).toContain('pow(2,0.150000000000)')
+    expect(filter).toContain('pow(2,0.200000000000)')
+    const plan = browserColorFilterPlan(payload)
+    expect(plan.beforeLut[0]).toBe('format=gbrap16le')
+    expect(plan.beforeLut[1]).toBe(filter)
+    expect(plan.beforeLut[2]).toMatch(/^eq=/)
+  })
+
   it('bypasses a zero-intensity LUT without requiring an asset or graph', () => {
     const plan = browserColorFilterPlan({ lut: { id: 'look', intensity: 0 }, curves })
     const args = browserVideoFilterArgs(plan, { prefixFilters: ['crop=10:10:0:0'] })
@@ -60,7 +83,11 @@ describe('browser color filter plan', () => {
 
   it('uses split/lut3d/blend for partial intensity and maps filtered video plus optional audio', () => {
     const plan = browserColorFilterPlan({
-      temperature: 0.5,
+      colorWheels: {
+        lift: { master: 0.2, red: 0.1, green: 0, blue: -0.1 },
+        gamma: { master: -0.1, red: 0, green: 0.2, blue: 0 },
+        gain: { master: 0.1, red: 0, green: 0, blue: 0.2 },
+      },
       brightness: 0.1,
       filter: 'warm',
       lut: { id: 'look', intensity: 0.35 },
@@ -79,6 +106,8 @@ describe('browser color filter plan', () => {
     expect(positions.every(position => position >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((left, right) => left - right))
     expect(graph).toContain("blend=all_expr='A*(1-0.350000)+B*0.350000'")
+    expect(graph.indexOf('geq=')).toBeLessThan(graph.indexOf('split=2'))
+    expect(graph.indexOf('blend=')).toBeLessThan(graph.indexOf('curves='))
     expect(args.slice(2)).toEqual(['-map', '[browser_vout]', '-map', '0:a?'])
   })
 

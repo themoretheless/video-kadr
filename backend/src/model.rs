@@ -139,6 +139,46 @@ pub struct ImportRequest {
 /// Request body for `POST /api/edit`. Field names arrive as camelCase from the
 /// frontend (e.g. `videoId`). It is also `Serialize` so a deserialized request
 /// can be re-serialized canonically into the render-cache key.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheelRequest {
+    #[serde(default)]
+    pub master: f64,
+    #[serde(default)]
+    pub red: f64,
+    #[serde(default)]
+    pub green: f64,
+    #[serde(default)]
+    pub blue: f64,
+}
+
+impl ColorWheelRequest {
+    pub fn values(self) -> [f64; 4] {
+        [self.master, self.red, self.green, self.blue]
+    }
+
+    pub fn is_neutral(self) -> bool {
+        self.values().into_iter().all(|value| value == 0.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheelsRequest {
+    #[serde(default)]
+    pub lift: ColorWheelRequest,
+    #[serde(default)]
+    pub gamma: ColorWheelRequest,
+    #[serde(default)]
+    pub gain: ColorWheelRequest,
+}
+
+impl ColorWheelsRequest {
+    pub fn is_neutral(self) -> bool {
+        self.lift.is_neutral() && self.gamma.is_neutral() && self.gain.is_neutral()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
@@ -197,6 +237,9 @@ pub struct EditRequest {
     pub highlights: f64,
     #[serde(default)]
     pub shadows: f64,
+    /// Three-way colour wheels. Every component is neutral at 0 and ranges -1..1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_wheels: Option<ColorWheelsRequest>,
     /// Named look: "grayscale" | "sepia" | "warm" | "cold".
     #[serde(default)]
     pub filter: Option<String>,
@@ -365,6 +408,7 @@ mod tests {
         assert_eq!(e.tint, 0.0);
         assert_eq!(e.highlights, 0.0);
         assert_eq!(e.shadows, 0.0);
+        assert!(e.color_wheels.is_none());
         assert_eq!(e.rotate, 0);
         assert!(!e.mute);
         assert!(!e.flip_h);
