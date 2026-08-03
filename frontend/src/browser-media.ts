@@ -127,7 +127,15 @@ async function probeAudio(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'f
       const view = new DataView(header)
       const byteRate = view.getUint32(28, true)
       const dataBytes = view.getUint32(40, true)
-      if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WAVE' && byteRate > 0 && dataBytes > 0) {
+      if (
+        ascii(0, 4) === 'RIFF'
+        && ascii(8, 4) === 'WAVE'
+        && ascii(12, 4) === 'fmt '
+        && view.getUint32(16, true) === 16
+        && ascii(36, 4) === 'data'
+        && byteRate > 0
+        && dataBytes > 0
+      ) {
         return {
           duration: dataBytes / byteRate,
           width: 0,
