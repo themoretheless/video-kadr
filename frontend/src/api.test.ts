@@ -4,10 +4,14 @@ import {
   ApiError,
   BackendUnavailableError,
   exportProjectArchive,
+  bakeLut,
+  getLutContent,
   getLut,
   getProjects,
   importProjectArchive,
   pollJob,
+  listLuts,
+  setLutFavorite,
   uploadLut,
 } from './api'
 
@@ -119,6 +123,45 @@ describe('LUT upload', () => {
       status: 422,
       code: 'invalid_lut',
     })
+  })
+})
+
+describe('LUT browser and baker API', () => {
+  it('lists with encoded bounded filters and forwards abort', async () => {
+    const assets = [{ id: TEST_LUT_ID, name: 'Café', cubeSize: 33, sizeBytes: 10, favorite: true }]
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(assets), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+    await expect(listLuts({ query: ' café & film ', favorite: true, signal: controller.signal })).resolves.toEqual(assets)
+    expect(fetchMock).toHaveBeenCalledWith('/api/luts?q=caf%C3%A9+%26+film&favorite=true', { signal: controller.signal })
+  })
+
+  it('fails closed when the catalog shape is not an array', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
+    await expect(listLuts()).rejects.toThrow(/некорректный каталог/)
+  })
+
+  it('updates a favorite without using a query mutation', async () => {
+    const updated = { id: TEST_LUT_ID, name: 'Look', cubeSize: 17, sizeBytes: 1, favorite: true }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(updated), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(setLutFavorite(TEST_LUT_ID, true)).resolves.toEqual(updated)
+    expect(fetchMock).toHaveBeenCalledWith(`/api/luts/${TEST_LUT_ID}/favorite`, expect.objectContaining({
+      method: 'PUT', body: JSON.stringify({ favorite: true }),
+    }))
+  })
+
+  it('loads private content and downloads the baker response filename', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('LUT_3D_SIZE 2\n', { status: 200 }))
+      .mockResolvedValueOnce(new Response('LUT_3D_SIZE 33\n', {
+        status: 200, headers: { 'content-disposition': "attachment; filename*=UTF-8''My%20Grade.cube" },
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect((await getLutContent(TEST_LUT_ID)).text()).resolves.toContain('LUT_3D_SIZE 2')
+    await expect(bakeLut({ edit: { brightness: 0.1 }, size: 33 })).resolves.toMatchObject({ filename: 'My Grade.cube' })
+    expect(fetchMock.mock.calls[0]![0]).toBe(`/api/luts/${TEST_LUT_ID}/content`)
+    expect(fetchMock.mock.calls[1]![0]).toBe('/api/luts/bake')
   })
 })
 

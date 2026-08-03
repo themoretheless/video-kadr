@@ -4,17 +4,24 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use axum::extract::{multipart::MultipartError, Path as AxPath, State};
-use axum::http::StatusCode;
+use axum::body::Body;
+use axum::extract::{multipart::MultipartError, Path as AxPath, Query, State};
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::Response;
 use axum::Json;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::error::{ApiMultipart, AppError, AppResult};
+use crate::error::{ApiJson, ApiMultipart, AppError, AppResult};
 use crate::library::now_secs;
-use crate::luts::{display_name, parse_cube, CubeError, LutAsset, MAX_LUT_FILE_BYTES};
+use crate::lut_baker::{bake, BakeRequest};
+use crate::luts::{
+    display_name, parse_cube, CubeError, FavoriteUpdate, LutAsset, MAX_LUT_FILE_BYTES,
+};
 use crate::state::AppState;
 
 /// Includes bounded room for multipart headers and the closing boundary.
@@ -176,13 +183,187 @@ async fn lut_file_matches(path: &Path, asset: &LutAsset) -> bool {
     bytes.len() <= MAX_LUT_FILE_BYTES && format!("{:x}", Sha256::digest(&bytes)) == asset.sha256
 }
 
-pub async fn lut_list_handler(State(state): State<AppState>) -> AppResult<Json<Vec<LutAsset>>> {
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LutCatalogQuery {
+    q: Option<String>,
+    favorite: Option<bool>,
+}
+
+pub async fn lut_list_handler(
+    State(state): State<AppState>,
+    Query(query): Query<LutCatalogQuery>,
+) -> AppResult<Json<Vec<LutAsset>>> {
+    if query
+        .q
+        .as_ref()
+        .is_some_and(|value| value.chars().count() > 128)
+    {
+        return Err(AppError::bad_request(
+            "поисковый запрос LUT слишком длинный",
+        ));
+    }
     let assets = state
         .db
-        .list_luts()
+        .search_luts(query.q.as_deref(), query.favorite.unwrap_or(false))
         .await
         .map_err(|error| AppError::internal("list LUT metadata", error))?;
     Ok(Json(assets))
+}
+
+pub async fn lut_favorite_handler(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    ApiJson(update): ApiJson<FavoriteUpdate>,
+) -> AppResult<Json<LutAsset>> {
+    if Uuid::parse_str(&id).is_err() {
+        return Err(AppError::not_found("LUT не найден"));
+    }
+    state
+        .db
+        .set_lut_favorite(&id, update.favorite)
+        .await
+        .map_err(|error| AppError::internal("update LUT favorite", error))?
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("LUT не найден"))
+}
+
+pub async fn lut_content_handler(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> AppResult<Response> {
+    if Uuid::parse_str(&id).is_err() {
+        return Err(AppError::not_found("LUT не найден"));
+    }
+    let asset = state
+        .db
+        .get_lut(&id)
+        .await
+        .map_err(|error| AppError::internal("load LUT metadata", error))?
+        .ok_or_else(|| AppError::not_found("LUT не найден"))?;
+    let bytes = verified_lut_bytes(&state, &asset).await?;
+    let mut response = Response::new(Body::from(bytes));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-cube"),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{}.cube\"", asset.id))
+            .expect("UUID filename is safe"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    response.headers_mut().insert(
+        "x-content-sha256",
+        HeaderValue::from_str(&asset.sha256).expect("stored SHA-256 is HTTP-safe"),
+    );
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&format!("\"{}\"", asset.sha256))
+            .expect("stored SHA-256 is an HTTP-safe ETag"),
+    );
+    response.headers_mut().insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    Ok(response)
+}
+
+pub async fn lut_bake_handler(
+    State(state): State<AppState>,
+    ApiJson(request): ApiJson<BakeRequest>,
+) -> AppResult<Response> {
+    let capability = crate::capabilities::Capabilities::from_tools(&state.tools);
+    if !capability
+        .filters
+        .iter()
+        .any(|option| option.id == "lut-baker-33-v1" && option.available)
+    {
+        return Err(AppError::conflict("Экспорт LUT 33×33×33 недоступен"));
+    }
+    let parsed = state
+        .cpu_pool
+        .execute(CancellationToken::new(), move |_| {
+            bake(&request).map_err(anyhow::Error::msg)
+        })
+        .await
+        .map_err(|error| match error {
+            crate::runtime::cpu_pool::CpuTaskError::Saturated => {
+                AppError::too_many_requests("очередь экспорта LUT заполнена, повторите позже")
+            }
+            crate::runtime::cpu_pool::CpuTaskError::Work(error) => {
+                AppError::bad_request(error.to_string())
+            }
+            error => AppError::internal("bake LUT", anyhow::anyhow!(error.to_string())),
+        })?;
+    let mut response = Response::new(Body::from(parsed.canonical));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-cube"),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"video-kadr-look-33.cube\""),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    Ok(response)
+}
+
+async fn verified_lut_bytes(state: &AppState, asset: &LutAsset) -> AppResult<Vec<u8>> {
+    let expected = format!("{}.cube", asset.id);
+    if asset.filename != expected {
+        return Err(AppError::internal(
+            "validate LUT filename",
+            anyhow::anyhow!("invalid LUT filename"),
+        ));
+    }
+    let path = state.luts_dir().join(&asset.filename);
+    let metadata = tokio::fs::symlink_metadata(&path)
+        .await
+        .map_err(|_| AppError::not_found("Файл LUT не найден"))?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() != asset.size_bytes
+        || metadata.len() > MAX_LUT_FILE_BYTES as u64
+    {
+        return Err(AppError::conflict("Файл LUT повреждён"));
+    }
+    let root = tokio::fs::canonicalize(state.luts_dir())
+        .await
+        .map_err(|error| AppError::internal("resolve LUT storage", error))?;
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|_| AppError::not_found("Файл LUT не найден"))?;
+    if canonical.parent() != Some(root.as_path()) {
+        return Err(AppError::conflict("Файл LUT повреждён"));
+    }
+    let bytes = tokio::fs::read(&canonical)
+        .await
+        .map_err(|_| AppError::not_found("Файл LUT не найден"))?;
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    if hash != asset.sha256 {
+        return Err(AppError::conflict("Файл LUT повреждён"));
+    }
+    let parsed = tokio::task::spawn_blocking({
+        let bytes = bytes.clone();
+        move || parse_cube(&bytes)
+    })
+    .await
+    .map_err(|error| AppError::internal("join LUT verifier", error))?
+    .map_err(|_| AppError::conflict("Файл LUT повреждён"))?;
+    if parsed.canonical != bytes || parsed.cube_size != asset.cube_size {
+        return Err(AppError::conflict("Файл LUT повреждён"));
+    }
+    Ok(bytes)
 }
 
 pub async fn lut_get_handler(

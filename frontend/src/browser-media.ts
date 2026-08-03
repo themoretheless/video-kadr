@@ -37,6 +37,13 @@ import {
 } from './browser-resource-plan'
 import { browserColorFilterPlan, browserSdrExportBoundary, browserVideoFilterArgs, selectiveHslFfmpegFilter } from './browser-color-pipeline'
 import { BROWSER_DECODED_SRGB_STATUS } from './domain/color-management'
+import { bakeEditCube33 } from './domain/lut-baker'
+import {
+  getBrowserLut,
+  listBrowserLuts,
+  putBrowserLut,
+  setBrowserLutFavorite,
+} from './browser-lut-library'
 
 type EditPayload = Record<string, unknown>
 
@@ -46,7 +53,7 @@ interface SourceRecord {
 }
 
 interface LutRecord {
-  file: File
+  file: Blob
   asset: LutAsset
 }
 
@@ -98,6 +105,7 @@ let ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null
 let ffmpegLoading: Promise<import('@ffmpeg/ffmpeg').FFmpeg> | null = null
 let hslSelectiveV1Smoke: Promise<boolean> | null = null
 let browserSdrV1Smoke: Promise<boolean> | null = null
+let browserLutBakerV1Smoke: Promise<boolean> | null = null
 let activeJobId: string | null = null
 let streamingExportActive = false
 let cancelStreamingExport: (() => void) | null = null
@@ -309,27 +317,57 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
   return info
 }
 
-function parseCubeSize(text: string): number {
-  const match = text.match(/^\s*LUT_3D_SIZE\s+(\d+)\s*$/im)
-  const size = match ? Number(match[1]) : 0
-  if (!Number.isInteger(size) || size < 2 || size > 65) {
-    throw new Error('LUT должен содержать LUT_3D_SIZE от 2 до 65')
-  }
-  return size
-}
-
 export async function uploadLut(file: File): Promise<LutAsset> {
-  const cubeSize = parseCubeSize(await file.text())
-  const lutId = id()
-  const asset: LutAsset = { id: lutId, name: file.name, cubeSize, sizeBytes: file.size }
-  luts.set(lutId, { file, asset })
+  const stored = await putBrowserLut(file, file.name, 'upload')
+  const { blob } = await getBrowserLut(stored.id)
+  const asset: LutAsset = { ...stored, favorite: false }
+  luts.set(asset.id, { file: blob, asset })
   return asset
 }
 
-export function getLut(lutId: string): LutAsset {
-  const record = luts.get(lutId)
-  if (!record) throw new Error('LUT больше недоступен — загрузите файл повторно')
-  return record.asset
+export async function getLut(lutId: string): Promise<LutAsset> {
+  const cached = luts.get(lutId)
+  if (cached) return cached.asset
+  const { asset: stored, blob } = await getBrowserLut(lutId)
+  const asset: LutAsset = { ...stored, favorite: false }
+  luts.set(asset.id, { file: blob, asset })
+  return asset
+}
+
+export async function listLuts(options: { query?: string; favorite?: boolean } = {}): Promise<LutAsset[]> {
+  return (await listBrowserLuts(options)).map(asset => ({ ...asset }))
+}
+
+export async function setLutFavorite(lutId: string, favorite: boolean): Promise<LutAsset> {
+  await setBrowserLutFavorite(lutId, favorite)
+  const asset = (await listBrowserLuts()).find(candidate => candidate.id === lutId || candidate.sha256 === lutId)
+  if (!asset) throw new Error('LUT больше недоступен — загрузите файл повторно')
+  const record = luts.get(asset.id)
+  if (record) record.asset = { ...record.asset, favorite }
+  return { ...asset }
+}
+
+export async function getLutContent(lutId: string): Promise<Blob> {
+  const { asset, blob } = await getBrowserLut(lutId)
+  const metadata: LutAsset = { ...asset, favorite: false }
+  luts.set(asset.id, { file: blob, asset: metadata })
+  return blob
+}
+
+export async function bakeLut(request: import('./types').LutBakeRequest, signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  const baked = bakeEditCube33(request, signal)
+  return {
+    blob: new Blob([baked.canonicalBytes.slice().buffer], { type: 'application/x-cube' }),
+    filename: 'video-kadr-look-33.cube',
+  }
+}
+
+async function probeBrowserLutBakerV1(): Promise<boolean> {
+  browserLutBakerV1Smoke ??= Promise.resolve().then(() => {
+    const baked = bakeEditCube33({ edit: {}, size: 33 })
+    return baked.cubeSize === 33 && baked.canonicalText.startsWith('LUT_3D_SIZE 33\n')
+  }).catch(() => false)
+  return browserLutBakerV1Smoke
 }
 
 function coreUrl(filename: string): string {
@@ -539,8 +577,13 @@ async function buildArgs(
   const lut = record(payload.lut)
   const lutIntensity = lut ? Math.max(0, Math.min(1, number(lut.intensity, 1))) : 0
   if (!sdrBoundary.bypassVideo && lut && lutIntensity > 1e-9) {
-    const lutRecord = luts.get(String(lut.id))
-    if (!lutRecord) throw new Error('LUT больше недоступен — загрузите файл повторно')
+    let lutRecord = luts.get(String(lut.id))
+    if (!lutRecord) {
+      const { asset, blob } = await getBrowserLut(String(lut.id))
+      const metadata: LutAsset = { ...asset, favorite: false }
+      lutRecord = { file: blob, asset: metadata }
+      luts.set(asset.id, lutRecord)
+    }
     lutName = `lut-${id()}.cube`
     await ffmpeg.writeFile(lutName, new Uint8Array(await lutRecord.file.arrayBuffer()))
     temporaryFiles.push(lutName)
@@ -936,9 +979,10 @@ export async function getCapabilities(): Promise<Capabilities> {
   const local = (id: string, label = id) => runtimeReason ? disabled(id, label, runtimeReason) : enabled(id, label)
   const selectiveHslSmoke = runtimeReason ? false : await probeBrowserHslSelectiveV1()
   const sdrColorSmoke = runtimeReason ? false : await probeBrowserSdrV1()
+  const lutBakerSmoke = await probeBrowserLutBakerV1()
   return {
     schemaVersion: 1,
-    toolFingerprint: `ffmpeg.wasm/client:hsl-selective-v1-${selectiveHslSmoke ? 'ok' : 'failed'}:sdr-color-v1-${sdrColorSmoke ? 'ok' : 'failed'}`,
+    toolFingerprint: `ffmpeg.wasm/client:hsl-selective-v1-${selectiveHslSmoke ? 'ok' : 'failed'}:sdr-color-v1-${sdrColorSmoke ? 'ok' : 'failed'}:lut-baker-33-v1-${lutBakerSmoke ? 'ok' : 'failed'}`,
     formats: [
       sdrColorSmoke ? enabled('mp4', 'MP4') : disabled('mp4', 'MP4', 'ffmpeg.wasm не прошёл проверку SDR zscale v1'),
       sdrColorSmoke ? enabled('webm', 'WebM') : disabled('webm', 'WebM', 'ffmpeg.wasm не прошёл проверку SDR zscale v1'),
@@ -961,6 +1005,9 @@ export async function getCapabilities(): Promise<Capabilities> {
         : disabled('hsl-selective-v1', 'Selective HSL', runtimeReason ?? 'ffmpeg.wasm не прошёл проверку Selective HSL v1'),
       ...['grayscale', 'sepia', 'warm', 'cold', 'teal-orange', 'faded', 'noir', 'vintage', 'lut3d', 'curves'].map((name) => enabled(name)),
       local('lut3d-blend', 'Интенсивность LUT'),
+      lutBakerSmoke
+        ? enabled('lut-baker-33-v1', 'Экспорт LUT 33×33×33')
+        : disabled('lut-baker-33-v1', 'Экспорт LUT 33×33×33', 'Browser LUT baker v1 не прошёл детерминированную проверку'),
     ],
     hardware: [disabled('native', 'Аппаратное ускорение', 'Используется WebAssembly')],
     runtime: {

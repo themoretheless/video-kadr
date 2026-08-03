@@ -16,6 +16,7 @@ pub mod handlers;
 pub mod http;
 pub mod jobs;
 pub mod library;
+pub mod lut_baker;
 pub mod luts;
 pub mod model;
 pub mod packaging;
@@ -74,6 +75,12 @@ pub fn build_router_with_cors(
                 .layer(DefaultBodyLimit::max(handlers::MAX_LUT_BODY_BYTES)),
         )
         .route("/luts/:id", get(handlers::lut_get_handler))
+        .route(
+            "/luts/:id/favorite",
+            axum::routing::put(handlers::lut_favorite_handler),
+        )
+        .route("/luts/:id/content", get(handlers::lut_content_handler))
+        .route("/luts/bake", post(handlers::lut_bake_handler))
         .route("/edit", post(handlers::edit_handler))
         .route("/jobs/failed", get(handlers::failed_jobs_handler))
         .route("/jobs/registry", get(handlers::job_registry_handler))
@@ -130,9 +137,20 @@ pub fn build_router_with_cors(
 fn cors_layer(origins: &CorsOrigins) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(cors_header_values(origins)))
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
         .allow_headers([header::CONTENT_TYPE, telemetry::REQUEST_ID_HEADER])
-        .expose_headers([telemetry::REQUEST_ID_HEADER])
+        .expose_headers([
+            telemetry::REQUEST_ID_HEADER,
+            header::CONTENT_DISPOSITION,
+            header::ETAG,
+            header::HeaderName::from_static("x-content-sha256"),
+        ])
 }
 
 fn cors_header_values(origins: &CorsOrigins) -> Vec<HeaderValue> {

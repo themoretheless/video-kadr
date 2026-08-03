@@ -46,7 +46,10 @@ pub use jobs::{
 };
 use jobs::{dispatch_job, JobLeaseHeartbeat};
 pub use library::{library_delete_handler, library_list_handler, library_search_handler};
-pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
+pub use luts::{
+    lut_bake_handler, lut_content_handler, lut_favorite_handler, lut_get_handler, lut_list_handler,
+    lut_upload_handler, MAX_LUT_BODY_BYTES,
+};
 pub use preview::optimized_preview_frame;
 pub use project_archive::{
     export_project_archive, import_project_archive, MAX_PROJECT_ARCHIVE_BODY,
@@ -401,6 +404,14 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
     if primary_corrections && (!has_filter("geq") || !has_filter("format")) {
         return Err(AppError::bad_request(
             "primary-коррекция недоступна: нужны FFmpeg filters geq и format",
+        ));
+    }
+    let point_color_eq = request.brightness.abs() > 1e-9
+        || (request.contrast - 1.0).abs() > 1e-9
+        || (request.saturation - 1.0).abs() > 1e-9;
+    if point_color_eq && (!has_filter("geq") || !has_filter("format")) {
+        return Err(AppError::bad_request(
+            "brightness/contrast/saturation недоступны: нужны FFmpeg filters geq и format",
         ));
     }
     let color_wheels = request

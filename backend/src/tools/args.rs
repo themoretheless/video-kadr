@@ -146,6 +146,27 @@ fn tone_curve_points(curve: &ToneCurve) -> String {
         .join(" ")
 }
 
+/// Point-local RGB EQ used by both video export and the LUT baker contract.
+/// Keeping this in the encoded-sRGB working stage avoids FFmpeg `eq`'s hidden
+/// YUV range conversion, which otherwise cannot be reproduced by a 3D LUT.
+fn point_color_eq_filter(brightness: f64, contrast: f64, saturation: f64) -> String {
+    let adjusted = |channel: &str| {
+        format!("clip((({channel}(X,Y)/65535-0.5)*{contrast:.12}+0.5+{brightness:.12}),0,1)")
+    };
+    let red = adjusted("r");
+    let green = adjusted("g");
+    let blue = adjusted("b");
+    let luma = format!("(0.2126*({red})+0.7152*({green})+0.0722*({blue}))");
+    let plane =
+        |value: &str| format!("65535*clip(({luma})+(({value})-({luma}))*{saturation:.12},0,1)");
+    format!(
+        "geq=r='{}':g='{}':b='{}':a='alpha(X,Y)'",
+        plane(&red),
+        plane(&green),
+        plane(&blue)
+    )
+}
+
 fn curves_filter(curves: &ToneCurves) -> String {
     let mut options = Vec::new();
     for (name, curve) in [
@@ -374,9 +395,10 @@ fn video_filter_parts(
         || (video.contrast - 1.0).abs() > 1e-6
         || (video.saturation - 1.0).abs() > 1e-6;
     if eq_changed {
-        before_lut.push(format!(
-            "eq=brightness={:.3}:contrast={:.3}:saturation={:.3}",
-            video.brightness, video.contrast, video.saturation
+        before_lut.push(point_color_eq_filter(
+            video.brightness,
+            video.contrast,
+            video.saturation,
         ));
     }
     if let Some(look) = video.look {
@@ -1435,8 +1457,8 @@ mod tests {
         let order = |s: &str| chain.find(s).unwrap();
         assert!(order("crop") < order("transpose=1"));
         assert!(order("transpose=1") < order("hflip"));
-        assert!(order("hflip") < order("hue=s=0"));
-        assert!(order("hue=s=0") < order("scale"));
+        assert!(order("hflip") < order("colorchannelmixer=.2126"));
+        assert!(order("colorchannelmixer=.2126") < order("scale"));
         assert!(chain.contains("fade=t=out:st=9.000:d=1.000"), "{chain}");
     }
 
@@ -1573,7 +1595,7 @@ mod tests {
         let primary = graph.find("geq=r=").unwrap();
         assert!(graph.contains("+0.25*0.200000000000"), "{graph}");
         let selective = graph.find("st(0,r(X,Y)/65535)").unwrap();
-        let eq = graph.find("eq=brightness=").unwrap();
+        let eq = graph[selective + 1..].find("geq=r=").unwrap() + selective + 1;
         let preset = graph.find("colorbalance=").unwrap();
         let split = graph.find("split=2").unwrap();
         let lut = graph.find("lut3d=").unwrap();
@@ -2231,7 +2253,7 @@ mod tests {
     #[test]
     fn look_presets_map_to_filters() {
         let presets = [
-            ("grayscale", "hue=s=0"),
+            ("grayscale", "colorchannelmixer=.2126:.7152:.0722"),
             (
                 "sepia",
                 "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",

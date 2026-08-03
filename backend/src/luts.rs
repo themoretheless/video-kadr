@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const LUT_SCHEMA_VERSION: u32 = 1;
 pub const MAX_LUT_FILE_BYTES: usize = 16 * 1024 * 1024;
@@ -24,6 +24,8 @@ pub struct LutAsset {
     pub size_bytes: u64,
     pub sha256: String,
     pub created_at: u64,
+    /// User-owned catalog metadata; it does not change immutable LUT bytes.
+    pub favorite: bool,
     /// Server-generated basename used only inside the private LUT directory.
     #[serde(skip_serializing)]
     pub filename: String,
@@ -48,9 +50,16 @@ impl LutAsset {
             size_bytes,
             sha256,
             created_at,
+            favorite: false,
             filename,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FavoriteUpdate {
+    pub favorite: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -305,9 +314,27 @@ pub fn display_name(original: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
 
     fn identity_cube() -> Vec<u8> {
         b"# comment\nTITLE \"Identity\"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n".to_vec()
+    }
+
+    #[test]
+    fn shared_exponent_fixture_pins_cross_runtime_canonical_bytes_and_sha() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../fixtures/lut-canonical/exponents-v1.json"
+        ))
+        .unwrap();
+        let parsed = parse_cube(fixture["input"].as_str().unwrap().as_bytes()).unwrap();
+        assert_eq!(
+            parsed.canonical,
+            fixture["canonical"].as_str().unwrap().as_bytes()
+        );
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&parsed.canonical)),
+            fixture["sha256"].as_str().unwrap()
+        );
     }
 
     #[test]

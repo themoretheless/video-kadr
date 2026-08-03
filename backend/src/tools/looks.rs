@@ -20,8 +20,9 @@ const LOOK_PRESET_CATALOG: [LookPresetDefinition; LookPreset::ALL.len()] = [
     LookPresetDefinition {
         preset: LookPreset::Grayscale,
         label: "Ч/Б",
-        ffmpeg_filter_chain: "hue=s=0",
-        required_filters: &["hue"],
+        ffmpeg_filter_chain:
+            "colorchannelmixer=.2126:.7152:.0722:0:.2126:.7152:.0722:0:.2126:.7152:.0722",
+        required_filters: &["colorchannelmixer"],
     },
     LookPresetDefinition {
         preset: LookPreset::Sepia,

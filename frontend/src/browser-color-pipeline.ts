@@ -91,7 +91,7 @@ function curvePoints(value: unknown): string {
 
 function presetFilter(name: string): string | null {
   const presets: Record<string, string> = {
-    grayscale: 'hue=s=0',
+    grayscale: 'colorchannelmixer=.2126:.7152:.0722:0:.2126:.7152:.0722:0:.2126:.7152:.0722',
     sepia: 'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131',
     warm: 'colorbalance=rs=.08:bs=-.06',
     cold: 'colorbalance=rs=-.06:bs=.08',
@@ -101,6 +101,18 @@ function presetFilter(name: string): string | null {
     vintage: 'curves=vintage',
   }
   return presets[name] ?? null
+}
+
+function pointColorEqFilter(brightness: number, contrast: number, saturation: number): string {
+  const adjusted = (channel: 'r' | 'g' | 'b') =>
+    `clip(((${channel}(X,Y)/65535-0.5)*${contrast.toFixed(12)}+0.5+${brightness.toFixed(12)}),0,1)`
+  const red = adjusted('r')
+  const green = adjusted('g')
+  const blue = adjusted('b')
+  const luma = `(0.2126*(${red})+0.7152*(${green})+0.0722*(${blue}))`
+  const plane = (value: string) =>
+    `65535*clip((${luma})+((${value})-(${luma}))*${saturation.toFixed(12)},0,1)`
+  return `geq=r='${plane(red)}':g='${plane(green)}':b='${plane(blue)}':a='alpha(X,Y)'`
 }
 
 function escapeFilterPath(path: string): string {
@@ -240,7 +252,7 @@ export function browserColorFilterPlan(payload: EditPayload, lutFilename?: strin
   const contrast = number(payload.contrast, 1)
   const saturation = number(payload.saturation, 1)
   if (brightness || contrast !== 1 || saturation !== 1) {
-    beforeLut.push(`eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`)
+    beforeLut.push(pointColorEqFilter(brightness, contrast, saturation))
   }
   const preset = presetFilter(String(payload.filter || ''))
   if (preset) beforeLut.push(preset)

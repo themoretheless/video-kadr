@@ -864,16 +864,42 @@ async fn request_id_is_validated_and_propagated() {
         .unwrap()
         .contains("x-request-id"));
 
+    let put_preflight = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/luts/00000000-0000-4000-8000-000000000000/favorite")
+        .header("origin", "http://localhost:5173")
+        .header("access-control-request-method", "PUT")
+        .header("access-control-request-headers", "content-type")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(put_preflight).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers()["access-control-allow-methods"]
+        .to_str()
+        .unwrap()
+        .contains("PUT"));
+
     let cors_get = Request::builder()
         .uri("/api/health")
         .header("origin", "http://localhost:5173")
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(cors_get).await.unwrap();
-    assert!(response.headers()["access-control-expose-headers"]
+    let exposed = response.headers()["access-control-expose-headers"]
         .to_str()
         .unwrap()
-        .contains("x-request-id"));
+        .to_ascii_lowercase();
+    for header in [
+        "x-request-id",
+        "content-disposition",
+        "etag",
+        "x-content-sha256",
+    ] {
+        assert!(
+            exposed.contains(header),
+            "missing exposed header {header}: {exposed}"
+        );
+    }
 }
 
 #[tokio::test]

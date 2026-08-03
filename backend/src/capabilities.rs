@@ -141,6 +141,12 @@ impl Capabilities {
         ));
         filters.extend([
             option(
+                "lut-baker-33-v1",
+                "Экспорт LUT 33×33×33",
+                true,
+                "встроенный deterministic LUT baker недоступен",
+            ),
+            option(
                 "primary-corrections",
                 "Температура / Tint / Света / Тени",
                 has_filter("geq") && has_filter("format"),
@@ -570,7 +576,7 @@ mod tests {
         let all_filters = all_look_filters();
         let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
 
-        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 7);
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 8);
         for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
             assert_eq!(option.id, definition.id());
             assert_eq!(option.label, definition.label);

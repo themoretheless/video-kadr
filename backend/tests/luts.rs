@@ -2,8 +2,9 @@
 
 mod support;
 
-use axum::body::Body;
+use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
+use tower::ServiceExt;
 use uuid::Uuid;
 
 use support::{assert_api_error, get, make_state, router, send};
@@ -144,4 +145,87 @@ async fn unknown_or_invalid_ids_are_not_found() {
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_api_error(&body, "not_found");
     }
+}
+
+#[tokio::test]
+async fn catalog_search_and_favorites_are_bounded_and_persistent() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let (_, uploaded, _) = send(&app, upload("Кино 100%_Look.cube", identity_cube())).await;
+    let id = uploaded["id"].as_str().unwrap();
+    let favorite = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/luts/{id}/favorite"))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"favorite":true}"#))
+        .unwrap();
+    let (status, updated, _) = send(&app, favorite).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["favorite"], true);
+
+    let (status, listed, _) = send(&app, get("/api/luts?favorite=true&q=100%25_")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(listed[0]["id"], id);
+    let (status, listed, _) = send(&app, get("/api/luts?q=кино")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed[0]["id"], id);
+    let too_long = "x".repeat(129);
+    let (status, body, _) = send(&app, get(&format!("/api/luts?q={too_long}"))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn content_download_revalidates_immutable_bytes() {
+    let (state, storage) = make_state(true, true).await;
+    let app = router(state.clone());
+    let (_, uploaded, _) = send(&app, upload("Look.cube", identity_cube())).await;
+    let id = uploaded["id"].as_str().unwrap();
+    let response = app
+        .clone()
+        .oneshot(get(&format!("/api/luts/{id}/content")))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["content-type"], "application/x-cube");
+    assert!(response.headers()["content-disposition"]
+        .to_str()
+        .unwrap()
+        .contains(id));
+    let downloaded = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&downloaded).starts_with("LUT_3D_SIZE 2\n"));
+
+    let asset = state.db.get_lut(id).await.unwrap().unwrap();
+    tokio::fs::write(storage.path().join("luts").join(asset.filename), b"corrupt")
+        .await
+        .unwrap();
+    let (status, body, _) = send(&app, get(&format!("/api/luts/{id}/content"))).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&body, "conflict");
+}
+
+#[tokio::test]
+async fn baker_is_strict_and_returns_a_canonical_33_cube() {
+    let (state, _storage) = make_state(false, false).await;
+    let app = router(state);
+    let request = Request::builder().method("POST").uri("/api/luts/bake")
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"size":33,"edit":{"brightness":0.1,"contrast":1.2,"saturation":0.8,"filter":"grayscale","curves":{"master":[{"x":0.0,"y":0.0},{"x":1.0,"y":1.0}]}}}"#)).unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["content-type"], "application/x-cube");
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let parsed = video_editor_backend::luts::parse_cube(&bytes).unwrap();
+    assert_eq!(parsed.cube_size, 33);
+
+    let invalid = Request::builder()
+        .method("POST")
+        .uri("/api/luts/bake")
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"size":17,"edit":{}}"#))
+        .unwrap();
+    let (status, body, _) = send(&app, invalid).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
 }

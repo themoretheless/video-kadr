@@ -1,4 +1,4 @@
-import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ProjectEnvelope, ProjectMedia, ResultInfo, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, LutAsset, LutBakeRequest, MediaEntry, ProjectDocument, ProjectEnvelope, ProjectMedia, ResultInfo, VideoInfo } from './types'
 import type { DerivedTask } from './browser-derived-queue'
 import * as browserMedia from './browser-media'
 import { decodeProjectEnvelope } from './project-schema'
@@ -123,6 +123,55 @@ export async function getLut(id: string): Promise<LutAsset> {
   const res = await safeFetch(`/api/luts/${encodeURIComponent(id)}`)
   await requireOk(res, `LUT lookup -> HTTP ${res.status}`)
   return res.json()
+}
+
+/** Browse stored LUTs. Search is deliberately also repeated in the UI so an
+ * older backend that ignores `q` still gives deterministic results. */
+export async function listLuts(options: { query?: string; favorite?: boolean; signal?: AbortSignal } = {}): Promise<LutAsset[]> {
+  if (clientOnlyMode) return browserMedia.listLuts(options)
+  const params = new URLSearchParams()
+  const query = options.query?.trim()
+  if (query) params.set('q', query)
+  if (options.favorite) params.set('favorite', 'true')
+  const suffix = params.size ? `?${params}` : ''
+  const res = await safeFetch(`/api/luts${suffix}`, { signal: options.signal })
+  await requireOk(res, `LUT catalog -> HTTP ${res.status}`)
+  const value: unknown = await res.json()
+  if (!Array.isArray(value)) throw new Error('Сервер вернул некорректный каталог LUT')
+  return value as LutAsset[]
+}
+
+export async function setLutFavorite(id: string, favorite: boolean, signal?: AbortSignal): Promise<LutAsset> {
+  if (clientOnlyMode) return browserMedia.setLutFavorite(id, favorite)
+  const res = await safeFetch(`/api/luts/${encodeURIComponent(id)}/favorite`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ favorite }), signal,
+  })
+  await requireOk(res, `LUT favorite -> HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function getLutContent(id: string, signal?: AbortSignal): Promise<Blob> {
+  if (clientOnlyMode) return browserMedia.getLutContent(id)
+  const res = await safeFetch(`/api/luts/${encodeURIComponent(id)}/content`, { signal })
+  await requireOk(res, `LUT content -> HTTP ${res.status}`)
+  return res.blob()
+}
+
+export async function bakeLut(request: LutBakeRequest, signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  if (clientOnlyMode) return browserMedia.bakeLut(request, signal)
+  const res = await safeFetch('/api/luts/bake', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request), signal,
+  })
+  await requireOk(res, `LUT bake -> HTTP ${res.status}`)
+  const disposition = res.headers.get('content-disposition') ?? ''
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const quoted = disposition.match(/filename="([^"]+)"/i)?.[1]
+  let filename = 'video-kadr-grade-33.cube'
+  try { filename = decodeURIComponent(encoded ?? quoted ?? filename) } catch { /* safe fallback */ }
+  if (!filename.toLowerCase().endsWith('.cube')) filename = 'video-kadr-grade-33.cube'
+  return { blob: await res.blob(), filename }
 }
 
 export async function getJob(jobId: string): Promise<Job> {

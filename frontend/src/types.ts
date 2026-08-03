@@ -74,11 +74,26 @@ export interface ResultInfo {
 
 /** Metadata returned after the backend validates and stores a 3D `.cube` LUT. */
 export interface LutAsset {
+  schemaVersion?: number
   id: string
   name: string
+  kind?: 'cube3d'
   cubeSize: number
   sizeBytes: number
   sha256?: string
+  createdAt?: number
+  favorite?: boolean
+}
+
+export interface LutBakeRequest {
+  edit: {
+    brightness?: number
+    contrast?: number
+    saturation?: number
+    filter?: 'grayscale' | 'sepia'
+    curves?: ColorCurves
+  }
+  size: 33
 }
 
 export interface CurvePoint {

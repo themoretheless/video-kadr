@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS color_luts (
     display_name TEXT NOT NULL,
     cube_size INTEGER NOT NULL,
     size_bytes INTEGER NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1))
 );
 CREATE INDEX IF NOT EXISTS idx_color_luts_created_at ON color_luts(created_at DESC);
 ";
@@ -139,6 +140,7 @@ impl Db {
             .connect_with(opts)
             .await?;
         sqlx::query(SCHEMA).execute(&pool).await?;
+        migrate_lut_catalog(&pool).await?;
         project_migration::migrate(&pool).await?;
         let db = Db { pool };
         crate::jobs::SqliteJobStore::new(db.clone())
@@ -552,7 +554,7 @@ impl Db {
             return Ok((asset.clone(), true));
         }
         let existing = sqlx::query(
-            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at, favorite \
              FROM color_luts WHERE sha256 = ?",
         )
         .bind(&asset.sha256)
@@ -569,7 +571,7 @@ impl Db {
 
     pub async fn get_lut(&self, id: &str) -> Result<Option<LutAsset>> {
         let row = sqlx::query(
-            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at, favorite \
              FROM color_luts WHERE id = ?",
         )
         .bind(id)
@@ -580,7 +582,7 @@ impl Db {
 
     pub async fn get_lut_by_sha256(&self, sha256: &str) -> Result<Option<LutAsset>> {
         let row = sqlx::query(
-            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at, favorite \
              FROM color_luts WHERE sha256 = ?",
         )
         .bind(sha256)
@@ -590,15 +592,66 @@ impl Db {
     }
 
     pub async fn list_luts(&self) -> Result<Vec<LutAsset>> {
+        self.search_luts(None, false).await
+    }
+
+    pub async fn search_luts(
+        &self,
+        query: Option<&str>,
+        favorites_only: bool,
+    ) -> Result<Vec<LutAsset>> {
+        let query = query.map(str::trim).filter(|value| !value.is_empty());
+        if query.is_some_and(|value| value.chars().count() > 128) {
+            return Err(anyhow!("LUT search query exceeds 128 characters"));
+        }
         let rows = sqlx::query(
-            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at \
-             FROM color_luts ORDER BY created_at DESC, id LIMIT ?",
+            "SELECT id, sha256, filename, display_name, cube_size, size_bytes, created_at, favorite \
+             FROM color_luts \
+             WHERE (?1 = 0 OR favorite = 1) \
+             ORDER BY favorite DESC, created_at DESC, id LIMIT ?2",
         )
+        .bind(favorites_only)
         .bind(MAX_LUT_LIST_RESULTS)
         .fetch_all(&self.pool)
         .await?;
-        rows.into_iter().map(row_to_lut).collect()
+        let needle = query.map(str::to_lowercase);
+        rows.into_iter()
+            .map(row_to_lut)
+            .filter(|asset| {
+                needle.as_ref().is_none_or(|needle| {
+                    asset
+                        .as_ref()
+                        .is_ok_and(|asset| asset.name.to_lowercase().contains(needle))
+                })
+            })
+            .collect()
     }
+
+    pub async fn set_lut_favorite(&self, id: &str, favorite: bool) -> Result<Option<LutAsset>> {
+        let row = sqlx::query(
+            "UPDATE color_luts SET favorite = ? WHERE id = ? \
+             RETURNING id, sha256, filename, display_name, cube_size, size_bytes, created_at, favorite",
+        )
+        .bind(favorite)
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_lut).transpose()
+    }
+}
+
+async fn migrate_lut_catalog(pool: &SqlitePool) -> Result<()> {
+    let columns = sqlx::query("PRAGMA table_info(color_luts)")
+        .fetch_all(pool)
+        .await?;
+    if !columns.iter().any(|row| {
+        row.try_get::<String, _>("name")
+            .is_ok_and(|name| name == "favorite")
+    }) {
+        sqlx::query("ALTER TABLE color_luts ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1))")
+            .execute(pool).await?;
+    }
+    Ok(())
 }
 
 fn row_to_job(row: SqliteRow) -> Result<Job> {
@@ -667,6 +720,7 @@ fn row_to_lut(row: SqliteRow) -> Result<LutAsset> {
         size_bytes,
         sha256: row.try_get("sha256")?,
         created_at,
+        favorite: row.try_get::<i64, _>("favorite")? != 0,
         filename: row.try_get("filename")?,
     })
 }
@@ -1316,5 +1370,39 @@ mod tests {
             db.list_luts().await.unwrap().len(),
             MAX_LUT_LIST_RESULTS as usize
         );
+    }
+
+    #[tokio::test]
+    async fn opening_legacy_lut_catalog_adds_favorites_without_losing_rows() {
+        let storage = tempfile::tempdir().unwrap();
+        let options = SqliteConnectOptions::new()
+            .filename(storage.path().join("app.db"))
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE color_luts (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, filename TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, cube_size INTEGER NOT NULL, size_bytes INTEGER NOT NULL, created_at INTEGER NOT NULL)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO color_luts VALUES ('11111111-1111-4111-8111-111111111111','hash','11111111-1111-4111-8111-111111111111.cube','Legacy',2,10,1)")
+            .execute(&pool).await.unwrap();
+        pool.close().await;
+
+        let db = Db::open(storage.path()).await.unwrap();
+        let asset = db
+            .get_lut("11111111-1111-4111-8111-111111111111")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!asset.favorite);
+        assert!(
+            db.set_lut_favorite(&asset.id, true)
+                .await
+                .unwrap()
+                .unwrap()
+                .favorite
+        );
+        assert!(db.get_lut(&asset.id).await.unwrap().unwrap().favorite);
     }
 }

@@ -55,7 +55,8 @@ describe('browser color filter plan', () => {
     expect(filters[1]).toContain('r(X,Y)/65535')
     expect(filters[1]).toContain('65535*if(')
     expect(filters[1]).toContain(":a='alpha(X,Y)'")
-    expect(filters[2]).toMatch(/^eq=/)
+    expect(filters[2]).toMatch(/^geq=/)
+    expect(filters[2]).toContain('clip(((r(X,Y)/65535-0.5)')
     expect(filters[3]).toMatch(/^colorbalance=/)
     expect(filters[4]).toBe("lut3d=file='look.cube':interp=tetrahedral")
     expect(filters[5]).toMatch(/^curves=interp=pchip/)
@@ -92,7 +93,7 @@ describe('browser color filter plan', () => {
     const plan = browserColorFilterPlan(payload)
     expect(plan.beforeLut[0]).toBe('format=gbrap16le')
     expect(plan.beforeLut[1]).toBe(filter)
-    expect(plan.beforeLut[2]).toMatch(/^eq=/)
+    expect(plan.beforeLut[2]).toMatch(/^geq=/)
   })
 
   it('compiles exact encoded-sRGB Selective HSL after primary/LGG and preserves alpha', () => {
@@ -121,7 +122,7 @@ describe('browser color filter plan', () => {
     expect(plan.beforeLut[0]).toBe('format=gbrap16le')
     expect(plan.beforeLut[1]).toBe(linearColorCorrectionFfmpegFilter(payload))
     expect(plan.beforeLut[2]).toBe(selective)
-    expect(plan.beforeLut[3]).toMatch(/^eq=/)
+    expect(plan.beforeLut[3]).toMatch(/^geq=/)
     expect(selectiveHslFfmpegFilter({
       hslSelective: {
         selection: { centerDegrees: 0, halfWidthDegrees: 30, featherDegrees: 15 },
@@ -164,7 +165,7 @@ describe('browser color filter plan', () => {
     expect(args[0]).toBe('-filter_complex')
     const graph = args[1]!
     const positions = [
-      'crop=', 'geq=', 'st(0,r(X,Y)/65535)', 'eq=brightness=', 'colorbalance=', 'split=2', 'lut3d=', 'blend=', 'curves=', 'vignette',
+      'crop=', 'geq=', 'st(0,r(X,Y)/65535)', 'clip(((r(X,Y)/65535-0.5)', 'colorbalance=', 'split=2', 'lut3d=', 'blend=', 'curves=', 'vignette',
     ].map(token => graph.indexOf(token))
     expect(positions.every(position => position >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((left, right) => left - right))
