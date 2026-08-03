@@ -9,7 +9,9 @@ import {
   deleteBrowserAsset,
   fingerprintBlob,
   getBrowserAsset,
+  prepareBrowserStorage,
   putBrowserAsset,
+  reconcileBrowserAssetIngests,
   relinkBrowserAsset,
 } from './browser-asset-store'
 
@@ -38,7 +40,7 @@ function asset(id = 'asset-1') {
 
 function evictBytes(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('video-kadr-media', 1)
+    const request = indexedDB.open('video-kadr-media', 3)
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const database = request.result
@@ -57,6 +59,7 @@ describe('browser asset persistence', () => {
   const originalStorage = Object.getOwnPropertyDescriptor(navigator, 'storage')
   beforeEach(clearDatabase)
   afterEach(() => {
+    vi.unstubAllGlobals()
     if (originalStorage) Object.defineProperty(navigator, 'storage', originalStorage)
     else Reflect.deleteProperty(navigator, 'storage')
   })
@@ -72,7 +75,7 @@ describe('browser asset persistence', () => {
     const restored = await getBrowserAsset('asset-1')
     expect(restored.info).toMatchObject({ id: 'asset-1', mediaKind: 'video' })
     expect(restored.file).toBeDefined()
-    expect(restored.fingerprint).toMatch(/^[a-f0-9]{64}$/)
+    expect(restored.fingerprint).toBe('849e9d3592edcb72635d1e74af2b7ded2c07f6b79f4b27de7e4bc2e507169213')
   })
 
   it('deletes manifest and bytes together', async () => {
@@ -127,10 +130,97 @@ describe('browser asset persistence', () => {
     ])
   })
 
-  it('fails closed before materializing an oversized fingerprint in memory', async () => {
-    const arrayBuffer = vi.fn<() => Promise<ArrayBuffer>>()
-    const oversized = { size: 128 * 1024 * 1024 + 1, arrayBuffer } as unknown as Blob
-    await expect(fingerprintBlob(oversized)).rejects.toMatchObject({ reason: 'unavailable' })
+  it('marks a truncated OPFS asset offline and refuses to materialize it', async () => {
+    const files = new Map<string, Blob>()
+    const mediaDirectory = {
+      getFileHandle: async (id: string) => ({
+        createWritable: async () => ({
+          write: async (blob: Blob) => { files.set(id, blob) },
+          close: async () => undefined,
+          abort: async () => undefined,
+        }),
+        getFile: async () => new File([files.get(id)!], id),
+      }),
+      removeEntry: async (id: string) => { files.delete(id) },
+    }
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => mediaDirectory }) },
+    })
+    await putBrowserAsset(asset('corrupt-opfs'))
+    files.set('corrupt-opfs', new Blob(['cut']))
+
+    expect(await auditBrowserAssets()).toEqual([
+      expect.objectContaining({ id: 'corrupt-opfs', availability: 'offline' }),
+    ])
+    await expect(getBrowserAsset('corrupt-opfs')).rejects.toMatchObject({ reason: 'missing' })
+  })
+
+  it('routes large media to a worker without materializing the whole Blob', async () => {
+    const arrayBuffer = vi.fn()
+    const large = { size: 129 * 1024 * 1024, arrayBuffer } as unknown as Blob
+    class FakeWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null
+      onerror: ((event: ErrorEvent) => void) | null = null
+      constructor() {
+        queueMicrotask(() => this.onmessage?.({ data: { ready: true } } as MessageEvent))
+      }
+      postMessage(value: unknown) {
+        expect(value).toBe(large)
+        queueMicrotask(() => this.onmessage?.({ data: { digest: 'a'.repeat(64) } } as MessageEvent))
+      }
+      terminate() {}
+    }
+    vi.stubGlobal('Worker', FakeWorker)
+    await expect(fingerprintBlob(large)).resolves.toBe('a'.repeat(64))
     expect(arrayBuffer).not.toHaveBeenCalled()
+  })
+
+  it('reconciles a crash journal by deleting uncommitted OPFS bytes', async () => {
+    const removed: string[] = []
+    const root = { getDirectoryHandle: async () => ({
+      removeEntry: async (id: string) => { removed.push(id) },
+    }) }
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true, value: { getDirectory: async () => root },
+    })
+    await allBrowserAssetManifests()
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('video-kadr-media', 3)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const transaction = database.transaction('ingests', 'readwrite')
+    const committed = new Promise<void>((resolve) => { transaction.oncomplete = () => resolve() })
+    transaction.objectStore('ingests').put({ id: 'orphan', startedAt: 1 })
+    await committed
+    database.close()
+
+    await reconcileBrowserAssetIngests()
+    expect(removed).toEqual(['orphan'])
+  })
+
+  it('reports quota pressure before attempting a write', async () => {
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: {
+        persist: async () => false,
+        estimate: async () => ({ usage: 900, quota: 1_000 }),
+      },
+    })
+    await expect(prepareBrowserStorage(101)).rejects.toMatchObject({ reason: 'quota' })
+    await expect(prepareBrowserStorage(100)).resolves.toEqual({
+      persisted: false, usage: 900, quota: 1_000,
+    })
+  })
+
+  it('falls back to IndexedDB when OPFS is unavailable as in private browsing', async () => {
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => { throw new DOMException('blocked', 'SecurityError') } },
+    })
+    const manifest = await putBrowserAsset(asset('private-fallback'))
+    expect(manifest.storage).toBe('idb')
+    await expect(getBrowserAsset('private-fallback')).resolves.toMatchObject({ id: 'private-fallback' })
   })
 })

@@ -185,8 +185,28 @@ domain учитываются автоматически, поэтому отд�
 Pages-сборка выставляет `VITE_PROCESSING_MODE=browser`: локальные видео и LUT не
 отправляются на сервер, а экспорт выполняет однопоточный `ffmpeg.wasm` в Web
 Worker. FFmpeg core публикуется рядом со страницей и лениво загружается только
-при первом экспорте. Проекты и медиатека этой версии живут в памяти вкладки;
-после перезагрузки исходный файл нужно выбрать заново.
+при первом экспорте. Проекты сохраняются в IndexedDB, а локальные media bytes —
+сначала в OPFS и, если он недоступен, в IndexedDB (fallback ограничен 128 МБ).
+SHA-256 считается чанками по 4 МБ: большие файлы — в отдельном Worker, а
+небольшие и Safari fallback — bounded incremental на main thread. После reload медиатека
+восстанавливает только manifests; bytes и временный `blob:` URL создаются лениво
+при открытии source.
+
+Матрица хранения определяется feature probes, а не user-agent:
+
+| Возможности браузера | Поведение |
+|---|---|
+| OPFS + IndexedDB | durable local copy; `persist()` запрашивается, но `false` означает best-effort |
+| Нет OPFS, есть IndexedDB | Blob fallback до 128 МБ |
+| File System Access picker | опциональная внешняя handle-ссылка для relink/recovery; разрешение может потребоваться снова |
+| Durable APIs заблокированы/private/quota exhausted | явный session-only source до закрытия вкладки |
+
+Chrome/Edge используют все пути; Firefox и Safari работают через OPFS/IndexedDB
+и скрывают Chromium-only picker. Очистка site data удаляет OPFS, IndexedDB,
+проекты и manifests целиком — persistent storage снижает риск автоматического
+eviction, но не заменяет portable backup. Если bytes пропали, но manifest
+сохранился, source становится offline и принимается только exact relink с тем же
+SHA-256 и размером. Crash journal удаляет незавершённые OPFS-ingest объекты.
 
 Поле URL сохранено для полноценной серверной версии, но на Pages оно выводит
 понятное сообщение вместо HTTP-запроса. YouTube/VK нельзя надёжно скачивать

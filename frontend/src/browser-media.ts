@@ -11,10 +11,12 @@ import { allProjects, compareAndSwapProject, projectByVideo, removeProject } fro
 import { createProjectDocumentFromLegacy, migrateProjectDocument } from './project-schema'
 import {
   auditBrowserAssets,
+  BrowserAssetStorageError,
   deleteBrowserAsset,
   getBrowserAsset,
   putBrowserAsset,
   prepareBrowserStorage,
+  requestExternalHandleAccess,
   relinkBrowserAsset,
 } from './browser-asset-store'
 import type { BrowserStorageEstimate } from './browser-asset-store'
@@ -62,6 +64,7 @@ let ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null
 let ffmpegLoading: Promise<import('@ffmpeg/ffmpeg').FFmpeg> | null = null
 let activeJobId: string | null = null
 let lastStorageEstimate: BrowserStorageEstimate | null = null
+let durableStorageUnavailable = false
 
 export class LinkImportRequiresServerError extends Error {
   constructor() {
@@ -79,6 +82,7 @@ export class ProjectRevisionConflictError extends Error {
 
 export function isBrowserProcessing(): boolean {
   return import.meta.env.VITE_PROCESSING_MODE === 'browser'
+    || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('processing') === 'browser')
 }
 
 function id(): string {
@@ -113,7 +117,27 @@ function probeVideo(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filenam
   })
 }
 
-function probeAudio(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filename'>> {
+async function probeAudio(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filename'>> {
+  if (file.type === 'audio/wav' || /\.wav$/i.test(file.name)) {
+    const header = await file.slice(0, 44).arrayBuffer()
+    if (header.byteLength >= 44) {
+      const bytes = new Uint8Array(header)
+      const ascii = (start: number, length: number) =>
+        String.fromCharCode(...bytes.slice(start, start + length))
+      const view = new DataView(header)
+      const byteRate = view.getUint32(28, true)
+      const dataBytes = view.getUint32(40, true)
+      if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WAVE' && byteRate > 0 && dataBytes > 0) {
+        return {
+          duration: dataBytes / byteRate,
+          width: 0,
+          height: 0,
+          title: file.name,
+          sizeBytes: file.size,
+        }
+      }
+    }
+  }
   return new Promise((resolve, reject) => {
     const url = objectUrl(file)
     const audio = document.createElement('audio')
@@ -139,7 +163,17 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
   const isVideo = file.type.startsWith('video/')
   const isAudio = file.type.startsWith('audio/')
   if (!isVideo && !isAudio) throw new Error('Выберите видео- или аудиофайл')
-  lastStorageEstimate = await prepareBrowserStorage(file.size)
+  let durableStorage = !durableStorageUnavailable
+  if (durableStorage) {
+    try {
+      lastStorageEstimate = await prepareBrowserStorage(file.size)
+    } catch (error) {
+      if (!(error instanceof BrowserAssetStorageError)) throw error
+      durableStorage = false
+      durableStorageUnavailable = true
+      lastStorageEstimate = { persisted: false, usage: null, quota: null }
+    }
+  }
   const metadata = isVideo ? await probeVideo(file) : await probeAudio(file)
   const sourceId = id()
   const info: VideoInfo = {
@@ -153,6 +187,7 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
   const durableInfo = { ...info }
   delete (durableInfo as Partial<VideoInfo>).url
   try {
+    if (!durableStorage) throw new BrowserAssetStorageError('Durable storage unavailable', 'unavailable')
     const manifest = await putBrowserAsset({
       id: sourceId,
       file,
@@ -163,9 +198,14 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
     })
     info.assetId = manifest.id
     info.fingerprint = manifest.fingerprint
+    info.availability = 'ready'
   } catch (error) {
-    URL.revokeObjectURL(info.url)
-    throw error
+    if (!(error instanceof BrowserAssetStorageError) || error.reason === 'integrity') {
+      URL.revokeObjectURL(info.url)
+      throw error
+    }
+    durableStorageUnavailable = true
+    info.availability = 'session'
   }
   sources.set(sourceId, { file, info })
   library.unshift({
@@ -182,6 +222,7 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
     acodec: info.acodec,
     mediaKind: info.mediaKind,
     sizeBytes: file.size,
+    availability: info.availability,
     createdAt,
   })
   return info
@@ -501,7 +542,18 @@ export function getStorageStatus(): BrowserStorageEstimate | null {
 }
 
 export async function getLibrary(): Promise<MediaEntry[]> {
-  const persisted = await auditBrowserAssets()
+  if (durableStorageUnavailable) {
+    return [...library].sort((left, right) => right.createdAt - left.createdAt)
+  }
+  let persisted
+  try {
+    persisted = await auditBrowserAssets()
+  } catch (error) {
+    if (error instanceof BrowserAssetStorageError) {
+      return [...library].sort((left, right) => right.createdAt - left.createdAt)
+    }
+    throw error
+  }
   for (const asset of persisted) {
     const existing = library.find((entry) => entry.id === asset.id)
     const info = sources.get(asset.id)?.info
@@ -544,9 +596,13 @@ export async function resolveSource(sourceId: string): Promise<VideoInfo> {
   return (await resolveSourceRecord(sourceId)).info
 }
 
-export async function relinkSource(sourceId: string, file: File): Promise<VideoInfo> {
+export async function relinkSource(
+  sourceId: string,
+  file: File,
+  handle?: FileSystemFileHandle,
+): Promise<VideoInfo> {
   return withProjectAssetLock(async () => {
-  await relinkBrowserAsset(sourceId, file)
+  await relinkBrowserAsset(sourceId, file, handle)
   const cached = sources.get(sourceId)
   if (cached) URL.revokeObjectURL(cached.info.url)
   sources.delete(sourceId)
@@ -554,7 +610,22 @@ export async function relinkSource(sourceId: string, file: File): Promise<VideoI
   })
 }
 
+export async function restoreExternalSource(sourceId: string): Promise<VideoInfo> {
+  return withProjectAssetLock(async () => {
+    await requestExternalHandleAccess(sourceId)
+    const cached = sources.get(sourceId)
+    if (cached) URL.revokeObjectURL(cached.info.url)
+    sources.delete(sourceId)
+    return resolveSource(sourceId)
+  })
+}
+
 export async function deleteLibraryItem(itemId: string): Promise<void> {
+  if (!navigator.locks) {
+    throw new Error(
+      'Безопасное удаление недоступно в этом браузере: Web Locks API не поддерживается. Файл сохранён.',
+    )
+  }
   return withProjectAssetLock(async () => {
   const referencingProject = (await allProjects()).find((project) =>
     project.videoId === itemId
@@ -579,24 +650,33 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
   const now = Date.now()
   const expectedRevision = typeof body.expectedRevision === 'number' ? body.expectedRevision : undefined
   const requestedProjectId = typeof body.projectId === 'string' && body.projectId ? body.projectId : undefined
+  const document = body.document
+    ? migrateProjectDocument(body.document)
+    : createProjectDocumentFromLegacy(
+        videoId,
+        String(body.name || 'Проект'),
+        body.video as Record<string, unknown>,
+        body.edit as Record<string, unknown>,
+      )
+  const persistedBeforeSave = await projectByVideo(videoId)
+  const previousMediaIdsBeforeSave = new Set(
+    persistedBeforeSave?.document?.media.map((media) => media.id) ?? [],
+  )
   const readyAssetIds = new Set(
     (await auditBrowserAssets())
       .filter((asset) => asset.availability === 'ready')
       .map((asset) => asset.id),
   )
+  for (const media of document.media) {
+    if (!previousMediaIdsBeforeSave.has(media.id) && readyAssetIds.has(media.id)) {
+      await getBrowserAsset(media.id)
+    }
+  }
   const project = await compareAndSwapProject(
     videoId,
     requestedProjectId,
     expectedRevision,
     (previous) => {
-      const document = body.document
-        ? migrateProjectDocument(body.document)
-        : createProjectDocumentFromLegacy(
-            videoId,
-            String(body.name || 'Проект'),
-            body.video as Record<string, unknown>,
-            body.edit as Record<string, unknown>,
-          )
       const previousMediaIds = new Set(previous?.document?.media.map((media) => media.id) ?? [])
       const missingNewAsset = document.media.find((media) =>
         !previousMediaIds.has(media.id) && !readyAssetIds.has(media.id),

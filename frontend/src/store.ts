@@ -181,9 +181,11 @@ export async function doUploadFiles(files: readonly File[]): Promise<void> {
       try {
         const v = await api.uploadFile(file)
         const storageStatus = api.getBrowserStorageStatus()
-        state.browserStorageWarning = storageStatus && !storageStatus.persisted
-          ? 'Браузер не гарантировал постоянное хранение. При очистке данных файлы станут offline; используйте «Найти файл» для восстановления.'
-          : ''
+        state.browserStorageWarning = v.availability === 'session'
+          ? 'Хранилище браузера недоступно: файл доступен только до закрытия этой вкладки.'
+          : storageStatus && !storageStatus.persisted
+            ? 'Браузер не гарантировал постоянное хранение. При очистке данных файлы станут offline; используйте «Найти файл» для восстановления.'
+            : ''
         if (projectSessionId !== targetSessionId) {
           throw new Error('проект изменился во время загрузки; файл оставлен в медиатеке')
         }
@@ -234,7 +236,7 @@ export function addMediaToTimeline(source: VideoInfo | MediaEntry): boolean {
     timelineState.error = 'Сначала откройте или создайте проект'
     return false
   }
-  if ('availability' in source && source.availability === 'offline') {
+  if ('availability' in source && (source.availability === 'offline' || source.availability === 'permission-required')) {
     timelineState.error = 'Сначала найдите исходный файл заново'
     return false
   }
@@ -581,15 +583,33 @@ export function openFromLibrary(entry: MediaEntry): void {
   toast('info', v.title ? `Открыто: ${v.title}` : 'Клип открыт')
 }
 
-export async function relinkLibraryMedia(entry: MediaEntry, file: File): Promise<boolean> {
+export async function relinkLibraryMedia(
+  entry: MediaEntry,
+  file: File,
+  handle?: FileSystemFileHandle,
+): Promise<boolean> {
   try {
-    const source = await api.relinkLibrarySource(entry.id, file)
+    const source = await api.relinkLibrarySource(entry.id, file, handle)
     Object.assign(entry, source, { availability: 'ready' as const })
     if (state.video?.id === entry.id) state.video = source
     toast('success', `Файл перепривязан: ${entry.filename}`)
     return true
   } catch (error) {
     entry.availability = 'offline'
+    toast('error', error instanceof Error ? error.message : String(error))
+    return false
+  }
+}
+
+export async function restoreExternalLibraryMedia(entry: MediaEntry): Promise<boolean> {
+  try {
+    const source = await api.restoreExternalLibrarySource(entry.id)
+    Object.assign(entry, source, { availability: 'ready' as const })
+    if (state.video?.id === entry.id) state.video = source
+    toast('success', `Доступ к «${entry.filename}» восстановлен`)
+    return true
+  } catch (error) {
+    entry.availability = 'permission-required'
     toast('error', error instanceof Error ? error.message : String(error))
     return false
   }

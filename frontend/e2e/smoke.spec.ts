@@ -101,7 +101,7 @@ test('editor shell opens and explains that the backend is offline', async ({ pag
   await mockOffline(page)
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: /Видеоредактор/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Video Kadr/ })).toBeVisible()
   await expect(page.getByRole('status')).toHaveText('Сервер недоступен')
   await expect(page.getByPlaceholder('https://vkvideo.ru/video-220018529_456248395')).toBeVisible()
 })

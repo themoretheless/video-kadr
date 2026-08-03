@@ -151,9 +151,18 @@ export async function resolveLibrarySource(entry: MediaEntry): Promise<VideoInfo
   }
 }
 
-export async function relinkLibrarySource(id: string, file: File): Promise<VideoInfo> {
+export async function relinkLibrarySource(
+  id: string,
+  file: File,
+  handle?: FileSystemFileHandle,
+): Promise<VideoInfo> {
   if (!clientOnlyMode) throw new Error('Relink через браузер доступен только в статической версии')
-  return browserMedia.relinkSource(id, file)
+  return browserMedia.relinkSource(id, file, handle)
+}
+
+export async function restoreExternalLibrarySource(id: string): Promise<VideoInfo> {
+  if (!clientOnlyMode) throw new Error('External browser handles are available only in local mode')
+  return browserMedia.restoreExternalSource(id)
 }
 
 export function getBrowserStorageStatus() {

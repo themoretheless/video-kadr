@@ -49,4 +49,22 @@ describe('browser media reload hydration', () => {
     expect((await reloadedModule.getLibrary())[0]?.url).toBe('')
     expect((await reloadedModule.resolveSource('durable-source')).url).toBe('blob:runtime-2')
   })
+
+  it('fails closed on physical deletion when cross-tab Web Locks are unavailable', async () => {
+    await putBrowserAsset({
+      id: 'protected-source', file: new Blob(['protected']), filename: 'protected.mp4',
+      fileType: 'video/mp4',
+      info: {
+        id: 'protected-source', filename: 'protected.mp4', duration: 1,
+        width: 1920, height: 1080, mediaKind: 'video',
+      },
+      createdAt: 1,
+    })
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined })
+    const media = await import('./browser-media')
+    await expect(media.deleteLibraryItem('protected-source')).rejects.toThrow('Web Locks API')
+    expect(await media.getLibrary()).toEqual([
+      expect.objectContaining({ id: 'protected-source', availability: 'ready' }),
+    ])
+  })
 })

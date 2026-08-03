@@ -5,6 +5,7 @@ import {
   deleteFromLibrary,
   addMediaToTimeline,
   relinkLibraryMedia,
+  restoreExternalLibraryMedia,
   timelineState,
 } from '../store'
 import type { MediaEntry } from '../types'
@@ -47,6 +48,22 @@ function onRelink(event: Event, entry: MediaEntry): void {
   if (file) void relinkLibraryMedia(entry, file)
   input.value = ''
 }
+
+type FilePickerWindow = Window & {
+  showOpenFilePicker?: (options?: { multiple?: boolean }) => Promise<FileSystemFileHandle[]>
+}
+const hasExternalPicker = typeof window !== 'undefined' && Boolean((window as FilePickerWindow).showOpenFilePicker)
+
+async function pickExternalFile(entry: MediaEntry): Promise<void> {
+  const picker = (window as FilePickerWindow).showOpenFilePicker
+  if (!picker) return
+  try {
+    const [handle] = await picker({ multiple: false })
+    if (handle) await relinkLibraryMedia(entry, await handle.getFile(), handle)
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === 'AbortError')) throw error
+  }
+}
 </script>
 
 <template>
@@ -58,24 +75,36 @@ function onRelink(event: Event, entry: MediaEntry): void {
         <div class="lib-info">
           <div class="lib-name" :title="label(e)">{{ label(e) }}</div>
           <div class="lib-meta">{{ ext(e) }}<template v-if="meta(e)"> · {{ meta(e) }}</template></div>
-          <div v-if="e.availability === 'offline'" class="lib-offline" role="status">
-            Файл недоступен — выберите исходник повторно
+          <div v-if="e.availability === 'offline' || e.availability === 'permission-required'" class="lib-offline" role="status">
+            {{ e.availability === 'permission-required'
+              ? 'Нужно снова разрешить доступ к исходному файлу'
+              : 'Файл недоступен — выберите исходник повторно' }}
           </div>
         </div>
         <div class="lib-actions">
           <button v-if="e.kind === 'source'" class="btn ghost sm" @click="openFromLibrary(e)">Открыть как проект</button>
           <button
+            v-if="e.kind === 'source' && e.availability === 'permission-required'"
+            class="btn ghost sm"
+            @click="restoreExternalLibraryMedia(e)"
+          >Разрешить доступ</button>
+          <button
             v-if="e.kind === 'source' && timelineState.document"
             class="btn ghost sm"
             :aria-label="`Добавить ${label(e)} в текущий проект`"
-            :disabled="e.availability === 'offline'"
-            :title="e.availability === 'offline' ? 'Сначала найдите исходный файл заново' : undefined"
+            :disabled="e.availability !== undefined && e.availability !== 'ready'"
+            :title="e.availability !== undefined && e.availability !== 'ready' ? 'Сначала найдите исходный файл заново' : undefined"
             @click="addMediaToTimeline(e)"
           >Добавить</button>
-          <label v-if="e.kind === 'source' && e.availability === 'offline'" class="btn ghost sm">
+          <label v-if="e.kind === 'source' && (e.availability === 'offline' || e.availability === 'permission-required')" class="btn ghost sm">
             Найти файл
             <input class="hidden-file" type="file" @change="onRelink($event, e)">
           </label>
+          <button
+            v-if="e.kind === 'source' && (e.availability === 'offline' || e.availability === 'permission-required') && hasExternalPicker"
+            class="btn ghost sm"
+            @click="pickExternalFile(e)"
+          >Связать внешний файл</button>
           <a v-if="e.kind === 'output'" class="btn ghost sm" :href="e.url" :download="e.filename">Скачать</a>
           <button class="btn ghost sm danger" title="Удалить" @click="deleteFromLibrary(e.id)">✕</button>
         </div>
