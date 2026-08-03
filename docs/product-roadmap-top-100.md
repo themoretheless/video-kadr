@@ -53,7 +53,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 | 9 | Неразрушающая trim-модель клипа ✅ | Реализованы независимые source in/out, source-duration limits, left trim и exact undo | In/out каждого timeline clip без перезаписи source и с handle limits | L |
 | 10 | Единый project document ✅ | Реализован canonical v2 в Rust/TypeScript, SQLite/IndexedDB CAS, legacy migration, quarantine и structured conflicts | Canonical versioned schema, N→N+1 migration, unknown-field preservation/version rejection | XL |
 | 11 | Autosave и crash recovery | Server autosave частично; Pages — память вкладки | Atomic IndexedDB snapshot/journal, recovery prompt и rollback повреждённой записи | L |
-| 12 | Персистентное локальное media storage | Pages теряет media после reload | OPFS/FSA matrix для Chrome/Firefox/Safari, private mode, revoked handles, eviction и relink | XL |
+| 12 | Персистентное локальное media storage ✅ | Реализованы content-addressed OPFS, WebKit-compatible IndexedDB fallback, persistent FSA handles, crash GC, quota/eviction/private UX и exact relink | OPFS/FSA matrix для Chrome/Firefox/Safari, private mode, revoked handles, eviction и relink | XL |
 | 13 | Timeline undo/redo ✅ | Реализованы atomic batch-команды, focus-scoped undo/redo, byte budget, CAS-safe autosave и recovery после failed command | Structural command history, grouped drags, memory budget и recovery после failed command | L |
 | 14 | Thumbnail strip на timeline | Нет UI | Асинхронные thumbnails с cache, отменой и bounded memory | L |
 | 15 | Audio waveform на timeline | Нет UI | Channel/downmix policy, peaks-per-pixel levels, zoom-aware cache и known-signal golden test | L |

@@ -211,6 +211,18 @@ async function deleteOpfs(id: string): Promise<void> {
   }
 }
 
+async function listOpfsObjectKeys(): Promise<string[]> {
+  const directory = await opfsDirectory(false).catch(() => null)
+  if (!directory) return []
+  const iterable = directory as FileSystemDirectoryHandle & {
+    entries?: () => AsyncIterableIterator<[string, FileSystemHandle]>
+  }
+  if (!iterable.entries) return []
+  const keys: string[] = []
+  for await (const [name] of iterable.entries()) if (name.startsWith('sha256-')) keys.push(name)
+  return keys
+}
+
 function storageError(error: unknown): BrowserAssetStorageError {
   const quota = error instanceof DOMException && error.name === 'QuotaExceededError'
   return new BrowserAssetStorageError(
@@ -348,6 +360,27 @@ async function reconcileBrowserAssetIngestsUnlocked(): Promise<void> {
     } finally {
       cleanup.close()
     }
+  }
+  const [manifests, remainingIngests, objectKeys] = await Promise.all([
+    allBrowserAssetManifests(),
+    (async () => {
+      const current = await openDatabase()
+      try {
+        return await requestResult<IngestJournalEntry[]>(
+          current.transaction(INGESTS, 'readonly').objectStore(INGESTS).getAll(),
+        )
+      } finally {
+        current.close()
+      }
+    })(),
+    listOpfsObjectKeys(),
+  ])
+  const rootedObjects = new Set(manifests
+    .filter((manifest) => manifest.storage === 'opfs')
+    .map((manifest) => manifest.objectKey ?? manifest.id))
+  for (const ingest of remainingIngests) if (ingest.objectKey) rootedObjects.add(ingest.objectKey)
+  for (const objectKey of objectKeys) {
+    if (!rootedObjects.has(objectKey)) await deleteOpfs(objectKey)
   }
 }
 

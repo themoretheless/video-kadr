@@ -234,6 +234,87 @@ describe('browser asset persistence', () => {
     ])
   })
 
+  it('mark-sweeps only unrooted immutable OPFS objects after reconciliation', async () => {
+    const files = new Map<string, Blob>()
+    const mediaDirectory = {
+      getFileHandle: async (id: string, options?: { create?: boolean }) => {
+        if (!files.has(id) && !options?.create) throw new DOMException('missing', 'NotFoundError')
+        return {
+          createWritable: async () => ({
+            write: async (blob: Blob) => { files.set(id, blob) }, close: async () => undefined, abort: async () => undefined,
+          }),
+          getFile: async () => new File([files.get(id)!], id),
+        }
+      },
+      removeEntry: async (id: string) => { files.delete(id) },
+      async *entries() { for (const id of files.keys()) yield [id, {}] as [string, FileSystemHandle] },
+    }
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => mediaDirectory }) },
+    })
+    const rooted = await putBrowserAsset(asset('rooted-opfs'))
+    const orphan = `sha256-${'b'.repeat(64)}`
+    files.set(orphan, new Blob(['orphan']))
+    await reconcileBrowserAssetIngests()
+    expect(files.has(rooted.objectKey!)).toBe(true)
+    expect(files.has(orphan)).toBe(false)
+  })
+
+  it('keeps old committed bytes after publish-to-IDB abort and later sweeps the orphan', async () => {
+    const files = new Map<string, Blob>()
+    const mediaDirectory = {
+      getFileHandle: async (id: string, options?: { create?: boolean }) => {
+        if (!files.has(id) && !options?.create) throw new DOMException('missing', 'NotFoundError')
+        return {
+          createWritable: async () => ({
+            write: async (blob: Blob) => { files.set(id, blob) }, close: async () => undefined, abort: async () => undefined,
+          }),
+          getFile: async () => new File([files.get(id)!], id),
+        }
+      },
+      removeEntry: async (id: string) => { files.delete(id) },
+      async *entries() { for (const id of files.keys()) yield [id, {}] as [string, FileSystemHandle] },
+    }
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => mediaDirectory }) },
+    })
+    const original = await putBrowserAsset(asset('crash-replace'))
+    const nativePut = IDBObjectStore.prototype.put
+    const putSpy = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+      this: IDBObjectStore, value: unknown, key?: IDBValidKey,
+    ) {
+      if (this.name === 'manifests' && (value as { id?: string }).id === 'crash-replace') {
+        throw new DOMException('fault after object publish', 'QuotaExceededError')
+      }
+      return key === undefined ? nativePut.call(this, value) : nativePut.call(this, value, key)
+    })
+    const replacement = new Blob(['replacement bytes'], { type: 'video/mp4' })
+    await expect(putBrowserAsset({ ...asset('crash-replace'), file: replacement })).rejects.toBeDefined()
+    putSpy.mockRestore()
+    await expect(getBrowserAsset('crash-replace')).resolves.toMatchObject({ objectKey: original.objectKey })
+
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('video-kadr-media', 4)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const read = database.transaction('ingests').objectStore('ingests').getAll()
+    const journals = await new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+      read.onsuccess = () => resolve(read.result)
+      read.onerror = () => reject(read.error)
+    })
+    const transaction = database.transaction('ingests', 'readwrite')
+    const committed = new Promise<void>((resolve) => { transaction.oncomplete = () => resolve() })
+    for (const journal of journals) transaction.objectStore('ingests').put({ ...journal, updatedAt: 1 })
+    await committed
+    database.close()
+
+    await reconcileBrowserAssetIngests()
+    expect([...files.keys()].filter((key) => key.startsWith('sha256-'))).toEqual([original.objectKey])
+  })
+
   it('routes large media to a worker without materializing the whole Blob', async () => {
     const arrayBuffer = vi.fn()
     const large = { size: 129 * 1024 * 1024, arrayBuffer } as unknown as Blob
