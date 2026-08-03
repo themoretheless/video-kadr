@@ -22,12 +22,12 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
           python -m pip install yt-dlp==2026.7.4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: themoretheless/.github/.github/actions/setup-rust@eb557370f9aae2547ddbbdce8bf2a8798e68dad2 # v1
         with:
+          rust-toolchain: stable
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: backend
+          working-directory: backend
+          cargo-workspaces: backend -> target
       - name: Format
         run: cargo fmt --check
       - name: Clippy
