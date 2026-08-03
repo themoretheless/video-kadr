@@ -139,6 +139,12 @@ impl Capabilities {
                 "нужны filters geq и format",
             ),
             option(
+                "hsl-selective-v1",
+                "Selective HSL",
+                has_filter("geq") && has_filter("format") && tools.hsl_selective_v1_smoke,
+                "нужны filters geq/format и успешная проверка Selective HSL v1",
+            ),
+            option(
                 "custom-curves",
                 "Кривые",
                 has_filter("curves"),
@@ -213,6 +219,7 @@ fn tool_fingerprint(tools: &ToolInfo) -> String {
     hash.update(muxers.join(","));
     hash.update([0]);
     hash.update(filters.join(","));
+    hash.update([u8::from(tools.hsl_selective_v1_smoke)]);
     format!("{:x}", hash.finalize())[..16].to_owned()
 }
 
@@ -392,6 +399,53 @@ mod tests {
     }
 
     #[test]
+    fn selective_hsl_requires_geq_and_format() {
+        let available = Capabilities::from_tools(&ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["geq".into(), "format".into()],
+            hsl_selective_v1_smoke: true,
+            ..ToolInfo::default()
+        });
+        assert!(
+            available
+                .filters
+                .iter()
+                .find(|option| option.id == "hsl-selective-v1")
+                .unwrap()
+                .available
+        );
+
+        let failed_smoke = Capabilities::from_tools(&ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["geq".into(), "format".into()],
+            hsl_selective_v1_smoke: false,
+            ..ToolInfo::default()
+        });
+        assert!(
+            !failed_smoke
+                .filters
+                .iter()
+                .find(|option| option.id == "hsl-selective-v1")
+                .unwrap()
+                .available
+        );
+
+        let unavailable = Capabilities::from_tools(&ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["format".into()],
+            ..ToolInfo::default()
+        });
+        assert!(
+            !unavailable
+                .filters
+                .iter()
+                .find(|option| option.id == "hsl-selective-v1")
+                .unwrap()
+                .available
+        );
+    }
+
+    #[test]
     fn noir_requires_eq() {
         let mut filters = all_look_filters();
         filters.retain(|filter| *filter != "eq");
@@ -420,7 +474,7 @@ mod tests {
         let all_filters = all_look_filters();
         let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
 
-        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 5);
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 6);
         for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
             assert_eq!(option.id, definition.id());
             assert_eq!(option.label, definition.label);

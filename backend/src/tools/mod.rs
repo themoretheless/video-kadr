@@ -84,6 +84,46 @@ pub async fn inspect_ffmpeg_support(
     (encoders, muxers, filters)
 }
 
+/// Execute the exact Selective-HSL expression dialect once. Filter-list
+/// presence alone does not prove that a concrete FFmpeg build supports every
+/// geq function/register used by the v1 contract or preserves alpha.
+pub async fn probe_hsl_selective_v1(runtime: &ProcessRuntime) -> bool {
+    let filter = format!(
+        "format=gbrap16le,{},format=rgba",
+        args::selective_hsl_v1_smoke_filter()
+    );
+    let mut command = Command::new("ffmpeg");
+    command.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red@0.25:s=1x1,format=rgba",
+        "-vf",
+        &filter,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "pipe:1",
+    ]);
+    let Ok(output) = capture_output(
+        runtime,
+        command,
+        runtime.discovery_policy(),
+        TOOL_CHECK_TIMEOUT,
+    )
+    .await
+    else {
+        return false;
+    };
+    output.status.success()
+        && output.stdout.len() == 4
+        && (i16::from(output.stdout[3]) - 64).abs() <= 1
+}
+
 async fn inspect_ffmpeg_component(runtime: &ProcessRuntime, argument: &str) -> Vec<String> {
     let mut command = Command::new("ffmpeg");
     command.args(["-hide_banner", argument]);
@@ -473,6 +513,18 @@ fn tail(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn selective_hsl_v1_smoke_executes_exact_expression_and_preserves_alpha() {
+        if std::process::Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        assert!(probe_hsl_selective_v1(&ProcessRuntime::local_default()).await);
+    }
 
     #[test]
     fn ffmpeg_component_output_is_parsed_into_stable_names() {

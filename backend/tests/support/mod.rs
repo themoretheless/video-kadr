@@ -73,6 +73,7 @@ pub async fn make_state(ffmpeg: bool, ytdlp: bool) -> (AppState, tempfile::TempD
         } else {
             Vec::new()
         },
+        hsl_selective_v1_smoke: ffmpeg,
     };
     (AppState::new(storage, 2, tools, library, db), dir)
 }

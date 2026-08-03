@@ -35,7 +35,7 @@ import {
   planBrowserExport,
   runtimeResourceCapabilities,
 } from './browser-resource-plan'
-import { browserColorFilterPlan, browserVideoFilterArgs } from './browser-color-pipeline'
+import { browserColorFilterPlan, browserVideoFilterArgs, selectiveHslFfmpegFilter } from './browser-color-pipeline'
 
 type EditPayload = Record<string, unknown>
 
@@ -95,6 +95,7 @@ const MAX_SESSION_OUTPUT_BYTES = 256 * 1024 * 1024
 
 let ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null
 let ffmpegLoading: Promise<import('@ffmpeg/ffmpeg').FFmpeg> | null = null
+let hslSelectiveV1Smoke: Promise<boolean> | null = null
 let activeJobId: string | null = null
 let streamingExportActive = false
 let cancelStreamingExport: (() => void) | null = null
@@ -355,6 +356,39 @@ async function loadFfmpeg(): Promise<import('@ffmpeg/ffmpeg').FFmpeg> {
   } finally {
     ffmpegLoading = null
   }
+}
+
+async function probeBrowserHslSelectiveV1(): Promise<boolean> {
+  if (hslSelectiveV1Smoke) return hslSelectiveV1Smoke
+  hslSelectiveV1Smoke = (async () => {
+    const filter = selectiveHslFfmpegFilter({
+      hslSelective: {
+        selection: { centerDegrees: 0, halfWidthDegrees: 20, featherDegrees: 10 },
+        adjustment: { hueDegrees: 30, saturation: -0.2, lightness: 0.4 },
+      },
+    })
+    if (!filter) return false
+    const output = '.hsl-selective-v1-smoke.rgba'
+    try {
+      const ffmpeg = await loadFfmpeg()
+      const exitCode = await boundedEnginePhase(ffmpeg.exec([
+        '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
+        'color=c=red@0.25:s=1x1,format=rgba', '-vf',
+        `format=gbrap16le,${filter},format=rgba`, '-frames:v', '1',
+        '-f', 'rawvideo', '-y', output,
+      ]), 'проверка Selective HSL', 15_000, () => ffmpeg.terminate())
+      if (exitCode !== 0) return false
+      const bytes = await ffmpeg.readFile(output)
+      return bytes instanceof Uint8Array
+        && bytes.length === 4
+        && Math.abs(bytes[3]! - 64) <= 1
+    } catch {
+      return false
+    } finally {
+      try { await ffmpegInstance?.deleteFile(output) } catch { /* absent after a failed smoke */ }
+    }
+  })()
+  return hslSelectiveV1Smoke
 }
 
 function number(value: unknown, fallback = 0): number {
@@ -867,7 +901,7 @@ export function cancelStreamingOutput(): void {
   cancelStreamingExport?.()
 }
 
-export function getCapabilities(): Capabilities {
+export async function getCapabilities(): Promise<Capabilities> {
   const enabled = (id: string, label = id) => ({ id, label, available: true })
   const disabled = (id: string, label: string, reason: string) => ({ id, label, available: false, reason })
   const runtime = runtimeResourceCapabilities()
@@ -875,9 +909,10 @@ export function getCapabilities(): Capabilities {
     ? 'WebAssembly недоступен в этом браузере'
     : !runtime.worker ? 'Web Worker недоступен в этом браузере' : null
   const local = (id: string, label = id) => runtimeReason ? disabled(id, label, runtimeReason) : enabled(id, label)
+  const selectiveHslSmoke = runtimeReason ? false : await probeBrowserHslSelectiveV1()
   return {
     schemaVersion: 1,
-    toolFingerprint: 'ffmpeg.wasm/client',
+    toolFingerprint: `ffmpeg.wasm/client:hsl-selective-v1-${selectiveHslSmoke ? 'ok' : 'failed'}`,
     formats: [
       local('mp4', 'MP4'), local('webm', 'WebM'), local('gif', 'GIF'),
       local('png', 'PNG'), local('jpg', 'JPG'), local('mp3', 'MP3'),
@@ -891,6 +926,9 @@ export function getCapabilities(): Capabilities {
     filters: [
       local('primary-corrections', 'Температура / Tint / Света / Тени'),
       local('color-wheels', 'Lift / Gamma / Gain'),
+      selectiveHslSmoke
+        ? enabled('hsl-selective-v1', 'Selective HSL')
+        : disabled('hsl-selective-v1', 'Selective HSL', runtimeReason ?? 'ffmpeg.wasm не прошёл проверку Selective HSL v1'),
       ...['grayscale', 'sepia', 'warm', 'cold', 'teal-orange', 'faded', 'noir', 'vintage', 'lut3d', 'curves'].map((name) => enabled(name)),
       local('lut3d-blend', 'Интенсивность LUT'),
     ],

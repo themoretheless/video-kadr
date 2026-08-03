@@ -23,6 +23,7 @@ import {
 } from './domain/edit'
 import { cloneValue, PatchCommand } from './domain/history'
 import { primaryCorrectionsActive } from './domain/primary-color'
+import { hslSelectiveActive } from './domain/hsl-selective'
 import { StructuralHistory, type TimelineCommand } from './domain/timeline'
 import {
   createProjectDocumentFromLegacy,
@@ -79,6 +80,8 @@ export const state = reactive({
   library: [] as MediaEntry[],
   projects: [] as ProjectDto[],
   capabilities: null as Capabilities | null,
+  /** View-only matte switch. Never enters EditState, payloads, projects or presets. */
+  hslMaskPreview: false,
   backendStatus: (clientOnlyMode ? 'client' : 'checking') as 'checking' | 'online' | 'offline' | 'client',
   browserStorageWarning: '',
   // Player bridge: VideoPreview owns the <video>; the rest of the app talks to
@@ -599,6 +602,14 @@ export function selectedExportUnavailableReason(): string | null {
     if (reason) return reason
   }
 
+  if (hslSelectiveActive(state.edit.hslSelective)) {
+    const reason = colorCapabilityUnavailableReason(
+      ['hsl-selective-v1'],
+      'Selective HSL недоступен: нужен обновлённый сервер',
+    )
+    if (reason) return reason
+  }
+
   if (state.edit.lutId && state.edit.lutIntensity > 0) {
     const reason = colorCapabilityUnavailableReason(
       ['lut', 'lut3d', 'cube-lut'],
@@ -1087,6 +1098,7 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'lift',
   'gamma',
   'gain',
+  'hslSelective',
   'filter',
   'lutId',
   'lutName',

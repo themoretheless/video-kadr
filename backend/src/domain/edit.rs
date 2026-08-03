@@ -485,6 +485,54 @@ impl ColorWheels {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslSelection {
+    pub(crate) center_degrees: f64,
+    pub(crate) half_width_degrees: f64,
+    pub(crate) feather_degrees: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslAdjustment {
+    pub(crate) hue_degrees: f64,
+    pub(crate) saturation: f64,
+    pub(crate) lightness: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslSelective {
+    pub(crate) selection: HslSelection,
+    pub(crate) adjustment: HslAdjustment,
+}
+
+impl HslSelective {
+    fn validate(self) -> Result<(), EditSpecError> {
+        let selection = self.selection;
+        let adjustment = self.adjustment;
+        let valid = selection.center_degrees.is_finite()
+            && (0.0..360.0).contains(&selection.center_degrees)
+            && selection.half_width_degrees.is_finite()
+            && (0.0..=180.0).contains(&selection.half_width_degrees)
+            && selection.feather_degrees.is_finite()
+            && (0.0..=90.0).contains(&selection.feather_degrees)
+            && selection.half_width_degrees + selection.feather_degrees <= 180.0
+            && adjustment.hue_degrees.is_finite()
+            && (-180.0..=180.0).contains(&adjustment.hue_degrees)
+            && adjustment.saturation.is_finite()
+            && (-1.0..=1.0).contains(&adjustment.saturation)
+            && adjustment.lightness.is_finite()
+            && (-1.0..=1.0).contains(&adjustment.lightness);
+        if valid {
+            Ok(())
+        } else {
+            Err(EditSpecError::InvalidVideoEffect)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoEffects {
@@ -501,6 +549,8 @@ pub struct VideoEffects {
     pub(crate) shadows: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) color_wheels: Option<ColorWheels>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hsl_selective: Option<HslSelective>,
     pub(crate) look: Option<LookPreset>,
     pub(crate) vignette: bool,
     pub(crate) denoise: bool,
@@ -650,6 +700,9 @@ impl EditSpec {
         if let Some(wheels) = self.video.color_wheels {
             wheels.validate()?;
         }
+        if let Some(selective) = self.video.hsl_selective {
+            selective.validate()?;
+        }
         if let Some(lut) = &self.video.lut {
             lut.validate()?;
         }
@@ -719,6 +772,7 @@ mod tests {
                 highlights: 0.0,
                 shadows: 0.0,
                 color_wheels: None,
+                hsl_selective: None,
                 look: None,
                 vignette: false,
                 denoise: false,

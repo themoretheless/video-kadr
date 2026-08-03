@@ -37,6 +37,8 @@ pub struct ToolInfo {
     pub ffmpeg_muxers: Vec<String>,
     #[serde(skip)]
     pub ffmpeg_filters: Vec<String>,
+    #[serde(skip)]
+    pub hsl_selective_v1_smoke: bool,
 }
 
 /// Shared application state. Jobs live in memory as the hot path (with live

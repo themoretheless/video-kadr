@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::config::encode_budget::EncodeBudget;
 use crate::domain::edit::{
-    ColorWheel, EditSpec, Rotation, TimeRange, ToneCurve, ToneCurves, VideoEffects,
+    ColorWheel, EditSpec, HslSelective, Rotation, TimeRange, ToneCurve, ToneCurves, VideoEffects,
 };
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
@@ -142,6 +142,71 @@ fn primary_correction_filter(video: &VideoEffects) -> String {
     )
 }
 
+fn selective_hsl_filter(selective: HslSelective) -> String {
+    let selection = selective.selection;
+    let adjustment = selective.adjustment;
+    let center = selection.center_degrees / 360.0;
+    let half_width = selection.half_width_degrees / 360.0;
+    let feather = selection.feather_degrees / 360.0;
+    let hue_shift = adjustment.hue_degrees / 360.0;
+
+    let plane = |channel: usize| {
+        let hue = "if(eq(ld(5),0),0,if(eq(ld(3),ld(0)),mod(mod((ld(1)-ld(2))/ld(5),6)+6,6),if(eq(ld(3),ld(1)),(ld(2)-ld(0))/ld(5)+2,(ld(0)-ld(1))/ld(5)+4))/6)";
+        let saturation = "if(eq(ld(5),0),0,ld(5)/(1-abs(2*ld(8)-1)))";
+        let distance = format!("min(abs(ld(6)-{center:.15}),1-abs(ld(6)-{center:.15}))");
+        let mask = if feather == 0.0 {
+            format!("if(eq(ld(5),0),0,lte({distance},{half_width:.15}))")
+        } else {
+            let amount = format!("clip(({distance}-{half_width:.15})/{feather:.15},0,1)");
+            format!("if(eq(ld(5),0),0,1-({amount}*{amount}*(3-2*{amount})))")
+        };
+        let h6 = "(6*ld(6))";
+        let component = match channel {
+            0 => format!(
+                "if(lt({h6},1),ld(3),if(lt({h6},2),ld(4),if(lt({h6},4),0,if(lt({h6},5),ld(4),ld(3)))))"
+            ),
+            1 => format!(
+                "if(lt({h6},1),ld(4),if(lt({h6},3),ld(3),if(lt({h6},4),ld(4),0)))"
+            ),
+            _ => format!(
+                "if(lt({h6},2),0,if(lt({h6},3),ld(4),if(lt({h6},5),ld(3),ld(4))))"
+            ),
+        };
+        format!(
+            "st(0,r(X,Y)/65535);st(1,g(X,Y)/65535);st(2,b(X,Y)/65535);\
+             st(3,max(ld(0),max(ld(1),ld(2))));st(4,min(ld(0),min(ld(1),ld(2))));\
+             st(5,ld(3)-ld(4));st(8,(ld(3)+ld(4))/2);st(7,{saturation});st(6,{hue});\
+             st(9,{mask});st(6,mod(ld(6)+ld(9)*{hue_shift:.15}+1,1));\
+             st(7,clip(ld(7)+ld(9)*{:.15},0,1));st(8,clip(ld(8)+0.25*ld(9)*{:.15},0,1));\
+             st(3,(1-abs(2*ld(8)-1))*ld(7));st(4,ld(3)*(1-abs(mod(6*ld(6),2)-1)));\
+             65535*clip(({component})+ld(8)-ld(3)/2,0,1)",
+            adjustment.saturation, adjustment.lightness
+        )
+        .replace(char::is_whitespace, "")
+    };
+    format!(
+        "geq=r='{}':g='{}':b='{}':a='alpha(X,Y)'",
+        plane(0),
+        plane(1),
+        plane(2)
+    )
+}
+
+pub(super) fn selective_hsl_v1_smoke_filter() -> String {
+    selective_hsl_filter(HslSelective {
+        selection: crate::domain::edit::HslSelection {
+            center_degrees: 0.0,
+            half_width_degrees: 20.0,
+            feather_degrees: 10.0,
+        },
+        adjustment: crate::domain::edit::HslAdjustment {
+            hue_degrees: 30.0,
+            saturation: -0.2,
+            lightness: 0.4,
+        },
+    })
+}
+
 /// Escape a path for one quoted FFmpeg filter option. This is filtergraph
 /// escaping, not shell escaping: the command is still passed as an argv vector.
 fn escape_filter_value(path: &Path) -> anyhow::Result<String> {
@@ -215,11 +280,19 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
         || video.highlights.abs() > 1e-6
         || video.shadows.abs() > 1e-6;
     let wheels_changed = video.color_wheels.is_some();
-    if video.curves.is_some() || video.lut.is_some() || primary_changed || wheels_changed {
+    if video.curves.is_some()
+        || video.lut.is_some()
+        || primary_changed
+        || wheels_changed
+        || video.hsl_selective.is_some()
+    {
         before_lut.push("format=gbrap16le".into());
     }
     if primary_changed || wheels_changed {
         before_lut.push(primary_correction_filter(video));
+    }
+    if let Some(selective) = video.hsl_selective {
+        before_lut.push(selective_hsl_filter(selective));
     }
     let eq_changed = video.brightness.abs() > 1e-6
         || (video.contrast - 1.0).abs() > 1e-6
@@ -1152,11 +1225,15 @@ mod tests {
     fn partial_lut_blend_still_precedes_authored_curves() {
         let command = command_with_lut(
             json!({
-                "videoId":"x", "temperature":0.25,
+                "videoId":"x", "temperature":0.25, "brightness":0.1, "filter":"warm",
                 "colorWheels": {
                     "lift":{"red":0.2},
                     "gamma":{"green":-0.1},
                     "gain":{"blue":0.15}
+                },
+                "hslSelective": {
+                    "selection":{"centerDegrees":0,"halfWidthDegrees":30,"featherDegrees":15},
+                    "adjustment":{"hueDegrees":10,"saturation":0.2,"lightness":-0.1}
                 },
                 "lut":{"id":"look","intensity":0.5},
                 "curves":{"master":[{"x":0.0,"y":0.0},{"x":1.0,"y":1.0}]}
@@ -1167,12 +1244,21 @@ mod tests {
         let graph = filter_complex(&command.arguments);
         let primary = graph.find("geq=r=").unwrap();
         assert!(graph.contains("+0.25*0.200000000000"), "{graph}");
+        let selective = graph.find("st(0,r(X,Y)/65535)").unwrap();
+        let eq = graph.find("eq=brightness=").unwrap();
+        let preset = graph.find("colorbalance=").unwrap();
         let split = graph.find("split=2").unwrap();
         let lut = graph.find("lut3d=").unwrap();
         let blend = graph.find("blend=").unwrap();
         let curves = graph.find("curves=master=").unwrap();
         assert!(
-            primary < split && split < lut && lut < blend && blend < curves,
+            primary < selective
+                && selective < eq
+                && eq < preset
+                && preset < split
+                && split < lut
+                && lut < blend
+                && blend < curves,
             "{graph}"
         );
     }
@@ -1267,6 +1353,117 @@ mod tests {
             );
         }
         assert_eq!(decoded.stdout[3], 77, "alpha must survive the geq grade");
+    }
+
+    #[test]
+    fn ffmpeg_selective_hsl_matches_circular_feather_math_and_preserves_alpha() {
+        if std::process::Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("selective-input.pam");
+        let output = directory.path().join("selective-output.png");
+        let pixels = [
+            [255_u8, 0, 0, 77],
+            [0, 255, 0, 88],
+            [255, 64, 0, 99],
+            [128, 128, 128, 111],
+        ];
+        let mut pam =
+            b"P7\nWIDTH 4\nHEIGHT 1\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n".to_vec();
+        for pixel in pixels {
+            pam.extend(pixel);
+        }
+        std::fs::write(&input, pam).unwrap();
+        let edit = plan_for_duration(
+            json!({
+                "videoId":"x",
+                "hslSelective":{
+                    "selection":{"centerDegrees":0,"halfWidthDegrees":10,"featherDegrees":10},
+                    "adjustment":{"hueDegrees":120,"saturation":-0.5,"lightness":-0.4}
+                },
+                "format":"png"
+            }),
+            1.0,
+        );
+        let status = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error"])
+            .args(build_ffmpeg_args(&input, &output, &edit))
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let decoded = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-i"])
+            .arg(&output)
+            .args([
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgba",
+                "pipe:1",
+            ])
+            .output()
+            .unwrap();
+        assert!(decoded.status.success());
+
+        fn reference(rgb: [u8; 3]) -> [u8; 3] {
+            let [r, g, b] = rgb.map(|value| f64::from(value) / 255.0);
+            let max = r.max(g).max(b);
+            let min = r.min(g).min(b);
+            let chroma = max - min;
+            if chroma == 0.0 {
+                return rgb;
+            }
+            let lightness = (max + min) / 2.0;
+            let saturation = chroma / (1.0 - (2.0 * lightness - 1.0).abs());
+            let hue_sector = if max == r {
+                ((g - b) / chroma).rem_euclid(6.0)
+            } else if max == g {
+                (b - r) / chroma + 2.0
+            } else {
+                (r - g) / chroma + 4.0
+            };
+            let hue = hue_sector / 6.0;
+            let distance = (hue - 0.0).abs().min(1.0 - (hue - 0.0).abs());
+            let low = 10.0 / 360.0;
+            let feather = 10.0 / 360.0;
+            let amount = ((distance - low) / feather).clamp(0.0, 1.0);
+            let mask = 1.0 - amount * amount * (3.0 - 2.0 * amount);
+            let adjusted_hue = (hue + mask * 120.0 / 360.0).rem_euclid(1.0);
+            let adjusted_saturation = (saturation - mask * 0.5).clamp(0.0, 1.0);
+            let adjusted_lightness = (lightness - 0.25 * mask * 0.4).clamp(0.0, 1.0);
+            let c = (1.0 - (2.0 * adjusted_lightness - 1.0).abs()) * adjusted_saturation;
+            let x = c * (1.0 - ((6.0 * adjusted_hue) % 2.0 - 1.0).abs());
+            let sector = (6.0 * adjusted_hue).floor() as usize;
+            let [rr, gg, bb] = match sector {
+                0 => [c, x, 0.0],
+                1 => [x, c, 0.0],
+                2 => [0.0, c, x],
+                3 => [0.0, x, c],
+                4 => [x, 0.0, c],
+                _ => [c, 0.0, x],
+            };
+            let m = adjusted_lightness - c / 2.0;
+            [rr, gg, bb].map(|value| ((value + m).clamp(0.0, 1.0) * 255.0).round() as u8)
+        }
+
+        for (index, source) in pixels.iter().enumerate() {
+            let expected = reference([source[0], source[1], source[2]]);
+            let actual = &decoded.stdout[index * 4..index * 4 + 4];
+            for channel in 0..3 {
+                assert!(
+                    (i16::from(actual[channel]) - i16::from(expected[channel])).abs() <= 1,
+                    "pixel={index} actual={actual:?} expected={expected:?}"
+                );
+            }
+            assert_eq!(actual[3], source[3], "pixel {index} alpha");
+        }
     }
 
     #[test]

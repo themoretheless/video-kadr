@@ -1,4 +1,10 @@
 import type { ColorCurves, ColorWheelChannels, CurvePoint, EditState, VideoInfo } from '../types'
+import {
+  HSL_SELECTIVE_DEFAULTS,
+  hslSelectiveActive,
+  sanitizeHslSelective,
+  type HslSelective,
+} from './hsl-selective'
 
 const CURVE_MIN = 0
 const CURVE_MAX = 255
@@ -24,6 +30,13 @@ export function identityCurves(): ColorCurves {
 
 export function neutralColorWheel(): ColorWheelChannels {
   return { master: 0, red: 0, green: 0, blue: 0 }
+}
+
+export function defaultHslSelective(): HslSelective {
+  return {
+    selection: { ...HSL_SELECTIVE_DEFAULTS.selection },
+    adjustment: { ...HSL_SELECTIVE_DEFAULTS.adjustment },
+  }
 }
 
 export const EDIT_DEFAULTS = {
@@ -55,6 +68,7 @@ export const EDIT_DEFAULTS = {
   lift: neutralColorWheel(),
   gamma: neutralColorWheel(),
   gain: neutralColorWheel(),
+  hslSelective: defaultHslSelective(),
   filter: '',
   lutId: null,
   lutName: '',
@@ -88,6 +102,7 @@ export function defaultEdit(): EditState {
     lift: { ...EDIT_DEFAULTS.lift },
     gamma: { ...EDIT_DEFAULTS.gamma },
     gain: { ...EDIT_DEFAULTS.gain },
+    hslSelective: defaultHslSelective(),
     curves: cloneCurves(EDIT_DEFAULTS.curves),
   }
 }
@@ -178,6 +193,8 @@ export function buildEditPayload(
   if (colorWheelsActive({ lift, gamma, gain })) {
     payload.colorWheels = { lift, gamma, gain }
   }
+  const hslSelective = sanitizeHslSelective(edit.hslSelective)
+  if (hslSelectiveActive(hslSelective)) payload.hslSelective = hslSelective
   if (edit.filter) payload.filter = edit.filter
   const lutId = sanitizeLutId(edit.lutId)
   const lutIntensity = sanitizeLutIntensity(edit.lutIntensity)
@@ -452,6 +469,11 @@ export function sanitizeEditState(value: unknown, base: EditState = defaultEdit(
     lift: sanitizeColorWheel(source.lift ?? base.lift),
     gamma: sanitizeColorWheel(source.gamma ?? base.gamma),
     gain: sanitizeColorWheel(source.gain ?? base.gain),
+    hslSelective: sanitizeHslSelective(
+      isRecord(source.hslSelective)
+        ? source.hslSelective as Partial<HslSelective>
+        : base.hslSelective,
+    ),
     curves: sanitizeCurves(source.curves ?? base.curves),
   }
 }
@@ -468,6 +490,7 @@ export function resetColorAdjustments(edit: EditState): void {
   edit.lift = neutralColorWheel()
   edit.gamma = neutralColorWheel()
   edit.gain = neutralColorWheel()
+  edit.hslSelective = defaultHslSelective()
   edit.filter = EDIT_DEFAULTS.filter
   edit.lutId = EDIT_DEFAULTS.lutId
   edit.lutName = EDIT_DEFAULTS.lutName

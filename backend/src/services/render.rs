@@ -10,13 +10,14 @@ use crate::config::encode_budget::EncodeBudget;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::edit::{
     AspectRatio, AudioEffects, CensorColor, CensorSpec, ColorWheel, ColorWheels, EditSpec,
-    GeometrySpec, LookPreset, LutGrade, OutputScale, PixelRect, Rotation, TimeRange, TimingSpec,
-    ToneCurve, ToneCurvePoint, ToneCurves, VideoEffects,
+    GeometrySpec, HslAdjustment, HslSelection, HslSelective, LookPreset, LutGrade, OutputScale,
+    PixelRect, Rotation, TimeRange, TimingSpec, ToneCurve, ToneCurvePoint, ToneCurves,
+    VideoEffects,
 };
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::model::{Crop, EditRequest, Scale, Trim};
 
-const EDIT_PLAN_SCHEMA_VERSION: u32 = 4;
+const EDIT_PLAN_SCHEMA_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SourceMediaMetadata {
@@ -208,6 +209,33 @@ fn normalize_request(edit: &mut EditRequest, source: SourceMediaSpec) -> anyhow:
     if edit.color_wheels.is_some_and(|value| value.is_neutral()) {
         edit.color_wheels = None;
     }
+    if let Some(mut selective) = edit.hsl_selective {
+        let selection = selective.selection;
+        let adjustment = selective.adjustment;
+        anyhow::ensure!(
+            selection.center_degrees.is_finite()
+                && (0.0..=360.0).contains(&selection.center_degrees)
+                && selection.half_width_degrees.is_finite()
+                && (0.0..=180.0).contains(&selection.half_width_degrees)
+                && selection.feather_degrees.is_finite()
+                && (0.0..=90.0).contains(&selection.feather_degrees)
+                && selection.half_width_degrees + selection.feather_degrees <= 180.0
+                && adjustment.hue_degrees.is_finite()
+                && (-180.0..=180.0).contains(&adjustment.hue_degrees)
+                && adjustment.saturation.is_finite()
+                && (-1.0..=1.0).contains(&adjustment.saturation)
+                && adjustment.lightness.is_finite()
+                && (-1.0..=1.0).contains(&adjustment.lightness),
+            "Недопустимые параметры selective HSL"
+        );
+        if selective.selection.center_degrees == 360.0 {
+            selective.selection.center_degrees = 0.0;
+            edit.hsl_selective = Some(selective);
+        }
+        if selective.is_neutral() {
+            edit.hsl_selective = None;
+        }
+    }
     edit.sharpen = finite_non_negative(edit.sharpen, "Недопустимая резкость")?.clamp(0.0, 5.0);
     edit.grain = finite_non_negative(edit.grain, "Недопустимое зерно")?.clamp(0.0, 100.0);
     normalize_trim(&mut edit.trim, duration)?;
@@ -330,6 +358,18 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
         gamma: map_wheel(wheels.gamma),
         gain: map_wheel(wheels.gain),
     });
+    let hsl_selective = request.hsl_selective.map(|selective| HslSelective {
+        selection: HslSelection {
+            center_degrees: selective.selection.center_degrees,
+            half_width_degrees: selective.selection.half_width_degrees,
+            feather_degrees: selective.selection.feather_degrees,
+        },
+        adjustment: HslAdjustment {
+            hue_degrees: selective.adjustment.hue_degrees,
+            saturation: selective.adjustment.saturation,
+            lightness: selective.adjustment.lightness,
+        },
+    });
     let trim = request
         .trim
         .map(|value| TimeRange::new(value.start, value.end))
@@ -410,6 +450,7 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             highlights: request.highlights,
             shadows: request.shadows,
             color_wheels,
+            hsl_selective,
             look,
             vignette: request.vignette,
             denoise: request.denoise,
@@ -456,6 +497,26 @@ fn map_curve(points: Vec<crate::model::CurvePoint>) -> anyhow::Result<ToneCurve>
 /// work. Source-dependent geometry is still validated when the full edit plan
 /// is compiled, but LUT/curve bounds do not need media metadata.
 pub fn validate_color_grade_request(request: &EditRequest) -> anyhow::Result<()> {
+    if let Some(selective) = request.hsl_selective {
+        let selection = selective.selection;
+        let adjustment = selective.adjustment;
+        anyhow::ensure!(
+            selection.center_degrees.is_finite()
+                && (0.0..=360.0).contains(&selection.center_degrees)
+                && selection.half_width_degrees.is_finite()
+                && (0.0..=180.0).contains(&selection.half_width_degrees)
+                && selection.feather_degrees.is_finite()
+                && (0.0..=90.0).contains(&selection.feather_degrees)
+                && selection.half_width_degrees + selection.feather_degrees <= 180.0
+                && adjustment.hue_degrees.is_finite()
+                && (-180.0..=180.0).contains(&adjustment.hue_degrees)
+                && adjustment.saturation.is_finite()
+                && (-1.0..=1.0).contains(&adjustment.saturation)
+                && adjustment.lightness.is_finite()
+                && (-1.0..=1.0).contains(&adjustment.lightness),
+            "Недопустимые параметры selective HSL"
+        );
+    }
     if let Some(curves) = &request.curves {
         let validated = ToneCurves::new(
             curves.master.clone().map(map_curve).transpose()?,
@@ -722,6 +783,50 @@ mod tests {
     }
 
     #[test]
+    fn compiler_validates_and_canonicalizes_selective_hsl() {
+        let neutral = compile(serde_json::json!({
+            "videoId": "x",
+            "hslSelective": {
+                "selection": {"centerDegrees": 120, "halfWidthDegrees": 45, "featherDegrees": 20},
+                "adjustment": {}
+            }
+        }))
+        .unwrap();
+        assert!(neutral.edit.video().hsl_selective.is_none());
+
+        let active = compile(serde_json::json!({
+            "videoId": "x",
+            "hslSelective": {
+                "selection": {"centerDegrees": 359.999, "halfWidthDegrees": 90, "featherDegrees": 90},
+                "adjustment": {"hueDegrees": -180, "saturation": 1, "lightness": -1}
+            }
+        }))
+        .unwrap();
+        assert!(active.edit.video().hsl_selective.is_some());
+        let center_zero = compile(serde_json::json!({
+            "videoId":"x", "hslSelective":{"selection":{"centerDegrees":0},"adjustment":{"hueDegrees":1}}
+        }))
+        .unwrap();
+        let center_wrap = compile(serde_json::json!({
+            "videoId":"x", "hslSelective":{"selection":{"centerDegrees":360},"adjustment":{"hueDegrees":1}}
+        }))
+        .unwrap();
+        assert_eq!(center_zero.plan_fingerprint, center_wrap.plan_fingerprint);
+
+        for request in [
+            serde_json::json!({"videoId":"x","hslSelective":{"selection":{"centerDegrees":360.001},"adjustment":{"hueDegrees":1}}}),
+            serde_json::json!({"videoId":"x","hslSelective":{"selection":{"halfWidthDegrees":181},"adjustment":{"hueDegrees":1}}}),
+            serde_json::json!({"videoId":"x","hslSelective":{"selection":{"featherDegrees":91},"adjustment":{"hueDegrees":1}}}),
+            serde_json::json!({"videoId":"x","hslSelective":{"selection":{"halfWidthDegrees":100,"featherDegrees":81},"adjustment":{"hueDegrees":1}}}),
+            serde_json::json!({"videoId":"x","hslSelective":{"adjustment":{"hueDegrees":181}}}),
+            serde_json::json!({"videoId":"x","hslSelective":{"adjustment":{"saturation":1.001}}}),
+            serde_json::json!({"videoId":"x","hslSelective":{"adjustment":{"lightness":-1.001}}}),
+        ] {
+            assert!(compile(request).is_err());
+        }
+    }
+
+    #[test]
     fn compiler_rejects_bad_timing_fps_scale_and_non_finite_values() {
         for value in [
             serde_json::json!({"videoId": "x", "speed": 0.0}),
@@ -796,10 +901,30 @@ mod tests {
         .unwrap();
         let negative_zero =
             EditPlan::compile(source.clone(), negative_zero, self::source()).unwrap();
-        let tiny_nonzero = EditPlan::compile(source, tiny_nonzero, self::source()).unwrap();
+        let tiny_nonzero = EditPlan::compile(source.clone(), tiny_nonzero, self::source()).unwrap();
         assert_eq!(baseline.plan_fingerprint, negative_zero.plan_fingerprint);
         assert_ne!(baseline.plan_fingerprint, tiny_nonzero.plan_fingerprint);
         assert!(tiny_nonzero.edit.video().color_wheels.is_some());
+
+        let selective_neutral: EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId":"source", "trim":{"start":1.0,"end":2.0},
+            "hslSelective":{"selection":{"centerDegrees":240},"adjustment":{}}
+        }))
+        .unwrap();
+        let selective_tiny: EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId":"source", "trim":{"start":1.0,"end":2.0},
+            "hslSelective":{"selection":{"centerDegrees":240},"adjustment":{"saturation":5e-10}}
+        }))
+        .unwrap();
+        let selective_neutral =
+            EditPlan::compile(source.clone(), selective_neutral, self::source()).unwrap();
+        let selective_tiny = EditPlan::compile(source, selective_tiny, self::source()).unwrap();
+        assert_eq!(
+            baseline.plan_fingerprint,
+            selective_neutral.plan_fingerprint
+        );
+        assert_ne!(baseline.plan_fingerprint, selective_tiny.plan_fingerprint);
+        assert!(selective_tiny.edit.video().hsl_selective.is_some());
     }
 
     #[test]

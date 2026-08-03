@@ -61,6 +61,10 @@ async fn main() -> anyhow::Result<()> {
     } else {
         (Vec::new(), Vec::new(), Vec::new())
     };
+    let hsl_selective_v1_smoke = ffmpeg
+        && ffmpeg_filters.iter().any(|value| value == "geq")
+        && ffmpeg_filters.iter().any(|value| value == "format")
+        && tools::probe_hsl_selective_v1(&process_runtime).await;
     let tool_info = ToolInfo {
         ffmpeg,
         ytdlp,
@@ -69,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         ffmpeg_encoders,
         ffmpeg_muxers,
         ffmpeg_filters,
+        hsl_selective_v1_smoke,
     };
 
     let lib = Library::load(storage.clone()).await;

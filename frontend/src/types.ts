@@ -1,3 +1,11 @@
+import type { HslSelective } from './domain/hsl-selective'
+
+export type {
+  HslAdjustment,
+  HslSelection,
+  HslSelective,
+} from './domain/hsl-selective'
+
 export interface VideoInfo {
   id: string
   url: string
@@ -122,6 +130,8 @@ export interface EditState {
   lift: ColorWheelChannels
   gamma: ColorWheelChannels
   gain: ColorWheelChannels
+  /** Encoded-sRGB selective HSL range and adjustment. */
+  hslSelective: HslSelective
   filter: string
   /** Stored LUT asset reference. File bytes never enter edit/project JSON. */
   lutId: string | null

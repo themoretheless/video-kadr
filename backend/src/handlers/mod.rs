@@ -296,6 +296,7 @@ pub async fn edit_handler(
         req.highlights = 0.0;
         req.shadows = 0.0;
         req.color_wheels = None;
+        req.hsl_selective = None;
     } else if req
         .lut
         .as_ref()
@@ -304,7 +305,17 @@ pub async fn edit_handler(
         req.lut = None;
     }
     validate_color_grade_request(&req)
-        .map_err(|_| AppError::bad_request("некорректные параметры LUT или кривых"))?;
+        .map_err(|_| AppError::bad_request("некорректные параметры цветокоррекции"))?;
+    // Canonical request identity must match the compiled EditPlan identity.
+    // Do this after strict validation so hostile values cannot hide in a
+    // neutral adjustment, but before capability checks, durable dedupe, and
+    // the render-cache key.
+    if let Some(mut selective) = req.hsl_selective {
+        if selective.selection.center_degrees == 360.0 {
+            selective.selection.center_degrees = 0.0;
+        }
+        req.hsl_selective = (!selective.is_neutral()).then_some(selective);
+    }
     validate_color_grade_capabilities(&state, &req)?;
     let job_id = Uuid::new_v4().to_string();
     let runtime_fingerprint = render_runtime_fingerprint(state.tools.as_ref());
@@ -367,6 +378,16 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
     if color_wheels && (!has_filter("geq") || !has_filter("format")) {
         return Err(AppError::bad_request(
             "цветовые колёса недоступны: нужны FFmpeg filters geq и format",
+        ));
+    }
+    let selective_hsl = request
+        .hsl_selective
+        .is_some_and(|value| !value.is_neutral());
+    if selective_hsl
+        && (!has_filter("geq") || !has_filter("format") || !state.tools.hsl_selective_v1_smoke)
+    {
+        return Err(AppError::bad_request(
+            "selective HSL недоступен: нужны geq/format и успешная проверка FFmpeg HSL v1",
         ));
     }
     if request.curves.is_some() && !has_filter("curves") {

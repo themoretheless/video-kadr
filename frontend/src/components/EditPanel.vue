@@ -21,6 +21,7 @@ import type { Preset } from '../store'
 import TrimSlider from './TrimSlider.vue'
 import CurvesEditor from './edit/CurvesEditor.vue'
 import ColorWheel from './edit/ColorWheel.vue'
+import HslSelectiveControl from './edit/HslSelectiveControl.vue'
 import ExportControls from './edit/ExportControls.vue'
 import LutControl from './edit/LutControl.vue'
 
@@ -647,6 +648,12 @@ function applyPlatform(name: string) {
             Точный результат появляется в предпросмотре после паузы или перемотки.
           </p>
         </div>
+        <HslSelectiveControl
+          v-model="state.edit.hslSelective"
+          v-model:mask-preview="state.hslMaskPreview"
+          @interaction-start="beginEditTransaction('selective-hsl')"
+          @interaction-end="endEditTransaction"
+        />
         <LutControl />
         <template v-if="!curvesUnavailableReason">
           <CurvesEditor

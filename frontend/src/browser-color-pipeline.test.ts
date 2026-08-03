@@ -4,6 +4,7 @@ import {
   browserVideoFilterArgs,
   linearColorCorrectionFfmpegFilter,
   primaryCorrectionFfmpegFilter,
+  selectiveHslFfmpegFilter,
 } from './browser-color-pipeline'
 
 const curves = {
@@ -71,6 +72,41 @@ describe('browser color filter plan', () => {
     expect(plan.beforeLut[2]).toMatch(/^eq=/)
   })
 
+  it('compiles exact encoded-sRGB Selective HSL after primary/LGG and preserves alpha', () => {
+    const payload = {
+      colorWheels: {
+        lift: { master: 0, red: 0.2, green: 0, blue: 0 },
+        gamma: {},
+        gain: {},
+      },
+      hslSelective: {
+        selection: { centerDegrees: 359, halfWidthDegrees: 10, featherDegrees: 5 },
+        adjustment: { hueDegrees: 30, saturation: -0.2, lightness: 0.4 },
+      },
+      brightness: 0.1,
+    }
+    const selective = selectiveHslFfmpegFilter(payload)
+    expect(selective).toMatch(/^geq=/)
+    expect(selective).toContain('st(0,r(X,Y)/65535)')
+    expect(selective).toContain('st(9,if(eq(ld(5),0),0,1-(')
+    expect(selective).toContain('st(6,mod(ld(6)+ld(9)*0.083333333333333+1,1))')
+    expect(selective).toContain('st(8,clip(ld(8)+0.25*ld(9)*0.400000000000000,0,1))')
+    expect(selective?.match(/st\(8,clip\(ld\(8\)\+0\.25\*ld\(9\)/g)).toHaveLength(3)
+    expect(selective).toContain(":a='alpha(X,Y)'")
+
+    const plan = browserColorFilterPlan(payload)
+    expect(plan.beforeLut[0]).toBe('format=gbrap16le')
+    expect(plan.beforeLut[1]).toBe(linearColorCorrectionFfmpegFilter(payload))
+    expect(plan.beforeLut[2]).toBe(selective)
+    expect(plan.beforeLut[3]).toMatch(/^eq=/)
+    expect(selectiveHslFfmpegFilter({
+      hslSelective: {
+        selection: { centerDegrees: 0, halfWidthDegrees: 30, featherDegrees: 15 },
+        adjustment: { hueDegrees: 0, saturation: 0, lightness: 0 },
+      },
+    })).toBeNull()
+  })
+
   it('bypasses a zero-intensity LUT without requiring an asset or graph', () => {
     const plan = browserColorFilterPlan({ lut: { id: 'look', intensity: 0 }, curves })
     const args = browserVideoFilterArgs(plan, { prefixFilters: ['crop=10:10:0:0'] })
@@ -90,6 +126,10 @@ describe('browser color filter plan', () => {
       },
       brightness: 0.1,
       filter: 'warm',
+      hslSelective: {
+        selection: { centerDegrees: 0, halfWidthDegrees: 20, featherDegrees: 10 },
+        adjustment: { hueDegrees: 15, saturation: 0.1, lightness: -0.1 },
+      },
       lut: { id: 'look', intensity: 0.35 },
       curves,
     }, 'look.cube')
@@ -101,7 +141,7 @@ describe('browser color filter plan', () => {
     expect(args[0]).toBe('-filter_complex')
     const graph = args[1]!
     const positions = [
-      'crop=', 'geq=', 'eq=', 'colorbalance=', 'split=2', 'lut3d=', 'blend=', 'curves=', 'vignette',
+      'crop=', 'geq=', 'st(0,r(X,Y)/65535)', 'eq=brightness=', 'colorbalance=', 'split=2', 'lut3d=', 'blend=', 'curves=', 'vignette',
     ].map(token => graph.indexOf(token))
     expect(positions.every(position => position >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((left, right) => left - right))

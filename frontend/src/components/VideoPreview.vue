@@ -4,8 +4,15 @@ import { beginEditTransaction, buildEditPayload, clientOnlyMode, endEditTransact
 import {
   primaryCorrectionsActive,
 } from '../domain/primary-color'
-import { applyPrimaryAndWheelsToImageData } from '../domain/color-wheels'
+import { applyPrimaryAndWheelsSrgb, applyPrimaryAndWheelsToImageData } from '../domain/color-wheels'
 import { colorWheelsActive } from '../domain/edit'
+import {
+  applyHslSelectiveEncodedSrgb,
+  encodedSrgbToHsl,
+  hslSelectionMask,
+  hslSelectiveActive,
+  type Rgb,
+} from '../domain/hsl-selective'
 import { derivedTaskState, regenerateMissingBrowserProxy } from '../derived-task-center'
 import { browserProxyCapability, deleteBrowserProxyArtifact, resolveBrowserPreviewSource, type ProxyPreviewSource } from '../browser-proxy-artifacts'
 import { invalidateBackendProxyArtifact, resolveBackendPreviewSource } from '../proxy-preview'
@@ -51,7 +58,7 @@ function frameIdentity(seconds: number) {
   if (editedSeconds === null) return null
   let renderWidth = video.width || videoEl.value?.videoWidth || 1280
   let renderHeight = video.height || videoEl.value?.videoHeight || 720
-  if (!clientOnlyMode) {
+  if (!clientOnlyMode && !state.hslMaskPreview) {
     if (state.edit.cropEnabled) { renderWidth = state.edit.crop.w; renderHeight = state.edit.crop.h }
     if (Math.abs(state.edit.rotate) % 180 === 90) [renderWidth, renderHeight] = [renderHeight, renderWidth]
     if (state.edit.scaleEnabled) {
@@ -67,7 +74,7 @@ function frameIdentity(seconds: number) {
   const settings: PreviewRenderSettings = {
     width, height, pixelRatioMilli: 1000,
     sourceMode: previewSource.value.usingProxy ? 'proxy' : 'original',
-    rendererCompatibility: `browser-canvas-linear-primary-wheels-v3:${previewSource.value.mappingIdentity ?? 'original'}:${previewMappingGeneration}`,
+    rendererCompatibility: `browser-canvas-selective-hsl-v4:${state.hslMaskPreview ? 'mask' : 'grade'}:${previewSource.value.mappingIdentity ?? 'original'}:${previewMappingGeneration}`,
   }
   const graphVersion = previewGraphFingerprint(video.fingerprint, {
     edit: state.edit,
@@ -84,8 +91,42 @@ function drawCachedFrame(frame: { bitmap: ImageBitmap; width: number; height: nu
   cachedFrameVisible.value = true
 }
 
+function applyPausedColorStages(
+  pixels: ImageData,
+  linearActive: boolean,
+  selectiveActive: boolean,
+  maskPreview: boolean,
+): void {
+  if (!selectiveActive && !maskPreview) {
+    if (linearActive) applyPrimaryAndWheelsToImageData(pixels, state.edit, state.edit)
+    return
+  }
+
+  const bytes = pixels.data
+  for (let index = 0; index < bytes.length; index += 4) {
+    const source: Rgb = [bytes[index]! / 255, bytes[index + 1]! / 255, bytes[index + 2]! / 255]
+    const primaryAndWheels = linearActive
+      ? applyPrimaryAndWheelsSrgb(source, state.edit, state.edit)
+      : source
+    if (maskPreview) {
+      const byte = Math.round(hslSelectionMask(
+        encodedSrgbToHsl(primaryAndWheels),
+        state.edit.hslSelective.selection,
+      ) * 255)
+      bytes[index] = byte
+      bytes[index + 1] = byte
+      bytes[index + 2] = byte
+      continue
+    }
+    const output = applyHslSelectiveEncodedSrgb(primaryAndWheels, state.edit.hslSelective)
+    bytes[index] = Math.round(output[0] * 255)
+    bytes[index + 1] = Math.round(output[1] * 255)
+    bytes[index + 2] = Math.round(output[2] * 255)
+  }
+}
+
 async function captureCurrentFrame(mediaTime?: number): Promise<void> {
-  if (!clientOnlyMode) return
+  if (!clientOnlyMode && !state.hslMaskPreview) return
   const el = videoEl.value
   if (!el || typeof createImageBitmap !== 'function' || el.readyState < 2) return
   const identity = frameIdentity(mediaTime ?? el.currentTime)
@@ -97,9 +138,14 @@ async function captureCurrentFrame(mediaTime?: number): Promise<void> {
     const context = surface.getContext('2d')
     if (!context) return
     context.drawImage(el, 0, 0, surface.width, surface.height)
-    if (primaryCorrectionsActive(state.edit) || colorWheelsActive(state.edit)) {
+    const linearActive = primaryCorrectionsActive(state.edit) || colorWheelsActive(state.edit)
+    const selectiveActive = hslSelectiveActive(state.edit.hslSelective)
+    if (linearActive || selectiveActive || state.hslMaskPreview) {
       const pixels = context.getImageData(0, 0, surface.width, surface.height)
-      applyPrimaryAndWheelsToImageData(pixels, state.edit, state.edit)
+      // Keep the encoded-sRGB HSL stage directly after the primary/LGG encode,
+      // with a single byte write at the end so the two stages do not quantise
+      // the intermediate colour independently.
+      applyPausedColorStages(pixels, linearActive, selectiveActive, state.hslMaskPreview)
       context.putImageData(pixels, 0, 0)
     }
     const key = previewFrameKey(identity)
@@ -107,7 +153,7 @@ async function captureCurrentFrame(mediaTime?: number): Promise<void> {
     if (el.paused) {
       const cached = decodedFrameCache.get(key)
       if (cached) {
-        cachedFrameNeedsCss.value = true
+        cachedFrameNeedsCss.value = !state.hslMaskPreview
         drawCachedFrame(cached)
         optimizedPreviewStatus.value = 'ready'
       }
@@ -125,13 +171,13 @@ function showCachedOrRequest(seconds: number): void {
   activeOptimizedPreviewKey = localKey
   const cached = decodedFrameCache.get(localKey)
   if (cached) {
-    cachedFrameNeedsCss.value = clientOnlyMode
+    cachedFrameNeedsCss.value = clientOnlyMode && !state.hslMaskPreview
     drawCachedFrame(cached)
     optimizedPreviewStatus.value = 'ready'
     return
   }
   cachedFrameVisible.value = false
-  if (clientOnlyMode || !optimizedPreviewEligible.value) { optimizedPreviewStatus.value = 'idle'; return }
+  if (clientOnlyMode || state.hslMaskPreview || !optimizedPreviewEligible.value) { optimizedPreviewStatus.value = 'idle'; return }
   const controller = new AbortController(); optimizedPreviewController = controller
   optimizedPreviewStatus.value = 'loading'
   void requestBackendPreviewFrame(buildEditPayload(), identity, controller.signal).then(async ({ blob }) => {
@@ -147,19 +193,19 @@ function showCachedOrRequest(seconds: number): void {
 
 function onPreviewSeeked(): void {
   const el = videoEl.value as (HTMLVideoElement & { requestVideoFrameCallback?: (callback: (_now: number, metadata: { mediaTime: number }) => void) => number }) | null
-  if (clientOnlyMode) cachedFrameVisible.value = false
+  if (clientOnlyMode || state.hslMaskPreview) cachedFrameVisible.value = false
   if (el?.requestVideoFrameCallback) {
     el.requestVideoFrameCallback((_now, metadata) => {
       lastPresentedMediaTime = metadata.mediaTime
-      if (clientOnlyMode) void captureCurrentFrame(metadata.mediaTime)
+      if (clientOnlyMode || state.hslMaskPreview) void captureCurrentFrame(metadata.mediaTime)
       else showCachedOrRequest(metadata.mediaTime)
     })
-  } else if (clientOnlyMode) void captureCurrentFrame()
+  } else if (clientOnlyMode || state.hslMaskPreview) void captureCurrentFrame()
   else if (el) showCachedOrRequest(el.currentTime)
 }
 
 function onPreviewSeeking(event: Event): void {
-  if (clientOnlyMode) showCachedOrRequest((event.currentTarget as HTMLVideoElement).currentTime)
+  if (clientOnlyMode || state.hslMaskPreview) showCachedOrRequest((event.currentTarget as HTMLVideoElement).currentTime)
   else { optimizedPreviewController?.abort(); cachedFrameVisible.value = false; optimizedPreviewStatus.value = 'idle' }
 }
 
@@ -179,8 +225,17 @@ function trackPresentedFrames(): void {
 
 function onPreviewPaused(event: Event): void {
   const el = event.currentTarget as HTMLVideoElement
-  if (clientOnlyMode) { void captureCurrentFrame(el.currentTime); return }
+  if (clientOnlyMode || state.hslMaskPreview) { void captureCurrentFrame(el.currentTime); return }
   requestCurrentBackendFrame(el)
+}
+
+function onPreviewPlaying(): void {
+  const el = videoEl.value
+  if (state.hslMaskPreview) {
+    el?.pause()
+    return
+  }
+  trackPresentedFrames()
 }
 
 async function resolvePreview(): Promise<void> {
@@ -229,7 +284,7 @@ function onTimeUpdate() {
   }
 }
 
-// Live preview of speed/volume (color + flip are pure CSS via videoStyle).
+// Live preview of speed/volume; lightweight colour and flip effects use videoStyle.
 function applyPlayback(el: HTMLVideoElement) {
   const s = state.edit.speed
   if (s > 0 && el.playbackRate !== s) el.playbackRate = s
@@ -273,24 +328,29 @@ const videoStyle = computed(() => {
 const advancedColorNotice = computed(() => {
   const primaryActive = primaryCorrectionsActive(state.edit)
   const wheelsActive = colorWheelsActive(state.edit)
+  const selectiveActive = hslSelectiveActive(state.edit.hslSelective)
   const lutActive = Boolean(state.edit.lutId) && state.edit.lutIntensity > 0
   const curvesActive = !isIdentityCurves(state.edit.curves)
   const active: string[] = []
   if (primaryActive) active.push('Температура / оттенок / света / тени')
   if (wheelsActive) active.push('Lift / Gamma / Gain')
+  if (selectiveActive) active.push('Selective HSL')
+  if (state.hslMaskPreview) active.push('маска Selective HSL')
   if (lutActive) active.push('LUT')
   if (curvesActive) active.push('кривые')
   return active.length ? `${active.join(', ')} включены.` : ''
 })
 
 const advancedColorDetail = computed(() => {
+  if (state.hslMaskPreview) return 'Точная маска показана на остановленном кадре: белое выбрано, серое — растушёвка, чёрное исключено.'
   if (!clientOnlyMode) return 'Точный кадр появляется после остановки или перемотки; во время воспроизведения используется быстрый fallback.'
   const primaryActive = primaryCorrectionsActive(state.edit)
   const wheelsActive = colorWheelsActive(state.edit)
+  const selectiveActive = hslSelectiveActive(state.edit.hslSelective)
   const advancedActive = Boolean(state.edit.lutId) && state.edit.lutIntensity > 0
     || !isIdentityCurves(state.edit.curves)
   const details: string[] = []
-  if (primaryActive || wheelsActive) details.push('Точная линейная primary/Lift/Gamma/Gain-коррекция появляется на кадре после паузы или перемотки; во время воспроизведения она не имитируется CSS.')
+  if (primaryActive || wheelsActive || selectiveActive) details.push('Точная primary/Lift/Gamma/Gain/Selective HSL-коррекция появляется на кадре после паузы или перемотки; во время воспроизведения она не имитируется CSS.')
   if (advancedActive) details.push('Точный LUT и кривые доступны после экспорта.')
   return details.join(' ')
 })
@@ -303,17 +363,18 @@ watch(
 )
 
 watch(
-  () => [state.video?.fingerprint, JSON.stringify(state.edit), JSON.stringify(timelineState.document), previewSource.value.usingProxy, previewSource.value.url, previewSource.value.mappingIdentity],
+  () => [state.video?.fingerprint, JSON.stringify(state.edit), state.hslMaskPreview, JSON.stringify(timelineState.document), previewSource.value.usingProxy, previewSource.value.url, previewSource.value.mappingIdentity],
   () => {
     optimizedPreviewController?.abort(); optimizedPreviewController = null; optimizedPreviewGeneration++; activeOptimizedPreviewKey = null; cachedFrameVisible.value = false; optimizedPreviewStatus.value = 'idle'
     if (pausedPreviewTimer) clearTimeout(pausedPreviewTimer)
     const el = videoEl.value
+    if (state.hslMaskPreview && el && !el.paused) el.pause()
     if (el?.paused) {
       pausedPreviewTimer = setTimeout(() => {
         pausedPreviewTimer = null
         const current = videoEl.value
         if (!current?.paused) return
-        if (clientOnlyMode) void captureCurrentFrame(current.currentTime)
+        if (clientOnlyMode || state.hslMaskPreview) void captureCurrentFrame(current.currentTime)
         else requestCurrentBackendFrame(current)
       }, 180)
     }
@@ -435,7 +496,7 @@ const meta = computed(() => {
     <h2 v-if="state.video?.title" class="preview-title" :title="state.video.title">
       {{ state.video.title }}
     </h2>
-    <div class="player-wrap">
+    <div id="color-preview-surface" class="player-wrap">
       <video
         ref="videoEl"
         class="player"
@@ -445,7 +506,7 @@ const meta = computed(() => {
         controls
         playsinline
         @timeupdate="onTimeUpdate"
-        @playing="trackPresentedFrames"
+        @playing="onPreviewPlaying"
         @pause="onPreviewPaused"
         @seeking="onPreviewSeeking"
         @seeked="onPreviewSeeked"

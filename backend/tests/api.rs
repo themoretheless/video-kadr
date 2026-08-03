@@ -5,6 +5,7 @@
 
 mod support;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::{to_bytes, Body};
@@ -1218,6 +1219,10 @@ async fn mp3_canonicalizes_video_grading_before_validation_and_dedupe() {
                     "gamma": {"red": -2.0},
                     "gain": {"blue": 2.0}
                 },
+                "hslSelective": {
+                    "selection": {"centerDegrees": 999, "halfWidthDegrees": 999, "featherDegrees": 999},
+                    "adjustment": {"hueDegrees": 999, "saturation": 999, "lightness": -999}
+                },
                 "lut": { "id": "../ignored.cube", "intensity": 2.0 },
                 "curves": {
                     "master": (0..17).map(|index| {
@@ -1267,6 +1272,94 @@ async fn color_grade_invalid_curve_wire_payload_is_rejected_before_enqueue() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_api_error(&body, "invalid_json");
     assert!(body.get("jobId").is_none());
+}
+
+#[tokio::test]
+async fn selective_hsl_fails_closed_when_geq_and_format_are_unavailable() {
+    let (state, _storage) = make_state(true, true).await;
+    let app = router(state);
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId":"selective-source",
+                "hslSelective":{
+                    "selection":{"centerDegrees":0,"halfWidthDegrees":30,"featherDegrees":15},
+                    "adjustment":{"hueDegrees":10}
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+    assert!(body["error"].as_str().unwrap().contains("geq"));
+    assert!(body.get("jobId").is_none());
+}
+
+#[tokio::test]
+async fn selective_hsl_invalid_ranges_are_rejected_before_enqueue() {
+    let (mut state, _storage) = make_state(true, true).await;
+    Arc::make_mut(&mut state.tools).ffmpeg_filters =
+        ["geq", "format"].into_iter().map(str::to_string).collect();
+    let app = router(state);
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId":"selective-source",
+                "hslSelective":{
+                    "selection":{"centerDegrees":0,"halfWidthDegrees":170,"featherDegrees":11},
+                    "adjustment":{"hueDegrees":0}
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+    assert!(body.get("jobId").is_none());
+}
+
+#[tokio::test]
+async fn selective_hsl_canonical_identity_precedes_dedupe_and_cache_keys() {
+    let (mut state, _storage) = make_state(true, true).await;
+    Arc::make_mut(&mut state.tools).ffmpeg_filters =
+        ["geq", "format"].into_iter().map(str::to_string).collect();
+    let app = router(state);
+    let enqueue = |payload| send(&app, post_json("/api/edit", payload));
+
+    let (_, absent, _) = enqueue(json!({ "videoId": "missing-hsl-source" })).await;
+    let (_, neutral, _) = enqueue(json!({
+        "videoId": "missing-hsl-source",
+        "hslSelective": {
+            "selection": {"centerDegrees": 240, "halfWidthDegrees": 5, "featherDegrees": 2},
+            "adjustment": {"hueDegrees": -0.0, "saturation": 0.0, "lightness": 0.0}
+        }
+    }))
+    .await;
+    assert_eq!(absent["jobId"], neutral["jobId"]);
+
+    let (_, wrapped, _) = enqueue(json!({
+        "videoId": "missing-hsl-source",
+        "hslSelective": {
+            "selection": {"centerDegrees": 360, "halfWidthDegrees": 30, "featherDegrees": 15},
+            "adjustment": {"hueDegrees": 1}
+        }
+    }))
+    .await;
+    let (_, zero, _) = enqueue(json!({
+        "videoId": "missing-hsl-source",
+        "hslSelective": {
+            "selection": {"centerDegrees": 0, "halfWidthDegrees": 30, "featherDegrees": 15},
+            "adjustment": {"hueDegrees": 1}
+        }
+    }))
+    .await;
+    assert_eq!(wrapped["jobId"], zero["jobId"]);
+    assert_ne!(absent["jobId"], wrapped["jobId"]);
 }
 
 #[tokio::test]

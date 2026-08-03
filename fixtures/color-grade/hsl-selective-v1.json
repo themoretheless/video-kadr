@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "workingSpace": "encoded-srgb-iec61966-2-1",
+  "defaults": {
+    "selection": {"centerDegrees": 0, "halfWidthDegrees": 30, "featherDegrees": 15},
+    "adjustment": {"hueDegrees": 0, "saturation": 0, "lightness": 0}
+  },
+  "ranges": {
+    "centerDegrees": [0, 360], "halfWidthDegrees": [0, 180], "featherDegrees": [0, 90],
+    "hueDegrees": [-180, 180], "saturation": [-1, 1], "lightness": [-1, 1]
+  },
+  "constraints": ["centerDegrees is canonical modulo 360", "halfWidthDegrees + featherDegrees <= 180"],
+  "order": ["decode-transfer", "primary-corrections", "lift", "gamma", "gain", "encode-transfer", "hsl-selective-v1", "brightness-contrast-saturation", "preset", "lut", "curves"],
+  "formula": {
+    "distance": "abs(mod(hue-center+540,360)-180)",
+    "mask": "achromatic ? 0 : distance<=halfWidth ? 1 : distance>=halfWidth+feather ? 0 : 1-smoothstep(halfWidth,halfWidth+feather,distance)",
+    "adjustment": "H'=wrap(H+mask*hueDegrees); S'=clamp(S+mask*saturation); L'=clamp(L+0.25*mask*lightness)"
+  },
+  "samples": [
+    {"rgb":[1,0,0],"selection":{"centerDegrees":0,"halfWidthDegrees":15,"featherDegrees":15},"adjustment":{"hueDegrees":0,"saturation":0,"lightness":0},"expectedHsl":[0,1,0.5],"expectedMask":1,"expectedRgb":[1,0,0]},
+    {"rgb":[1,0,0],"selection":{"centerDegrees":0,"halfWidthDegrees":15,"featherDegrees":15},"adjustment":{"hueDegrees":60,"saturation":-0.25,"lightness":0.4},"expectedHsl":[0,1,0.5],"expectedMask":1,"expectedRgb":[0.9,0.9,0.3]},
+    {"rgb":[1,0.3333333333333333,0],"selection":{"centerDegrees":0,"halfWidthDegrees":15,"featherDegrees":15},"adjustment":{"hueDegrees":30,"saturation":-0.5,"lightness":-0.4},"expectedHsl":[20,1,0.5],"expectedMask":0.7407407407407407,"expectedRgb":[0.6941015089163238,0.535182644922014,0.1577503429355281]},
+    {"rgb":[1,0.4166666666666667,0],"selection":{"centerDegrees":0,"halfWidthDegrees":15,"featherDegrees":15},"adjustment":{"hueDegrees":30,"saturation":-0.5,"lightness":-0.4},"expectedHsl":[25,1,0.5],"expectedMask":0.2592592592592593,"expectedRgb":[0.8866941015089164,0.5122796321698928,0.06145404663923182]},
+    {"rgb":[1,1,0],"selection":{"centerDegrees":0,"halfWidthDegrees":15,"featherDegrees":15},"adjustment":{"hueDegrees":30,"saturation":-0.5,"lightness":-0.4},"expectedHsl":[60,1,0.5],"expectedMask":0,"expectedRgb":[1,1,0]},
+    {"rgb":[1,0.016666666666666666,0],"selection":{"centerDegrees":359,"halfWidthDegrees":3,"featherDegrees":5},"adjustment":{"hueDegrees":-30,"saturation":-0.2,"lightness":0.2},"expectedHsl":[1,1,0.5],"expectedMask":1,"expectedRgb":[0.91,0.19,0.538]},
+    {"rgb":[1,0,0.016666666666666666],"selection":{"centerDegrees":1,"halfWidthDegrees":3,"featherDegrees":5},"adjustment":{"hueDegrees":30,"saturation":-0.2,"lightness":0.2},"expectedHsl":[359,1,0.5],"expectedMask":1,"expectedRgb":[0.91,0.538,0.19]},
+    {"rgb":[0,0,0],"selection":{"centerDegrees":0,"halfWidthDegrees":180,"featherDegrees":0},"adjustment":{"hueDegrees":180,"saturation":1,"lightness":1},"expectedHsl":[0,0,0],"expectedMask":0,"expectedRgb":[0,0,0]},
+    {"rgb":[0.5,0.5,0.5],"selection":{"centerDegrees":0,"halfWidthDegrees":180,"featherDegrees":0},"adjustment":{"hueDegrees":180,"saturation":1,"lightness":1},"expectedHsl":[0,0,0.5],"expectedMask":0,"expectedRgb":[0.5,0.5,0.5]},
+    {"rgb":[1,1,1],"selection":{"centerDegrees":0,"halfWidthDegrees":180,"featherDegrees":0},"adjustment":{"hueDegrees":180,"saturation":1,"lightness":-1},"expectedHsl":[0,0,1],"expectedMask":0,"expectedRgb":[1,1,1]},
+    {"rgb":[0,1,0],"selection":{"centerDegrees":120,"halfWidthDegrees":10,"featherDegrees":0},"adjustment":{"hueDegrees":-60,"saturation":-1,"lightness":0.5},"expectedHsl":[120,1,0.5],"expectedMask":1,"expectedRgb":[0.625,0.625,0.625]},
+    {"rgb":[0,1,1],"selection":{"centerDegrees":180,"halfWidthDegrees":10,"featherDegrees":0},"adjustment":{"hueDegrees":60,"saturation":0,"lightness":-1},"expectedHsl":[180,1,0.5],"expectedMask":1,"expectedRgb":[0,0,0.5]},
+    {"rgb":[0,0,1],"selection":{"centerDegrees":240,"halfWidthDegrees":10,"featherDegrees":0},"adjustment":{"hueDegrees":60,"saturation":0,"lightness":1},"expectedHsl":[240,1,0.5],"expectedMask":1,"expectedRgb":[1,0.5,1]},
+    {"rgb":[1,0,1],"selection":{"centerDegrees":300,"halfWidthDegrees":10,"featherDegrees":0},"adjustment":{"hueDegrees":-120,"saturation":0,"lightness":0},"expectedHsl":[300,1,0.5],"expectedMask":1,"expectedRgb":[0,1,1]}
+  ],
+  "tolerances": {"cpuAbsolute": 1e-12, "webglAbsolute": 0.00002, "ffmpeg8BitCodeValues": 1, "ffmpeg10BitCodeValues": 2}
+}

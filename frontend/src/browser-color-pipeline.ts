@@ -3,6 +3,11 @@ import {
   sanitizePrimaryCorrection,
 } from './domain/edit'
 import { sanitizeLiftGammaGain } from './domain/color-wheels'
+import {
+  hslSelectiveActive,
+  sanitizeHslSelective,
+  type HslSelective,
+} from './domain/hsl-selective'
 
 type EditPayload = Record<string, unknown>
 
@@ -123,19 +128,75 @@ export function primaryCorrectionFfmpegFilter(payload: EditPayload): string | nu
   return linearColorCorrectionFfmpegFilter({ ...payload, colorWheels: undefined })
 }
 
-/** Color-only filter plan. Ordering is primary → EQ → preset → LUT → curves. */
+/** Exact encoded-sRGB selective HSL stage, matching the shared v1 fixture. */
+export function selectiveHslFfmpegFilter(payload: EditPayload): string | null {
+  const candidate = record(payload.hslSelective)
+  if (!candidate) return null
+  const selective = sanitizeHslSelective(candidate as unknown as HslSelective)
+  if (!hslSelectiveActive(selective)) return null
+
+  const { selection, adjustment } = selective
+  const center = selection.centerDegrees / 360
+  const halfWidth = selection.halfWidthDegrees / 360
+  const feather = selection.featherDegrees / 360
+  const hueShift = adjustment.hueDegrees / 360
+  const fixed = (value: number) => value.toFixed(15)
+
+  const plane = (channel: 0 | 1 | 2) => {
+    const hue = 'if(eq(ld(5),0),0,if(eq(ld(3),ld(0)),mod(mod((ld(1)-ld(2))/ld(5),6)+6,6),if(eq(ld(3),ld(1)),(ld(2)-ld(0))/ld(5)+2,(ld(0)-ld(1))/ld(5)+4))/6)'
+    const saturation = 'if(eq(ld(5),0),0,ld(5)/(1-abs(2*ld(8)-1)))'
+    const distance = `min(abs(ld(6)-${fixed(center)}),1-abs(ld(6)-${fixed(center)}))`
+    const mask = feather === 0
+      ? `if(eq(ld(5),0),0,lte(${distance},${fixed(halfWidth)}))`
+      : (() => {
+          const amount = `clip((${distance}-${fixed(halfWidth)})/${fixed(feather)},0,1)`
+          return `if(eq(ld(5),0),0,1-(${amount}*${amount}*(3-2*${amount})))`
+        })()
+    const h6 = '(6*ld(6))'
+    const component = channel === 0
+      ? `if(lt(${h6},1),ld(3),if(lt(${h6},2),ld(4),if(lt(${h6},4),0,if(lt(${h6},5),ld(4),ld(3)))))`
+      : channel === 1
+        ? `if(lt(${h6},1),ld(4),if(lt(${h6},3),ld(3),if(lt(${h6},4),ld(4),0)))`
+        : `if(lt(${h6},2),0,if(lt(${h6},3),ld(4),if(lt(${h6},5),ld(3),ld(4))))`
+
+    return [
+      'st(0,r(X,Y)/65535)',
+      'st(1,g(X,Y)/65535)',
+      'st(2,b(X,Y)/65535)',
+      'st(3,max(ld(0),max(ld(1),ld(2))))',
+      'st(4,min(ld(0),min(ld(1),ld(2))))',
+      'st(5,ld(3)-ld(4))',
+      'st(8,(ld(3)+ld(4))/2)',
+      `st(7,${saturation})`,
+      `st(6,${hue})`,
+      `st(9,${mask})`,
+      `st(6,mod(ld(6)+ld(9)*${fixed(hueShift)}+1,1))`,
+      `st(7,clip(ld(7)+ld(9)*${fixed(adjustment.saturation)},0,1))`,
+      `st(8,clip(ld(8)+0.25*ld(9)*${fixed(adjustment.lightness)},0,1))`,
+      'st(3,(1-abs(2*ld(8)-1))*ld(7))',
+      'st(4,ld(3)*(1-abs(mod(6*ld(6),2)-1)))',
+      `65535*clip((${component})+ld(8)-ld(3)/2,0,1)`,
+    ].join(';')
+  }
+
+  return `geq=r='${plane(0)}':g='${plane(1)}':b='${plane(2)}':a='alpha(X,Y)'`
+}
+
+/** Color-only filter plan. Ordering is primary/LGG → selective HSL → EQ → preset → LUT → curves. */
 export function browserColorFilterPlan(payload: EditPayload, lutFilename?: string): BrowserColorFilterPlan {
   const beforeLut: string[] = []
   const afterLut: string[] = []
   const linearCorrection = linearColorCorrectionFfmpegFilter(payload)
+  const selectiveHsl = selectiveHslFfmpegFilter(payload)
   const lut = record(payload.lut)
   const lutIntensity = lut
     ? Math.max(0, Math.min(1, number(lut.intensity, 1)))
     : 0
   const lutActive = Boolean(lut) && lutIntensity > 1e-9
   const curves = record(payload.curves)
-  if (linearCorrection || lutActive || curves) beforeLut.push('format=gbrap16le')
+  if (linearCorrection || selectiveHsl || lutActive || curves) beforeLut.push('format=gbrap16le')
   if (linearCorrection) beforeLut.push(linearCorrection)
+  if (selectiveHsl) beforeLut.push(selectiveHsl)
 
   const brightness = number(payload.brightness)
   const contrast = number(payload.contrast, 1)

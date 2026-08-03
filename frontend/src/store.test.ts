@@ -245,6 +245,9 @@ describe('buildEditPayload', () => {
     first.lift.red = 0.8
     expect(second.lift.red).toBe(0)
     expect(second.lift).not.toBe(first.lift)
+    first.hslSelective.selection.centerDegrees = 180
+    expect(second.hslSelective.selection.centerDegrees).toBe(0)
+    expect(second.hslSelective.selection).not.toBe(first.hslSelective.selection)
   })
 
   it('emits one canonical colorWheels object and omits a neutral stack', () => {
@@ -256,6 +259,22 @@ describe('buildEditPayload', () => {
       gamma: { master: 0, red: 0, green: 0.25, blue: 0 },
       gain: { master: 0, red: 0, green: 0, blue: 0 },
     })
+  })
+
+  it('emits canonical selective HSL only for an active adjustment and never emits mask preview', () => {
+    state.hslMaskPreview = true
+    expect(buildEditPayload()).not.toHaveProperty('hslSelective')
+    expect(JSON.stringify(buildEditPayload())).not.toContain('MaskPreview')
+
+    state.edit.hslSelective = {
+      selection: { centerDegrees: -1, halfWidthDegrees: 170, featherDegrees: 90 },
+      adjustment: { hueDegrees: 999, saturation: Number.NaN, lightness: -9 },
+    }
+    expect(buildEditPayload().hslSelective).toEqual({
+      selection: { centerDegrees: 359, halfWidthDegrees: 170, featherDegrees: 10 },
+      adjustment: { hueDegrees: 180, saturation: 0, lightness: -1 },
+    })
+    state.hslMaskPreview = false
   })
 
   it('emits a sanitized deterministic LUT and curves payload', () => {
@@ -415,6 +434,10 @@ describe('colour state sanitation', () => {
       shadows: Number.POSITIVE_INFINITY,
       lift: { master: 5, red: -5, green: Number.NaN, blue: 0.4 },
       gamma: null,
+      hslSelective: {
+        selection: { centerDegrees: 721, halfWidthDegrees: 170, featherDegrees: 50 },
+        adjustment: { hueDegrees: -999, saturation: 3, lightness: Number.NaN },
+      },
     })
     expect(edit.lutId).toBe(TEST_LUT_ID)
     expect(edit.lutName).toBe('Look')
@@ -423,6 +446,10 @@ describe('colour state sanitation', () => {
     expect(edit).toMatchObject({ temperature: 1, tint: -1, highlights: 0, shadows: 0 })
     expect(edit.lift).toEqual({ master: 1, red: -1, green: 0, blue: 0.4 })
     expect(edit.gamma).toEqual({ master: 0, red: 0, green: 0, blue: 0 })
+    expect(edit.hslSelective).toEqual({
+      selection: { centerDegrees: 1, halfWidthDegrees: 170, featherDegrees: 10 },
+      adjustment: { hueDegrees: -180, saturation: 1, lightness: 0 },
+    })
     expect(edit.curves.master).toEqual([
       { x: 0, y: 0 },
       { x: 128, y: 80 },
@@ -545,6 +572,10 @@ describe('LUT store actions', () => {
       lift: { master: 0.2, red: -0.3, green: 0.4, blue: 0 },
       gamma: { master: -0.2, red: 0, green: 0, blue: 0 },
       gain: { master: 0, red: 0, green: 0.5, blue: 0 },
+      hslSelective: {
+        selection: { centerDegrees: 220, halfWidthDegrees: 20, featherDegrees: 8 },
+        adjustment: { hueDegrees: 30, saturation: 0.2, lightness: -0.3 },
+      },
     })
     state.edit.curves.blue = [
       { x: 0, y: 10 },
@@ -567,6 +598,10 @@ describe('LUT store actions', () => {
       lift: { master: 0, red: 0, green: 0, blue: 0 },
       gamma: { master: 0, red: 0, green: 0, blue: 0 },
       gain: { master: 0, red: 0, green: 0, blue: 0 },
+      hslSelective: {
+        selection: { centerDegrees: 0, halfWidthDegrees: 30, featherDegrees: 15 },
+        adjustment: { hueDegrees: 0, saturation: 0, lightness: 0 },
+      },
       filter: '',
       lutId: null,
       lutName: '',
@@ -715,6 +750,23 @@ describe('runtime capabilities', () => {
     })
     expect(selectedExportUnavailableReason()).toBeNull()
   })
+
+  it('fails closed when Selective HSL is unsupported', () => {
+    state.capabilities = {
+      schemaVersion: 1,
+      toolFingerprint: 'fixture',
+      formats: [{ id: 'mp4', label: 'MP4', available: true }],
+      codecs: [{ id: 'h264', label: 'H.264', available: true }],
+      filters: [],
+      hardware: [],
+    }
+    state.edit.hslSelective.adjustment.hueDegrees = 10
+    expect(selectedExportUnavailableReason()).toContain('обновлённый сервер')
+    state.capabilities.filters.push({
+      id: 'hsl-selective-v1', label: 'Selective HSL', available: true,
+    })
+    expect(selectedExportUnavailableReason()).toBeNull()
+  })
 })
 
 describe('history', () => {
@@ -742,6 +794,15 @@ describe('history', () => {
 
     expect(state.edit.filter).toBe('warm')
     expect(history.future).toHaveLength(0)
+  })
+
+  it('keeps Selective HSL mask preview outside edit history', async () => {
+    state.hslMaskPreview = false
+    state.hslMaskPreview = true
+    await nextTick()
+    vi.advanceTimersByTime(500)
+    expect(history.past).toHaveLength(0)
+    state.hslMaskPreview = false
   })
 
   it('coalesces pointer movement into one field-level command', async () => {
@@ -1489,6 +1550,7 @@ describe('effect presets', () => {
   })
 
   it('captures only reusable effect keys, not clip geometry', () => {
+    state.hslMaskPreview = true
     Object.assign(state.edit, {
       filter: 'sepia',
       speed: 1.5,
@@ -1499,6 +1561,10 @@ describe('effect presets', () => {
       lift: { master: 0.2, red: 0.1, green: 0, blue: -0.1 },
       gamma: { master: -0.2, red: 0, green: 0, blue: 0 },
       gain: { master: 0.3, red: 0, green: 0.1, blue: 0 },
+      hslSelective: {
+        selection: { centerDegrees: 45, halfWidthDegrees: 20, featherDegrees: 5 },
+        adjustment: { hueDegrees: -15, saturation: 0.2, lightness: -0.1 },
+      },
       trimStart: 3,
       cropEnabled: true,
       format: 'webm',
@@ -1523,6 +1589,11 @@ describe('effect presets', () => {
     expect(p.edit.lift).toEqual({ master: 0.2, red: 0.1, green: 0, blue: -0.1 })
     expect(p.edit.gamma?.master).toBe(-0.2)
     expect(p.edit.gain?.green).toBe(0.1)
+    expect(p.edit.hslSelective).toEqual({
+      selection: { centerDegrees: 45, halfWidthDegrees: 20, featherDegrees: 5 },
+      adjustment: { hueDegrees: -15, saturation: 0.2, lightness: -0.1 },
+    })
+    expect(JSON.stringify(p.edit)).not.toContain('MaskPreview')
     expect('trimStart' in p.edit).toBe(false)
     expect('crop' in p.edit).toBe(false)
     expect('format' in p.edit).toBe(false)
@@ -1533,6 +1604,7 @@ describe('effect presets', () => {
     state.edit.curves.red[1].y = 1
     expect(p.edit.curves?.red[1].y).toBe(150)
     expect(JSON.parse(localStorage.getItem('ve_presets')!)).toHaveLength(1)
+    state.hslMaskPreview = false
   })
 
   it('applies a preset onto the current edit', () => {

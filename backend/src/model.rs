@@ -179,6 +179,67 @@ impl ColorWheelsRequest {
     }
 }
 
+fn default_hsl_half_width() -> f64 {
+    30.0
+}
+
+fn default_hsl_feather() -> f64 {
+    15.0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslSelectionRequest {
+    #[serde(default)]
+    pub center_degrees: f64,
+    #[serde(default = "default_hsl_half_width")]
+    pub half_width_degrees: f64,
+    #[serde(default = "default_hsl_feather")]
+    pub feather_degrees: f64,
+}
+
+impl Default for HslSelectionRequest {
+    fn default() -> Self {
+        Self {
+            center_degrees: 0.0,
+            half_width_degrees: default_hsl_half_width(),
+            feather_degrees: default_hsl_feather(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslAdjustmentRequest {
+    #[serde(default)]
+    pub hue_degrees: f64,
+    #[serde(default)]
+    pub saturation: f64,
+    #[serde(default)]
+    pub lightness: f64,
+}
+
+impl HslAdjustmentRequest {
+    pub fn is_neutral(self) -> bool {
+        self.hue_degrees == 0.0 && self.saturation == 0.0 && self.lightness == 0.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslSelectiveRequest {
+    #[serde(default)]
+    pub selection: HslSelectionRequest,
+    #[serde(default)]
+    pub adjustment: HslAdjustmentRequest,
+}
+
+impl HslSelectiveRequest {
+    pub fn is_neutral(self) -> bool {
+        self.adjustment.is_neutral()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
@@ -240,6 +301,8 @@ pub struct EditRequest {
     /// Three-way colour wheels. Every component is neutral at 0 and ranges -1..1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color_wheels: Option<ColorWheelsRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hsl_selective: Option<HslSelectiveRequest>,
     /// Named look: "grayscale" | "sepia" | "warm" | "cold".
     #[serde(default)]
     pub filter: Option<String>,
@@ -409,6 +472,7 @@ mod tests {
         assert_eq!(e.highlights, 0.0);
         assert_eq!(e.shadows, 0.0);
         assert!(e.color_wheels.is_none());
+        assert!(e.hsl_selective.is_none());
         assert_eq!(e.rotate, 0);
         assert!(!e.mute);
         assert!(!e.flip_h);
@@ -447,6 +511,30 @@ mod tests {
         assert_eq!(e.lut.as_ref().unwrap().intensity, 0.65);
         assert_eq!(e.curves.as_ref().unwrap().master.as_ref().unwrap().len(), 2);
         assert!(e.curves.as_ref().unwrap().green.is_none());
+    }
+
+    #[test]
+    fn selective_hsl_wire_defaults_and_nested_shape_are_strict() {
+        let edit: EditRequest = serde_json::from_value(json!({
+            "videoId":"x", "hslSelective":{}
+        }))
+        .unwrap();
+        let selective = edit.hsl_selective.unwrap();
+        assert_eq!(selective.selection.center_degrees, 0.0);
+        assert_eq!(selective.selection.half_width_degrees, 30.0);
+        assert_eq!(selective.selection.feather_degrees, 15.0);
+        assert!(selective.adjustment.is_neutral());
+
+        assert!(serde_json::from_value::<EditRequest>(json!({
+            "videoId":"x",
+            "hslSelective":{"selection":{"centerDegrees":0,"unexpected":true}}
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<EditRequest>(json!({
+            "videoId":"x",
+            "hslSelective":{"adjustment":{"hueDegrees":1,"unexpected":true}}
+        }))
+        .is_err());
     }
 
     #[test]
