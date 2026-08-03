@@ -3,7 +3,9 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { ProjectDto } from './api'
-import { allProjects, compareAndSwapProject } from './browser-project-store'
+import { allProjects, compareAndSwapProject, projectByVideo } from './browser-project-store'
+import { applyTimelineCommand } from './domain/timeline'
+import { ensureCreatorTrackLayout, migrateProjectDocument } from './project-schema'
 
 function clearDatabase(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -41,6 +43,50 @@ describe('browser project persistence', () => {
     const restored = await allProjects()
     expect(restored).toHaveLength(1)
     expect(restored[0]).toMatchObject({ id: 'project-1', revision: 1, name: 'saved' })
+  })
+
+  it('round-trips a canonical twenty-one-media timeline through IndexedDB', async () => {
+    let document = ensureCreatorTrackLayout(migrateProjectDocument({
+      videoId: 'primary',
+      video: { id: 'primary', filename: 'primary.mp4', duration: 1, width: 1920, height: 1080 },
+      edit: {},
+    }))
+    const track = document.sequences[0]!.tracks.find((item) => item.kind === 'video')!
+    for (let index = 0; index < 20; index++) {
+      document = applyTimelineCommand(document, {
+        kind: 'insert_media_clip',
+        sequenceId: document.activeSequenceId,
+        trackId: track.id,
+        index: index + 1,
+        media: {
+          id: `media-${index}`,
+          kind: 'video',
+          metadata: { duration: 1, fps: [23.976, 25, 29.97, 59.94][index % 4] },
+        },
+        clip: {
+          id: `clip-${index}`,
+          mediaId: `media-${index}`,
+          timelineStartTick: (index + 1) * 1_000_000,
+          durationTicks: 1_000_000,
+          sourceInTick: 0,
+          sourceOutTick: 1_000_000,
+          effects: [],
+        },
+      })
+    }
+    const dto: ProjectDto = {
+      ...project('project-many', 'primary', 1, 'many'),
+      document,
+    }
+    await compareAndSwapProject(
+      'primary', 'project-many', 0, () => dto, () => new Error('conflict'),
+    )
+
+    const restored = await projectByVideo('primary')
+    expect(restored?.document).toEqual(document)
+    expect(restored?.document?.media).toHaveLength(21)
+    expect(restored?.document?.sequences[0]!.tracks.flatMap((item) => item.clips))
+      .toHaveLength(21)
   })
 
   it('atomically rejects one of two stale writers without overwriting the winner', async () => {

@@ -24,6 +24,14 @@ pub struct MediaEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vcodec: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acodec: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
     pub created_at: u64,
 }
@@ -40,6 +48,10 @@ impl MediaEntry {
             duration: v["duration"].as_f64(),
             width: v["width"].as_u64().map(|n| n as u32),
             height: v["height"].as_u64().map(|n| n as u32),
+            fps: v["fps"].as_f64(),
+            vcodec: v["vcodec"].as_str().map(str::to_owned),
+            acodec: v["acodec"].as_str().map(str::to_owned),
+            media_kind: v["mediaKind"].as_str().map(str::to_owned),
             size_bytes: v["sizeBytes"].as_u64(),
             created_at: now_secs(),
         }
@@ -199,6 +211,10 @@ mod tests {
             duration: None,
             width: None,
             height: None,
+            fps: None,
+            vcodec: None,
+            acodec: None,
+            media_kind: None,
             size_bytes: None,
             created_at,
         }

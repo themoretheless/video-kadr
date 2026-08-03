@@ -230,6 +230,7 @@ export function legacyProjectValues(document: ProjectDocument): {
   const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
   const effect = sequence?.tracks
     .flatMap((track) => track.clips)
+    .filter((clip) => clip.mediaId === document.primaryMediaId)
     .flatMap((clip) => clip.effects)
     .find((item) => item.kind === 'legacy_edit')
   return { video, edit: effect?.parameters ?? {} }
@@ -250,6 +251,7 @@ export function updateLegacyProjectValues(
   const sequence = next.sequences.find((item) => item.id === next.activeSequenceId)
   let effect = sequence?.tracks
     .flatMap((track) => track.clips)
+    .filter((clip) => clip.mediaId === next.primaryMediaId)
     .flatMap((clip) => clip.effects)
     .find((item) => item.kind === 'legacy_edit')
   if (!effect) {
@@ -384,6 +386,28 @@ function migrateV1(value: JsonObject): ProjectDocument {
   if (frameRate !== undefined) settings.frameRate = frameRate
   if (width !== undefined) settings.width = width
   if (height !== undefined) settings.height = height
+  const explicitKind = stringValue(video.mediaKind)
+  const primaryKind = explicitKind === 'audio' || explicitKind === 'video'
+    ? explicitKind
+    : stringValue(video.acodec) && !stringValue(video.vcodec) && width === undefined
+      ? 'audio'
+      : 'video'
+  const primaryClip: ProjectClip = {
+    id: 'clip-main',
+    mediaId: videoId,
+    timelineStartTick: 0,
+    durationTicks,
+    sourceInTick: 0,
+    sourceOutTick: durationTicks,
+    effects: [
+      {
+        id: 'effect-legacy-edit',
+        kind: 'legacy_edit',
+        enabled: true,
+        parameters: edit,
+      },
+    ],
+  }
 
   const known = new Set(['schemaVersion', 'videoId', 'name', 'video', 'edit'])
   const legacyFields = Object.fromEntries(
@@ -394,7 +418,7 @@ function migrateV1(value: JsonObject): ProjectDocument {
     name,
     primaryMediaId: videoId,
     activeSequenceId: 'sequence-main',
-    media: [{ id: videoId, kind: 'video', metadata: video }],
+    media: [{ id: videoId, kind: primaryKind, metadata: video }],
     sequences: [
       {
         id: 'sequence-main',
@@ -405,26 +429,14 @@ function migrateV1(value: JsonObject): ProjectDocument {
             id: 'track-video-main',
             kind: 'video',
             name: 'Видео 1',
-            clips: [
-              {
-                id: 'clip-main',
-                mediaId: videoId,
-                timelineStartTick: 0,
-                durationTicks,
-                sourceInTick: 0,
-                sourceOutTick: durationTicks,
-                effects: [
-                  {
-                    id: 'effect-legacy-edit',
-                    kind: 'legacy_edit',
-                    enabled: true,
-                    parameters: edit,
-                  },
-                ],
-              },
-            ],
+            clips: primaryKind === 'video' ? [primaryClip] : [],
           },
-          { id: 'track-audio-main', kind: 'audio', name: 'Аудио 1', clips: [] },
+          {
+            id: 'track-audio-main',
+            kind: 'audio',
+            name: 'Аудио 1',
+            clips: primaryKind === 'audio' ? [primaryClip] : [],
+          },
         ],
       },
     ],

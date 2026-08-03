@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import {
   state,
   ui,
@@ -15,6 +15,7 @@ import {
   undo,
   redo,
   clientOnlyMode,
+  timelineState,
   undoTimeline,
   redoTimeline,
 } from './store'
@@ -25,6 +26,16 @@ import ResultPanel from './components/ResultPanel.vue'
 import MediaLibrary from './components/MediaLibrary.vue'
 import Toasts from './components/Toasts.vue'
 import TimelineEditor from './components/TimelineEditor.vue'
+
+const legacyInspectorAvailable = computed(() => {
+  const document = timelineState.document
+  if (!document || !timelineState.selectedClipId) return true
+  const selected = document.sequences
+    .flatMap((sequence) => sequence.tracks)
+    .flatMap((track) => track.clips)
+    .find((clip) => clip.id === timelineState.selectedClipId)
+  return !selected || selected.effects.some((effect) => effect.kind === 'legacy_edit')
+})
 
 function isTyping(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null
@@ -53,6 +64,7 @@ function onKey(e: KeyboardEvent) {
     else redo()
     return
   }
+  if (!legacyInspectorAvailable.value) return
   const fps = state.video.fps || 30
   switch (e.key) {
     case ' ':
@@ -136,10 +148,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
     <main v-if="state.video" class="editor">
       <section class="left">
-        <VideoPreview />
+        <div :class="{ 'preview-gated': !legacyInspectorAvailable }">
+          <VideoPreview />
+        </div>
       </section>
       <section class="right">
-        <EditPanel />
+        <p v-if="!legacyInspectorAvailable" class="timeline-error" role="status">
+          Для secondary clip сейчас доступны перемещение и trim. Эффекты и preview будут подключены через render graph.
+        </p>
+        <EditPanel v-if="legacyInspectorAvailable" />
         <ResultPanel v-if="state.result || state.exporting || state.exportError" />
       </section>
     </main>

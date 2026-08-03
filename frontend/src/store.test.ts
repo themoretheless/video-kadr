@@ -34,6 +34,9 @@ import {
   timelineState,
   executeTimelineCommand,
   undoTimeline,
+  addMediaToTimeline,
+  doUploadFiles,
+  deleteFromLibrary,
 } from './store'
 import type { EditState, VideoInfo } from './types'
 
@@ -709,6 +712,63 @@ describe('project restore autosave', () => {
     expect(api.saveProject).not.toHaveBeenCalled()
   })
 
+  it('blocks media insertion until a pending project restore finishes', async () => {
+    let resolveProject!: (value: Awaited<ReturnType<typeof api.getProjectByVideo>>) => void
+    vi.mocked(api.getProjectByVideo).mockReturnValueOnce(new Promise((resolve) => {
+      resolveProject = resolve
+    }))
+    openFromLibrary({
+      id: 'restore-race', kind: 'source', filename: 'primary.mp4', url: '/primary',
+      duration: 5, width: 1280, height: 720, mediaKind: 'video', createdAt: 1,
+    })
+    expect(addMediaToTimeline({
+      id: 'added-during-restore', kind: 'source', filename: 'added.mp4', url: '/added',
+      duration: 2, width: 640, height: 360, mediaKind: 'video', createdAt: 2,
+    })).toBe(false)
+    expect(timelineState.error).toContain('Дождитесь')
+    resolveProject({
+      id: 'persisted-project',
+      name: 'Persisted',
+      videoId: 'restore-race',
+      video: {
+        id: 'restore-race', filename: 'primary.mp4', url: '/primary',
+        duration: 5, width: 1280, height: 720,
+      },
+      edit: { filter: 'sepia' },
+      createdAt: 1,
+      updatedAt: 2,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+
+    expect(timelineState.document?.media.some((media) => media.id === 'added-during-restore'))
+      .toBe(false)
+    expect(state.edit.filter).toBe('sepia')
+  })
+
+  it('opens an audio-only source as an audio project', () => {
+    openFromLibrary({
+      id: 'audio-primary',
+      kind: 'source',
+      filename: 'voice.wav',
+      url: '/files/sources/voice.wav',
+      duration: 3,
+      width: 0,
+      height: 0,
+      mediaKind: 'audio',
+      acodec: 'pcm_s16le',
+      createdAt: 1,
+    })
+    expect(timelineState.document?.media[0]).toMatchObject({
+      id: 'audio-primary', kind: 'audio',
+    })
+    const sequence = timelineState.document!.sequences[0]!
+    expect(sequence.tracks.find((track) => track.kind === 'video')!.clips).toHaveLength(0)
+    expect(sequence.tracks.find((track) => track.kind === 'audio')!.clips[0])
+      .toMatchObject({ mediaId: 'audio-primary' })
+  })
+
   it('autosaves the first edit when no persisted project exists', async () => {
     vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
     openFromLibrary({
@@ -891,6 +951,187 @@ describe('project restore autosave', () => {
     await flushProjectSave()
     expect(vi.mocked(api.saveProjectDocument).mock.calls.at(-1)![2]
       .sequences[0]!.tracks[0]!.clips).toHaveLength(1)
+  })
+
+  it('does not delete a primary asset still referenced by an empty timeline', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    const entry = {
+      id: 'protected-primary', kind: 'source' as const, filename: 'protected.mp4',
+      url: '/protected', duration: 5, width: 1280, height: 720,
+      mediaKind: 'video' as const, createdAt: 1,
+    }
+    state.library = [entry]
+    openFromLibrary(entry)
+    await Promise.resolve()
+    await nextTick()
+    const document = timelineState.document!
+    const track = document.sequences[0]!.tracks[0]!
+    expect(executeTimelineCommand({
+      kind: 'remove_clip', sequenceId: document.activeSequenceId,
+      trackId: track.id, clipId: track.clips[0]!.id,
+    })).toBe(true)
+
+    await deleteFromLibrary(entry.id)
+    expect(api.deleteLibraryItem).not.toHaveBeenCalled()
+    expect(state.library).toContainEqual(entry)
+  })
+
+  it('adds twenty public media entries without replacing the active project and persists them', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'primary-media',
+      kind: 'source',
+      filename: 'primary.mp4',
+      url: '/files/sources/primary.mp4',
+      duration: 10,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+    vi.mocked(api.saveProjectDocument).mockClear()
+
+    const primaryVideo = state.video
+    for (let index = 0; index < 20; index++) {
+      expect(addMediaToTimeline({
+        id: `secondary-${index}`,
+        kind: 'source',
+        filename: `secondary-${index}.mp4`,
+        url: `/files/sources/secondary-${index}.mp4`,
+        duration: 1 + index / 10,
+        width: index === 19 ? 0 : index % 2 ? 1280 : 3840,
+        height: index === 19 ? 0 : index % 2 ? 720 : 2160,
+        fps: [23.976, 25, 29.97, 59.94][index % 4],
+        vcodec: index === 19 ? null : 'h264',
+        acodec: 'aac',
+        createdAt: index + 2,
+      })).toBe(true)
+    }
+    expect(state.video).toBe(primaryVideo)
+    expect(timelineState.document?.primaryMediaId).toBe('primary-media')
+    expect(timelineState.document?.media).toHaveLength(21)
+    expect(timelineState.document?.sequences[0]!.tracks.flatMap((track) => track.clips)).toHaveLength(21)
+
+    const duplicate = {
+      id: 'secondary-0',
+      kind: 'source' as const,
+      filename: 'secondary-0.mp4',
+      url: '/files/sources/secondary-0.mp4',
+      duration: 1,
+      width: 3840,
+      height: 2160,
+      fps: 23.976,
+      createdAt: 2,
+    }
+    expect(addMediaToTimeline(duplicate)).toBe(true)
+    expect(timelineState.document?.media).toHaveLength(21)
+    expect(timelineState.document?.sequences[0]!.tracks.flatMap((track) => track.clips)).toHaveLength(22)
+
+    await flushProjectSave()
+    const saved = vi.mocked(api.saveProjectDocument).mock.calls.at(-1)![2]
+    expect(saved.primaryMediaId).toBe('primary-media')
+    expect(saved.media).toHaveLength(21)
+    expect(saved.sequences[0]!.tracks.flatMap((track) => track.clips)).toHaveLength(22)
+    expect(selectedExportUnavailableReason()).toContain('render graph')
+  })
+
+  it('bulk upload adds every successful file to the same active project', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'bulk-primary',
+      kind: 'source',
+      filename: 'primary.mp4',
+      url: '/files/sources/primary.mp4',
+      duration: 5,
+      width: 1280,
+      height: 720,
+      createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+    vi.mocked(api.uploadFile)
+      .mockResolvedValueOnce({
+        id: 'bulk-video', url: '/video', filename: 'video.mp4', duration: 2,
+        width: 1920, height: 1080, fps: 25,
+      })
+      .mockResolvedValueOnce({
+        id: 'bulk-audio', url: '/audio', filename: 'audio.wav', duration: 3,
+        width: 0, height: 0, acodec: 'pcm_s16le',
+      })
+
+    await doUploadFiles([
+      new File(['video'], 'video.mp4', { type: 'video/mp4' }),
+      new File(['audio'], 'audio.wav', { type: 'audio/wav' }),
+    ])
+
+    expect(state.video?.id).toBe('bulk-primary')
+    expect(timelineState.document?.media.map((media) => media.id)).toEqual([
+      'bulk-primary', 'bulk-video', 'bulk-audio',
+    ])
+    const tracks = timelineState.document!.sequences[0]!.tracks
+    expect(tracks.find((track) => track.kind === 'video')!.clips).toHaveLength(2)
+    expect(tracks.find((track) => track.kind === 'audio')!.clips).toHaveLength(1)
+  })
+
+  it('blocks legacy export when only a secondary clip remains', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'topology-primary', kind: 'source', filename: 'primary.mp4', url: '/primary',
+      duration: 5, width: 1280, height: 720, mediaKind: 'video', createdAt: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await nextTick()
+    expect(addMediaToTimeline({
+      id: 'topology-secondary', kind: 'source', filename: 'secondary.mp4', url: '/secondary',
+      duration: 2, width: 640, height: 360, mediaKind: 'video', createdAt: 2,
+    })).toBe(true)
+    const document = timelineState.document!
+    const primaryTrack = document.sequences[0]!.tracks.find((track) =>
+      track.clips.some((clip) => clip.mediaId === 'topology-primary'),
+    )!
+    expect(executeTimelineCommand({
+      kind: 'remove_clip', sequenceId: document.activeSequenceId,
+      trackId: primaryTrack.id,
+      clipId: primaryTrack.clips.find((clip) => clip.mediaId === 'topology-primary')!.id,
+    })).toBe(true)
+
+    expect(selectedExportUnavailableReason()).toContain('topology')
+  })
+
+  it('does not attach a completed upload after the user switches projects', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValue(null)
+    openFromLibrary({
+      id: 'project-a', kind: 'source', filename: 'a.mp4', url: '/a',
+      duration: 5, width: 1280, height: 720, mediaKind: 'video', createdAt: 1,
+    })
+    await Promise.resolve()
+    await nextTick()
+    let resolveUpload!: (value: VideoInfo) => void
+    vi.mocked(api.uploadFile).mockReturnValueOnce(new Promise((resolve) => {
+      resolveUpload = resolve
+    }))
+    const uploading = doUploadFiles([new File(['b'], 'b.mp4', { type: 'video/mp4' })])
+
+    openFromLibrary({
+      id: 'project-a', kind: 'source', filename: 'reopened-a.mp4', url: '/c',
+      duration: 5, width: 1920, height: 1080, mediaKind: 'video', createdAt: 2,
+    })
+    resolveUpload({
+      id: 'late-b', url: '/b', filename: 'b.mp4', duration: 2,
+      width: 640, height: 360, mediaKind: 'video',
+    })
+    await uploading
+
+    expect(state.video?.id).toBe('project-a')
+    expect(state.video?.filename).toBe('reopened-a.mp4')
+    expect(timelineState.document?.primaryMediaId).toBe('project-a')
+    expect(timelineState.document?.media.some((media) => media.id === 'late-b')).toBe(false)
+    expect(state.importError).toContain('проект изменился во время загрузки')
   })
 
   it('detaches only a missing LUT while restoring the remaining colour grade', async () => {

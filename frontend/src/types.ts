@@ -9,6 +9,7 @@ export interface VideoInfo {
   fps?: number | null
   vcodec?: string | null
   acodec?: string | null
+  mediaKind?: 'video' | 'audio'
   sizeBytes?: number | null
 }
 
@@ -124,6 +125,10 @@ export interface MediaEntry {
   duration?: number | null
   width?: number | null
   height?: number | null
+  fps?: number | null
+  vcodec?: string | null
+  acodec?: string | null
+  mediaKind?: 'video' | 'audio'
   sizeBytes?: number | null
   createdAt: number
 }

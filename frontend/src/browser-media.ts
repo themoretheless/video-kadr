@@ -86,14 +86,39 @@ function probeVideo(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filenam
   })
 }
 
+function probeAudio(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filename'>> {
+  return new Promise((resolve, reject) => {
+    const url = objectUrl(file)
+    const audio = document.createElement('audio')
+    audio.preload = 'metadata'
+    audio.onloadedmetadata = () => {
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0
+      URL.revokeObjectURL(url)
+      if (!duration) {
+        reject(new Error('Не удалось прочитать параметры аудио'))
+        return
+      }
+      resolve({ duration, width: 0, height: 0, title: file.name, sizeBytes: file.size })
+    }
+    audio.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Браузер не смог открыть этот аудиофайл'))
+    }
+    audio.src = url
+  })
+}
+
 export async function uploadFile(file: File): Promise<VideoInfo> {
-  if (!file.type.startsWith('video/')) throw new Error('Выберите видеофайл')
-  const metadata = await probeVideo(file)
+  const isVideo = file.type.startsWith('video/')
+  const isAudio = file.type.startsWith('audio/')
+  if (!isVideo && !isAudio) throw new Error('Выберите видео- или аудиофайл')
+  const metadata = isVideo ? await probeVideo(file) : await probeAudio(file)
   const sourceId = id()
   const info: VideoInfo = {
     id: sourceId,
     url: objectUrl(file),
     filename: file.name,
+    mediaKind: isVideo ? 'video' : 'audio',
     ...metadata,
   }
   sources.set(sourceId, { file, info })
@@ -106,6 +131,10 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
     duration: info.duration,
     width: info.width,
     height: info.height,
+    fps: info.fps,
+    vcodec: info.vcodec,
+    acodec: info.acodec,
+    mediaKind: info.mediaKind,
     sizeBytes: file.size,
     createdAt: Date.now(),
   })

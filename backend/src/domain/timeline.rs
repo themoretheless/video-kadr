@@ -1130,8 +1130,8 @@ mod tests {
         .unwrap();
         let mut history = StructuralHistory::new(1_000_000).unwrap();
         let mut moved = history.execute(&document, command).unwrap();
-        project_clip_mut(&mut moved, "clip-main").effects[0]
-            .parameters = json!({"filter": "sepia"});
+        project_clip_mut(&mut moved, "clip-main").effects[0].parameters =
+            json!({"filter": "sepia"});
 
         let undone = history.undo(&moved).unwrap().unwrap();
         assert_eq!(

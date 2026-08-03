@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { state, openFromLibrary, deleteFromLibrary } from '../store'
+import { state, openFromLibrary, deleteFromLibrary, addMediaToTimeline, timelineState } from '../store'
 import type { MediaEntry } from '../types'
 
 function label(e: MediaEntry): string {
@@ -46,8 +46,14 @@ function ext(e: MediaEntry): string {
           <div class="lib-meta">{{ ext(e) }}<template v-if="meta(e)"> · {{ meta(e) }}</template></div>
         </div>
         <div class="lib-actions">
-          <button v-if="e.kind === 'source'" class="btn ghost sm" @click="openFromLibrary(e)">Открыть</button>
-          <a v-else class="btn ghost sm" :href="e.url" :download="e.filename">Скачать</a>
+          <button v-if="e.kind === 'source'" class="btn ghost sm" @click="openFromLibrary(e)">Открыть как проект</button>
+          <button
+            v-if="e.kind === 'source' && timelineState.document"
+            class="btn ghost sm"
+            :aria-label="`Добавить ${label(e)} в текущий проект`"
+            @click="addMediaToTimeline(e)"
+          >Добавить</button>
+          <a v-if="e.kind === 'output'" class="btn ghost sm" :href="e.url" :download="e.filename">Скачать</a>
           <button class="btn ghost sm danger" title="Удалить" @click="deleteFromLibrary(e.id)">✕</button>
         </div>
       </li>

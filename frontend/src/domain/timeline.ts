@@ -1,8 +1,16 @@
-import type { ProjectClip, ProjectDocument, ProjectTrack, SequenceSettings } from '../project-schema'
+import type { ProjectClip, ProjectDocument, ProjectMedia, ProjectTrack, SequenceSettings } from '../project-schema'
 import { validateProjectDocument } from '../project-schema'
 
 export type TimelineCommand =
   | { kind: 'batch'; commands: TimelineCommand[] }
+  | {
+      kind: 'insert_media_clip'
+      sequenceId: string
+      trackId: string
+      index: number
+      media: ProjectMedia
+      clip: ProjectClip
+    }
   | { kind: 'insert_clip'; sequenceId: string; trackId: string; index: number; clip: ProjectClip }
   | { kind: 'remove_clip'; sequenceId: string; trackId: string; clipId: string }
   | {
@@ -153,6 +161,21 @@ export function applyTimelineCommand(
   if (!sequence) throw new Error(`missing sequence ${command.sequenceId}`)
 
   switch (command.kind) {
+    case 'insert_media_clip': {
+      const track = requiredTrack(sequence.tracks, command.trackId)
+      ensureUnlocked(track)
+      if (command.index < 0 || command.index > track.clips.length) throw new Error('invalid clip index')
+      if (command.clip.mediaId !== command.media.id) throw new Error('media clip identity mismatch')
+      if (findClip(next, command.clip.id)) throw new Error(`duplicate clip ${command.clip.id}`)
+      const existingMedia = next.media.find((media) => media.id === command.media.id)
+      if (existingMedia && !compatibleMediaDescriptor(existingMedia, command.media)) {
+        throw new Error(`conflicting media ${command.media.id}`)
+      }
+      if (!existingMedia) next.media.push(cloneJson(command.media))
+      ensureTrackCompatibility(next, track, command.clip)
+      track.clips.splice(command.index, 0, cloneJson(command.clip))
+      break
+    }
     case 'insert_clip': {
       const track = requiredTrack(sequence.tracks, command.trackId)
       ensureUnlocked(track)
@@ -218,6 +241,16 @@ export function applyTimelineCommand(
   validateTimelineSemantics(next)
   validateProjectDocument(next)
   return next
+}
+
+function compatibleMediaDescriptor(left: ProjectMedia, right: ProjectMedia): boolean {
+  if (left.kind !== right.kind) return false
+  for (const key of ['url', 'filename', 'duration', 'width', 'height', 'fps', 'vcodec', 'acodec']) {
+    const leftValue = left.metadata[key]
+    const rightValue = right.metadata[key]
+    if (leftValue !== undefined && rightValue !== undefined && leftValue !== rightValue) return false
+  }
+  return true
 }
 
 export function validateTimelineSemantics(document: ProjectDocument): void {

@@ -25,6 +25,22 @@ describe('project document schema', () => {
     expect(document.legacyFields?.pluginState).toEqual({ revision: 7 })
   })
 
+  it('creates an audio primary asset on an audio track', () => {
+    const document = migrateProjectDocument({
+      videoId: 'audio-1',
+      video: {
+        id: 'audio-1', filename: 'voice.wav', duration: 3,
+        width: 0, height: 0, mediaKind: 'audio', acodec: 'pcm_s16le',
+      },
+      edit: {},
+    })
+    expect(document.media[0]).toMatchObject({ id: 'audio-1', kind: 'audio' })
+    expect(document.sequences[0]!.tracks.find((track) => track.kind === 'video')!.clips)
+      .toHaveLength(0)
+    expect(document.sequences[0]!.tracks.find((track) => track.kind === 'audio')!.clips[0])
+      .toMatchObject({ id: 'clip-main', mediaId: 'audio-1' })
+  })
+
   it('round-trips unknown v2 fields and rejects a forward version', () => {
     const document = migrateProjectDocument({
       schemaVersion: 1,

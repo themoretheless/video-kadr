@@ -182,6 +182,66 @@ describe('canonical timeline commands', () => {
     expect(history.canUndo).toBe(false)
   })
 
+  it('atomically inserts a new media asset and deduplicates it on another clip', () => {
+    const initial = fixture()
+    const media = { id: 'media-new', kind: 'video', metadata: { duration: 4, fps: 25 } }
+    const firstClip: ProjectClip = {
+      id: 'clip-new-1',
+      mediaId: media.id,
+      timelineStartTick: 12_000_000,
+      durationTicks: 4_000_000,
+      sourceInTick: 0,
+      sourceOutTick: 4_000_000,
+      effects: [],
+    }
+    const inserted = applyTimelineCommand(initial, {
+      kind: 'insert_media_clip',
+      sequenceId: 'sequence-main',
+      trackId: 'track-0',
+      index: initial.sequences[0]!.tracks[0]!.clips.length,
+      media,
+      clip: firstClip,
+    })
+    const insertedAgain = applyTimelineCommand(inserted, {
+      kind: 'insert_media_clip',
+      sequenceId: 'sequence-main',
+      trackId: 'track-0',
+      index: inserted.sequences[0]!.tracks[0]!.clips.length,
+      media: { ...media, metadata: { duration: 4 } },
+      clip: { ...firstClip, id: 'clip-new-2', timelineStartTick: 16_000_000 },
+    })
+    expect(insertedAgain.media.filter((item) => item.id === media.id)).toHaveLength(1)
+    expect(insertedAgain.sequences[0]!.tracks[0]!.clips.filter(
+      (clip) => clip.mediaId === media.id,
+    )).toHaveLength(2)
+    expect(() => applyTimelineCommand(inserted, {
+      kind: 'insert_media_clip',
+      sequenceId: 'sequence-main',
+      trackId: 'track-0',
+      index: inserted.sequences[0]!.tracks[0]!.clips.length,
+      media: { ...media, metadata: { duration: 5 } },
+      clip: { ...firstClip, id: 'clip-conflict', timelineStartTick: 16_000_000 },
+    })).toThrow('conflicting media')
+
+    expect(() => applyTimelineCommand(initial, {
+      kind: 'insert_media_clip',
+      sequenceId: 'sequence-main',
+      trackId: 'track-4',
+      index: 0,
+      media,
+      clip: firstClip,
+    })).toThrow('incompatible')
+    expect(initial.media.some((item) => item.id === media.id)).toBe(false)
+    expect(() => applyTimelineCommand(initial, {
+      kind: 'insert_media_clip',
+      sequenceId: 'sequence-main',
+      trackId: 'track-0',
+      index: 1,
+      media,
+      clip: { ...firstClip, mediaId: 'media-video-0' },
+    })).toThrow('identity mismatch')
+  })
+
   it('keeps newer parameter values when undoing a structural edit', () => {
     const initial = fixture()
     initial.sequences[0]!.tracks[0]!.clips[0]!.effects.push({

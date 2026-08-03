@@ -108,6 +108,7 @@ pub async fn upload_handler(
         "fps": info.fps,
         "vcodec": info.vcodec,
         "acodec": info.acodec,
+        "mediaKind": if info.width > 0 { "video" } else { "audio" },
         "sizeBytes": size,
     });
     let entry = MediaEntry::from_result("source", &body);

@@ -296,6 +296,33 @@ impl ProjectDocument {
             return Err(ProjectDocumentError::InvalidField("edit"));
         }
         let duration_ticks = legacy_duration_ticks(&video);
+        let primary_kind = match video.get("mediaKind").and_then(Value::as_str) {
+            Some("audio") => "audio",
+            Some("video") => "video",
+            _ if video.get("acodec").and_then(Value::as_str).is_some()
+                && video.get("vcodec").and_then(Value::as_str).is_none()
+                && positive_u32(video.get("width")).is_none() =>
+            {
+                "audio"
+            }
+            _ => "video",
+        };
+        let primary_clip = ProjectClip {
+            id: "clip-main".to_owned(),
+            media_id: video_id.clone(),
+            timeline_start_tick: 0,
+            duration_ticks,
+            source_in_tick: 0,
+            source_out_tick: duration_ticks,
+            effects: vec![ProjectEffect {
+                id: "effect-legacy-edit".to_owned(),
+                kind: "legacy_edit".to_owned(),
+                enabled: true,
+                parameters: edit,
+                extra: BTreeMap::new(),
+            }],
+            extra: BTreeMap::new(),
+        };
         let settings = SequenceSettings {
             time_base: PROJECT_TIME_BASE,
             frame_rate: finite_positive_f64(video.get("fps")),
@@ -310,7 +337,7 @@ impl ProjectDocument {
             active_sequence_id: "sequence-main".to_owned(),
             media: vec![ProjectMedia {
                 id: video_id.clone(),
-                kind: "video".to_owned(),
+                kind: primary_kind.to_owned(),
                 metadata: video,
                 extra: BTreeMap::new(),
             }],
@@ -323,29 +350,22 @@ impl ProjectDocument {
                         id: "track-video-main".to_owned(),
                         kind: "video".to_owned(),
                         name: "Видео 1".to_owned(),
-                        clips: vec![ProjectClip {
-                            id: "clip-main".to_owned(),
-                            media_id: video_id,
-                            timeline_start_tick: 0,
-                            duration_ticks,
-                            source_in_tick: 0,
-                            source_out_tick: duration_ticks,
-                            effects: vec![ProjectEffect {
-                                id: "effect-legacy-edit".to_owned(),
-                                kind: "legacy_edit".to_owned(),
-                                enabled: true,
-                                parameters: edit,
-                                extra: BTreeMap::new(),
-                            }],
-                            extra: BTreeMap::new(),
-                        }],
+                        clips: if primary_kind == "video" {
+                            vec![primary_clip.clone()]
+                        } else {
+                            Vec::new()
+                        },
                         extra: BTreeMap::new(),
                     },
                     ProjectTrack {
                         id: "track-audio-main".to_owned(),
                         kind: "audio".to_owned(),
                         name: "Аудио 1".to_owned(),
-                        clips: Vec::new(),
+                        clips: if primary_kind == "audio" {
+                            vec![primary_clip]
+                        } else {
+                            Vec::new()
+                        },
                         extra: BTreeMap::new(),
                     },
                 ],
@@ -593,6 +613,7 @@ impl ProjectDocument {
             .into_iter()
             .flat_map(|sequence| &sequence.tracks)
             .flat_map(|track| &track.clips)
+            .filter(|clip| clip.media_id == self.primary_media_id)
             .flat_map(|clip| &clip.effects)
             .find(|effect| effect.kind == "legacy_edit")
             .map(|effect| effect.parameters.clone())
@@ -629,6 +650,7 @@ impl ProjectDocument {
             .tracks
             .iter_mut()
             .flat_map(|track| &mut track.clips)
+            .filter(|clip| clip.media_id == self.primary_media_id)
             .flat_map(|clip| &mut clip.effects)
             .find(|effect| effect.kind == "legacy_edit")
         {
@@ -647,19 +669,20 @@ impl ProjectDocument {
                 suffix += 1;
                 effect_id = format!("effect-legacy-edit-{suffix}");
             }
-            let clip = sequence
+            if let Some(clip) = sequence
                 .tracks
                 .iter_mut()
                 .flat_map(|track| &mut track.clips)
                 .find(|clip| clip.media_id == self.primary_media_id)
-                .ok_or(ProjectDocumentError::InvalidField("primary media clip"))?;
-            clip.effects.push(ProjectEffect {
-                id: effect_id,
-                kind: "legacy_edit".into(),
-                enabled: true,
-                parameters: edit,
-                extra: BTreeMap::new(),
-            });
+            {
+                clip.effects.push(ProjectEffect {
+                    id: effect_id,
+                    kind: "legacy_edit".into(),
+                    enabled: true,
+                    parameters: edit,
+                    extra: BTreeMap::new(),
+                });
+            }
         }
         self.validate()
     }
@@ -775,6 +798,43 @@ mod tests {
         let (video, edit) = document.legacy_video_and_edit();
         assert_eq!(video["id"], "video-1");
         assert_eq!(edit["filter"], "sepia");
+    }
+
+    #[test]
+    fn migrates_audio_primary_to_the_audio_track() {
+        let document = ProjectDocument::migrate(json!({
+            "videoId": "audio-1",
+            "video": {
+                "id": "audio-1",
+                "filename": "voice.wav",
+                "duration": 3.0,
+                "width": 0,
+                "height": 0,
+                "mediaKind": "audio",
+                "acodec": "pcm_s16le"
+            },
+            "edit": {}
+        }))
+        .unwrap();
+        assert_eq!(document.media[0].kind, "audio");
+        let sequence = &document.sequences[0];
+        assert!(sequence
+            .tracks
+            .iter()
+            .find(|track| track.kind == "video")
+            .unwrap()
+            .clips
+            .is_empty());
+        assert_eq!(
+            sequence
+                .tracks
+                .iter()
+                .find(|track| track.kind == "audio")
+                .unwrap()
+                .clips[0]
+                .media_id,
+            "audio-1"
+        );
     }
 
     #[test]

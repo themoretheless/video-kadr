@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { state, doImport, doUpload, cancelImport, clientOnlyMode } from '../store'
+import { state, doImport, doUploadFiles, cancelImport, clientOnlyMode } from '../store'
 import ProgressBar from './ProgressBar.vue'
 
 const picker = ref<HTMLInputElement | null>(null)
 const dragover = ref(false)
 
 function onPick(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (file) void doUpload(file)
+  const files = [...((e.target as HTMLInputElement).files ?? [])]
+  if (files.length) void doUploadFiles(files)
   ;(e.target as HTMLInputElement).value = ''
 }
 
 function onDrop(e: DragEvent) {
   dragover.value = false
-  const file = e.dataTransfer?.files?.[0]
-  if (file) void doUpload(file)
+  const files = [...(e.dataTransfer?.files ?? [])]
+  if (files.length) void doUploadFiles(files)
 }
 </script>
 
@@ -56,9 +56,9 @@ function onDrop(e: DragEvent) {
     <div class="import-or"><span>или</span></div>
 
     <button type="button" class="dropzone" :disabled="state.importing" @click="picker?.click()">
-      <input ref="picker" type="file" accept="video/*" class="hidden-file" @change="onPick" />
+      <input ref="picker" type="file" accept="video/*,audio/*" class="hidden-file" multiple @change="onPick" />
       <span class="dropzone-icon">📁</span>
-      <span>Перетащи видеофайл сюда или нажми, чтобы выбрать — загрузки на сервер не будет</span>
+      <span>Перетащи медиафайлы сюда или выбери несколько — они добавятся в текущий проект</span>
     </button>
 
     <ProgressBar

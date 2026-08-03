@@ -157,37 +157,137 @@ export async function cancelImport(): Promise<void> {
 
 /** Import a local file via multipart upload (no job: it returns directly). */
 export async function doUpload(file: File): Promise<void> {
+  await doUploadFiles([file])
+}
+
+/** Upload one or more files; the first creates a project and the rest join it. */
+export async function doUploadFiles(files: readonly File[]): Promise<void> {
   if (state.importing) return
+  if (files.length === 0) return
   state.importing = true
   state.importError = ''
   state.importStatus = clientOnlyMode ? 'Читаю файл на устройстве…' : 'Загружаю файл…'
   state.importProgress = null
   state.importStage = 'uploading'
   state.result = null
+  let targetPrimaryMediaId = timelineState.document?.primaryMediaId ?? null
+  let targetSessionId = projectSessionId
+  const failures: string[] = []
 
   try {
-    const v = await api.uploadFile(file)
-    resetProjectPersistenceContext()
-    state.video = v
-    const edit = defaultEdit()
-    edit.trimEnd = v.duration
-    edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
-    edit.scale = { w: v.width, h: -2 }
-    state.edit = edit
-    resetHistory()
-    initializeTimelineDocument(v)
+    for (const [index, file] of files.entries()) {
+      state.importStatus = `${clientOnlyMode ? 'Читаю' : 'Загружаю'} ${index + 1} из ${files.length}: ${file.name}`
+      try {
+        const v = await api.uploadFile(file)
+        if (projectSessionId !== targetSessionId) {
+          throw new Error('проект изменился во время загрузки; файл оставлен в медиатеке')
+        }
+        if (targetPrimaryMediaId) {
+          if (timelineState.document?.primaryMediaId !== targetPrimaryMediaId) {
+            throw new Error('проект изменился во время загрузки; файл оставлен в медиатеке')
+          }
+          if (!addMediaToTimeline(v)) throw new Error(timelineState.error || 'не удалось добавить файл')
+        } else {
+          if (timelineState.document) {
+            throw new Error('проект был открыт во время загрузки; файл оставлен в медиатеке')
+          }
+          resetProjectPersistenceContext()
+          targetSessionId = projectSessionId
+          state.video = v
+          const edit = defaultEdit()
+          edit.trimEnd = v.duration
+          edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
+          edit.scale = { w: v.width, h: -2 }
+          state.edit = edit
+          resetHistory()
+          initializeTimelineDocument(v)
+          targetPrimaryMediaId = v.id
+        }
+      } catch (error) {
+        failures.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
     state.importStatus = ''
     void loadLibrary()
-    toast('success', v.title ? `Загружено: ${v.title}` : 'Файл загружен')
-  } catch (e) {
-    state.importError = e instanceof Error ? e.message : String(e)
-    state.importStatus = ''
-    toast('error', state.importError)
+    if (failures.length > 0) {
+      state.importError = failures.join('\n')
+      toast('error', `Не добавлено файлов: ${failures.length}`)
+    }
+    const successes = files.length - failures.length
+    if (successes > 0) toast('success', `Добавлено файлов: ${successes}`)
   } finally {
     state.importing = false
     state.importProgress = null
     state.importStage = null
   }
+}
+
+/** Add a durable library/upload source to the active project without replacing it. */
+export function addMediaToTimeline(source: VideoInfo | MediaEntry): boolean {
+  const document = timelineState.document
+  if (!document) {
+    timelineState.error = 'Сначала откройте или создайте проект'
+    return false
+  }
+  if (restoringProjectFor === document.primaryMediaId) {
+    timelineState.error = 'Дождитесь загрузки сохранённого проекта'
+    return false
+  }
+  const duration = source.duration ?? 0
+  if (!Number.isFinite(duration) || duration <= 0) {
+    timelineState.error = 'У медиафайла неизвестна длительность'
+    return false
+  }
+  const kind = source.mediaKind ??
+    (source.vcodec ? 'video' : source.acodec && !source.vcodec ? 'audio' : (source.width ?? 0) > 0 ? 'video' : null)
+  if (!kind) {
+    timelineState.error = 'Не удалось определить тип медиафайла'
+    return false
+  }
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  if (!sequence) {
+    timelineState.error = 'Активная последовательность не найдена'
+    return false
+  }
+  const selectedTrack = sequence.tracks.find((track) =>
+    track.clips.some((clip) => clip.id === timelineState.selectedClipId),
+  )
+  const targetTrack =
+    (selectedTrack?.kind === kind && selectedTrack.locked !== true ? selectedTrack : undefined) ??
+    sequence.tracks.find((track) => track.kind === kind && track.locked !== true)
+  if (!targetTrack) {
+    timelineState.error = `Нет доступной ${kind === 'video' ? 'видеодорожки' : 'аудиодорожки'}`
+    return false
+  }
+  const durationTicks = Math.round(duration * sequence.settings.timeBase)
+  if (!Number.isSafeInteger(durationTicks) || durationTicks <= 0) {
+    timelineState.error = 'Некорректная длительность медиафайла'
+    return false
+  }
+  const timelineStartTick = Math.max(
+    0,
+    ...targetTrack.clips.map((clip) => clip.timelineStartTick + clip.durationTicks),
+  )
+  const clipId = `clip-${crypto.randomUUID()}`
+  const metadata = cloneValue(source) as unknown as Record<string, unknown>
+  const inserted = executeTimelineCommand({
+    kind: 'insert_media_clip',
+    sequenceId: sequence.id,
+    trackId: targetTrack.id,
+    index: targetTrack.clips.length,
+    media: { id: source.id, kind, metadata },
+    clip: {
+      id: clipId,
+      mediaId: source.id,
+      timelineStartTick,
+      durationTicks,
+      sourceInTick: 0,
+      sourceOutTick: durationTicks,
+      effects: [],
+    },
+  })
+  if (inserted) timelineState.selectedClipId = clipId
+  return inserted
 }
 
 function lutFileValidationError(file: File): string | null {
@@ -371,6 +471,16 @@ export async function loadCapabilities(): Promise<void> {
 }
 
 export function selectedExportUnavailableReason(): string | null {
+  const document = timelineState.document
+  if (document) {
+    const activeSequence = document.sequences.find(
+      (sequence) => sequence.id === document.activeSequenceId,
+    )
+    const clips = activeSequence?.tracks.flatMap((track) => track.clips) ?? []
+    if (clips.length !== 1 || clips[0]?.mediaId !== document.primaryMediaId) {
+      return 'Экспорт изменённой topology timeline появится после подключения render graph'
+    }
+  }
   const format = state.capabilities?.formats.find((option) => option.id === state.edit.format)
   if (format && !format.available) return format.reason || 'Выбранный формат недоступен'
 
@@ -429,6 +539,10 @@ export function openFromLibrary(entry: MediaEntry): void {
     height: entry.height ?? 0,
     title: entry.title ?? null,
     sizeBytes: entry.sizeBytes ?? null,
+    fps: entry.fps ?? null,
+    vcodec: entry.vcodec ?? null,
+    acodec: entry.acodec ?? null,
+    mediaKind: entry.mediaKind,
   }
   resetProjectPersistenceContext()
   state.video = v
@@ -446,6 +560,11 @@ export function openFromLibrary(entry: MediaEntry): void {
 }
 
 export async function deleteFromLibrary(id: string): Promise<void> {
+  const referencedByActiveProject = timelineState.document?.media.some((media) => media.id === id)
+  if (referencedByActiveProject) {
+    toast('error', 'Файл закреплён в открытом проекте; сначала удалите или закройте проект')
+    return
+  }
   try {
     await api.deleteLibraryItem(id)
     state.library = state.library.filter((e) => e.id !== id)
@@ -731,6 +850,7 @@ let activeProjectRevision = 0
 let activeProjectDocument: ProjectDocument | null = null
 let projectSaveInFlight: Promise<void> | null = null
 let projectSaveQueued = false
+let projectSessionId = 0
 
 export const timelineState = reactive({
   document: null as ProjectDocument | null,
@@ -810,6 +930,7 @@ export function redoTimeline(): boolean {
 }
 
 function resetProjectPersistenceContext(): void {
+  projectSessionId++
   activeProjectId = null
   activeProjectRevision = 0
   activeProjectDocument = null
@@ -832,13 +953,14 @@ function clearProjectSaveTimer(): void {
 async function restoreProject(videoId: string): Promise<void> {
   const sequence = ++projectRestoreSequence
   const startingRevision = editRevision
+  const startingTimelineRevision = timelineState.revision
   const baseEdit = cloneValue(state.edit)
   let applied = false
   try {
     const p = await api.getProjectByVideo(videoId)
     // Guard against a clip switch while the lookup was in flight.
     if (!p?.edit || state.video?.id !== videoId || sequence !== projectRestoreSequence) return
-    if (editRevision !== startingRevision) return
+    if (editRevision !== startingRevision || timelineState.revision !== startingTimelineRevision) return
     const envelope = await api.getProjectDocument(p.id)
     const document = envelope?.document ?? p.document ?? null
     const persistedEdit = document ? legacyProjectValues(document).edit : p.edit
@@ -847,7 +969,8 @@ async function restoreProject(videoId: string): Promise<void> {
     if (
       state.video?.id !== videoId ||
       sequence !== projectRestoreSequence ||
-      editRevision !== startingRevision
+      editRevision !== startingRevision ||
+      timelineState.revision !== startingTimelineRevision
     ) {
       return
     }

@@ -1331,6 +1331,11 @@ body {
   color: var(--danger);
 }
 
+.preview-gated {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 @media (max-width: 760px) {
   .timeline-toolbar {
     align-items: flex-start;
