@@ -24,7 +24,7 @@ function wavFixture(index: number): Buffer {
 test('local assets and their project survive a hard browser reload', async ({ page, browserName }) => {
   test.slow()
   await page.goto('/?processing=browser')
-  const assetCount = browserName === 'webkit' ? 2 : 20
+  const assetCount = 20
   const files = Array.from({ length: assetCount }, (_, index) => ({
     name: `fixture-${index.toString().padStart(2, '0')}.wav`,
     mimeType: 'audio/wav',
@@ -40,10 +40,7 @@ test('local assets and their project survive a hard browser reload', async ({ pa
 
   const sessionOnly = page.getByText(/файл доступен только до закрытия этой вкладки/)
   if (await sessionOnly.isVisible()) {
-    expect(browserName).toBe('webkit')
-    await page.reload({ waitUntil: 'networkidle' })
-    await expect(page.locator('.lib-item')).toHaveCount(0)
-    return
+    throw new Error(`${browserName} unexpectedly fell back to session-only media storage`)
   }
 
   await expect.poll(() => page.evaluate(async () =>

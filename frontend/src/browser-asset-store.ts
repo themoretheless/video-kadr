@@ -49,7 +49,7 @@ export interface BrowserAssetRecoveryReference {
 
 interface StoredBlob {
   id: string
-  file: Blob
+  file: Blob | ArrayBuffer
 }
 
 interface IngestJournalEntry {
@@ -504,12 +504,13 @@ async function putBrowserAssetUnlocked(
   }
   let database: IDBDatabase | undefined
   try {
+    const fallbackBytes = manifest.storage === 'idb' ? await asset.file.arrayBuffer() : undefined
     database = await openDatabase()
     const transaction = database.transaction([MANIFESTS, BLOBS, INGESTS], 'readwrite')
     const committed = transactionDone(transaction)
     transaction.objectStore(MANIFESTS).put(manifest)
     if (manifest.storage === 'idb') {
-      transaction.objectStore(BLOBS).put({ id: objectKey, file: asset.file } satisfies StoredBlob)
+      transaction.objectStore(BLOBS).put({ id: objectKey, file: fallbackBytes! } satisfies StoredBlob)
     } else {
       transaction.objectStore(BLOBS).delete(asset.id)
     }
@@ -666,9 +667,12 @@ export async function getBrowserAsset(id: string): Promise<StoredBrowserAsset> {
     const contentBlob = await requestResult<StoredBlob | undefined>(
       database.transaction(BLOBS, 'readonly').objectStore(BLOBS).get(objectKey),
     )
+    const storedFile = contentBlob?.file instanceof ArrayBuffer
+      ? new Blob([contentBlob.file], { type: manifest?.fileType })
+      : contentBlob?.file
     let file = manifest?.storage === 'opfs'
       ? await readOpfs(objectKey)
-      : manifest?.storage === 'idb' ? contentBlob?.file : undefined
+      : manifest?.storage === 'idb' ? storedFile : undefined
     if (manifest && (!file || (typeof file.size === 'number' && file.size !== manifest.byteLength))) {
       const handle = await getExternalHandle(id)
       const permissionHandle = handle as PermissionCapableHandle | null
