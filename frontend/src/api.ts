@@ -83,6 +83,34 @@ export function edit(payload: unknown): Promise<{ jobId: string }> {
   return postJson('/api/edit', payload)
 }
 
+export class ExportDependencyUnavailableError extends Error {
+  constructor(public readonly kind: 'source' | 'lut', message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'ExportDependencyUnavailableError'
+  }
+}
+
+export async function prepareQueuedExportSource(sourceId: string, expectedFingerprint: string): Promise<void> {
+  if (!clientOnlyMode) return
+  try {
+    await browserMedia.prepareQueuedExportSource(sourceId, expectedFingerprint)
+  } catch (error) {
+    throw new ExportDependencyUnavailableError('source', error instanceof Error ? error.message : String(error), { cause: error })
+  }
+}
+
+export async function prepareQueuedExportLut(lutId: string, expectedFingerprint: string): Promise<void> {
+  if (!clientOnlyMode) return
+  try {
+    const lut = await browserMedia.getLut(lutId)
+    if (!lut.sha256 || lut.sha256 !== expectedFingerprint) throw new Error(`LUT ${lutId} changed or is unavailable`)
+    // Force the durable bytes through the library integrity check, not just cached metadata.
+    await browserMedia.getLutContent(lutId)
+  } catch (error) {
+    throw new ExportDependencyUnavailableError('lut', error instanceof Error ? error.message : String(error), { cause: error })
+  }
+}
+
 export async function optimizedPreviewFrame(
   edit: Record<string, unknown>,
   settings: { timelineTick: number; timelineTimeBase: number; width: number; height: number; quality?: number },

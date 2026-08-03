@@ -1390,6 +1390,11 @@ export async function resolveSource(sourceId: string, expectedFingerprint?: stri
   return withProjectAssetLock(async () => (await resolveSourceRecord(sourceId, expectedFingerprint)).info)
 }
 
+/** Rehydrate an immutable source before a persisted export attempt. */
+export async function prepareQueuedExportSource(sourceId: string, expectedFingerprint: string): Promise<void> {
+  await resolveSource(sourceId, expectedFingerprint)
+}
+
 export async function relinkSource(
   sourceId: string,
   file: File,

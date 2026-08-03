@@ -155,7 +155,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 
 | № | Функция | Сейчас | Минимальный Definition of Done | Размер |
 |---:|---|---|---|:---:|
-| 94 | Export queue и batch variants | Одна задача | Persist job definitions, sequential memory policy; restart, не resume WASM process | L |
+| 94 | ✅ Export queue и batch variants | Immutable IndexedDB definitions, ordinary + batch variants, typed dependency manifest и accessible task center | Cross-tab sequential memory; lease/generation fencing; reload запускает новый WASM attempt с 0%, без resume checkpoint | L |
 | 95 | File-size estimate и target size | Нет | VBR estimate с error band; optional bitrate solve for target MB | M |
 | 96 | Screen/camera recording | Нет | Screen/camera/mic, permissions, optional simultaneous composition и timeline insert | XL |
 | 97 | Templates и brand kit | Только effect presets | Project templates, fonts/colors/logos, placeholders and safe migrations | XL |

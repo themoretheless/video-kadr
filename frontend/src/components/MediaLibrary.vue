@@ -89,7 +89,7 @@ async function pickExternalFile(entry: MediaEntry): Promise<void> {
 </script>
 
 <template>
-  <div v-if="state.library.length" class="card library">
+  <div v-if="state.library.length" id="media-library" class="card library">
     <h2>Медиатека</h2>
     <div v-if="state.projects?.length" class="project-choices" aria-label="Сохранённые проекты">
       <strong>Проекты</strong>

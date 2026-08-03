@@ -23,9 +23,11 @@ const budgets = {
   // client-side multicam synchronisation/flatten contract. Keep a narrow
   // measured ceiling so future growth still fails CI instead of silently
   // turning this historical pre-#83 baseline into a permanently red gate.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 166 * 1024),
-  css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 8 * 1024),
-  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 174 * 1024),
+  // Feature #94 adds the always-available IndexedDB export queue, immutable
+  // batch definitions, recovery runner and accessible task controls.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 172 * 1024),
+  css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 8.5 * 1024),
+  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 181 * 1024),
 }
 
 const files = await readdir(assetDirectory)

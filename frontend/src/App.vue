@@ -32,6 +32,7 @@ import TimelineEditor from './components/TimelineEditor.vue'
 import MulticamPanel from './components/MulticamPanel.vue'
 import ProjectRecoveryDialog from './components/ProjectRecoveryDialog.vue'
 import DerivedTaskCenter from './components/DerivedTaskCenter.vue'
+import ExportQueuePanel from './components/ExportQueuePanel.vue'
 import ProjectArchivePanel from './components/ProjectArchivePanel.vue'
 import { initializeDerivedTasks, onDerivedVisibilityChange } from './derived-task-center'
 
@@ -167,6 +168,7 @@ onUnmounted(() => {
     <MediaLibrary />
     <MulticamPanel v-if="state.video" />
     <DerivedTaskCenter />
+    <ExportQueuePanel />
 
     <main v-if="state.video" class="editor">
       <section class="left">

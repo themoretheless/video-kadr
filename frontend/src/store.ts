@@ -38,6 +38,15 @@ import { fingerprintBlob } from './browser-asset-store'
 import { planBrowserExport, type ExportResourcePlan } from './browser-resource-plan'
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ResultInfo, VideoInfo } from './types'
 import { enqueueSourceAnalysis } from './derived-task-center'
+import {
+  cancelQueuedExport as cancelPersistedExport,
+  enqueuePreparedExportBatch,
+  exportQueueState,
+  retryQueuedExport as retryPersistedExport,
+  waitForQueuedExport,
+} from './export-queue-center'
+
+export { exportQueueState }
 
 export {
   defaultEdit,
@@ -438,10 +447,33 @@ export async function doExport(): Promise<void> {
       payload.trim = { start: Math.max(0, Math.min(duration, Number(trim?.start ?? 0))), end: Math.max(0, Math.min(duration, Number(trim?.end ?? duration))) }
       if ((payload.trim as { end: number }).end <= (payload.trim as { start: number }).start) payload.trim = { start: 0, end: duration }
     }
-    const { jobId } = await api.edit(payload)
-    state.exportJobId = jobId
-    const job = await api.pollJob(jobId, onExportTick)
-    state.result = job.result as ResultInfo
+    if (clientOnlyMode) {
+      const document = timelineState.document
+      const media = document?.media.find(item => item.id === document.primaryMediaId)
+      const assetRef = media?.assetRef ?? state.video.assetId ?? state.video.id
+      const fingerprint = media?.contentFingerprint ?? state.video.fingerprint
+      if (!fingerprint) throw new Error('Для очереди экспорта нужен fingerprint исходника')
+      const dependencies = await exportDependencies(payload)
+      const [task] = await enqueuePreparedExportBatch({
+        id: `batch-${crypto.randomUUID()}`,
+        source: { assetRef, fingerprint },
+        dependencies,
+        basePayload: payload,
+        variants: [{ id: 'default', label: `Экспорт ${state.edit.format.toUpperCase()}`, overrides: {} }],
+      })
+      if (!task) throw new Error('Не удалось поставить экспорт в очередь')
+      state.exportJobId = task.id
+      const completed = await waitForQueuedExport(task.id, current => {
+        state.exportProgress = current.progress ?? null
+        state.exportStage = current.stage ?? null
+      })
+      state.result = completed.result ?? null
+    } else {
+      const { jobId } = await api.edit(payload)
+      state.exportJobId = jobId
+      const job = await api.pollJob(jobId, onExportTick)
+      state.result = job.result as ResultInfo
+    }
     state.exportStatus = ''
     void loadLibrary()
     toast('success', 'Готово! Видео обработано')
@@ -461,6 +493,73 @@ export async function doExport(): Promise<void> {
     state.exportJobId = null
   }
 }
+
+export interface ExportVariantDraft {
+  id?: string
+  name: string
+  format: string
+  codec: string
+  qualityTier: string
+}
+
+async function exportDependencies(payload: Record<string, unknown>): Promise<import('./domain/export-variants').ExportDependency[]> {
+  const dependencies: import('./domain/export-variants').ExportDependency[] = []
+  const multicam = payload.multicamFlatten
+  if (multicam && typeof multicam === 'object' && Array.isArray((multicam as { angles?: unknown }).angles)) {
+    for (const raw of (multicam as { angles: unknown[] }).angles) {
+      if (!raw || typeof raw !== 'object') continue
+      const angle = raw as Record<string, unknown>
+      if (typeof angle.assetRef === 'string' && typeof angle.fingerprint === 'string') {
+        dependencies.push({ kind: 'source', assetRef: angle.assetRef, fingerprint: angle.fingerprint })
+      }
+    }
+  }
+  const lut = payload.lut
+  if (lut && typeof lut === 'object' && typeof (lut as Record<string, unknown>).id === 'string') {
+    const assetRef = (lut as Record<string, unknown>).id as string
+    const asset = await api.getLut(assetRef)
+    if (!asset.sha256) throw new Error('Для очереди экспорта нужен fingerprint LUT')
+    dependencies.push({ kind: 'lut', assetRef, fingerprint: asset.sha256 })
+  }
+  return dependencies
+}
+
+export async function enqueueExportVariants(variants: readonly ExportVariantDraft[]): Promise<void> {
+  if (!clientOnlyMode) throw new Error('Пакетная очередь пока доступна в статической версии')
+  if (!state.video || !variants.length) return
+  const document = timelineState.document
+  const media = document?.media.find(item => item.id === document.primaryMediaId)
+  const assetRef = media?.assetRef ?? state.video.assetId ?? state.video.id
+  const fingerprint = media?.contentFingerprint ?? state.video.fingerprint
+  if (!fingerprint) throw new Error('Для очереди экспорта нужен fingerprint исходника')
+  const basePayload = buildEditPayload()
+  const multicamFlatten = buildActiveMulticamFlattenPayload()
+  if (multicamFlatten) basePayload.multicamFlatten = multicamFlatten
+  const dependencies = await exportDependencies(basePayload)
+  await enqueuePreparedExportBatch({
+    id: `batch-${crypto.randomUUID()}`,
+    source: { assetRef, fingerprint },
+    dependencies,
+    basePayload,
+    variants: variants.map((variant, index) => {
+      const edit = sanitizeEditState({ ...state.edit, format: variant.format, codec: variant.codec, qualityTier: variant.qualityTier })
+      const payload = buildPayload(edit, state.video)
+      return {
+        id: variant.id ?? `variant-${index + 1}`,
+        label: variant.name,
+        overrides: {
+          format: payload.format,
+          codec: payload.codec,
+          quality: payload.quality,
+          qualityTier: variant.qualityTier,
+        },
+      }
+    }),
+  })
+}
+
+export async function cancelQueuedExport(id: string): Promise<void> { await cancelPersistedExport(id) }
+export async function retryQueuedExport(id: string): Promise<void> { await retryPersistedExport(id) }
 
 export function streamingOutputSupported(): boolean {
   return api.streamingOutputSupported?.() ?? false
@@ -494,7 +593,10 @@ function onExportTick(job: Job): void {
 }
 
 export async function cancelExport(): Promise<void> {
-  if (state.exportJobId) await api.cancelJob(state.exportJobId)
+  if (state.exportJobId) {
+    if (clientOnlyMode) await cancelPersistedExport(state.exportJobId)
+    else await api.cancelJob(state.exportJobId)
+  }
   else if (state.exporting) api.cancelStreamingOutput?.()
 }
 

@@ -212,6 +212,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
+    id="lut-library"
     class="color-tool lut-control"
     :class="{ 'is-unavailable': unavailableReason }"
     :aria-busy="state.lutUploading"
