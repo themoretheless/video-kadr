@@ -8,10 +8,12 @@ const budgets = {
   // 31 MiB core is a separately cached runtime asset and is intentionally not
   // counted as application JavaScript here. The 7 KiB fingerprint worker is
   // counted together with its main-thread Safari fallback: they provide
-  // bounded-memory SHA-256 for durable large media.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 82 * 1024),
+  // bounded-memory SHA-256 for durable large media. The immutable autosave
+  // journal, checksum validation and accessible recovery dialog are also part
+  // of the offline bootstrap and intentionally remain available before FFmpeg.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 86 * 1024),
   css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 5 * 1024),
-  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 87 * 1024),
+  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 91 * 1024),
 }
 
 const files = await readdir(assetDirectory)

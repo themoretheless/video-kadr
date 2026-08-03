@@ -1,5 +1,14 @@
 import { reactive, watch } from 'vue'
 import * as api from './api'
+import type { ProjectDto } from './api'
+import {
+  discardProjectRecovery,
+  getProjectDraftWatermark,
+  inspectProjectRecoveryByVideo,
+  prepareProjectDraft,
+  recoverProject as recoverBrowserProject,
+  type ProjectRecoveryCandidate,
+} from './browser-project-store'
 import {
   buildEditPayload as buildPayload,
   defaultEdit,
@@ -556,6 +565,7 @@ export function openFromLibrary(entry: MediaEntry): void {
     })
     return
   }
+  if (state.video && state.video.id !== entry.id) void flushProjectSave()
   restoringProjectFor = entry.id
   clearProjectSaveTimer()
   const v: VideoInfo = {
@@ -911,8 +921,16 @@ let activeProjectId: string | null = null
 let activeProjectRevision = 0
 let activeProjectDocument: ProjectDocument | null = null
 let projectSaveInFlight: Promise<void> | null = null
+let projectDraftInFlight: Promise<void> | null = null
 let projectSaveQueued = false
 let projectSessionId = 0
+
+export const projectRecovery = reactive({
+  candidate: null as ProjectRecoveryCandidate | null,
+  busy: false,
+  error: '',
+  restoring: false,
+})
 
 export const timelineState = reactive({
   document: null as ProjectDocument | null,
@@ -997,6 +1015,8 @@ function resetProjectPersistenceContext(): void {
   activeProjectRevision = 0
   activeProjectDocument = null
   projectSaveQueued = false
+  projectDraftInFlight = null
+  projectRecovery.restoring = false
   timelineState.document = null
   timelineState.selectedClipId = null
   timelineState.error = ''
@@ -1013,16 +1033,24 @@ function clearProjectSaveTimer(): void {
 
 /** Load the saved project for a clip (if any) and apply its edit recipe. */
 async function restoreProject(videoId: string): Promise<void> {
+  projectRecovery.restoring = true
   const sequence = ++projectRestoreSequence
   const startingRevision = editRevision
-  const startingTimelineRevision = timelineState.revision
   const baseEdit = cloneValue(state.edit)
   let applied = false
   try {
+    if (clientOnlyMode) {
+      const recovery = await inspectProjectRecoveryByVideo(videoId)
+      if (state.video?.id !== videoId || sequence !== projectRestoreSequence) return
+      if (recovery) {
+        projectRecovery.candidate = recovery
+        projectRecovery.error = ''
+        return
+      }
+    }
     const p = await api.getProjectByVideo(videoId)
     // Guard against a clip switch while the lookup was in flight.
     if (!p?.edit || state.video?.id !== videoId || sequence !== projectRestoreSequence) return
-    if (editRevision !== startingRevision || timelineState.revision !== startingTimelineRevision) return
     const envelope = await api.getProjectDocument(p.id)
     const document = envelope?.document ?? p.document ?? null
     const persistedEdit = document ? legacyProjectValues(document).edit : p.edit
@@ -1030,9 +1058,7 @@ async function restoreProject(videoId: string): Promise<void> {
     const missingLut = await resolvePersistedLut(restored)
     if (
       state.video?.id !== videoId ||
-      sequence !== projectRestoreSequence ||
-      editRevision !== startingRevision ||
-      timelineState.revision !== startingTimelineRevision
+      sequence !== projectRestoreSequence
     ) {
       return
     }
@@ -1059,12 +1085,62 @@ async function restoreProject(videoId: string): Promise<void> {
       restoringProjectFor === videoId &&
       sequence === projectRestoreSequence
     ) {
-      const changedWhileLoading = !applied && editRevision !== startingRevision
-      restoredProjectFor = applied && !changedWhileLoading ? videoId : null
+      restoredProjectFor = applied ? videoId : null
       restoringProjectFor = null
       clearProjectSaveTimer()
-      if (changedWhileLoading) scheduleProjectSave()
+      if (!applied && (editRevision !== startingRevision || JSON.stringify(state.edit) !== JSON.stringify(baseEdit))) scheduleProjectSave()
     }
+    if (sequence === projectRestoreSequence) projectRecovery.restoring = false
+  }
+}
+
+export function leaveUnrecoverableProject(): void {
+  clearProjectSaveTimer()
+  projectRecovery.candidate = null
+  projectRecovery.error = ''
+  projectRecovery.restoring = false
+  state.video = null
+  resetProjectPersistenceContext()
+}
+
+async function resumeProjectAfterRecovery(videoId: string): Promise<void> {
+  projectRecovery.candidate = null
+  projectRecovery.error = ''
+  restoredProjectFor = null
+  restoringProjectFor = videoId
+  await restoreProject(videoId)
+}
+
+export async function acceptProjectRecovery(): Promise<void> {
+  const recovery = projectRecovery.candidate
+  if (!recovery?.candidate || recovery.candidateRevision === null || projectRecovery.busy) return
+  projectRecovery.busy = true
+  projectRecovery.error = ''
+  try {
+    await recoverBrowserProject(recovery.projectId, recovery.corruptRevision, recovery.candidateRevision, recovery.journalId)
+    await resumeProjectAfterRecovery(recovery.videoId)
+  } catch (error) {
+    projectRecovery.error = error instanceof Error ? error.message : String(error)
+  } finally {
+    projectRecovery.busy = false
+  }
+}
+
+export async function discardAutosaveRecovery(): Promise<void> {
+  const recovery = projectRecovery.candidate
+  if (!recovery || projectRecovery.busy) return
+  projectRecovery.busy = true
+  projectRecovery.error = ''
+  try {
+    if (recovery.reason === 'draft' && recovery.journalId) await discardProjectRecovery(recovery.projectId, recovery.journalId)
+    else if (recovery.candidate && recovery.candidateRevision !== null) {
+      await recoverBrowserProject(recovery.projectId, recovery.corruptRevision, recovery.candidateRevision)
+    }
+    await resumeProjectAfterRecovery(recovery.videoId)
+  } catch (error) {
+    projectRecovery.error = error instanceof Error ? error.message : String(error)
+  } finally {
+    projectRecovery.busy = false
   }
 }
 
@@ -1093,11 +1169,17 @@ function toastMissingLut(label: string): void {
 }
 
 async function performProjectSave(): Promise<void> {
+  if (projectRecovery.candidate || restoringProjectFor) return
   const v = state.video
   if (!v) return
+  const sessionBeforeDraft = projectSessionId
+  if (clientOnlyMode) await projectDraftInFlight
+  if (state.video?.id !== v.id || projectSessionId !== sessionBeforeDraft || projectRecovery.candidate || restoringProjectFor) return
+  const sessionAtStart = projectSessionId
   const timelineRevisionAtStart = timelineState.revision
+  const projectId = activeProjectId ?? crypto.randomUUID()
   try {
-    const projectId = activeProjectId ?? crypto.randomUUID()
+    activeProjectId = projectId
     const baseDocument = timelineState.document ?? activeProjectDocument
     const document = baseDocument
       ? updateLegacyProjectValues(
@@ -1112,8 +1194,15 @@ async function performProjectSave(): Promise<void> {
           cloneValue(v) as unknown as Record<string, unknown>,
           cloneValue(state.edit) as unknown as Record<string, unknown>,
     )
-    const saved = await api.saveProjectDocument(projectId, activeProjectRevision, document)
-    if (state.video?.id !== v.id) return
+    const writerWatermark = getProjectDraftWatermark(projectId)
+    const saved = clientOnlyMode
+      ? await api.saveProjectDocument(projectId, activeProjectRevision, document, writerWatermark)
+      : await api.saveProjectDocument(projectId, activeProjectRevision, document)
+    if (
+      state.video?.id !== v.id
+      || projectSessionId !== sessionAtStart
+      || activeProjectId !== projectId
+    ) return
     activeProjectId = saved.projectId
     activeProjectRevision = saved.revision
     activeProjectDocument = saved.document
@@ -1129,8 +1218,58 @@ async function performProjectSave(): Promise<void> {
     timelineState.error = error instanceof Error ? error.message : String(error)
     if (error instanceof api.ApiError && error.status === 409) {
       toast('info', 'Проект изменён в другой вкладке; автосохранение приостановлено')
+      if (clientOnlyMode && activeProjectId) {
+        const recovery = await inspectProjectRecoveryByVideo(v.id).catch(() => null)
+        if (
+          state.video?.id === v.id
+          && projectSessionId === sessionAtStart
+          && activeProjectId === projectId
+        ) projectRecovery.candidate = recovery
+      }
     }
     // Non-fatal: the next edit change retries the autosave.
+  }
+}
+
+function currentProjectDraft(): ProjectDto | null {
+  const video = state.video
+  if (!video) return null
+  const projectId = activeProjectId ?? crypto.randomUUID()
+  activeProjectId = projectId
+  const baseDocument = timelineState.document ?? activeProjectDocument
+  const document = baseDocument
+    ? updateLegacyProjectValues(
+        baseDocument,
+        video.title || video.filename,
+        cloneValue(video) as unknown as Record<string, unknown>,
+        cloneValue(state.edit) as unknown as Record<string, unknown>,
+      )
+    : createProjectDocumentFromLegacy(
+        video.id,
+        video.title || video.filename,
+        cloneValue(video) as unknown as Record<string, unknown>,
+        cloneValue(state.edit) as unknown as Record<string, unknown>,
+      )
+  return {
+    id: projectId,
+    name: document.name,
+    videoId: video.id,
+    video: cloneValue(video),
+    edit: cloneValue(state.edit),
+    document,
+    revision: activeProjectRevision + 1,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+}
+
+async function persistRecoveryDraft(draft: ProjectDto | null, expectedRevision: number): Promise<void> {
+  if (!clientOnlyMode) return
+  if (!draft) return
+  try {
+    await prepareProjectDraft(draft, expectedRevision)
+  } catch (error) {
+    timelineState.error = error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -1155,10 +1294,22 @@ function persistProject(): Promise<void> {
 /** Flush pending autosave work, coalescing with any save already in flight. */
 export async function flushProjectSave(): Promise<void> {
   clearProjectSaveTimer()
+  if (projectRecovery.candidate || restoringProjectFor) return
   await persistProject()
 }
 
 function scheduleProjectSave(): void {
+  if (projectRecovery.candidate) return
+  const expectedRevision = activeProjectRevision
+  const recoveryDraft = clientOnlyMode ? currentProjectDraft() : null
+  if (clientOnlyMode) {
+    const previousDraft = projectDraftInFlight ?? Promise.resolve()
+    const tracked = previousDraft.then(() => persistRecoveryDraft(recoveryDraft, expectedRevision))
+    const completion = tracked.finally(() => {
+      if (projectDraftInFlight === completion) projectDraftInFlight = null
+    })
+    projectDraftInFlight = completion
+  }
   clearProjectSaveTimer()
   projectSaveTimer = setTimeout(() => {
     projectSaveTimer = null

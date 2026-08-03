@@ -18,6 +18,8 @@ import {
   timelineState,
   undoTimeline,
   redoTimeline,
+  flushProjectSave,
+  projectRecovery,
 } from './store'
 import UrlImport from './components/UrlImport.vue'
 import VideoPreview from './components/VideoPreview.vue'
@@ -26,6 +28,7 @@ import ResultPanel from './components/ResultPanel.vue'
 import MediaLibrary from './components/MediaLibrary.vue'
 import Toasts from './components/Toasts.vue'
 import TimelineEditor from './components/TimelineEditor.vue'
+import ProjectRecoveryDialog from './components/ProjectRecoveryDialog.vue'
 
 const legacyInspectorAvailable = computed(() => {
   const document = timelineState.document
@@ -45,7 +48,7 @@ function isTyping(t: EventTarget | null): boolean {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (!state.video || isTyping(e.target)) return
+  if (!state.video || projectRecovery.candidate || projectRecovery.restoring || isTyping(e.target)) return
   // Undo / redo (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Ctrl+Y).
   if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
     e.preventDefault()
@@ -100,18 +103,25 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+function onPageHide() { void flushProjectSave() }
+
 onMounted(() => {
   window.addEventListener('keydown', onKey)
+  window.addEventListener('pagehide', onPageHide)
   initTheme()
   loadPresets()
   void loadLibrary()
   void loadCapabilities()
 })
-onUnmounted(() => window.removeEventListener('keydown', onKey))
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('pagehide', onPageHide)
+})
 </script>
 
 <template>
   <div class="app">
+    <div :inert="projectRecovery.candidate || projectRecovery.restoring ? true : undefined">
     <header class="topbar">
       <div class="topbar-row">
         <h1>🎬 Video Kadr</h1>
@@ -169,5 +179,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
     </footer>
 
     <Toasts />
+    </div>
+    <ProjectRecoveryDialog />
   </div>
 </template>

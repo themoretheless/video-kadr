@@ -1342,6 +1342,24 @@ body {
   pointer-events: none;
 }
 
+.recovery-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 72%);
+}
+
+.recovery-dialog {
+  width: min(560px, 100%);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
+}
+
+.recovery-dialog h2 { margin-top: 0; }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+
 @media (max-width: 760px) {
   .timeline-toolbar {
     align-items: flex-start;

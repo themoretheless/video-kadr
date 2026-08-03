@@ -212,6 +212,7 @@ export async function saveProjectDocument(
   projectId: string,
   expectedRevision: number,
   document: ProjectDocument,
+  writerWatermark = 0,
 ): Promise<ProjectEnvelope> {
   if (clientOnlyMode) {
     let saved: ProjectDto
@@ -224,6 +225,7 @@ export async function saveProjectDocument(
         video: document.media.find((media) => media.id === document.primaryMediaId)?.metadata ?? {},
         edit: {},
         document,
+        writerWatermark,
       })
     } catch (error) {
       if (error instanceof browserMedia.ProjectRevisionConflictError) {

@@ -152,7 +152,9 @@ describe('browser persistence lifecycle', () => {
       ...changed, projectId: changed.id, expectedRevision: changed.revision,
     })).rejects.toThrow('нельзя изменить обычным сохранением')
 
-    // Simulate a legacy/corrupt persisted row that predates the invariant.
+    // Simulate a legacy/corrupt committed revision that predates the invariant.
+    changed.revision = (saved.revision ?? 0) + 1
+    changed.updatedAt += 1
     await projectStore.putProject(changed)
     vi.resetModules()
     const reloaded = await import('./browser-media')

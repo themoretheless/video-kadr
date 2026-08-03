@@ -830,6 +830,7 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
       }
     },
     () => new ProjectRevisionConflictError(),
+    Number(body.writerWatermark) || 0,
   )
   projects.set(project.id, project)
   return project

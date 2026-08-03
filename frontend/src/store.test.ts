@@ -1197,7 +1197,7 @@ describe('project restore autosave', () => {
     expect(state.edit.curves.blue).toEqual(curves.blue)
   })
 
-  it('keeps newer user edits while restored LUT metadata is still loading', async () => {
+  it('keeps programmatic edits while restore is gated', async () => {
     let resolveLut: (asset: Awaited<ReturnType<typeof api.getLut>>) => void = () => {}
     vi.mocked(api.getProjectByVideo).mockResolvedValueOnce({
       id: 'p3',
@@ -1232,12 +1232,7 @@ describe('project restore autosave', () => {
 
     expect(state.edit.filter).toBe('warm')
     expect(state.edit.lutId).toBeNull()
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(api.saveProjectDocument).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(Number),
-      expect.objectContaining({ name: expect.any(String) }),
-    )
+    expect(api.saveProjectDocument).not.toHaveBeenCalled()
   })
 
   it('coalesces an edit made while autosave is in flight into the next revision', async () => {
