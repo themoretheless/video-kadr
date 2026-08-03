@@ -20,6 +20,7 @@ pub mod luts;
 pub mod model;
 pub mod packaging;
 pub mod ports;
+pub mod preview_cache;
 pub mod privacy;
 pub mod process_control;
 pub mod render;
@@ -97,6 +98,7 @@ pub fn build_router_with_cors(
         .route("/derived-jobs/:id/retry", post(handlers::retry_derived_job))
         .route("/proxies/:key/status", get(handlers::proxy_status))
         .route("/proxies/:key/preview", get(handlers::proxy_preview))
+        .route("/preview-frames", post(handlers::optimized_preview_frame))
         .route("/proxies/:key/invalidate", post(handlers::invalidate_proxy))
         .route("/library", get(handlers::library_list_handler))
         .route("/library/search", get(handlers::library_search_handler))

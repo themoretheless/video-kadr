@@ -25,7 +25,7 @@ export interface BrowserProxyDescriptor {
 export interface BrowserProxyArtifact { descriptor: BrowserProxyDescriptor; blob: Blob }
 interface StoredBrowserProxyArtifact { descriptor: BrowserProxyDescriptor; storage: 'idb' | 'opfs'; data?: ArrayBuffer; objectKey?: string }
 export interface BrowserProxyProbe { duration: number; width: number; height: number }
-export interface ProxyPreviewSource { url: string; usingProxy: boolean; status: 'original' | 'ready' | 'missing' | 'stale' | 'unsupported'; artifactKey?: string; hasAudio?: boolean; revoke?: () => void }
+export interface ProxyPreviewSource { url: string; usingProxy: boolean; status: 'original' | 'ready' | 'missing' | 'stale' | 'unsupported'; artifactKey?: string; mappingIdentity?: string; hasAudio?: boolean; revoke?: () => void }
 
 const DB = 'video-kadr-proxy-artifacts', STORE = 'artifacts', MAX_BYTES = 64 * 1024 * 1024
 const MAX_TOTAL_BYTES = 256 * 1024 * 1024, IDB_SAFE_BYTES = 16 * 1024 * 1024, OPFS_DIR = 'video-kadr-proxies'
@@ -247,5 +247,5 @@ export async function resolveBrowserPreviewSource(video: VideoInfo, policy: Prox
     return { url: video.url, usingProxy: false, status: 'unsupported' }
   }
   const url = URL.createObjectURL(artifact.blob)
-  return { url, usingProxy: true, status: 'ready', artifactKey: artifact.descriptor.key, hasAudio: artifact.descriptor.hasAudio, revoke: () => URL.revokeObjectURL(url) }
+  return { url, usingProxy: true, status: 'ready', artifactKey: artifact.descriptor.key, mappingIdentity: `${artifact.descriptor.profileFingerprint}:${artifact.descriptor.artifactFingerprint}:${artifact.descriptor.mappingTimeBase}:${url}`, hasAudio: artifact.descriptor.hasAudio, revoke: () => URL.revokeObjectURL(url) }
 }

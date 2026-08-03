@@ -148,6 +148,7 @@ impl Db {
             .migrate()
             .await?;
         crate::ports::SqliteMediaSearch::migrate(&db).await?;
+        crate::preview_cache::PreviewCacheCatalog::migrate(&db).await?;
         Ok(db)
     }
 

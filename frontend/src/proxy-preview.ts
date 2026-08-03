@@ -19,7 +19,7 @@ export async function resolveBackendPreviewSource(
     try {
       const status = await api.getProxyStatus(task.idempotencyKey, video.id, video.fingerprint)
       if (status.state === 'ready' && status.previewUrl) {
-        return { url: status.previewUrl, usingProxy: true, status: 'ready', artifactKey: task.idempotencyKey, hasAudio: Boolean(status.proxyMedia.audioCodec) }
+        return { url: status.previewUrl, usingProxy: true, status: 'ready', artifactKey: task.idempotencyKey, mappingIdentity: `${task.idempotencyKey}:${JSON.stringify(status.profile ?? {})}:${JSON.stringify(status.proxyMedia ?? {})}:${status.previewUrl}`, hasAudio: Boolean(status.proxyMedia.audioCodec) }
       }
       stale = true
     } catch {

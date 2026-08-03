@@ -7,6 +7,7 @@ mod args;
 mod egress_proxy;
 pub(crate) mod looks;
 mod net;
+pub mod preview_frame;
 pub mod proxy;
 
 pub use args::{

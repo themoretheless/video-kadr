@@ -356,6 +356,17 @@ body {
   display: block;
 }
 
+.preview-frame-cache {
+  position: absolute;
+  inset: 0 0 40px;
+  width: 100%;
+  height: calc(100% - 40px);
+  object-fit: contain;
+  border-radius: var(--radius);
+  background: #000;
+  pointer-events: none;
+}
+
 /* Interactive crop overlay (sits on top of the video). Only the rectangle and
    its handles capture pointer events; clicks elsewhere reach the video controls. */
 .crop-overlay {

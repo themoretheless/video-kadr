@@ -82,6 +82,20 @@ export function edit(payload: unknown): Promise<{ jobId: string }> {
   return postJson('/api/edit', payload)
 }
 
+export async function optimizedPreviewFrame(
+  edit: Record<string, unknown>,
+  settings: { timelineTick: number; timelineTimeBase: number; width: number; height: number; quality?: number },
+  signal?: AbortSignal,
+): Promise<{ blob: Blob; cacheKey: string | null }> {
+  if (clientOnlyMode) throw new Error('Backend preview cache недоступен в client-only режиме')
+  const response = await safeFetch('/api/preview-frames', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+    body: JSON.stringify({ edit, ...settings }),
+  })
+  await requireOk(response, `optimized preview -> HTTP ${response.status}`)
+  return { blob: await response.blob(), cacheKey: response.headers.get('x-preview-cache-key') }
+}
+
 /** Upload a local video file; the backend probes it and returns VideoInfo. */
 export async function uploadFile(file: File): Promise<VideoInfo> {
   if (clientOnlyMode) return browserMedia.uploadFile(file)
@@ -198,6 +212,7 @@ export interface BackendProxyStatus {
   sourceId: string
   sourceFingerprint: string
   previewUrl: string | null
+  profile?: unknown
   sourceMedia: unknown
   proxyMedia: { audioCodec?: string | null }
 }

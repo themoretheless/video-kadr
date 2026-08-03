@@ -31,6 +31,7 @@ mod derived;
 mod jobs;
 mod library;
 mod luts;
+mod preview;
 mod upload;
 
 pub use derived::{
@@ -45,6 +46,7 @@ pub use jobs::{
 use jobs::{dispatch_job, JobLeaseHeartbeat};
 pub use library::{library_delete_handler, library_list_handler, library_search_handler};
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
+pub use preview::optimized_preview_frame;
 pub use upload::upload_handler;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -254,7 +256,7 @@ fn render_cache_key_with_context(
     format!("{:x}", hasher.finalize())
 }
 
-fn render_runtime_fingerprint(tools: &ToolInfo) -> String {
+pub(crate) fn render_runtime_fingerprint(tools: &ToolInfo) -> String {
     let mut encoders = tools.ffmpeg_encoders.clone();
     let mut muxers = tools.ffmpeg_muxers.clone();
     let mut filters = tools.ffmpeg_filters.clone();
@@ -513,7 +515,7 @@ fn spawn_edit_job(
 /// Resolve client-visible immutable asset ids to private, regular files. The
 /// renderer never accepts a path from the wire request, and the resolved path
 /// is carried separately from the serializable edit plan.
-async fn resolve_render_resources(
+pub(crate) async fn resolve_render_resources(
     state: &AppState,
     request: &EditRequest,
 ) -> anyhow::Result<RenderResources> {

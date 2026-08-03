@@ -43,6 +43,27 @@ fn post_json(uri: &str, body: Value) -> Request<Body> {
         .unwrap()
 }
 
+async fn decode_jpeg_pixel(path: &std::path::Path, jpeg: &[u8]) -> [u8; 3] {
+    tokio::fs::write(path, jpeg).await.unwrap();
+    let decoded = tokio::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-i"])
+        .arg(path)
+        .args([
+            "-frames:v",
+            "1",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "pipe:1",
+        ])
+        .output()
+        .await
+        .unwrap();
+    assert!(decoded.status.success());
+    decoded.stdout[..3].try_into().unwrap()
+}
+
 fn post_identity_lut() -> Request<Body> {
     const BOUNDARY: &str = "API_EDIT_LUT_BRIDGE";
     const IDENTITY_CUBE: &str = "LUT_3D_SIZE 2\n\
@@ -348,6 +369,303 @@ async fn proxy_catalog_serves_only_a_checksum_verified_ready_artifact_with_range
     )
     .await;
     assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn optimized_preview_frame_renders_once_and_reuses_content_key() {
+    let (state, _dir) = make_state(true, false).await;
+    let source = state.storage.join("sources/preview-source.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=64x36:r=1",
+            "-t",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&source)
+        .status()
+        .await;
+    if !generated.is_ok_and(|status| status.success()) {
+        return; // Capability-gated on developer/CI images without FFmpeg.
+    }
+    let app = router(state.clone());
+    let request = || {
+        post_json(
+            "/api/preview-frames",
+            json!({
+                "edit": { "videoId": "preview-source" },
+                "timelineTick": 0, "timelineTimeBase": 1_000_000,
+                "width": 64, "height": 36, "quality": 82
+            }),
+        )
+    };
+    let first = app.clone().oneshot(request()).await.unwrap();
+    if first.status() != StatusCode::OK {
+        let status = first.status();
+        let error = to_bytes(first.into_body(), 4096).await.unwrap();
+        panic!(
+            "preview response {status}: {}",
+            String::from_utf8_lossy(&error)
+        );
+    }
+    assert_eq!(first.headers()["content-type"], "image/jpeg");
+    let first_key = first.headers()["x-preview-cache-key"].clone();
+    let first_bytes = to_bytes(first.into_body(), 2 * 1024 * 1024).await.unwrap();
+    assert!(first_bytes.starts_with(&[0xff, 0xd8]));
+    let second = app.clone().oneshot(request()).await.unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    assert_eq!(second.headers()["x-preview-cache-key"], first_key);
+    let second_bytes = to_bytes(second.into_body(), 2 * 1024 * 1024).await.unwrap();
+    assert_eq!(first_bytes, second_bytes);
+    let shard = state
+        .storage
+        .join("frames")
+        .join(&first_key.to_str().unwrap()[..2])
+        .join(first_key.to_str().unwrap());
+    let mut entries = tokio::fs::read_dir(shard).await.unwrap();
+    let mut published = Vec::new();
+    while let Some(entry) = entries.next_entry().await.unwrap() {
+        published.push(entry.file_name().to_string_lossy().into_owned());
+    }
+    assert_eq!(
+        published.len(),
+        2,
+        "one JPEG and one manifest should be published: {published:?}"
+    );
+}
+
+#[tokio::test]
+async fn optimized_preview_frame_trim_and_speed_use_the_edited_output_clock() {
+    let (state, _dir) = make_state(true, false).await;
+    let source = state.storage.join("sources/preview-timeline.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y"])
+        .args(["-f", "lavfi", "-i", "color=c=red:s=64x36:r=10:d=1"])
+        .args(["-f", "lavfi", "-i", "color=c=green:s=64x36:r=10:d=1"])
+        .args(["-f", "lavfi", "-i", "color=c=blue:s=64x36:r=10:d=1"])
+        .args(["-f", "lavfi", "-i", "color=c=white:s=64x36:r=10:d=1"])
+        .args([
+            "-filter_complex",
+            "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v]",
+            "-map",
+            "[v]",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&source)
+        .status()
+        .await;
+    if !generated.is_ok_and(|status| status.success()) {
+        return;
+    }
+
+    // Raw source t=2.2 lies 1.2 s into trim [1,4]. At speed=2 the same
+    // semantic frame is output t=0.6. The blue segment makes the mapping a
+    // stable, visually distinguishable golden fixture.
+    let response = router(state.clone())
+        .oneshot(post_json(
+            "/api/preview-frames",
+            json!({
+                "edit": {
+                    "videoId": "preview-timeline",
+                    "trim": {"start": 1.0, "end": 4.0},
+                    "speed": 2.0
+                },
+                "timelineTick": 600_000,
+                "timelineTimeBase": 1_000_000,
+                "width": 64,
+                "height": 36,
+                "quality": 95
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let jpeg = to_bytes(response.into_body(), 2 * 1024 * 1024)
+        .await
+        .unwrap();
+    let frame_path = state.storage.join("preview-timeline-golden.jpg");
+    tokio::fs::write(&frame_path, jpeg).await.unwrap();
+    let decoded = tokio::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-i"])
+        .arg(&frame_path)
+        .args([
+            "-frames:v",
+            "1",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "pipe:1",
+        ])
+        .output()
+        .await
+        .unwrap();
+    assert!(decoded.status.success());
+    let pixel = &decoded.stdout[..3];
+    assert!(
+        pixel[2] > pixel[0].saturating_add(80) && pixel[2] > pixel[1].saturating_add(80),
+        "expected the edited-output tick to resolve to the blue source segment, got {pixel:?}"
+    );
+}
+
+#[tokio::test]
+async fn optimized_preview_frame_preserves_fades_on_the_full_output_clock() {
+    let (state, _dir) = make_state(true, false).await;
+    let source = state.storage.join("sources/preview-fade.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+        ])
+        .arg("color=c=white:s=64x36:r=10:d=4")
+        .args(["-pix_fmt", "yuv420p"])
+        .arg(&source)
+        .status()
+        .await;
+    if !generated.is_ok_and(|status| status.success()) {
+        return;
+    }
+    let request = |tick| {
+        post_json(
+            "/api/preview-frames",
+            json!({
+                "edit": { "videoId": "preview-fade", "fadeIn": 1.0, "fadeOut": 1.0 },
+                "timelineTick": tick, "timelineTimeBase": 1_000_000,
+                "width": 64, "height": 36, "quality": 95
+            }),
+        )
+    };
+    let middle = router(state.clone())
+        .oneshot(request(2_000_000))
+        .await
+        .unwrap();
+    assert_eq!(middle.status(), StatusCode::OK);
+    let middle = to_bytes(middle.into_body(), 2 * 1024 * 1024).await.unwrap();
+    let middle = decode_jpeg_pixel(&state.storage.join("fade-mid.jpg"), &middle).await;
+    let ending = router(state.clone())
+        .oneshot(request(3_800_000))
+        .await
+        .unwrap();
+    assert_eq!(ending.status(), StatusCode::OK);
+    let ending = to_bytes(ending.into_body(), 2 * 1024 * 1024).await.unwrap();
+    let ending = decode_jpeg_pixel(&state.storage.join("fade-end.jpg"), &ending).await;
+    assert!(
+        middle[0] > 220,
+        "mid-fade frame should be white: {middle:?}"
+    );
+    assert!(ending[0] < 100, "fade-out frame should be dark: {ending:?}");
+}
+
+#[tokio::test]
+async fn optimized_preview_concat_boundary_is_next_segment_and_eof_is_rejected() {
+    let (state, _dir) = make_state(true, false).await;
+    let source = state.storage.join("sources/preview-boundary.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y"])
+        .args(["-f", "lavfi", "-i", "color=c=red:s=64x36:r=10:d=1"])
+        .args(["-f", "lavfi", "-i", "color=c=black:s=64x36:r=10:d=1"])
+        .args(["-f", "lavfi", "-i", "color=c=blue:s=64x36:r=10:d=1"])
+        .args([
+            "-filter_complex",
+            "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]",
+            "-map",
+            "[v]",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&source)
+        .status()
+        .await;
+    if !generated.is_ok_and(|status| status.success()) {
+        return;
+    }
+    let body = |tick| {
+        post_json(
+            "/api/preview-frames",
+            json!({
+                "edit": { "videoId": "preview-boundary", "segments": [
+                    {"start": 0.0, "end": 1.0}, {"start": 2.0, "end": 3.0}
+                ]},
+                "timelineTick": tick, "timelineTimeBase": 1_000_000,
+                "width": 64, "height": 36, "quality": 95
+            }),
+        )
+    };
+    let boundary = router(state.clone())
+        .oneshot(body(1_000_000))
+        .await
+        .unwrap();
+    assert_eq!(boundary.status(), StatusCode::OK);
+    let jpeg = to_bytes(boundary.into_body(), 2 * 1024 * 1024)
+        .await
+        .unwrap();
+    let pixel = decode_jpeg_pixel(&state.storage.join("concat-boundary.jpg"), &jpeg).await;
+    assert!(
+        pixel[2] > pixel[0].saturating_add(80),
+        "boundary must select next blue segment: {pixel:?}"
+    );
+    let eof = router(state).oneshot(body(2_000_000)).await.unwrap();
+    assert_eq!(eof.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn optimized_preview_applies_export_fps_clock_before_frame_selection() {
+    let (state, _dir) = make_state(true, false).await;
+    let source = state.storage.join("sources/preview-fps.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y"])
+        .args(["-f", "lavfi", "-i", "color=c=red:s=64x36:r=10:d=1"])
+        .args(["-f", "lavfi", "-i", "color=c=blue:s=64x36:r=10:d=1"])
+        .args([
+            "-filter_complex",
+            "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+            "-map",
+            "[v]",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&source)
+        .status()
+        .await;
+    if !generated.is_ok_and(|status| status.success()) {
+        return;
+    }
+    // CFR 1 fps has frames at edited PTS 0 and 1. Selection at 0.6 therefore
+    // resolves to the blue frame at PTS 1, not the red 10-fps source frame.
+    let response = router(state.clone())
+        .oneshot(post_json(
+            "/api/preview-frames",
+            json!({
+                "edit": { "videoId": "preview-fps", "fps": 1.0 },
+                "timelineTick": 600_000, "timelineTimeBase": 1_000_000,
+                "width": 64, "height": 36, "quality": 95
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let jpeg = to_bytes(response.into_body(), 2 * 1024 * 1024)
+        .await
+        .unwrap();
+    let pixel = decode_jpeg_pixel(&state.storage.join("fps-clock.jpg"), &jpeg).await;
+    assert!(
+        pixel[2] > pixel[0].saturating_add(80),
+        "1-fps export clock must select the blue frame at PTS 1: {pixel:?}"
+    );
 }
 
 #[tokio::test]
