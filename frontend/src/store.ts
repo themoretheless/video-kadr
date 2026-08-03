@@ -689,7 +689,38 @@ export function openSavedProject(project: ProjectDto): void {
   const assetRef = primary?.assetRef ?? primary?.id ?? project.videoId
   const entry = state.library.find((candidate) => (candidate.assetId ?? candidate.id) === assetRef)
   if (!entry || entry.kind !== 'source') {
-    toast('error', `Исходник проекта «${project.name}» не найден в медиатеке`)
+    const metadata = primary?.metadata
+    const number = (key: string, fallback?: number | null) => {
+      const value = metadata?.[key]
+      return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+    }
+    const string = (key: string, fallback?: string | null) => {
+      const value = metadata?.[key]
+      return typeof value === 'string' && value.trim() ? value : fallback
+    }
+    const offline: MediaEntry = {
+      id: assetRef,
+      assetId: assetRef,
+      kind: 'source',
+      filename: string('filename', project.video.filename) ?? `${assetRef}.mp4`,
+      title: string('title', project.video.title),
+      url: '',
+      duration: number('duration', project.video.duration),
+      width: number('width', project.video.width),
+      height: number('height', project.video.height),
+      fps: number('fps', project.video.fps),
+      vcodec: string('vcodec', project.video.vcodec),
+      acodec: string('acodec', project.video.acodec),
+      mediaKind: primary?.kind === 'audio' ? 'audio' : project.video.mediaKind ?? 'video',
+      fingerprint: primary?.contentFingerprint ?? project.video.fingerprint,
+      sizeBytes: number('sizeBytes', project.video.sizeBytes),
+      availability: 'offline',
+      createdAt: project.updatedAt,
+    }
+    if (!state.library.some(candidate => (candidate.assetId ?? candidate.id) === assetRef)) {
+      state.library.unshift(offline)
+    }
+    openResolvedLibraryEntry(offline, project)
     return
   }
   const selectedFingerprint = primary?.contentFingerprint
@@ -1181,6 +1212,11 @@ let projectSaveInFlight: Promise<void> | null = null
 let projectDraftInFlight: Promise<void> | null = null
 let projectSaveQueued = false
 let projectSessionId = 0
+
+/** Identity of the project currently open in the editor, if it has been saved. */
+export function currentProjectId(): string | null {
+  return activeProjectId
+}
 
 export const projectRecovery = reactive({
   candidate: null as ProjectRecoveryCandidate | null,

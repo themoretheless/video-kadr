@@ -32,6 +32,7 @@ mod jobs;
 mod library;
 mod luts;
 mod preview;
+mod project_archive;
 mod upload;
 
 pub use derived::{
@@ -47,6 +48,9 @@ use jobs::{dispatch_job, JobLeaseHeartbeat};
 pub use library::{library_delete_handler, library_list_handler, library_search_handler};
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
 pub use preview::optimized_preview_frame;
+pub use project_archive::{
+    export_project_archive, import_project_archive, MAX_PROJECT_ARCHIVE_BODY,
+};
 pub use upload::upload_handler;
 
 #[derive(Debug, Serialize, Deserialize)]

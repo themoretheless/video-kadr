@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, BackendUnavailableError, getLut, getProjects, pollJob, uploadLut } from './api'
+import {
+  ApiError,
+  BackendUnavailableError,
+  exportProjectArchive,
+  getLut,
+  getProjects,
+  importProjectArchive,
+  pollJob,
+  uploadLut,
+} from './api'
 
 const TEST_LUT_ID = '11111111-1111-4111-8111-111111111111'
 
@@ -110,6 +119,54 @@ describe('LUT upload', () => {
       status: 422,
       code: 'invalid_lut',
     })
+  })
+})
+
+describe('portable project archive API', () => {
+  it('downloads an archive with explicit media options and a safe response filename', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(['VKADRv1\narchive']), {
+      status: 200,
+      headers: { 'content-disposition': 'attachment; filename="project-server.vkadr"' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+
+    await expect(exportProjectArchive('project/id', {
+      includeOriginalMedia: true,
+      includeProxies: false,
+    }, controller.signal)).resolves.toMatchObject({ filename: 'project-server.vkadr' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project%2Fid/archive?originalMedia=true&proxies=false',
+      { signal: controller.signal },
+    )
+  })
+
+  it('posts raw archive bytes and validates the import response', async () => {
+    const response = { projectId: 'copy-1', revision: 1, missingMedia: ['media-1'] }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), {
+      status: 201, headers: { 'content-type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const archive = new Blob(['VKADRv1\narchive'])
+
+    await expect(importProjectArchive(archive)).resolves.toEqual(response)
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(path).toBe('/api/project-archives/import')
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/vnd.vkadr.project' },
+      body: archive,
+    })
+  })
+
+  it('preserves cancellation instead of reporting the backend as offline', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('cancelled', 'AbortError')))
+    const request = exportProjectArchive('project-1', {
+      includeOriginalMedia: false,
+      includeProxies: false,
+    })
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' })
+    await expect(request).rejects.not.toBeInstanceOf(BackendUnavailableError)
   })
 })
 

@@ -946,6 +946,51 @@ export function getStorageStatus(): BrowserStorageEstimate | null {
   return lastStorageEstimate
 }
 
+export interface BrowserArchiveSource {
+  file: Blob
+  filename: string
+  fileType: string
+  fingerprint: string
+  info: Omit<VideoInfo, 'url'>
+}
+
+/** Read exact source bytes for a portable archive. Session-only sources are
+ * intentionally supported while the tab still owns them; durable sources are
+ * verified again by the asset store before being returned. */
+export async function readSourceForArchive(
+  sourceId: string,
+  expectedFingerprint: string,
+): Promise<BrowserArchiveSource> {
+  const cached = sources.get(sourceId)
+  if (cached) {
+    const fingerprint = await fingerprintBlob(cached.file)
+    if (fingerprint !== expectedFingerprint) {
+      throw new BrowserAssetStorageError('Исходник изменён и не совпадает с проектом.', 'fingerprint')
+    }
+    const info = Object.fromEntries(
+      Object.entries(cached.info).filter(([key]) => key !== 'url'),
+    ) as Omit<VideoInfo, 'url'>
+    return {
+      file: cached.file,
+      filename: cached.file.name || cached.info.filename,
+      fileType: cached.file.type,
+      fingerprint,
+      info,
+    }
+  }
+  const asset = await getBrowserAsset(sourceId)
+  if (!(asset.file instanceof Blob) || asset.fingerprint !== expectedFingerprint) {
+    throw new BrowserAssetStorageError('Исходник отсутствует или не совпадает с проектом.', 'fingerprint')
+  }
+  return {
+    file: asset.file,
+    filename: asset.filename,
+    fileType: asset.fileType,
+    fingerprint: asset.fingerprint,
+    info: asset.info,
+  }
+}
+
 export async function getLibrary(): Promise<MediaEntry[]> {
   let persisted
   try {

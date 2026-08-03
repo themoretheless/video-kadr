@@ -17,6 +17,7 @@ uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 bytes = "1"
 http-body-util = "0.1"
+http-body = "1"
 hyper = { version = "1", features = ["client", "http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 tracing = "0.1"

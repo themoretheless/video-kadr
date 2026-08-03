@@ -34,7 +34,8 @@ export class BackendUnavailableError extends Error {
 async function safeFetch(path: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(path, init)
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
     throw new BackendUnavailableError()
   }
 }
@@ -280,6 +281,88 @@ export interface ProjectDto {
   revision?: number
   createdAt: number
   updatedAt: number
+}
+
+export interface ProjectArchiveOptions {
+  includeOriginalMedia: boolean
+  includeProxies: boolean
+}
+
+export interface ProjectArchiveDownload {
+  blob: Blob
+  filename: string
+}
+
+export interface ProjectArchiveImportResult {
+  projectId: string
+  revision: number
+  missingMedia: string[]
+}
+
+function portableArchiveFilename(response: Response, projectId: string): string {
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+  const quoted = /filename="([^"]+)"/i.exec(disposition)?.[1]
+  const plain = /filename=([^;]+)/i.exec(disposition)?.[1]?.trim()
+  let candidate = encoded ?? quoted ?? plain ?? ''
+  if (encoded) {
+    try { candidate = decodeURIComponent(encoded) }
+    catch { candidate = '' }
+  }
+  if (/^[^/\\\0]{1,160}\.vkadr$/i.test(candidate)) return candidate
+  const safeId = projectId.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 80) || 'project'
+  return `project-${safeId}.vkadr`
+}
+
+/** Download a server-created, integrity-protected portable project archive. */
+export async function exportProjectArchive(
+  projectId: string,
+  options: ProjectArchiveOptions,
+  signal?: AbortSignal,
+): Promise<ProjectArchiveDownload> {
+  if (clientOnlyMode) throw new Error('Server archive export недоступен в browser-only режиме')
+  if (!projectId.trim()) throw new Error('Не выбран проект для экспорта')
+  const query = new URLSearchParams({
+    originalMedia: String(options.includeOriginalMedia),
+    proxies: String(options.includeProxies),
+  })
+  const response = await safeFetch(`/api/projects/${encodeURIComponent(projectId)}/archive?${query}`, { signal })
+  await requireOk(response, `project archive export -> HTTP ${response.status}`)
+  const blob = await response.blob()
+  if (blob.size <= 0) throw new ApiError('Сервер вернул пустой архив проекта', response.status)
+  return { blob, filename: portableArchiveFilename(response, projectId) }
+}
+
+/** Upload a raw .vkadr container; the server verifies it before publishing. */
+export async function importProjectArchive(
+  archive: Blob,
+  signal?: AbortSignal,
+): Promise<ProjectArchiveImportResult> {
+  if (clientOnlyMode) throw new Error('Server archive import недоступен в browser-only режиме')
+  if (!Number.isSafeInteger(archive.size) || archive.size <= 0) throw new Error('Архив проекта пуст')
+  const response = await safeFetch('/api/project-archives/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.vkadr.project' },
+    body: archive,
+    signal,
+  })
+  await requireOk(response, `project archive import -> HTTP ${response.status}`)
+  const value = await response.json() as unknown
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Сервер вернул некорректный результат импорта')
+  const result = value as Record<string, unknown>
+  if (
+    typeof result.projectId !== 'string'
+    || !result.projectId.trim()
+    || !Number.isSafeInteger(result.revision)
+    || Number(result.revision) < 1
+    || !Array.isArray(result.missingMedia)
+    || !result.missingMedia.every(item => typeof item === 'string')
+  ) throw new Error('Сервер вернул некорректный результат импорта')
+  return {
+    projectId: result.projectId,
+    revision: result.revision as number,
+    missingMedia: result.missingMedia as string[],
+  }
 }
 
 /** Create or update (keyed by videoId) the saved project for a clip. */

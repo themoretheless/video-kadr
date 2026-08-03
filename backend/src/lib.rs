@@ -19,6 +19,7 @@ pub mod library;
 pub mod luts;
 pub mod model;
 pub mod packaging;
+pub mod portable_container;
 pub mod ports;
 pub mod preview_cache;
 pub mod privacy;
@@ -99,6 +100,15 @@ pub fn build_router_with_cors(
         .route("/proxies/:key/status", get(handlers::proxy_status))
         .route("/proxies/:key/preview", get(handlers::proxy_preview))
         .route("/preview-frames", post(handlers::optimized_preview_frame))
+        .route(
+            "/projects/:id/archive",
+            get(handlers::export_project_archive),
+        )
+        .route(
+            "/project-archives/import",
+            post(handlers::import_project_archive)
+                .layer(DefaultBodyLimit::max(handlers::MAX_PROJECT_ARCHIVE_BODY)),
+        )
         .route("/proxies/:key/invalidate", post(handlers::invalidate_proxy))
         .route("/library", get(handlers::library_list_handler))
         .route("/library/search", get(handlers::library_search_handler))

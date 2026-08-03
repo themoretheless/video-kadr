@@ -669,6 +669,139 @@ async fn optimized_preview_applies_export_fps_clock_before_frame_selection() {
 }
 
 #[tokio::test]
+async fn project_archive_round_trip_reports_missing_media_and_rejects_corruption() {
+    let (state, _dir) = make_state(true, false).await;
+    let document = video_editor_backend::domain::project::ProjectDocument::from_legacy(
+        "portable",
+        "missing-source",
+        json!({"id":"missing-source","duration":1.0,"mediaKind":"video"}),
+        json!({}),
+    )
+    .unwrap();
+    state
+        .db
+        .cas_upsert_project_document("archive-source", 0, &document)
+        .await
+        .unwrap();
+    let app = router(state.clone());
+    let exported = app
+        .clone()
+        .oneshot(get("/api/projects/archive-source/archive"))
+        .await
+        .unwrap();
+    assert_eq!(exported.status(), StatusCode::OK);
+    assert_eq!(
+        exported.headers()["content-type"],
+        "application/vnd.vkadr.project"
+    );
+    let archive = to_bytes(exported.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
+    let imported = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/project-archives/import")
+                .header("content-type", "application/vnd.vkadr.project")
+                .body(Body::from(archive.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(imported.status(), StatusCode::CREATED);
+    let imported: Value =
+        serde_json::from_slice(&to_bytes(imported.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    assert_ne!(imported["projectId"], "archive-source");
+    assert_eq!(imported["revision"], 1);
+    assert_eq!(imported["missingMedia"], json!(["missing-source"]));
+
+    let mut corrupt = archive.to_vec();
+    *corrupt.last_mut().unwrap() ^= 1;
+    let rejected = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/project-archives/import")
+                .body(Body::from(corrupt))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+
+    let mut oversized_manifest = b"VKADRv1\n".to_vec();
+    oversized_manifest.extend_from_slice(&(16_u32 * 1024 * 1024 + 1).to_be_bytes());
+    let rejected = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/project-archives/import")
+                .body(Body::from(oversized_manifest))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn project_archive_original_export_rejects_symlink_source() {
+    use std::os::unix::fs::symlink;
+    let (state, _dir) = make_state(true, false).await;
+    let secret = state.storage.join("secret.mp4");
+    tokio::fs::write(&secret, b"not archive media")
+        .await
+        .unwrap();
+    let filename = "linked.mp4";
+    symlink(&secret, state.storage.join("sources").join(filename)).unwrap();
+    assert!(
+        state
+            .library
+            .add(video_editor_backend::library::MediaEntry {
+                id: "linked-asset".into(),
+                kind: "source".into(),
+                filename: filename.into(),
+                url: format!("/files/sources/{filename}"),
+                title: None,
+                duration: Some(1.0),
+                width: None,
+                height: None,
+                fps: None,
+                vcodec: None,
+                acodec: None,
+                media_kind: Some("video".into()),
+                size_bytes: Some(17),
+                fingerprint: None,
+                created_at: video_editor_backend::library::now_secs(),
+            })
+            .await
+    );
+    let mut document = video_editor_backend::domain::project::ProjectDocument::from_legacy(
+        "linked",
+        "media",
+        json!({"id":"media","duration":1,"mediaKind":"video"}),
+        json!({}),
+    )
+    .unwrap();
+    document.media[0].asset_ref = Some("linked-asset".into());
+    state
+        .db
+        .cas_upsert_project_document("linked-project", 0, &document)
+        .await
+        .unwrap();
+    let response = router(state)
+        .oneshot(get(
+            "/api/projects/linked-project/archive?originalMedia=true",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn capabilities_report_runtime_availability_and_fingerprint() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);

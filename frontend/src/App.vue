@@ -30,6 +30,7 @@ import Toasts from './components/Toasts.vue'
 import TimelineEditor from './components/TimelineEditor.vue'
 import ProjectRecoveryDialog from './components/ProjectRecoveryDialog.vue'
 import DerivedTaskCenter from './components/DerivedTaskCenter.vue'
+import ProjectArchivePanel from './components/ProjectArchivePanel.vue'
 import { initializeDerivedTasks, onDerivedVisibilityChange } from './derived-task-center'
 
 const legacyInspectorAvailable = computed(() => {
@@ -158,6 +159,8 @@ onUnmounted(() => {
     </header>
 
     <UrlImport />
+
+    <ProjectArchivePanel />
 
     <MediaLibrary />
     <DerivedTaskCenter />

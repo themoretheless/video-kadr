@@ -1692,6 +1692,7 @@ dependencies = [
  "anyhow",
  "axum",
  "bytes",
+ "http-body",
  "http-body-util",
  "hyper",
  "hyper-util",
