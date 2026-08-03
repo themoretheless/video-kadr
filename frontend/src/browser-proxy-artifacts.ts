@@ -1,9 +1,10 @@
 import type { VideoInfo } from './types'
 import { sha256 } from '@noble/hashes/sha2.js'
+import { parseColorManagementStatusV1, type ColorManagementStatusV1 } from './domain/color-management'
 
 export type ProxyPolicy = 'auto' | 'original' | 'proxy'
 export interface BrowserProxyDescriptor {
-  schemaVersion: 1
+  schemaVersion: 2
   key: string
   sourceFingerprint: string
   profileFingerprint: string
@@ -21,6 +22,7 @@ export interface BrowserProxyDescriptor {
   sizeBytes: number
   artifactFingerprint: string
   createdAt: number
+  colorManagement: ColorManagementStatusV1
 }
 export interface BrowserProxyArtifact { descriptor: BrowserProxyDescriptor; blob: Blob }
 interface StoredBrowserProxyArtifact { descriptor: BrowserProxyDescriptor; storage: 'idb' | 'opfs'; data?: ArrayBuffer; objectKey?: string }
@@ -102,8 +104,8 @@ async function removeStoredSnapshotIfCurrent(db: IDBDatabase, snapshot: StoredBr
   await deleteProxyOpfsIfUnreferenced(db, snapshot.objectKey)
 }
 
-export function browserProxyProfileFingerprint(): string { return 'vp8-640-15fps-muted-v1' }
-export function browserProxyKey(sourceFingerprint: string, profile = browserProxyProfileFingerprint()): string { return `proxy:v1:${sourceFingerprint}:${profile}` }
+export function browserProxyProfileFingerprint(): string { return 'vp8-640-15fps-muted-sdr-v2' }
+export function browserProxyKey(sourceFingerprint: string, profile = browserProxyProfileFingerprint()): string { return `proxy:v2:${sourceFingerprint}:${profile}` }
 
 export function browserProxyCapability(): { supported: boolean; reason: string | null } {
   if (typeof MediaRecorder === 'undefined') return { supported: false, reason: 'MediaRecorder недоступен' }
@@ -121,7 +123,12 @@ function validate(artifact: BrowserProxyArtifact): void {
   const d = artifact.descriptor
   const clonedSize = typeof artifact.blob?.size === 'number' ? artifact.blob.size : d.sizeBytes
   // fake-indexeddb does not retain native Blob accessors; real browsers do.
-  if (d.schemaVersion !== 1 || !/^[a-f0-9]{64}$/.test(d.sourceFingerprint) || !/^[a-f0-9]{64}$/.test(d.artifactFingerprint) || d.mappingTimeBase !== 1_000_000 || d.startTicks !== 0 || !Number.isSafeInteger(d.durationTicks) || d.durationTicks <= 0 || !Number.isSafeInteger(d.sourceDurationTicks) || d.sourceDurationTicks <= 0 || d.sizeBytes !== clonedSize || d.sizeBytes <= 0 || d.sizeBytes > MAX_BYTES) throw new Error('invalid browser proxy artifact')
+  if (d.schemaVersion !== 2 || !/^[a-f0-9]{64}$/.test(d.sourceFingerprint) || !/^[a-f0-9]{64}$/.test(d.artifactFingerprint) || d.mappingTimeBase !== 1_000_000 || d.startTicks !== 0 || !Number.isSafeInteger(d.durationTicks) || d.durationTicks <= 0 || !Number.isSafeInteger(d.sourceDurationTicks) || d.sourceDurationTicks <= 0 || d.sizeBytes !== clonedSize || d.sizeBytes <= 0 || d.sizeBytes > MAX_BYTES) throw new Error('invalid browser proxy artifact')
+  const color = parseColorManagementStatusV1(d.colorManagement)
+  if (color.status !== 'supported' || color.provenance !== 'browser_decoded'
+    || color.descriptor.primaries !== 'bt709' || color.descriptor.transfer !== 'srgb'
+    || color.descriptor.matrix !== 'rgb' || color.descriptor.range !== 'full'
+    || color.descriptor.pixelModel !== 'rgb') throw new Error('invalid browser proxy color provenance')
   if (d.key !== browserProxyKey(d.sourceFingerprint, d.profileFingerprint) || d.width <= 0 || d.height <= 0 || !Number.isFinite(d.nominalFps) || d.nominalFps <= 0) throw new Error('invalid browser proxy provenance')
 }
 

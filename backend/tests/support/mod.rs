@@ -66,6 +66,9 @@ pub async fn make_state(ffmpeg: bool, ytdlp: bool) -> (AppState, tempfile::TempD
                 "curves",
                 "lut3d",
                 "blend",
+                "colorspace",
+                "format",
+                "setparams",
             ]
             .into_iter()
             .map(str::to_owned)

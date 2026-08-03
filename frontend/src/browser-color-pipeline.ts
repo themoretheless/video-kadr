@@ -28,6 +28,44 @@ interface BrowserVideoFilterArgsOptions {
   mapAudio?: boolean
 }
 
+export interface BrowserSdrExportBoundary {
+  bypassVideo: boolean
+  inputFilter: string | null
+  outputFilter: string | null
+  outputArgs: string[]
+  warning: string | null
+}
+
+export const ASSUMED_REC709_BROWSER_EXPORT_WARNING = 'Метаданные исходного файла недоступны в браузере: для экспорта предполагается SDR Rec.709 limited.'
+
+/**
+ * Explicit v1 conversion boundary for original-file ffmpeg.wasm exports.
+ * HTML media probing cannot inspect the file's signalling, so video export is
+ * deliberately an assumed-Rec.709 path and is unavailable without zscale.
+ */
+export function browserSdrExportBoundary(format: string, zscaleAvailable: boolean): BrowserSdrExportBoundary {
+  const normalized = format.toLowerCase()
+  if (normalized === 'mp3') return { bypassVideo: true, inputFilter: null, outputFilter: null, outputArgs: [], warning: null }
+  if (!zscaleAvailable) throw new Error('Точный SDR export в браузере недоступен: ffmpeg.wasm не прошёл проверку zscale.')
+  const inputFilter = 'zscale=matrixin=bt709:transferin=bt709:primariesin=bt709:rangein=limited:matrix=gbr:transfer=iec61966-2-1:primaries=bt709:range=full,format=gbrap16le'
+  if (normalized === 'png' || normalized === 'jpg' || normalized === 'jpeg') return {
+    bypassVideo: false, inputFilter,
+    outputFilter: 'zscale=matrix=gbr:transfer=iec61966-2-1:primaries=bt709:range=full,format=rgb24',
+    outputArgs: [], warning: ASSUMED_REC709_BROWSER_EXPORT_WARNING,
+  }
+  if (normalized === 'gif') return {
+    bypassVideo: false, inputFilter,
+    outputFilter: 'zscale=matrix=gbr:transfer=iec61966-2-1:primaries=bt709:range=full,format=rgb24',
+    outputArgs: [], warning: `${ASSUMED_REC709_BROWSER_EXPORT_WARNING} GIF дополнительно ограничивает результат палитрой.`,
+  }
+  return {
+    bypassVideo: false, inputFilter,
+    outputFilter: 'zscale=matrix=bt709:transfer=bt709:primaries=bt709:range=limited,format=yuv420p',
+    outputArgs: ['-color_range', 'tv', '-colorspace', 'bt709', '-color_trc', 'bt709', '-color_primaries', 'bt709'],
+    warning: ASSUMED_REC709_BROWSER_EXPORT_WARNING,
+  }
+}
+
 function number(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }

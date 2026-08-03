@@ -315,6 +315,7 @@ pub async fn import_project_archive(
             media_kind: Some(media.kind.clone()),
             size_bytes: Some(entry.size_bytes),
             fingerprint: Some(sha.clone()),
+            color_management: None,
             created_at: now_secs(),
         };
         if !state.library.add(library_entry).await {

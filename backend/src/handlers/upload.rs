@@ -110,6 +110,7 @@ pub async fn upload_handler(
         }
     };
     let title = received.original_name.as_deref().map(display_title);
+    let color_management = crate::services::render::resolved_source_color_management(&info);
     let body = json!({
         "id": video_id,
         "url": format!("/files/sources/{filename}"),
@@ -124,6 +125,7 @@ pub async fn upload_handler(
         "mediaKind": if info.width > 0 { "video" } else { "audio" },
         "sizeBytes": size,
         "fingerprint": fingerprint,
+        "colorManagement": color_management,
     });
     let entry = MediaEntry::from_result("source", &body);
     if state.library.add(entry.clone()).await {

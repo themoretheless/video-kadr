@@ -4,6 +4,9 @@
 use std::path::Path;
 
 use crate::config::encode_budget::EncodeBudget;
+use crate::domain::color_management::{
+    ColorMatrixV1, ColorRangeV1, ColorTransferV1, SdrColorDescriptorV1, SdrColorPolicyV1,
+};
 use crate::domain::edit::{
     ColorWheel, EditSpec, HslSelective, Rotation, TimeRange, ToneCurve, ToneCurves, VideoEffects,
 };
@@ -54,6 +57,82 @@ struct VideoFilterParts {
 enum VideoFilterProgram {
     Linear(Vec<String>),
     Complex(String),
+}
+
+const ENCODED_SRGB_WORKING_PARAMS: &str =
+    "setparams=range=pc:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=gbr:alpha_mode=straight";
+const FULL_SRGB_OUTPUT_PARAMS: &str =
+    "setparams=range=pc:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=gbr";
+const REC709_VIDEO_OUTPUT_PARAMS: &str =
+    "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709:chroma_location=left";
+
+fn ffmpeg_matrix(value: ColorMatrixV1) -> &'static str {
+    match value {
+        ColorMatrixV1::Bt709 => "bt709",
+        ColorMatrixV1::Rgb => "gbr",
+    }
+}
+
+fn ffmpeg_range(value: ColorRangeV1) -> &'static str {
+    match value {
+        ColorRangeV1::Limited => "tv",
+        ColorRangeV1::Full => "pc",
+    }
+}
+
+fn ffmpeg_transfer(value: ColorTransferV1) -> &'static str {
+    match value {
+        ColorTransferV1::Bt709 => "bt709",
+        ColorTransferV1::Srgb => "srgb",
+    }
+}
+
+fn is_encoded_srgb_working_source(source: SdrColorDescriptorV1) -> bool {
+    source.matrix == ColorMatrixV1::Rgb
+        && source.range == ColorRangeV1::Full
+        && source.transfer == ColorTransferV1::Srgb
+}
+
+/// Normalize the source exactly once into the encoded-sRGB/full RGB stage used
+/// by the existing 16-bit `geq`, HSL, curves, and LUT adapters. RGB+sRGB input
+/// is already in that colour domain, so it takes the format-only path; this
+/// also preserves source alpha instead of routing it through YUV.
+pub(super) fn source_color_filters(policy: &SdrColorPolicyV1) -> Vec<String> {
+    let source = policy.source;
+    let mut filters = Vec::with_capacity(3);
+    if !is_encoded_srgb_working_source(source) {
+        filters.push(format!(
+            "colorspace=ispace={}:irange={}:iprimaries=bt709:itrc={}:space=bt709:range=pc:primaries=bt709:trc=srgb:format=yuv444p12",
+            ffmpeg_matrix(source.matrix),
+            ffmpeg_range(source.range),
+            ffmpeg_transfer(source.transfer),
+        ));
+    }
+    filters.push("format=gbrap16le".into());
+    filters.push(ENCODED_SRGB_WORKING_PARAMS.into());
+    filters
+}
+
+/// Close the working stage exactly once. Video encoders receive converted
+/// limited-range Rec.709 YUV; still/palette paths receive full-range sRGB RGB.
+pub(super) fn output_color_filters(format: OutputFormat) -> Vec<String> {
+    match format {
+        OutputFormat::Mp4 | OutputFormat::Webm | OutputFormat::Av1 => vec![
+            "pad=ceil(iw/2)*2:ceil(ih/2)*2".into(),
+            "colorspace=ispace=gbr:irange=pc:iprimaries=bt709:itrc=srgb:space=bt709:range=tv:primaries=bt709:trc=bt709:format=yuv420p".into(),
+            REC709_VIDEO_OUTPUT_PARAMS.into(),
+        ],
+        OutputFormat::Prores => vec![
+            "pad=ceil(iw/2)*2:ceil(ih/2)*2".into(),
+            "colorspace=ispace=gbr:irange=pc:iprimaries=bt709:itrc=srgb:space=bt709:range=tv:primaries=bt709:trc=bt709:format=yuv422p10".into(),
+            REC709_VIDEO_OUTPUT_PARAMS.into(),
+        ],
+        OutputFormat::Png => vec!["format=rgba64be".into(), FULL_SRGB_OUTPUT_PARAMS.into()],
+        OutputFormat::Jpg | OutputFormat::Gif => {
+            vec!["format=rgb24".into(), FULL_SRGB_OUTPUT_PARAMS.into()]
+        }
+        OutputFormat::Mp3 => Vec::new(),
+    }
 }
 
 fn tone_curve_points(curve: &ToneCurve) -> String {
@@ -233,11 +312,19 @@ fn lut3d_filter(path: &Path) -> anyhow::Result<String> {
 /// Build filters before and after the LUT mix point. The original branch of a
 /// partial-intensity LUT already contains geometry, eq, presets and curves; only
 /// the LUT itself is blended, then temporal/post effects run once.
-fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFilterParts {
+fn video_filter_parts(
+    edit: &EditSpec,
+    out_dur: f64,
+    temporal: bool,
+    color_policy: &SdrColorPolicyV1,
+    output_format: OutputFormat,
+) -> VideoFilterParts {
     let timing = edit.timing();
     let geometry = edit.geometry();
     let video = edit.video();
-    let mut before_lut: Vec<String> = Vec::new();
+    // The colour boundary must precede geometry as well as every grade/LUT so
+    // all visual operations see one deterministic pixel interpretation.
+    let mut before_lut = source_color_filters(color_policy);
     // Censor box first, in source coordinates (matches the on-video selection).
     if let Some(censor) = &geometry.censor {
         let rect = censor.rect;
@@ -272,22 +359,11 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
     if video.denoise {
         before_lut.push("hqdn3d".into());
     }
-    // Curves and 3D LUT mixing share an explicit high-bit RGB(A) working
-    // format. Besides avoiding 8-bit curve-point quantisation, retaining alpha
-    // here prevents still-image grades from silently becoming opaque.
     let primary_changed = video.temperature.abs() > 1e-6
         || video.tint.abs() > 1e-6
         || video.highlights.abs() > 1e-6
         || video.shadows.abs() > 1e-6;
     let wheels_changed = video.color_wheels.is_some();
-    if video.curves.is_some()
-        || video.lut.is_some()
-        || primary_changed
-        || wheels_changed
-        || video.hsl_selective.is_some()
-    {
-        before_lut.push("format=gbrap16le".into());
-    }
     if primary_changed || wheels_changed {
         before_lut.push(primary_correction_filter(video));
     }
@@ -351,6 +427,9 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
             ));
         }
     }
+    // Egress follows curves, finishing, and temporal effects, and therefore
+    // also stays outside the partial-LUT split branches.
+    after_lut.extend(output_color_filters(output_format));
     VideoFilterParts {
         before_lut,
         after_lut,
@@ -361,11 +440,13 @@ fn video_filter_program(
     edit: &EditSpec,
     out_dur: f64,
     temporal: bool,
+    color_policy: &SdrColorPolicyV1,
+    output_format: OutputFormat,
     lut_path: Option<&Path>,
     input_label: &str,
     output_label: &str,
 ) -> anyhow::Result<VideoFilterProgram> {
-    let mut parts = video_filter_parts(edit, out_dur, temporal);
+    let mut parts = video_filter_parts(edit, out_dur, temporal, color_policy, output_format);
     let Some(lut) = &edit.video().lut else {
         parts.before_lut.extend(parts.after_lut);
         return Ok(VideoFilterProgram::Linear(parts.before_lut));
@@ -522,6 +603,12 @@ fn compile_ffmpeg_command(
     let format = output.format;
     let source_duration = plan.source.duration_seconds();
     let out_dur = expected_output_secs(edit, source_duration);
+    let color_policy = match format {
+        OutputFormat::Mp3 => None,
+        _ => Some(plan.source.color_policy.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("visual render plan is missing its SDR color policy")
+        })?),
+    };
 
     // Multi-segment edits (cut from the middle / stitch ranges) need a concat
     // filter graph; only meaningful for the video containers.
@@ -569,7 +656,16 @@ fn compile_ffmpeg_command(
         OutputFormat::Png | OutputFormat::Jpg => {
             // Single still frame at the trim start (positioned by -ss above).
             // The encoder is chosen by the output extension (png / mjpeg).
-            let program = video_filter_program(edit, out_dur, false, lut_path, "0:v", "vout")?;
+            let program = video_filter_program(
+                edit,
+                out_dur,
+                false,
+                color_policy.expect("visual format has color policy"),
+                format,
+                lut_path,
+                "0:v",
+                "vout",
+            )?;
             push_video_program(&mut args, program);
             args.push("-frames:v".into());
             args.push("1".into());
@@ -579,7 +675,16 @@ fn compile_ffmpeg_command(
             // Generate a per-clip palette for a good-looking gif (single pass
             // via split + palettegen/paletteuse).
             let fps = output.fps().unwrap_or(12.0);
-            match video_filter_program(edit, out_dur, true, lut_path, "0:v", "graded")? {
+            match video_filter_program(
+                edit,
+                out_dur,
+                true,
+                color_policy.expect("visual format has color policy"),
+                format,
+                lut_path,
+                "0:v",
+                "graded",
+            )? {
                 VideoFilterProgram::Linear(mut parts) => {
                     parts.push(format!("fps={fps:.3}"));
                     let graph = format!(
@@ -602,7 +707,16 @@ fn compile_ffmpeg_command(
             args.push("-an".into());
         }
         OutputFormat::Webm => {
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let program = video_filter_program(
+                edit,
+                out_dur,
+                true,
+                color_policy.expect("visual format has color policy"),
+                format,
+                lut_path,
+                "0:v",
+                "vout",
+            )?;
             let complex = push_video_program(&mut args, program);
             let include_audio = output.audio_codec.is_some();
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
@@ -611,26 +725,34 @@ fn compile_ffmpeg_command(
         }
         OutputFormat::Av1 => {
             // Modern, compact codec in an mp4 container (needs libsvtav1).
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let program = video_filter_program(
+                edit,
+                out_dur,
+                true,
+                color_policy.expect("visual format has color policy"),
+                format,
+                lut_path,
+                "0:v",
+                "vout",
+            )?;
             let complex = push_video_program(&mut args, program);
             let include_audio = output.audio_codec.is_some();
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
             push_audio(&mut args, edit, out_dur, "aac", include_audio);
-            args.push("-c:v".into());
-            args.push("libsvtav1".into());
-            args.push("-crf".into());
-            args.push(output.crf.expect("AV1 output has CRF").to_string());
-            args.push("-preset".into());
-            args.push("6".into());
-            args.push("-pix_fmt".into());
-            args.push("yuv420p".into());
-            push_fps(&mut args, output);
-            args.push("-movflags".into());
-            args.push("+faststart".into());
+            push_video_codec(&mut args, output);
         }
         OutputFormat::Prores => {
             // Intra-only edit codec in a .mov; audio as PCM. prores_ks is built in.
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let program = video_filter_program(
+                edit,
+                out_dur,
+                true,
+                color_policy.expect("visual format has color policy"),
+                format,
+                lut_path,
+                "0:v",
+                "vout",
+            )?;
             let complex = push_video_program(&mut args, program);
             let include_audio = output.audio_codec.is_some();
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
@@ -645,17 +767,20 @@ fn compile_ffmpeg_command(
                 args.push("-c:a".into());
                 args.push("pcm_s16le".into());
             }
-            args.push("-c:v".into());
-            args.push("prores_ks".into());
-            args.push("-profile:v".into());
-            args.push("3".into());
-            args.push("-pix_fmt".into());
-            args.push("yuv422p10le".into());
-            push_fps(&mut args, output);
+            push_video_codec(&mut args, output);
         }
         OutputFormat::Mp4 => {
             // mp4 (default): H.264 or H.265.
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let program = video_filter_program(
+                edit,
+                out_dur,
+                true,
+                color_policy.expect("visual format has color policy"),
+                format,
+                lut_path,
+                "0:v",
+                "vout",
+            )?;
             let complex = push_video_program(&mut args, program);
             let include_audio = output.audio_codec.is_some();
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
@@ -777,6 +902,19 @@ fn push_video_codec(args: &mut Vec<String>, output: &OutputSpec) {
         }
         _ => unreachable!("still, GIF, and audio-only outputs do not use video codec options"),
     }
+    // These stream/container tags describe the samples emitted by the final
+    // colorspace filter. Tags are deliberately paired with a real conversion;
+    // they are never used to relabel source pixels.
+    args.extend(
+        [
+            ("-color_range", "tv"),
+            ("-colorspace", "bt709"),
+            ("-color_trc", "bt709"),
+            ("-color_primaries", "bt709"),
+        ]
+        .into_iter()
+        .flat_map(|(option, value)| [option.to_owned(), value.to_owned()]),
+    );
 }
 
 /// Build args for a multi-segment edit: trim each keep-segment, concat them,
@@ -793,6 +931,11 @@ fn build_concat_args(
     let output = &plan.output;
     let format = output.format;
     let include_audio = output.audio_codec.is_some();
+    let color_policy = plan
+        .source
+        .color_policy
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("visual render plan is missing its SDR color policy"))?;
     let n = segments.len();
     let mut graph = String::new();
     for (i, s) in segments.iter().enumerate() {
@@ -822,7 +965,16 @@ fn build_concat_args(
     }
 
     // Effects apply to the concatenated stream.
-    let vmap = match video_filter_program(edit, out_dur, true, lut_path, "cv", "vout")? {
+    let vmap = match video_filter_program(
+        edit,
+        out_dur,
+        true,
+        color_policy,
+        format,
+        lut_path,
+        "cv",
+        "vout",
+    )? {
         VideoFilterProgram::Linear(vf) if vf.is_empty() => "[cv]".to_string(),
         VideoFilterProgram::Linear(vf) => {
             graph.push_str(&format!(
@@ -937,6 +1089,25 @@ mod tests {
 
     fn plan(value: serde_json::Value) -> EditPlan {
         plan_for_duration(value, 60.0)
+    }
+
+    fn plan_for_rgb_srgb_duration(value: serde_json::Value, duration_seconds: f64) -> EditPlan {
+        let request: EditRequest = serde_json::from_value(value).expect("valid EditRequest");
+        let mut metadata = SourceMediaMetadata::new(1920, 1080, duration_seconds).unwrap();
+        metadata.color_policy = Some(
+            SdrColorPolicyV1::new(SdrColorDescriptorV1 {
+                primaries: crate::domain::color_management::ColorPrimariesV1::Bt709,
+                transfer: ColorTransferV1::Srgb,
+                matrix: ColorMatrixV1::Rgb,
+                range: ColorRangeV1::Full,
+                pixel_model: crate::domain::color_management::PixelModelV1::Rgb,
+                chroma_location: None,
+            })
+            .unwrap(),
+        );
+        metadata.color_policy_warning = false;
+        EditPlan::compile(Fingerprint::digest(b"rgb-srgb-source"), request, metadata)
+            .expect("valid RGB/sRGB EditPlan")
     }
 
     fn plan_without_audio(value: serde_json::Value, duration_seconds: f64) -> EditPlan {
@@ -1061,7 +1232,164 @@ mod tests {
         assert!(args.contains(&"libx264".to_string()));
         assert!(args.contains(&"aac".to_string()));
         assert!(!args.contains(&"-an".to_string()));
-        assert!(!args.contains(&"-vf".to_string()));
+        let chain = vf(&args);
+        assert!(
+            chain.starts_with("colorspace=ispace=bt709:irange=tv"),
+            "{chain}"
+        );
+        assert!(chain.contains("format=gbrap16le"), "{chain}");
+        assert!(chain.ends_with(REC709_VIDEO_OUTPUT_PARAMS), "{chain}");
+        for pair in [
+            ["-color_range", "tv"],
+            ["-colorspace", "bt709"],
+            ["-color_trc", "bt709"],
+            ["-color_primaries", "bt709"],
+        ] {
+            assert!(args.windows(2).any(|window| window == pair), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn source_descriptor_selects_explicit_ingress_or_lossless_rgb_identity() {
+        let yuv_limited = SdrColorPolicyV1::new(SdrColorDescriptorV1 {
+            primaries: crate::domain::color_management::ColorPrimariesV1::Bt709,
+            transfer: ColorTransferV1::Bt709,
+            matrix: ColorMatrixV1::Bt709,
+            range: ColorRangeV1::Limited,
+            pixel_model: crate::domain::color_management::PixelModelV1::Yuv,
+            chroma_location: None,
+        })
+        .unwrap();
+        let yuv_filters = source_color_filters(&yuv_limited);
+        assert_eq!(
+            yuv_filters[0],
+            "colorspace=ispace=bt709:irange=tv:iprimaries=bt709:itrc=bt709:space=bt709:range=pc:primaries=bt709:trc=srgb:format=yuv444p12"
+        );
+        assert_eq!(yuv_filters[1], "format=gbrap16le");
+        assert_eq!(yuv_filters[2], ENCODED_SRGB_WORKING_PARAMS);
+
+        let rgb_srgb = SdrColorPolicyV1::new(SdrColorDescriptorV1 {
+            primaries: crate::domain::color_management::ColorPrimariesV1::Bt709,
+            transfer: ColorTransferV1::Srgb,
+            matrix: ColorMatrixV1::Rgb,
+            range: ColorRangeV1::Full,
+            pixel_model: crate::domain::color_management::PixelModelV1::Rgb,
+            chroma_location: None,
+        })
+        .unwrap();
+        assert_eq!(
+            source_color_filters(&rgb_srgb),
+            ["format=gbrap16le", ENCODED_SRGB_WORKING_PARAMS]
+        );
+    }
+
+    #[test]
+    fn source_normalization_precedes_geometry_and_grade_and_output_follows_them() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "crop": {"x": 4, "y": 6, "w": 320, "h": 240},
+                "filter": "warm",
+                "curves": {"master": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}]}
+            }),
+            10.0,
+        );
+        let chain = vf(&args);
+        let ingress = chain.find("colorspace=ispace=bt709").unwrap();
+        let crop = chain.find("crop=").unwrap();
+        let look = chain.find("colorbalance=").unwrap();
+        let curves = chain.find("curves=master=").unwrap();
+        let egress = chain.find("colorspace=ispace=gbr").unwrap();
+        assert!(
+            ingress < crop && crop < look && look < curves && curves < egress,
+            "{chain}"
+        );
+    }
+
+    #[test]
+    fn every_output_format_closes_the_expected_color_contract() {
+        for format in ["mp4", "webm", "av1", "prores"] {
+            let args = args_for(json!({"videoId": "x", "format": format}), 10.0);
+            let chain = vf(&args);
+            let target_format = if format == "prores" {
+                "format=yuv422p10"
+            } else {
+                "format=yuv420p"
+            };
+            assert!(
+                chain.contains("pad=ceil(iw/2)*2:ceil(ih/2)*2"),
+                "{format}: {chain}"
+            );
+            assert!(chain.contains(target_format), "{format}: {chain}");
+            assert!(
+                chain.ends_with(REC709_VIDEO_OUTPUT_PARAMS),
+                "{format}: {chain}"
+            );
+            assert_eq!(
+                chain.matches("colorspace=ispace=bt709").count(),
+                1,
+                "{format}: {chain}"
+            );
+            assert_eq!(
+                chain.matches("colorspace=ispace=gbr").count(),
+                1,
+                "{format}: {chain}"
+            );
+            for pair in [
+                ["-color_range", "tv"],
+                ["-colorspace", "bt709"],
+                ["-color_trc", "bt709"],
+                ["-color_primaries", "bt709"],
+            ] {
+                assert!(
+                    args.windows(2).any(|window| window == pair),
+                    "{format}: {args:?}"
+                );
+            }
+        }
+
+        for (format, pixel_format) in [("png", "format=rgba64be"), ("jpg", "format=rgb24")] {
+            let args = args_for(json!({"videoId": "x", "format": format}), 10.0);
+            let chain = vf(&args);
+            assert!(chain.contains(pixel_format), "{format}: {chain}");
+            assert!(
+                chain.ends_with(FULL_SRGB_OUTPUT_PARAMS),
+                "{format}: {chain}"
+            );
+            assert!(
+                !args.iter().any(|value| value == "-color_range"),
+                "{args:?}"
+            );
+        }
+
+        let gif_args = args_for(json!({"videoId": "x", "format": "gif"}), 10.0);
+        let gif = vf(&gif_args);
+        let full_srgb = gif.find(FULL_SRGB_OUTPUT_PARAMS).unwrap();
+        let palette = gif.find("palettegen=").unwrap();
+        assert!(gif.contains("format=rgb24"), "{gif}");
+        assert!(full_srgb < palette, "{gif}");
+
+        let mp3 = args_for(json!({"videoId": "x", "format": "mp3"}), 10.0).join(" ");
+        assert!(!mp3.contains("colorspace="), "{mp3}");
+        assert!(!mp3.contains("setparams="), "{mp3}");
+        assert!(!mp3.contains("-color_range"), "{mp3}");
+    }
+
+    #[test]
+    fn visual_output_requires_a_compiled_color_policy_but_mp3_does_not() {
+        let mut visual = plan_for_duration(json!({"videoId": "x"}), 10.0);
+        visual.source.color_policy = None;
+        let error =
+            compile_ffmpeg_command(Path::new("/in.mp4"), Path::new("/out.mp4"), &visual, None)
+                .unwrap_err();
+        assert!(error.to_string().contains("missing its SDR color policy"));
+
+        let mut audio = plan_for_duration(json!({"videoId": "x", "format": "mp3"}), 10.0);
+        audio.source.color_policy = None;
+        assert!(
+            compile_ffmpeg_command(Path::new("/in.mp4"), Path::new("/out.mp3"), &audio, None,)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1281,7 +1609,7 @@ mod tests {
             pam.extend([46_u8, 46, 46, 77]);
         }
         std::fs::write(&input, pam).unwrap();
-        let edit = plan_for_duration(
+        let edit = plan_for_rgb_srgb_duration(
             json!({
                 "videoId":"x",
                 "temperature":1.0,
@@ -1379,7 +1707,7 @@ mod tests {
             pam.extend(pixel);
         }
         std::fs::write(&input, pam).unwrap();
-        let edit = plan_for_duration(
+        let edit = plan_for_rgb_srgb_duration(
             json!({
                 "videoId":"x",
                 "hslSelective":{
@@ -1475,7 +1803,14 @@ mod tests {
             path,
         );
         let chain = vf(&command.arguments);
-        assert!(chain.starts_with("format=gbrap16le,lut3d="), "{chain}");
+        let ingress = chain.find("colorspace=ispace=bt709").unwrap();
+        let working = chain.find("format=gbrap16le").unwrap();
+        let lut = chain.find("lut3d=").unwrap();
+        let egress = chain.find("colorspace=ispace=gbr").unwrap();
+        assert!(
+            ingress < working && working < lut && lut < egress,
+            "{chain}"
+        );
         assert!(chain.contains("lut3d=file='/private/luts/look.cube':interp=tetrahedral"));
         assert!(!chain.contains("split=2"));
         assert_eq!(command.read_only_files, [path.to_path_buf()]);
@@ -1499,7 +1834,10 @@ mod tests {
             Path::new("/private/luts/look.cube"),
         );
         let graph = filter_complex(&command.arguments);
-        assert!(graph.starts_with("[0:v]format=gbrap16le,eq="), "{graph}");
+        assert!(
+            graph.starts_with("[0:v]colorspace=ispace=bt709:irange=tv"),
+            "{graph}"
+        );
         let eq = graph.find("eq=").unwrap();
         let working_format = graph.find("format=gbrap16le").unwrap();
         let split = graph.find("split=2[lut_base][lut_input]").unwrap();
@@ -1517,12 +1855,19 @@ mod tests {
         let grain = graph.find("noise=").unwrap();
         let pad = graph.find("pad=").unwrap();
         let fade = graph.find("fade=t=out").unwrap();
+        let egress = graph.find("colorspace=ispace=gbr").unwrap();
+        assert_eq!(
+            graph.matches("colorspace=ispace=bt709").count(),
+            1,
+            "{graph}"
+        );
+        assert_eq!(graph.matches("colorspace=ispace=gbr").count(), 1, "{graph}");
         assert!(blend < scale, "{graph}");
         assert!(
             scale < sharpen && sharpen < vignette && vignette < grain,
             "{graph}"
         );
-        assert!(grain < pad && pad < fade, "{graph}");
+        assert!(grain < pad && pad < fade && fade < egress, "{graph}");
         assert!(command
             .arguments
             .windows(2)
@@ -1546,14 +1891,20 @@ mod tests {
         );
         let graph = filter_complex(&command.arguments);
         let concat = graph.find("concat=n=2:v=1:a=1[cv][ca]").unwrap();
-        let split = graph
-            .find("[cv]format=gbrap16le,split=2[lut_base][lut_input]")
-            .unwrap();
+        let split = graph.find("split=2[lut_base][lut_input]").unwrap();
         assert!(concat < split, "{graph}");
         assert!(
-            graph.contains("blend=all_expr='A*(1-0.500000)+B*0.500000'[vout]"),
+            graph.contains("blend=all_expr='A*(1-0.500000)+B*0.500000'"),
             "{graph}"
         );
+        assert_eq!(
+            graph.matches("colorspace=ispace=bt709").count(),
+            1,
+            "{graph}"
+        );
+        assert_eq!(graph.matches("colorspace=ispace=gbr").count(), 1, "{graph}");
+        let egress = graph.find("colorspace=ispace=gbr").unwrap();
+        assert!(split < egress, "{graph}");
     }
 
     #[test]
@@ -1901,7 +2252,13 @@ mod tests {
 
         for (id, expected_chain) in presets {
             let args = args_for(json!({ "videoId": "x", "filter": id }), 10.0);
-            assert_eq!(vf(&args), expected_chain, "preset {id}");
+            let chain = vf(&args);
+            let ingress = chain.find("format=gbrap16le").unwrap();
+            let look = chain
+                .find(expected_chain)
+                .unwrap_or_else(|| panic!("preset {id} is missing {expected_chain:?} in {chain}"));
+            let egress = chain.find("colorspace=ispace=gbr").unwrap();
+            assert!(ingress < look && look < egress, "preset {id}: {chain}");
         }
     }
 

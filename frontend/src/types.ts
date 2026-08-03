@@ -1,4 +1,7 @@
 import type { HslSelective } from './domain/hsl-selective'
+import type { ColorManagementStatusV1 } from './domain/color-management'
+
+export type { ColorManagementProvenanceV1, ColorManagementStatusV1, SdrColorDescriptorV1 } from './domain/color-management'
 
 export type {
   HslAdjustment,
@@ -23,6 +26,7 @@ export interface VideoInfo {
   identityConflict?: boolean
   availability?: 'ready' | 'permission-required' | 'offline' | 'session'
   sizeBytes?: number | null
+  colorManagement?: ColorManagementStatusV1 | null
 }
 
 export type {
@@ -173,6 +177,7 @@ export interface MediaEntry {
   fingerprint?: string
   identityConflict?: boolean
   sizeBytes?: number | null
+  colorManagement?: ColorManagementStatusV1 | null
   createdAt: number
 }
 

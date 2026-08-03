@@ -19,6 +19,7 @@ import { invalidateBackendProxyArtifact, resolveBackendPreviewSource } from '../
 import { PreviewFrameCache, legacySingleClipPreviewEligible, previewFrameKey, previewGraphFingerprint, previewTimelineTick, requestBackendPreviewFrame, sourceMediaTimeToEditedSeconds, type PreviewRenderSettings } from '../optimized-preview-cache'
 import { videoScopeFrameBroker, type ScopeAccuracy, type ScopeTapId } from '../video-scopes/frame-broker'
 import { videoScopesController } from '../video-scopes/controller'
+import { outputColorStatus, sourceColorStatus } from '../domain/color-management'
 import RectOverlay from './RectOverlay.vue'
 
 const videoEl = ref<HTMLVideoElement | null>(null)
@@ -656,6 +657,8 @@ const meta = computed(() => {
   if (typeof v.sizeBytes === 'number') parts.push(fmtSize(v.sizeBytes))
   return parts
 })
+const sourceColor = computed(() => sourceColorStatus(state.video?.colorManagement))
+const outputColor = computed(() => outputColorStatus(state.edit.format))
 </script>
 
 <template>
@@ -699,7 +702,15 @@ const meta = computed(() => {
     </div>
     <div v-if="state.video" class="meta">
       <span v-for="(m, i) in meta" :key="i" class="meta-chip">{{ m }}</span>
+      <span class="meta-chip" :title="sourceColor.warning ?? undefined" role="status">
+        {{ sourceColor.label }}<span v-if="sourceColor.warning" aria-hidden="true"> ⚠</span>
+      </span>
+      <span class="meta-chip" :title="outputColor.warning ?? undefined" role="status">
+        {{ outputColor.label }}<span v-if="outputColor.warning" aria-hidden="true"> ⚠</span>
+      </span>
     </div>
+    <p v-if="state.video && sourceColor.warning" class="hint" role="status">{{ sourceColor.warning }}</p>
+    <p v-if="state.video && outputColor.warning" class="hint" role="status">{{ outputColor.warning }}</p>
     <div v-if="state.video" class="proxy-controls">
       <label for="proxy-policy">Источник предпросмотра</label>
       <select id="proxy-policy" :value="proxyPolicy" @change="changeProxyPolicy">

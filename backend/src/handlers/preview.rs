@@ -76,13 +76,8 @@ pub async fn optimized_preview_frame(
     if probe.width == 0 || probe.height == 0 {
         return Err(AppError::bad_request("Preview frame требует видеодорожку"));
     }
-    let metadata = SourceMediaMetadata::new_with_audio(
-        probe.width,
-        probe.height,
-        probe.duration,
-        probe.acodec.is_some(),
-    )
-    .map_err(|error| AppError::bad_request(error.to_string()))?;
+    let metadata = SourceMediaMetadata::from_probe(&probe)
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
     let resources = super::resolve_render_resources(&state, &body.edit)
         .await
         .map_err(|error| AppError::bad_request(error.to_string()))?;

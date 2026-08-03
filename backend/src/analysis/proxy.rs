@@ -18,12 +18,13 @@ use crate::artifacts::{
     DEFAULT_MANIFEST_LIMIT,
 };
 use crate::domain::artifact_graph::Fingerprint;
+use crate::domain::color_management::ColorManagementStatusV1;
 use crate::domain::media_probe::{ProbeResult, Rational, StreamKind};
 use crate::runtime::cpu_pool::CpuPool;
 use crate::runtime::TaskSupervisor;
 
-const PROXY_SCHEMA_VERSION: u32 = 3;
-pub const FFMPEG_PROXY_COMPATIBILITY: &str = "ffmpeg-proxy-v3-common-origin";
+const PROXY_SCHEMA_VERSION: u32 = 4;
+pub const FFMPEG_PROXY_COMPATIBILITY: &str = "ffmpeg-proxy-v4-sdr-color-management-v1";
 
 #[derive(Clone)]
 struct VerifiedProxyFile {
@@ -152,6 +153,7 @@ pub struct ProxyMediaProvenance {
     pub audio_codec: Option<String>,
     pub audio_sample_rate: Option<u32>,
     pub audio_channels: Option<u32>,
+    pub color_management: ColorManagementStatusV1,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -593,7 +595,7 @@ fn proxy_key_from_parts(
     producer_compatibility: &str,
 ) -> Fingerprint {
     Fingerprint::combine([
-        b"proxy-v3".as_slice(),
+        b"proxy-v4-sdr-color-management-v1".as_slice(),
         source_fingerprint.as_str().as_bytes(),
         profile.fingerprint().as_str().as_bytes(),
         producer_compatibility.as_bytes(),
@@ -673,6 +675,7 @@ fn media_provenance(probe: &ProbeResult) -> Result<ProxyMediaProvenance> {
         audio_codec: audio.and_then(|stream| stream.codec_name.clone()),
         audio_sample_rate: audio.and_then(|stream| stream.sample_rate),
         audio_channels: audio.and_then(|stream| stream.channels),
+        color_management: video.color.color_management.clone(),
     })
 }
 
@@ -681,6 +684,15 @@ fn validate_proxy_media(
     proxy: &ProxyMediaProvenance,
     profile: &ProxyProfile,
 ) -> Result<()> {
+    let valid_color = match profile.codec {
+        ProxyCodec::H264 => {
+            proxy.color_management == ColorManagementStatusV1::rec709_limited_output()
+        }
+        ProxyCodec::ProresProxy => proxy.color_management.is_prores_rec709_limited_output(),
+    };
+    if !valid_color {
+        return Err(anyhow!("proxy output is not tagged SDR Rec.709 limited"));
+    }
     let mapping_tolerance = media_mapping_tolerance(source, proxy);
     if timeline_start_seconds(proxy).abs() > mapping_tolerance {
         return Err(anyhow!("proxy timestamps are not normalized to zero"));
@@ -803,7 +815,7 @@ mod tests {
             Ok(ProbeResult::from_ffprobe_json(&serde_json::json!({
                 "format": {"duration":"10.0", "start_time":"0"},
                 "streams": [
-                    {"index":0,"codec_type":"video","codec_name":"h264","width":960,"height":540,"avg_frame_rate":"30/1","time_base":"1/90000","start_time":"0","duration":"10.0"},
+                    {"index":0,"codec_type":"video","codec_name":"h264","width":960,"height":540,"avg_frame_rate":"30/1","time_base":"1/90000","start_time":"0","duration":"10.0","pix_fmt":"yuv420p","color_range":"tv","color_space":"bt709","color_transfer":"bt709","color_primaries":"bt709","chroma_location":"left"},
                     {"index":1,"codec_type":"audio","codec_name":"aac","sample_rate":"48000","channels":2,"time_base":"1/48000","start_time":"0","duration":"10.0"}
                 ]
             }))?)
@@ -1067,6 +1079,7 @@ mod tests {
             audio_codec: Some("aac".into()),
             audio_sample_rate: Some(48_000),
             audio_channels: Some(2),
+            color_management: ColorManagementStatusV1::rec709_limited_output(),
         };
         assert!(validate_proxy_media(&media, &media, &profile).is_ok());
         let mut shifted = media.clone();

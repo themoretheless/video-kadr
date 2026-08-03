@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "policyId": "sdr-color-management-v1",
+  "linearWorkingSpace": "linear-bt709-d65-full-f32",
+  "encodedWorkingSpace": "encoded-srgb-bt709-d65-full-f32",
+  "histogramDescriptor": "straight-rgba8-encoded-srgb",
+  "limitedLuma8": [
+    { "code": 0, "expected": 0.0 },
+    { "code": 16, "expected": 0.0 },
+    { "code": 126, "expected": 0.502283105022831 },
+    { "code": 235, "expected": 1.0 },
+    { "code": 255, "expected": 1.0 }
+  ],
+  "supported": [
+    { "range": "tv", "matrix": "bt709", "transfer": "bt709", "primaries": "bt709", "chromaLocation": "left", "pixelFormat": "yuv420p" },
+    { "range": "full", "matrix": "gbr", "transfer": "iec61966-2-1", "primaries": "709", "chromaLocation": null, "pixelFormat": "gbrap16le" }
+  ],
+  "unsupported": [
+    { "range": null, "matrix": "bt709", "transfer": "bt709", "primaries": "bt709", "pixelFormat": "yuv420p", "reason": "missing_range" },
+    { "range": "tv", "matrix": "smpte170m", "transfer": "bt709", "primaries": "bt709", "pixelFormat": "yuv420p", "reason": "bt601_unsupported" },
+    { "range": "tv", "matrix": "bt2020nc", "transfer": "smpte2084", "primaries": "bt2020", "pixelFormat": "yuv420p10le", "reason": "wide_gamut_unsupported" },
+    { "range": "tv", "matrix": "rgb", "transfer": "srgb", "primaries": "bt709", "pixelFormat": "rgb24", "reason": "contradictory_metadata" }
+  ]
+}

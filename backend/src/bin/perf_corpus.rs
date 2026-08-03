@@ -141,6 +141,7 @@ async fn measure_library_list(
             media_kind: Some("video".into()),
             size_bytes: Some(7),
             fingerprint: None,
+            color_management: None,
             created_at: u64::from(index),
         });
     }

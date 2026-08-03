@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   browserColorFilterPlan,
+  browserSdrExportBoundary,
   browserVideoFilterArgs,
   linearColorCorrectionFfmpegFilter,
   primaryCorrectionFfmpegFilter,
@@ -15,6 +16,28 @@ const curves = {
 }
 
 describe('browser color filter plan', () => {
+  it('puts explicit assumed-709 conversion before grade/LUT and output conversion after curves', () => {
+    const boundary = browserSdrExportBoundary('mp4', true)
+    const plan = browserColorFilterPlan({ brightness: 0.1, lut: { id: 'look', intensity: 1 }, curves }, 'look.cube')
+    const args = browserVideoFilterArgs(plan, { prefixFilters: [boundary.inputFilter!], suffixFilters: [boundary.outputFilter!] })
+    const chain = args[1]!
+    const positions = ['zscale=matrixin=', 'eq=', 'lut3d=', 'curves=', 'zscale=matrix=bt709', 'format=yuv420p'].map(token => chain.indexOf(token))
+    expect(positions.every(position => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+    expect(boundary.outputArgs).toEqual(['-color_range', 'tv', '-colorspace', 'bt709', '-color_trc', 'bt709', '-color_primaries', 'bt709'])
+    expect(boundary.warning).toContain('предполагается SDR Rec.709 limited')
+  })
+
+  it('fails closed without zscale but lets MP3 bypass all video color work', () => {
+    expect(() => browserSdrExportBoundary('mp4', false)).toThrow(/zscale/)
+    expect(browserSdrExportBoundary('mp3', false)).toEqual({ bypassVideo: true, inputFilter: null, outputFilter: null, outputArgs: [], warning: null })
+  })
+
+  it('uses full-range sRGB output boundaries for stills and warns for GIF palette', () => {
+    expect(browserSdrExportBoundary('png', true).outputFilter).toContain('transfer=iec61966-2-1')
+    expect(browserSdrExportBoundary('jpg', true).outputFilter).toContain('format=rgb24')
+    expect(browserSdrExportBoundary('gif', true).warning).toContain('палитрой')
+  })
   it('fixes primary corrections before EQ, preset, LUT, and authored curves', () => {
     const plan = browserColorFilterPlan({
       temperature: 0.5,

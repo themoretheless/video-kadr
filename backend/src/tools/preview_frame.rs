@@ -38,8 +38,10 @@ pub fn select_edited_output_frame(
         .windows(2)
         .find(|pair| pair[0] == "-r")
         .map(|pair| pair[1].clone());
+    // Export closes to limited Rec.709. JPEG delivery needs full-range sRGB,
+    // so convert the pixels here instead of retaining/relabeling MP4 output.
     let selector = format!(
-        "{}select='gte(t\\,{requested:.6})',setpts=PTS-STARTPTS",
+        "colorspace=ispace=bt709:irange=tv:iprimaries=bt709:itrc=bt709:space=bt709:range=pc:primaries=bt709:trc=srgb:format=yuv420p,setparams=range=pc:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709,{}select='gte(t\\,{requested:.6})',setpts=PTS-STARTPTS",
         output_fps
             .as_deref()
             .map(|fps| format!("fps={fps},"))
@@ -99,7 +101,17 @@ pub fn select_edited_output_frame(
         let option = command.arguments[index].as_str();
         if matches!(
             option,
-            "-c:v" | "-preset" | "-crf" | "-pix_fmt" | "-tag:v" | "-r" | "-movflags"
+            "-c:v"
+                | "-preset"
+                | "-crf"
+                | "-pix_fmt"
+                | "-tag:v"
+                | "-r"
+                | "-movflags"
+                | "-color_range"
+                | "-colorspace"
+                | "-color_trc"
+                | "-color_primaries"
         ) {
             index += 2;
         } else {
@@ -117,6 +129,14 @@ pub fn select_edited_output_frame(
         ((100_u16.saturating_sub(u16::from(quality))) / 4 + 2)
             .clamp(2, 31)
             .to_string(),
+        "-color_range".into(),
+        "pc".into(),
+        "-colorspace".into(),
+        "bt709".into(),
+        "-color_trc".into(),
+        "iec61966-2-1".into(),
+        "-color_primaries".into(),
+        "bt709".into(),
         "-f".into(),
         "image2".into(),
         "-update".into(),
@@ -191,7 +211,9 @@ impl FrameRenderer for FfmpegPreviewFrameRenderer {
 
     async fn validate_frame(&self, request: &FrameRequest, staging_path: &Path) -> Result<()> {
         let probe = crate::tools::probe_video(&self.runtime, staging_path).await?;
-        if probe.width != request.settings.width || probe.height != request.settings.height {
+        let expected_width = request.settings.width.saturating_add(1) & !1;
+        let expected_height = request.settings.height.saturating_add(1) & !1;
+        if probe.width != expected_width || probe.height != expected_height {
             return Err(anyhow!("optimized preview dimensions do not match request"));
         }
         let expected_codec = match request.settings.format {

@@ -1,13 +1,14 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { browserProxyCapability, browserProxyKey, fingerprintBrowserProxy, getBrowserProxyArtifact, putBrowserProxyArtifact, resolveBrowserPreviewSource, validateBrowserProxyProbe } from './browser-proxy-artifacts'
+import { BROWSER_DECODED_SRGB_STATUS } from './domain/color-management'
 
 const fingerprint = 'a'.repeat(64)
 describe('browser proxy artifacts', () => {
   beforeEach(() => { vi.stubGlobal('navigator', { storage: { estimate: async () => ({ usage: 0, quota: 100_000 }) } }); vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:proxy'), revokeObjectURL: vi.fn() }) })
   it('persists provenance separately and resolves preview only for current fingerprint', async () => {
     const blob = new Blob(['proxy'], { type: 'video/webm' })
-    await putBrowserProxyArtifact({ descriptor: { schemaVersion: 1, key: browserProxyKey(fingerprint), sourceFingerprint: fingerprint, profileFingerprint: 'vp8-640-15fps-muted-v1', mimeType: blob.type, width: 640, height: 360, durationTicks: 2_000_000, sourceDurationTicks: 2_000_000, startTicks: 0, mappingTimeBase: 1_000_000, nominalFps: 15, hasAudio: false, sizeBytes: blob.size, artifactFingerprint: await fingerprintBrowserProxy(blob), createdAt: 1 }, blob })
+    await putBrowserProxyArtifact({ descriptor: { schemaVersion: 2, key: browserProxyKey(fingerprint), sourceFingerprint: fingerprint, profileFingerprint: 'vp8-640-15fps-muted-sdr-v2', mimeType: blob.type, width: 640, height: 360, durationTicks: 2_000_000, sourceDurationTicks: 2_000_000, startTicks: 0, mappingTimeBase: 1_000_000, nominalFps: 15, hasAudio: false, sizeBytes: blob.size, artifactFingerprint: await fingerprintBrowserProxy(blob), createdAt: 1, colorManagement: BROWSER_DECODED_SRGB_STATUS }, blob })
     expect(await getBrowserProxyArtifact(fingerprint)).not.toBeNull()
     await expect(resolveBrowserPreviewSource({ id: 'v', url: 'blob:original', filename: 'v.mp4', duration: 2, width: 1920, height: 1080, fingerprint, acodec: null }, 'auto', true)).resolves.toMatchObject({ url: 'blob:proxy', usingProxy: true })
     await expect(resolveBrowserPreviewSource({ id: 'v', url: 'blob:original', filename: 'v.mp4', duration: 2, width: 1920, height: 1080, fingerprint: 'b'.repeat(64) }, 'auto', true)).resolves.toMatchObject({ url: 'blob:original', usingProxy: false })

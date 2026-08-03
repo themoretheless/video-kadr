@@ -4,6 +4,7 @@ import * as browserMedia from './browser-media'
 import type { VideoInfo } from './types'
 import * as api from './api'
 import { browserProxyCapability, browserProxyKey, browserProxyProfileFingerprint, fingerprintBrowserProxy, getBrowserProxyArtifact, probeBrowserProxyBlob, putBrowserProxyArtifact, validateBrowserProxyProbe } from './browser-proxy-artifacts'
+import { BROWSER_DECODED_SRGB_STATUS } from './domain/color-management'
 
 const queue = new BrowserDerivedQueue()
 let pumping: Promise<void> | null = null
@@ -100,7 +101,7 @@ async function createBrowserProxy(mediaId: string, fingerprint: string | undefin
     validateBrowserProxyProbe(measured, { duration: info.duration, width: canvas.width, height: canvas.height })
     const profileFingerprint = browserProxyProfileFingerprint()
     const descriptor = {
-      schemaVersion: 1 as const, key: browserProxyKey(info.fingerprint, profileFingerprint),
+      schemaVersion: 2 as const, key: browserProxyKey(info.fingerprint, profileFingerprint),
       sourceFingerprint: info.fingerprint, profileFingerprint, mimeType,
       width: measured.width, height: measured.height,
       durationTicks: Math.round(measured.duration * 1_000_000),
@@ -108,6 +109,7 @@ async function createBrowserProxy(mediaId: string, fingerprint: string | undefin
       mappingTimeBase: 1_000_000 as const,
       nominalFps: 15, hasAudio: false, sizeBytes: blob.size,
       artifactFingerprint: await fingerprintBrowserProxy(blob), createdAt: Date.now(),
+      colorManagement: BROWSER_DECODED_SRGB_STATUS,
     }
     await putBrowserProxyArtifact({ descriptor, blob })
     return descriptor

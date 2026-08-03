@@ -34,31 +34,38 @@ impl Capabilities {
         let has_muxer = |name: &str| tools.ffmpeg && tools.ffmpeg_muxers.iter().any(|v| v == name);
         let has_filter =
             |name: &str| tools.ffmpeg && tools.ffmpeg_filters.iter().any(|v| v == name);
+        let has_sdr_color_pipeline =
+            has_filter("colorspace") && has_filter("format") && has_filter("setparams");
 
         let formats = vec![
             option(
                 "mp4",
                 "MP4",
-                has_muxer("mp4") && (has_encoder("libx264") || has_encoder("libx265")),
-                "нужны muxer mp4 и encoder libx264 или libx265",
+                has_muxer("mp4")
+                    && (has_encoder("libx264") || has_encoder("libx265"))
+                    && has_sdr_color_pipeline,
+                "нужны muxer mp4, encoder libx264 или libx265 и filters colorspace/format/setparams",
             ),
             option(
                 "webm",
                 "WebM",
-                has_muxer("webm") && has_encoder("libvpx-vp9") && has_encoder("libopus"),
-                "нужны muxer webm и encoders libvpx-vp9/libopus",
+                has_muxer("webm")
+                    && has_encoder("libvpx-vp9")
+                    && has_encoder("libopus")
+                    && has_sdr_color_pipeline,
+                "нужны muxer webm, encoders libvpx-vp9/libopus и filters colorspace/format/setparams",
             ),
             option(
                 "av1",
                 "AV1",
-                has_muxer("mp4") && has_encoder("libsvtav1"),
-                "нужны muxer mp4 и encoder libsvtav1",
+                has_muxer("mp4") && has_encoder("libsvtav1") && has_sdr_color_pipeline,
+                "нужны muxer mp4, encoder libsvtav1 и filters colorspace/format/setparams",
             ),
             option(
                 "prores",
                 "ProRes",
-                has_muxer("mov") && has_encoder("prores_ks"),
-                "нужны muxer mov и encoder prores_ks",
+                has_muxer("mov") && has_encoder("prores_ks") && has_sdr_color_pipeline,
+                "нужны muxer mov, encoder prores_ks и filters colorspace/format/setparams",
             ),
             option(
                 "gif",
@@ -66,20 +73,21 @@ impl Capabilities {
                 has_muxer("gif")
                     && has_encoder("gif")
                     && has_filter("palettegen")
-                    && has_filter("paletteuse"),
-                "нужны muxer/encoder gif и palette filters",
+                    && has_filter("paletteuse")
+                    && has_sdr_color_pipeline,
+                "нужны muxer/encoder gif, palette filters и filters colorspace/format/setparams",
             ),
             option(
                 "png",
                 "Кадр PNG",
-                has_muxer("image2") && has_encoder("png"),
-                "нужны muxer image2 и encoder png",
+                has_muxer("image2") && has_encoder("png") && has_sdr_color_pipeline,
+                "нужны muxer image2, encoder png и filters colorspace/format/setparams",
             ),
             option(
                 "jpg",
                 "Кадр JPG",
-                has_muxer("image2") && has_encoder("mjpeg"),
-                "нужны muxer image2 и encoder mjpeg",
+                has_muxer("image2") && has_encoder("mjpeg") && has_sdr_color_pipeline,
+                "нужны muxer image2, encoder mjpeg и filters colorspace/format/setparams",
             ),
             option(
                 "mp3",
@@ -125,6 +133,12 @@ impl Capabilities {
                 )
             })
             .collect();
+        filters.push(option(
+            "sdr-color-management-v1",
+            "SDR color management",
+            has_sdr_color_pipeline,
+            "нужны filters colorspace, format и setparams",
+        ));
         filters.extend([
             option(
                 "primary-corrections",
@@ -260,7 +274,13 @@ mod tests {
             ffmpeg_version: Some("ffmpeg 7".into()),
             ffmpeg_encoders: vec!["libx264".into(), "aac".into(), "png".into(), "mjpeg".into()],
             ffmpeg_muxers: vec!["mp4".into(), "image2".into()],
-            ffmpeg_filters: vec!["hue".into(), "colorbalance".into()],
+            ffmpeg_filters: vec![
+                "hue".into(),
+                "colorbalance".into(),
+                "colorspace".into(),
+                "format".into(),
+                "setparams".into(),
+            ],
             ..ToolInfo::default()
         };
         let first = Capabilities::from_tools(&tools);
@@ -287,6 +307,7 @@ mod tests {
             ffmpeg: true,
             ffmpeg_encoders: vec!["libx265".into()],
             ffmpeg_muxers: vec!["mp4".into()],
+            ffmpeg_filters: vec!["colorspace".into(), "format".into(), "setparams".into()],
             ..ToolInfo::default()
         };
 
@@ -304,6 +325,81 @@ mod tests {
                 .codecs
                 .iter()
                 .find(|option| option.id == "h264")
+                .unwrap()
+                .available
+        );
+    }
+
+    #[test]
+    fn visual_formats_require_the_sdr_color_pipeline_but_mp3_does_not() {
+        let tools = ToolInfo {
+            ffmpeg: true,
+            ffmpeg_encoders: vec![
+                "libx264".into(),
+                "libvpx-vp9".into(),
+                "libopus".into(),
+                "libsvtav1".into(),
+                "prores_ks".into(),
+                "gif".into(),
+                "png".into(),
+                "mjpeg".into(),
+                "libmp3lame".into(),
+            ],
+            ffmpeg_muxers: vec![
+                "mp4".into(),
+                "webm".into(),
+                "mov".into(),
+                "gif".into(),
+                "image2".into(),
+                "mp3".into(),
+            ],
+            ffmpeg_filters: vec!["palettegen".into(), "paletteuse".into()],
+            ..ToolInfo::default()
+        };
+        let capabilities = Capabilities::from_tools(&tools);
+        for format in ["mp4", "webm", "av1", "prores", "gif", "png", "jpg"] {
+            let option = capabilities
+                .formats
+                .iter()
+                .find(|option| option.id == format)
+                .unwrap();
+            assert!(!option.available, "{format} must fail closed");
+            assert!(option.reason.as_deref().unwrap().contains("colorspace"));
+        }
+        assert!(
+            capabilities
+                .formats
+                .iter()
+                .find(|option| option.id == "mp3")
+                .unwrap()
+                .available
+        );
+        assert!(
+            !capabilities
+                .filters
+                .iter()
+                .find(|option| option.id == "sdr-color-management-v1")
+                .unwrap()
+                .available
+        );
+
+        let mut ready_tools = tools;
+        ready_tools.ffmpeg_filters.extend([
+            "colorspace".into(),
+            "format".into(),
+            "setparams".into(),
+        ]);
+        let ready = Capabilities::from_tools(&ready_tools);
+        assert!(ready
+            .formats
+            .iter()
+            .filter(|option| option.id != "mp3")
+            .all(|option| option.available));
+        assert!(
+            ready
+                .filters
+                .iter()
+                .find(|option| option.id == "sdr-color-management-v1")
                 .unwrap()
                 .available
         );
@@ -474,7 +570,7 @@ mod tests {
         let all_filters = all_look_filters();
         let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
 
-        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 6);
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 7);
         for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
             assert_eq!(option.id, definition.id());
             assert_eq!(option.label, definition.label);

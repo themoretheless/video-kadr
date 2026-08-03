@@ -8,6 +8,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::config::encode_budget::EncodeBudget;
 use crate::domain::artifact_graph::Fingerprint;
+use crate::domain::color_management::{
+    ColorManagementStatusV1, ColorMatrixV1, ColorPrimariesV1, ColorProvenanceV1, ColorRangeV1,
+    ColorTransferV1, PixelModelV1, SdrColorDescriptorV1, SdrColorPolicyV1,
+    UnsupportedColorReasonV1,
+};
 use crate::domain::edit::{
     AspectRatio, AudioEffects, CensorColor, CensorSpec, ColorWheel, ColorWheels, EditSpec,
     GeometrySpec, HslAdjustment, HslSelection, HslSelective, LookPreset, LutGrade, OutputScale,
@@ -17,7 +22,7 @@ use crate::domain::edit::{
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::model::{Crop, EditRequest, Scale, Trim};
 
-const EDIT_PLAN_SCHEMA_VERSION: u32 = 5;
+const EDIT_PLAN_SCHEMA_VERSION: u32 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SourceMediaMetadata {
@@ -25,9 +30,23 @@ pub struct SourceMediaMetadata {
     pub height: u32,
     pub duration_seconds: f64,
     pub has_audio: bool,
+    pub color_policy: Option<SdrColorPolicyV1>,
+    pub color_policy_warning: bool,
 }
 
 impl SourceMediaMetadata {
+    fn legacy_bt709_policy() -> SdrColorPolicyV1 {
+        SdrColorPolicyV1::new(SdrColorDescriptorV1 {
+            primaries: ColorPrimariesV1::Bt709,
+            transfer: ColorTransferV1::Bt709,
+            matrix: ColorMatrixV1::Bt709,
+            range: ColorRangeV1::Limited,
+            pixel_model: PixelModelV1::Yuv,
+            chroma_location: None,
+        })
+        .expect("legacy BT.709 policy is valid")
+    }
+
     pub fn new(width: u32, height: u32, duration_seconds: f64) -> anyhow::Result<Self> {
         Self::new_with_audio(width, height, duration_seconds, true)
     }
@@ -46,7 +65,97 @@ impl SourceMediaMetadata {
             height,
             duration_seconds,
             has_audio,
+            color_policy: (width > 0).then(Self::legacy_bt709_policy),
+            color_policy_warning: width > 0,
         })
+    }
+
+    pub fn from_probe(probe: &crate::domain::media_probe::ProbeResult) -> anyhow::Result<Self> {
+        let has_audio = probe
+            .streams
+            .iter()
+            .any(|stream| stream.kind == crate::domain::media_probe::StreamKind::Audio);
+        let mut value = Self::new_with_audio(probe.width, probe.height, probe.duration, has_audio)?;
+        if probe.width == 0 {
+            return Ok(value);
+        }
+        match resolved_source_color_management(probe) {
+            Some(ColorManagementStatusV1::Supported {
+                descriptor,
+                provenance: ColorProvenanceV1::Signaled,
+            }) => {
+                value.color_policy = Some(SdrColorPolicyV1::new(descriptor).map_err(|_| {
+                    anyhow::anyhow!("Противоречивые параметры цветового пространства")
+                })?);
+                value.color_policy_warning = false;
+            }
+            Some(ColorManagementStatusV1::Supported {
+                descriptor,
+                provenance: ColorProvenanceV1::LegacyAssumedBt709,
+            }) => {
+                value.color_policy = Some(SdrColorPolicyV1::new(descriptor).map_err(|_| {
+                    anyhow::anyhow!("Противоречивые параметры цветового пространства")
+                })?);
+                value.color_policy_warning = true;
+            }
+            Some(ColorManagementStatusV1::Unsupported { reason }) => {
+                anyhow::bail!("Неподдерживаемое цветовое пространство источника: {reason:?}")
+            }
+            Some(ColorManagementStatusV1::NotApplicable) | None => {
+                anyhow::bail!("У видео отсутствует цветовой descriptor")
+            }
+            Some(ColorManagementStatusV1::Supported { .. }) => {}
+        }
+        Ok(value)
+    }
+
+    pub fn for_audio_extraction(
+        probe: &crate::domain::media_probe::ProbeResult,
+    ) -> anyhow::Result<Self> {
+        let has_audio = probe
+            .streams
+            .iter()
+            .any(|stream| stream.kind == crate::domain::media_probe::StreamKind::Audio);
+        let mut value = Self::new_with_audio(probe.width, probe.height, probe.duration, has_audio)?;
+        value.color_policy = None;
+        value.color_policy_warning = false;
+        Ok(value)
+    }
+}
+
+/// Public/source metadata must describe the exact policy that rendering will
+/// consume. Legacy files with absent signalling therefore expose the explicit
+/// warned Rec.709 assumption instead of the raw missing-field probe result.
+pub fn resolved_source_color_management(
+    probe: &crate::domain::media_probe::ProbeResult,
+) -> Option<ColorManagementStatusV1> {
+    if probe.width == 0 {
+        return Some(ColorManagementStatusV1::NotApplicable);
+    }
+    let legacy_yuv = probe
+        .streams
+        .iter()
+        .find(|stream| stream.kind == crate::domain::media_probe::StreamKind::Video)
+        .and_then(|stream| stream.color.pixel_format.as_deref())
+        .is_some_and(|format| format.starts_with("yuv") || format.starts_with("nv"));
+    match probe.primary_video_color_management() {
+        Some(ColorManagementStatusV1::Unsupported { reason })
+            if legacy_yuv
+                && matches!(
+                    reason,
+                    UnsupportedColorReasonV1::MissingRange
+                        | UnsupportedColorReasonV1::MissingMatrix
+                        | UnsupportedColorReasonV1::MissingTransfer
+                        | UnsupportedColorReasonV1::MissingPrimaries
+                ) =>
+        {
+            Some(ColorManagementStatusV1::Supported {
+                descriptor: SourceMediaMetadata::legacy_bt709_policy().source,
+                provenance: ColorProvenanceV1::LegacyAssumedBt709,
+            })
+        }
+        Some(status) => Some(status.clone()),
+        None => None,
     }
 }
 
@@ -57,6 +166,10 @@ pub struct SourceMediaSpec {
     pub height: u32,
     pub duration_micros: u64,
     pub has_audio: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_policy: Option<SdrColorPolicyV1>,
+    #[serde(default)]
+    pub color_policy_warning: bool,
 }
 
 impl SourceMediaSpec {
@@ -70,6 +183,8 @@ impl SourceMediaSpec {
             height: value.height,
             duration_micros: duration_micros.round() as u64,
             has_audio: value.has_audio,
+            color_policy: value.color_policy,
+            color_policy_warning: value.color_policy_warning,
         })
     }
 
@@ -166,6 +281,9 @@ impl EditPlan {
         let expects_audio = supports_audio && source.has_audio && !edit.audio().muted;
         if output.audio_codec.is_some() != expects_audio {
             anyhow::bail!("edit plan audio output does not match mute semantics");
+        }
+        if output.format != OutputFormat::Mp3 && source.width > 0 && source.color_policy.is_none() {
+            anyhow::bail!("visual edit plan is missing its SDR color policy");
         }
         let canonical = serde_json::to_vec(&edit).expect("EditSpec serialization cannot fail");
         let canonical_output =
@@ -1073,5 +1191,97 @@ mod tests {
         assert!(
             EditPlan::from_domain(plan.source_fingerprint, plan.source, plan.edit, output).is_err()
         );
+    }
+
+    fn color_probe(
+        range: Option<&str>,
+        matrix: &str,
+        transfer: &str,
+        primaries: &str,
+    ) -> crate::domain::media_probe::ProbeResult {
+        let mut stream = serde_json::json!({
+            "index":0,"codec_type":"video","width":1920,"height":1080,"pix_fmt":"yuv420p",
+            "color_space":matrix,"color_transfer":transfer,"color_primaries":primaries
+        });
+        if let Some(range) = range {
+            stream["color_range"] = serde_json::json!(range);
+        }
+        crate::domain::media_probe::ProbeResult::from_ffprobe_json(&serde_json::json!({
+            "streams":[stream,{"index":1,"codec_type":"audio"}],
+            "format":{"duration":"10.0"}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn source_color_policy_resolves_signaled_assumed_and_hard_errors() {
+        let exact =
+            SourceMediaMetadata::from_probe(&color_probe(Some("tv"), "bt709", "bt709", "bt709"))
+                .unwrap();
+        assert!(!exact.color_policy_warning);
+        let missing =
+            SourceMediaMetadata::from_probe(&color_probe(None, "bt709", "bt709", "bt709")).unwrap();
+        assert!(missing.color_policy_warning);
+        assert!(matches!(
+            resolved_source_color_management(&color_probe(None, "bt709", "bt709", "bt709")),
+            Some(ColorManagementStatusV1::Supported {
+                provenance: ColorProvenanceV1::LegacyAssumedBt709,
+                ..
+            })
+        ));
+        assert!(SourceMediaMetadata::from_probe(&color_probe(
+            Some("tv"),
+            "bt709",
+            "smpte2084",
+            "bt709"
+        ))
+        .is_err());
+        assert!(
+            SourceMediaMetadata::from_probe(&color_probe(Some("tv"), "rgb", "bt709", "bt709"))
+                .is_err()
+        );
+        // Build from ffprobe JSON because normalized ProbeResult intentionally
+        // does not retain the original raw object.
+        let rgb_missing_matrix = serde_json::json!({
+            "streams":[{"index":0,"codec_type":"video","width":1920,"height":1080,
+                "pix_fmt":"rgb24","color_range":"pc","color_transfer":"srgb","color_primaries":"bt709"}],
+            "format":{"duration":"10.0"}
+        });
+        let rgb_missing_matrix =
+            crate::domain::media_probe::ProbeResult::from_ffprobe_json(&rgb_missing_matrix)
+                .unwrap();
+        assert!(SourceMediaMetadata::from_probe(&rgb_missing_matrix).is_err());
+    }
+
+    #[test]
+    fn audio_only_color_status_is_not_applicable_and_mp3_bypasses_video_policy() {
+        let probe =
+            crate::domain::media_probe::ProbeResult::from_ffprobe_json(&serde_json::json!({
+                "streams":[{"index":0,"codec_type":"audio","codec_name":"mp3"}],
+                "format":{"duration":"10.0"}
+            }))
+            .unwrap();
+        assert_eq!(
+            resolved_source_color_management(&probe),
+            Some(ColorManagementStatusV1::NotApplicable)
+        );
+        let metadata = SourceMediaMetadata::for_audio_extraction(&probe).unwrap();
+        assert!(metadata.color_policy.is_none());
+        assert!(!metadata.color_policy_warning);
+    }
+
+    #[test]
+    fn source_color_policy_is_part_of_plan_fingerprint() {
+        let request = || serde_json::from_value(serde_json::json!({"videoId":"source"})).unwrap();
+        let bt709 =
+            SourceMediaMetadata::from_probe(&color_probe(Some("tv"), "bt709", "bt709", "bt709"))
+                .unwrap();
+        let srgb =
+            SourceMediaMetadata::from_probe(&color_probe(Some("tv"), "bt709", "srgb", "bt709"))
+                .unwrap();
+        let first = EditPlan::compile(Fingerprint::digest(b"source"), request(), bt709).unwrap();
+        let second = EditPlan::compile(Fingerprint::digest(b"source"), request(), srgb).unwrap();
+        assert_ne!(first.plan_fingerprint, second.plan_fingerprint);
+        assert_eq!(first.schema_version, 6);
     }
 }

@@ -4,6 +4,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::color_management::{
+    normalize_ffprobe_sdr_v1, ColorManagementStatusV1, FfprobeColorFields,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Rational {
@@ -46,6 +50,9 @@ pub struct ColorMetadata {
     pub transfer: Option<String>,
     pub primaries: Option<String>,
     pub pixel_format: Option<String>,
+    pub chroma_location: Option<String>,
+    #[serde(default)]
+    pub color_management: ColorManagementStatusV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -166,6 +173,13 @@ impl ProbeResult {
             streams,
         })
     }
+
+    pub fn primary_video_color_management(&self) -> Option<&ColorManagementStatusV1> {
+        self.streams
+            .iter()
+            .find(|stream| stream.kind == StreamKind::Video)
+            .map(|stream| &stream.color.color_management)
+    }
 }
 
 fn normalize_stream(stream: &Value) -> StreamMetadata {
@@ -182,6 +196,31 @@ fn normalize_stream(stream: &Value) -> StreamMetadata {
         .filter_map(|key| stream.get(key).and_then(Value::as_str))
         .filter_map(Rational::parse)
         .find(|rate| rate.numerator > 0 && rate.denominator > 0);
+    let color = ColorMetadata {
+        range: string(stream, "color_range"),
+        space: string(stream, "color_space"),
+        transfer: string(stream, "color_transfer"),
+        primaries: string(stream, "color_primaries"),
+        pixel_format: string(stream, "pix_fmt"),
+        chroma_location: string(stream, "chroma_location"),
+        color_management: ColorManagementStatusV1::NotApplicable,
+    };
+    let color_management = if stream.get("codec_type").and_then(Value::as_str) == Some("video") {
+        normalize_ffprobe_sdr_v1(FfprobeColorFields {
+            range: color.range.as_deref(),
+            matrix: color.space.as_deref(),
+            transfer: color.transfer.as_deref(),
+            primaries: color.primaries.as_deref(),
+            chroma_location: color.chroma_location.as_deref(),
+            pixel_format: color.pixel_format.as_deref(),
+        })
+    } else {
+        ColorManagementStatusV1::NotApplicable
+    };
+    let color = ColorMetadata {
+        color_management,
+        ..color
+    };
     StreamMetadata {
         index: unsigned32(stream.get("index")).unwrap_or(0),
         kind: match stream.get("codec_type").and_then(Value::as_str) {
@@ -206,13 +245,7 @@ fn normalize_stream(stream: &Value) -> StreamMetadata {
         channels: unsigned32(stream.get("channels")),
         channel_layout: string(stream, "channel_layout"),
         rotation_degrees: rotation(stream),
-        color: ColorMetadata {
-            range: string(stream, "color_range"),
-            space: string(stream, "color_space"),
-            transfer: string(stream, "color_transfer"),
-            primaries: string(stream, "color_primaries"),
-            pixel_format: string(stream, "pix_fmt"),
-        },
+        color,
         dispositions: dispositions(stream.get("disposition")),
         tags: tags(stream.get("tags")),
     }
@@ -307,6 +340,14 @@ mod tests {
         assert_eq!(probe.streams[0].time_base.unwrap().as_f64(), 1.0 / 90_000.0);
         assert_eq!(probe.streams[0].rotation_degrees, 270);
         assert_eq!(probe.streams[0].color.primaries.as_deref(), Some("bt709"));
+        assert!(matches!(
+            probe.primary_video_color_management(),
+            Some(ColorManagementStatusV1::Supported { .. })
+        ));
+        assert_eq!(
+            probe.streams[1].color.color_management,
+            ColorManagementStatusV1::NotApplicable
+        );
         assert!(probe.streams[0].dispositions.contains("default"));
     }
 

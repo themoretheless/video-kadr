@@ -35,7 +35,8 @@ import {
   planBrowserExport,
   runtimeResourceCapabilities,
 } from './browser-resource-plan'
-import { browserColorFilterPlan, browserVideoFilterArgs, selectiveHslFfmpegFilter } from './browser-color-pipeline'
+import { browserColorFilterPlan, browserSdrExportBoundary, browserVideoFilterArgs, selectiveHslFfmpegFilter } from './browser-color-pipeline'
+import { BROWSER_DECODED_SRGB_STATUS } from './domain/color-management'
 
 type EditPayload = Record<string, unknown>
 
@@ -96,6 +97,7 @@ const MAX_SESSION_OUTPUT_BYTES = 256 * 1024 * 1024
 let ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null
 let ffmpegLoading: Promise<import('@ffmpeg/ffmpeg').FFmpeg> | null = null
 let hslSelectiveV1Smoke: Promise<boolean> | null = null
+let browserSdrV1Smoke: Promise<boolean> | null = null
 let activeJobId: string | null = null
 let streamingExportActive = false
 let cancelStreamingExport: (() => void) | null = null
@@ -256,6 +258,7 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
     url: objectUrl(file),
     filename: file.name,
     mediaKind: isVideo ? 'video' : 'audio',
+    colorManagement: isVideo ? BROWSER_DECODED_SRGB_STATUS : { status: 'not_applicable' },
     ...metadata,
   }
   const createdAt = Date.now()
@@ -391,6 +394,27 @@ async function probeBrowserHslSelectiveV1(): Promise<boolean> {
   return hslSelectiveV1Smoke
 }
 
+async function probeBrowserSdrV1(): Promise<boolean> {
+  if (browserSdrV1Smoke) return browserSdrV1Smoke
+  browserSdrV1Smoke = (async () => {
+    const output = '.sdr-color-v1-smoke.rgba'
+    try {
+      const ffmpeg = await loadFfmpeg()
+      const exitCode = await boundedEnginePhase(ffmpeg.exec([
+        '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=2x2',
+        '-vf', 'zscale=matrixin=bt709:transferin=bt709:primariesin=bt709:rangein=limited:matrix=gbr:transfer=iec61966-2-1:primaries=bt709:range=full,format=rgba',
+        '-frames:v', '1', '-f', 'rawvideo', '-y', output,
+      ]), 'проверка SDR color v1', 15_000, () => ffmpeg.terminate())
+      if (exitCode !== 0) return false
+      const bytes = await ffmpeg.readFile(output)
+      return bytes instanceof Uint8Array && bytes.length === 16
+    } catch { return false } finally {
+      try { await ffmpegInstance?.deleteFile(output) } catch { /* absent after failed smoke */ }
+    }
+  })()
+  return browserSdrV1Smoke
+}
+
 function number(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
@@ -440,6 +464,8 @@ async function buildArgs(
   payload: EditPayload,
   resources: FfmpegJobResources,
 ): Promise<FfmpegJobSpec> {
+  const format = String(payload.format || 'mp4')
+  const sdrBoundary = browserSdrExportBoundary(format, format === 'mp3' || await probeBrowserSdrV1())
   const extension = source.file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'mp4'
   const temporaryFiles = resources.temporaryFiles
   let mountPoint = resources.mountPoint
@@ -512,14 +538,14 @@ async function buildArgs(
   let lutName: string | undefined
   const lut = record(payload.lut)
   const lutIntensity = lut ? Math.max(0, Math.min(1, number(lut.intensity, 1))) : 0
-  if (lut && lutIntensity > 1e-9) {
+  if (!sdrBoundary.bypassVideo && lut && lutIntensity > 1e-9) {
     const lutRecord = luts.get(String(lut.id))
     if (!lutRecord) throw new Error('LUT больше недоступен — загрузите файл повторно')
     lutName = `lut-${id()}.cube`
     await ffmpeg.writeFile(lutName, new Uint8Array(await lutRecord.file.arrayBuffer()))
     temporaryFiles.push(lutName)
   }
-  const colorPlan = browserColorFilterPlan(payload, lutName)
+  const colorPlan = sdrBoundary.bypassVideo ? undefined : browserColorFilterPlan(payload, lutName)
   if (payload.reverse) {
     videoFiltersAfterColor.push('reverse')
     audioFilters.push('areverse')
@@ -549,11 +575,10 @@ async function buildArgs(
     audioFilters.push(`afade=t=out:st=${Math.max(0, duration - fade)}:d=${fade}`)
   }
 
-  const format = String(payload.format || 'mp4')
-  if (format !== 'mp3') {
-    args.push(...browserVideoFilterArgs(colorPlan, {
-      prefixFilters: videoFiltersBeforeColor,
-      suffixFilters: videoFiltersAfterColor,
+  if (!sdrBoundary.bypassVideo) {
+    args.push(...browserVideoFilterArgs(colorPlan!, {
+      prefixFilters: [...videoFiltersBeforeColor, sdrBoundary.inputFilter!],
+      suffixFilters: [...videoFiltersAfterColor, sdrBoundary.outputFilter!],
       mapAudio: !payload.mute && (format === 'mp4' || format === 'webm'),
     }))
   }
@@ -561,7 +586,7 @@ async function buildArgs(
   if (payload.mute) args.push('-an')
   const output = outputSpec(payload)
   args.push('-fs', String(MEMFS_MAX_OUTPUT_BYTES))
-  args.push(...output.args, output.filename)
+  args.push(...sdrBoundary.outputArgs, ...output.args, output.filename)
   temporaryFiles.push(output.filename)
   return { ffmpegArgs: args, inputName, filename: output.filename, mime: output.mime, mountPoint, temporaryFiles }
 }
@@ -910,12 +935,17 @@ export async function getCapabilities(): Promise<Capabilities> {
     : !runtime.worker ? 'Web Worker недоступен в этом браузере' : null
   const local = (id: string, label = id) => runtimeReason ? disabled(id, label, runtimeReason) : enabled(id, label)
   const selectiveHslSmoke = runtimeReason ? false : await probeBrowserHslSelectiveV1()
+  const sdrColorSmoke = runtimeReason ? false : await probeBrowserSdrV1()
   return {
     schemaVersion: 1,
-    toolFingerprint: `ffmpeg.wasm/client:hsl-selective-v1-${selectiveHslSmoke ? 'ok' : 'failed'}`,
+    toolFingerprint: `ffmpeg.wasm/client:hsl-selective-v1-${selectiveHslSmoke ? 'ok' : 'failed'}:sdr-color-v1-${sdrColorSmoke ? 'ok' : 'failed'}`,
     formats: [
-      local('mp4', 'MP4'), local('webm', 'WebM'), local('gif', 'GIF'),
-      local('png', 'PNG'), local('jpg', 'JPG'), local('mp3', 'MP3'),
+      sdrColorSmoke ? enabled('mp4', 'MP4') : disabled('mp4', 'MP4', 'ffmpeg.wasm не прошёл проверку SDR zscale v1'),
+      sdrColorSmoke ? enabled('webm', 'WebM') : disabled('webm', 'WebM', 'ffmpeg.wasm не прошёл проверку SDR zscale v1'),
+      sdrColorSmoke ? enabled('gif', 'GIF') : disabled('gif', 'GIF', 'ffmpeg.wasm не прошёл проверку SDR zscale v1'),
+      sdrColorSmoke ? enabled('png', 'PNG') : disabled('png', 'PNG', 'ffmpeg.wasm не прошёл проверку SDR zscale v1'),
+      sdrColorSmoke ? enabled('jpg', 'JPG') : disabled('jpg', 'JPG', 'ffmpeg.wasm не прошёл проверку SDR zscale v1'),
+      local('mp3', 'MP3'),
       disabled('av1', 'AV1', 'Недоступно в браузерной сборке'),
       disabled('prores', 'ProRes', 'Недоступно в браузерной сборке'),
     ],

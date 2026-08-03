@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 
+use crate::domain::color_management::ColorManagementStatusV1;
+
 /// One persisted media item: an imported/uploaded source or a rendered output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +37,8 @@ pub struct MediaEntry {
     pub size_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_management: Option<ColorManagementStatusV1>,
     pub created_at: u64,
 }
 
@@ -56,6 +60,7 @@ impl MediaEntry {
             media_kind: v["mediaKind"].as_str().map(str::to_owned),
             size_bytes: v["sizeBytes"].as_u64(),
             fingerprint: v["fingerprint"].as_str().map(str::to_owned),
+            color_management: serde_json::from_value(v["colorManagement"].clone()).ok(),
             created_at: now_secs(),
         }
     }
@@ -241,6 +246,7 @@ mod tests {
             media_kind: None,
             size_bytes: None,
             fingerprint: None,
+            color_management: None,
             created_at,
         }
     }
@@ -356,7 +362,15 @@ mod tests {
             "duration": 12.5,
             "width": 1280,
             "height": 720,
-            "sizeBytes": 999
+            "sizeBytes": 999,
+            "colorManagement": {
+                "status": "supported",
+                "descriptor": {
+                    "primaries": "bt709", "transfer": "bt709", "matrix": "bt709",
+                    "range": "limited", "pixelModel": "yuv", "chromaLocation": "left"
+                },
+                "provenance": "signaled"
+            }
         });
         let e = MediaEntry::from_result("source", &v);
         assert_eq!(e.id, "vid");
@@ -367,5 +381,9 @@ mod tests {
         assert_eq!(e.width, Some(1280));
         assert_eq!(e.height, Some(720));
         assert_eq!(e.size_bytes, Some(999));
+        assert!(matches!(
+            e.color_management,
+            Some(ColorManagementStatusV1::Supported { .. })
+        ));
     }
 }

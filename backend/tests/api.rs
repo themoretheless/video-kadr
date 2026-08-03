@@ -313,12 +313,16 @@ async fn proxy_catalog_serves_only_a_checksum_verified_ready_artifact_with_range
         "clock": clock, "codedWidth": 640, "codedHeight": 360,
         "displayWidth": 640, "displayHeight": 360, "videoCodec":"h264",
         "frameRate":{"numerator":30,"denominator":1}, "audioCodec":"aac",
-        "audioSampleRate":48000, "audioChannels":2
+        "audioSampleRate":48000, "audioChannels":2,
+        "colorManagement": {
+            "status":"supported", "provenance":"signaled",
+            "descriptor":{"primaries":"bt709","transfer":"bt709","matrix":"bt709","range":"limited","pixelModel":"yuv","chromaLocation":"left"}
+        }
     });
     let manifest = json!({
-        "schemaVersion":3, "key":key, "sourceId":"source", "sourceFingerprint":source_fingerprint,
+        "schemaVersion":4, "key":key, "sourceId":"source", "sourceFingerprint":source_fingerprint,
         "profile":{"maxWidth":960,"codec":"h264","quality":28,"includeAudio":true},
-        "producerCompatibility":"ffmpeg-proxy-v3-common-origin", "sourceMedia":media, "proxyMedia":media,
+        "producerCompatibility":FFMPEG_PROXY_COMPATIBILITY, "sourceMedia":media, "proxyMedia":media,
         "file":{"path":relative,"size":bytes.len(),"sha256":Fingerprint::digest(bytes)}
     });
     tokio::fs::write(
@@ -776,6 +780,7 @@ async fn project_archive_original_export_rejects_symlink_source() {
                 media_kind: Some("video".into()),
                 size_bytes: Some(17),
                 fingerprint: None,
+                color_management: None,
                 created_at: video_editor_backend::library::now_secs(),
             })
             .await
@@ -1301,8 +1306,10 @@ async fn selective_hsl_fails_closed_when_geq_and_format_are_unavailable() {
 #[tokio::test]
 async fn selective_hsl_invalid_ranges_are_rejected_before_enqueue() {
     let (mut state, _storage) = make_state(true, true).await;
-    Arc::make_mut(&mut state.tools).ffmpeg_filters =
-        ["geq", "format"].into_iter().map(str::to_string).collect();
+    Arc::make_mut(&mut state.tools).ffmpeg_filters = ["geq", "format", "colorspace", "setparams"]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
     let app = router(state);
     let (status, body, _) = send(
         &app,
@@ -1326,8 +1333,10 @@ async fn selective_hsl_invalid_ranges_are_rejected_before_enqueue() {
 #[tokio::test]
 async fn selective_hsl_canonical_identity_precedes_dedupe_and_cache_keys() {
     let (mut state, _storage) = make_state(true, true).await;
-    Arc::make_mut(&mut state.tools).ffmpeg_filters =
-        ["geq", "format"].into_iter().map(str::to_string).collect();
+    Arc::make_mut(&mut state.tools).ffmpeg_filters = ["geq", "format", "colorspace", "setparams"]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
     let app = router(state);
     let enqueue = |payload| send(&app, post_json("/api/edit", payload));
 

@@ -164,6 +164,7 @@ export async function resolveLibrarySource(entry: MediaEntry, expectedFingerprin
     assetId: entry.assetId,
     fingerprint: entry.fingerprint,
     sizeBytes: entry.sizeBytes,
+    colorManagement: entry.colorManagement,
   }
 }
 

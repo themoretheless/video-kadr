@@ -24,6 +24,7 @@ describe('project document schema', () => {
     expect(document.sequences[0]?.tracks[0]?.clips[0]?.durationTicks).toBe(12_500_000)
     expect(document.legacyFields?.pluginState).toEqual({ revision: 7 })
     expect(document.proxyPolicy).toBe('auto')
+    expect(document.sequences[0]?.settings.outputColorPolicy).toBe('auto-sdr-v1')
   })
 
   it('migrates v2 asset identity to v3 without changing media order or extensions', () => {
@@ -138,6 +139,21 @@ describe('project document schema', () => {
     expect(reopened.proxyPolicy).toBe('proxy')
     expect(JSON.stringify(reopened)).not.toContain('/api/proxies/')
     expect(JSON.stringify(reopened)).not.toContain('blob:')
+  })
+
+  it('persists source color provenance and the non-creative output policy', () => {
+    const colorManagement = {
+      status: 'supported', provenance: 'signaled',
+      descriptor: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'limited', pixelModel: 'yuv' },
+    }
+    const document = migrateProjectDocument({
+      videoId: 'video-1', video: { id: 'video-1', duration: 1, colorManagement }, edit: {},
+    })
+    const reopened = migrateProjectDocument(JSON.parse(JSON.stringify(document)))
+    expect(reopened.media[0]?.metadata.colorManagement).toEqual(colorManagement)
+    expect(reopened.sequences[0]?.settings.outputColorPolicy).toBe('auto-sdr-v1')
+    expect(reopened.sequences[0]?.tracks[0]?.clips[0]?.effects[0]?.parameters)
+      .not.toHaveProperty('outputColorPolicy')
   })
 
   it('patches legacy values without losing nested unknown fields', () => {

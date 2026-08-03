@@ -32,6 +32,8 @@ export interface ProjectSequence extends JsonObject {
 
 export interface SequenceSettings extends JsonObject {
   timeBase: number
+  /** Format-aware SDR v1 output policy; creative presets never own this field. */
+  outputColorPolicy?: 'auto-sdr-v1'
   frameRate?: number
   width?: number
   height?: number
@@ -97,6 +99,7 @@ export function migrateProjectDocument(value: unknown): ProjectDocument {
   }
   const document = cloneJson(object) as ProjectDocument
   document.proxyPolicy ??= 'auto'
+  for (const sequence of document.sequences ?? []) sequence.settings.outputColorPolicy ??= 'auto-sdr-v1'
   for (const media of document.media ?? []) {
     if (media && typeof media === 'object' && media.metadata) {
       media.metadata = durableMediaMetadata(media.metadata)
@@ -155,6 +158,9 @@ export function validateProjectDocument(document: ProjectDocument): void {
     addUnique(sequenceIds, sequence.id)
     if (!sequence.name.trim() || !isU32(sequence.settings?.timeBase)) {
       throw new Error('invalid project sequence')
+    }
+    if (sequence.settings.outputColorPolicy !== undefined && sequence.settings.outputColorPolicy !== 'auto-sdr-v1') {
+      throw new Error('invalid sequence outputColorPolicy')
     }
     if (
       sequence.settings.frameRate !== undefined &&
@@ -398,7 +404,7 @@ function migrateV1(value: JsonObject): ProjectDocument {
     stringValue(video.filename) ??
     'Без названия'
   const durationTicks = durationToTicks(video.duration)
-  const settings: SequenceSettings = { timeBase: PROJECT_TIME_BASE }
+  const settings: SequenceSettings = { timeBase: PROJECT_TIME_BASE, outputColorPolicy: 'auto-sdr-v1' }
   const frameRate = positiveNumber(video.fps)
   const width = positiveInteger(video.width)
   const height = positiveInteger(video.height)
@@ -484,6 +490,7 @@ function migrateV2(value: JsonObject): ProjectDocument {
     else delete media.contentFingerprint
     media.metadata = withoutAssetIdentity(metadata)
   }
+  for (const sequence of document.sequences ?? []) sequence.settings.outputColorPolicy ??= 'auto-sdr-v1'
   validateProjectDocument(document)
   return document
 }

@@ -10,7 +10,9 @@ use tokio_util::sync::CancellationToken;
 use crate::analysis::proxy::FFMPEG_PROXY_COMPATIBILITY;
 use crate::analysis::proxy::{ProxyCodec, ProxyEncoder, ProxyProfile, SourceIdentity};
 use crate::domain::media_probe::ProbeResult;
+use crate::domain::output::OutputFormat;
 use crate::process_control::ProcessRuntime;
+use crate::services::render::SourceMediaMetadata;
 
 use super::{run_ffmpeg, Done};
 
@@ -38,7 +40,13 @@ impl ProxyEncoder for FfmpegProxyEncoder {
         staging_path: &Path,
         cancellation: &CancellationToken,
     ) -> Result<()> {
-        let args = build_proxy_args(&source.original_path, staging_path, profile);
+        let probe = super::probe_video(&self.runtime, &source.original_path).await?;
+        let metadata = SourceMediaMetadata::from_probe(&probe)?;
+        let color_policy = metadata
+            .color_policy
+            .as_ref()
+            .ok_or_else(|| anyhow!("video proxy source is missing its SDR color policy"))?;
+        let args = build_proxy_args(&source.original_path, staging_path, profile, color_policy);
         let (progress, receiver) = mpsc::unbounded_channel();
         // This adapter has no progress consumer. Dropping the receiver makes
         // sends no-ops instead of retaining every update for a long encode.
@@ -63,7 +71,19 @@ impl ProxyEncoder for FfmpegProxyEncoder {
     }
 }
 
-pub fn build_proxy_args(input: &Path, output: &Path, profile: &ProxyProfile) -> Vec<String> {
+pub fn build_proxy_args(
+    input: &Path,
+    output: &Path,
+    profile: &ProxyProfile,
+    color_policy: &crate::domain::color_management::SdrColorPolicyV1,
+) -> Vec<String> {
+    let output_format = match profile.codec {
+        ProxyCodec::H264 => OutputFormat::Mp4,
+        ProxyCodec::ProresProxy => OutputFormat::Prores,
+    };
+    let mut video_filters = super::args::source_color_filters(color_policy);
+    video_filters.push(format!("scale='min({},iw)':-2", profile.max_width));
+    video_filters.extend(super::args::output_color_filters(output_format));
     let mut args = vec![
         "-y".into(),
         "-i".into(),
@@ -71,7 +91,7 @@ pub fn build_proxy_args(input: &Path, output: &Path, profile: &ProxyProfile) -> 
         "-map".into(),
         "0:v:0".into(),
         "-vf".into(),
-        format!("scale='min({},iw)':-2", profile.max_width),
+        video_filters.join(","),
         "-copyts".into(),
         "-start_at_zero".into(),
         "-avoid_negative_ts".into(),
@@ -105,6 +125,16 @@ pub fn build_proxy_args(input: &Path, output: &Path, profile: &ProxyProfile) -> 
             ]);
         }
     }
+    args.extend([
+        "-color_range".into(),
+        "tv".into(),
+        "-colorspace".into(),
+        "bt709".into(),
+        "-color_trc".into(),
+        "bt709".into(),
+        "-color_primaries".into(),
+        "bt709".into(),
+    ]);
     if profile.include_audio {
         args.extend([
             "-map".into(),
@@ -127,14 +157,22 @@ mod tests {
 
     #[test]
     fn proxy_arguments_are_bounded_and_do_not_touch_source() {
+        let source = SourceMediaMetadata::new(1920, 1080, 10.0).unwrap();
         let args = build_proxy_args(
             Path::new("/source.mp4"),
             Path::new("/staging/proxy.mp4"),
             &ProxyProfile::default(),
+            source.color_policy.as_ref().unwrap(),
         );
         assert_eq!(args.first().map(String::as_str), Some("-y"));
         assert!(args.contains(&"libx264".into()));
-        assert!(args.contains(&"scale='min(960,iw)':-2".into()));
+        let filters = args
+            .get(args.iter().position(|arg| arg == "-vf").unwrap() + 1)
+            .unwrap();
+        assert!(filters.contains("colorspace=ispace=bt709"));
+        assert!(filters.contains("scale='min(960,iw)':-2"));
+        assert!(filters.contains("range=tv"));
+        assert!(args.windows(2).any(|pair| pair == ["-color_trc", "bt709"]));
         assert!(args.contains(&"-copyts".into()));
         assert!(args.contains(&"-start_at_zero".into()));
         assert_eq!(args.last().map(String::as_str), Some("/staging/proxy.mp4"));

@@ -186,6 +186,8 @@ fn spawn_import_job(
                 }
                 let path = tools::find_source(&sources, &vid).await?;
                 let info = tools::probe_video(&st.process_runtime, &path).await?;
+                let color_management =
+                    crate::services::render::resolved_source_color_management(&info);
                 let title = tools::read_title(&sources, &vid).await;
                 let size = tokio::fs::metadata(&path).await.map(|m| m.len()).ok();
                 let fingerprint = crate::artifacts::fingerprint_file(
@@ -211,6 +213,8 @@ fn spawn_import_job(
                     "fps": info.fps,
                     "vcodec": info.vcodec,
                     "acodec": info.acodec,
+                    "mediaKind": if info.width > 0 { "video" } else { "audio" },
+                    "colorManagement": color_management,
                     "sizeBytes": size,
                     "fingerprint": fingerprint,
                 })))
@@ -289,6 +293,14 @@ pub async fn edit_handler(
     // Audio-only exports have no video filter graph. Canonicalise video-only
     // colour fields before validation, durable dedupe, and cache identity.
     if req.format.as_deref() == Some("mp3") {
+        req.crop = None;
+        req.scale = None;
+        req.rotate = 0;
+        req.flip_h = false;
+        req.flip_v = false;
+        req.brightness = 0.0;
+        req.contrast = 1.0;
+        req.saturation = 1.0;
         req.lut = None;
         req.curves = None;
         req.temperature = 0.0;
@@ -297,6 +309,16 @@ pub async fn edit_handler(
         req.shadows = 0.0;
         req.color_wheels = None;
         req.hsl_selective = None;
+        req.filter = None;
+        req.reverse = false;
+        req.fps = None;
+        req.censor = None;
+        req.censor_color = None;
+        req.vignette = false;
+        req.denoise = false;
+        req.sharpen = 0.0;
+        req.grain = 0.0;
+        req.pad = None;
     } else if req
         .lut
         .as_ref()
@@ -363,6 +385,15 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
                 .iter()
                 .any(|candidate| candidate == name)
     };
+    if request.format.as_deref() != Some("mp3")
+        && ["colorspace", "format", "setparams"]
+            .iter()
+            .any(|name| !has_filter(name))
+    {
+        return Err(AppError::bad_request(
+            "SDR color pipeline недоступен: нужны FFmpeg filters colorspace, format и setparams",
+        ));
+    }
     let primary_corrections = request.temperature.abs() > 1e-9
         || request.tint.abs() > 1e-9
         || request.highlights.abs() > 1e-9
@@ -487,12 +518,11 @@ fn spawn_edit_job(
             let input = tools::find_source(&sources, &req.video_id).await?;
             let probe = tools::probe_video(&st.process_runtime, &input).await?;
             let source_fingerprint = Fingerprint::digest(req.video_id.as_bytes());
-            let source = SourceMediaMetadata::new_with_audio(
-                probe.width,
-                probe.height,
-                probe.duration,
-                probe.acodec.is_some(),
-            )?;
+            let source = if requested_format == OutputFormat::Mp3 {
+                SourceMediaMetadata::for_audio_extraction(&probe)?
+            } else {
+                SourceMediaMetadata::from_probe(&probe)?
+            };
             let plan = Arc::new(EditPlan::compile(source_fingerprint, req, source)?);
             let execution = RenderExecution::new_with_resources(
                 plan,
@@ -522,6 +552,28 @@ fn spawn_edit_job(
                 let _ = tokio::fs::remove_file(&output_path).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
             }
+            let color_management = if requested_format == OutputFormat::Mp3 {
+                crate::domain::color_management::ColorManagementStatusV1::NotApplicable
+            } else {
+                let rendered_probe = tools::probe_video(&st.process_runtime, &output_path).await?;
+                let actual = rendered_probe
+                    .primary_video_color_management()
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("Экспорт не содержит видеопоток"))?;
+                let valid = match requested_format {
+                    OutputFormat::Png => actual.is_srgb_full_output(),
+                    // JPEG and GIF do not reliably carry primaries/transfer
+                    // tags. Keep their decoded probe status honest instead of
+                    // claiming signalled sRGB or deleting a valid artifact.
+                    OutputFormat::Jpg | OutputFormat::Gif => true,
+                    OutputFormat::Mp4 | OutputFormat::Webm | OutputFormat::Av1 => actual
+                        == crate::domain::color_management::ColorManagementStatusV1::rec709_limited_output(),
+                    OutputFormat::Prores => actual.is_prores_rec709_limited_output(),
+                    OutputFormat::Mp3 => unreachable!("handled above"),
+                };
+                anyhow::ensure!(valid, "Экспорт не сохранил обязательные SDR color tags");
+                actual
+            };
             let size = tokio::fs::metadata(&output_path)
                 .await
                 .map(|m| m.len())
@@ -531,6 +583,7 @@ fn spawn_edit_job(
                 "url": format!("/files/outputs/{filename}"),
                 "filename": filename,
                 "sizeBytes": size,
+                "colorManagement": color_management,
             })))
         }
         .await;
