@@ -114,6 +114,7 @@ pub async fn upload_handler(
     let entry = MediaEntry::from_result("source", &body);
     if state.library.add(entry.clone()).await {
         state.index_media(&entry).await;
+        super::schedule_source_graph(&state, entry);
     }
     Ok(Json(body))
 }

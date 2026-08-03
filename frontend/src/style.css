@@ -1406,3 +1406,16 @@ body {
     grid-template-columns: 135px minmax(560px, 1fr);
   }
 }
+.derived-task-center { margin: 18px 0; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+.derived-task-heading, .derived-task-center li, .derived-task-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.derived-task-heading h2, .derived-task-heading p { margin: 0; }
+.derived-task-heading p { color: var(--muted); margin-top: 4px; }
+.derived-task-center ul { list-style: none; margin: 12px 0 0; padding: 0; }
+.derived-task-center li { padding: 10px 0; border-top: 1px solid var(--border); }
+.derived-task-center li > div:first-child { display: grid; gap: 3px; }
+.task-state { margin-left: 8px; color: var(--muted); }
+.task-state.running { color: var(--accent); }
+.task-state.failed, .task-state.permission_required { color: var(--danger); }
+.task-state.succeeded { color: var(--accent); }
+.derived-task-actions label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+@media (max-width: 600px) { .derived-task-heading, .derived-task-center li { align-items: stretch; flex-direction: column; } .derived-task-actions { justify-content: flex-start; flex-wrap: wrap; } }

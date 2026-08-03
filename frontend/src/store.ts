@@ -32,6 +32,7 @@ import { toast } from './toasts'
 import { fingerprintBlob } from './browser-asset-store'
 import { planBrowserExport, type ExportResourcePlan } from './browser-resource-plan'
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ResultInfo, VideoInfo } from './types'
+import { enqueueSourceAnalysis } from './derived-task-center'
 
 export {
   defaultEdit,
@@ -195,6 +196,9 @@ export async function doUploadFiles(files: readonly File[]): Promise<void> {
       state.importStatus = `${clientOnlyMode ? 'Читаю' : 'Загружаю'} ${index + 1} из ${files.length}: ${file.name}`
       try {
         const v = await api.uploadFile(file)
+        if (clientOnlyMode) void enqueueSourceAnalysis(v, `media:${v.assetId ?? v.id}`).catch((error) => {
+          toast('error', `Фоновый анализ не поставлен в очередь: ${error instanceof Error ? error.message : String(error)}`)
+        })
         if (projectSessionId !== targetSessionId) {
           throw new Error('проект изменился во время загрузки; файл оставлен в медиатеке')
         }
@@ -754,6 +758,7 @@ async function performRelinkLibraryMedia(
   try {
     if (session !== projectSessionId) return false
     const source = await api.relinkLibrarySource(entry.id, file, handle, expectedMedia)
+    if (clientOnlyMode) void enqueueSourceAnalysis(source, `media:${source.assetId ?? source.id}`)
     if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
     Object.assign(entry, source, { availability: 'ready' as const })
     if (state.video?.id === entry.id) state.video = source
@@ -812,6 +817,7 @@ export async function batchRelinkLibraryMedia(entries: MediaEntry[], files: File
         if (projectSessionId !== batchSession || relinkTokens.get(entry.id) !== token) break
         try {
           const source = await api.relinkLibrarySource(entry.id, orderedCandidates[index]!, undefined, media)
+          if (clientOnlyMode) void enqueueSourceAnalysis(source, `media:${source.assetId ?? source.id}`)
           if (relinkTokens.get(entry.id) !== token || projectSessionId !== batchSession) break
           Object.assign(entry, source, { availability: 'ready' as const })
           if (state.video?.id === entry.id) state.video = source
@@ -863,6 +869,7 @@ export async function restoreExternalLibraryMedia(entry: MediaEntry): Promise<bo
   relinkState.busy[entry.id] = true
   try {
     const source = await api.restoreExternalLibrarySource(entry.id, expectedFingerprint)
+    if (clientOnlyMode) void enqueueSourceAnalysis(source, `media:${source.assetId ?? source.id}`)
     if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
     Object.assign(entry, source, { availability: 'ready' as const })
     if (state.video?.id === entry.id) state.video = source

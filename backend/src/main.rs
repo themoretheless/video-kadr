@@ -89,6 +89,16 @@ async fn main() -> anyhow::Result<()> {
     state.recover_jobs().await;
     state.rebuild_media_search().await;
     video_editor_backend::handlers::start_job_dispatcher(&state);
+    video_editor_backend::handlers::start_derived_dispatcher(&state);
+    for entry in state
+        .library
+        .list()
+        .await
+        .into_iter()
+        .filter(|entry| entry.kind == "source")
+    {
+        video_editor_backend::handlers::schedule_source_graph(&state, entry);
+    }
     state.spawn_task(video_editor_backend::jobs::run_quarantine_cleanup(
         state.job_store.clone(),
         state.shutdown_token(),

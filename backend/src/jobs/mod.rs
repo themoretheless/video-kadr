@@ -2,6 +2,7 @@
 
 pub mod attempt;
 pub mod dedupe;
+pub mod derived;
 pub mod event_log;
 pub mod failed_registry;
 pub mod job_cell;

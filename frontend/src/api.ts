@@ -1,4 +1,5 @@
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ProjectEnvelope, ProjectMedia, ResultInfo, VideoInfo } from './types'
+import type { DerivedTask } from './browser-derived-queue'
 import * as browserMedia from './browser-media'
 import { decodeProjectEnvelope } from './project-schema'
 
@@ -181,6 +182,39 @@ export function streamOriginalRange(payload: Record<string, unknown>): Promise<R
 
 export function cancelStreamingOutput(): void {
   if (clientOnlyMode) browserMedia.cancelStreamingOutput()
+}
+
+interface BackendDerivedTask {
+  taskId: string; artifactKey: string; kind: DerivedTask['kind']; projectId: string
+  consumerProjectIds: string[]
+  state: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked'
+  priority: number; priorityRevision: number; generation: number; attempt: number
+  enqueuedAt: number; availableAt: number; leaseUntil?: number; result?: unknown; error?: string; dependencies: string[]
+}
+
+export async function listDerivedJobs(projectId?: string): Promise<BackendDerivedTask[]> {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+  const response = await safeFetch(`/api/derived-jobs${query}`)
+  await requireOk(response, `derived jobs -> HTTP ${response.status}`)
+  return response.json()
+}
+
+export async function reprioritizeDerivedJob(id: string, priority: number, expectedRevision: number): Promise<void> {
+  const response = await safeFetch(`/api/derived-jobs/${encodeURIComponent(id)}/priority`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority, expectedRevision }),
+  })
+  await requireOk(response, `derived priority -> HTTP ${response.status}`)
+}
+
+export async function cancelDerivedJob(id: string, projectId?: string): Promise<void> {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+  const response = await safeFetch(`/api/derived-jobs/${encodeURIComponent(id)}/cancel${query}`, { method: 'POST' })
+  await requireOk(response, `derived cancel -> HTTP ${response.status}`)
+}
+
+export async function retryDerivedJob(id: string): Promise<void> {
+  const response = await safeFetch(`/api/derived-jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' })
+  await requireOk(response, `derived retry -> HTTP ${response.status}`)
 }
 
 /** Delete a library entry (and its file on disk). */

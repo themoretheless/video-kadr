@@ -76,6 +76,15 @@ fn delete(uri: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn patch_json(uri: &str, body: Value) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap()
+}
+
 /// Poll a job until it reaches a terminal state. The background worker runs on
 /// the test runtime; the sleeps give it slots to make progress.
 async fn poll_terminal(app: &Router, id: &str) -> Value {
@@ -109,6 +118,103 @@ async fn health_reflects_tool_availability() {
     let (_s, body2, _) = send(&app2, get("/api/health")).await;
     assert_eq!(body2["status"], "degraded");
     assert_eq!(body2["ffmpeg"], false);
+}
+
+#[tokio::test]
+async fn derived_graph_api_persists_dag_priority_and_cancel() {
+    let (state, _dir) = make_state(false, false).await;
+    let app = router(state.clone());
+    let graph = json!({
+        "projectId": "project-a",
+        "tasks": [
+            { "key": "probe", "artifactKey": "probe-content-v1", "kind": "probe", "payload": {"sourceId":"source"}, "dependencies": [], "priority": 0 },
+            { "key": "proxy", "artifactKey": "proxy-content-v1", "kind": "proxy", "payload": {"sourceId":"source"}, "dependencies": ["probe"], "priority": -10 }
+        ]
+    });
+    let (status, body, _) = send(&app, post_json("/api/derived-graphs", graph)).await;
+    assert_eq!(status, StatusCode::OK);
+    let graph_id = body["graphId"].as_str().unwrap();
+    let probe = body["tasks"]["probe"].as_str().unwrap();
+    let proxy = body["tasks"]["proxy"].as_str().unwrap();
+
+    let (status, tasks, _) = send(&app, get(&format!("/api/derived-graphs/{graph_id}"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(tasks.as_array().unwrap().len(), 2);
+    let (status, _, _) = send(
+        &app,
+        patch_json(
+            &format!("/api/derived-jobs/{probe}/priority"),
+            json!({"priority": 10, "expectedRevision": 0}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, conflict, _) = send(
+        &app,
+        patch_json(
+            &format!("/api/derived-jobs/{probe}/priority"),
+            json!({"priority": 20, "expectedRevision": 0}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&conflict, "conflict");
+    let (status, _, _) = send(
+        &app,
+        post_empty(&format!("/api/derived-jobs/{probe}/cancel")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, tasks, _) = send(&app, get("/api/derived-jobs?projectId=project-a")).await;
+    let proxy_state = tasks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|task| task["taskId"] == proxy)
+        .unwrap()["state"]
+        .as_str();
+    assert_eq!(proxy_state, Some("blocked"));
+}
+
+#[tokio::test]
+async fn derived_shared_task_cancel_detaches_each_project_through_api() {
+    let (state, _dir) = make_state(false, false).await;
+    let app = router(state);
+    let graph = |project: &str| {
+        json!({
+            "projectId": project,
+            "tasks": [{ "key": "probe", "artifactKey": "shared-probe-v1", "kind": "probe",
+                "payload": {"sourceId":"source"}, "dependencies": [], "priority": 0 }]
+        })
+    };
+    let (_, first, _) = send(&app, post_json("/api/derived-graphs", graph("project-a"))).await;
+    let (_, second, _) = send(&app, post_json("/api/derived-graphs", graph("project-b"))).await;
+    let task_id = first["tasks"]["probe"].as_str().unwrap();
+    assert_eq!(second["tasks"]["probe"], task_id);
+
+    let (status, body, _) = send(
+        &app,
+        post_empty(&format!(
+            "/api/derived-jobs/{task_id}/cancel?projectId=project-a"
+        )),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["cancelled"], 0);
+    let (_, tasks, _) = send(&app, get("/api/derived-jobs")).await;
+    assert_eq!(tasks[0]["consumerProjectIds"], json!(["project-b"]));
+
+    let (status, _, _) = send(
+        &app,
+        post_empty(&format!(
+            "/api/derived-jobs/{task_id}/cancel?projectId=project-b"
+        )),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, tasks, _) = send(&app, get("/api/derived-jobs")).await;
+    assert_eq!(tasks[0]["state"], "cancelled");
+    assert_eq!(tasks[0]["consumerProjectIds"], json!([]));
 }
 
 #[tokio::test]

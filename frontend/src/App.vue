@@ -29,6 +29,8 @@ import MediaLibrary from './components/MediaLibrary.vue'
 import Toasts from './components/Toasts.vue'
 import TimelineEditor from './components/TimelineEditor.vue'
 import ProjectRecoveryDialog from './components/ProjectRecoveryDialog.vue'
+import DerivedTaskCenter from './components/DerivedTaskCenter.vue'
+import { initializeDerivedTasks, onDerivedVisibilityChange } from './derived-task-center'
 
 const legacyInspectorAvailable = computed(() => {
   const document = timelineState.document
@@ -112,10 +114,13 @@ onMounted(() => {
   loadPresets()
   void loadLibrary()
   void loadCapabilities()
+  void initializeDerivedTasks()
+  document.addEventListener('visibilitychange', onDerivedVisibilityChange)
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('pagehide', onPageHide)
+  document.removeEventListener('visibilitychange', onDerivedVisibilityChange)
 })
 </script>
 
@@ -155,6 +160,7 @@ onUnmounted(() => {
     <UrlImport />
 
     <MediaLibrary />
+    <DerivedTaskCenter />
 
     <main v-if="state.video" class="editor">
       <section class="left">

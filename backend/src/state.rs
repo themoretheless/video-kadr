@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
 use crate::config::WorkloadConfig;
 use crate::db::Db;
+use crate::jobs::derived::DerivedJobStore;
 use crate::jobs::{EnqueueOutcome, JobCell, JobEvent, JobKind, JobPermit, SqliteJobStore};
 use crate::library::Library;
 use crate::model::Job;
@@ -64,6 +65,7 @@ pub struct AppState {
     pub library: Library,
     pub db: Db,
     pub job_store: SqliteJobStore,
+    pub derived_job_store: DerivedJobStore,
     pub media_search: Arc<dyn MediaSearchQuery>,
     pub media_index: Arc<dyn MediaIndexWriter>,
     pub storage: PathBuf,
@@ -139,6 +141,7 @@ impl AppState {
             queue_capacity: cpu_queue_capacity,
         })?;
         let job_store = SqliteJobStore::new(db.clone());
+        let derived_job_store = DerivedJobStore::new(db.clone());
         let media_adapter = Arc::new(SqliteMediaSearch::new(db.clone()));
         let media_search: Arc<dyn MediaSearchQuery> = media_adapter.clone();
         let media_index: Arc<dyn MediaIndexWriter> = media_adapter;
@@ -159,6 +162,7 @@ impl AppState {
             library,
             db,
             job_store,
+            derived_job_store,
             media_search,
             media_index,
             storage,

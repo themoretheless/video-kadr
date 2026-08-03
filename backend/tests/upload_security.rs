@@ -96,7 +96,8 @@ async fn published_name_and_content_type_come_from_probe_not_client_name() {
 
     let bytes = tokio::fs::read(&fixture).await.unwrap();
     let (state, _storage) = make_state(true, true).await;
-    let app = router(state);
+    video_editor_backend::handlers::start_derived_dispatcher(&state);
+    let app = router(state.clone());
     let response = app
         .clone()
         .oneshot(post_multipart_file("payload.html", &bytes))
@@ -110,6 +111,7 @@ async fn published_name_and_content_type_come_from_probe_not_client_name() {
     assert!(Uuid::parse_str(generated_id).is_ok(), "got {filename}");
 
     let static_response = app
+        .clone()
         .oneshot(get(uploaded["url"].as_str().unwrap()))
         .await
         .unwrap();
@@ -123,6 +125,31 @@ async fn published_name_and_content_type_come_from_probe_not_client_name() {
         "sandbox; default-src 'none'"
     );
     assert_eq!(static_response.headers()["content-type"], "video/mp4");
+
+    let project_id = format!("media:{}", uploaded["id"].as_str().unwrap());
+    let mut derived = serde_json::Value::Null;
+    for _ in 0..200 {
+        let (_, body, _) = send(
+            &app,
+            get(&format!("/api/derived-jobs?projectId={project_id}")),
+        )
+        .await;
+        derived = body;
+        if derived.as_array().is_some_and(|tasks| {
+            tasks.len() == 2 && tasks.iter().all(|task| task["state"] == "succeeded")
+        }) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(
+        derived.as_array().is_some_and(
+            |tasks| tasks.len() == 2 && tasks.iter().all(|task| task["state"] == "succeeded")
+        ),
+        "derived probe/proxy did not finish: {derived}"
+    );
+    state.begin_shutdown();
+    assert!(state.wait_for_tasks(Duration::from_secs(5)).await);
 }
 
 #[tokio::test]

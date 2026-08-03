@@ -27,11 +27,17 @@ use crate::services::render::{
 use crate::state::{AppState, ToolInfo};
 use crate::tools::{self, Done};
 
+mod derived;
 mod jobs;
 mod library;
 mod luts;
 mod upload;
 
+pub use derived::{
+    cancel_derived_graph, cancel_derived_job, derived_graph, enqueue_derived_graph,
+    list_derived_jobs, reprioritize_derived_job, retry_derived_job, schedule_source_graph,
+    start_derived_dispatcher,
+};
 pub use jobs::{
     cancel_handler, discard_job_handler, failed_jobs_handler, job_registry_handler,
     job_status_handler, resume_pending_jobs, retry_job_handler, start_job_dispatcher,
@@ -781,6 +787,9 @@ async fn finish_job(
                 let entry = MediaEntry::from_result(kind, &info);
                 if st.library.add(entry.clone()).await {
                     st.index_media(&entry).await;
+                    if kind == "source" {
+                        schedule_source_graph(st, entry);
+                    }
                 }
             }
             updated

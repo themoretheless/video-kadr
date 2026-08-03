@@ -267,8 +267,7 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         if intent == MediaIntent::Preview {
             if let Some(proxy) = proxy.filter(|proxy| {
                 let expected = proxy_relative_path(&proxy.key, &proxy.profile);
-                proxy.source_id == source.id
-                    && proxy.source_fingerprint == source.fingerprint
+                proxy.source_fingerprint == source.fingerprint
                     && proxy.schema_version == PROXY_SCHEMA_VERSION
                     && path_token(&expected).ok().as_deref() == Some(proxy.file.path.as_str())
             }) {
@@ -315,7 +314,6 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         };
         let metadata_valid = artifact.schema_version == PROXY_SCHEMA_VERSION
             && artifact.key == *key
-            && artifact.source_id == source.id
             && artifact.source_fingerprint == source.fingerprint
             && artifact.profile == *profile;
         let file_valid = if metadata_valid {
@@ -399,7 +397,7 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
     }
 }
 
-fn proxy_key(source: &SourceIdentity, profile: &ProxyProfile) -> Fingerprint {
+pub fn proxy_key(source: &SourceIdentity, profile: &ProxyProfile) -> Fingerprint {
     Fingerprint::combine([
         b"proxy-v1".as_slice(),
         source.fingerprint.as_str().as_bytes(),
@@ -512,6 +510,35 @@ mod tests {
             .unwrap();
         assert_eq!(first, second);
         assert_eq!(encoder.calls.load(Ordering::SeqCst), 1);
+        let alias_path = root.path().join("alias.mp4");
+        tokio::fs::write(&alias_path, b"full resolution")
+            .await
+            .unwrap();
+        let alias = service
+            .inspect_source(
+                SourceMedia {
+                    id: "alias".into(),
+                    original_path: alias_path.clone(),
+                    duration_seconds: 10.0,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        let shared = service
+            .ensure(
+                alias.clone(),
+                ProxyProfile::default(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(shared.key, first.key);
+        assert_eq!(encoder.calls.load(Ordering::SeqCst), 1);
+        assert_ne!(
+            service.resolve(&alias, Some(&shared), MediaIntent::Preview),
+            alias_path
+        );
         assert_eq!(
             service.resolve(&source, Some(&first), MediaIntent::Export),
             source_path

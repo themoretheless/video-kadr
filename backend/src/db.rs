@@ -144,6 +144,9 @@ impl Db {
         crate::jobs::SqliteJobStore::new(db.clone())
             .migrate()
             .await?;
+        crate::jobs::derived::DerivedJobStore::new(db.clone())
+            .migrate()
+            .await?;
         crate::ports::SqliteMediaSearch::migrate(&db).await?;
         Ok(db)
     }

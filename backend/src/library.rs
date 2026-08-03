@@ -177,6 +177,10 @@ impl Library {
         };
         self.storage.join(sub).join(&e.filename)
     }
+
+    pub fn source_path(&self, entry: &MediaEntry) -> Option<PathBuf> {
+        (entry.kind == "source").then(|| self.file_path(entry))
+    }
 }
 
 #[cfg(test)]

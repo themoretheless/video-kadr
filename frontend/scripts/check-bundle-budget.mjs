@@ -15,9 +15,11 @@ const budgets = {
   // progress UI add another small always-available recovery path.
   // The resource planner, disposable-engine watchdog, WORKERFS/bounded MEMFS
   // policy and chunk-streaming FSA fallback are the #85 crash-safety layer.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 95 * 1024),
-  css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 5 * 1024),
-  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 101 * 1024),
+  // The #84 persistent DAG/task-center contract adds IndexedDB recovery,
+  // priority/cancel controls and the server queue adapter.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 100 * 1024),
+  css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 5.5 * 1024),
+  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 106 * 1024),
 }
 
 const files = await readdir(assetDirectory)

@@ -423,6 +423,7 @@ async fn forward_http(
     }
 }
 
+#[allow(clippy::result_large_err)]
 async fn connect_target(
     connector: &TargetConnector,
     target: &Target,

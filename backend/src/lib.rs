@@ -33,7 +33,7 @@ use axum::extract::DefaultBodyLimit;
 use std::sync::Arc;
 
 use axum::http::{header, HeaderValue, Method};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
@@ -79,6 +79,22 @@ pub fn build_router_with_cors(
         .route("/jobs/:id/cancel", post(handlers::cancel_handler))
         .route("/jobs/:id/retry", post(handlers::retry_job_handler))
         .route("/jobs/:id/discard", post(handlers::discard_job_handler))
+        .route("/derived-graphs", post(handlers::enqueue_derived_graph))
+        .route("/derived-graphs/:id", get(handlers::derived_graph))
+        .route(
+            "/derived-graphs/:id/cancel",
+            post(handlers::cancel_derived_graph),
+        )
+        .route("/derived-jobs", get(handlers::list_derived_jobs))
+        .route(
+            "/derived-jobs/:id/priority",
+            patch(handlers::reprioritize_derived_job),
+        )
+        .route(
+            "/derived-jobs/:id/cancel",
+            post(handlers::cancel_derived_job),
+        )
+        .route("/derived-jobs/:id/retry", post(handlers::retry_derived_job))
         .route("/library", get(handlers::library_list_handler))
         .route("/library/search", get(handlers::library_search_handler))
         .route("/library/:id", delete(handlers::library_delete_handler))
@@ -99,7 +115,7 @@ pub fn build_router_with_cors(
 fn cors_layer(origins: &CorsOrigins) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(cors_header_values(origins)))
-        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_headers([header::CONTENT_TYPE, telemetry::REQUEST_ID_HEADER])
         .expose_headers([telemetry::REQUEST_ID_HEADER])
 }
