@@ -13,9 +13,11 @@ const budgets = {
   // of the offline bootstrap and intentionally remain available before FFmpeg.
   // Project-level missing-media discovery, race-safe batch relink and its
   // progress UI add another small always-available recovery path.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 89 * 1024),
+  // The resource planner, disposable-engine watchdog, WORKERFS/bounded MEMFS
+  // policy and chunk-streaming FSA fallback are the #85 crash-safety layer.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 95 * 1024),
   css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 5 * 1024),
-  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 94 * 1024),
+  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 101 * 1024),
 }
 
 const files = await readdir(assetDirectory)

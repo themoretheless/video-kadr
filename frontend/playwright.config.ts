@@ -22,7 +22,10 @@ const baseURL = `http://127.0.0.1:${port}`
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // ffmpeg.wasm and browser quota/OPFS tests intentionally exercise global
+  // per-origin resources; one local worker avoids synthetic cross-test OOM.
+  fullyParallel: false,
+  workers: process.env.CI ? 2 : 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',

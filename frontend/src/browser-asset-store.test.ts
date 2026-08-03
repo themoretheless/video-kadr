@@ -407,6 +407,37 @@ describe('browser asset persistence', () => {
     expect(removed).toEqual([])
   })
 
+  it('uses operation-unique final objects for same-asset writes without Web Locks', async () => {
+    Reflect.deleteProperty(navigator, 'locks')
+    const files = new Map<string, Blob>()
+    const mediaDirectory = {
+      getFileHandle: async (id: string, options?: { create?: boolean }) => {
+        if (!files.has(id) && !options?.create) throw new DOMException('missing', 'NotFoundError')
+        return {
+          createWritable: async () => ({
+            write: async (blob: Blob) => { files.set(id, blob) },
+            close: async () => undefined,
+            abort: async () => undefined,
+          }),
+          getFile: async () => new File([files.get(id)!], id),
+        }
+      },
+      removeEntry: async (id: string) => { files.delete(id) },
+    }
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => mediaDirectory }) },
+    })
+    const [first, second] = await Promise.all([
+      putBrowserAsset(asset('same-no-lock')),
+      putBrowserAsset(asset('same-no-lock')),
+    ])
+    expect(first.objectKey).not.toBe(second.objectKey)
+    await expect(getBrowserAsset('same-no-lock')).resolves.toMatchObject({ id: 'same-no-lock' })
+    expect(files.has(first.objectKey!)).toBe(true)
+    expect(files.has(second.objectKey!)).toBe(true)
+  })
+
   it('clears an abandoned journal without deleting bytes after manifest commit', async () => {
     const removed: string[] = []
     Object.defineProperty(navigator, 'storage', {

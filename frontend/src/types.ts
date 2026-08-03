@@ -42,6 +42,15 @@ export interface Capabilities {
   codecs: CapabilityOption[]
   filters: CapabilityOption[]
   hardware: CapabilityOption[]
+  runtime?: {
+    worker: boolean
+    wasm: boolean
+    workerFs: boolean
+    opfs: boolean
+    webCrypto: boolean
+    streamingOutput: boolean
+    memoryBudgetBytes: number
+  }
 }
 
 export interface ResultInfo {

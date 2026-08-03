@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
+  currentBrowserExportPlan,
+  doStreamingExport,
   doExport,
   hasMeaningfulChanges,
   selectedExportUnavailableReason,
   state,
+  streamingOutputSupported,
 } from '../../store'
 
 type Platform = 'telegram' | 'shorts' | 'reels' | 'youtube'
 
 const emit = defineEmits<{ platform: [Platform] }>()
 const showNoopWarning = ref(false)
+const resourcePlan = computed(() => currentBrowserExportPlan())
+const mib = (bytes: number) => Math.ceil(bytes / (1024 * 1024))
 
 const formats = [
   { value: 'mp4', label: 'MP4' },
@@ -180,6 +185,17 @@ watch(
     </div>
 
     <p v-if="formatHint" class="hint">{{ formatHint }}</p>
+    <div
+      v-if="resourcePlan"
+      class="resource-plan"
+      :class="`risk-${resourcePlan.risk}`"
+      :role="resourcePlan.risk === 'blocked' ? 'alert' : 'status'"
+    >
+      <strong>Ресурсы локального экспорта</strong>
+      <span>Пик ≈ {{ mib(resourcePlan.estimatedPeakMemoryBytes) }} МБ из безопасных {{ mib(resourcePlan.memoryBudgetBytes) }} МБ · {{ resourcePlan.inputMode.toUpperCase() }}</span>
+      <span v-if="resourcePlan.reason">{{ resourcePlan.reason }}</span>
+      <span v-if="resourcePlan.risk === 'blocked'">{{ resourcePlan.suggestions.join(' · ') }}</span>
+    </div>
   </section>
 
   <div v-if="showNoopWarning" class="export-warning" role="alert" aria-live="assertive">
@@ -205,5 +221,15 @@ watch(
     @click="requestExport"
   >
     {{ state.exporting ? 'Обработка…' : 'Экспортировать' }}
+  </button>
+  <button
+    v-if="streamingOutputSupported()"
+    type="button"
+    class="btn ghost big export-submit"
+    :disabled="state.exporting"
+    title="Сохраняет оригинальный выбранный диапазон в WebM напрямую в файл; фильтры не применяются"
+    @click="doStreamingExport"
+  >
+    Потоково сохранить оригинал
   </button>
 </template>

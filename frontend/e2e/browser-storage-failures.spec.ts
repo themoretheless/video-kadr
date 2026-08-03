@@ -72,7 +72,7 @@ test('quota exhaustion preserves committed media and makes only the new upload s
   })
   await input.setInputFiles({ name: 'over-quota.wav', mimeType: 'audio/wav', buffer: wavFixture(150_000) })
   await expect(page.locator('.lib-item')).toHaveCount(2)
-  await expect(page.getByText(/файл доступен только до закрытия этой вкладки/)).toBeVisible()
+  await expect(page.getByText(/Только до закрытия вкладки/)).toBeVisible()
 
   await page.reload({ waitUntil: 'networkidle' })
   await expect(page.locator('.lib-item')).toHaveCount(1)

@@ -7,7 +7,15 @@ function ffmpegCoreAssets() {
   const coreDirectory = resolve('node_modules/@ffmpeg/core/dist/esm')
   return {
     name: 'ffmpeg-core-assets',
-    apply: 'build' as const,
+    configureServer(server: { middlewares: { use(handler: (request: { url?: string }, response: { statusCode: number; setHeader(name: string, value: string): void; end(body?: Buffer): void }, next: () => void) => void): void } }) {
+      server.middlewares.use((request, response, next) => {
+        const filename = request.url?.match(/^\/ffmpeg-core\/(ffmpeg-core\.(?:js|wasm))$/)?.[1]
+        if (!filename) return next()
+        response.statusCode = 200
+        response.setHeader('Content-Type', filename.endsWith('.wasm') ? 'application/wasm' : 'text/javascript')
+        response.end(readFileSync(resolve(coreDirectory, filename)))
+      })
+    },
     generateBundle(this: { emitFile(file: { type: 'asset'; fileName: string; source: Buffer }): void }) {
       for (const filename of ['ffmpeg-core.js', 'ffmpeg-core.wasm']) {
         this.emitFile({
@@ -24,6 +32,7 @@ function ffmpegCoreAssets() {
 // to a single origin (no CORS dance).
 export default defineConfig({
   plugins: [vue(), ffmpegCoreAssets()],
+  optimizeDeps: { exclude: ['@ffmpeg/ffmpeg'] },
   server: {
     port: 5173,
     proxy: {

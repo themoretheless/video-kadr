@@ -1382,6 +1382,20 @@ body {
 .recovery-dialog h2 { margin-top: 0; }
 .recovery-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 
+.resource-plan {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.resource-plan.risk-warning { border-color: #b7791f; }
+.resource-plan.risk-blocked { border-color: var(--danger); color: var(--danger); }
+
 @media (max-width: 760px) {
   .timeline-toolbar {
     align-items: flex-start;

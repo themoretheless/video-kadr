@@ -9,7 +9,7 @@ const INGESTS = 'ingests'
 const HANDLES = 'handles'
 const OPFS_DIRECTORY = 'video-kadr-media'
 const IDB_BLOB_LIMIT = 128 * 1024 * 1024
-const WEB_CRYPTO_LIMIT = 128 * 1024 * 1024
+const WEBKIT_IDB_ARRAY_BUFFER_LIMIT = 16 * 1024 * 1024
 const HASH_CHUNK_BYTES = 4 * 1024 * 1024
 const ABANDONED_INGEST_MS = 5 * 60 * 1_000
 let workerHashingAvailable: boolean | null = null
@@ -99,6 +99,10 @@ export interface BrowserStorageEstimate {
   persisted: boolean
   usage: number | null
   quota: number | null
+  requiredBytes?: number
+  availableBytes?: number | null
+  risk?: 'safe' | 'warning' | 'blocked'
+  reason?: string | null
 }
 
 function boundedStorageCall<T>(operation: Promise<T>, fallback: T, timeoutMs = 2_000): Promise<T> {
@@ -415,12 +419,12 @@ async function fingerprintBlobUncached(blob: Blob): Promise<string> {
     for (let offset = 0; offset < blob.size; offset += HASH_CHUNK_BYTES) {
       const chunk = blob.slice(offset, Math.min(blob.size, offset + HASH_CHUNK_BYTES))
       hasher.update(new Uint8Array(await chunk.arrayBuffer()))
-      await Promise.resolve()
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
     }
     return [...hasher.digest()].map((byte) => byte.toString(16).padStart(2, '0')).join('')
   }
-  if (blob.size <= WEB_CRYPTO_LIMIT) return fingerprintOnMainThread()
-  if (typeof Worker !== 'undefined' && workerHashingAvailable !== false) {
+  if (blob.size < 16 * 1024 * 1024 || typeof Worker === 'undefined') return fingerprintOnMainThread()
+  if (workerHashingAvailable !== false) {
     const workerDigest = await new Promise<string | null>((resolve, reject) => {
       const worker = new Worker(new URL('./fingerprint-worker.ts', import.meta.url), { type: 'module' })
       let inactivityTimeout: number | undefined
@@ -492,7 +496,12 @@ async function putBrowserAssetUnlocked(
   },
   fingerprint: string,
 ): Promise<StoredBrowserAssetManifest> {
-  const objectKey = `sha256-${fingerprint}`
+  // Content-addressed dedupe needs a real cross-tab critical section. Without
+  // Web Locks use an asset-unique final object: duplication is recoverable,
+  // truncating another tab's committed digest is not.
+  const objectKey = supportsWebLocks()
+    ? `sha256-${fingerprint}`
+    : `sha256-${fingerprint}-${asset.id}-${crypto.randomUUID()}`
   const previousManifest = await getBrowserAssetManifest(asset.id)
   const ingest = await beginIngest(asset.id, objectKey)
   let storedInOpfs = false
@@ -534,6 +543,14 @@ async function putBrowserAssetUnlocked(
       'quota',
     )
   }
+  const webkitIdbFallback = /AppleWebKit\//.test(navigator.userAgent) && !/(?:Chrome|Chromium)\//.test(navigator.userAgent)
+  if (!storedInOpfs && webkitIdbFallback && asset.file.size > WEBKIT_IDB_ARRAY_BUFFER_LIMIT) {
+    await clearIngest(ingest.id)
+    throw new BrowserAssetStorageError(
+      `WebKit IndexedDB fallback ограничен ${WEBKIT_IDB_ARRAY_BUFFER_LIMIT} байт для bounded memory; используйте внешний файл или серверную версию.`,
+      'quota',
+    )
+  }
   const manifest: StoredBrowserAssetManifest = {
     id: asset.id,
     filename: asset.filename,
@@ -550,7 +567,9 @@ async function putBrowserAssetUnlocked(
     const sharedIdbReference = (await allBrowserAssetManifests()).some((candidate) =>
       candidate.id !== asset.id && candidate.storage === 'idb' && (candidate.objectKey ?? candidate.id) === objectKey,
     )
-    const fallbackBytes = manifest.storage === 'idb' ? await asset.file.arrayBuffer() : undefined
+    const fallbackBytes = manifest.storage === 'idb'
+      ? webkitIdbFallback ? await asset.file.arrayBuffer() : asset.file
+      : undefined
     database = await openDatabase()
     const transaction = database.transaction([MANIFESTS, BLOBS, INGESTS], 'readwrite')
     const committed = transactionDone(transaction)

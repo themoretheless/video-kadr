@@ -30,6 +30,7 @@ import {
 } from './project-schema'
 import { toast } from './toasts'
 import { fingerprintBlob } from './browser-asset-store'
+import { planBrowserExport, type ExportResourcePlan } from './browser-resource-plan'
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ResultInfo, VideoInfo } from './types'
 
 export {
@@ -194,12 +195,6 @@ export async function doUploadFiles(files: readonly File[]): Promise<void> {
       state.importStatus = `${clientOnlyMode ? 'Читаю' : 'Загружаю'} ${index + 1} из ${files.length}: ${file.name}`
       try {
         const v = await api.uploadFile(file)
-        const storageStatus = api.getBrowserStorageStatus()
-        state.browserStorageWarning = v.availability === 'session'
-          ? 'Хранилище браузера недоступно: файл доступен только до закрытия этой вкладки.'
-          : storageStatus && !storageStatus.persisted
-            ? 'Браузер не гарантировал постоянное хранение. При очистке данных файлы станут offline; используйте «Найти файл» для восстановления.'
-            : ''
         if (projectSessionId !== targetSessionId) {
           throw new Error('проект изменился во время загрузки; файл оставлен в медиатеке')
         }
@@ -445,6 +440,32 @@ export async function doExport(): Promise<void> {
   }
 }
 
+export function streamingOutputSupported(): boolean {
+  return api.streamingOutputSupported?.() ?? false
+}
+
+export async function doStreamingExport(): Promise<void> {
+  if (!state.video || state.exporting) return
+  state.exporting = true
+  state.exportError = ''
+  state.exportStatus = 'Потоково сохраняю исходный диапазон…'
+  state.result = null
+  try {
+    state.result = await api.streamOriginalRange(buildEditPayload())
+    state.exportStatus = ''
+    await loadLibrary()
+    toast('success', 'Потоковая WebM-копия сохранена без полного буфера в памяти')
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === 'AbortError')) {
+      state.exportError = error instanceof Error ? error.message : String(error)
+      toast('error', state.exportError)
+    }
+    state.exportStatus = ''
+  } finally {
+    state.exporting = false
+  }
+}
+
 function onExportTick(job: Job): void {
   state.exportProgress = typeof job.progress === 'number' ? job.progress : null
   state.exportStage = job.stage ?? null
@@ -452,6 +473,7 @@ function onExportTick(job: Job): void {
 
 export async function cancelExport(): Promise<void> {
   if (state.exportJobId) await api.cancelJob(state.exportJobId)
+  else if (state.exporting) api.cancelStreamingOutput?.()
 }
 
 // --- player control helpers (used by hotkeys and trim buttons) ---
@@ -486,9 +508,39 @@ export async function loadLibrary(): Promise<void> {
     const [library, projects] = await Promise.all([api.getLibrary(), api.getProjects()])
     state.library = library
     state.projects = projects
+    updateBrowserStorageWarning()
   } catch {
     // Non-fatal: the library panel just stays empty.
   }
+}
+
+function updateBrowserStorageWarning(): void {
+  if (!clientOnlyMode) return
+  const session = state.library.filter((entry) => entry.kind === 'source' && entry.availability === 'session')
+  const missing = state.library.filter((entry) => entry.kind === 'source'
+    && (entry.availability === 'offline' || entry.availability === 'permission-required'))
+  const missingIds = new Set(missing.map((entry) => entry.assetId ?? entry.id))
+  const affectedProjects = state.projects.filter((project) => project.document?.media.some((media) =>
+    missingIds.has(media.assetRef ?? media.id),
+  ))
+  const warnings: string[] = []
+  if (session.length) {
+    const storage = api.getBrowserStorageStatus()
+    const quota = storage?.risk === 'blocked' && storage.requiredBytes
+      ? ` Нужно примерно ${Math.ceil(storage.requiredBytes / (1024 * 1024))} МБ, доступно ${Math.ceil((storage.availableBytes ?? 0) / (1024 * 1024))} МБ.`
+      : ''
+    warnings.push(`Только до закрытия вкладки: ${session.length} файл(ов) — ${session.map((entry) => entry.filename).join(', ')}.${quota}`)
+  }
+  if (missing.length) {
+    warnings.push(`Недоступно исходников: ${missing.length}; затронуто проектов: ${affectedProjects.length}. Откройте проект и выполните точный relink.`)
+  }
+  if (!warnings.length) {
+    const storageStatus = api.getBrowserStorageStatus()
+    if (storageStatus && !storageStatus.persisted) warnings.push(
+      'Браузер не гарантировал постоянное хранение. При очистке данных файлы станут offline; используйте «Найти файл» для восстановления.',
+    )
+  }
+  state.browserStorageWarning = warnings.join(' ')
 }
 
 export async function loadCapabilities(): Promise<void> {
@@ -546,7 +598,14 @@ export function selectedExportUnavailableReason(): string | null {
     )
     if (reason) return reason
   }
+  const resourcePlan = currentBrowserExportPlan()
+  if (resourcePlan?.risk === 'blocked') return resourcePlan.reason
   return null
+}
+
+export function currentBrowserExportPlan(): ExportResourcePlan | null {
+  if (!clientOnlyMode || !state.video) return null
+  return planBrowserExport(state.video, buildEditPayload())
 }
 
 function colorCapabilityUnavailableReason(ids: string[], missing: string): string | null {
@@ -698,6 +757,7 @@ async function performRelinkLibraryMedia(
     if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
     Object.assign(entry, source, { availability: 'ready' as const })
     if (state.video?.id === entry.id) state.video = source
+    updateBrowserStorageWarning()
     toast('success', `Файл перепривязан: ${entry.filename}`)
     return true
   } catch (error) {
@@ -708,6 +768,7 @@ async function performRelinkLibraryMedia(
       if (state.video?.id === entry.id) state.video = authoritative
     } else if (session === projectSessionId) entry.availability = 'offline'
     if (session !== projectSessionId) return false
+    updateBrowserStorageWarning()
     toast('error', `Выбран другой файл для «${entry.filename}». Проект не изменён: ${error instanceof Error ? error.message : String(error)}`)
     return false
   } finally {
@@ -733,10 +794,12 @@ export async function batchRelinkLibraryMedia(entries: MediaEntry[], files: File
   const batchSession = projectSessionId
   const expectedMedia = new Map(targets.map((entry) => [entry.id, cloneValue(activeProjectMedia(entry.assetId ?? entry.id))]))
   try {
-    await Promise.all(candidates.map(async (file) => {
+    // Sequential hashing keeps the working set bounded to one 4 MiB chunk (or
+    // one worker) even when the picker contains many multi-gigabyte files.
+    for (const file of candidates) {
       const fingerprint = await fingerprintBlob(file)
       if (!fingerprints.has(fingerprint)) fingerprints.set(fingerprint, file)
-    }))
+    }
     for (const entry of targets) {
       const token = batchTokens.get(entry.id)!
       let matched = false
@@ -784,6 +847,7 @@ export async function batchRelinkLibraryMedia(entries: MediaEntry[], files: File
         ? `Восстановлено: ${recovered}. Осталось найти: ${unresolved}.`
         : `Все исходники восстановлены: ${recovered}.`
       toast(unresolved ? 'info' : 'success', relinkState.batchSummary)
+      updateBrowserStorageWarning()
     }
   } finally {
     for (const entry of entries) if (relinkTokens.get(entry.id) === batchTokens.get(entry.id)) relinkState.busy[entry.id] = false
@@ -803,6 +867,7 @@ export async function restoreExternalLibraryMedia(entry: MediaEntry): Promise<bo
     Object.assign(entry, source, { availability: 'ready' as const })
     if (state.video?.id === entry.id) state.video = source
     toast('success', `Доступ к «${entry.filename}» восстановлен`)
+    updateBrowserStorageWarning()
     return true
   } catch (error) {
     if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
@@ -824,6 +889,8 @@ export async function deleteFromLibrary(id: string): Promise<void> {
     await api.deleteLibraryItem(id)
     state.library = state.library.filter((e) => e.id !== id)
     if (state.video?.id === id) state.video = null
+    if (state.result?.id === id) state.result = null
+    updateBrowserStorageWarning()
     toast('info', 'Удалено')
   } catch (e) {
     toast('error', e instanceof Error ? e.message : String(e))

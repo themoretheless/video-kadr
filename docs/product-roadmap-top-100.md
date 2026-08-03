@@ -141,7 +141,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 | 82 | Proxy media generation | `ProxyService`/FFmpeg adapter есть, project association UX нет | Source/proxy provenance/timebase, stale invalidation, toggle и export originals | XL |
 | 83 | Optimized preview cache | Frame-cache/artifact graph primitives есть, UI wiring нет | После №20/84: key = source fingerprint + graph version + render settings | XL |
 | 84 | Background conform/analyze queue | Durable backend queue есть, derived-task frontend orchestration нет | Dependency DAG, persistent priority, restart/idempotency/fairness и cancel | XL |
-| 85 | Browser memory/quota architecture | Нет preflight; input/output целиком materialize в JS/WASM memory | Численные memory fixtures, quota/eviction UX, capability-gated streaming/fallback и OOM recovery | XL |
+| 85 | ✅ Browser memory/quota architecture | Реализовано: численный preflight для import/export и transformed geometry, quota/session-only/offline/relink UX, bounded WORKERFS/MEMFS fallback, capability-gated direct-to-disk streaming original range, cross-tab render lock и terminate-first OOM/stall recovery | Численные memory fixtures, quota/eviction UX, capability-gated streaming/fallback и OOM recovery | XL |
 | 86 | Portable project archive | Нет | Project+manifest+optional proxies/media, validation и relink on import | XL |
 | 87 | Temperature/tint/highlights/shadows (P1) | Базовые brightness/contrast | Neutral reset, порядок относительно LUT/curves и preview/export parity | L |
 | 88 | Color wheels | Нет | Lift/gamma/gain wheels and numeric controls | L |

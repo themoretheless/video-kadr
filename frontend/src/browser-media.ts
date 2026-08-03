@@ -22,6 +22,19 @@ import {
   relinkBrowserAsset,
 } from './browser-asset-store'
 import type { BrowserStorageEstimate } from './browser-asset-store'
+import { boundedEnginePhase, BrowserEngineTimeoutError } from './browser-engine-guard'
+import {
+  isLikelyOutOfMemory,
+  assertBoundedBrowserOutput,
+  assertCompleteMediaDuration,
+  browserMemoryBudget,
+  MEMFS_FALLBACK_MAX_INPUT_BYTES,
+  MEMFS_MAX_OUTPUT_BYTES,
+  OPFS_INGEST_OVERHEAD_BYTES,
+  planBrowserImport,
+  planBrowserExport,
+  runtimeResourceCapabilities,
+} from './browser-resource-plan'
 
 type EditPayload = Record<string, unknown>
 
@@ -40,6 +53,7 @@ interface BrowserJob extends Job {
 }
 
 let fallbackProjectAssetLock = Promise.resolve()
+let fallbackRenderLock = Promise.resolve()
 
 async function withProjectAssetLock<T>(operation: () => Promise<T>): Promise<T> {
   if (navigator.locks) {
@@ -56,17 +70,34 @@ async function withProjectAssetLock<T>(operation: () => Promise<T>): Promise<T> 
   }
 }
 
+async function withBrowserRenderLock<T>(operation: () => Promise<T>): Promise<T> {
+  if (navigator.locks) {
+    return navigator.locks.request('video-kadr-browser-render', { mode: 'exclusive' }, operation)
+  }
+  const previous = fallbackRenderLock
+  let release!: () => void
+  fallbackRenderLock = new Promise<void>((resolve) => { release = resolve })
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+  }
+}
+
 const sources = new Map<string, SourceRecord>()
 const luts = new Map<string, LutRecord>()
 const jobs = new Map<string, BrowserJob>()
 const library: MediaEntry[] = []
 const projects = new Map<string, ProjectDto>()
+const MAX_SESSION_OUTPUT_BYTES = 256 * 1024 * 1024
 
 let ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null
 let ffmpegLoading: Promise<import('@ffmpeg/ffmpeg').FFmpeg> | null = null
 let activeJobId: string | null = null
+let streamingExportActive = false
+let cancelStreamingExport: (() => void) | null = null
 let lastStorageEstimate: BrowserStorageEstimate | null = null
-let durableStorageUnavailable = false
 
 export class LinkImportRequiresServerError extends Error {
   constructor() {
@@ -93,6 +124,18 @@ function id(): string {
 
 function objectUrl(blob: Blob): string {
   return URL.createObjectURL(blob)
+}
+
+function pruneSessionOutputs(): void {
+  const outputs = library.filter((entry) => entry.kind === 'output')
+  let bytes = outputs.reduce((total, entry) => total + (entry.sizeBytes ?? 0), 0)
+  for (const entry of [...outputs].reverse()) {
+    if (bytes <= MAX_SESSION_OUTPUT_BYTES) break
+    bytes -= entry.sizeBytes ?? 0
+    URL.revokeObjectURL(entry.url)
+    const index = library.findIndex((candidate) => candidate.id === entry.id)
+    if (index >= 0) library.splice(index, 1)
+  }
 }
 
 function probeVideo(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filename'>> {
@@ -173,16 +216,36 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
   const isVideo = file.type.startsWith('video/')
   const isAudio = file.type.startsWith('audio/')
   if (!isVideo && !isAudio) throw new Error('Выберите видео- или аудиофайл')
-  let durableStorage = !durableStorageUnavailable
-  if (durableStorage) {
-    try {
-      lastStorageEstimate = await prepareBrowserStorage(file.size)
-    } catch (error) {
-      if (!(error instanceof BrowserAssetStorageError)) throw error
-      durableStorage = false
-      durableStorageUnavailable = true
-      lastStorageEstimate = { persisted: false, usage: null, quota: null }
+  let durableStorage = true
+  try {
+    // OPFS publication temporarily holds staging + immutable bytes. Reserve
+    // both copies and fixed manifest/journal headroom before mutating storage.
+    const rawEstimate: StorageEstimate = await navigator.storage?.estimate?.().catch(() => ({} as StorageEstimate)) ?? {}
+    const importPlan = planBrowserImport(file.size, rawEstimate ?? null)
+    if (importPlan.risk === 'blocked') {
+      lastStorageEstimate = {
+        persisted: false,
+        usage: rawEstimate?.usage ?? null,
+        quota: rawEstimate?.quota ?? null,
+        requiredBytes: importPlan.transientStorageBytes,
+        availableBytes: importPlan.freeStorageBytes,
+        risk: importPlan.risk,
+        reason: importPlan.reason,
+      }
+      throw new BrowserAssetStorageError(importPlan.reason!, 'quota')
     }
+    const storage = await prepareBrowserStorage(file.size * 2 + OPFS_INGEST_OVERHEAD_BYTES)
+    lastStorageEstimate = {
+      ...storage,
+      requiredBytes: importPlan.transientStorageBytes,
+      availableBytes: importPlan.freeStorageBytes,
+      risk: importPlan.risk,
+      reason: importPlan.reason,
+    }
+  } catch (error) {
+    if (!(error instanceof BrowserAssetStorageError)) throw error
+    durableStorage = false
+    lastStorageEstimate ??= { persisted: false, usage: null, quota: null }
   }
   const metadata = isVideo ? await probeVideo(file) : await probeAudio(file)
   const sourceId = id()
@@ -214,7 +277,6 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
       URL.revokeObjectURL(info.url)
       throw error
     }
-    durableStorageUnavailable = true
     info.assetId = sourceId
     info.fingerprint = await fingerprintBlob(file)
     info.availability = 'session'
@@ -275,10 +337,15 @@ async function loadFfmpeg(): Promise<import('@ffmpeg/ffmpeg').FFmpeg> {
   ffmpegLoading = (async () => {
     const { FFmpeg } = await import('@ffmpeg/ffmpeg')
     const ffmpeg = new FFmpeg()
-    await ffmpeg.load({
-      coreURL: coreUrl('ffmpeg-core.js'),
-      wasmURL: coreUrl('ffmpeg-core.wasm'),
-    })
+    try {
+      await boundedEnginePhase(ffmpeg.load({
+        coreURL: coreUrl('ffmpeg-core.js'),
+        wasmURL: coreUrl('ffmpeg-core.wasm'),
+      }), 'загрузка движка', 45_000, () => ffmpeg.terminate())
+    } catch (error) {
+      ffmpeg.terminate()
+      throw error
+    }
     ffmpegInstance = ffmpeg
     return ffmpeg
   })()
@@ -337,7 +404,7 @@ function outputSpec(payload: EditPayload): { filename: string; mime: string; arg
   const quality = number(payload.quality, 23)
   switch (format) {
     case 'webm':
-      return { filename: 'edited.webm', mime: 'video/webm', args: ['-c:v', 'libvpx-vp9', '-crf', String(quality), '-b:v', '0', '-c:a', 'libopus'] }
+      return { filename: 'edited.webm', mime: 'video/webm', args: ['-c:v', 'libvpx-vp9', '-crf', String(quality), '-b:v', '0', '-maxrate', '8M', '-bufsize', '16M', '-c:a', 'libopus'] }
     case 'gif':
       return { filename: 'edited.gif', mime: 'image/gif', args: ['-an', '-loop', '0'] }
     case 'png':
@@ -347,14 +414,63 @@ function outputSpec(payload: EditPayload): { filename: string; mime: string; arg
     case 'mp3':
       return { filename: 'audio.mp3', mime: 'audio/mpeg', args: ['-vn', '-c:a', 'libmp3lame', '-q:a', '2'] }
     default:
-      return { filename: 'edited.mp4', mime: 'video/mp4', args: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(quality), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart'] }
+      return { filename: 'edited.mp4', mime: 'video/mp4', args: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(quality), '-maxrate', '8M', '-bufsize', '16M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart'] }
   }
 }
 
-async function buildArgs(ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg, source: SourceRecord, payload: EditPayload) {
+interface FfmpegJobSpec {
+  ffmpegArgs: string[]
+  inputName: string
+  filename: string
+  mime: string
+  mountPoint?: string
+  temporaryFiles: string[]
+}
+
+interface FfmpegJobResources {
+  mountPoint?: string
+  temporaryFiles: string[]
+}
+
+async function buildArgs(
+  ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg,
+  source: SourceRecord,
+  payload: EditPayload,
+  resources: FfmpegJobResources,
+): Promise<FfmpegJobSpec> {
   const extension = source.file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'mp4'
-  const inputName = `input-${id()}.${extension}`
-  await ffmpeg.writeFile(inputName, new Uint8Array(await source.file.arrayBuffer()))
+  const temporaryFiles = resources.temporaryFiles
+  let mountPoint = resources.mountPoint
+  let inputName: string
+  const runtime = runtimeResourceCapabilities()
+  if (runtime.workerFs && typeof ffmpeg.mount === 'function') {
+    const { FFFSType } = await import('@ffmpeg/ffmpeg')
+    mountPoint = `/source-${id()}`
+    resources.mountPoint = mountPoint
+    await ffmpeg.createDir(mountPoint)
+    try {
+      const mounted = await boundedEnginePhase(ffmpeg.mount(FFFSType.WORKERFS, { files: [source.file] }, mountPoint), 'WORKERFS mount', 5_000, () => ffmpeg.terminate())
+      if (mounted === false) throw new Error('WORKERFS mount отклонён движком')
+      inputName = `${mountPoint}/${source.file.name}`
+    } catch (error) {
+      if (error instanceof BrowserEngineTimeoutError) throw error
+      await ffmpeg.deleteDir(mountPoint).catch(() => undefined)
+      resources.mountPoint = undefined
+      mountPoint = undefined
+      if (source.file.size > MEMFS_FALLBACK_MAX_INPUT_BYTES) {
+        throw new Error(`WORKERFS недоступен, а файл превышает bounded MEMFS fallback: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      const fallbackPlan = planBrowserExport(source.info, payload, { ...runtime, workerFs: false })
+      if (fallbackPlan.risk === 'blocked') throw new Error(fallbackPlan.reason || 'Недостаточно памяти для MEMFS fallback')
+      inputName = `input-${id()}.${extension}`
+      temporaryFiles.push(inputName)
+      await ffmpeg.writeFile(inputName, new Uint8Array(await source.file.arrayBuffer()))
+    }
+  } else {
+    inputName = `input-${id()}.${extension}`
+    temporaryFiles.push(inputName)
+    await ffmpeg.writeFile(inputName, new Uint8Array(await source.file.arrayBuffer()))
+  }
 
   const args: string[] = []
   const trim = record(payload.trim)
@@ -405,6 +521,7 @@ async function buildArgs(ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg, source: Source
     if (!lutRecord) throw new Error('LUT больше недоступен — загрузите файл повторно')
     const lutName = `lut-${id()}.cube`
     await ffmpeg.writeFile(lutName, new Uint8Array(await lutRecord.file.arrayBuffer()))
+    temporaryFiles.push(lutName)
     videoFilters.push(`lut3d=file='${escapeFilterPath(lutName)}'`)
   }
   const curves = record(payload.curves)
@@ -446,11 +563,13 @@ async function buildArgs(ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg, source: Source
   if (audioFilters.length && !payload.mute) args.push('-af', audioFilters.join(','))
   if (payload.mute) args.push('-an')
   const output = outputSpec(payload)
+  args.push('-fs', String(MEMFS_MAX_OUTPUT_BYTES))
   args.push(...output.args, output.filename)
-  return { ffmpegArgs: args, inputName, filename: output.filename, mime: output.mime }
+  temporaryFiles.push(output.filename)
+  return { ffmpegArgs: args, inputName, filename: output.filename, mime: output.mime, mountPoint, temporaryFiles }
 }
 
-async function runJob(jobId: string, payload: EditPayload): Promise<void> {
+async function runJobUnlocked(jobId: string, payload: EditPayload): Promise<void> {
   const job = jobs.get(jobId)
   if (!job) return
   const sourceId = String(payload.videoId)
@@ -459,28 +578,54 @@ async function runJob(jobId: string, payload: EditPayload): Promise<void> {
     Object.assign(job, { status: 'error', error: 'Исходный файл больше недоступен — выберите его повторно' })
     return
   }
+  let ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg | null = null
+  let spec: FfmpegJobSpec | null = null
+  const resources: FfmpegJobResources = { temporaryFiles: [] }
+  let onProgress: ((event: { progress: number }) => void) | null = null
   try {
     job.status = 'running'
     job.stage = 'Загружаю FFmpeg в браузер…'
     job.progress = 1
-    const ffmpeg = await loadFfmpeg()
+    ffmpeg = await loadFfmpeg()
     if (job.cancelled) throw new Error('cancelled')
     activeJobId = jobId
-    const onProgress = ({ progress }: { progress: number }) => {
+    onProgress = ({ progress }: { progress: number }) => {
       job.progress = Math.max(2, Math.min(99, Math.round(progress * 100)))
       job.stage = 'Обрабатываю на этом устройстве…'
     }
     ffmpeg.on('progress', onProgress)
-    const spec = await buildArgs(ffmpeg, source, payload)
-    const exitCode = await ffmpeg.exec(spec.ffmpegArgs)
+    job.stage = `Подготавливаю исходник ${Math.ceil(source.file.size / (1024 * 1024))} МБ…`
+    spec = await boundedEnginePhase(buildArgs(ffmpeg, source, payload, resources), 'подготовка файлов движка', 60_000, () => ffmpeg?.terminate())
+    job.stage = 'Кодирую на этом устройстве…'
+    const exitCode = await boundedEnginePhase(ffmpeg.exec(spec.ffmpegArgs), 'кодирование', 30 * 60_000, () => ffmpeg?.terminate())
     ffmpeg.off('progress', onProgress)
     if (job.cancelled) throw new Error('cancelled')
     if (exitCode !== 0) throw new Error(`FFmpeg завершился с кодом ${exitCode}`)
-    const data = await ffmpeg.readFile(spec.filename)
+    if (['mp4', 'webm', 'gif', 'mp3'].includes(String(payload.format || 'mp4'))) {
+      const validationName = `validation-${id()}.txt`
+      resources.temporaryFiles.push(validationName)
+      const validationExit = await boundedEnginePhase(ffmpeg.exec([
+        '-v', 'error', '-i', spec.filename, '-map', '0', '-c', 'copy',
+        '-progress', validationName, '-f', 'null', '-',
+      ]), 'проверка результата', 30_000, () => ffmpeg?.terminate())
+      if (validationExit !== 0) throw new Error('FFmpeg не смог проверить целостность результата')
+      const validationData = await boundedEnginePhase(ffmpeg.readFile(validationName, 'utf8'), 'чтение проверки результата', 10_000, () => ffmpeg?.terminate())
+      const validationText = typeof validationData === 'string' ? validationData : new TextDecoder().decode(validationData)
+      const outTime = [...validationText.matchAll(/^out_time_us=(\d+)$/gm)].at(-1)?.[1]
+      const duration = outTime ? Number(outTime) / 1_000_000 : Number.NaN
+      const expected = planBrowserExport(source.info, payload)
+      const tolerance = String(payload.format || 'mp4') === 'mp3'
+        ? 0.1
+        : 1 / Math.max(1, number(payload.fps, source.info.fps ?? 30))
+      assertCompleteMediaDuration(duration, expected.estimatedOutputSeconds, tolerance)
+    }
+    const data = await boundedEnginePhase(ffmpeg.readFile(spec.filename), 'чтение результата', 30_000, () => ffmpeg?.terminate())
     const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    const blob = new Blob([copy.buffer], { type: spec.mime })
+    assertBoundedBrowserOutput(bytes.byteLength)
+    const blobPart = bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+      ? bytes.buffer
+      : bytes.slice().buffer
+    const blob = new Blob([blobPart], { type: spec.mime })
     const resultId = id()
     const result: ResultInfo = {
       id: resultId,
@@ -489,23 +634,47 @@ async function runJob(jobId: string, payload: EditPayload): Promise<void> {
       sizeBytes: blob.size,
     }
     library.unshift({ id: resultId, kind: 'output', filename: spec.filename, url: result.url, sizeBytes: blob.size, createdAt: Date.now() })
+    pruneSessionOutputs()
     Object.assign(job, { status: 'done', progress: 100, stage: 'Готово', result })
-    await ffmpeg.deleteFile(spec.inputName).catch(() => undefined)
-    await ffmpeg.deleteFile(spec.filename).catch(() => undefined)
   } catch (error) {
     const cancelled = job.cancelled || (error instanceof Error && error.message === 'cancelled')
+    const outOfMemory = isLikelyOutOfMemory(error)
+    // Any engine-side failure may leave an unresolved message channel or a
+    // high-water Wasm heap. Terminate first; never await cleanup on a poisoned
+    // worker. The project/source live outside this disposable runtime.
+    if (ffmpeg) ffmpeg.terminate()
+    if (ffmpegInstance === ffmpeg) ffmpegInstance = null
     Object.assign(job, cancelled
       ? { status: 'cancelled', error: undefined }
-      : { status: 'error', error: error instanceof Error ? error.message : String(error) })
+      : { status: 'error', error: outOfMemory
+        ? 'Недостаточно памяти для локального экспорта. Сократите диапазон или разрешение; движок сброшен, можно повторить экспорт.'
+        : error instanceof Error ? error.message : String(error) })
   } finally {
+    if (ffmpeg?.loaded && onProgress) ffmpeg.off('progress', onProgress)
+    job.stage = job.status === 'done' ? 'Готово' : job.stage
+    // A fresh disposable core per job is the bounded cleanup mechanism: it
+    // releases MEMFS, mounts and the non-shrinking Wasm heap synchronously.
+    if (ffmpeg?.loaded) ffmpeg.terminate()
+    if (ffmpegInstance === ffmpeg) ffmpegInstance = null
     if (activeJobId === jobId) activeJobId = null
   }
 }
 
+async function runJob(jobId: string, payload: EditPayload): Promise<void> {
+  // Web Locks serializes Wasm heaps across same-origin tabs. The local queue is
+  // the deterministic fallback for engines without the API.
+  return withBrowserRenderLock(() => runJobUnlocked(jobId, payload))
+}
+
 export function edit(payload: EditPayload): { jobId: string } {
   if (activeJobId) throw new Error('Дождитесь завершения текущего экспорта')
+  const source = sources.get(String(payload.videoId))
+  if (!source) throw new Error('Исходный файл больше недоступен — выберите его повторно')
+  const plan = planBrowserExport(source.info, payload)
+  if (plan.risk === 'blocked') throw new Error(`${plan.reason} ${plan.suggestions.join(' · ')}`)
   const jobId = id()
   jobs.set(jobId, { id: jobId, status: 'pending', progress: 0, stage: 'Подготовка…' })
+  activeJobId = jobId
   void runJob(jobId, payload)
   return { jobId }
 }
@@ -527,20 +696,233 @@ export function cancelJob(jobId: string): void {
   }
 }
 
+type CaptureMediaElement = HTMLVideoElement & {
+  captureStream?: () => MediaStream
+  mozCaptureStream?: () => MediaStream
+}
+
+type SavePickerWindow = Window & {
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string
+    types?: Array<{ description?: string; accept: Record<string, string[]> }>
+  }) => Promise<FileSystemFileHandle>
+}
+
+export function streamingOutputSupported(): boolean {
+  const prototype = typeof HTMLVideoElement === 'undefined' ? null : HTMLVideoElement.prototype as CaptureMediaElement
+  return Boolean(
+    (window as SavePickerWindow).showSaveFilePicker
+    && typeof MediaRecorder !== 'undefined'
+    && (prototype?.captureStream || prototype?.mozCaptureStream),
+  )
+}
+
+const STREAM_WRITE_TIMEOUT_MS = 15_000
+const STREAM_MAX_PENDING_BYTES = 4 * 1024 * 1024
+
+function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error(message)), milliseconds)),
+  ])
+}
+
+async function validateStreamedFile(file: File, expectedSeconds: number): Promise<void> {
+  if (!file.size) throw new Error('Браузер создал пустой потоковый файл')
+  const signature = new Uint8Array(await file.slice(0, 4).arrayBuffer())
+  if (signature.length < 4 || signature[0] !== 0x1a || signature[1] !== 0x45 || signature[2] !== 0xdf || signature[3] !== 0xa3) {
+    throw new Error('Сохранённый файл не является корректным контейнером WebM')
+  }
+  const probe = document.createElement('video')
+  const url = objectUrl(file)
+  try {
+    probe.preload = 'metadata'
+    probe.src = url
+    await withTimeout(new Promise<void>((resolve, reject) => {
+      probe.onloadedmetadata = () => resolve()
+      probe.onerror = () => reject(new Error('Не удалось проверить сохранённый WebM'))
+    }), 10_000, 'Проверка сохранённого WebM превысила лимит времени')
+    // MediaRecorder WebM commonly omits a seekable duration. A very large seek
+    // makes the media engine scan clusters and recover the last decodable time;
+    // unlike loadedmetadata this fails closed for header-only/truncated output.
+    if (!Number.isFinite(probe.duration)) {
+      probe.currentTime = Number.MAX_SAFE_INTEGER
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        probe.onseeked = () => resolve()
+        probe.onerror = () => reject(new Error('Сохранённый WebM обрывается до финального media cluster'))
+      }), 10_000, 'Не удалось декодировать финальный media cluster WebM')
+    }
+    const decodedDuration = Number.isFinite(probe.duration) ? probe.duration : probe.currentTime
+    if (!Number.isFinite(decodedDuration) || decodedDuration <= 0) {
+      throw new Error('Не удалось определить декодированную длительность WebM')
+    }
+    assertCompleteMediaDuration(decodedDuration, expectedSeconds, 0.2)
+  } finally {
+    probe.removeAttribute('src')
+    probe.load()
+    URL.revokeObjectURL(url)
+  }
+}
+
+/**
+ * True streaming fallback for GitHub Pages: capture the original selected
+ * range and write MediaRecorder chunks straight to a user-chosen file. This
+ * deliberately does not claim to render filters; it is the bounded recovery
+ * route when a full FFmpeg result would exceed MEMFS.
+ */
+export async function streamOriginalRange(payload: EditPayload): Promise<ResultInfo> {
+  if (!streamingOutputSupported()) throw new Error('Потоковое сохранение недоступно в этом браузере')
+  if (streamingExportActive || activeJobId) throw new Error('Другой экспорт уже выполняется')
+  const source = sources.get(String(payload.videoId))
+  if (!source) throw new Error('Исходный файл больше недоступен — выберите его повторно')
+  streamingExportActive = true
+  const picker = (window as SavePickerWindow).showSaveFilePicker!
+  const handle = await picker({
+    suggestedName: source.file.name.replace(/\.[^.]+$/, '') + '-stream.webm',
+    types: [{ description: 'WebM video', accept: { 'video/webm': ['.webm'] } }],
+  }).catch((error) => {
+    streamingExportActive = false
+    throw error
+  })
+  const writable = await handle.createWritable().catch((error) => {
+    streamingExportActive = false
+    throw error
+  })
+  const media = document.createElement('video') as CaptureMediaElement
+  media.playsInline = true
+  media.preload = 'auto'
+  media.src = objectUrl(source.file)
+  const trim = record(payload.trim)
+  const start = Math.max(0, number(trim?.start))
+  const end = Math.min(source.info.duration, number(trim?.end, source.info.duration))
+  let writeQueue: Promise<void> = Promise.resolve()
+  let watchdog: number | undefined
+  let cancelled = false
+  let recorder: MediaRecorder | null = null
+  let stream: MediaStream | null = null
+  let pendingBytes = 0
+  let writeError: unknown = null
+  try {
+    await new Promise<void>((resolve, reject) => {
+      media.onloadedmetadata = () => resolve()
+      media.onerror = () => reject(new Error('Браузер не смог подготовить исходник для потокового сохранения'))
+    })
+    media.currentTime = start
+    if (start > 0) await new Promise<void>((resolve) => { media.onseeked = () => resolve() })
+    const capture = media.captureStream ?? media.mozCaptureStream
+    stream = capture!.call(media)
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+      ? 'video/webm;codecs=vp8,opus'
+      : 'video/webm'
+    recorder = new MediaRecorder(stream, { mimeType: mime })
+    const stopRecorder = () => {
+      if (recorder && recorder.state !== 'inactive') recorder.stop()
+    }
+    cancelStreamingExport = () => {
+      cancelled = true
+      media.pause()
+      stopRecorder()
+    }
+    const stopped = new Promise<void>((resolve, reject) => {
+      recorder!.ondataavailable = (event) => {
+        if (!event.data.size) return
+        pendingBytes += event.data.size
+        media.pause()
+        if (recorder?.state === 'recording') recorder.pause()
+        if (pendingBytes > STREAM_MAX_PENDING_BYTES) {
+          writeError = new Error('Браузер не успевает записывать поток на диск')
+          cancelled = true
+          stopRecorder()
+          return
+        }
+        writeQueue = writeQueue.then(async () => {
+          await withTimeout(Promise.resolve(writable.write(event.data)), STREAM_WRITE_TIMEOUT_MS, 'Запись потокового файла зависла')
+          pendingBytes -= event.data.size
+          if (!cancelled && recorder?.state === 'paused') {
+            recorder.resume()
+            await media.play()
+          }
+        }).catch((error) => {
+          writeError = error
+          cancelled = true
+          stopRecorder()
+          throw error
+        })
+      }
+      recorder!.onerror = () => reject(new Error('MediaRecorder завершился с ошибкой'))
+      recorder!.onstop = () => resolve()
+    })
+    recorder.start(500)
+    const finishAtMediaTime = () => {
+      if (media.currentTime + 0.03 < end) return
+      media.pause()
+      stopRecorder()
+    }
+    media.ontimeupdate = finishAtMediaTime
+    media.onended = finishAtMediaTime
+    await media.play()
+    // This is a failure watchdog only. Normal completion is driven by media time,
+    // which remains correct when a hidden tab throttles timers or playback.
+    watchdog = window.setTimeout(() => {
+      writeError = new Error('Потоковое воспроизведение не продвигается')
+      cancelled = true
+      media.pause()
+      stopRecorder()
+    }, Math.max(15_000, (end - start) * 3_000 + 15_000))
+    await stopped
+    await writeQueue.catch(() => undefined)
+    if (writeError) throw writeError
+    if (cancelled) throw new DOMException('Потоковый экспорт отменён', 'AbortError')
+    await writable.close()
+    const file = await handle.getFile()
+    await validateStreamedFile(file, end - start)
+    const result: ResultInfo = { id: id(), url: objectUrl(file), filename: handle.name, sizeBytes: file.size }
+    library.unshift({ ...result, kind: 'output', createdAt: Date.now() })
+    pruneSessionOutputs()
+    return result
+  } catch (error) {
+    await writeQueue.catch(() => undefined)
+    await writable.abort().catch(() => undefined)
+    throw error
+  } finally {
+    if (watchdog !== undefined) window.clearTimeout(watchdog)
+    cancelled = true
+    media.pause()
+    media.ontimeupdate = null
+    media.onended = null
+    if (recorder && recorder.state !== 'inactive') recorder.stop()
+    stream?.getTracks().forEach((track) => track.stop())
+    URL.revokeObjectURL(media.src)
+    media.removeAttribute('src')
+    media.load()
+    streamingExportActive = false
+    cancelStreamingExport = null
+  }
+}
+
+export function cancelStreamingOutput(): void {
+  cancelStreamingExport?.()
+}
+
 export function getCapabilities(): Capabilities {
   const enabled = (id: string, label = id) => ({ id, label, available: true })
   const disabled = (id: string, label: string, reason: string) => ({ id, label, available: false, reason })
+  const runtime = runtimeResourceCapabilities()
+  const runtimeReason = !runtime.wasm
+    ? 'WebAssembly недоступен в этом браузере'
+    : !runtime.worker ? 'Web Worker недоступен в этом браузере' : null
+  const local = (id: string, label = id) => runtimeReason ? disabled(id, label, runtimeReason) : enabled(id, label)
   return {
     schemaVersion: 1,
     toolFingerprint: 'ffmpeg.wasm/client',
     formats: [
-      enabled('mp4', 'MP4'), enabled('webm', 'WebM'), enabled('gif', 'GIF'),
-      enabled('png', 'PNG'), enabled('jpg', 'JPG'), enabled('mp3', 'MP3'),
+      local('mp4', 'MP4'), local('webm', 'WebM'), local('gif', 'GIF'),
+      local('png', 'PNG'), local('jpg', 'JPG'), local('mp3', 'MP3'),
       disabled('av1', 'AV1', 'Недоступно в браузерной сборке'),
       disabled('prores', 'ProRes', 'Недоступно в браузерной сборке'),
     ],
     codecs: [
-      enabled('h264', 'H.264'),
+      local('h264', 'H.264'),
       disabled('h265', 'H.265', 'Недоступно в браузерной сборке'),
     ],
     filters: [
@@ -548,6 +930,15 @@ export function getCapabilities(): Capabilities {
       disabled('lut3d-blend', 'Интенсивность LUT', 'В браузере LUT применяется с интенсивностью 100%'),
     ],
     hardware: [disabled('native', 'Аппаратное ускорение', 'Используется WebAssembly')],
+    runtime: {
+      worker: runtime.worker,
+      wasm: runtime.wasm,
+      workerFs: runtime.workerFs,
+      opfs: runtime.opfs,
+      webCrypto: runtime.webCrypto,
+      streamingOutput: streamingOutputSupported(),
+      memoryBudgetBytes: browserMemoryBudget(runtime),
+    },
   }
 }
 
@@ -556,9 +947,6 @@ export function getStorageStatus(): BrowserStorageEstimate | null {
 }
 
 export async function getLibrary(): Promise<MediaEntry[]> {
-  if (durableStorageUnavailable) {
-    return [...library].sort((left, right) => right.createdAt - left.createdAt)
-  }
   let persisted
   try {
     persisted = await auditBrowserAssets()
@@ -696,6 +1084,9 @@ export async function relinkSource(
   expectedMedia?: ProjectMedia,
 ): Promise<VideoInfo> {
   return withProjectAssetLock(async () => {
+  // A retained File System Access handle stores only a locator; byte-for-byte
+  // OPFS quota is needed solely for the fallback that persists the file itself.
+  if (!handle) lastStorageEstimate = await prepareBrowserStorage(file.size * 2 + OPFS_INGEST_OVERHEAD_BYTES)
   const entry = library.find((candidate) => candidate.id === sourceId)
   const metadata = expectedMedia?.metadata
   const metadataNumber = (key: string) => typeof metadata?.[key] === 'number' ? metadata[key] as number : undefined
@@ -742,6 +1133,12 @@ export async function restoreExternalSource(sourceId: string, expectedFingerprin
 }
 
 export async function deleteLibraryItem(itemId: string): Promise<void> {
+  const memoryOutputIndex = library.findIndex((entry) => entry.id === itemId && entry.kind === 'output')
+  if (memoryOutputIndex >= 0) {
+    URL.revokeObjectURL(library[memoryOutputIndex]!.url)
+    library.splice(memoryOutputIndex, 1)
+    return
+  }
   if (!navigator.locks) {
     throw new Error(
       'Безопасное удаление недоступно в этом браузере: Web Locks API не поддерживается. Файл сохранён.',

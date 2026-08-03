@@ -1,4 +1,4 @@
-import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ProjectEnvelope, ProjectMedia, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ProjectEnvelope, ProjectMedia, ResultInfo, VideoInfo } from './types'
 import * as browserMedia from './browser-media'
 import { decodeProjectEnvelope } from './project-schema'
 
@@ -168,6 +168,19 @@ export async function restoreExternalLibrarySource(id: string, expectedFingerpri
 
 export function getBrowserStorageStatus() {
   return clientOnlyMode ? browserMedia.getStorageStatus() : null
+}
+
+export function streamingOutputSupported(): boolean {
+  return clientOnlyMode && browserMedia.streamingOutputSupported()
+}
+
+export function streamOriginalRange(payload: Record<string, unknown>): Promise<ResultInfo> {
+  if (!clientOnlyMode) return Promise.reject(new Error('Потоковый fallback предназначен для статической версии'))
+  return browserMedia.streamOriginalRange(payload)
+}
+
+export function cancelStreamingOutput(): void {
+  if (clientOnlyMode) browserMedia.cancelStreamingOutput()
 }
 
 /** Delete a library entry (and its file on disk). */
