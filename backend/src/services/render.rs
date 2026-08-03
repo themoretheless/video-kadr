@@ -20,7 +20,7 @@ use crate::domain::edit::{
     VideoEffects,
 };
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
-use crate::model::{Crop, EditRequest, Scale, Trim};
+use crate::model::{Crop, EditRequest, RateControlRequest, Scale, Trim};
 
 const EDIT_PLAN_SCHEMA_VERSION: u32 = 6;
 
@@ -30,6 +30,7 @@ pub struct SourceMediaMetadata {
     pub height: u32,
     pub duration_seconds: f64,
     pub has_audio: bool,
+    pub fps: Option<f64>,
     pub color_policy: Option<SdrColorPolicyV1>,
     pub color_policy_warning: bool,
 }
@@ -65,6 +66,7 @@ impl SourceMediaMetadata {
             height,
             duration_seconds,
             has_audio,
+            fps: None,
             color_policy: (width > 0).then(Self::legacy_bt709_policy),
             color_policy_warning: width > 0,
         })
@@ -76,6 +78,7 @@ impl SourceMediaMetadata {
             .iter()
             .any(|stream| stream.kind == crate::domain::media_probe::StreamKind::Audio);
         let mut value = Self::new_with_audio(probe.width, probe.height, probe.duration, has_audio)?;
+        value.fps = probe.fps;
         if probe.width == 0 {
             return Ok(value);
         }
@@ -242,14 +245,94 @@ impl EditPlan {
         mut request: EditRequest,
         metadata: SourceMediaMetadata,
     ) -> anyhow::Result<Self> {
+        let source_fps = metadata.fps.unwrap_or(30.0);
         let source = SourceMediaSpec::from_metadata(metadata)?;
+        let rate_control = request.rate_control.clone();
+        if request.quality.is_some() && rate_control.is_some() {
+            anyhow::bail!("quality and rateControl are mutually exclusive");
+        }
+        if let Some(RateControlRequest::Quality { crf }) = rate_control.as_ref() {
+            request.quality = Some(*crf);
+        }
         normalize_request(&mut request, source)?;
         let (edit, mut output) = map_request(request)?;
+        if matches!(rate_control, Some(RateControlRequest::Quality { .. })) {
+            anyhow::ensure!(
+                matches!(
+                    output.video_codec,
+                    Some(VideoCodec::H264 | VideoCodec::H265 | VideoCodec::Vp9 | VideoCodec::Av1)
+                ),
+                "quality rateControl is unavailable for the selected format"
+            );
+        }
         if !source.has_audio {
             if output.format == OutputFormat::Mp3 {
                 anyhow::bail!("Источник не содержит аудиодорожку");
             }
             output.audio_codec = None;
+            output.audio_bitrate_bps = None;
+        }
+        if let Some(RateControlRequest::TargetSize {
+            target_bytes,
+            video_bitrate_bps,
+            audio_bitrate_bps,
+            estimator_version,
+        }) = rate_control
+        {
+            anyhow::ensure!(
+                estimator_version == "size-v1",
+                "unsupported target-size estimator"
+            );
+            let duration = crate::tools::expected_output_secs(&edit, source.duration_seconds());
+            let geometry = edit.geometry();
+            let (mut width, mut height) = (source.width, source.height);
+            if let Some(scale) = geometry.scale {
+                match (scale.width, scale.height) {
+                    (w, h) if w > 0 && h > 0 => (width, height) = (w as u32, h as u32),
+                    (w, _) if w > 0 => {
+                        width = w as u32;
+                        height = (f64::from(source.height) * f64::from(width)
+                            / f64::from(source.width))
+                        .round() as u32;
+                    }
+                    (_, h) if h > 0 => {
+                        height = h as u32;
+                        width = (f64::from(source.width) * f64::from(height)
+                            / f64::from(source.height))
+                        .round() as u32;
+                    }
+                    _ => {}
+                }
+            }
+            if matches!(
+                geometry.rotation,
+                crate::domain::edit::Rotation::Clockwise90
+                    | crate::domain::edit::Rotation::Clockwise270
+            ) {
+                std::mem::swap(&mut width, &mut height);
+            }
+            if let Some(aspect) = geometry.pad_aspect {
+                width = width.max(
+                    (f64::from(height) * f64::from(aspect.width) / f64::from(aspect.height)).ceil()
+                        as u32,
+                );
+                height = height.max(
+                    (f64::from(width) * f64::from(aspect.height) / f64::from(aspect.width)).ceil()
+                        as u32,
+                );
+            }
+            output.apply_target_size(
+                target_bytes,
+                Some(audio_bitrate_bps),
+                duration,
+                width,
+                height,
+                output.fps().unwrap_or(source_fps),
+            )?;
+            anyhow::ensure!(
+                output.video_bitrate_bps == Some(video_bitrate_bps),
+                "target-size derived video bitrate mismatch"
+            );
         }
         Self::from_domain(source_fingerprint, source, edit, output)
     }
@@ -766,6 +849,28 @@ mod tests {
             (1918, 1078, 2, 2)
         );
         assert_eq!(plan.output.fps_milli, Some(240_000));
+    }
+
+    #[test]
+    fn compiler_recomputes_size_v1_and_rejects_client_drift() {
+        let valid = serde_json::json!({
+            "videoId": "x",
+            "rateControl": { "mode": "target_size", "targetBytes": 10_000_000,
+                "videoBitrateBps": 7_472_000, "audioBitrateBps": 128_000,
+                "estimatorVersion": "size-v1" }
+        });
+        let plan = compile(valid.clone()).unwrap();
+        assert_eq!(plan.output.video_bitrate_bps, Some(7_472_000));
+        let args =
+            crate::tools::build_ffmpeg_args(Path::new("in.mp4"), Path::new("out.mp4"), &plan);
+        assert!(args.windows(2).any(|pair| pair == ["-b:v", "7472000"]));
+        assert!(!args.iter().any(|arg| arg == "-crf"));
+        let mut drifted = valid;
+        drifted["rateControl"]["videoBitrateBps"] = serde_json::json!(7_471_000);
+        assert!(compile(drifted)
+            .unwrap_err()
+            .to_string()
+            .contains("mismatch"));
     }
 
     #[test]

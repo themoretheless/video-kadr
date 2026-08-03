@@ -349,6 +349,27 @@ pub struct EditRequest {
     /// Quality as CRF (lower = better). Defaults per format/codec.
     #[serde(default)]
     pub quality: Option<u32>,
+    #[serde(default)]
+    pub rate_control: Option<RateControlRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(
+    tag = "mode",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum RateControlRequest {
+    Quality {
+        crf: u32,
+    },
+    TargetSize {
+        target_bytes: u64,
+        video_bitrate_bps: u64,
+        audio_bitrate_bps: u32,
+        estimator_version: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

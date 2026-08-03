@@ -36,6 +36,7 @@ import {
 import { toast } from './toasts'
 import { fingerprintBlob } from './browser-asset-store'
 import { planBrowserExport, type ExportResourcePlan } from './browser-resource-plan'
+import { resolveExportSizing, type ExportRateControl, type ExportSizingGeometry } from './domain/export-size'
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ResultInfo, VideoInfo } from './types'
 import { enqueueSourceAnalysis } from './derived-task-center'
 import {
@@ -411,6 +412,49 @@ export function buildEditPayload(): Record<string, unknown> {
   return buildPayload(state.edit, state.video)
 }
 
+export interface ExportSizingSnapshot extends ExportSizingGeometry {
+  payload: Record<string, unknown>
+  hasAudio: boolean
+  browser: boolean
+}
+
+function activeExportHasAudio(): boolean {
+  const document = timelineState.document
+  const group = activeAttachedMulticamContext()?.group
+  if (document && group) {
+    const audioAngle = group.angles.find(angle => angle.id === group.audioAngleId)
+    const media = audioAngle ? document.media.find(item => item.id === audioAngle.mediaId) : null
+    const codec = media?.metadata?.acodec
+    if (codec === null) return false
+    if (typeof codec === 'string') return codec.length > 0
+  }
+  return state.video?.acodec !== null
+}
+
+/** Build the exact payload shape whose duration/geometry feeds size-v1 and encoding. */
+export function buildExportSizingSnapshot(
+  overrides: Record<string, unknown> = {},
+  rateControl?: ExportRateControl,
+): ExportSizingSnapshot | null {
+  if (!state.video) return null
+  const payload = { ...buildEditPayload(), ...structuredClone(overrides) }
+  if (rateControl) { delete payload.quality; payload.rateControl = structuredClone(rateControl) }
+  const multicamFlatten = buildActiveMulticamFlattenPayload()
+  if (multicamFlatten) {
+    payload.multicamFlatten = multicamFlatten
+    const duration = Number(multicamFlatten.durationTicks) / Number(multicamFlatten.timeBase)
+    const trim = payload.trim as { start?: number; end?: number } | undefined
+    payload.trim = { start: Math.max(0, Math.min(duration, Number(trim?.start ?? 0))), end: Math.max(0, Math.min(duration, Number(trim?.end ?? duration))) }
+    if ((payload.trim as { end: number }).end <= (payload.trim as { start: number }).start) payload.trim = { start: 0, end: duration }
+  }
+  return {
+    payload,
+    ...resolveExportSizing(state.video, payload),
+    hasAudio: activeExportHasAudio(),
+    browser: clientOnlyMode,
+  }
+}
+
 export function hasMeaningfulChanges(): boolean {
   return hasMeaningfulEditChanges(state.edit, state.video)
 }
@@ -420,7 +464,7 @@ export function normalizeCrop(): void {
   state.edit.crop = sanitizeRect(state.edit.crop, state.video.width, state.video.height)
 }
 
-export async function doExport(): Promise<void> {
+export async function doExport(rateControl?: ExportRateControl): Promise<void> {
   if (!state.video || state.exporting) return
 
   const unavailable = selectedExportUnavailableReason()
@@ -438,15 +482,7 @@ export async function doExport(): Promise<void> {
   state.result = null
 
   try {
-    const payload = buildEditPayload()
-    const multicamFlatten = buildActiveMulticamFlattenPayload()
-    if (multicamFlatten) {
-      payload.multicamFlatten = multicamFlatten
-      const duration = Number(multicamFlatten.durationTicks) / Number(multicamFlatten.timeBase)
-      const trim = payload.trim as { start?: number; end?: number } | undefined
-      payload.trim = { start: Math.max(0, Math.min(duration, Number(trim?.start ?? 0))), end: Math.max(0, Math.min(duration, Number(trim?.end ?? duration))) }
-      if ((payload.trim as { end: number }).end <= (payload.trim as { start: number }).start) payload.trim = { start: 0, end: duration }
-    }
+    const payload = buildExportSizingSnapshot({}, rateControl)!.payload
     if (clientOnlyMode) {
       const document = timelineState.document
       const media = document?.media.find(item => item.id === document.primaryMediaId)
@@ -500,6 +536,7 @@ export interface ExportVariantDraft {
   format: string
   codec: string
   qualityTier: string
+  rateControl?: ExportRateControl
 }
 
 async function exportDependencies(payload: Record<string, unknown>): Promise<import('./domain/export-variants').ExportDependency[]> {
@@ -533,25 +570,34 @@ export async function enqueueExportVariants(variants: readonly ExportVariantDraf
   const fingerprint = media?.contentFingerprint ?? state.video.fingerprint
   if (!fingerprint) throw new Error('Для очереди экспорта нужен fingerprint исходника')
   const basePayload = buildEditPayload()
+  delete basePayload.quality
   const multicamFlatten = buildActiveMulticamFlattenPayload()
   if (multicamFlatten) basePayload.multicamFlatten = multicamFlatten
+  const preparedVariants = variants.map((variant, index) => {
+    const edit = sanitizeEditState({ ...state.edit, format: variant.format, codec: variant.codec, qualityTier: variant.qualityTier })
+    const payload = buildPayload(edit, state.video)
+    if (variant.rateControl) { delete payload.quality; payload.rateControl = structuredClone(variant.rateControl) }
+    const plan = clientOnlyMode ? planBrowserExport(state.video!, { ...basePayload, ...payload }) : null
+    const unavailable = exportUnavailableReasonFor(edit, plan)
+    if (unavailable) throw new Error(`${variant.name || `Вариант ${index + 1}`}: ${unavailable}`)
+    return { variant, index, payload }
+  })
   const dependencies = await exportDependencies(basePayload)
   await enqueuePreparedExportBatch({
     id: `batch-${crypto.randomUUID()}`,
     source: { assetRef, fingerprint },
     dependencies,
     basePayload,
-    variants: variants.map((variant, index) => {
-      const edit = sanitizeEditState({ ...state.edit, format: variant.format, codec: variant.codec, qualityTier: variant.qualityTier })
-      const payload = buildPayload(edit, state.video)
+    variants: preparedVariants.map(({ variant, index, payload }) => {
       return {
         id: variant.id ?? `variant-${index + 1}`,
         label: variant.name,
         overrides: {
           format: payload.format,
           codec: payload.codec,
-          quality: payload.quality,
+          ...(variant.rateControl || payload.quality === undefined ? {} : { quality: payload.quality }),
           qualityTier: variant.qualityTier,
+          ...(payload.rateControl ? { rateControl: payload.rateControl } : {}),
         },
       }
     }),
@@ -693,7 +739,7 @@ export async function loadCapabilities(): Promise<void> {
   }
 }
 
-export function selectedExportUnavailableReason(): string | null {
+function exportUnavailableReasonFor(edit: EditState, resourcePlan: ExportResourcePlan | null): string | null {
   const document = timelineState.document
   if (document) {
     const attached = activeAttachedMulticamContext()
@@ -703,7 +749,7 @@ export function selectedExportUnavailableReason(): string | null {
     if (attached && !clientOnlyMode) {
       return 'Multicam export пока доступен в статической версии через локальный FFmpeg; серверный render path ещё не подключён'
     }
-    if (attached && state.edit.format === 'mp3') return 'Multicam flattened export требует видеоформат'
+    if (attached && edit.format === 'mp3') return 'Multicam flattened export требует видеоформат'
     const activeSequence = document.sequences.find(
       (sequence) => sequence.id === document.activeSequenceId,
     )
@@ -712,17 +758,18 @@ export function selectedExportUnavailableReason(): string | null {
       return 'Экспорт изменённой topology timeline появится после подключения render graph'
     }
   }
-  const format = state.capabilities?.formats.find((option) => option.id === state.edit.format)
+  const format = state.capabilities?.formats.find((option) => option.id === edit.format)
   if (format && !format.available) return format.reason || 'Выбранный формат недоступен'
 
-  if (state.edit.format === 'mp3') return null
+  if (resourcePlan?.risk === 'blocked') return resourcePlan.reason
+  if (edit.format === 'mp3') return null
 
-  if (state.edit.format === 'mp4') {
-    const codec = state.capabilities?.codecs.find((option) => option.id === state.edit.codec)
+  if (edit.format === 'mp4') {
+    const codec = state.capabilities?.codecs.find((option) => option.id === edit.codec)
     if (codec && !codec.available) return codec.reason || 'Выбранный кодек недоступен'
   }
 
-  if (primaryCorrectionsActive(state.edit)) {
+  if (primaryCorrectionsActive(edit)) {
     const reason = colorCapabilityUnavailableReason(
       ['primary-corrections'],
       'Температура, оттенок, света и тени недоступны: нужен обновлённый сервер',
@@ -730,7 +777,7 @@ export function selectedExportUnavailableReason(): string | null {
     if (reason) return reason
   }
 
-  if (colorWheelsActive(state.edit)) {
+  if (colorWheelsActive(edit)) {
     const reason = colorCapabilityUnavailableReason(
       ['color-wheels', 'lift-gamma-gain'],
       'Lift, Gamma и Gain недоступны: нужен обновлённый сервер',
@@ -738,7 +785,7 @@ export function selectedExportUnavailableReason(): string | null {
     if (reason) return reason
   }
 
-  if (hslSelectiveActive(state.edit.hslSelective)) {
+  if (hslSelectiveActive(edit.hslSelective)) {
     const reason = colorCapabilityUnavailableReason(
       ['hsl-selective-v1'],
       'Selective HSL недоступен: нужен обновлённый сервер',
@@ -746,13 +793,13 @@ export function selectedExportUnavailableReason(): string | null {
     if (reason) return reason
   }
 
-  if (state.edit.lutId && state.edit.lutIntensity > 0) {
+  if (edit.lutId && edit.lutIntensity > 0) {
     const reason = colorCapabilityUnavailableReason(
       ['lut', 'lut3d', 'cube-lut'],
       '3D LUT недоступны: нужен обновлённый сервер',
     )
     if (reason) return reason
-    if (state.edit.lutIntensity < 1 - 1e-9) {
+    if (edit.lutIntensity < 1 - 1e-9) {
       const intensityReason = colorCapabilityUnavailableReason(
         ['lut-intensity', 'lut3d-blend'],
         'Частичная интенсивность LUT недоступна: нужен обновлённый сервер',
@@ -760,16 +807,18 @@ export function selectedExportUnavailableReason(): string | null {
       if (intensityReason) return intensityReason
     }
   }
-  if (!isIdentityCurves(state.edit.curves)) {
+  if (!isIdentityCurves(edit.curves)) {
     const reason = colorCapabilityUnavailableReason(
       ['curves', 'color-curves', 'custom-curves'],
       'Кривые недоступны: нужен обновлённый сервер',
     )
     if (reason) return reason
   }
-  const resourcePlan = currentBrowserExportPlan()
-  if (resourcePlan?.risk === 'blocked') return resourcePlan.reason
   return null
+}
+
+export function selectedExportUnavailableReason(): string | null {
+  return exportUnavailableReasonFor(state.edit, currentBrowserExportPlan())
 }
 
 function activeAttachedMulticamContext() {

@@ -73,6 +73,13 @@ describe('browser resource planning', () => {
     expect(plan.estimatedOutputSeconds).toBe(3)
   })
 
+  it('budgets the honest high size-v1 bound rather than the optimistic center', () => {
+    const clip = { ...video, duration: 10, width: 1920, height: 1080, fps: 30, sizeBytes: 10 * MIB }
+    const high = planBrowserExport(clip, { format: 'mp4', quality: 18, trim: { start: 0, end: 10 } }, capable)
+    const compact = planBrowserExport(clip, { format: 'mp4', quality: 28, trim: { start: 0, end: 10 } }, capable)
+    expect(high.estimatedOutputBytes).toBeGreaterThan(compact.estimatedOutputBytes)
+  })
+
   it('uses a monotonic conservative budget across declared device-memory tiers', () => {
     const budgets = [0.25, 0.5, 1, 4, 8].map((deviceMemoryGiB) => browserMemoryBudget({ ...capable, deviceMemoryGiB }))
     expect(budgets).toEqual([...budgets].sort((left, right) => left - right))

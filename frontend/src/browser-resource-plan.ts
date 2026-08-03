@@ -1,4 +1,5 @@
 import type { VideoInfo } from './types'
+import { estimateExportSize, resolveExportSizing } from './domain/export-size'
 
 export const MIB = 1024 * 1024
 export const OPFS_INGEST_OVERHEAD_BYTES = MIB
@@ -95,42 +96,29 @@ export function planBrowserExport(
   capabilities = runtimeResourceCapabilities(),
 ): ExportResourcePlan {
   const inputBytes = finite(video.sizeBytes, 0)
-  const trim = typeof payload.trim === 'object' && payload.trim ? payload.trim as Record<string, unknown> : null
-  const start = finite(trim?.start, 0)
-  const end = finite(trim?.end, video.duration)
-  const trimmedSeconds = Math.max(0.001, Math.min(video.duration || end, end) - Math.max(0, start))
-  const segments = Array.isArray(payload.segments) ? payload.segments : []
-  const firstSegment = typeof segments[0] === 'object' && segments[0] ? segments[0] as Record<string, unknown> : null
-  const secondSegment = typeof segments[1] === 'object' && segments[1] ? segments[1] as Record<string, unknown> : null
-  const removedSeconds = segments.length === 2
-    ? Math.max(0, finite(secondSegment?.start, 0) - finite(firstSegment?.end, 0))
-    : 0
-  const selectedSeconds = Math.max(0.001, trimmedSeconds - Math.min(trimmedSeconds, removedSeconds))
-  const speed = Math.max(0.5, Math.min(2, finite(payload.speed, 1)))
-  const outputSeconds = selectedSeconds / speed
-  const ratio = video.duration > 0 ? Math.min(1, selectedSeconds / video.duration) : 1
+  const sizing = resolveExportSizing(video, payload)
+  const { selectedSeconds, durationSeconds: outputSeconds } = sizing
   const format = String(payload.format || 'mp4')
-  const multiplier = format === 'gif' ? 2.5 : format === 'png' || format === 'jpg' ? 0.05 : format === 'mp3' ? 0.15 : 1.15
-  const estimatedOutputBytes = Math.max(MIB, Math.ceil(inputBytes * ratio * multiplier))
-  const crop = typeof payload.crop === 'object' && payload.crop ? payload.crop as Record<string, unknown> : null
-  const scale = typeof payload.scale === 'object' && payload.scale ? payload.scale as Record<string, unknown> : null
-  const sourceWidth = Math.max(1, finite(crop?.w, finite(video.width, 1920)))
-  const sourceHeight = Math.max(1, finite(crop?.h, finite(video.height, 1080)))
-  const requestedWidth = finite(scale?.w, sourceWidth)
-  const requestedHeight = finite(scale?.h, sourceHeight)
-  let width = Math.max(1, requestedWidth > 0 ? requestedWidth : Math.round(sourceWidth * (requestedHeight / sourceHeight)))
-  let height = Math.max(1, requestedHeight > 0 ? requestedHeight : Math.round(sourceHeight * (requestedWidth / sourceWidth)))
-  if (finite(payload.rotate, 0) === 90 || finite(payload.rotate, 0) === 270) [width, height] = [height, width]
-  const pad = String(payload.pad || '')
-  if (/^\d+:\d+$/.test(pad)) {
-    const [ratioWidth, ratioHeight] = pad.split(':').map(Number)
-    width = Math.max(width, Math.ceil(height * ratioWidth! / ratioHeight!))
-    height = Math.max(height, Math.ceil(width * ratioHeight! / ratioWidth!))
-  }
+  const { width, height } = sizing
   // Reverse buffers source frames. When metadata has no FPS, fail closed with
   // a high-but-realistic capture rate instead of silently assuming 30 FPS.
   const sourceFps = Math.max(1, finite(video.fps, payload.reverse ? 120 : 30))
-  const outputFps = Math.max(1, finite(payload.fps, sourceFps))
+  const outputFps = sizing.fps
+  const rateControl = payload.rateControl && typeof payload.rateControl === 'object' ? payload.rateControl as Record<string, unknown> : null
+  const sizeEstimate = estimateExportSize({
+    durationSeconds: outputSeconds, width, height, fps: outputFps, format,
+    codec: typeof payload.codec === 'string' ? payload.codec : undefined,
+    crf: rateControl?.mode === 'quality' ? finite(rateControl.crf, finite(payload.quality, Number.NaN)) : finite(payload.quality, Number.NaN),
+    muted: Boolean(payload.mute), browser: true,
+    targetBytes: rateControl?.mode === 'target_size' ? finite(rateControl.targetBytes, 0) : null,
+  })
+  if (rateControl?.mode === 'target_size'
+    && (rateControl.estimatorVersion !== sizeEstimate.contract
+      || finite(rateControl.videoBitrateBps, -1) !== sizeEstimate.videoBitrateBps
+      || finite(rateControl.audioBitrateBps, -1) !== sizeEstimate.audioBitrateBps)) {
+    throw new Error('target-size derived bitrate mismatch')
+  }
+  const estimatedOutputBytes = sizeEstimate.highBytes
   // Eight bytes/pixel covers high-bit-depth/alpha filter intermediates.
   const frameBytes = Math.ceil(width * height * 8)
   const rawVideoBytes = frameBytes * outputFps * outputSeconds
@@ -149,7 +137,7 @@ export function planBrowserExport(
     : format === 'png' ? frameBytes
       : format === 'jpg' ? Math.ceil(frameBytes * 0.5)
         : format === 'mp3' ? Math.ceil(outputSeconds * 32 * 1024)
-          : Math.max(estimatedOutputBytes, Math.ceil(outputSeconds * 8_000_000 / 8))
+          : estimatedOutputBytes
   const boundedOutputBytes = Math.max(estimatedOutputBytes, conservativeOutput)
   const estimatedPeakMemoryBytes = wasmBaseline + inputMaterialization + boundedOutputBytes * 2 + filterWorkingSet + reverseBytes
   const memoryBudgetBytes = browserMemoryBudget(capabilities)

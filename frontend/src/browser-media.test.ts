@@ -68,3 +68,36 @@ describe('browser media reload hydration', () => {
     ])
   })
 })
+
+describe('browser output rate control', () => {
+  it('uses the size-v1 bitrate golden without CRF and fixes audio bitrate', async () => {
+    const { browserOutputSpec } = await import('./browser-media')
+    const spec = browserOutputSpec({
+      format: 'mp4', codec: 'h264',
+      rateControl: { mode: 'target_size', targetBytes: 10_000_000, videoBitrateBps: 7_472_000, audioBitrateBps: 128_000, estimatorVersion: 'size-v1' },
+    })
+    expect(spec.args).toEqual(expect.arrayContaining(['-b:v', '7472000', '-maxrate', '7472000', '-bufsize', '14944000', '-b:a', '128000']))
+    expect(spec.args).not.toContain('-crf')
+  })
+
+  it('rejects H.265 instead of silently encoding H.264', async () => {
+    const { browserOutputSpec } = await import('./browser-media')
+    expect(() => browserOutputSpec({ format: 'mp4', codec: 'h265' })).toThrow('H.265 недоступен')
+  })
+
+  it('rejects unknown formats and incompatible codec tokens', async () => {
+    const { browserOutputSpec } = await import('./browser-media')
+    expect(() => browserOutputSpec({ format: 'av1' })).toThrow('Неподдерживаемый формат')
+    expect(() => browserOutputSpec({ format: 'mp4', codec: 'vp9' })).toThrow('Некорректный кодек MP4')
+    expect(() => browserOutputSpec({ format: 'webm', codec: 'vp9' })).toThrow('Кодек можно задавать только для MP4')
+  })
+
+  it('rejects malformed tagged CRF and coexistence with legacy quality', async () => {
+    const { browserOutputSpec } = await import('./browser-media')
+    expect(() => browserOutputSpec({ format: 'mp4', rateControl: { mode: 'quality', crf: 52 } })).toThrow('quality rateControl')
+    expect(() => browserOutputSpec({ format: 'webm', rateControl: { mode: 'quality', crf: 1.5 } })).toThrow('quality rateControl')
+    expect(() => browserOutputSpec({ format: 'mp4', quality: 23, rateControl: { mode: 'quality', crf: 23 } })).toThrow('взаимоисключающие')
+    expect(() => browserOutputSpec({ format: 'gif', rateControl: { mode: 'quality', crf: 23 } })).toThrow('Quality rateControl')
+    expect(() => browserOutputSpec({ format: 'mp3', rateControl: { mode: 'quality', crf: 23 } })).toThrow('Quality rateControl')
+  })
+})

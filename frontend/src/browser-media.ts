@@ -166,7 +166,24 @@ function probeVideo(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filenam
         reject(new Error('Не удалось прочитать параметры видео'))
         return
       }
-      resolve({ duration, width, height, title: file.name, sizeBytes: file.size })
+      const media = video as HTMLVideoElement & {
+        captureStream?: () => MediaStream
+        mozCaptureStream?: () => MediaStream
+        mozHasAudio?: boolean
+        audioTracks?: { length: number }
+      }
+      const capture = media.captureStream ?? media.mozCaptureStream
+      let hasAudio: boolean | undefined
+      if (capture) {
+        const stream = capture.call(media)
+        hasAudio = stream.getAudioTracks().length > 0
+        stream.getTracks().forEach(track => track.stop())
+      } else if (media.audioTracks) {
+        hasAudio = media.audioTracks.length > 0
+      } else if (typeof media.mozHasAudio === 'boolean') {
+        hasAudio = media.mozHasAudio
+      }
+      resolve({ duration, width, height, title: file.name, sizeBytes: file.size, acodec: hasAudio === false ? null : hasAudio ? 'browser-detected' : undefined })
     }
     video.onerror = () => {
       URL.revokeObjectURL(url)
@@ -506,22 +523,48 @@ function record(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-function outputSpec(payload: EditPayload): { filename: string; mime: string; args: string[] } {
+export function browserOutputSpec(payload: EditPayload): { filename: string; mime: string; args: string[] } {
   const format = String(payload.format || 'mp4')
-  const quality = number(payload.quality, 23)
+  const rateControl = record(payload.rateControl)
+  const quality = rateControl?.mode === 'quality' ? number(rateControl.crf, Number.NaN) : number(payload.quality, 23)
+  const target = rateControl?.mode === 'target_size'
+  const videoBitrate = target ? number(rateControl.videoBitrateBps, Number.NaN) : null
+  const audioBitrate = target ? number(rateControl.audioBitrateBps, Number.NaN) : format === 'webm' ? 96_000 : 128_000
+  if (rateControl && !['quality', 'target_size'].includes(String(rateControl.mode))) throw new Error('Некорректный rateControl')
+  if (rateControl && payload.quality !== undefined) throw new Error('legacy quality и rateControl взаимоисключающие')
+  if (rateControl?.mode === 'quality' && !['mp4', 'webm'].includes(format)) throw new Error('Quality rateControl недоступен для выбранного формата')
+  const maxCrf = format === 'webm' ? 63 : 51
+  if (rateControl?.mode === 'quality' && (!Number.isSafeInteger(quality) || quality < 0 || quality > maxCrf)) throw new Error('Некорректный quality rateControl')
+  const validAudioBitrate = payload.mute ? audioBitrate === 0 : Number.isSafeInteger(audioBitrate) && audioBitrate >= 32_000 && audioBitrate <= 512_000
+  if (target && (rateControl?.estimatorVersion !== 'size-v1' || !Number.isSafeInteger(videoBitrate) || videoBitrate! < 100_000 || videoBitrate! > 8_000_000 || !validAudioBitrate)) throw new Error('Некорректный target-size rateControl')
+  const videoRateArgs = target
+    ? ['-b:v', String(videoBitrate), '-maxrate', String(videoBitrate), '-bufsize', String(videoBitrate! * 2)]
+    : ['-crf', String(quality), ...(format === 'webm' ? ['-b:v', '0'] : []), '-maxrate', '8M', '-bufsize', '16M']
+  const audioRateArgs = ['-b:a', String(audioBitrate)]
+  const codec = payload.codec === undefined || payload.codec === null || payload.codec === '' ? null : String(payload.codec)
+  if (target && !['mp4', 'webm'].includes(format)) throw new Error('Target-size недоступен для выбранного формата')
   switch (format) {
     case 'webm':
-      return { filename: 'edited.webm', mime: 'video/webm', args: ['-c:v', 'libvpx-vp9', '-crf', String(quality), '-b:v', '0', '-maxrate', '8M', '-bufsize', '16M', '-c:a', 'libopus'] }
+      if (codec !== null) throw new Error('Кодек можно задавать только для MP4')
+      return { filename: 'edited.webm', mime: 'video/webm', args: ['-c:v', 'libvpx-vp9', ...videoRateArgs, '-c:a', 'libopus', ...audioRateArgs] }
     case 'gif':
+      if (codec !== null) throw new Error('Кодек можно задавать только для MP4')
       return { filename: 'edited.gif', mime: 'image/gif', args: ['-an', '-loop', '0'] }
     case 'png':
+      if (codec !== null) throw new Error('Кодек можно задавать только для MP4')
       return { filename: 'frame.png', mime: 'image/png', args: ['-frames:v', '1', '-an'] }
     case 'jpg':
+      if (codec !== null) throw new Error('Кодек можно задавать только для MP4')
       return { filename: 'frame.jpg', mime: 'image/jpeg', args: ['-frames:v', '1', '-q:v', '2', '-an'] }
     case 'mp3':
+      if (codec !== null) throw new Error('Кодек можно задавать только для MP4')
       return { filename: 'audio.mp3', mime: 'audio/mpeg', args: ['-vn', '-c:a', 'libmp3lame', '-q:a', '2'] }
+    case 'mp4':
+      if (codec === 'h265') throw new Error('H.265 недоступен в браузерной сборке')
+      if (codec !== null && codec !== 'h264') throw new Error('Некорректный кодек MP4')
+      return { filename: 'edited.mp4', mime: 'video/mp4', args: ['-c:v', 'libx264', '-preset', 'veryfast', ...videoRateArgs, '-pix_fmt', 'yuv420p', '-c:a', 'aac', ...audioRateArgs, '-movflags', '+faststart'] }
     default:
-      return { filename: 'edited.mp4', mime: 'video/mp4', args: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(quality), '-maxrate', '8M', '-bufsize', '16M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart'] }
+      throw new Error('Неподдерживаемый формат экспорта')
   }
 }
 
@@ -670,7 +713,7 @@ async function buildArgs(
   }
   if (audioFilters.length && !payload.mute) args.push('-af', audioFilters.join(','))
   if (payload.mute) args.push('-an')
-  const output = outputSpec(payload)
+    const output = browserOutputSpec(payload)
   args.push('-fs', String(MEMFS_MAX_OUTPUT_BYTES))
   args.push(...sdrBoundary.outputArgs, ...output.args, output.filename)
   temporaryFiles.push(output.filename)
@@ -788,7 +831,7 @@ async function buildMulticamArgs(
     const fade = Math.min(number(payload.fadeOut), duration)
     postAudioFilters.push(`afade=t=out:st=${Math.max(0, duration - fade)}:d=${fade}`)
   }
-  const output = outputSpec(payload)
+  const output = browserOutputSpec(payload)
   if (payload.reverse) {
     const seconds = multicamTimelineSeconds
     const reverseBytes = contract.target.width * contract.target.height * contract.target.fps * seconds * 4

@@ -114,6 +114,10 @@ pub struct OutputSpec {
     pub video_codec: Option<VideoCodec>,
     pub audio_codec: Option<AudioCodec>,
     pub crf: Option<u32>,
+    pub target_size_bytes: Option<u64>,
+    pub video_bitrate_bps: Option<u64>,
+    pub audio_bitrate_bps: Option<u32>,
+    pub estimator_version: Option<String>,
     /// Milliframes per second avoids floats in artifact identity.
     pub fps_milli: Option<u32>,
     pub width: Option<i32>,
@@ -127,6 +131,10 @@ struct OutputSpecWire {
     video_codec: Option<VideoCodec>,
     audio_codec: Option<AudioCodec>,
     crf: Option<u32>,
+    target_size_bytes: Option<u64>,
+    video_bitrate_bps: Option<u64>,
+    audio_bitrate_bps: Option<u32>,
+    estimator_version: Option<String>,
     fps_milli: Option<u32>,
     width: Option<i32>,
     height: Option<i32>,
@@ -143,6 +151,10 @@ impl<'de> Deserialize<'de> for OutputSpec {
             video_codec: wire.video_codec,
             audio_codec: wire.audio_codec,
             crf: wire.crf,
+            target_size_bytes: wire.target_size_bytes,
+            video_bitrate_bps: wire.video_bitrate_bps,
+            audio_bitrate_bps: wire.audio_bitrate_bps,
+            estimator_version: wire.estimator_version,
             fps_milli: wire.fps_milli,
             width: wire.width,
             height: wire.height,
@@ -206,6 +218,14 @@ impl OutputSpec {
             video_codec,
             audio_codec,
             crf,
+            target_size_bytes: None,
+            video_bitrate_bps: None,
+            audio_bitrate_bps: match audio_codec {
+                Some(AudioCodec::Opus) => Some(96_000),
+                Some(AudioCodec::Aac) => Some(128_000),
+                _ => None,
+            },
+            estimator_version: None,
             fps_milli,
             width: scale.map(|value| value.width),
             height: scale.map(|value| value.height),
@@ -216,6 +236,48 @@ impl OutputSpec {
 
     pub fn fps(&self) -> Option<f64> {
         self.fps_milli.map(|value| f64::from(value) / 1000.0)
+    }
+
+    pub fn apply_target_size(
+        &mut self,
+        target_bytes: u64,
+        audio_bitrate_bps: Option<u32>,
+        duration_seconds: f64,
+        width: u32,
+        height: u32,
+        fps: f64,
+    ) -> Result<(), OutputSpecError> {
+        if !matches!(
+            self.format,
+            OutputFormat::Mp4 | OutputFormat::Webm | OutputFormat::Av1
+        ) || !duration_seconds.is_finite()
+            || duration_seconds <= 0.0
+            || target_bytes < 128 * 1024
+        {
+            return Err(OutputSpecError::InvalidTargetSize);
+        }
+        let audio_bitrate = if self.audio_codec.is_some() {
+            audio_bitrate_bps.unwrap_or(128_000)
+        } else {
+            0
+        };
+        if self.audio_codec.is_some() && !(32_000..=512_000).contains(&audio_bitrate) {
+            return Err(OutputSpecError::InvalidTargetSize);
+        }
+        let raw_bitrate =
+            target_bytes as f64 * 8.0 * 0.95 / duration_seconds - f64::from(audio_bitrate);
+        let pixel_floor = (f64::from(width) * f64::from(height) * fps * 0.005).max(100_000.0);
+        if !raw_bitrate.is_finite() || raw_bitrate < pixel_floor || raw_bitrate > 100_000_000.0 {
+            return Err(OutputSpecError::InvalidTargetSize);
+        }
+        // size-v1 wire values are normalized to whole kbit/s in both TS and Rust.
+        let video_bitrate = (raw_bitrate / 1000.0).round() as u64 * 1000;
+        self.crf = None;
+        self.target_size_bytes = Some(target_bytes);
+        self.video_bitrate_bps = Some(video_bitrate);
+        self.audio_bitrate_bps = self.audio_codec.map(|_| audio_bitrate);
+        self.estimator_version = Some("size-v1".into());
+        self.validate()
     }
 
     pub fn validate(&self) -> Result<(), OutputSpecError> {
@@ -247,11 +309,38 @@ impl OutputSpec {
         if !expected_audio {
             return Err(OutputSpecError::InvalidAudioCodec);
         }
-        match (self.video_codec, self.crf) {
-            (Some(VideoCodec::H264 | VideoCodec::H265), Some(value)) if value <= 51 => {}
-            (Some(VideoCodec::Vp9 | VideoCodec::Av1), Some(value)) if value <= 63 => {}
-            (Some(VideoCodec::Prores), None) | (None, None) => {}
+        match (self.video_codec, self.crf, self.video_bitrate_bps) {
+            (Some(VideoCodec::H264 | VideoCodec::H265), Some(value), None) if value <= 51 => {}
+            (Some(VideoCodec::Vp9 | VideoCodec::Av1), Some(value), None) if value <= 63 => {}
+            (
+                Some(VideoCodec::H264 | VideoCodec::H265 | VideoCodec::Vp9 | VideoCodec::Av1),
+                None,
+                Some(value),
+            ) if (64_000..=100_000_000).contains(&value) => {}
+            (Some(VideoCodec::Prores), None, None) | (None, None, None) => {}
             _ => return Err(OutputSpecError::InvalidQuality),
+        }
+        let target_mode = self.target_size_bytes.is_some()
+            || self.video_bitrate_bps.is_some()
+            || self.estimator_version.is_some();
+        if target_mode
+            && (self.target_size_bytes.is_none()
+                || self.video_bitrate_bps.is_none()
+                || self.estimator_version.as_deref() != Some("size-v1"))
+        {
+            return Err(OutputSpecError::InvalidTargetSize);
+        }
+        if target_mode && !matches!(self.target_size_bytes, Some(1_000_000..=100_000_000_000)) {
+            return Err(OutputSpecError::InvalidTargetSize);
+        }
+        match self.audio_codec {
+            Some(AudioCodec::Aac | AudioCodec::Opus)
+                if self
+                    .audio_bitrate_bps
+                    .is_some_and(|value| (32_000..=512_000).contains(&value)) => {}
+            Some(AudioCodec::PcmS16Le | AudioCodec::Mp3) | None
+                if self.audio_bitrate_bps.is_none() => {}
+            _ => return Err(OutputSpecError::InvalidAudioCodec),
         }
         if self
             .fps_milli
@@ -291,6 +380,7 @@ pub enum OutputSpecError {
     InvalidQuality,
     InvalidFps,
     InvalidDimensions,
+    InvalidTargetSize,
 }
 
 impl fmt::Display for OutputSpecError {
@@ -350,5 +440,37 @@ mod tests {
         let mut invalid = serde_json::to_value(spec(OutputFormat::Mp4, None, None)).unwrap();
         invalid["crf"] = serde_json::json!(99);
         assert!(serde_json::from_value::<OutputSpec>(invalid).is_err());
+    }
+
+    #[test]
+    fn size_v1_matches_typescript_golden_and_replaces_crf() {
+        let mut value = spec(OutputFormat::Mp4, None, None);
+        value
+            .apply_target_size(10_000_000, Some(128_000), 10.0, 1920, 1080, 30.0)
+            .unwrap();
+        assert_eq!(value.video_bitrate_bps, Some(7_472_000));
+        assert_eq!(value.audio_bitrate_bps, Some(128_000));
+        assert_eq!(value.estimator_version.as_deref(), Some("size-v1"));
+        assert_eq!(value.crf, None);
+        let mut below_pixel_floor = spec(OutputFormat::Mp4, None, None);
+        assert_eq!(
+            below_pixel_floor.apply_target_size(1_000_000, Some(128_000), 60.0, 3840, 2160, 60.0),
+            Err(OutputSpecError::InvalidTargetSize)
+        );
+    }
+
+    #[test]
+    fn serde_rejects_tampered_rate_control_and_audio_fields() {
+        let mut quality = serde_json::to_value(spec(OutputFormat::Mp4, None, None)).unwrap();
+        quality["audioBitrateBps"] = serde_json::json!(9_999_999);
+        assert!(serde_json::from_value::<OutputSpec>(quality).is_err());
+
+        let mut target = spec(OutputFormat::Mp4, None, None);
+        target
+            .apply_target_size(10_000_000, Some(128_000), 10.0, 1920, 1080, 30.0)
+            .unwrap();
+        let mut wire = serde_json::to_value(target).unwrap();
+        wire["targetSizeBytes"] = serde_json::json!(0);
+        assert!(serde_json::from_value::<OutputSpec>(wire).is_err());
     }
 }

@@ -25,7 +25,9 @@ const budgets = {
   // turning this historical pre-#83 baseline into a permanently red gate.
   // Feature #94 adds the always-available IndexedDB export queue, immutable
   // batch definitions, recovery runner and accessible task controls.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 172 * 1024),
+  // Feature #95 adds the shared target-size estimator and bitrate solver used
+  // by both the live export controls and the fail-closed batch queue path.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 172.75 * 1024),
   css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 8.5 * 1024),
   total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 181 * 1024),
 }

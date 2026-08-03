@@ -10,10 +10,10 @@ function wavFixture(samples = 4_000): Buffer {
   return buffer
 }
 
-async function importTinySource(page: import('@playwright/test').Page): Promise<void> {
+async function importTinySource(page: import('@playwright/test').Page, samples = 4_000): Promise<void> {
   await page.goto('/?processing=browser')
   await page.locator('.dropzone input[type=file]').setInputFiles({
-    name: 'queue-small.wav', mimeType: 'audio/wav', buffer: wavFixture(),
+    name: 'queue-small.wav', mimeType: 'audio/wav', buffer: wavFixture(samples),
   })
   await expect(page.getByRole('heading', { name: 'queue-small.wav' })).toBeVisible()
 }
@@ -153,4 +153,67 @@ test('permission loss distinguishes source and LUT recovery with retry and cance
   await expect(page.getByRole('link', { name: 'Перейти в библиотеку LUT для восстановления LUT permission variant' })).toHaveAttribute('href', '#lut-library')
   await expect(page.getByRole('button', { name: 'Повторить после перепривязки LUT permission variant' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Отменить LUT permission variant' })).toBeVisible()
+})
+
+test('target-size UI validates accessibly and persists an immutable per-variant contract', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'The required static queue release gate is Chromium')
+  await importTinySource(page, 80_000)
+  await page.getByRole('radio', { name: 'В размер', exact: true }).click()
+  const target = page.getByLabel('Целевой размер, МБ', { exact: true })
+  await target.fill('0')
+  await expect(target).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByRole('alert')).toContainText('не меньше 1 МБ')
+  await expect(page.getByRole('button', { name: 'Экспортировать', exact: true })).toBeDisabled()
+  await target.fill('5')
+  await expect(target).toHaveAttribute('aria-invalid', 'false')
+  await expect(page.getByRole('status').filter({ hasText: 'Оценка размера' })).toContainText('Видеобитрейт')
+  // This fixture is audio-only, so the runtime capability probe disables
+  // video formats. Enable the supported contract explicitly for the queue
+  // snapshot assertion; unsupported UI behavior is covered separately.
+  await page.evaluate(async () => {
+    const store = await import('/src/store.ts')
+    for (const format of store.state.capabilities?.formats ?? []) if (format.id === 'mp4') format.available = true
+    for (const codec of store.state.capabilities?.codecs ?? []) if (codec.id === 'h264') codec.available = true
+  })
+  await page.getByRole('button', { name: 'Пакетный экспорт' }).click()
+  const firstRateControl = page.getByRole('group', { name: 'Управление размером варианта 1' })
+  await firstRateControl.getByRole('radio', { name: 'В размер' }).click()
+  const variantTarget = page.getByLabel('Целевой размер варианта 1, МБ')
+  await variantTarget.fill('0')
+  await expect(variantTarget).toHaveAttribute('aria-invalid', 'true')
+  await expect(variantTarget).toHaveAttribute('aria-describedby', /^variant-target-error-/)
+  await variantTarget.fill('5')
+  const names = page.locator('input[aria-label^="Название варианта"]')
+  await names.nth(0).fill('Target snapshot')
+  await names.nth(1).fill('Quality snapshot')
+  await page.getByRole('button', { name: 'Поставить пакет в очередь' }).click()
+  await expect(page.getByRole('region', { name: 'Очередь экспорта' })).toContainText('Target snapshot')
+  const stored = await page.evaluate(async () => {
+    const queueModule = await import('/src/browser-export-queue.ts')
+    const queue = new queueModule.BrowserExportQueue()
+    const jobs = (await queue.list()).map(item => ({ label: item.definition.label, rateControl: item.definition.payload.rateControl, hasLegacyQuality: Object.hasOwn(item.definition.payload, 'quality') }))
+    await queue.close()
+    return jobs
+  })
+  expect(stored.find(item => item.label === 'Target snapshot')?.rateControl, JSON.stringify(stored)).toMatchObject({ mode: 'target_size', targetBytes: 5_000_000, estimatorVersion: 'size-v1' })
+  expect(stored.find(item => item.label === 'Target snapshot')?.hasLegacyQuality).toBe(false)
+})
+
+test('unsupported target formats and codecs expose reasons and cannot enqueue', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'The required static queue release gate is Chromium')
+  await importTinySource(page)
+  const prores = page.getByRole('button', { name: /ProRes\./ })
+  await expect(prores).toBeDisabled()
+  await expect(prores).toHaveAttribute('aria-label', /Недоступно/)
+  const h265 = page.getByRole('button', { name: /H\.265\./ })
+  await expect(h265).toBeDisabled()
+  await expect(h265).toHaveAttribute('aria-label', /Недоступно/)
+  await page.getByRole('button', { name: 'Аудио MP3' }).click()
+  await expect(page.getByText('Целевой размер недоступен для этого формата.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('radio', { name: 'В размер', exact: true })).toHaveCount(0)
+  const count = await page.evaluate(async () => {
+    const queueModule = await import('/src/browser-export-queue.ts')
+    const queue = new queueModule.BrowserExportQueue(); const jobs = await queue.list(); await queue.close(); return jobs.length
+  })
+  expect(count).toBe(0)
 })

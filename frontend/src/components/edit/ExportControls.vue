@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import {
   currentBrowserExportPlan,
+  clientOnlyMode,
+  buildExportSizingSnapshot,
   doStreamingExport,
   doExport,
   enqueueExportVariants,
@@ -11,6 +13,8 @@ import {
   state,
   streamingOutputSupported,
 } from '../../store'
+import { DECIMAL_MB, estimateExportSize, type ExportRateControl, type ExportSizeEstimate } from '../../domain/export-size'
+import { tierToCrf } from '../../domain/edit'
 
 type Platform = 'telegram' | 'shorts' | 'reels' | 'youtube'
 
@@ -19,10 +23,48 @@ const showNoopWarning = ref(false)
 const batchMode = ref(false)
 const batchError = ref('')
 const maxVariants = computed(() => exportQueueState.maxVariants || 8)
-interface ExportVariantDraft { id: string; name: string; format: string; codec: string; qualityTier: string }
+type RateMode = 'quality' | 'target_size'
+interface ExportVariantDraft { id: string; name: string; format: string; codec: string; qualityTier: string; rateMode: RateMode; targetMb: number | null }
 const variants = ref<ExportVariantDraft[]>([])
+const rateMode = ref<RateMode>('quality')
+const targetMb = ref<number | null>(25)
 const resourcePlan = computed(() => currentBrowserExportPlan())
 const mib = (bytes: number) => Math.ceil(bytes / (1024 * 1024))
+const decimalMb = (bytes: number) => (bytes / DECIMAL_MB).toLocaleString('ru-RU', { maximumFractionDigits: 1 })
+const targetFormats = new Set(['mp4', 'webm', 'av1'])
+const BROWSER_TARGET_MAX_MB = 100
+const targetUnsupportedReason = (format: string) => targetFormats.has(format) ? '' : 'Целевой размер недоступен для этого формата.'
+
+function estimateFor(format: string, codec: string, qualityTier: string, mode: RateMode, mb: number | null): { estimate: ExportSizeEstimate | null; error: string } {
+  if (!state.video) return { estimate: null, error: '' }
+  if (mode === 'target_size' && targetUnsupportedReason(format)) return { estimate: null, error: targetUnsupportedReason(format) }
+  if (mode === 'target_size' && (!(typeof mb === 'number') || !Number.isFinite(mb) || mb < 1)) return { estimate: null, error: 'Укажите целевой размер не меньше 1 МБ.' }
+  const crf = tierToCrf(qualityTier, format) ?? undefined
+  const snapshot = buildExportSizingSnapshot({ format, codec, ...(crf === undefined ? {} : { quality: crf }) })
+  if (!snapshot) return { estimate: null, error: '' }
+  if (snapshot.browser && mode === 'target_size' && mb! > BROWSER_TARGET_MAX_MB) return { estimate: null, error: `В браузере целевой размер ограничен ${BROWSER_TARGET_MAX_MB} МБ.` }
+  try {
+    return { estimate: estimateExportSize({
+      durationSeconds: snapshot.durationSeconds, width: snapshot.width, height: snapshot.height, fps: snapshot.fps,
+      format, codec, crf, muted: !snapshot.hasAudio || state.edit.mute,
+      targetBytes: mode === 'target_size' ? Math.round(mb! * DECIMAL_MB) : null, browser: snapshot.browser,
+    }), error: '' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { estimate: null, error: /bitrate bounds|invalid target/i.test(message) ? 'Этот размер недостижим для длительности и разрешения. Измените размер, диапазон или разрешение.' : message }
+  }
+}
+
+const sizeState = computed(() => estimateFor(state.edit.format, state.edit.codec, state.edit.qualityTier, rateMode.value, targetMb.value))
+function rateControlFor(format: string, qualityTier: string, mode: RateMode, mb: number | null, estimate: ExportSizeEstimate | null): ExportRateControl | undefined {
+  if (mode === 'target_size' && estimate?.targetVideoBitrateKbps) return {
+    mode, targetBytes: Math.round(mb! * DECIMAL_MB), videoBitrateBps: estimate.targetVideoBitrateKbps * 1000,
+    audioBitrateBps: estimate.audioBitrateBps, estimatorVersion: estimate.contract,
+  }
+  const crf = tierToCrf(qualityTier, format)
+  return crf === null ? undefined : { mode: 'quality', crf }
+}
+const variantErrorId = (id: string) => `variant-target-error-${id}`
 
 const formats = [
   { value: 'mp4', label: 'MP4' },
@@ -49,6 +91,8 @@ function variantDraft(index = variants.value.length): ExportVariantDraft {
     format: state.edit.format,
     codec: state.edit.codec,
     qualityTier: state.edit.qualityTier,
+    rateMode: rateMode.value,
+    targetMb: targetMb.value,
   }
 }
 
@@ -73,10 +117,18 @@ async function enqueueBatch(): Promise<void> {
   if (variants.value.length < 2) batchError.value = 'Добавьте минимум два варианта.'
   else if (names.some(name => !name)) batchError.value = 'У каждого варианта должно быть название.'
   else if (new Set(names.map(name => name.toLocaleLowerCase())).size !== names.length) batchError.value = 'Названия вариантов должны отличаться.'
+  else {
+    const unavailable = variants.value.map(variant => unavailableReason('format', variant.format)
+      || (variant.format === 'mp4' ? unavailableReason('codec', variant.codec) : '')).find(Boolean)
+    if (unavailable) batchError.value = unavailable
+    const invalid = variants.value.map(variant => estimateFor(variant.format, variant.codec, variant.qualityTier, variant.rateMode, variant.targetMb).error).find(Boolean)
+    if (!batchError.value && invalid) batchError.value = invalid
+  }
   if (batchError.value) return
   try {
     await enqueueExportVariants(variants.value.map(variant => ({
       name: variant.name.trim(), format: variant.format, codec: variant.codec, qualityTier: variant.qualityTier,
+      rateControl: rateControlFor(variant.format, variant.qualityTier, variant.rateMode, variant.targetMb, estimateFor(variant.format, variant.codec, variant.qualityTier, variant.rateMode, variant.targetMb).estimate),
     })))
   } catch (error) {
     batchError.value = error instanceof Error ? error.message : String(error)
@@ -85,10 +137,12 @@ async function enqueueBatch(): Promise<void> {
 
 async function enqueueCurrent(): Promise<void> {
   batchError.value = ''
+  if (sizeState.value.error) { batchError.value = sizeState.value.error; return }
   try {
     await enqueueExportVariants([{
       name: `Экспорт ${state.edit.format.toUpperCase()}`,
       format: state.edit.format, codec: state.edit.codec, qualityTier: state.edit.qualityTier,
+      rateControl: rateControlFor(state.edit.format, state.edit.qualityTier, rateMode.value, targetMb.value, sizeState.value.estimate),
     }])
   } catch (error) {
     batchError.value = error instanceof Error ? error.message : String(error)
@@ -143,16 +197,17 @@ function selectCodec(id: string): void {
 }
 
 function requestExport(): void {
-  if (!hasMeaningfulChanges()) {
+  if (sizeState.value.error) { batchError.value = sizeState.value.error; return }
+  if (rateMode.value === 'quality' && !hasMeaningfulChanges()) {
     showNoopWarning.value = true
     return
   }
-  void doExport()
+  void doExport(rateControlFor(state.edit.format, state.edit.qualityTier, rateMode.value, targetMb.value, sizeState.value.estimate))
 }
 
 function exportUnchangedCopy(): void {
   showNoopWarning.value = false
-  void doExport()
+  void doExport(rateControlFor(state.edit.format, state.edit.qualityTier, rateMode.value, targetMb.value, sizeState.value.estimate))
 }
 
 watch(
@@ -178,6 +233,7 @@ watch(
           :class="{ active: state.edit.format === format.value }"
           :aria-pressed="state.edit.format === format.value"
           :aria-disabled="formatCapability(format.value)?.available === false"
+          :disabled="formatCapability(format.value)?.available === false"
           :aria-label="unavailableReason('format', format.value) ? `${format.label}. ${unavailableReason('format', format.value)}` : format.label"
           :title="unavailableReason('format', format.value)"
           @click="selectFormat(format.value)"
@@ -196,6 +252,7 @@ watch(
           :class="{ active: state.edit.codec === 'h264' }"
           :aria-pressed="state.edit.codec === 'h264'"
           :aria-disabled="codecCapability('h264')?.available === false"
+          :disabled="codecCapability('h264')?.available === false"
           :aria-label="unavailableReason('codec', 'h264') ? `H.264. ${unavailableReason('codec', 'h264')}` : 'H.264'"
           :title="unavailableReason('codec', 'h264')"
           @click="selectCodec('h264')"
@@ -208,6 +265,7 @@ watch(
           :class="{ active: state.edit.codec === 'h265' }"
           :aria-pressed="state.edit.codec === 'h265'"
           :aria-disabled="codecCapability('h265')?.available === false"
+          :disabled="codecCapability('h265')?.available === false"
           :aria-label="unavailableReason('codec', 'h265') ? `H.265. ${unavailableReason('codec', 'h265')}` : 'H.265'"
           :title="unavailableReason('codec', 'h265')"
           @click="selectCodec('h265')"
@@ -217,7 +275,20 @@ watch(
       </div>
     </div>
 
-    <div v-if="showQuality" class="field">
+    <fieldset v-if="showQuality" class="field rate-control">
+      <legend>Управление размером</legend>
+      <label><input v-model="rateMode" type="radio" value="quality"> По качеству</label>
+      <label><input v-model="rateMode" type="radio" value="target_size"> В размер</label>
+      <label v-if="rateMode === 'target_size'" for="target-size-mb">Целевой размер, МБ
+        <input id="target-size-mb" v-model.number="targetMb" type="number" inputmode="decimal" min="1" :max="clientOnlyMode ? BROWSER_TARGET_MAX_MB : undefined" step="1"
+          :aria-invalid="Boolean(sizeState.error)" aria-describedby="target-size-help target-size-error">
+      </label>
+      <small id="target-size-help">Размер — оценка: сложность сцены, звук и контейнер могут изменить результат.</small>
+      <small v-if="rateMode === 'target_size' && sizeState.error" id="target-size-error" class="error" role="alert">{{ sizeState.error }}</small>
+    </fieldset>
+    <p v-else class="hint">{{ targetUnsupportedReason(state.edit.format) }}</p>
+
+    <div v-if="showQuality && rateMode === 'quality'" class="field">
       <label>Качество</label>
       <div class="chips" role="group" aria-label="Качество экспорта">
         <button
@@ -232,6 +303,11 @@ watch(
           {{ quality.label }}
         </button>
       </div>
+    </div>
+    <div v-if="sizeState.estimate" class="size-estimate" role="status" aria-live="polite" aria-atomic="true">
+      <strong>Оценка размера: {{ decimalMb(sizeState.estimate.lowBytes) }}–{{ decimalMb(sizeState.estimate.highBytes) }} МБ</strong>
+      <span>Ориентир {{ decimalMb(sizeState.estimate.centerBytes) }} МБ · точность {{ sizeState.estimate.confidence === 'medium' ? 'средняя' : 'низкая' }}</span>
+      <span v-if="sizeState.estimate.targetVideoBitrateKbps">Видеобитрейт ≈ {{ sizeState.estimate.targetVideoBitrateKbps }} кбит/с</span>
     </div>
 
     <div class="field">
@@ -266,16 +342,29 @@ watch(
           </select>
         </label>
         <label v-if="['mp4','webm','av1'].includes(variant.format)">Качество
-          <select v-model="variant.qualityTier" :aria-label="`Качество варианта ${index + 1}`">
+          <select v-model="variant.qualityTier" :disabled="variant.rateMode === 'target_size'" :aria-label="`Качество варианта ${index + 1}`">
             <option v-for="quality in qualityTiers" :key="quality.value" :value="quality.value">{{ quality.label }}</option>
           </select>
         </label>
+        <fieldset v-if="targetFormats.has(variant.format)">
+          <legend>Управление размером варианта {{ index + 1 }}</legend>
+          <label><input v-model="variant.rateMode" type="radio" :name="`rate-mode-${variant.id}`" value="quality"> По качеству</label>
+          <label><input v-model="variant.rateMode" type="radio" :name="`rate-mode-${variant.id}`" value="target_size"> В размер</label>
+          <label v-if="variant.rateMode === 'target_size'">Целевой размер, МБ
+            <input v-model.number="variant.targetMb" type="number" min="1" :max="clientOnlyMode ? BROWSER_TARGET_MAX_MB : undefined" step="1" inputmode="decimal"
+              :aria-label="`Целевой размер варианта ${index + 1}, МБ`"
+              :aria-invalid="Boolean(estimateFor(variant.format, variant.codec, variant.qualityTier, variant.rateMode, variant.targetMb).error)"
+              :aria-describedby="variantErrorId(variant.id)">
+          </label>
+          <small :id="variantErrorId(variant.id)" :class="{ error: estimateFor(variant.format, variant.codec, variant.qualityTier, variant.rateMode, variant.targetMb).error }" :role="estimateFor(variant.format, variant.codec, variant.qualityTier, variant.rateMode, variant.targetMb).error ? 'alert' : undefined">{{ estimateFor(variant.format, variant.codec, variant.qualityTier, variant.rateMode, variant.targetMb).error || 'Размер оценивается отдельно для этого варианта.' }}</small>
+        </fieldset>
+        <p v-else class="hint">{{ targetUnsupportedReason(variant.format) }}</p>
         <button type="button" class="btn ghost sm" :aria-label="`Удалить вариант ${index + 1}`" :disabled="variants.length <= 2" @click="removeVariant(variant.id)">Удалить</button>
       </fieldset>
       <div class="batch-actions">
         <button type="button" class="btn ghost sm" :disabled="variants.length >= maxVariants" @click="addVariant">Добавить вариант</button>
         <span class="hint">{{ variants.length }} из {{ maxVariants }}</span>
-        <button type="button" class="btn ghost sm" @click="enqueueCurrent">Поставить текущий вариант</button>
+        <button type="button" class="btn ghost sm" :disabled="Boolean(sizeState.error || exportUnavailable)" @click="enqueueCurrent">Поставить текущий вариант</button>
         <button type="button" class="btn primary sm" @click="enqueueBatch">Поставить пакет в очередь</button>
       </div>
       <p v-if="batchError" class="error" role="alert" tabindex="-1">{{ batchError }}</p>
@@ -311,7 +400,7 @@ watch(
   <button
     type="button"
     class="btn primary big export-submit"
-    :disabled="state.exporting || Boolean(exportUnavailable)"
+    :disabled="state.exporting || Boolean(exportUnavailable) || Boolean(sizeState.error)"
     :title="exportUnavailable || undefined"
     @click="requestExport"
   >

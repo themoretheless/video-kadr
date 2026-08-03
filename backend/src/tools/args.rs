@@ -549,6 +549,7 @@ fn push_audio(
     out_dur: f64,
     codec: &str,
     include_audio: bool,
+    bitrate_bps: Option<u32>,
 ) {
     if !include_audio {
         args.push("-an".into());
@@ -562,7 +563,7 @@ fn push_audio(
     args.push("-c:a".into());
     args.push(codec.into());
     args.push("-b:a".into());
-    args.push("128k".into());
+    args.push(format!("{}", bitrate_bps.unwrap_or(128_000)));
 }
 
 fn push_fps(args: &mut Vec<String>, output: &OutputSpec) {
@@ -743,7 +744,14 @@ fn compile_ffmpeg_command(
             let complex = push_video_program(&mut args, program);
             let include_audio = output.audio_codec.is_some();
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
-            push_audio(&mut args, edit, out_dur, "libopus", include_audio);
+            push_audio(
+                &mut args,
+                edit,
+                out_dur,
+                "libopus",
+                include_audio,
+                output.audio_bitrate_bps,
+            );
             push_video_codec(&mut args, output);
         }
         OutputFormat::Av1 => {
@@ -761,7 +769,14 @@ fn compile_ffmpeg_command(
             let complex = push_video_program(&mut args, program);
             let include_audio = output.audio_codec.is_some();
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
-            push_audio(&mut args, edit, out_dur, "aac", include_audio);
+            push_audio(
+                &mut args,
+                edit,
+                out_dur,
+                "aac",
+                include_audio,
+                output.audio_bitrate_bps,
+            );
             push_video_codec(&mut args, output);
         }
         OutputFormat::Prores => {
@@ -807,7 +822,14 @@ fn compile_ffmpeg_command(
             let complex = push_video_program(&mut args, program);
             let include_audio = output.audio_codec.is_some();
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
-            push_audio(&mut args, edit, out_dur, "aac", include_audio);
+            push_audio(
+                &mut args,
+                edit,
+                out_dur,
+                "aac",
+                include_audio,
+                output.audio_bitrate_bps,
+            );
             push_video_codec(&mut args, output);
         }
     }
@@ -870,14 +892,31 @@ fn compile_ffmpeg_command_with_budget(
 /// (VP9 for webm, otherwise H.264/H.265), then fps and (for mp4) faststart.
 /// Shared by the single-pass and concat paths so codec settings live in one place.
 fn push_video_codec(args: &mut Vec<String>, output: &OutputSpec) {
+    let push_rate_control = |args: &mut Vec<String>| {
+        if let Some(bitrate) = output.video_bitrate_bps {
+            args.extend([
+                "-b:v".into(),
+                bitrate.to_string(),
+                "-maxrate".into(),
+                bitrate.to_string(),
+                "-bufsize".into(),
+                (bitrate * 2).to_string(),
+            ]);
+        } else {
+            args.extend([
+                "-crf".into(),
+                output.crf.expect("quality output has CRF").to_string(),
+            ]);
+            if output.format == OutputFormat::Webm {
+                args.extend(["-b:v".into(), "0".into()]);
+            }
+        }
+    };
     match output.format {
         OutputFormat::Webm => {
             args.push("-c:v".into());
             args.push("libvpx-vp9".into());
-            args.push("-crf".into());
-            args.push(output.crf.expect("WebM output has CRF").to_string());
-            args.push("-b:v".into());
-            args.push("0".into());
+            push_rate_control(args);
             args.push("-pix_fmt".into());
             args.push("yuv420p".into());
             push_fps(args, output);
@@ -885,8 +924,7 @@ fn push_video_codec(args: &mut Vec<String>, output: &OutputSpec) {
         OutputFormat::Av1 => {
             args.push("-c:v".into());
             args.push("libsvtav1".into());
-            args.push("-crf".into());
-            args.push(output.crf.expect("AV1 output has CRF").to_string());
+            push_rate_control(args);
             args.push("-preset".into());
             args.push("6".into());
             args.push("-pix_fmt".into());
@@ -910,8 +948,7 @@ fn push_video_codec(args: &mut Vec<String>, output: &OutputSpec) {
             args.push(if h265 { "libx265" } else { "libx264" }.into());
             args.push("-preset".into());
             args.push("veryfast".into());
-            args.push("-crf".into());
-            args.push(output.crf.expect("MP4 output has CRF").to_string());
+            push_rate_control(args);
             args.push("-pix_fmt".into());
             args.push("yuv420p".into());
             if h265 {
