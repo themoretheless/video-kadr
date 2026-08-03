@@ -191,14 +191,14 @@ export async function cancelImport(): Promise<void> {
 }
 
 /** Import a local file via multipart upload (no job: it returns directly). */
-export async function doUpload(file: File): Promise<void> {
-  await doUploadFiles([file])
+export async function doUpload(file: File): Promise<boolean> {
+  return doUploadFiles([file])
 }
 
 /** Upload one or more files; the first creates a project and the rest join it. */
-export async function doUploadFiles(files: readonly File[]): Promise<void> {
-  if (state.importing) return
-  if (files.length === 0) return
+export async function doUploadFiles(files: readonly File[]): Promise<boolean> {
+  if (state.importing) return false
+  if (files.length === 0) return false
   libraryOpenSequence++
   state.importing = true
   state.importError = ''
@@ -254,6 +254,7 @@ export async function doUploadFiles(files: readonly File[]): Promise<void> {
     }
     const successes = files.length - failures.length
     if (successes > 0) toast('success', `Добавлено файлов: ${successes}`)
+    return successes > 0
   } finally {
     state.importing = false
     state.importProgress = null

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue'
 import {
   state,
   ui,
@@ -35,6 +35,8 @@ import DerivedTaskCenter from './components/DerivedTaskCenter.vue'
 import ExportQueuePanel from './components/ExportQueuePanel.vue'
 import ProjectArchivePanel from './components/ProjectArchivePanel.vue'
 import { initializeDerivedTasks, onDerivedVisibilityChange } from './derived-task-center'
+
+const RecorderPanel = defineAsyncComponent(() => import('./components/RecorderPanel.vue'))
 
 const legacyInspectorAvailable = computed(() => {
   const document = timelineState.document
@@ -109,7 +111,9 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-function onPageHide() { void flushProjectSave() }
+function onPageHide() {
+  void flushProjectSave()
+}
 
 onMounted(() => {
   window.addEventListener('keydown', onKey)
@@ -162,6 +166,8 @@ onUnmounted(() => {
     </header>
 
     <UrlImport />
+
+    <RecorderPanel />
 
     <ProjectArchivePanel />
 

@@ -157,10 +157,23 @@ function probeVideo(file: File): Promise<Omit<VideoInfo, 'id' | 'url' | 'filenam
     const url = objectUrl(file)
     const video = document.createElement('video')
     video.preload = 'metadata'
-    video.onloadedmetadata = () => {
-      const duration = Number.isFinite(video.duration) ? video.duration : 0
+    video.onloadedmetadata = async () => {
+      let duration = Number.isFinite(video.duration) ? video.duration : 0
       const width = video.videoWidth
       const height = video.videoHeight
+      if (!duration) {
+        try {
+          video.currentTime = Number.MAX_SAFE_INTEGER
+          await new Promise<void>((seekResolve, seekReject) => {
+            const timer = window.setTimeout(() => seekReject(new Error('Не удалось определить длительность WebM')), 10_000)
+            video.onseeked = () => { window.clearTimeout(timer); seekResolve() }
+            video.onerror = () => { window.clearTimeout(timer); seekReject(new Error('Запись WebM повреждена')) }
+          })
+          duration = Number.isFinite(video.duration) ? video.duration : video.currentTime
+        } catch (error) {
+          URL.revokeObjectURL(url); reject(error); return
+        }
+      }
       URL.revokeObjectURL(url)
       if (!duration || !width || !height) {
         reject(new Error('Не удалось прочитать параметры видео'))

@@ -157,7 +157,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 |---:|---|---|---|:---:|
 | 94 | ✅ Export queue и batch variants | Immutable IndexedDB definitions, ordinary + batch variants, typed dependency manifest и accessible task center | Cross-tab sequential memory; lease/generation fencing; reload запускает новый WASM attempt с 0%, без resume checkpoint | L |
 | 95 | File-size estimate и target size | ✅ | size-v1 VBR estimate с error band; target MB bitrate solve; browser/server parity | M |
-| 96 | Screen/camera recording | Нет | Screen/camera/mic, permissions, optional simultaneous composition и timeline insert | XL |
+| 96 | Screen/camera recording | ✅ | Screen/camera/mic, permission-safe PiP composition, bounded OPFS capture и canonical timeline insert | XL |
 | 97 | Templates и brand kit | Только effect presets | Project templates, fonts/colors/logos, placeholders and safe migrations | XL |
 | 98 | Video stabilization | Нет | Analyze job, crop/strength controls, benchmark shaky clips и browser/server capability fallback | XL |
 | 99 | AI job/provider platform | Нет | Consent/progress/cancel/cost, local/remote execution и один end-to-end artifact job | XL |
