@@ -11,9 +11,11 @@ const budgets = {
   // bounded-memory SHA-256 for durable large media. The immutable autosave
   // journal, checksum validation and accessible recovery dialog are also part
   // of the offline bootstrap and intentionally remain available before FFmpeg.
-  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 86 * 1024),
+  // Project-level missing-media discovery, race-safe batch relink and its
+  // progress UI add another small always-available recovery path.
+  js: Number(process.env.BUNDLE_BUDGET_JS_GZIP || 89 * 1024),
   css: Number(process.env.BUNDLE_BUDGET_CSS_GZIP || 5 * 1024),
-  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 91 * 1024),
+  total: Number(process.env.BUNDLE_BUDGET_TOTAL_GZIP || 94 * 1024),
 }
 
 const files = await readdir(assetDirectory)

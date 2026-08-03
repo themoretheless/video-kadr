@@ -1,7 +1,7 @@
 import { nextTick } from 'vue'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as api from './api'
-import { ensureCreatorTrackLayout, migrateProjectDocument } from './project-schema'
+import { createProjectDocumentFromLegacy, ensureCreatorTrackLayout, migrateProjectDocument } from './project-schema'
 import {
   state,
   defaultEdit,
@@ -38,6 +38,9 @@ import {
   addMediaToTimeline,
   doUploadFiles,
   deleteFromLibrary,
+  relinkLibraryMedia,
+  relinkState,
+  openSavedProject,
 } from './store'
 import type { EditState, VideoInfo } from './types'
 
@@ -69,6 +72,7 @@ vi.mock('./api', () => {
     edit: vi.fn(),
     pollJob: vi.fn(),
     getLibrary: vi.fn(() => Promise.resolve([])),
+    getProjects: vi.fn(() => Promise.resolve([])),
     deleteLibraryItem: vi.fn(),
     saveProject: vi.fn(() => Promise.resolve({})),
     saveProjectDocument: vi.fn((projectId: string, expectedRevision: number, document: unknown) =>
@@ -83,7 +87,6 @@ vi.mock('./api', () => {
     ),
     getProjectDocument: vi.fn(() => Promise.resolve(null)),
     getProjectByVideo: vi.fn(() => Promise.resolve(null)),
-    getProjects: vi.fn(() => Promise.resolve([])),
     deleteProject: vi.fn(),
     cancelJob: vi.fn(),
     getCapabilities: vi.fn(() => Promise.resolve(null)),
@@ -714,6 +717,77 @@ describe('project restore autosave', () => {
     expect(state.edit.lutIntensity).toBe(0.6)
     expect(state.edit.curves.green).toEqual(savedCurves.green)
     expect(api.saveProject).not.toHaveBeenCalled()
+  })
+
+  it('opens an offline project as placeholders without racing a late source resolve', async () => {
+    vi.mocked(api.getProjectByVideo).mockResolvedValueOnce(null)
+    openFromLibrary({
+      id: 'offline-project', kind: 'source', filename: 'missing.mp4', url: '',
+      availability: 'offline', duration: 5, width: 640, height: 360, createdAt: 1,
+    })
+    await Promise.resolve()
+    expect(state.video).toMatchObject({ id: 'offline-project', url: '', availability: 'offline' })
+    expect(api.resolveLibrarySource).not.toHaveBeenCalled()
+    expect(timelineState.document?.primaryMediaId).toBe('offline-project')
+  })
+
+  it('does not let a late ready-source materialization replace a newer project', async () => {
+    let resolveOld!: (value: VideoInfo) => void
+    vi.mocked(api.resolveLibrarySource).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve }))
+    vi.mocked(api.getProjectByVideo).mockResolvedValue(null)
+    openFromLibrary({ id: 'slow-a', kind: 'source', filename: 'a.mp4', url: '', availability: 'ready', createdAt: 1 })
+    openFromLibrary({ id: 'fast-b', kind: 'source', filename: 'b.mp4', url: '/b.mp4', availability: 'ready', createdAt: 2 })
+    resolveOld({ id: 'slow-a', filename: 'a.mp4', url: 'blob:a', duration: 1, width: 1, height: 1 })
+    await Promise.resolve()
+    expect(state.video?.id).toBe('fast-b')
+  })
+
+  it('fails closed when selecting a project that expects another source fingerprint', () => {
+    const video: VideoInfo = { id: 'shared', filename: 'shared.mp4', url: 'blob:a', duration: 1, width: 1, height: 1, fingerprint: 'fingerprint-a' }
+    const document = createProjectDocumentFromLegacy('shared', 'Project B', video as unknown as Record<string, unknown>, {})
+    document.media[0]!.assetRef = 'shared'
+    document.media[0]!.contentFingerprint = 'fingerprint-b'
+    state.library = [{ id: 'shared', kind: 'source', filename: 'shared.mp4', url: 'blob:a', availability: 'ready', fingerprint: 'fingerprint-a', createdAt: 1 }]
+    vi.mocked(api.resolveLibrarySource).mockRejectedValueOnce(new Error('fingerprint mismatch'))
+    openSavedProject({ id: 'project-b', name: 'Project B', videoId: 'shared', video, edit: {}, document, revision: 1, createdAt: 1, updatedAt: 1 })
+    return vi.waitFor(() => expect(state.video).toMatchObject({ id: 'shared', url: '', availability: 'offline', fingerprint: 'fingerprint-b' }))
+  })
+
+  it('does not let a stale relink failure revert a newer successful relink', async () => {
+    const entry = {
+      id: 'race-source', kind: 'source' as const, filename: 'source.mp4', url: '',
+      availability: 'offline' as const, createdAt: 1,
+    }
+    let rejectFirst!: (reason: Error) => void
+    let resolveSecond!: (value: VideoInfo) => void
+    vi.mocked(api.relinkLibrarySource)
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { rejectFirst = reject }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
+    const first = relinkLibraryMedia(entry, new File(['bad'], 'bad.mp4'))
+    const second = relinkLibraryMedia(entry, new File(['good'], 'good.mp4'))
+    rejectFirst(new Error('wrong fingerprint'))
+    await expect(first).resolves.toBe(false)
+    resolveSecond({ id: entry.id, filename: entry.filename, url: 'blob:ready', duration: 1, width: 1, height: 1 })
+    await expect(second).resolves.toBe(true)
+    expect(entry).toMatchObject({ availability: 'ready', url: 'blob:ready' })
+    expect(relinkState.busy[entry.id]).toBe(false)
+  })
+
+  it('re-audits durable identity when a newer wrong relink follows an exact one', async () => {
+    const entry = {
+      id: 'inverse-race', kind: 'source' as const, filename: 'source.mp4', url: '',
+      availability: 'offline' as const, createdAt: 1,
+    }
+    const ready: VideoInfo = { id: entry.id, filename: entry.filename, url: 'blob:ready', duration: 1, width: 1, height: 1 }
+    vi.mocked(api.relinkLibrarySource)
+      .mockResolvedValueOnce(ready)
+      .mockRejectedValueOnce(Object.assign(new Error('wrong fingerprint'), { reason: 'fingerprint' }))
+    vi.mocked(api.resolveLibrarySource).mockResolvedValueOnce(ready)
+    const exact = relinkLibraryMedia(entry, new File(['exact'], 'renamed.mp4'))
+    const wrong = relinkLibraryMedia(entry, new File(['wrong'], 'wrong.mp4'))
+    await expect(exact).resolves.toBe(false)
+    await expect(wrong).resolves.toBe(false)
+    expect(entry).toMatchObject({ availability: 'ready', url: 'blob:ready' })
   })
 
   it('blocks media insertion until a pending project restore finishes', async () => {

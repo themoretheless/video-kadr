@@ -7,7 +7,7 @@ import type {
   VideoInfo,
 } from './types'
 import type { ProjectDto } from './api'
-import { allProjects, compareAndSwapProject, projectByVideo, removeProject } from './browser-project-store'
+import { allProjects, compareAndSwapProject, projectById, projectByVideo, removeProject } from './browser-project-store'
 import { createProjectDocumentFromLegacy, migrateProjectDocument } from './project-schema'
 import type { ProjectMedia } from './project-schema'
 import {
@@ -15,6 +15,7 @@ import {
   BrowserAssetStorageError,
   deleteBrowserAsset,
   getBrowserAsset,
+  fingerprintBlob,
   putBrowserAsset,
   prepareBrowserStorage,
   requestExternalHandleAccess,
@@ -214,6 +215,8 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
       throw error
     }
     durableStorageUnavailable = true
+    info.assetId = sourceId
+    info.fingerprint = await fingerprintBlob(file)
     info.availability = 'session'
   }
   sources.set(sourceId, { file, info })
@@ -230,6 +233,8 @@ export async function uploadFile(file: File): Promise<VideoInfo> {
     vcodec: info.vcodec,
     acodec: info.acodec,
     mediaKind: info.mediaKind,
+    assetId: info.assetId,
+    fingerprint: info.fingerprint,
     sizeBytes: file.size,
     availability: info.availability,
     createdAt,
@@ -588,10 +593,11 @@ export async function getLibrary(): Promise<MediaEntry[]> {
     const entry: MediaEntry = {
       ...asset.info,
       kind: 'source',
-      url: info?.url ?? '',
+      url: fingerprintConflict ? '' : info?.url ?? '',
       availability: fingerprintConflict ? 'offline' : asset.availability,
       assetId: asset.id,
       fingerprint: fingerprintConflict ? projectFingerprint : asset.fingerprint,
+      identityConflict: Boolean(expected && expected.size > 1),
       sizeBytes: fingerprintConflict ? projectSize : asset.info.sizeBytes,
       createdAt: asset.createdAt,
     }
@@ -614,6 +620,7 @@ export async function getLibrary(): Promise<MediaEntry[]> {
         id: assetId,
         assetId,
         fingerprint: fingerprintConflict ? undefined : media.contentFingerprint,
+        identityConflict: fingerprintConflict,
         kind: 'source',
         filename,
         title: fingerprintConflict
@@ -638,19 +645,24 @@ export async function getLibrary(): Promise<MediaEntry[]> {
   return [...library]
 }
 
-async function resolveSourceRecord(sourceId: string): Promise<SourceRecord> {
-  const cached = sources.get(sourceId)
-  const expected = new Set(
+async function resolveSourceRecord(sourceId: string, expectedOverride?: string): Promise<SourceRecord> {
+  let cached = sources.get(sourceId)
+  const expected = expectedOverride ? new Set([expectedOverride]) : new Set(
     (await allProjects()).flatMap((project) => project.document?.media ?? [])
       .filter((media) => (media.assetRef ?? media.id) === sourceId && media.contentFingerprint)
       .map((media) => media.contentFingerprint!),
   )
   const actualFingerprint = cached?.info.fingerprint
-  if (expected.size > 1 || (expected.size === 1 && actualFingerprint && !expected.has(actualFingerprint))) {
+  if (expected.size > 1) {
     throw new BrowserAssetStorageError(
       'Fingerprint исходника не совпадает с сохранённым проектом. Выполните точный relink.',
       'fingerprint',
     )
+  }
+  if (expected.size === 1 && actualFingerprint && !expected.has(actualFingerprint)) {
+    URL.revokeObjectURL(cached!.info.url)
+    sources.delete(sourceId)
+    cached = undefined
   }
   if (cached) return cached
   const asset = await getBrowserAsset(sourceId)
@@ -669,60 +681,63 @@ async function resolveSourceRecord(sourceId: string): Promise<SourceRecord> {
   }
   const record = { file, info }
   sources.set(sourceId, record)
-  const entry = library.find((candidate) => candidate.id === sourceId)
-  if (entry) entry.url = info.url
   return record
 }
 
 /** Lazily materialize bytes and a fresh runtime URL for an opened source. */
-export async function resolveSource(sourceId: string): Promise<VideoInfo> {
-  return (await resolveSourceRecord(sourceId)).info
+export async function resolveSource(sourceId: string, expectedFingerprint?: string): Promise<VideoInfo> {
+  return withProjectAssetLock(async () => (await resolveSourceRecord(sourceId, expectedFingerprint)).info)
 }
 
 export async function relinkSource(
   sourceId: string,
   file: File,
   handle?: FileSystemFileHandle,
+  expectedMedia?: ProjectMedia,
 ): Promise<VideoInfo> {
   return withProjectAssetLock(async () => {
   const entry = library.find((candidate) => candidate.id === sourceId)
-  await relinkBrowserAsset(sourceId, file, handle, entry?.fingerprint ? {
-    id: entry.assetId ?? entry.id,
-    filename: entry.filename,
+  const metadata = expectedMedia?.metadata
+  const metadataNumber = (key: string) => typeof metadata?.[key] === 'number' ? metadata[key] as number : undefined
+  const expected = expectedMedia?.contentFingerprint ?? entry?.fingerprint
+  const recovery = expected ? {
+    id: expectedMedia?.assetRef ?? entry?.assetId ?? sourceId,
+    filename: typeof metadata?.filename === 'string' ? metadata.filename : entry?.filename ?? file.name,
     fileType: file.type,
-    fingerprint: entry.fingerprint,
-    byteLength: entry.sizeBytes ?? undefined,
+    fingerprint: expected,
+    byteLength: metadataNumber('sizeBytes') ?? entry?.sizeBytes ?? undefined,
     info: {
-      id: entry.id,
-      filename: entry.filename,
-      duration: entry.duration ?? 0,
-      width: entry.width ?? 0,
-      height: entry.height ?? 0,
-      title: entry.title,
-      fps: entry.fps,
-      vcodec: entry.vcodec,
-      acodec: entry.acodec,
-      mediaKind: entry.mediaKind,
-      assetId: entry.assetId ?? entry.id,
-      fingerprint: entry.fingerprint,
-      sizeBytes: entry.sizeBytes,
+      id: sourceId,
+      filename: typeof metadata?.filename === 'string' ? metadata.filename : entry?.filename ?? file.name,
+      duration: metadataNumber('duration') ?? entry?.duration ?? 0,
+      width: metadataNumber('width') ?? entry?.width ?? 0,
+      height: metadataNumber('height') ?? entry?.height ?? 0,
+      title: typeof metadata?.title === 'string' ? metadata.title : entry?.title,
+      fps: metadataNumber('fps') ?? entry?.fps,
+      vcodec: typeof metadata?.vcodec === 'string' ? metadata.vcodec : entry?.vcodec,
+      acodec: typeof metadata?.acodec === 'string' ? metadata.acodec : entry?.acodec,
+      mediaKind: expectedMedia?.kind === 'audio' ? 'audio' as const : entry?.mediaKind,
+      assetId: expectedMedia?.assetRef ?? entry?.assetId ?? sourceId,
+      fingerprint: expected,
+      sizeBytes: metadataNumber('sizeBytes') ?? entry?.sizeBytes,
     },
-    createdAt: entry.createdAt,
-  } : undefined)
+    createdAt: entry?.createdAt,
+  } : undefined
+  await relinkBrowserAsset(sourceId, file, handle, recovery)
   const cached = sources.get(sourceId)
   if (cached) URL.revokeObjectURL(cached.info.url)
   sources.delete(sourceId)
-  return resolveSource(sourceId)
+  return (await resolveSourceRecord(sourceId, expected)).info
   })
 }
 
-export async function restoreExternalSource(sourceId: string): Promise<VideoInfo> {
+export async function restoreExternalSource(sourceId: string, expectedFingerprint?: string): Promise<VideoInfo> {
   return withProjectAssetLock(async () => {
     await requestExternalHandleAccess(sourceId)
     const cached = sources.get(sourceId)
     if (cached) URL.revokeObjectURL(cached.info.url)
     sources.delete(sourceId)
-    return resolveSource(sourceId)
+    return (await resolveSourceRecord(sourceId, expectedFingerprint)).info
   })
 }
 
@@ -764,7 +779,9 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
         body.video as Record<string, unknown>,
         body.edit as Record<string, unknown>,
       )
-  const persistedBeforeSave = await projectByVideo(videoId)
+  const persistedBeforeSave = requestedProjectId
+    ? await projectById(requestedProjectId)
+    : await projectByVideo(videoId)
   const identitiesByAssetRef = (items: ProjectMedia[]) => {
     const identities = new Map<string, Set<string>>()
     for (const media of items) {
@@ -795,10 +812,20 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
   const readyAssets = new Map((await auditBrowserAssets())
     .filter((asset) => asset.availability === 'ready')
     .map((asset) => [asset.id, asset]))
+  const sessionAssets = new Map([...sources.entries()]
+    .filter(([, source]) => source.info.availability === 'session' && source.info.fingerprint)
+    .map(([assetId, source]) => [assetId, source]))
   for (const media of document.media) {
     const assetRef = media.assetRef ?? media.id
     const ready = readyAssets.get(assetRef)
+    const session = sessionAssets.get(assetRef)
+    if (session?.info.fingerprint && !media.contentFingerprint) {
+      media.contentFingerprint = session.info.fingerprint
+    }
     if (ready && media.contentFingerprint && ready.fingerprint !== media.contentFingerprint) {
+      throw new Error(`Исходный файл «${assetRef}» конфликтует с fingerprint проекта`)
+    }
+    if (session && media.contentFingerprint && session.info.fingerprint !== media.contentFingerprint) {
       throw new Error(`Исходный файл «${assetRef}» конфликтует с fingerprint проекта`)
     }
     if (!previousMediaIdsBeforeSave.has(assetRef) && ready) {
@@ -812,7 +839,9 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
     (previous) => {
       const previousMediaIds = new Set(previous?.document?.media.map((media) => media.assetRef ?? media.id) ?? [])
       const missingNewAsset = document.media.find((media) =>
-        !previousMediaIds.has(media.assetRef ?? media.id) && !readyAssets.has(media.assetRef ?? media.id),
+        !previousMediaIds.has(media.assetRef ?? media.id)
+        && !readyAssets.has(media.assetRef ?? media.id)
+        && !sessionAssets.has(media.assetRef ?? media.id),
       )
       if (missingNewAsset) {
         throw new Error(`Исходный файл «${missingNewAsset.assetRef ?? missingNewAsset.id}» больше недоступен — найдите его повторно`)

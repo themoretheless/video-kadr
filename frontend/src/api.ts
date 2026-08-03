@@ -1,4 +1,4 @@
-import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ProjectEnvelope, VideoInfo } from './types'
+import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ProjectEnvelope, ProjectMedia, VideoInfo } from './types'
 import * as browserMedia from './browser-media'
 import { decodeProjectEnvelope } from './project-schema'
 
@@ -131,8 +131,8 @@ export async function getLibrary(): Promise<MediaEntry[]> {
   return res.json()
 }
 
-export async function resolveLibrarySource(entry: MediaEntry): Promise<VideoInfo> {
-  if (clientOnlyMode) return browserMedia.resolveSource(entry.id)
+export async function resolveLibrarySource(entry: MediaEntry, expectedFingerprint?: string): Promise<VideoInfo> {
+  if (clientOnlyMode) return browserMedia.resolveSource(entry.id, expectedFingerprint)
   return {
     id: entry.id,
     url: entry.url,
@@ -155,14 +155,15 @@ export async function relinkLibrarySource(
   id: string,
   file: File,
   handle?: FileSystemFileHandle,
+  expectedMedia?: ProjectMedia,
 ): Promise<VideoInfo> {
   if (!clientOnlyMode) throw new Error('Relink через браузер доступен только в статической версии')
-  return browserMedia.relinkSource(id, file, handle)
+  return browserMedia.relinkSource(id, file, handle, expectedMedia)
 }
 
-export async function restoreExternalLibrarySource(id: string): Promise<VideoInfo> {
+export async function restoreExternalLibrarySource(id: string, expectedFingerprint?: string): Promise<VideoInfo> {
   if (!clientOnlyMode) throw new Error('External browser handles are available only in local mode')
-  return browserMedia.restoreExternalSource(id)
+  return browserMedia.restoreExternalSource(id, expectedFingerprint)
 }
 
 export function getBrowserStorageStatus() {
@@ -220,7 +221,7 @@ export async function saveProjectDocument(
       saved = await browserMedia.saveProject({
         projectId,
         expectedRevision,
-        videoId: document.primaryMediaId,
+        videoId: document.media.find((media) => media.id === document.primaryMediaId)?.assetRef ?? document.primaryMediaId,
         name: document.name,
         video: document.media.find((media) => media.id === document.primaryMediaId)?.metadata ?? {},
         edit: {},

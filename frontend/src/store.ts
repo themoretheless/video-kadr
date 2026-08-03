@@ -5,6 +5,7 @@ import {
   discardProjectRecovery,
   getProjectDraftWatermark,
   inspectProjectRecoveryByVideo,
+  inspectProjectRecovery,
   prepareProjectDraft,
   recoverProject as recoverBrowserProject,
   type ProjectRecoveryCandidate,
@@ -28,6 +29,7 @@ import {
   updateLegacyProjectValues,
 } from './project-schema'
 import { toast } from './toasts'
+import { fingerprintBlob } from './browser-asset-store'
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ProjectDocument, ResultInfo, VideoInfo } from './types'
 
 export {
@@ -71,6 +73,7 @@ export const state = reactive({
   exportJobId: null as string | null,
   result: null as ResultInfo | null,
   library: [] as MediaEntry[],
+  projects: [] as ProjectDto[],
   capabilities: null as Capabilities | null,
   backendStatus: (clientOnlyMode ? 'client' : 'checking') as 'checking' | 'online' | 'offline' | 'client',
   browserStorageWarning: '',
@@ -99,6 +102,7 @@ function isCancel(e: unknown): boolean {
 export async function doImport(): Promise<void> {
   const url = state.url.trim()
   if (!url || state.importing) return
+  libraryOpenSequence++
 
   // Optional import range (download only a section of long videos).
   const start = parseTime(state.importStart)
@@ -174,6 +178,7 @@ export async function doUpload(file: File): Promise<void> {
 export async function doUploadFiles(files: readonly File[]): Promise<void> {
   if (state.importing) return
   if (files.length === 0) return
+  libraryOpenSequence++
   state.importing = true
   state.importError = ''
   state.importStatus = clientOnlyMode ? 'Читаю файл на устройстве…' : 'Загружаю файл…'
@@ -478,7 +483,9 @@ export function setTrimEndFromPlayer(): void {
 
 export async function loadLibrary(): Promise<void> {
   try {
-    state.library = await api.getLibrary()
+    const [library, projects] = await Promise.all([api.getLibrary(), api.getProjects()])
+    state.library = library
+    state.projects = projects
   } catch {
     // Non-fatal: the library panel just stays empty.
   }
@@ -552,19 +559,31 @@ function colorCapabilityUnavailableReason(ids: string[], missing: string): strin
   return option.available ? null : option.reason || missing
 }
 
+let libraryOpenSequence = 0
+
 /** Reopen a stored source clip in the editor. */
 export function openFromLibrary(entry: MediaEntry): void {
   if (entry.kind !== 'source') return
-  if (!entry.url) {
+  const sequence = ++libraryOpenSequence
+  const session = projectSessionId
+  if (!entry.url && (entry.availability === 'ready' || entry.availability === 'session' || entry.availability === undefined)) {
     void api.resolveLibrarySource(entry).then((source) => {
-      openFromLibrary({ ...entry, ...source, kind: 'source' })
+      if (sequence !== libraryOpenSequence || session !== projectSessionId) return
+      Object.assign(entry, source, { availability: source.availability ?? 'ready' })
+      openResolvedLibraryEntry(entry)
     }).catch((error: unknown) => {
+      if (sequence !== libraryOpenSequence || session !== projectSessionId) return
       entry.availability = 'offline'
-      const message = error instanceof Error ? error.message : String(error)
-      toast('error', `Не удалось открыть файл: ${message}`)
+      toast('error', `Не удалось открыть «${entry.filename}»: ${error instanceof Error ? error.message : String(error)}`)
     })
     return
   }
+  if (entry.availability === 'offline' || entry.availability === 'permission-required') entry.url = ''
+  openResolvedLibraryEntry(entry)
+}
+
+function openResolvedLibraryEntry(entry: MediaEntry, selectedProject?: ProjectDto): void {
+  relinkState.batchSummary = ''
   if (state.video && state.video.id !== entry.id) void flushProjectSave()
   restoringProjectFor = entry.id
   clearProjectSaveTimer()
@@ -583,6 +602,7 @@ export function openFromLibrary(entry: MediaEntry): void {
     mediaKind: entry.mediaKind,
     assetId: entry.assetId,
     fingerprint: entry.fingerprint,
+    availability: entry.availability,
   }
   resetProjectPersistenceContext()
   state.video = v
@@ -595,8 +615,56 @@ export function openFromLibrary(entry: MediaEntry): void {
   resetHistory()
   initializeTimelineDocument(v)
   // Restore any saved edit for this clip (overrides the defaults above).
-  void restoreProject(v.id)
-  toast('info', v.title ? `Открыто: ${v.title}` : 'Клип открыт')
+  void restoreProject(v.id, selectedProject)
+  toast('info', entry.url
+    ? (v.title ? `Открыто: ${v.title}` : 'Клип открыт')
+    : `Проект открыт без исходника «${entry.filename}» — найдите файл заново`)
+}
+
+export function openSavedProject(project: ProjectDto): void {
+  const primary = project.document?.media.find((media) => media.id === project.document?.primaryMediaId)
+  const assetRef = primary?.assetRef ?? primary?.id ?? project.videoId
+  const entry = state.library.find((candidate) => (candidate.assetId ?? candidate.id) === assetRef)
+  if (!entry || entry.kind !== 'source') {
+    toast('error', `Исходник проекта «${project.name}» не найден в медиатеке`)
+    return
+  }
+  const selectedFingerprint = primary?.contentFingerprint
+  const sequence = ++libraryOpenSequence
+  const session = projectSessionId
+  if (selectedFingerprint) {
+    void api.resolveLibrarySource(entry, selectedFingerprint).then((source) => {
+      if (sequence !== libraryOpenSequence || session !== projectSessionId) return
+      Object.assign(entry, source, { availability: source.availability ?? 'ready', fingerprint: selectedFingerprint })
+      openResolvedLibraryEntry(entry, project)
+    }).catch(() => {
+      if (sequence !== libraryOpenSequence || session !== projectSessionId) return
+      entry.url = ''
+      entry.availability = 'offline'
+      entry.fingerprint = selectedFingerprint
+      openResolvedLibraryEntry(entry, project)
+    })
+    return
+  }
+  openResolvedLibraryEntry(entry, project)
+}
+
+export const relinkState = reactive({
+  busy: {} as Record<string, boolean>,
+  batchBusy: false,
+  batchSummary: '',
+})
+const relinkTokens = new Map<string, number>()
+const relinkQueues = new Map<string, Promise<boolean>>()
+
+function nextRelinkToken(id: string): number {
+  const token = (relinkTokens.get(id) ?? 0) + 1
+  relinkTokens.set(id, token)
+  return token
+}
+
+function activeProjectMedia(id: string) {
+  return timelineState.document?.media.find((media) => (media.assetRef ?? media.id) === id)
 }
 
 export async function relinkLibraryMedia(
@@ -604,30 +672,145 @@ export async function relinkLibraryMedia(
   file: File,
   handle?: FileSystemFileHandle,
 ): Promise<boolean> {
+  const token = nextRelinkToken(entry.id)
+  const session = projectSessionId
+  const expectedMedia = cloneValue(activeProjectMedia(entry.assetId ?? entry.id))
+  relinkState.busy[entry.id] = true
+  const previous = relinkQueues.get(entry.id) ?? Promise.resolve(true)
+  const operation = previous.catch(() => false).then(() => performRelinkLibraryMedia(entry, file, handle, token, session, expectedMedia))
+  relinkQueues.set(entry.id, operation)
+  return operation.finally(() => {
+    if (relinkQueues.get(entry.id) === operation) relinkQueues.delete(entry.id)
+  })
+}
+
+async function performRelinkLibraryMedia(
+  entry: MediaEntry,
+  file: File,
+  handle: FileSystemFileHandle | undefined,
+  token: number,
+  session: number,
+  expectedMedia: ReturnType<typeof activeProjectMedia>,
+): Promise<boolean> {
   try {
-    const source = await api.relinkLibrarySource(entry.id, file, handle)
+    if (session !== projectSessionId) return false
+    const source = await api.relinkLibrarySource(entry.id, file, handle, expectedMedia)
+    if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
     Object.assign(entry, source, { availability: 'ready' as const })
     if (state.video?.id === entry.id) state.video = source
     toast('success', `Файл перепривязан: ${entry.filename}`)
     return true
   } catch (error) {
-    entry.availability = 'offline'
-    toast('error', error instanceof Error ? error.message : String(error))
+    if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
+    const authoritative = await api.resolveLibrarySource(entry, expectedMedia?.contentFingerprint).catch(() => null)
+    if (authoritative && relinkTokens.get(entry.id) === token && session === projectSessionId) {
+      Object.assign(entry, authoritative, { availability: 'ready' as const })
+      if (state.video?.id === entry.id) state.video = authoritative
+    } else if (session === projectSessionId) entry.availability = 'offline'
+    if (session !== projectSessionId) return false
+    toast('error', `Выбран другой файл для «${entry.filename}». Проект не изменён: ${error instanceof Error ? error.message : String(error)}`)
     return false
+  } finally {
+    if (relinkTokens.get(entry.id) === token) relinkState.busy[entry.id] = false
+  }
+}
+
+export async function batchRelinkLibraryMedia(entries: MediaEntry[], files: File[]): Promise<void> {
+  if (relinkState.batchBusy) return
+  relinkState.batchBusy = true
+  relinkState.batchSummary = `Проверяю ${files.length} файл(ов)…`
+  const candidates = [...files]
+  const fingerprints = new Map<string, File>()
+  let recovered = 0
+  const batchTokens = new Map<string, number>()
+  // The caller supplies the active project's effective missing set. It can
+  // include a globally-ready row whose bytes belong to another project.
+  const targets = entries.filter((item) => item.kind === 'source')
+  for (const entry of targets) {
+    batchTokens.set(entry.id, nextRelinkToken(entry.id))
+    relinkState.busy[entry.id] = true
+  }
+  const batchSession = projectSessionId
+  const expectedMedia = new Map(targets.map((entry) => [entry.id, cloneValue(activeProjectMedia(entry.assetId ?? entry.id))]))
+  try {
+    await Promise.all(candidates.map(async (file) => {
+      const fingerprint = await fingerprintBlob(file)
+      if (!fingerprints.has(fingerprint)) fingerprints.set(fingerprint, file)
+    }))
+    for (const entry of targets) {
+      const token = batchTokens.get(entry.id)!
+      let matched = false
+      const media = expectedMedia.get(entry.id)
+      const expectedFingerprint = media?.contentFingerprint ?? entry.fingerprint
+      const orderedCandidates = expectedFingerprint && fingerprints.has(expectedFingerprint)
+        ? [fingerprints.get(expectedFingerprint)!]
+        : []
+      for (let index = 0; index < orderedCandidates.length; index++) {
+        if (projectSessionId !== batchSession || relinkTokens.get(entry.id) !== token) break
+        try {
+          const source = await api.relinkLibrarySource(entry.id, orderedCandidates[index]!, undefined, media)
+          if (relinkTokens.get(entry.id) !== token || projectSessionId !== batchSession) break
+          Object.assign(entry, source, { availability: 'ready' as const })
+          if (state.video?.id === entry.id) state.video = source
+          recovered++
+          matched = true
+          break
+        } catch (error) {
+          if ((error as { reason?: string } | null)?.reason === 'fingerprint') continue
+          const authoritative = await api.resolveLibrarySource(entry, expectedFingerprint).catch(() => null)
+          if (authoritative && projectSessionId === batchSession && relinkTokens.get(entry.id) === token) {
+            Object.assign(entry, authoritative, { availability: 'ready' as const })
+            if (state.video?.id === entry.id) state.video = authoritative
+            recovered++
+            matched = true
+            break
+          }
+          if (projectSessionId !== batchSession || relinkTokens.get(entry.id) !== token) break
+          toast('error', `Не удалось сохранить замену для «${entry.filename}»: ${error instanceof Error ? error.message : String(error)}`)
+          break
+        }
+      }
+      if (projectSessionId === batchSession && relinkTokens.get(entry.id) === token) {
+        relinkState.busy[entry.id] = false
+        if (!matched) entry.availability = 'offline'
+      }
+    }
+    const unresolved = targets.filter((item) => {
+      const expected = expectedMedia.get(item.id)?.contentFingerprint
+      return item.availability !== 'ready' || Boolean(expected && item.fingerprint !== expected)
+    }).length
+    if (projectSessionId === batchSession) {
+      relinkState.batchSummary = unresolved
+        ? `Восстановлено: ${recovered}. Осталось найти: ${unresolved}.`
+        : `Все исходники восстановлены: ${recovered}.`
+      toast(unresolved ? 'info' : 'success', relinkState.batchSummary)
+    }
+  } finally {
+    for (const entry of entries) if (relinkTokens.get(entry.id) === batchTokens.get(entry.id)) relinkState.busy[entry.id] = false
+    relinkState.batchBusy = false
+    if (projectSessionId !== batchSession) relinkState.batchSummary = ''
   }
 }
 
 export async function restoreExternalLibraryMedia(entry: MediaEntry): Promise<boolean> {
+  const token = nextRelinkToken(entry.id)
+  const session = projectSessionId
+  const expectedFingerprint = cloneValue(activeProjectMedia(entry.assetId ?? entry.id))?.contentFingerprint
+  relinkState.busy[entry.id] = true
   try {
-    const source = await api.restoreExternalLibrarySource(entry.id)
+    const source = await api.restoreExternalLibrarySource(entry.id, expectedFingerprint)
+    if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
     Object.assign(entry, source, { availability: 'ready' as const })
     if (state.video?.id === entry.id) state.video = source
     toast('success', `Доступ к «${entry.filename}» восстановлен`)
     return true
   } catch (error) {
+    if (relinkTokens.get(entry.id) !== token || session !== projectSessionId) return false
     entry.availability = 'permission-required'
     toast('error', error instanceof Error ? error.message : String(error))
     return false
+  } finally {
+    if (relinkTokens.get(entry.id) === token) relinkState.busy[entry.id] = false
   }
 }
 
@@ -1032,7 +1215,7 @@ function clearProjectSaveTimer(): void {
 }
 
 /** Load the saved project for a clip (if any) and apply its edit recipe. */
-async function restoreProject(videoId: string): Promise<void> {
+async function restoreProject(videoId: string, selectedProject?: ProjectDto): Promise<void> {
   projectRecovery.restoring = true
   const sequence = ++projectRestoreSequence
   const startingRevision = editRevision
@@ -1040,7 +1223,9 @@ async function restoreProject(videoId: string): Promise<void> {
   let applied = false
   try {
     if (clientOnlyMode) {
-      const recovery = await inspectProjectRecoveryByVideo(videoId)
+      const recovery = selectedProject
+        ? await inspectProjectRecovery(selectedProject.id)
+        : await inspectProjectRecoveryByVideo(videoId)
       if (state.video?.id !== videoId || sequence !== projectRestoreSequence) return
       if (recovery) {
         projectRecovery.candidate = recovery
@@ -1048,7 +1233,7 @@ async function restoreProject(videoId: string): Promise<void> {
         return
       }
     }
-    const p = await api.getProjectByVideo(videoId)
+    const p = selectedProject ?? await api.getProjectByVideo(videoId)
     // Guard against a clip switch while the lookup was in flight.
     if (!p?.edit || state.video?.id !== videoId || sequence !== projectRestoreSequence) return
     const envelope = await api.getProjectDocument(p.id)
@@ -1103,12 +1288,15 @@ export function leaveUnrecoverableProject(): void {
   resetProjectPersistenceContext()
 }
 
-async function resumeProjectAfterRecovery(videoId: string): Promise<void> {
+async function resumeProjectAfterRecovery(videoId: string, projectId: string): Promise<void> {
   projectRecovery.candidate = null
   projectRecovery.error = ''
   restoredProjectFor = null
   restoringProjectFor = videoId
-  await restoreProject(videoId)
+  state.projects = await api.getProjects()
+  const project = state.projects.find((candidate) => candidate.id === projectId)
+  if (!project) throw new Error('Восстановленный проект не найден; другой проект не будет открыт автоматически')
+  await restoreProject(videoId, project)
 }
 
 export async function acceptProjectRecovery(): Promise<void> {
@@ -1118,7 +1306,7 @@ export async function acceptProjectRecovery(): Promise<void> {
   projectRecovery.error = ''
   try {
     await recoverBrowserProject(recovery.projectId, recovery.corruptRevision, recovery.candidateRevision, recovery.journalId)
-    await resumeProjectAfterRecovery(recovery.videoId)
+    await resumeProjectAfterRecovery(recovery.videoId, recovery.projectId)
   } catch (error) {
     projectRecovery.error = error instanceof Error ? error.message : String(error)
   } finally {
@@ -1136,7 +1324,7 @@ export async function discardAutosaveRecovery(): Promise<void> {
     else if (recovery.candidate && recovery.candidateRevision !== null) {
       await recoverBrowserProject(recovery.projectId, recovery.corruptRevision, recovery.candidateRevision)
     }
-    await resumeProjectAfterRecovery(recovery.videoId)
+    await resumeProjectAfterRecovery(recovery.videoId, recovery.projectId)
   } catch (error) {
     projectRecovery.error = error instanceof Error ? error.message : String(error)
   } finally {

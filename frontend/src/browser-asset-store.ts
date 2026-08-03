@@ -399,7 +399,17 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   })
 }
 
-export async function fingerprintBlob(blob: Blob): Promise<string> {
+const fingerprintCache = new WeakMap<Blob, Promise<string>>()
+
+export function fingerprintBlob(blob: Blob): Promise<string> {
+  const cached = fingerprintCache.get(blob)
+  if (cached) return cached
+  const pending = fingerprintBlobUncached(blob)
+  fingerprintCache.set(blob, pending)
+  return pending
+}
+
+async function fingerprintBlobUncached(blob: Blob): Promise<string> {
   const fingerprintOnMainThread = async () => {
     const hasher = sha256.create()
     for (let offset = 0; offset < blob.size; offset += HASH_CHUNK_BYTES) {
@@ -537,6 +547,9 @@ async function putBrowserAssetUnlocked(
   }
   let database: IDBDatabase | undefined
   try {
+    const sharedIdbReference = (await allBrowserAssetManifests()).some((candidate) =>
+      candidate.id !== asset.id && candidate.storage === 'idb' && (candidate.objectKey ?? candidate.id) === objectKey,
+    )
     const fallbackBytes = manifest.storage === 'idb' ? await asset.file.arrayBuffer() : undefined
     database = await openDatabase()
     const transaction = database.transaction([MANIFESTS, BLOBS, INGESTS], 'readwrite')
@@ -544,8 +557,12 @@ async function putBrowserAssetUnlocked(
     transaction.objectStore(MANIFESTS).put(manifest)
     if (manifest.storage === 'idb') {
       transaction.objectStore(BLOBS).put({ id: objectKey, file: fallbackBytes! } satisfies StoredBlob)
-    } else {
+    } else if (supportsWebLocks()) {
+      // Without a cross-tab lock, an alias may be committed after the
+      // reference scan. Retain stale IDB bytes rather than deleting a live
+      // content-addressed object; later locked maintenance can collect it.
       transaction.objectStore(BLOBS).delete(asset.id)
+      if (!sharedIdbReference) transaction.objectStore(BLOBS).delete(objectKey)
     }
     transaction.objectStore(INGESTS).delete(ingest.id)
     await committed
@@ -674,13 +691,25 @@ async function storeFsaLocator(
   manifest: StoredBrowserAssetManifest,
   handle: FileSystemFileHandle,
 ): Promise<StoredBrowserAssetManifest> {
+  return withStorageLock(() => storeFsaLocatorUnlocked(manifest, handle))
+}
+
+async function storeFsaLocatorUnlocked(
+  manifest: StoredBrowserAssetManifest,
+  handle: FileSystemFileHandle,
+): Promise<StoredBrowserAssetManifest> {
   const externalManifest = { ...manifest, storage: 'fsa' as const }
+  const objectKey = manifest.objectKey ?? manifest.id
+  const sharedIdbReference = (await allBrowserAssetManifests()).some((candidate) =>
+    candidate.id !== manifest.id && candidate.storage === 'idb' && (candidate.objectKey ?? candidate.id) === objectKey,
+  )
   const database = await openDatabase()
   try {
     const transaction = database.transaction([MANIFESTS, BLOBS, HANDLES], 'readwrite')
     const committed = transactionDone(transaction)
     transaction.objectStore(MANIFESTS).put(externalManifest)
     transaction.objectStore(BLOBS).delete(manifest.id)
+    if (supportsWebLocks() && !sharedIdbReference) transaction.objectStore(BLOBS).delete(objectKey)
     transaction.objectStore(HANDLES).put({ id: manifest.id, handle } satisfies StoredExternalHandle)
     await committed
     return externalManifest
@@ -736,6 +765,8 @@ export async function relinkBrowserAsset(
   recovery?: BrowserAssetRecoveryReference,
 ): Promise<StoredBrowserAssetManifest> {
   const current = await getBrowserAssetManifest(id)
+  // fingerprintBlob caches by Blob identity, so a batch hashes each selected
+  // File once without allowing callers to inject an unverified digest.
   const fingerprint = await fingerprintBlob(file)
   const expectedFingerprint = recovery?.fingerprint ?? current?.fingerprint
   const expectedByteLength = recovery?.byteLength ?? current?.byteLength

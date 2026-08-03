@@ -121,6 +121,92 @@ test('selective OPFS eviction becomes offline and exact relink restores the same
   await expect(page.locator('.lib-item').filter({ hasText: 'evicted.wav' }).getByRole('status')).toHaveCount(0)
 })
 
+test('project opens with missing primary and batch ignores wrong files while preserving topology', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Selective OPFS object eviction is a Chromium recovery gate')
+  await page.goto('/?processing=browser')
+  const files = [
+    { name: 'batch-primary.wav', mimeType: 'audio/wav', buffer: wavFixture(1_100) },
+    { name: 'batch-second.wav', mimeType: 'audio/wav', buffer: wavFixture(1_200) },
+    { name: 'batch-third.wav', mimeType: 'audio/wav', buffer: wavFixture(1_300) },
+  ]
+  await page.locator('.dropzone input[type=file]').setInputFiles(files)
+  await expect(page.locator('.lib-item')).toHaveCount(3)
+  await expect.poll(() => page.evaluate(async () => {
+    const request = indexedDB.open('video-kadr')
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error)
+    })
+    const read = database.transaction('projects').objectStore('projects').getAll()
+    const projects = await new Promise<Array<{ id: string; revision: number; document?: { media: Array<{ assetRef?: string; id: string }> } }>>((resolve, reject) => {
+      read.onsuccess = () => resolve(read.result); read.onerror = () => reject(read.error)
+    })
+    database.close()
+    const project = projects[0]
+    return project?.document?.media.length === 3 ? {
+      id: project.id, revision: project.revision,
+      refs: project.document.media.map((media) => media.assetRef ?? media.id),
+    } : null
+  }), { timeout: 10_000 }).not.toBeNull()
+  const originalProject = await page.evaluate(async () => {
+    const request = indexedDB.open('video-kadr')
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error)
+    })
+    const read = database.transaction('projects').objectStore('projects').getAll()
+    const projects = await new Promise<Array<{ id: string; revision: number; document: { media: Array<{ assetRef?: string; id: string }> } }>>((resolve, reject) => {
+      read.onsuccess = () => resolve(read.result); read.onerror = () => reject(read.error)
+    })
+    database.close(); const project = projects[0]!
+    return { id: project.id, revision: project.revision, refs: project.document.media.map((media) => media.assetRef ?? media.id) }
+  })
+  await page.evaluate(async () => {
+    const request = indexedDB.open('video-kadr-media')
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error)
+    })
+    const read = database.transaction('manifests').objectStore('manifests').getAll()
+    const manifests = await new Promise<Array<{ filename: string; objectKey: string }>>((resolve, reject) => {
+      read.onsuccess = () => resolve(read.result); read.onerror = () => reject(read.error)
+    })
+    database.close()
+    const root = await navigator.storage.getDirectory()
+    const directory = await root.getDirectoryHandle('video-kadr-media')
+    for (const manifest of manifests.filter((item) => item.filename !== 'batch-second.wav')) {
+      await directory.removeEntry(manifest.objectKey)
+    }
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Открыть проект/ }).click()
+  await expect(page.getByRole('region', { name: 'Временная шкала проекта' })).toBeVisible()
+  await expect(page.locator('.timeline-clip')).toHaveCount(3)
+  const summary = page.locator('.relink-summary')
+  await expect(summary).toContainText('Недоступно исходников: 2')
+  const wrong = { name: 'unrelated.wav', mimeType: 'audio/wav', buffer: wavFixture(777) }
+  await summary.locator('input[type=file]').setInputFiles(wrong)
+  await expect(summary).toContainText('Осталось найти: 2')
+  const unchangedAfterWrong = await page.evaluate(async () => (await import('/src/browser-media.ts')).getProjects()
+    .then((projects) => ({ id: projects[0]!.id, revision: projects[0]!.revision,
+      refs: projects[0]!.document!.media.map((media) => media.assetRef ?? media.id) })))
+  expect(unchangedAfterWrong).toEqual(originalProject)
+  await summary.locator('input[type=file]').setInputFiles([wrong, files[2]!, files[0]!])
+  await expect(summary).toHaveCount(0)
+  await page.reload({ waitUntil: 'networkidle' })
+  await expect(page.locator('.lib-item').getByRole('status')).toHaveCount(0)
+  const after = await page.evaluate(async () => {
+    const request = indexedDB.open('video-kadr')
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error)
+    })
+    const read = database.transaction('projects').objectStore('projects').getAll()
+    const projects = await new Promise<Array<{ id: string; revision: number; document: { media: Array<{ assetRef?: string; id: string }> } }>>((resolve, reject) => {
+      read.onsuccess = () => resolve(read.result); read.onerror = () => reject(read.error)
+    })
+    database.close(); const project = projects[0]!
+    return { id: project.id, revision: project.revision, refs: project.document.media.map((media) => media.assetRef ?? media.id) }
+  })
+  expect(after).toEqual(originalProject)
+})
+
 test('ephemeral browser context survives reload but leaves no media in a new context', async ({ browser }) => {
   const baseURL = String(test.info().project.use.baseURL)
   const firstContext = await browser.newContext({ baseURL })

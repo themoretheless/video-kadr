@@ -12,6 +12,7 @@ export interface VideoInfo {
   mediaKind?: 'video' | 'audio'
   assetId?: string
   fingerprint?: string
+  identityConflict?: boolean
   availability?: 'ready' | 'permission-required' | 'offline' | 'session'
   sizeBytes?: number | null
 }
@@ -135,6 +136,7 @@ export interface MediaEntry {
   assetId?: string
   availability?: 'ready' | 'permission-required' | 'offline' | 'session'
   fingerprint?: string
+  identityConflict?: boolean
   sizeBytes?: number | null
   createdAt: number
 }

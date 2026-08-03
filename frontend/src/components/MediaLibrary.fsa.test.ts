@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   state: {
     library: [{
       id: 'permission-source', kind: 'source', filename: 'source.mp4', url: '',
-      duration: 1, availability: 'permission-required', createdAt: 1,
+      duration: 1, availability: 'offline', createdAt: 1,
     }],
   },
   timelineState: { document: null },
@@ -16,10 +16,13 @@ vi.mock('../store', () => ({
   state: mocks.state,
   timelineState: mocks.timelineState,
   openFromLibrary: vi.fn(),
+  openSavedProject: vi.fn(),
   deleteFromLibrary: vi.fn(),
   addMediaToTimeline: vi.fn(),
   relinkLibraryMedia: mocks.relink,
   restoreExternalLibraryMedia: vi.fn(),
+  batchRelinkLibraryMedia: vi.fn(),
+  relinkState: { busy: {}, batchBusy: false, batchSummary: '' },
 }))
 
 describe('MediaLibrary File System Access relink', () => {
@@ -46,7 +49,7 @@ describe('MediaLibrary File System Access relink', () => {
     createApp(MediaLibrary).mount(host)
 
     const button = [...host.querySelectorAll('button')]
-      .find((candidate) => candidate.textContent?.includes('Связать внешний файл'))
+      .find((candidate) => candidate.textContent?.includes('Выбрать постоянную замену'))
     expect(button).toBeDefined()
     button!.click()
     await nextTick()

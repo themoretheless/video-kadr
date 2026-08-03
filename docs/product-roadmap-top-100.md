@@ -137,7 +137,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 | 78 | Media bins/folders/tags | Плоская медиатека | Folders, tags, multi-select, rename и project persistence | L |
 | 79 | Metadata inspector | Preview уже показывает duration/dimensions/fps/codecs/size при наличии | Full probe: VFR/timebase, rotation, pixel aspect, HDR/color/audio channels и fixtures | M |
 | 80 | Поиск и фильтры media | Backend FTS5 API работает; browser/UI parity нет | Pagination, normalized query contract и 10k-item latency profile | M |
-| 81 | Relink missing media (P0/P1) | Checksum/relink primitives есть, production UX/wiring нет | Locate replacement, fingerprint false-positive tests и batch relink | L |
+| 81 | ✅ Relink missing media (P0/P1) | Project-scoped placeholders, exact SHA-256 single/batch relink, OPFS/IDB/FSA recovery и race-safe UI готовы | Same-size wrong/all-wrong отклоняются; missing primary + shuffled batch восстанавливаются без изменения revision/topology/`assetRef` после reload | L |
 | 82 | Proxy media generation | `ProxyService`/FFmpeg adapter есть, project association UX нет | Source/proxy provenance/timebase, stale invalidation, toggle и export originals | XL |
 | 83 | Optimized preview cache | Frame-cache/artifact graph primitives есть, UI wiring нет | После №20/84: key = source fingerprint + graph version + render settings | XL |
 | 84 | Background conform/analyze queue | Durable backend queue есть, derived-task frontend orchestration нет | Dependency DAG, persistent priority, restart/idempotency/fairness и cancel | XL |

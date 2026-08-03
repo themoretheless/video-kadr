@@ -276,7 +276,7 @@ export async function compareAndSwapProject(
   }
 }
 
-async function projectById(projectId: string): Promise<ProjectDto | null> {
+export async function projectById(projectId: string): Promise<ProjectDto | null> {
   const database = await openDatabase()
   try {
     const project = await requestResult<ProjectDto | undefined>(database.transaction(STORE).objectStore(STORE).get(projectId))
@@ -447,16 +447,8 @@ export async function discardProjectRecovery(projectId: string, journalId: strin
 }
 
 export async function projectByVideo(videoId: string): Promise<ProjectDto | null> {
-  const database = await openDatabase()
-  try {
-    const transaction = database.transaction(STORE, 'readonly')
-    const result = await requestResult<ProjectDto | undefined>(
-      transaction.objectStore(STORE).index('videoId').get(videoId),
-    )
-    return result ? validateProject(result) : null
-  } finally {
-    database.close()
-  }
+  const projects = (await allProjects()).filter((project) => project.videoId === videoId)
+  return projects.sort((left, right) => right.updatedAt - left.updatedAt || (right.revision ?? 0) - (left.revision ?? 0) || left.id.localeCompare(right.id))[0] ?? null
 }
 
 export async function allProjects(): Promise<ProjectDto[]> {

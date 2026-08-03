@@ -139,7 +139,7 @@ describe('browser asset persistence', () => {
     const relinked = await relinkBrowserAsset('asset-1', exact)
     expect(relinked.id).toBe('asset-1')
     await expect(
-      relinkBrowserAsset('asset-1', new File(['wrong'], 'clip.mp4')),
+      relinkBrowserAsset('asset-1', new File(['wrong content'], 'clip.mp4')),
     ).rejects.toEqual(expect.objectContaining<Partial<BrowserAssetStorageError>>({
       reason: 'fingerprint',
     }))
