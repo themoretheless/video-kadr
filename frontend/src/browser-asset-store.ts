@@ -2,7 +2,7 @@ import type { VideoInfo } from './types'
 import { sha256 } from '@noble/hashes/sha2.js'
 
 const DATABASE = 'video-kadr-media'
-const VERSION = 3
+const VERSION = 4
 const MANIFESTS = 'manifests'
 const BLOBS = 'blobs'
 const INGESTS = 'ingests'
@@ -22,6 +22,8 @@ export interface StoredBrowserAssetManifest {
   fileType: string
   byteLength: number
   fingerprint: string
+  /** Immutable content-addressed byte locator. Older manifests fall back to id. */
+  objectKey?: string
   storage: 'opfs' | 'idb' | 'fsa'
   info: Omit<VideoInfo, 'url'>
   createdAt: number
@@ -35,6 +37,16 @@ export interface StoredBrowserAsset extends StoredBrowserAssetManifest {
   file: Blob
 }
 
+export interface BrowserAssetRecoveryReference {
+  id: string
+  filename: string
+  fileType?: string
+  fingerprint: string
+  byteLength?: number
+  info: Omit<VideoInfo, 'url'>
+  createdAt?: number
+}
+
 interface StoredBlob {
   id: string
   file: Blob
@@ -42,7 +54,20 @@ interface StoredBlob {
 
 interface IngestJournalEntry {
   id: string
+  assetId?: string
+  stagingKey?: string
   startedAt: number
+  updatedAt?: number
+  phase?: 'writing' | 'publishing'
+  objectKey?: string
+}
+
+const storageLockName = 'video-kadr-media-maintenance'
+
+async function withStorageLock<T>(callback: () => Promise<T>): Promise<T> {
+  const locks = navigator.locks
+  if (!locks?.request) return callback()
+  return locks.request(storageLockName, { mode: 'exclusive' }, callback)
 }
 
 interface StoredExternalHandle {
@@ -138,7 +163,7 @@ async function probeOpfs(): Promise<boolean> {
   return opfsProbe
 }
 
-async function writeOpfs(id: string, blob: Blob): Promise<boolean> {
+async function writeOpfs(id: string, blob: Blob, preserveExisting = false): Promise<boolean> {
   if (!await probeOpfs()) return false
   const directory = await opfsDirectory(true).catch(() => null)
   if (!directory) return false
@@ -149,7 +174,7 @@ async function writeOpfs(id: string, blob: Blob): Promise<boolean> {
     await writable.close()
   } catch (error) {
     await writable.abort().catch(() => undefined)
-    await directory.removeEntry(id).catch(() => undefined)
+    if (!preserveExisting) await directory.removeEntry(id).catch(() => undefined)
     throw error
   }
   const stored = await handle.getFile()
@@ -246,24 +271,40 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-async function beginIngest(id: string): Promise<void> {
+async function putIngest(entry: IngestJournalEntry): Promise<void> {
   const database = await openDatabase()
   try {
     const transaction = database.transaction(INGESTS, 'readwrite')
     const committed = transactionDone(transaction)
-    transaction.objectStore(INGESTS).put({ id, startedAt: Date.now() } satisfies IngestJournalEntry)
+    transaction.objectStore(INGESTS).put(entry)
     await committed
   } finally {
     database.close()
   }
 }
 
-async function clearIngest(id: string): Promise<void> {
+async function beginIngest(assetId: string, objectKey: string): Promise<IngestJournalEntry> {
+  const now = Date.now()
+  const owner = crypto.randomUUID()
+  const entry: IngestJournalEntry = {
+    id: owner,
+    assetId,
+    stagingKey: `.staging-${objectKey}-${owner}`,
+    objectKey,
+    startedAt: now,
+    updatedAt: now,
+    phase: 'writing',
+  }
+  await putIngest(entry)
+  return entry
+}
+
+async function clearIngest(journalId: string): Promise<void> {
   const database = await openDatabase()
   try {
     const transaction = database.transaction(INGESTS, 'readwrite')
     const committed = transactionDone(transaction)
-    transaction.objectStore(INGESTS).delete(id)
+    transaction.objectStore(INGESTS).delete(journalId)
     await committed
   } finally {
     database.close()
@@ -272,6 +313,10 @@ async function clearIngest(id: string): Promise<void> {
 
 /** Remove bytes left by a tab/process crash before its manifest commit. */
 export async function reconcileBrowserAssetIngests(): Promise<void> {
+  return withStorageLock(reconcileBrowserAssetIngestsUnlocked)
+}
+
+async function reconcileBrowserAssetIngestsUnlocked(): Promise<void> {
   const database = await openDatabase()
   let pending: IngestJournalEntry[]
   try {
@@ -284,9 +329,9 @@ export async function reconcileBrowserAssetIngests(): Promise<void> {
   for (const ingest of pending) {
     // Another tab may be actively writing this asset. Only reclaim journals
     // old enough that no normal bounded ingest should still own them.
-    if (Date.now() - ingest.startedAt < ABANDONED_INGEST_MS) continue
-    const manifest = await getBrowserAssetManifest(ingest.id)
-    if (!manifest) await deleteOpfs(ingest.id)
+    if (Date.now() - (ingest.updatedAt ?? ingest.startedAt) < ABANDONED_INGEST_MS) continue
+    if (ingest.stagingKey) await deleteOpfs(ingest.stagingKey)
+    else if (!ingest.assetId && !await getBrowserAssetManifest(ingest.id)) await deleteOpfs(ingest.id)
     const cleanup = await openDatabase()
     try {
       const transaction = cleanup.transaction(INGESTS, 'readwrite')
@@ -387,19 +432,45 @@ export async function putBrowserAsset(
   },
 ): Promise<StoredBrowserAssetManifest> {
   const fingerprint = asset.fingerprint ?? await fingerprintBlob(asset.file)
-  await beginIngest(asset.id)
+  return withStorageLock(async () => putBrowserAssetUnlocked(asset, fingerprint))
+}
+
+async function putBrowserAssetUnlocked(
+  asset: Omit<StoredBrowserAsset, 'fingerprint' | 'byteLength' | 'storage'> & {
+    fingerprint?: string
+    byteLength?: number
+  },
+  fingerprint: string,
+): Promise<StoredBrowserAssetManifest> {
+  const objectKey = `sha256-${fingerprint}`
+  const previousManifest = await getBrowserAssetManifest(asset.id)
+  const ingest = await beginIngest(asset.id, objectKey)
   let storedInOpfs = false
   try {
-    storedInOpfs = await writeOpfs(asset.id, asset.file).catch((error: unknown) => {
+    storedInOpfs = await writeOpfs(ingest.stagingKey!, asset.file).catch((error: unknown) => {
       throw storageError(error)
     })
+    if (storedInOpfs) {
+      ingest.phase = 'publishing'
+      ingest.updatedAt = Date.now()
+      await putIngest(ingest)
+      const staged = await readOpfs(ingest.stagingKey!)
+      const existingCandidate = await readOpfs(objectKey)
+      const existing = existingCandidate?.size === 0 && staged && staged.size > 0 ? null : existingCandidate
+      if (!staged || staged.size !== asset.file.size) {
+        throw new BrowserAssetStorageError('Не удалось опубликовать staged media object.', 'unavailable')
+      }
+      if (!existing && !await writeOpfs(objectKey, staged)) throw new BrowserAssetStorageError('Не удалось опубликовать staged media object.', 'unavailable')
+      if (existing && existing.size !== staged.size) throw new BrowserAssetStorageError('Конфликт content-addressed media object.', 'integrity')
+      await deleteOpfs(ingest.stagingKey!)
+    }
   } catch (error) {
-    await deleteOpfs(asset.id).catch(() => undefined)
-    await clearIngest(asset.id).catch(() => undefined)
+    await deleteOpfs(ingest.stagingKey!).catch(() => undefined)
+    await clearIngest(ingest.id).catch(() => undefined)
     throw error
   }
   if (!storedInOpfs && asset.file.size > IDB_BLOB_LIMIT) {
-    await clearIngest(asset.id)
+    await clearIngest(ingest.id)
     throw new BrowserAssetStorageError(
       'Файл слишком большой для IndexedDB fallback; OPFS недоступен.',
       'quota',
@@ -411,6 +482,7 @@ export async function putBrowserAsset(
     fileType: asset.fileType,
     byteLength: asset.byteLength ?? asset.file.size,
     fingerprint,
+    objectKey,
     storage: storedInOpfs ? 'opfs' : 'idb',
     info: asset.info,
     createdAt: asset.createdAt,
@@ -422,15 +494,32 @@ export async function putBrowserAsset(
     const committed = transactionDone(transaction)
     transaction.objectStore(MANIFESTS).put(manifest)
     if (manifest.storage === 'idb') {
-      transaction.objectStore(BLOBS).put({ id: asset.id, file: asset.file } satisfies StoredBlob)
+      transaction.objectStore(BLOBS).put({ id: objectKey, file: asset.file } satisfies StoredBlob)
     } else {
       transaction.objectStore(BLOBS).delete(asset.id)
     }
-    transaction.objectStore(INGESTS).delete(asset.id)
+    transaction.objectStore(INGESTS).delete(ingest.id)
     await committed
+    const previousKey = previousManifest?.objectKey ?? previousManifest?.id
+    if (previousKey && previousKey !== objectKey) {
+      const referenced = (await allBrowserAssetManifests())
+        .some((candidate) => (candidate.objectKey ?? candidate.id) === previousKey)
+      if (!referenced) {
+        if (previousManifest?.storage === 'opfs') await deleteOpfs(previousKey)
+        const cleanup = await openDatabase()
+        try {
+          const cleanupTransaction = cleanup.transaction(BLOBS, 'readwrite')
+          const cleanupCommitted = transactionDone(cleanupTransaction)
+          cleanupTransaction.objectStore(BLOBS).delete(previousKey)
+          await cleanupCommitted
+        } finally {
+          cleanup.close()
+        }
+      }
+    }
     return manifest
   } catch (error) {
-    if (manifest.storage === 'opfs') await deleteOpfs(asset.id)
+    if (manifest.storage === 'opfs') await deleteOpfs(ingest.stagingKey!).catch(() => undefined)
     if (error instanceof BrowserAssetStorageError) throw error
     throw storageError(error)
   } finally {
@@ -465,10 +554,11 @@ export async function auditBrowserAssets(): Promise<AuditedBrowserAsset[]> {
     const available = new Set(blobIds.map(String))
     const handles = new Map(externalHandles.map((entry) => [entry.id, entry.handle]))
     const audited = await Promise.all(manifests.map(async (manifest) => {
-      const opfsFile = manifest.storage === 'opfs' ? await readOpfs(manifest.id) : null
+      const objectKey = manifest.objectKey ?? manifest.id
+      const opfsFile = manifest.storage === 'opfs' ? await readOpfs(objectKey) : null
       const durablePresent = manifest.storage === 'opfs'
         ? opfsFile?.size === manifest.byteLength
-        : manifest.storage === 'idb' && available.has(manifest.id)
+        : manifest.storage === 'idb' && (available.has(objectKey) || available.has(manifest.id))
       if (durablePresent) return { ...manifest, availability: 'ready' as const }
       const handle = handles.get(manifest.id) as PermissionCapableHandle | undefined
       if (!handle) return { ...manifest, availability: 'offline' as const }
@@ -554,16 +644,16 @@ async function storeFsaLocator(
 export async function getBrowserAsset(id: string): Promise<StoredBrowserAsset> {
   const database = await openDatabase()
   try {
-    const transaction = database.transaction([MANIFESTS, BLOBS], 'readonly')
-    const [manifest, storedBlob] = await Promise.all([
-      requestResult<StoredBrowserAssetManifest | undefined>(
-        transaction.objectStore(MANIFESTS).get(id),
-      ),
-      requestResult<StoredBlob | undefined>(transaction.objectStore(BLOBS).get(id)),
-    ])
+    const manifest = await requestResult<StoredBrowserAssetManifest | undefined>(
+      database.transaction(MANIFESTS, 'readonly').objectStore(MANIFESTS).get(id),
+    )
+    const objectKey = manifest?.objectKey ?? id
+    const contentBlob = await requestResult<StoredBlob | undefined>(
+      database.transaction(BLOBS, 'readonly').objectStore(BLOBS).get(objectKey),
+    )
     let file = manifest?.storage === 'opfs'
-      ? await readOpfs(id)
-      : manifest?.storage === 'idb' ? storedBlob?.file : undefined
+      ? await readOpfs(objectKey)
+      : manifest?.storage === 'idb' ? contentBlob?.file : undefined
     if (manifest && (!file || (typeof file.size === 'number' && file.size !== manifest.byteLength))) {
       const handle = await getExternalHandle(id)
       const permissionHandle = handle as PermissionCapableHandle | null
@@ -591,46 +681,78 @@ export async function relinkBrowserAsset(
   id: string,
   file: File,
   handle?: FileSystemFileHandle,
+  recovery?: BrowserAssetRecoveryReference,
 ): Promise<StoredBrowserAssetManifest> {
   const current = await getBrowserAssetManifest(id)
-  if (!current) throw new BrowserAssetStorageError('Manifest для relink не найден.', 'missing')
   const fingerprint = await fingerprintBlob(file)
-  if (fingerprint !== current.fingerprint || file.size !== current.byteLength) {
+  const expectedFingerprint = current?.fingerprint ?? recovery?.fingerprint
+  const expectedByteLength = current?.byteLength ?? recovery?.byteLength
+  if (
+    !expectedFingerprint
+    || fingerprint !== expectedFingerprint
+    || (expectedByteLength !== undefined && file.size !== expectedByteLength)
+  ) {
     throw new BrowserAssetStorageError('Выбран другой файл: fingerprint не совпадает.', 'fingerprint')
+  }
+  if (!current && !recovery) throw new BrowserAssetStorageError('Manifest для relink не найден.', 'missing')
+  const base = current ?? {
+    id: recovery!.id,
+    filename: recovery!.filename,
+    fileType: recovery!.fileType || file.type,
+    byteLength: recovery!.byteLength ?? file.size,
+    fingerprint: recovery!.fingerprint,
+    storage: 'idb' as const,
+    info: recovery!.info,
+    createdAt: recovery!.createdAt ?? Date.now(),
   }
   try {
     const manifest = await putBrowserAsset({
-      ...current,
+      ...base,
       file,
-      filename: current.filename,
-      fileType: file.type || current.fileType,
+      filename: base.filename,
+      fileType: file.type || base.fileType,
       fingerprint,
     })
     if (handle) await storeExternalHandle(id, handle)
     return manifest
   } catch (error) {
     if (handle && error instanceof BrowserAssetStorageError && error.reason !== 'integrity') {
-      return storeFsaLocator(current, handle)
+      return storeFsaLocator(base, handle)
     }
     throw error
   }
 }
 
 export async function deleteBrowserAsset(id: string): Promise<void> {
+  return withStorageLock(() => deleteBrowserAssetUnlocked(id))
+}
+
+async function deleteBrowserAssetUnlocked(id: string): Promise<void> {
   const manifest = await getBrowserAssetManifest(id)
-  // For OPFS, delete bytes first. If the following IDB transaction fails, the
-  // retained manifest is auditable/offline and can be relinked or deleted again.
-  // The inverse order could leave untracked bytes that the UI can never clean up.
-  if (manifest?.storage === 'opfs') await deleteOpfs(id)
+  const objectKey = manifest?.objectKey ?? id
   const database = await openDatabase()
   try {
     const transaction = database.transaction([MANIFESTS, BLOBS, HANDLES], 'readwrite')
     const committed = transactionDone(transaction)
     transaction.objectStore(MANIFESTS).delete(id)
-    transaction.objectStore(BLOBS).delete(id)
     transaction.objectStore(HANDLES).delete(id)
     await committed
   } finally {
     database.close()
+  }
+  const stillReferenced = (await allBrowserAssetManifests())
+    .some((candidate) => (candidate.objectKey ?? candidate.id) === objectKey)
+  if (!stillReferenced) {
+    if (manifest?.storage === 'opfs') await deleteOpfs(objectKey)
+    const cleanup = await openDatabase()
+    try {
+      const transaction = cleanup.transaction(BLOBS, 'readwrite')
+      const committed = transactionDone(transaction)
+      transaction.objectStore(BLOBS).delete(objectKey)
+      transaction.objectStore(BLOBS).delete(id)
+      await committed
+    } finally {
+      cleanup.close()
+    }
   }
 }

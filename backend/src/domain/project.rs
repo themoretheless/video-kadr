@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// Version 1 was the legacy `{ videoId, video, edit }` autosave payload.
-/// Version 2 is the first canonical, multitrack project document.
-pub const PROJECT_DOCUMENT_SCHEMA_VERSION: u32 = 2;
+/// Version 2 introduced canonical multitrack documents; version 3 adds durable asset identity.
+pub const PROJECT_DOCUMENT_SCHEMA_VERSION: u32 = 3;
 pub const PROJECT_ENVELOPE_SCHEMA_VERSION: u32 = 1;
 pub const PROJECT_TIME_BASE: u32 = 1_000_000;
 pub const PROJECT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -53,6 +53,10 @@ pub struct ProjectDocument {
 pub struct ProjectMedia {
     pub id: String,
     pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_fingerprint: Option<String>,
     pub metadata: Value,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -227,6 +231,7 @@ impl ProjectDocument {
 
         match version {
             1 => Self::migrate_v1(value),
+            2 => Self::migrate_v2(value),
             PROJECT_DOCUMENT_SCHEMA_VERSION => {
                 let mut document: Self = serde_json::from_value(value)
                     .map_err(|error| ProjectDocumentError::Malformed(error.to_string()))?;
@@ -238,6 +243,39 @@ impl ProjectDocument {
             }
             version => Err(ProjectDocumentError::UnsupportedSchema(version)),
         }
+    }
+
+    fn migrate_v2(value: Value) -> Result<Self, ProjectDocumentError> {
+        let mut document: Self = serde_json::from_value(value)
+            .map_err(|error| ProjectDocumentError::Malformed(error.to_string()))?;
+        document.schema_version = PROJECT_DOCUMENT_SCHEMA_VERSION;
+        for media in &mut document.media {
+            let metadata = media
+                .metadata
+                .as_object_mut()
+                .ok_or(ProjectDocumentError::InvalidField("media.metadata"))?;
+            media.asset_ref = media
+                .asset_ref
+                .take()
+                .or_else(|| {
+                    metadata
+                        .remove("assetId")
+                        .and_then(|value| value.as_str().map(str::to_owned))
+                })
+                .or_else(|| Some(media.id.clone()));
+            media.content_fingerprint = media
+                .content_fingerprint
+                .take()
+                .or_else(|| {
+                    metadata
+                        .remove("fingerprint")
+                        .and_then(|value| value.as_str().map(str::to_owned))
+                })
+                .filter(|value| valid_fingerprint(value));
+            strip_runtime_locators(&mut media.metadata);
+        }
+        document.validate()?;
+        Ok(document)
     }
 
     pub fn from_legacy(
@@ -334,6 +372,20 @@ impl ProjectDocument {
             height: positive_u32(video.get("height")),
             extra: BTreeMap::new(),
         };
+        let asset_ref = video
+            .get("assetId")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| Some(video_id.clone()));
+        let content_fingerprint = video
+            .get("fingerprint")
+            .and_then(Value::as_str)
+            .filter(|value| valid_fingerprint(value))
+            .map(str::to_owned);
+        if let Some(metadata) = video.as_object_mut() {
+            metadata.remove("assetId");
+            metadata.remove("fingerprint");
+        }
         let document = Self {
             schema_version: PROJECT_DOCUMENT_SCHEMA_VERSION,
             name,
@@ -342,6 +394,8 @@ impl ProjectDocument {
             media: vec![ProjectMedia {
                 id: video_id.clone(),
                 kind: primary_kind.to_owned(),
+                asset_ref,
+                content_fingerprint,
                 metadata: video,
                 extra: BTreeMap::new(),
             }],
@@ -396,6 +450,18 @@ impl ProjectDocument {
         for media in &self.media {
             validate_id("media.id", &media.id)?;
             validate_token("media.kind", &media.kind)?;
+            if let Some(asset_ref) = &media.asset_ref {
+                validate_id("media.assetRef", asset_ref)?;
+            }
+            if media
+                .content_fingerprint
+                .as_deref()
+                .is_some_and(|value| !valid_fingerprint(value))
+            {
+                return Err(ProjectDocumentError::InvalidField(
+                    "media.contentFingerprint",
+                ));
+            }
             if !media.metadata.is_object() {
                 return Err(ProjectDocumentError::InvalidField("media.metadata"));
             }
@@ -636,12 +702,36 @@ impl ProjectDocument {
             return Err(ProjectDocumentError::InvalidField("legacy values"));
         }
         self.name = name.into();
+        let asset_ref = video
+            .get("assetId")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let content_fingerprint = video
+            .get("fingerprint")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        if let Some(object) = video.as_object_mut() {
+            object.remove("assetId");
+            object.remove("fingerprint");
+        }
         strip_runtime_locators(&mut video);
         let media = self
             .media
             .iter_mut()
             .find(|media| media.id == self.primary_media_id)
             .ok_or_else(|| ProjectDocumentError::MissingReference(self.primary_media_id.clone()))?;
+        if media.asset_ref.is_none() {
+            if let Some(asset_ref) = asset_ref {
+                media.asset_ref = Some(asset_ref);
+            }
+        }
+        if media.content_fingerprint.is_none() {
+            if let Some(content_fingerprint) =
+                content_fingerprint.filter(|value| valid_fingerprint(value))
+            {
+                media.content_fingerprint = Some(content_fingerprint);
+            }
+        }
         merge_objects(&mut media.metadata, video);
 
         let sequence = self
@@ -751,6 +841,13 @@ fn validate_token(field: &'static str, value: &str) -> Result<(), ProjectDocumen
     Ok(())
 }
 
+fn valid_fingerprint(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectDocumentError {
     ExpectedObject,
@@ -790,7 +887,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn migrates_v1_to_v2_and_preserves_unknown_fields() {
+    fn migrates_v1_to_v3_and_preserves_unknown_fields() {
         let document = ProjectDocument::migrate(json!({
             "schemaVersion": 1,
             "videoId": "video-1",
@@ -811,6 +908,40 @@ mod tests {
         let (video, edit) = document.legacy_video_and_edit();
         assert_eq!(video["id"], "video-1");
         assert_eq!(edit["filter"], "sepia");
+    }
+
+    #[test]
+    fn migrates_v2_asset_identity_to_v3_preserving_order_and_extensions() {
+        let fingerprint = "ab".repeat(32);
+        let document = ProjectDocument::migrate(json!({
+            "schemaVersion": 2,
+            "name": "v2", "primaryMediaId": "a", "activeSequenceId": "main",
+            "pluginTop": {"keep": true},
+            "media": [
+                {"id":"a", "kind":"video", "pluginMedia":1,
+                 "metadata":{"duration":1, "assetId":"asset-a", "fingerprint":fingerprint, "url":"blob:x"}},
+                {"id":"b", "kind":"video", "pluginMedia":2, "metadata":{"duration":1}}
+            ],
+            "sequences":[{"id":"main", "name":"Main", "settings":{"timeBase":1000000}, "tracks":[]}]
+        })).unwrap();
+        assert_eq!(document.schema_version, 3);
+        assert_eq!(
+            document
+                .media
+                .iter()
+                .map(|media| media.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert_eq!(document.media[0].asset_ref.as_deref(), Some("asset-a"));
+        assert_eq!(
+            document.media[0].content_fingerprint.as_deref(),
+            Some(fingerprint.as_str())
+        );
+        assert_eq!(document.media[0].extra["pluginMedia"], 1);
+        assert!(document.media[0].metadata.get("url").is_none());
+        assert!(document.media[0].metadata.get("assetId").is_none());
+        assert_eq!(document.extra["pluginTop"]["keep"], true);
     }
 
     #[test]
@@ -888,9 +1019,9 @@ mod tests {
 
     #[test]
     fn rejects_forward_versions_explicitly() {
-        let error = ProjectDocument::migrate(json!({"schemaVersion": 3})).unwrap_err();
-        assert_eq!(error, ProjectDocumentError::UnsupportedSchema(3));
-        assert!(error.to_string().contains("latest supported is 2"));
+        let error = ProjectDocument::migrate(json!({"schemaVersion": 4})).unwrap_err();
+        assert_eq!(error, ProjectDocumentError::UnsupportedSchema(4));
+        assert!(error.to_string().contains("latest supported is 3"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-export const PROJECT_DOCUMENT_SCHEMA_VERSION = 2 as const
+export const PROJECT_DOCUMENT_SCHEMA_VERSION = 3 as const
 export const PROJECT_ENVELOPE_SCHEMA_VERSION = 1 as const
 export const PROJECT_TIME_BASE = 1_000_000
 
@@ -17,6 +17,8 @@ export interface ProjectDocument extends JsonObject {
 export interface ProjectMedia extends JsonObject {
   id: string
   kind: string
+  assetRef?: string
+  contentFingerprint?: string
   metadata: JsonObject
 }
 
@@ -86,6 +88,7 @@ export function migrateProjectDocument(value: unknown): ProjectDocument {
     throw new Error('invalid project schemaVersion')
   }
   if (rawVersion === 1) return migrateV1(object)
+  if (rawVersion === 2) return migrateV2(object)
   if (rawVersion !== PROJECT_DOCUMENT_SCHEMA_VERSION) {
     throw new Error(
       `unsupported project schemaVersion ${rawVersion}; latest supported is ${PROJECT_DOCUMENT_SCHEMA_VERSION}`,
@@ -127,6 +130,11 @@ export function validateProjectDocument(document: ProjectDocument): void {
   for (const media of document.media) {
     validateId(media.id, 'media.id')
     validateToken(media.kind, 'media.kind')
+    if (media.assetRef !== undefined) validateId(media.assetRef, 'media.assetRef')
+    if (
+      media.contentFingerprint !== undefined &&
+      !/^[a-f0-9]{64}$/.test(media.contentFingerprint)
+    ) throw new Error('invalid media.contentFingerprint')
     asObject(media.metadata, 'media.metadata')
     addUnique(mediaIds, media.id)
     mediaById.set(media.id, media)
@@ -252,7 +260,10 @@ export function updateLegacyProjectValues(
   next.name = name
   const media = next.media.find((item) => item.id === next.primaryMediaId)
   if (!media) throw new Error(`missing project reference ${next.primaryMediaId}`)
-  media.metadata = durableMediaMetadata({ ...media.metadata, ...video })
+  media.assetRef ??= stringValue(video.assetId) ?? media.id
+  const fingerprint = fingerprintValue(video.fingerprint)
+  if (!media.contentFingerprint && fingerprint) media.contentFingerprint = fingerprint
+  media.metadata = withoutAssetIdentity({ ...media.metadata, ...video })
   const sequence = next.sequences.find((item) => item.id === next.activeSequenceId)
   let effect = sequence?.tracks
     .flatMap((track) => track.clips)
@@ -423,7 +434,13 @@ function migrateV1(value: JsonObject): ProjectDocument {
     name,
     primaryMediaId: videoId,
     activeSequenceId: 'sequence-main',
-    media: [{ id: videoId, kind: primaryKind, metadata: video }],
+    media: [{
+      id: videoId,
+      kind: primaryKind,
+      assetRef: stringValue(video.assetId) ?? videoId,
+      ...(fingerprintValue(video.fingerprint) ? { contentFingerprint: fingerprintValue(video.fingerprint) } : {}),
+      metadata: withoutAssetIdentity(video),
+    }],
     sequences: [
       {
         id: 'sequence-main',
@@ -447,6 +464,21 @@ function migrateV1(value: JsonObject): ProjectDocument {
     ],
   }
   if (Object.keys(legacyFields).length) document.legacyFields = legacyFields
+  validateProjectDocument(document)
+  return document
+}
+
+function migrateV2(value: JsonObject): ProjectDocument {
+  const document = cloneJson(value) as unknown as ProjectDocument
+  document.schemaVersion = PROJECT_DOCUMENT_SCHEMA_VERSION
+  for (const media of document.media ?? []) {
+    const metadata = durableMediaMetadata(asObject(media.metadata, 'media.metadata'))
+    media.assetRef = stringValue(media.assetRef) ?? stringValue(metadata.assetId) ?? media.id
+    const fingerprint = fingerprintValue(media.contentFingerprint) ?? fingerprintValue(metadata.fingerprint)
+    if (fingerprint) media.contentFingerprint = fingerprint
+    else delete media.contentFingerprint
+    media.metadata = withoutAssetIdentity(metadata)
+  }
   validateProjectDocument(document)
   return document
 }
@@ -477,6 +509,17 @@ function addUnique(values: Set<string>, value: string): void {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function fingerprintValue(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : undefined
+}
+
+function withoutAssetIdentity(metadata: JsonObject): JsonObject {
+  const durable = durableMediaMetadata(metadata)
+  delete durable.assetId
+  delete durable.fingerprint
+  return durable
 }
 
 function positiveNumber(value: unknown): number | undefined {

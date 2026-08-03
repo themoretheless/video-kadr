@@ -562,20 +562,67 @@ export async function getLibrary(): Promise<MediaEntry[]> {
     }
     throw error
   }
+  const savedProjects = await allProjects()
+  const expectedFingerprints = new Map<string, Set<string>>()
+  for (const project of savedProjects) for (const media of project.document?.media ?? []) {
+    const assetRef = media.assetRef ?? media.id
+    if (!media.contentFingerprint) continue
+    const values = expectedFingerprints.get(assetRef) ?? new Set<string>()
+    values.add(media.contentFingerprint)
+    expectedFingerprints.set(assetRef, values)
+  }
   for (const asset of persisted) {
+    const expected = expectedFingerprints.get(asset.id)
+    const fingerprintConflict = Boolean(expected && (expected.size > 1 || !expected.has(asset.fingerprint)))
     const existing = library.find((entry) => entry.id === asset.id)
     const info = sources.get(asset.id)?.info
     const entry: MediaEntry = {
       ...asset.info,
       kind: 'source',
       url: info?.url ?? '',
-      availability: asset.availability,
+      availability: fingerprintConflict ? 'offline' : asset.availability,
       assetId: asset.id,
-      fingerprint: asset.fingerprint,
+      fingerprint: fingerprintConflict ? undefined : asset.fingerprint,
       createdAt: asset.createdAt,
     }
     if (existing) Object.assign(existing, entry)
     else library.push(entry)
+  }
+  const knownAssetIds = new Set(library.map((entry) => entry.assetId ?? entry.id))
+  for (const project of savedProjects) {
+    for (const media of project.document?.media ?? []) {
+      const assetId = media.assetRef
+      if (!assetId || knownAssetIds.has(assetId)) continue
+      const expected = expectedFingerprints.get(assetId)
+      const fingerprintConflict = Boolean(expected && expected.size > 1)
+      const metadata = media.metadata
+      const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
+      const filename = typeof metadata.filename === 'string' && metadata.filename.trim()
+        ? metadata.filename
+        : `${assetId}.${media.kind === 'audio' ? 'wav' : 'mp4'}`
+      library.push({
+        id: assetId,
+        assetId,
+        fingerprint: fingerprintConflict ? undefined : media.contentFingerprint,
+        kind: 'source',
+        filename,
+        title: fingerprintConflict
+          ? `${filename} — конфликт fingerprint проектов`
+          : typeof metadata.title === 'string' ? metadata.title : filename,
+        url: '',
+        duration: number(metadata.duration),
+        width: number(metadata.width),
+        height: number(metadata.height),
+        fps: number(metadata.fps),
+        vcodec: typeof metadata.vcodec === 'string' ? metadata.vcodec : undefined,
+        acodec: typeof metadata.acodec === 'string' ? metadata.acodec : undefined,
+        mediaKind: media.kind === 'audio' ? 'audio' : 'video',
+        sizeBytes: number(metadata.sizeBytes),
+        availability: 'offline',
+        createdAt: project.updatedAt,
+      })
+      knownAssetIds.add(assetId)
+    }
   }
   library.sort((left, right) => right.createdAt - left.createdAt)
   return [...library]
@@ -610,7 +657,30 @@ export async function relinkSource(
   handle?: FileSystemFileHandle,
 ): Promise<VideoInfo> {
   return withProjectAssetLock(async () => {
-  await relinkBrowserAsset(sourceId, file, handle)
+  const entry = library.find((candidate) => candidate.id === sourceId)
+  await relinkBrowserAsset(sourceId, file, handle, entry?.fingerprint ? {
+    id: entry.assetId ?? entry.id,
+    filename: entry.filename,
+    fileType: file.type,
+    fingerprint: entry.fingerprint,
+    byteLength: entry.sizeBytes ?? undefined,
+    info: {
+      id: entry.id,
+      filename: entry.filename,
+      duration: entry.duration ?? 0,
+      width: entry.width ?? 0,
+      height: entry.height ?? 0,
+      title: entry.title,
+      fps: entry.fps,
+      vcodec: entry.vcodec,
+      acodec: entry.acodec,
+      mediaKind: entry.mediaKind,
+      assetId: entry.assetId ?? entry.id,
+      fingerprint: entry.fingerprint,
+      sizeBytes: entry.sizeBytes,
+    },
+    createdAt: entry.createdAt,
+  } : undefined)
   const cached = sources.get(sourceId)
   if (cached) URL.revokeObjectURL(cached.info.url)
   sources.delete(sourceId)
@@ -637,7 +707,7 @@ export async function deleteLibraryItem(itemId: string): Promise<void> {
   return withProjectAssetLock(async () => {
   const referencingProject = (await allProjects()).find((project) =>
     project.videoId === itemId
-      || project.document?.media.some((media) => media.id === itemId),
+      || project.document?.media.some((media) => (media.assetRef ?? media.id) === itemId),
   )
   if (referencingProject) {
     throw new Error(`Файл используется в проекте «${referencingProject.name}»`)
@@ -668,16 +738,19 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
       )
   const persistedBeforeSave = await projectByVideo(videoId)
   const previousMediaIdsBeforeSave = new Set(
-    persistedBeforeSave?.document?.media.map((media) => media.id) ?? [],
+    persistedBeforeSave?.document?.media.map((media) => media.assetRef ?? media.id) ?? [],
   )
-  const readyAssetIds = new Set(
-    (await auditBrowserAssets())
-      .filter((asset) => asset.availability === 'ready')
-      .map((asset) => asset.id),
-  )
+  const readyAssets = new Map((await auditBrowserAssets())
+    .filter((asset) => asset.availability === 'ready')
+    .map((asset) => [asset.id, asset]))
   for (const media of document.media) {
-    if (!previousMediaIdsBeforeSave.has(media.id) && readyAssetIds.has(media.id)) {
-      await getBrowserAsset(media.id)
+    const assetRef = media.assetRef ?? media.id
+    const ready = readyAssets.get(assetRef)
+    if (ready && media.contentFingerprint && ready.fingerprint !== media.contentFingerprint) {
+      throw new Error(`Исходный файл «${assetRef}» конфликтует с fingerprint проекта`)
+    }
+    if (!previousMediaIdsBeforeSave.has(assetRef) && ready) {
+      await getBrowserAsset(assetRef)
     }
   }
   const project = await compareAndSwapProject(
@@ -685,12 +758,12 @@ export async function saveProject(body: Record<string, unknown>): Promise<Projec
     requestedProjectId,
     expectedRevision,
     (previous) => {
-      const previousMediaIds = new Set(previous?.document?.media.map((media) => media.id) ?? [])
+      const previousMediaIds = new Set(previous?.document?.media.map((media) => media.assetRef ?? media.id) ?? [])
       const missingNewAsset = document.media.find((media) =>
-        !previousMediaIds.has(media.id) && !readyAssetIds.has(media.id),
+        !previousMediaIds.has(media.assetRef ?? media.id) && !readyAssets.has(media.assetRef ?? media.id),
       )
       if (missingNewAsset) {
-        throw new Error(`Исходный файл «${missingNewAsset.id}» больше недоступен — найдите его повторно`)
+        throw new Error(`Исходный файл «${missingNewAsset.assetRef ?? missingNewAsset.id}» больше недоступен — найдите его повторно`)
       }
       return {
       id: requestedProjectId ?? previous?.id ?? id(),

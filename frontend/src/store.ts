@@ -281,13 +281,19 @@ export function addMediaToTimeline(source: VideoInfo | MediaEntry): boolean {
   )
   const clipId = `clip-${crypto.randomUUID()}`
   const metadata = cloneValue(source) as unknown as Record<string, unknown>
-  for (const key of ['url', 'path', 'file', 'availability']) delete metadata[key]
+  for (const key of ['url', 'path', 'file', 'availability', 'assetId', 'fingerprint']) delete metadata[key]
   const inserted = executeTimelineCommand({
     kind: 'insert_media_clip',
     sequenceId: sequence.id,
     trackId: targetTrack.id,
     index: targetTrack.clips.length,
-    media: { id: source.id, kind, metadata },
+    media: {
+      id: source.id,
+      kind,
+      assetRef: source.assetId ?? source.id,
+      ...(source.fingerprint ? { contentFingerprint: source.fingerprint } : {}),
+      metadata,
+    },
     clip: {
       id: clipId,
       mediaId: source.id,
@@ -616,7 +622,7 @@ export async function restoreExternalLibraryMedia(entry: MediaEntry): Promise<bo
 }
 
 export async function deleteFromLibrary(id: string): Promise<void> {
-  const referencedByActiveProject = timelineState.document?.media.some((media) => media.id === id)
+  const referencedByActiveProject = timelineState.document?.media.some((media) => (media.assetRef ?? media.id) === id)
   if (referencedByActiveProject) {
     toast('error', 'Файл закреплён в открытом проекте; сначала удалите или закройте проект')
     return

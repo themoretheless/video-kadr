@@ -50,7 +50,7 @@ test('local assets and their project survive a hard browser reload', async ({ pa
     (await indexedDB.databases()).some((database) => database.name === 'video-kadr'),
   ), { timeout: 10_000 }).toBe(true)
 
-  const before = await page.evaluate(async () => {
+  const projectMediaCount = () => page.evaluate(async () => {
     const request = indexedDB.open('video-kadr')
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result)
@@ -65,7 +65,7 @@ test('local assets and their project survive a hard browser reload', async ({ pa
     database.close()
     return projects[0]?.document?.media.length ?? 0
   })
-  expect(before).toBe(assetCount)
+  await expect.poll(projectMediaCount, { timeout: 10_000 }).toBe(assetCount)
 
   await page.reload({ waitUntil: 'networkidle' })
   await expect(page.locator('.lib-item')).toHaveCount(assetCount, { timeout: 30_000 })

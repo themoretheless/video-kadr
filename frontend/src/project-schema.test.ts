@@ -9,7 +9,7 @@ import {
 } from './project-schema'
 
 describe('project document schema', () => {
-  it('migrates v1 to v2 and preserves unknown legacy fields', () => {
+  it('migrates v1 to v3 and preserves unknown legacy fields', () => {
     const document = migrateProjectDocument({
       schemaVersion: 1,
       videoId: 'video-1',
@@ -23,6 +23,29 @@ describe('project document schema', () => {
     expect(document.sequences[0]?.tracks).toHaveLength(2)
     expect(document.sequences[0]?.tracks[0]?.clips[0]?.durationTicks).toBe(12_500_000)
     expect(document.legacyFields?.pluginState).toEqual({ revision: 7 })
+  })
+
+  it('migrates v2 asset identity to v3 without changing media order or extensions', () => {
+    const fingerprint = 'ab'.repeat(32)
+    const document = migrateProjectDocument({
+      schemaVersion: 2,
+      name: 'v2', primaryMediaId: 'a', activeSequenceId: 'sequence-main',
+      pluginTop: { keep: true },
+      media: [
+        { id: 'a', kind: 'video', pluginMedia: 1, metadata: {
+          duration: 1, assetId: 'asset-a', fingerprint, url: 'blob:runtime',
+        } },
+        { id: 'b', kind: 'video', pluginMedia: 2, metadata: { duration: 1 } },
+      ],
+      sequences: [{ id: 'sequence-main', name: 'Main', settings: { timeBase: 1_000_000 }, tracks: [] }],
+    })
+    expect(document.schemaVersion).toBe(3)
+    expect(document.media.map((media) => media.id)).toEqual(['a', 'b'])
+    expect(document.media[0]).toMatchObject({ assetRef: 'asset-a', contentFingerprint: fingerprint, pluginMedia: 1 })
+    expect(document.media[1]).toMatchObject({ assetRef: 'b', pluginMedia: 2 })
+    expect(document.media[0]!.metadata).not.toHaveProperty('url')
+    expect(document.media[0]!.metadata).not.toHaveProperty('assetId')
+    expect(document.pluginTop).toEqual({ keep: true })
   })
 
   it('creates an audio primary asset on an audio track', () => {
@@ -53,8 +76,8 @@ describe('project document schema', () => {
     const decoded = migrateProjectDocument(value)
 
     expect(decoded.pluginTop).toEqual({ enabled: true })
-    expect(() => migrateProjectDocument({ schemaVersion: 3 })).toThrow(
-      'unsupported project schemaVersion 3',
+    expect(() => migrateProjectDocument({ schemaVersion: 4 })).toThrow(
+      'unsupported project schemaVersion 4',
     )
   })
 
@@ -67,7 +90,8 @@ describe('project document schema', () => {
       },
       edit: {},
     })
-    expect(document.media[0]!.metadata).toMatchObject({ assetId: 'video-1' })
+    expect(document.media[0]).toMatchObject({ assetRef: 'video-1' })
+    expect(document.media[0]!.metadata).not.toHaveProperty('assetId')
     expect(document.media[0]!.metadata).not.toHaveProperty('url')
     expect(document.media[0]!.metadata).not.toHaveProperty('path')
     const savedV2 = structuredClone(document)

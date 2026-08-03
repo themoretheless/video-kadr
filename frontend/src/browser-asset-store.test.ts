@@ -40,7 +40,7 @@ function asset(id = 'asset-1') {
 
 function evictBytes(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('video-kadr-media', 3)
+    const request = indexedDB.open('video-kadr-media', 4)
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const database = request.result
@@ -85,9 +85,19 @@ describe('browser asset persistence', () => {
     await expect(getBrowserAsset('asset-1')).rejects.toMatchObject({ reason: 'missing' })
   })
 
+  it('deduplicates aliases by digest and retains bytes until the last manifest is deleted', async () => {
+    const first = await putBrowserAsset(asset('alias-a'))
+    const second = await putBrowserAsset(asset('alias-b'))
+    expect(first.objectKey).toBe(second.objectKey)
+    await deleteBrowserAsset('alias-a')
+    await expect(getBrowserAsset('alias-b')).resolves.toMatchObject({ id: 'alias-b' })
+    await deleteBrowserAsset('alias-b')
+    await expect(getBrowserAsset('alias-b')).rejects.toMatchObject({ reason: 'missing' })
+  })
+
   it('relinks only the exact fingerprint without changing asset identity', async () => {
-    await putBrowserAsset(asset())
-    await evictBytes('asset-1')
+    const original = await putBrowserAsset(asset())
+    await evictBytes(original.objectKey!)
     expect(await auditBrowserAssets()).toEqual([
       expect.objectContaining({ id: 'asset-1', availability: 'offline' }),
     ])
@@ -104,14 +114,17 @@ describe('browser asset persistence', () => {
   it('uses OPFS by default without storing a fallback Blob', async () => {
     const files = new Map<string, Blob>()
     const mediaDirectory = {
-      getFileHandle: async (id: string) => ({
+      getFileHandle: async (id: string, options?: { create?: boolean }) => {
+        if (!files.has(id) && !options?.create) throw new DOMException('missing', 'NotFoundError')
+        return ({
         createWritable: async () => ({
           write: async (blob: Blob) => { files.set(id, blob) },
           close: async () => undefined,
           abort: async () => undefined,
         }),
         getFile: async () => new File([files.get(id)!], id),
-      }),
+        })
+      },
       removeEntry: async (id: string) => { files.delete(id) },
     }
     const root = {
@@ -133,22 +146,25 @@ describe('browser asset persistence', () => {
   it('marks a truncated OPFS asset offline and refuses to materialize it', async () => {
     const files = new Map<string, Blob>()
     const mediaDirectory = {
-      getFileHandle: async (id: string) => ({
+      getFileHandle: async (id: string, options?: { create?: boolean }) => {
+        if (!files.has(id) && !options?.create) throw new DOMException('missing', 'NotFoundError')
+        return ({
         createWritable: async () => ({
           write: async (blob: Blob) => { files.set(id, blob) },
           close: async () => undefined,
           abort: async () => undefined,
         }),
         getFile: async () => new File([files.get(id)!], id),
-      }),
+        })
+      },
       removeEntry: async (id: string) => { files.delete(id) },
     }
     Object.defineProperty(navigator, 'storage', {
       configurable: true,
       value: { getDirectory: async () => ({ getDirectoryHandle: async () => mediaDirectory }) },
     })
-    await putBrowserAsset(asset('corrupt-opfs'))
-    files.set('corrupt-opfs', new Blob(['cut']))
+    const manifest = await putBrowserAsset(asset('corrupt-opfs'))
+    files.set(manifest.objectKey!, new Blob(['cut']))
 
     expect(await auditBrowserAssets()).toEqual([
       expect.objectContaining({ id: 'corrupt-opfs', availability: 'offline' }),
@@ -186,7 +202,7 @@ describe('browser asset persistence', () => {
     })
     await allBrowserAssetManifests()
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('video-kadr-media', 3)
+      const request = indexedDB.open('video-kadr-media', 4)
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
@@ -198,6 +214,58 @@ describe('browser asset persistence', () => {
 
     await reconcileBrowserAssetIngests()
     expect(removed).toEqual(['orphan'])
+  })
+
+  it('does not garbage-collect a fresh ingest that may belong to another tab', async () => {
+    const removed: string[] = []
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+        removeEntry: async (id: string) => { removed.push(id) },
+      }) }) },
+    })
+    await allBrowserAssetManifests()
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('video-kadr-media', 4)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const transaction = database.transaction('ingests', 'readwrite')
+    const committed = new Promise<void>((resolve) => { transaction.oncomplete = () => resolve() })
+    transaction.objectStore('ingests').put({ id: 'active-other-tab', startedAt: Date.now() })
+    await committed
+    database.close()
+
+    await reconcileBrowserAssetIngests()
+    expect(removed).toEqual([])
+  })
+
+  it('clears an abandoned journal without deleting bytes after manifest commit', async () => {
+    const removed: string[] = []
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+        removeEntry: async (id: string) => { removed.push(id) },
+      }) }) },
+    })
+    await putBrowserAsset(asset('committed-before-crash'))
+    removed.length = 0
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('video-kadr-media', 4)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const transaction = database.transaction('ingests', 'readwrite')
+    const committed = new Promise<void>((resolve) => { transaction.oncomplete = () => resolve() })
+    transaction.objectStore('ingests').put({ id: 'committed-before-crash', startedAt: 1 })
+    await committed
+    database.close()
+
+    await reconcileBrowserAssetIngests()
+    expect(removed).toEqual([])
+    expect(await allBrowserAssetManifests()).toEqual([
+      expect.objectContaining({ id: 'committed-before-crash' }),
+    ])
   })
 
   it('reports quota pressure before attempting a write', async () => {
