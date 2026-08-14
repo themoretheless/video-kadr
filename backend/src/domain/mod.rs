@@ -2,6 +2,7 @@
 //! depend on HTTP extractors, async runtimes, subprocesses, or persistence.
 
 pub mod artifact_graph;
+pub mod composition;
 pub mod edit;
 pub mod filter_graph;
 pub mod geometry;

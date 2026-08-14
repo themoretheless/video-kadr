@@ -71,7 +71,7 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
             }
             JobKind::Edit => {
                 let work = serde_json::from_value::<EditWork>(envelope.payload)?;
-                anyhow::ensure!(work.schema_version == 1, "unsupported edit work version");
+                work.timeline_semantics()?;
                 let lease =
                     JobLeaseHeartbeat::start(state, job_id, envelope.attempt, lease_seconds);
                 spawn_edit_job(

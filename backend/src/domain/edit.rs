@@ -10,6 +10,8 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const EDIT_SPEC_SCHEMA_VERSION: u32 = 1;
+pub const MAX_TIMELINE_SEGMENTS: usize = 512;
+pub const MAX_TIMELINE_OUTPUT_SECONDS: f64 = 24.0 * 60.0 * 60.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -412,6 +414,101 @@ impl LutGrade {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RgbColor {
+    red: u8,
+    green: u8,
+    blue: u8,
+}
+
+impl RgbColor {
+    fn parse(value: &str) -> Result<Self, EditSpecError> {
+        let hex = value.strip_prefix('#').unwrap_or(value);
+        if hex.len() != 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(EditSpecError::InvalidChromaKey);
+        }
+        let packed = u32::from_str_radix(hex, 16).map_err(|_| EditSpecError::InvalidChromaKey)?;
+        Ok(Self {
+            red: ((packed >> 16) & 0xff) as u8,
+            green: ((packed >> 8) & 0xff) as u8,
+            blue: (packed & 0xff) as u8,
+        })
+    }
+
+    fn ffmpeg_hex(self) -> String {
+        format!("0x{:02x}{:02x}{:02x}", self.red, self.green, self.blue)
+    }
+
+    fn spill_screen(self) -> &'static str {
+        if self.green >= self.blue {
+            "green"
+        } else {
+            "blue"
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChromaKeySpec {
+    key_color: RgbColor,
+    similarity: f64,
+    blend: f64,
+    spill_suppression: f64,
+}
+
+impl ChromaKeySpec {
+    pub(crate) fn new(
+        key_color: &str,
+        similarity: f64,
+        blend: f64,
+        spill_suppression: f64,
+    ) -> Result<Self, EditSpecError> {
+        let value = Self {
+            key_color: RgbColor::parse(key_color)?,
+            similarity,
+            blend,
+            spill_suppression,
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
+    pub fn ffmpeg_key_color(&self) -> String {
+        self.key_color.ffmpeg_hex()
+    }
+
+    pub fn similarity(&self) -> f64 {
+        self.similarity
+    }
+
+    pub fn blend(&self) -> f64 {
+        self.blend
+    }
+
+    pub fn spill_suppression(&self) -> f64 {
+        self.spill_suppression
+    }
+
+    pub fn ffmpeg_spill_screen(&self) -> &'static str {
+        self.key_color.spill_screen()
+    }
+
+    fn validate(&self) -> Result<(), EditSpecError> {
+        if !self.similarity.is_finite()
+            || !(0.00001..=1.0).contains(&self.similarity)
+            || !self.blend.is_finite()
+            || !(0.0..=1.0).contains(&self.blend)
+            || !self.spill_suppression.is_finite()
+            || !(0.0..=1.0).contains(&self.spill_suppression)
+        {
+            return Err(EditSpecError::InvalidChromaKey);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TimingSpec {
@@ -448,6 +545,8 @@ pub struct VideoEffects {
     pub(crate) brightness: f64,
     pub(crate) contrast: f64,
     pub(crate) saturation: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) chroma_key: Option<ChromaKeySpec>,
     pub(crate) look: Option<LookPreset>,
     pub(crate) vignette: bool,
     pub(crate) denoise: bool,
@@ -553,10 +652,20 @@ impl EditSpec {
         for segment in &self.timing.segments {
             segment.validate()?;
         }
-        for pair in self.timing.segments.windows(2) {
-            if pair[1].start_seconds < pair[0].end_seconds {
-                return Err(EditSpecError::OverlappingSegments);
-            }
+        if self.timing.segments.len() > MAX_TIMELINE_SEGMENTS {
+            return Err(EditSpecError::TooManyTimelineSegments);
+        }
+        let timeline_output_seconds = self
+            .timing
+            .segments
+            .iter()
+            .map(|segment| segment.duration_seconds())
+            .sum::<f64>()
+            / self.timing.speed;
+        if !timeline_output_seconds.is_finite()
+            || timeline_output_seconds > MAX_TIMELINE_OUTPUT_SECONDS
+        {
+            return Err(EditSpecError::TimelineTooLong);
         }
         if let Some(crop) = self.geometry.crop {
             crop.validate()?;
@@ -586,6 +695,9 @@ impl EditSpec {
         if let Some(curves) = &self.video.curves {
             curves.validate()?;
         }
+        if let Some(chroma_key) = &self.video.chroma_key {
+            chroma_key.validate()?;
+        }
         if let Some(lut) = &self.video.lut {
             lut.validate()?;
         }
@@ -600,7 +712,6 @@ impl EditSpec {
 pub enum EditSpecError {
     UnsupportedSchema(u32),
     InvalidTimeRange,
-    OverlappingSegments,
     InvalidRectangle,
     InvalidScale,
     InvalidRotation,
@@ -609,7 +720,10 @@ pub enum EditSpecError {
     InvalidLook,
     InvalidSpeed,
     InvalidFade,
+    TooManyTimelineSegments,
+    TimelineTooLong,
     InvalidVideoEffect,
+    InvalidChromaKey,
     InvalidToneCurve,
     InvalidLut,
     InvalidAudioEffect,
@@ -650,6 +764,7 @@ mod tests {
                 brightness: 0.0,
                 contrast: 1.0,
                 saturation: 1.0,
+                chroma_key: None,
                 look: None,
                 vignette: false,
                 denoise: false,
@@ -675,20 +790,45 @@ mod tests {
         invalid["timing"]["speed"] = serde_json::json!(0.0);
         assert!(serde_json::from_value::<EditSpec>(invalid).is_err());
 
-        let mut invalid = value;
+        let mut invalid = value.clone();
         invalid["geometry"]["scale"] = serde_json::json!({"width": -1, "height": -2});
+        assert!(serde_json::from_value::<EditSpec>(invalid).is_err());
+
+        let mut invalid = value;
+        invalid["timing"]["segments"] = serde_json::to_value(vec![
+            TimeRange::new(0.0, 1.0).unwrap();
+            MAX_TIMELINE_SEGMENTS + 1
+        ])
+        .unwrap();
         assert!(serde_json::from_value::<EditSpec>(invalid).is_err());
     }
 
     #[test]
-    fn overlapping_segments_are_rejected() {
+    fn ordered_duplicate_and_overlapping_segments_are_allowed() {
         let mut spec = valid_spec();
         spec.timing.trim = None;
         spec.timing.segments = vec![
-            TimeRange::new(0.0, 2.0).unwrap(),
+            TimeRange::new(4.0, 5.0).unwrap(),
             TimeRange::new(1.0, 3.0).unwrap(),
+            TimeRange::new(1.0, 3.0).unwrap(),
+            TimeRange::new(2.0, 4.0).unwrap(),
         ];
-        assert_eq!(spec.validate(), Err(EditSpecError::OverlappingSegments));
+        assert_eq!(spec.validate(), Ok(()));
+    }
+
+    #[test]
+    fn timeline_caps_are_domain_invariants_and_account_for_speed() {
+        let mut spec = valid_spec();
+        spec.timing.trim = None;
+        spec.timing.segments = vec![TimeRange::new(0.0, 1.0).unwrap(); MAX_TIMELINE_SEGMENTS + 1];
+        assert_eq!(spec.validate(), Err(EditSpecError::TooManyTimelineSegments));
+
+        spec.timing.segments = vec![TimeRange::new(0.0, 3600.0).unwrap(); 25];
+        spec.timing.speed = 2.0;
+        assert_eq!(spec.validate(), Ok(()));
+
+        spec.timing.speed = 0.5;
+        assert_eq!(spec.validate(), Err(EditSpecError::TimelineTooLong));
     }
 
     #[test]
@@ -729,6 +869,29 @@ mod tests {
             LutGrade::new("asset".into(), 1.1),
             Err(EditSpecError::InvalidLut)
         );
+    }
+
+    #[test]
+    fn chroma_key_canonicalizes_hex_and_validates_controls() {
+        let key = ChromaKeySpec::new("#00Ff20", 0.2, 0.08, 0.6).unwrap();
+        assert_eq!(key.ffmpeg_key_color(), "0x00ff20");
+        assert_eq!(key.ffmpeg_spill_screen(), "green");
+        assert_eq!(key.similarity(), 0.2);
+        assert_eq!(key.blend(), 0.08);
+        assert_eq!(key.spill_suppression(), 0.6);
+
+        let blue = ChromaKeySpec::new("0000ff", 0.1, 0.0, 1.0).unwrap();
+        assert_eq!(blue.ffmpeg_spill_screen(), "blue");
+
+        for invalid in [
+            ChromaKeySpec::new("green", 0.1, 0.0, 0.0),
+            ChromaKeySpec::new("#00ff00;scale=1:1", 0.1, 0.0, 0.0),
+            ChromaKeySpec::new("#00ff00", 0.0, 0.0, 0.0),
+            ChromaKeySpec::new("#00ff00", 0.1, 1.1, 0.0),
+            ChromaKeySpec::new("#00ff00", 0.1, 0.0, -0.1),
+        ] {
+            assert_eq!(invalid, Err(EditSpecError::InvalidChromaKey));
+        }
     }
 
     #[test]

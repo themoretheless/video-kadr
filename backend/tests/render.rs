@@ -29,6 +29,64 @@ async fn tools_available(runtime: &ProcessRuntime) -> bool {
         && check_tool(runtime, "ffprobe", "-version").await.0
 }
 
+async fn sample_rgb(path: &std::path::Path, at_seconds: f64) -> [u8; 3] {
+    let output = tokio::process::Command::new("ffmpeg")
+        .args(["-v", "error", "-ss", &format!("{at_seconds:.3}"), "-i"])
+        .arg(path)
+        .args([
+            "-vf",
+            "scale=1:1:flags=area,format=rgb24",
+            "-frames:v",
+            "1",
+            "-f",
+            "rawvideo",
+            "pipe:1",
+        ])
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        output.status.success() && output.stdout.len() >= 3,
+        "failed to sample frame: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    [output.stdout[0], output.stdout[1], output.stdout[2]]
+}
+
+async fn sample_rgba(path: &std::path::Path, x: u32, y: u32) -> [u8; 4] {
+    let filter = format!("format=rgba,crop=1:1:{x}:{y}");
+    let output = tokio::process::Command::new("ffmpeg")
+        .args(["-v", "error", "-i"])
+        .arg(path)
+        .args(["-vf", &filter, "-frames:v", "1", "-f", "rawvideo", "pipe:1"])
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        output.status.success() && output.stdout.len() >= 4,
+        "failed to sample RGBA pixel: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    [
+        output.stdout[0],
+        output.stdout[1],
+        output.stdout[2],
+        output.stdout[3],
+    ]
+}
+
+fn assert_dominant(rgb: [u8; 3], channel: usize) {
+    let dominant = rgb[channel];
+    for (index, value) in rgb.into_iter().enumerate() {
+        if index != channel {
+            assert!(
+                dominant > value.saturating_add(35),
+                "expected channel {channel} to dominate in {rgb:?}"
+            );
+        }
+    }
+}
+
 fn compile_export(
     input: &std::path::Path,
     output: &std::path::Path,
@@ -248,6 +306,92 @@ async fn real_render_denoise_sharpen_grain_look() {
 
     assert!(matches!(done, Done::Completed));
     assert!(tokio::fs::metadata(&output).await.unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn real_render_chroma_key_preserves_foreground_and_keys_background() {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!(
+            "skipping real_render_chroma_key_preserves_foreground_and_keys_background: ffmpeg/ffprobe not on PATH"
+        );
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("green-screen.mp4");
+    let output = dir.path().join("keyed.png");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=0x00ff00:size=64x64:rate=5:duration=0.4",
+            "-vf",
+            "drawbox=x=20:y=20:w=24:h=24:color=red:t=fill",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&input)
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "failed to generate green-screen source: {}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let request: EditRequest = serde_json::from_value(serde_json::json!({
+        "videoId": "x",
+        "format": "png",
+        "mute": true,
+        "chromaKey": {
+            "keyColor": "#00ff00",
+            "similarity": 0.25,
+            "blend": 0.02,
+            "spillSuppression": 0.5
+        }
+    }))
+    .unwrap();
+    let source = probe_video(&runtime, &input).await.unwrap();
+    let command = compile_export(&input, &output, request, &source);
+    assert!(command
+        .arguments
+        .iter()
+        .any(|argument| argument.contains("chromakey=")));
+    assert!(command
+        .arguments
+        .iter()
+        .any(|argument| argument.contains("despill=")));
+
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_compiled_ffmpeg(
+        &runtime,
+        &command,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    drop(progress);
+    let _ = drain.await;
+    assert!(matches!(done, Done::Completed));
+
+    let background = sample_rgba(&output, 2, 2).await;
+    let foreground = sample_rgba(&output, 32, 32).await;
+    assert!(
+        background[3] < 32,
+        "background should be transparent: {background:?}"
+    );
+    assert!(
+        foreground[3] > 220,
+        "foreground should stay opaque: {foreground:?}"
+    );
+    assert_dominant([foreground[0], foreground[1], foreground[2]], 0);
 }
 
 #[tokio::test]
@@ -483,4 +627,96 @@ async fn real_segment_render_accepts_video_without_audio() {
     let rendered = probe_video(&runtime, &output).await.unwrap();
     assert!(rendered.duration > 0.0);
     assert!(rendered.acodec.is_none());
+}
+
+#[tokio::test]
+async fn real_ordered_segments_preserve_duplicates_overlaps_and_audio() {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!(
+            "skipping real_ordered_segments_preserve_duplicates_overlaps_and_audio: ffmpeg/ffprobe not on PATH"
+        );
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("ordered-source.mp4");
+    let output = dir.path().join("ordered-output.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:size=64x64:rate=20:duration=0.4",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=green:size=64x64:rate=20:duration=0.4",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:size=64x64:rate=20:duration=0.4",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1.2",
+            "-filter_complex",
+            "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]",
+            "-map",
+            "[v]",
+            "-map",
+            "3:a",
+            "-shortest",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&input)
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "failed to generate ordered source: {}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let request: EditRequest = serde_json::from_value(serde_json::json!({
+        "videoId": "x",
+        "segments": [
+            { "start": 0.8, "end": 1.2 },
+            { "start": 0.0, "end": 0.4 },
+            { "start": 0.0, "end": 0.4 },
+            { "start": 0.2, "end": 0.6 }
+        ]
+    }))
+    .unwrap();
+    let source = probe_video(&runtime, &input).await.unwrap();
+    assert!(source.acodec.is_some());
+    let command = compile_export(&input, &output, request, &source);
+    assert!((command.expected_duration_seconds - 1.6).abs() < 0.01);
+
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_ffmpeg(
+        &runtime,
+        &command.arguments,
+        command.expected_duration_seconds,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    drop(progress);
+    let _ = drain.await;
+    assert!(matches!(done, Done::Completed));
+
+    let rendered = probe_video(&runtime, &output).await.unwrap();
+    assert!(rendered.acodec.is_some());
+    assert!((rendered.duration - 1.6).abs() < 0.12, "{rendered:?}");
+    assert_dominant(sample_rgb(&output, 0.1).await, 2);
+    assert_dominant(sample_rgb(&output, 0.5).await, 0);
+    assert_dominant(sample_rgb(&output, 0.9).await, 0);
+    assert_dominant(sample_rgb(&output, 1.5).await, 1);
 }

@@ -147,8 +147,10 @@ pub struct EditRequest {
     pub video_id: String,
     #[serde(default)]
     pub trim: Option<Trim>,
-    /// Keep-segments to extract and concatenate (overrides `trim` when non-empty).
-    /// Lets the user cut a piece out of the middle or stitch several ranges.
+    /// Ordered keep-segments to extract and concatenate (overrides `trim` when
+    /// non-empty). Client order is timeline order; duplicate and overlapping
+    /// ranges intentionally repeat source material. Supported for MP4, WebM,
+    /// AV1, and ProRes outputs; other formats reject the combination.
     #[serde(default)]
     pub segments: Option<Vec<Trim>>,
     #[serde(default)]
@@ -188,6 +190,10 @@ pub struct EditRequest {
     pub contrast: f64,
     #[serde(default = "default_one")]
     pub saturation: f64,
+    /// Optional deterministic chroma key. The colour is a strict six-digit
+    /// RGB hex value; similarity, edge blend and spill suppression are 0..=1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chroma_key: Option<ChromaKeySelection>,
     /// Named look: "grayscale" | "sepia" | "warm" | "cold".
     #[serde(default)]
     pub filter: Option<String>,
@@ -245,6 +251,18 @@ pub struct LutSelection {
     pub intensity: f64,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChromaKeySelection {
+    pub key_color: String,
+    #[serde(default = "default_chroma_similarity")]
+    pub similarity: f64,
+    #[serde(default = "default_chroma_blend")]
+    pub blend: f64,
+    #[serde(default)]
+    pub spill_suppression: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CurvePoint {
@@ -271,6 +289,14 @@ fn default_speed() -> f64 {
 
 fn default_one() -> f64 {
     1.0
+}
+
+fn default_chroma_similarity() -> f64 {
+    0.1
+}
+
+fn default_chroma_blend() -> f64 {
+    0.05
 }
 
 /// Trim the source to the region `[start, end]` (seconds).
@@ -393,11 +419,41 @@ mod tests {
     }
 
     #[test]
+    fn edit_request_reads_chroma_key_and_applies_control_defaults() {
+        let explicit: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "chromaKey": {
+                "keyColor": "#12ab34",
+                "similarity": 0.2,
+                "blend": 0.08,
+                "spillSuppression": 0.6
+            }
+        }))
+        .unwrap();
+        let chroma = explicit.chroma_key.unwrap();
+        assert_eq!(chroma.key_color, "#12ab34");
+        assert_eq!(chroma.similarity, 0.2);
+        assert_eq!(chroma.blend, 0.08);
+        assert_eq!(chroma.spill_suppression, 0.6);
+
+        let defaults: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "chromaKey": { "keyColor": "#00ff00" }
+        }))
+        .unwrap();
+        let chroma = defaults.chroma_key.unwrap();
+        assert_eq!(chroma.similarity, 0.1);
+        assert_eq!(chroma.blend, 0.05);
+        assert_eq!(chroma.spill_suppression, 0.0);
+    }
+
+    #[test]
     fn optional_color_grade_fields_do_not_change_default_serialization() {
         let e: EditRequest = serde_json::from_value(json!({ "videoId": "x" })).unwrap();
         let value = serde_json::to_value(e).unwrap();
         assert!(value.get("lut").is_none());
         assert!(value.get("curves").is_none());
+        assert!(value.get("chromaKey").is_none());
     }
 
     #[test]

@@ -143,8 +143,8 @@ impl EnvironmentAccess {
         const BASE: &[&str] = &["PATH", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL"];
         const DOWNLOAD_ONLY: &[&str] = &["SSL_CERT_FILE", "SSL_CERT_DIR"];
         for name in &self.inherit {
-            if !BASE.contains(&name.as_str())
-                && !(role == ToolRole::Download && DOWNLOAD_ONLY.contains(&name.as_str()))
+            if !(BASE.contains(&name.as_str())
+                || role == ToolRole::Download && DOWNLOAD_ONLY.contains(&name.as_str()))
             {
                 return Err(anyhow!(
                     "process policy attempts to inherit a non-allowlisted environment variable"

@@ -2,7 +2,7 @@
 
 Онлайн-редактор видео: вставляешь ссылку (например, VK Видео), скачиваешь, режешь и
 экспортируешь результат. Бэкенд на Rust (Axum) скачивает видео через `yt-dlp` и
-обрабатывает через `ffmpeg`; фронтенд на Vue 3 + Vite.
+обрабатывает через `ffmpeg`; фронтенд написан на Svelte 5 + Vite.
 
 ## Что умеет
 
@@ -10,12 +10,18 @@
 - Импорт локального файла: перетащи в окно или выбери (`POST /api/upload`).
 - Обрезка (trim) двойным слайдером: тянешь две ручки на одной полосе, точки входа/выхода
   можно ставить от позиции плеера или вводить время вручную.
-- Вырезание куска из середины: оставшиеся части склеиваются (ffmpeg concat, MP4/WebM).
+- Вырезание куска из середины: оставшиеся части склеиваются
+  (ffmpeg concat, MP4/WebM/AV1/ProRes).
+- Монтажная линия одного исходника: диапазоны можно разделять, дублировать, удалять
+  и переставлять; playback и экспорт сохраняют заданный порядок, включая намеренные
+  повторы и пересечения. В превью есть сравнение «Оригинал / С правками».
 - Изменение размера (1080p / 720p / 480p / 360p, высота по пропорции).
 - Кадрирование (crop) по прямоугольнику или по пресету пропорций (9:16, 1:1, 4:5, 4:3, 16:9).
 - Удаление звука, регулировка громкости, нормализация громкости (loudnorm) и highpass-фильтр против гула.
 - Изменение скорости (0.5×–2×, со звуком через `atempo`).
 - Эффекты: поворот (90/180/270), отражение, реверс, fade in/out, частота кадров.
+- Chroma key по выбранному цвету с настройкой сходства, мягкости края и
+  подавления цветовой засветки; доступность проверяется по фильтрам FFmpeg.
 - Цвет: яркость/контраст/насыщенность, пресеты (ч/б, сепия, тёплый, холодный,
   teal-orange, выцветший, нуар, винтаж), 3D LUT `.cube` с интенсивностью и
   кривые Master/R/G/B (до 16 точек на канал), виньетка, шумодав, резкость и
@@ -38,6 +44,9 @@
 - Очередь задач с ограничением параллелизма, таймауты, опциональная очистка старых файлов.
 - Горячие клавиши: `Space` (плей/пауза), `I`/`O` (точки входа/выхода), `←`/`→` (перемотка,
   с `Shift` крупнее), `,`/`.` (по кадру), `Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z` (отмена/повтор).
+
+Нормализованная карта текущего паритета, следующих локальных слоёв и функций,
+которым нужен внешний AI/cloud, — в [docs/capcut-parity.md](docs/capcut-parity.md).
 
 ## API
 
@@ -114,14 +123,14 @@ cd backend
 cargo run
 ```
 
-**Фронтенд** (порт 5173, проксирует `/api` и `/files` на бэкенд):
+**Фронтенд** (Svelte 5, порт 5173, проксирует `/api` и `/files` на бэкенд):
 ```
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Открой http://localhost:5173
+Открой http://localhost:5173.
 
 Нужны оба процесса. Если frontend показывает «Сервер недоступен» или ошибку
 dev-прокси, значит не поднят backend: Vite не может достучаться до `:8080`.
@@ -162,7 +171,13 @@ cd frontend && npm run typecheck
 cd frontend && npm run test
 cd frontend && npx playwright install chromium firefox webkit # один раз локально
 cd frontend && npm run test:e2e
+cd frontend && npm run build && npm run check:bundle
 ```
+
+Решение оставить Svelte основано на локальном парном замере с Vue. Методика,
+медианы и сырые samples сохранены в
+[docs/svelte-performance.md](docs/svelte-performance.md) и
+[docs/svelte-performance-data.json](docs/svelte-performance-data.json).
 
 CI (GitHub Actions, `.github/workflows/ci.yml`) на push/PR в `main` ставит ffmpeg
 и закреплённый `yt-dlp`, гоняет для бэкенда `cargo fmt --check`,
@@ -182,7 +197,7 @@ deployment** и выбери **Source: GitHub Actions**. Путь репозит
 domain учитываются автоматически, поэтому отдельная правка `vite.config.ts` не
 нужна.
 
-GitHub Pages размещает только статический Vue-интерфейс. Rust/FFmpeg backend,
+GitHub Pages размещает только статический Svelte-интерфейс. Rust/FFmpeg backend,
 загрузка файлов, LUT и экспорт требуют отдельно запущенный backend; сам Pages
 их выполнить не может.
 
@@ -277,7 +292,8 @@ Upload вынесен в `backend/src/handlers/upload.rs`: имя клиента
 расширение, контейнер определяется через `ffprobe`, а `/files` получает
 `nosniff` и sandbox CSP. Переходы job в `queued`/`running` теперь атомарны
 относительно отмены. Во frontend чистые defaults/time/quality/payload вынесены
-в `frontend/src/domain/edit.ts`, экспорт - в отдельный `ExportControls.vue`;
+в `frontend/src/lib/domain/edit.ts`, экспорт - в отдельный
+`frontend/src/lib/components/edit/ExportControls.svelte`;
 добавлено подтверждение экспорта без изменений, старые look-пресеты больше не
 меняют формат/качество, drag-listeners очищаются при unmount. Живой UI-прогон
 закрыл горизонтальный overflow на 390 px. Полные 509/565 списки сохранены как
@@ -318,7 +334,7 @@ JSON, routing errors, body limit, скрытие internal source и HTTP 500 vs 
 **Исследовательский раунд (14 июля 2026): ещё 100 решений.** Изучены 100
 активных высокорейтинговых репозиториев в 10 группах: NLE/media pipeline,
 кодеки/качество, playback, editor interactions, Rust backend, jobs/persistence,
-Vue/testing, security/supply chain, observability/performance и ML-assisted
+frontend/testing, security/supply chain, observability/performance и ML-assisted
 media. Выводы сверены с первичными papers и спецификациями FFmpeg, GStreamer,
 MLT, Tokio, OWASP, W3C, OpenTelemetry и SLSA. Каждый источник дал отдельную
 проверяемую карточку №784-883; популярность проекта не трактуется как команда
@@ -418,7 +434,7 @@ group. №936, 937 и 939 остаются
 uid; NsJail/Bubblewrap нельзя выбрать, пока adapter реально не реализован.
 
 ```
-frontend (Vue 3 + Vite)
+frontend (Svelte 5 + Vite)
   └── POST /api/import { url }        -> { jobId }      (yt-dlp скачивает)
   └── GET  /api/jobs/:id              -> { status, result|error }
   └── POST /api/edit { videoId, ... } -> { jobId }      (ffmpeg обрабатывает)
@@ -452,6 +468,10 @@ terminal-состояние после исчерпания policy. Одинак
   использования и вопрос авторских прав. Используй для своего контента / в личных
   целях.
 - Приватные и закрытые видео скачать нельзя — только публично доступные.
+- Монтажная линия пока **не мультитрек**: все фрагменты ссылаются на один исходный
+  клип. Отдельных video/audio/image/text tracks, переходов между разными файлами
+  и layer compositing ещё нет; порядок зависимостей описан в
+  [матрице паритета](docs/capcut-parity.md).
 - Кадрирование можно задавать интерактивной рамкой прямо на видео (тянешь углы),
   а не только числами.
 - Живое превью в браузере: цвет (яркость/контраст/насыщенность/пресеты), отражение,

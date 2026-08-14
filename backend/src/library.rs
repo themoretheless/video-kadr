@@ -15,6 +15,10 @@ pub struct MediaEntry {
     pub kind: String,
     pub filename: String,
     pub url: String,
+    /// Probed source category (`video`, `audio`, or `image`). Legacy library
+    /// rows omit it and remain readable; outputs intentionally leave it empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -36,6 +40,7 @@ impl MediaEntry {
             kind: kind.to_string(),
             filename: v["filename"].as_str().unwrap_or_default().to_string(),
             url: v["url"].as_str().unwrap_or_default().to_string(),
+            media_type: v["mediaType"].as_str().map(str::to_owned),
             title: v["title"].as_str().map(|s| s.to_string()),
             duration: v["duration"].as_f64(),
             width: v["width"].as_u64().map(|n| n as u32),
@@ -195,6 +200,7 @@ mod tests {
             kind: kind.into(),
             filename: filename.into(),
             url: format!("/files/{sub}/{filename}"),
+            media_type: (kind == "source").then(|| "video".into()),
             title: None,
             duration: None,
             width: None,

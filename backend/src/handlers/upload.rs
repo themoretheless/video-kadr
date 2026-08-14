@@ -87,6 +87,12 @@ pub async fn upload_handler(
             "формат файла не поддерживается",
         ));
     };
+    let Some(media_type) = media_type(&info) else {
+        remove_quietly(temporary.path()).await;
+        return Err(AppError::unsupported_media_type(
+            "файл не содержит поддерживаемых аудио, видео или изображения",
+        ));
+    };
 
     let filename = format!("{video_id}.{extension}");
     let path = sources.join(&filename);
@@ -101,6 +107,7 @@ pub async fn upload_handler(
         "id": video_id,
         "url": format!("/files/sources/{filename}"),
         "filename": filename,
+        "mediaType": media_type,
         "duration": info.duration,
         "width": info.width,
         "height": info.height,
@@ -214,7 +221,9 @@ fn safe_upload_extension(info: &ProbeInfo) -> Option<&'static str> {
     let formats = info.format_name.as_deref().unwrap_or_default();
     let has = |expected: &str| formats.split(',').any(|format| format == expected);
 
-    if has("mov") || has("mp4") || has("m4a") || has("3gp") || has("3g2") || has("mj2") {
+    if let Some(extension) = still_image_extension(info) {
+        Some(extension)
+    } else if has("mov") || has("mp4") || has("m4a") || has("3gp") || has("3g2") || has("mj2") {
         Some("mp4")
     } else if has("matroska") || has("webm") {
         let webm_video = matches!(info.vcodec.as_deref(), Some("vp8" | "vp9" | "av1"));
@@ -244,6 +253,34 @@ fn safe_upload_extension(info: &ProbeInfo) -> Option<&'static str> {
         Some("flac")
     } else {
         None
+    }
+}
+
+fn media_type(info: &ProbeInfo) -> Option<&'static str> {
+    if still_image_extension(info).is_some() {
+        Some("image")
+    } else if info.vcodec.is_some() && info.width > 0 && info.height > 0 {
+        Some("video")
+    } else if info.acodec.is_some() {
+        Some("audio")
+    } else {
+        None
+    }
+}
+
+fn still_image_extension(info: &ProbeInfo) -> Option<&'static str> {
+    let formats = info.format_name.as_deref().unwrap_or_default();
+    let image_container = formats
+        .split(',')
+        .any(|format| matches!(format, "image2" | "png_pipe" | "jpeg_pipe" | "webp_pipe"));
+    if !image_container || info.acodec.is_some() {
+        return None;
+    }
+    match info.vcodec.as_deref() {
+        Some("png") => Some("png"),
+        Some("mjpeg" | "jpeg2000") => Some("jpg"),
+        Some("webp") => Some("webp"),
+        _ => None,
     }
 }
 
@@ -294,6 +331,26 @@ mod tests {
             Some("mkv")
         );
         assert_eq!(safe_upload_extension(&probe("html", None, None)), None);
+        assert_eq!(
+            safe_upload_extension(&probe("png_pipe", Some("png"), None)),
+            Some("png")
+        );
+        assert_eq!(
+            safe_upload_extension(&probe("jpeg_pipe", Some("mjpeg"), None)),
+            Some("jpg")
+        );
+        assert_eq!(
+            safe_upload_extension(&probe("webp_pipe", Some("webp"), None)),
+            Some("webp")
+        );
+        assert_eq!(
+            media_type(&probe("mov,mp4,m4a,3gp,3g2,mj2", None, Some("aac"))),
+            Some("audio")
+        );
+        assert_eq!(
+            media_type(&probe("png_pipe", Some("png"), None)),
+            Some("image")
+        );
     }
 
     #[tokio::test]

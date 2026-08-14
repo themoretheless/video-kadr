@@ -9,14 +9,20 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::config::encode_budget::EncodeBudget;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::edit::{
-    AspectRatio, AudioEffects, CensorColor, CensorSpec, EditSpec, GeometrySpec, LookPreset,
-    LutGrade, OutputScale, PixelRect, Rotation, TimeRange, TimingSpec, ToneCurve, ToneCurvePoint,
-    ToneCurves, VideoEffects,
+    AspectRatio, AudioEffects, CensorColor, CensorSpec, ChromaKeySpec, EditSpec, GeometrySpec,
+    LookPreset, LutGrade, OutputScale, PixelRect, Rotation, TimeRange, TimingSpec, ToneCurve,
+    ToneCurvePoint, ToneCurves, VideoEffects, MAX_TIMELINE_OUTPUT_SECONDS, MAX_TIMELINE_SEGMENTS,
 };
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::model::{Crop, EditRequest, Scale, Trim};
 
 const EDIT_PLAN_SCHEMA_VERSION: u32 = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TimelineSemantics {
+    LegacySorted,
+    Ordered,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SourceMediaMetadata {
@@ -123,11 +129,38 @@ impl<'de> Deserialize<'de> for EditPlan {
 impl EditPlan {
     pub fn compile(
         source_fingerprint: Fingerprint,
-        mut request: EditRequest,
+        request: EditRequest,
         metadata: SourceMediaMetadata,
     ) -> anyhow::Result<Self> {
+        Self::compile_with_timeline_semantics(
+            source_fingerprint,
+            request,
+            metadata,
+            TimelineSemantics::Ordered,
+        )
+    }
+
+    pub(crate) fn compile_legacy_v1(
+        source_fingerprint: Fingerprint,
+        request: EditRequest,
+        metadata: SourceMediaMetadata,
+    ) -> anyhow::Result<Self> {
+        Self::compile_with_timeline_semantics(
+            source_fingerprint,
+            request,
+            metadata,
+            TimelineSemantics::LegacySorted,
+        )
+    }
+
+    fn compile_with_timeline_semantics(
+        source_fingerprint: Fingerprint,
+        mut request: EditRequest,
+        metadata: SourceMediaMetadata,
+        timeline_semantics: TimelineSemantics,
+    ) -> anyhow::Result<Self> {
         let source = SourceMediaSpec::from_metadata(metadata)?;
-        normalize_request(&mut request, source)?;
+        normalize_request(&mut request, source, timeline_semantics)?;
         let (edit, mut output) = map_request(request)?;
         if !source.has_audio {
             if output.format == OutputFormat::Mp3 {
@@ -146,6 +179,9 @@ impl EditPlan {
     ) -> anyhow::Result<Self> {
         edit.validate()?;
         output.validate()?;
+        if !edit.timing().segments.is_empty() && !output_supports_timeline(output.format) {
+            anyhow::bail!("Монтажная линия поддерживается только для MP4, WebM, AV1 и ProRes");
+        }
         let expected_dimensions = edit
             .geometry()
             .scale
@@ -166,20 +202,8 @@ impl EditPlan {
         if output.audio_codec.is_some() != expects_audio {
             anyhow::bail!("edit plan audio output does not match mute semantics");
         }
-        let canonical = serde_json::to_vec(&edit).expect("EditSpec serialization cannot fail");
-        let canonical_output =
-            serde_json::to_vec(&output).expect("OutputSpec serialization cannot fail");
-        let canonical_source =
-            serde_json::to_vec(&source).expect("SourceMediaSpec serialization cannot fail");
-        let schema = EDIT_PLAN_SCHEMA_VERSION.to_be_bytes();
-        let plan_fingerprint = Fingerprint::combine([
-            b"edit-plan".as_slice(),
-            schema.as_slice(),
-            source_fingerprint.as_str().as_bytes(),
-            canonical_source.as_slice(),
-            canonical.as_slice(),
-            canonical_output.as_slice(),
-        ]);
+        let plan_fingerprint =
+            calculate_plan_fingerprint(&source_fingerprint, &source, &edit, &output);
         Ok(Self {
             schema_version: EDIT_PLAN_SCHEMA_VERSION,
             source_fingerprint,
@@ -191,7 +215,33 @@ impl EditPlan {
     }
 }
 
-fn normalize_request(edit: &mut EditRequest, source: SourceMediaSpec) -> anyhow::Result<()> {
+fn calculate_plan_fingerprint(
+    source_fingerprint: &Fingerprint,
+    source: &SourceMediaSpec,
+    edit: &EditSpec,
+    output: &OutputSpec,
+) -> Fingerprint {
+    let canonical = serde_json::to_vec(edit).expect("EditSpec serialization cannot fail");
+    let canonical_output =
+        serde_json::to_vec(output).expect("OutputSpec serialization cannot fail");
+    let canonical_source =
+        serde_json::to_vec(source).expect("SourceMediaSpec serialization cannot fail");
+    let schema = EDIT_PLAN_SCHEMA_VERSION.to_be_bytes();
+    Fingerprint::combine([
+        b"edit-plan".as_slice(),
+        schema.as_slice(),
+        source_fingerprint.as_str().as_bytes(),
+        canonical_source.as_slice(),
+        canonical.as_slice(),
+        canonical_output.as_slice(),
+    ])
+}
+
+fn normalize_request(
+    edit: &mut EditRequest,
+    source: SourceMediaSpec,
+    timeline_semantics: TimelineSemantics,
+) -> anyhow::Result<()> {
     let duration = source.duration_seconds();
     edit.speed = finite_positive(edit.speed, "Недопустимая скорость")?.clamp(0.5, 2.0);
     edit.volume = finite_non_negative(edit.volume, "Недопустимая громкость")?.clamp(0.0, 4.0);
@@ -201,10 +251,24 @@ fn normalize_request(edit: &mut EditRequest, source: SourceMediaSpec) -> anyhow:
     edit.contrast = finite_non_negative(edit.contrast, "Недопустимый контраст")?.clamp(0.0, 3.0);
     edit.saturation =
         finite_non_negative(edit.saturation, "Недопустимая насыщенность")?.clamp(0.0, 3.0);
+    if let Some(chroma_key) = edit.chroma_key.as_mut() {
+        chroma_key.similarity =
+            finite_positive(chroma_key.similarity, "Недопустимое сходство chroma key")?
+                .clamp(0.00001, 1.0);
+        chroma_key.blend =
+            finite_non_negative(chroma_key.blend, "Недопустимая мягкость chroma key")?
+                .clamp(0.0, 1.0);
+        chroma_key.spill_suppression = finite_non_negative(
+            chroma_key.spill_suppression,
+            "Недопустимое подавление chroma spill",
+        )?
+        .clamp(0.0, 1.0);
+    }
     edit.sharpen = finite_non_negative(edit.sharpen, "Недопустимая резкость")?.clamp(0.0, 5.0);
     edit.grain = finite_non_negative(edit.grain, "Недопустимое зерно")?.clamp(0.0, 100.0);
     normalize_trim(&mut edit.trim, duration)?;
-    normalize_segments(&mut edit.segments, duration)?;
+    let speed = edit.speed;
+    normalize_segments(&mut edit.segments, duration, speed, timeline_semantics)?;
 
     if let Some(crop) = edit.crop.as_mut() {
         clamp_rect_to_source(crop, source.width, source.height);
@@ -262,10 +326,19 @@ fn normalize_trim(trim: &mut Option<Trim>, duration: f64) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn normalize_segments(segments: &mut Option<Vec<Trim>>, duration: f64) -> anyhow::Result<()> {
+fn normalize_segments(
+    segments: &mut Option<Vec<Trim>>,
+    duration: f64,
+    speed: f64,
+    timeline_semantics: TimelineSemantics,
+) -> anyhow::Result<()> {
     let Some(current) = segments.as_mut() else {
         return Ok(());
     };
+    if current.len() > MAX_TIMELINE_SEGMENTS {
+        anyhow::bail!("Слишком много сегментов монтажной линии");
+    }
+    let supplied_nonempty = !current.is_empty();
     let mut normalized = Vec::with_capacity(current.len());
     for segment in current.iter() {
         let start =
@@ -275,11 +348,24 @@ fn normalize_segments(segments: &mut Option<Vec<Trim>>, duration: f64) -> anyhow
             normalized.push(Trim { start, end });
         }
     }
-    normalized.sort_by(|left, right| left.start.total_cmp(&right.start));
-    for pair in normalized.windows(2) {
-        if pair[1].start < pair[0].end {
-            anyhow::bail!("Сегменты не должны пересекаться");
+    if supplied_nonempty && normalized.is_empty() {
+        anyhow::bail!("Монтажная линия не содержит допустимых сегментов");
+    }
+    if timeline_semantics == TimelineSemantics::LegacySorted {
+        normalized.sort_by(|left, right| left.start.total_cmp(&right.start));
+        for pair in normalized.windows(2) {
+            if pair[1].start < pair[0].end {
+                anyhow::bail!("Сегменты не должны пересекаться");
+            }
         }
+    }
+    let output_seconds = normalized
+        .iter()
+        .map(|segment| segment.end - segment.start)
+        .sum::<f64>()
+        / speed;
+    if !output_seconds.is_finite() || output_seconds > MAX_TIMELINE_OUTPUT_SECONDS {
+        anyhow::bail!("Монтажная линия превышает максимальную длительность 24 часа");
     }
     *segments = (!normalized.is_empty()).then_some(normalized);
     Ok(())
@@ -311,6 +397,13 @@ fn validate_scale(scale: &Scale) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn output_supports_timeline(format: OutputFormat) -> bool {
+    matches!(
+        format,
+        OutputFormat::Mp4 | OutputFormat::Webm | OutputFormat::Av1 | OutputFormat::Prores
+    )
+}
+
 fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
     let trim = request
         .trim
@@ -322,6 +415,7 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
         .into_iter()
         .map(|value| TimeRange::new(value.start, value.end))
         .collect::<Result<Vec<_>, _>>()?;
+    let has_segments = !segments.is_empty();
     let scale = request.scale.map(|value| OutputScale {
         width: value.w,
         height: value.h,
@@ -364,6 +458,17 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
         .map(|value| LutGrade::new(value.id, value.intensity))
         .transpose()?
         .flatten();
+    let chroma_key = request
+        .chroma_key
+        .map(|value| {
+            ChromaKeySpec::new(
+                &value.key_color,
+                value.similarity,
+                value.blend,
+                value.spill_suppression,
+            )
+        })
+        .transpose()?;
     let pad_aspect = request.pad.as_deref().map(AspectRatio::parse).transpose()?;
     let edit = EditSpec::new(
         TimingSpec {
@@ -387,6 +492,7 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             brightness: request.brightness,
             contrast: request.contrast,
             saturation: request.saturation,
+            chroma_key,
             look,
             vignette: request.vignette,
             denoise: request.denoise,
@@ -403,6 +509,9 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
         },
     )?;
     let format = OutputFormat::parse(request.format.as_deref())?;
+    if has_segments && !output_supports_timeline(format) {
+        anyhow::bail!("Монтажная линия поддерживается только для MP4, WebM, AV1 и ProRes");
+    }
     let codec = match (format, request.codec.as_deref()) {
         (OutputFormat::Mp4, value) => Some(VideoCodec::parse_mp4(value)?),
         (_, Some(_)) => anyhow::bail!("Кодек можно задавать только для MP4"),
@@ -444,6 +553,14 @@ pub fn validate_color_grade_request(request: &EditRequest) -> anyhow::Result<()>
     }
     if let Some(lut) = &request.lut {
         LutGrade::new(lut.id.clone(), lut.intensity)?;
+    }
+    if let Some(chroma_key) = &request.chroma_key {
+        ChromaKeySpec::new(
+            &chroma_key.key_color,
+            chroma_key.similarity,
+            chroma_key.blend,
+            chroma_key.spill_suppression,
+        )?;
     }
     Ok(())
 }
@@ -605,6 +722,12 @@ mod tests {
             "brightness": 2.0,
             "contrast": 9.0,
             "saturation": 9.0,
+            "chromaKey": {
+                "keyColor": "#00ff00",
+                "similarity": 9.0,
+                "blend": 9.0,
+                "spillSuppression": 9.0
+            },
             "sharpen": 9.0,
             "grain": 999.0,
             "trim": { "start": 2.0, "end": 99.0 },
@@ -623,6 +746,11 @@ mod tests {
         assert_eq!(plan.edit.video().brightness, 1.0);
         assert_eq!(plan.edit.video().contrast, 3.0);
         assert_eq!(plan.edit.video().saturation, 3.0);
+        let chroma_key = plan.edit.video().chroma_key.as_ref().unwrap();
+        assert_eq!(chroma_key.ffmpeg_key_color(), "0x00ff00");
+        assert_eq!(chroma_key.similarity(), 1.0);
+        assert_eq!(chroma_key.blend(), 1.0);
+        assert_eq!(chroma_key.spill_suppression(), 1.0);
         assert_eq!(plan.edit.video().sharpen, 5.0);
         assert_eq!(plan.edit.video().grain, 100.0);
         assert_eq!(
@@ -632,10 +760,113 @@ mod tests {
         assert_eq!(
             plan.edit.timing().segments,
             [
-                TimeRange::new(0.0, 1.0).unwrap(),
-                TimeRange::new(9.5, 10.0).unwrap()
+                TimeRange::new(9.5, 10.0).unwrap(),
+                TimeRange::new(0.0, 1.0).unwrap()
             ]
         );
+    }
+
+    #[test]
+    fn compiler_preserves_ordered_duplicate_and_overlapping_segments() {
+        let plan = compile(serde_json::json!({
+            "videoId": "x",
+            "segments": [
+                { "start": 6.0, "end": 8.0 },
+                { "start": 1.0, "end": 4.0 },
+                { "start": 1.0, "end": 4.0 },
+                { "start": 3.0, "end": 7.0 }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            plan.edit.timing().segments,
+            [
+                TimeRange::new(6.0, 8.0).unwrap(),
+                TimeRange::new(1.0, 4.0).unwrap(),
+                TimeRange::new(1.0, 4.0).unwrap(),
+                TimeRange::new(3.0, 7.0).unwrap(),
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_v1_compiler_sorts_segments_and_rejects_overlaps() {
+        let request = serde_json::from_value(serde_json::json!({
+            "videoId": "x",
+            "segments": [
+                { "start": 6.0, "end": 8.0 },
+                { "start": 1.0, "end": 4.0 }
+            ]
+        }))
+        .unwrap();
+        let plan =
+            EditPlan::compile_legacy_v1(Fingerprint::digest(b"source"), request, source()).unwrap();
+        assert_eq!(
+            plan.edit.timing().segments,
+            [
+                TimeRange::new(1.0, 4.0).unwrap(),
+                TimeRange::new(6.0, 8.0).unwrap(),
+            ]
+        );
+
+        let overlapping = serde_json::from_value(serde_json::json!({
+            "videoId": "x",
+            "segments": [
+                { "start": 3.0, "end": 7.0 },
+                { "start": 1.0, "end": 4.0 }
+            ]
+        }))
+        .unwrap();
+        let error =
+            EditPlan::compile_legacy_v1(Fingerprint::digest(b"source"), overlapping, source())
+                .unwrap_err();
+        assert!(error.to_string().contains("не должны пересекаться"));
+    }
+
+    #[test]
+    fn compiler_rejects_a_nonempty_timeline_with_no_valid_segments() {
+        let error = compile(serde_json::json!({
+            "videoId": "x",
+            "segments": [{ "start": 12.0, "end": 13.0 }]
+        }))
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("не содержит допустимых сегментов"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn compiler_caps_timeline_graph_size_and_output_duration() {
+        let too_many = (0..=MAX_TIMELINE_SEGMENTS)
+            .map(|_| serde_json::json!({ "start": 0.0, "end": 1.0 }))
+            .collect::<Vec<_>>();
+        let graph_error = compile(serde_json::json!({
+            "videoId": "x",
+            "segments": too_many
+        }))
+        .unwrap_err();
+        assert!(graph_error.to_string().contains("Слишком много сегментов"));
+
+        let repeated_hours = (0..25)
+            .map(|_| serde_json::json!({ "start": 0.0, "end": 3600.0 }))
+            .collect::<Vec<_>>();
+        let request = serde_json::from_value(serde_json::json!({
+            "videoId": "x",
+            "segments": repeated_hours
+        }))
+        .unwrap();
+        let duration_error = EditPlan::compile(
+            Fingerprint::digest(b"source"),
+            request,
+            SourceMediaMetadata::new(1920, 1080, 3600.0).unwrap(),
+        )
+        .unwrap_err();
+        assert!(duration_error.to_string().contains("24 часа"));
     }
 
     #[test]
@@ -645,13 +876,6 @@ mod tests {
             serde_json::json!({"videoId": "x", "fps": -1.0}),
             serde_json::json!({"videoId": "x", "scale": {"w": -1, "h": -2}}),
             serde_json::json!({"videoId": "x", "trim": {"start": 5.0, "end": 5.0}}),
-            serde_json::json!({
-                "videoId": "x",
-                "segments": [
-                    {"start": 0.0, "end": 2.0},
-                    {"start": 1.0, "end": 3.0}
-                ]
-            }),
         ] {
             assert!(compile(value).is_err());
         }
@@ -738,12 +962,35 @@ mod tests {
             serde_json::json!({"videoId": "source", "lut": {"id": "../look", "intensity": 1.0}}),
             serde_json::json!({"videoId": "source", "lut": {"id": "look", "intensity": 1.1}}),
             serde_json::json!({"videoId": "source", "curves": {"red": [{"x": 0.1, "y": 0.0}, {"x": 1.0, "y": 1.0}]}}),
+            serde_json::json!({"videoId": "source", "chromaKey": {"keyColor": "green", "similarity": 0.1}}),
+            serde_json::json!({"videoId": "source", "chromaKey": {"keyColor": "#00ff00", "similarity": -0.1}}),
         ] {
             let request = serde_json::from_value(value).unwrap();
             assert!(
                 EditPlan::compile(Fingerprint::digest(b"source"), request, self::source()).is_err()
             );
         }
+    }
+
+    #[test]
+    fn compiler_maps_valid_chroma_key_to_domain() {
+        let plan = compile(serde_json::json!({
+            "videoId": "source",
+            "chromaKey": {
+                "keyColor": "3366CC",
+                "similarity": 0.24,
+                "blend": 0.08,
+                "spillSuppression": 0.7
+            }
+        }))
+        .unwrap();
+
+        let chroma_key = plan.edit.video().chroma_key.as_ref().unwrap();
+        assert_eq!(chroma_key.ffmpeg_key_color(), "0x3366cc");
+        assert_eq!(chroma_key.ffmpeg_spill_screen(), "blue");
+        assert_eq!(chroma_key.similarity(), 0.24);
+        assert_eq!(chroma_key.blend(), 0.08);
+        assert_eq!(chroma_key.spill_suppression(), 0.7);
     }
 
     #[test]
@@ -824,5 +1071,62 @@ mod tests {
         assert!(
             EditPlan::from_domain(plan.source_fingerprint, plan.source, plan.edit, output).is_err()
         );
+    }
+
+    #[test]
+    fn deserialization_rejects_timeline_for_unsupported_output_with_valid_identity() {
+        let plan = compile(serde_json::json!({
+            "videoId": "source",
+            "segments": [{ "start": 0.0, "end": 1.0 }]
+        }))
+        .unwrap();
+        let output = OutputSpec::new(
+            OutputFormat::Gif,
+            None,
+            true,
+            None,
+            None,
+            plan.edit.geometry().scale,
+        )
+        .unwrap();
+        let plan_fingerprint =
+            calculate_plan_fingerprint(&plan.source_fingerprint, &plan.source, &plan.edit, &output);
+        let wire = serde_json::json!({
+            "schemaVersion": EDIT_PLAN_SCHEMA_VERSION,
+            "sourceFingerprint": plan.source_fingerprint,
+            "source": plan.source,
+            "planFingerprint": plan_fingerprint,
+            "output": output,
+            "edit": plan.edit,
+        });
+
+        let error = serde_json::from_value::<EditPlan>(wire).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("поддерживается только для MP4, WebM, AV1 и ProRes"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn deserialization_enforces_timeline_resource_caps() {
+        let plan = compile(serde_json::json!({ "videoId": "source" })).unwrap();
+        let mut too_many = serde_json::to_value(&plan).unwrap();
+        too_many["edit"]["timing"]["segments"] =
+            serde_json::to_value(vec![
+                TimeRange::new(0.0, 1.0).unwrap();
+                MAX_TIMELINE_SEGMENTS + 1
+            ])
+            .unwrap();
+        let error = serde_json::from_value::<EditPlan>(too_many).unwrap_err();
+        assert!(error.to_string().contains("TooManyTimelineSegments"));
+
+        let mut too_long = serde_json::to_value(plan).unwrap();
+        too_long["edit"]["timing"]["speed"] = serde_json::json!(0.5);
+        too_long["edit"]["timing"]["segments"] =
+            serde_json::to_value(vec![TimeRange::new(0.0, 3600.0).unwrap(); 25]).unwrap();
+        let error = serde_json::from_value::<EditPlan>(too_long).unwrap_err();
+        assert!(error.to_string().contains("TimelineTooLong"));
     }
 }

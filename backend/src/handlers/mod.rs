@@ -58,6 +58,49 @@ struct EditWork {
     cache_key: String,
 }
 
+const EDIT_WORK_SCHEMA_VERSION: u32 = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditWorkTimelineSemantics {
+    LegacySorted,
+    Ordered,
+}
+
+impl EditWorkTimelineSemantics {
+    fn from_schema_version(schema_version: u32) -> anyhow::Result<Self> {
+        match schema_version {
+            1 => Ok(Self::LegacySorted),
+            EDIT_WORK_SCHEMA_VERSION => Ok(Self::Ordered),
+            _ => anyhow::bail!("unsupported edit work version {schema_version}"),
+        }
+    }
+
+    fn pipeline_version(self) -> &'static str {
+        match self {
+            Self::LegacySorted => LEGACY_RENDER_CACHE_PIPELINE_VERSION,
+            Self::Ordered => RENDER_CACHE_PIPELINE_VERSION,
+        }
+    }
+
+    fn compile_plan(
+        self,
+        source_fingerprint: Fingerprint,
+        request: EditRequest,
+        source: SourceMediaMetadata,
+    ) -> anyhow::Result<EditPlan> {
+        match self {
+            Self::LegacySorted => EditPlan::compile_legacy_v1(source_fingerprint, request, source),
+            Self::Ordered => EditPlan::compile(source_fingerprint, request, source),
+        }
+    }
+}
+
+impl EditWork {
+    fn timeline_semantics(&self) -> anyhow::Result<EditWorkTimelineSemantics> {
+        EditWorkTimelineSemantics::from_schema_version(self.schema_version)
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EditDedupeIdentity<'a> {
@@ -211,7 +254,8 @@ fn spawn_import_job(
 /// Content key for the render cache: a hash of the canonical (source + edit)
 /// request. Re-serializing the deserialized `EditRequest` normalises omitted
 /// defaults, so two equivalent requests map to the same key.
-const RENDER_CACHE_PIPELINE_VERSION: &str = "render-cache-v2-color-pipeline-v2";
+const LEGACY_RENDER_CACHE_PIPELINE_VERSION: &str = "render-cache-v2-color-pipeline-v2";
+const RENDER_CACHE_PIPELINE_VERSION: &str = "render-cache-v3-ordered-segments-color-pipeline-v2";
 
 pub fn render_cache_key(req: &EditRequest) -> String {
     render_cache_key_with_context(req, None, None)
@@ -227,9 +271,23 @@ fn render_cache_key_with_context(
     runtime_fingerprint: Option<&str>,
     lut_sha256: Option<&str>,
 ) -> String {
+    render_cache_key_with_pipeline(
+        RENDER_CACHE_PIPELINE_VERSION,
+        req,
+        runtime_fingerprint,
+        lut_sha256,
+    )
+}
+
+fn render_cache_key_with_pipeline(
+    pipeline_version: &str,
+    req: &EditRequest,
+    runtime_fingerprint: Option<&str>,
+    lut_sha256: Option<&str>,
+) -> String {
     let canonical = serde_json::to_string(req).unwrap_or_default();
     let mut hasher = Sha256::new();
-    hasher.update(RENDER_CACHE_PIPELINE_VERSION.as_bytes());
+    hasher.update(pipeline_version.as_bytes());
     hasher.update([0]);
     hasher.update(runtime_fingerprint.unwrap_or("missing").as_bytes());
     hasher.update([0]);
@@ -270,6 +328,7 @@ pub async fn edit_handler(
     if req.format.as_deref() == Some("mp3") {
         req.lut = None;
         req.curves = None;
+        req.chroma_key = None;
     } else if req
         .lut
         .as_ref()
@@ -278,7 +337,7 @@ pub async fn edit_handler(
         req.lut = None;
     }
     validate_color_grade_request(&req)
-        .map_err(|_| AppError::bad_request("некорректные параметры LUT или кривых"))?;
+        .map_err(|_| AppError::bad_request("некорректные параметры цвета или chroma key"))?;
     validate_color_grade_capabilities(&state, &req)?;
     let job_id = Uuid::new_v4().to_string();
     let runtime_fingerprint = render_runtime_fingerprint(state.tools.as_ref());
@@ -293,7 +352,7 @@ pub async fn edit_handler(
     )
     .map_err(|error| AppError::internal("build edit dedupe key", error))?;
     let work = EditWork {
-        schema_version: 1,
+        schema_version: EDIT_WORK_SCHEMA_VERSION,
         request: req,
         output_id: Uuid::new_v4().to_string(),
         cache_key,
@@ -331,6 +390,18 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
             "кривые недоступны: FFmpeg filter curves не найден",
         ));
     }
+    if let Some(chroma_key) = &request.chroma_key {
+        if !has_filter("chromakey") {
+            return Err(AppError::bad_request(
+                "chroma key недоступен: FFmpeg filter chromakey не найден",
+            ));
+        }
+        if chroma_key.spill_suppression > 1e-9 && !has_filter("despill") {
+            return Err(AppError::bad_request(
+                "подавление chroma spill недоступно: FFmpeg filter despill не найден",
+            ));
+        }
+    }
     if let Some(lut) = request.lut.as_ref().filter(|lut| lut.intensity > 1e-9) {
         if !has_filter("lut3d") {
             return Err(AppError::bad_request(
@@ -354,6 +425,9 @@ fn spawn_edit_job(
     token: CancellationToken,
     lease: JobLeaseHeartbeat,
 ) {
+    let timeline_semantics = work
+        .timeline_semantics()
+        .expect("edit work schema is validated before dispatch");
     let EditWork {
         schema_version: _,
         request: req,
@@ -377,8 +451,12 @@ fn spawn_edit_job(
             }
         };
         let runtime_fingerprint = render_runtime_fingerprint(st.tools.as_ref());
-        let cache_key =
-            render_cache_key_with_context(&req, Some(&runtime_fingerprint), resources.lut_sha256());
+        let cache_key = render_cache_key_with_pipeline(
+            timeline_semantics.pipeline_version(),
+            &req,
+            Some(&runtime_fingerprint),
+            resources.lut_sha256(),
+        );
         let render_lock = st.render_lock(&cache_key).await;
         let _render_guard =
             match acquire_render_lock_or_cancelled(&st, &jid, &token, render_lock).await {
@@ -429,7 +507,8 @@ fn spawn_edit_job(
                 probe.duration,
                 probe.acodec.is_some(),
             )?;
-            let plan = Arc::new(EditPlan::compile(source_fingerprint, req, source)?);
+            let plan =
+                Arc::new(timeline_semantics.compile_plan(source_fingerprint, req, source)?);
             let execution = RenderExecution::new_with_resources(
                 plan,
                 ExportExecutionProfile {
@@ -951,6 +1030,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chroma_key_capabilities_fail_closed_for_key_and_spill_filters() {
+        let (mut st, _dir) = state().await;
+        let request: EditRequest = serde_json::from_value(json!({
+            "videoId": "source",
+            "chromaKey": {
+                "keyColor": "#00ff00",
+                "similarity": 0.1,
+                "blend": 0.05,
+                "spillSuppression": 0.5
+            }
+        }))
+        .unwrap();
+
+        assert!(validate_color_grade_capabilities(&st, &request).is_err());
+        st.tools = Arc::new(ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["chromakey".into()],
+            ..ToolInfo::default()
+        });
+        assert!(validate_color_grade_capabilities(&st, &request).is_err());
+        st.tools = Arc::new(ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["chromakey".into(), "despill".into()],
+            ..ToolInfo::default()
+        });
+        assert!(validate_color_grade_capabilities(&st, &request).is_ok());
+
+        let without_spill: EditRequest = serde_json::from_value(json!({
+            "videoId": "source",
+            "chromaKey": {"keyColor": "#00ff00", "spillSuppression": 0.0}
+        }))
+        .unwrap();
+        st.tools = Arc::new(ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["chromakey".into()],
+            ..ToolInfo::default()
+        });
+        assert!(validate_color_grade_capabilities(&st, &without_spill).is_ok());
+    }
+
+    #[tokio::test]
     async fn resolved_lut_is_uuid_scoped_and_content_verified() {
         let (st, _dir) = state().await;
         tokio::fs::create_dir_all(st.luts_dir()).await.unwrap();
@@ -1002,6 +1122,47 @@ mod tests {
         assert_ne!(
             baseline,
             render_cache_key_with_context(&request, None, Some("lut-sha"))
+        );
+    }
+
+    #[test]
+    fn edit_work_v2_keeps_a_compatible_legacy_v1_route() {
+        assert_eq!(
+            EditWorkTimelineSemantics::from_schema_version(1).unwrap(),
+            EditWorkTimelineSemantics::LegacySorted
+        );
+        assert_eq!(
+            EditWorkTimelineSemantics::from_schema_version(EDIT_WORK_SCHEMA_VERSION).unwrap(),
+            EditWorkTimelineSemantics::Ordered
+        );
+        assert!(EditWorkTimelineSemantics::from_schema_version(3).is_err());
+
+        let request: EditRequest = serde_json::from_value(json!({
+            "videoId": "source",
+            "segments": [
+                { "start": 6.0, "end": 8.0 },
+                { "start": 1.0, "end": 4.0 }
+            ]
+        }))
+        .unwrap();
+        let legacy = render_cache_key_with_pipeline(
+            LEGACY_RENDER_CACHE_PIPELINE_VERSION,
+            &request,
+            None,
+            None,
+        );
+        let ordered = render_cache_key_with_context(&request, None, None);
+        assert_ne!(legacy, ordered);
+
+        let work = EditWork {
+            schema_version: EDIT_WORK_SCHEMA_VERSION,
+            request,
+            output_id: "output".into(),
+            cache_key: ordered,
+        };
+        assert_eq!(
+            serde_json::to_value(work).unwrap()["schemaVersion"],
+            EDIT_WORK_SCHEMA_VERSION
         );
     }
 

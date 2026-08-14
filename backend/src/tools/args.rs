@@ -143,6 +143,21 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
     if geometry.flip_vertical {
         before_lut.push("vflip".into());
     }
+    if let Some(chroma_key) = &video.chroma_key {
+        before_lut.push(format!(
+            "chromakey=color={}:similarity={:.6}:blend={:.6}",
+            chroma_key.ffmpeg_key_color(),
+            chroma_key.similarity(),
+            chroma_key.blend()
+        ));
+        if chroma_key.spill_suppression() > 1e-9 {
+            before_lut.push(format!(
+                "despill=type={}:mix={:.6}",
+                chroma_key.ffmpeg_spill_screen(),
+                chroma_key.spill_suppression()
+            ));
+        }
+    }
     if video.denoise {
         before_lut.push("hqdn3d".into());
     }
@@ -971,6 +986,57 @@ mod tests {
     }
 
     #[test]
+    fn chroma_key_compiles_before_colour_grade_with_optional_despill() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "chromaKey": {
+                    "keyColor": "#00ff00",
+                    "similarity": 0.18,
+                    "blend": 0.07,
+                    "spillSuppression": 0.65
+                },
+                "brightness": 0.1
+            }),
+            10.0,
+        );
+        let chain = vf(&args);
+        let key = "chromakey=color=0x00ff00:similarity=0.180000:blend=0.070000";
+        let despill = "despill=type=green:mix=0.650000";
+
+        assert!(chain.contains(key), "{chain}");
+        assert!(chain.contains(despill), "{chain}");
+        assert!(
+            chain.find(key).unwrap() < chain.find(despill).unwrap(),
+            "{chain}"
+        );
+        assert!(
+            chain.find(despill).unwrap() < chain.find("eq=").unwrap(),
+            "{chain}"
+        );
+    }
+
+    #[test]
+    fn zero_spill_suppression_omits_despill_filter() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "chromaKey": {
+                    "keyColor": "#0033ff",
+                    "similarity": 0.2,
+                    "blend": 0.0,
+                    "spillSuppression": 0.0
+                }
+            }),
+            10.0,
+        );
+        let chain = vf(&args);
+
+        assert!(chain.contains("chromakey=color=0x0033ff:similarity=0.200000:blend=0.000000"));
+        assert!(!chain.contains("despill="), "{chain}");
+    }
+
+    #[test]
     fn custom_curves_emit_normalized_channels_before_post_effects() {
         let args = args_for(
             json!({
@@ -1471,6 +1537,45 @@ mod tests {
     }
 
     #[test]
+    fn segments_concat_preserves_out_of_order_duplicates_and_overlaps() {
+        let plan = plan(json!({
+            "videoId": "x",
+            "segments": [
+                { "start": 6.0, "end": 8.0 },
+                { "start": 1.0, "end": 4.0 },
+                { "start": 1.0, "end": 4.0 },
+                { "start": 3.0, "end": 7.0 }
+            ]
+        }));
+        let args = build_ffmpeg_args(Path::new("/in.mp4"), Path::new("/out.mp4"), &plan);
+        let graph = filter_complex(&args);
+
+        let ordered_video_segments = [
+            "[0:v]trim=start=6.000:end=8.000,setpts=PTS-STARTPTS[v0]",
+            "[0:v]trim=start=1.000:end=4.000,setpts=PTS-STARTPTS[v1]",
+            "[0:v]trim=start=1.000:end=4.000,setpts=PTS-STARTPTS[v2]",
+            "[0:v]trim=start=3.000:end=7.000,setpts=PTS-STARTPTS[v3]",
+        ];
+        let positions: Vec<_> = ordered_video_segments
+            .iter()
+            .map(|segment| {
+                graph
+                    .find(segment)
+                    .unwrap_or_else(|| panic!("missing {segment}: {graph}"))
+            })
+            .collect();
+        assert!(
+            positions.windows(2).all(|pair| pair[0] < pair[1]),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("[v0][a0][v1][a1][v2][a2][v3][a3]concat=n=4:v=1:a=1[cv][ca]"),
+            "{graph}"
+        );
+        assert_eq!(expected_output_secs(&plan.edit, 10.0), 12.0);
+    }
+
+    #[test]
     fn segments_muted_drops_audio_streams() {
         let args = args_for(
             json!({
@@ -1568,14 +1673,24 @@ mod tests {
     }
 
     #[test]
-    fn segments_ignored_for_gif() {
-        // gif is not a concat target, so it falls back to the normal path.
-        let args = args_for(
-            json!({ "videoId": "x", "format": "gif", "segments": [{ "start": 0.0, "end": 1.0 }] }),
-            5.0,
-        );
-        assert!(!args.contains(&"-filter_complex".to_string()));
-        assert!(vf(&args).contains("palettegen"));
+    fn segments_are_rejected_for_unsupported_outputs() {
+        for format in ["gif", "png", "jpg", "mp3"] {
+            let request: EditRequest = serde_json::from_value(json!({
+                "videoId": "x",
+                "format": format,
+                "segments": [{ "start": 0.0, "end": 1.0 }]
+            }))
+            .unwrap();
+            assert!(
+                EditPlan::compile(
+                    Fingerprint::digest(b"source"),
+                    request,
+                    SourceMediaMetadata::new(1920, 1080, 5.0).unwrap(),
+                )
+                .is_err(),
+                "{format} unexpectedly accepted timeline segments"
+            );
+        }
     }
 
     #[test]

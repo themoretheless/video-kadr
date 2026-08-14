@@ -1,11 +1,16 @@
+import { fileURLToPath, URL } from 'node:url'
+import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { defineConfig } from 'vitest/config'
 
-// Unit tests for the store's pure logic. happy-dom supplies localStorage and
-// document so the preset/theme helpers run as they would in the browser.
 export default defineConfig({
+  plugins: [svelte()],
+  resolve: {
+    alias: {
+      $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
+    },
+  },
   test: {
     environment: 'happy-dom',
     include: ['src/**/*.test.ts'],
-    setupFiles: ['src/test/setup.ts'],
   },
 })

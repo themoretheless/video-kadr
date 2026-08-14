@@ -139,6 +139,18 @@ impl Capabilities {
                 has_filter("lut3d") && has_filter("blend"),
                 "нужны filters lut3d и blend",
             ),
+            option(
+                "chroma-key",
+                "Chroma key",
+                has_filter("chromakey"),
+                "нужен filter chromakey",
+            ),
+            option(
+                "chroma-spill",
+                "Подавление chroma spill",
+                has_filter("chromakey") && has_filter("despill"),
+                "нужны filters chromakey и despill",
+            ),
         ]);
         let hardware = [
             (
@@ -346,7 +358,7 @@ mod tests {
         let all_filters = all_look_filters();
         let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
 
-        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 3);
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 5);
         for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
             assert_eq!(option.id, definition.id());
             assert_eq!(option.label, definition.label);
@@ -378,5 +390,16 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn chroma_key_and_spill_report_independent_filter_requirements() {
+        let key_only = Capabilities::from_tools(&tools_with_look_filters(&["chromakey"]));
+        assert!(look_option(&key_only, "chroma-key").available);
+        assert!(!look_option(&key_only, "chroma-spill").available);
+
+        let full = Capabilities::from_tools(&tools_with_look_filters(&["chromakey", "despill"]));
+        assert!(look_option(&full, "chroma-key").available);
+        assert!(look_option(&full, "chroma-spill").available);
     }
 }

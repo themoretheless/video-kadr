@@ -114,6 +114,66 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
   await page.getByRole('button', { name: 'Импорт' }).click()
   await expect(page.getByRole('heading', { name: 'Fixture clip' })).toBeVisible()
 
+  const compareToggle = page.getByRole('button', { name: 'Оригинал / С правками' })
+  await expect(compareToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByText(/^С правками: монтаж/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Сепия' }).click()
+  const preview = page.locator('video.player').first()
+  await page.getByRole('button', { name: '2×', exact: true }).click()
+  await page.getByRole('slider', { name: 'Громкость' }).fill('0.4')
+  await page.getByLabel('Без звука').check()
+  await expect.poll(() => preview.evaluate((element) => element.style.filter)).toContain('sepia')
+  await expect.poll(() => preview.evaluate((element) => element.playbackRate)).toBe(2)
+  await expect.poll(() => preview.evaluate((element) => element.volume)).toBe(0.4)
+  await expect.poll(() => preview.evaluate((element) => element.muted)).toBe(true)
+
+  await compareToggle.click()
+  await expect(compareToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText(/^Оригинал: монтаж/)).toBeVisible()
+  await expect.poll(() => preview.evaluate((element) => element.style.filter)).toBe('')
+  await expect.poll(() => preview.evaluate((element) => element.playbackRate)).toBe(1)
+  await expect.poll(() => preview.evaluate((element) => element.volume)).toBe(1)
+  await expect.poll(() => preview.evaluate((element) => element.muted)).toBe(false)
+
+  await compareToggle.click()
+  await expect(compareToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => preview.evaluate((element) => element.style.filter)).toContain('sepia')
+  await expect.poll(() => preview.evaluate((element) => element.playbackRate)).toBe(2)
+  await expect.poll(() => preview.evaluate((element) => element.volume)).toBe(0.4)
+  await expect.poll(() => preview.evaluate((element) => element.muted)).toBe(true)
+
+  await page.getByRole('button', { name: 'Активировать' }).click()
+  await expect(page.locator('.timeline-segment')).toHaveCount(1)
+  const timelineEnd = page.getByLabel('Конец, с')
+  await timelineEnd.fill('6')
+  await timelineEnd.press('Tab')
+  await preview.evaluate((element) => {
+    element.currentTime = 3
+    element.dispatchEvent(new Event('timeupdate'))
+  })
+  await page.getByRole('button', { name: 'Разделить здесь' }).click()
+  await expect(page.locator('.timeline-segment')).toHaveCount(2)
+
+  await page.getByLabel('Конец, с').fill('10')
+  await page.getByLabel('Конец, с').press('Tab')
+  await page.getByLabel('Начало, с').fill('8')
+  await page.getByLabel('Начало, с').press('Tab')
+  await page.getByRole('button', { name: 'Переместить выбранный фрагмент левее' }).click()
+  await page.getByRole('button', { name: 'Дубль' }).click()
+  await page.getByRole('button', { name: 'Удалить', exact: true }).click()
+  await page.getByRole('button', { name: 'Дубль' }).click()
+  await expect(page.locator('.timeline-segment')).toHaveCount(3)
+
+  await compareToggle.click()
+  await preview.evaluate((element) => {
+    element.currentTime = 4
+    element.dispatchEvent(new Event('timeupdate'))
+  })
+  await expect.poll(() => preview.evaluate((element) => element.currentTime)).toBe(4)
+  await compareToggle.click()
+  await expect.poll(() => preview.evaluate((element) => element.currentTime)).toBe(0)
+
   await page.getByLabel('Выбрать LUT в формате CUBE').setInputFiles({
     name: 'fixture-look.cube',
     mimeType: 'text/plain',
@@ -139,10 +199,58 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
   await lutIntensity.fill('65')
   await expect(page.locator('output[for="lut-intensity"]')).toHaveText('65%')
 
-  await page.getByRole('button', { name: 'Добавить точку' }).click()
-  await expect(page.getByText('3 / 16 точек')).toBeVisible()
+  const curvePlot = page.getByRole('group', { name: 'Общая тоновая кривая' })
+  const pointCount = page.locator('.point-count')
+  const addPoint = page.getByRole('button', { name: 'Добавить точку' })
+  const deletePoint = page.getByRole('button', { name: 'Удалить точку' })
+  const curveX = page.getByLabel('Вход (X)')
+  const curveY = page.getByLabel('Выход (Y)')
 
-  await page.getByRole('button', { name: 'Сепия' }).click()
+  await expect(pointCount).toHaveText('2 / 16 точек')
+  const plotBox = await curvePlot.boundingBox()
+  if (!plotBox) throw new Error('Curve plot has no bounding box')
+
+  // Clicking the graph adds a point and immediately starts a bounded drag.
+  await page.mouse.click(
+    plotBox.x + plotBox.width * 0.4,
+    plotBox.y + plotBox.height * 0.3,
+  )
+  await expect(pointCount).toHaveText('3 / 16 точек')
+  await expect(curveX).toBeEnabled()
+  await expect(deletePoint).toBeEnabled()
+
+  const beforeX = Number(await curveX.inputValue())
+  const beforeY = Number(await curveY.inputValue())
+  const middlePoint = () => curvePlot.getByRole('button', { name: /^Общая: точка 2,/ })
+  const pointBox = await middlePoint().boundingBox()
+  if (!pointBox) throw new Error('Middle curve point has no bounding box')
+  const pointX = pointBox.x + pointBox.width / 2
+  const pointY = pointBox.y + pointBox.height / 2
+
+  await page.mouse.move(pointX, pointY)
+  await page.mouse.down()
+  try {
+    await page.mouse.move(
+      pointX + plotBox.width * 0.12,
+      pointY + plotBox.height * 0.08,
+      { steps: 3 },
+    )
+  } finally {
+    await page.mouse.up()
+  }
+  await expect.poll(async () => Number(await curveX.inputValue())).toBeGreaterThan(beforeX + 20)
+  await expect.poll(async () => Number(await curveY.inputValue())).toBeLessThan(beforeY - 10)
+
+  await middlePoint().focus()
+  await middlePoint().press('Delete')
+  await expect(pointCount).toHaveText('2 / 16 точек')
+  await expect(deletePoint).toBeDisabled()
+  await expect(curveX).toBeDisabled()
+
+  // Keep the final payload assertion below at three points.
+  await addPoint.click()
+  await expect(pointCount).toHaveText('3 / 16 точек')
+
   const editRequestPromise = page.waitForRequest(
     (request) =>
       new URL(request.url()).pathname === '/api/edit' && request.method() === 'POST',
@@ -151,7 +259,13 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
   const editPayload = (await editRequestPromise).postDataJSON() as {
     lut?: { id: string; intensity: number }
     curves?: Record<string, Array<{ x: number; y: number }>>
+    segments?: Array<{ start: number; end: number }>
   }
+  expect(editPayload.segments).toEqual([
+    { start: 8, end: 10 },
+    { start: 0, end: 3 },
+    { start: 0, end: 3 },
+  ])
   expect(editPayload.lut).toEqual({ id: TEST_LUT_ID, intensity: 0.65 })
   expect(Object.keys(editPayload.curves ?? {}).sort()).toEqual(['blue', 'green', 'master', 'red'])
   expect(editPayload.curves?.master).toHaveLength(3)
