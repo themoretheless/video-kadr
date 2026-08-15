@@ -8,22 +8,22 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use video_editor_backend::domain::composition::{
+use video_kadr_backend::domain::composition::{
     AnimatableValue, AudioClip, BlendMode, CanvasSpec, ClipPlacement, ClipTransition, Composition,
     CompositionClipId, CompositionSource, CompositionTrack, FrameInterpolation, ImageClip,
     MaskShape, PlaybackMode, Rgba, SourceId, SourceKind, SpeedRampAudioPolicy,
     SpeedRampInterpolation, SpeedRampPoint, SpeedRampSpec, StabilizationSpec, TextClip, TextStyle,
     TrackId, TransformSpec, TransitionId, TransitionKind, VideoClip, VideoEffect,
 };
-use video_editor_backend::domain::keyframes::{Interpolation, Keyframe, KeyframeTrack};
-use video_editor_backend::domain::media_probe::StreamKind;
-use video_editor_backend::ports::{
+use video_kadr_backend::domain::keyframes::{Interpolation, Keyframe, KeyframeTrack};
+use video_kadr_backend::domain::media_probe::StreamKind;
+use video_kadr_backend::ports::{
     CompositionAv1Encoder, CompositionExportCommandCompiler, CompositionExportCompileRequest,
     CompositionExportProfile, CompositionExportSpec, CompositionMp4Codec, CompositionProResProfile,
     CompositionTextResource, CompositionWebmCodec,
 };
-use video_editor_backend::process_control::ProcessRuntime;
-use video_editor_backend::tools::{
+use video_kadr_backend::process_control::ProcessRuntime;
+use video_kadr_backend::tools::{
     check_tool, inspect_ffmpeg_support, probe_video, run_compiled_ffmpeg, Done,
     FfmpegCompositionExportCompiler,
 };

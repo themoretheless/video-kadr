@@ -105,8 +105,8 @@ beforeEach(() => {
 
 afterEach(() => setCompositionStorageForTests(undefined))
 
-const DRAFTS_KEY = 'video-editor:composition-drafts:v2'
-const LEGACY_DRAFT_KEY = 'video-editor:composition-draft:v1'
+const DRAFTS_KEY = 'video-kadr:composition-drafts:v2'
+const LEGACY_DRAFT_KEY = 'video-kadr:composition-draft:v1'
 
 function memoryStorage(values: Map<string, string>) {
   return {

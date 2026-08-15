@@ -1,5 +1,5 @@
 export const SHORTCUT_SCHEMA_VERSION = 1 as const
-export const SHORTCUT_STORAGE_KEY = 'video-editor:keyboard-shortcuts:v1'
+export const SHORTCUT_STORAGE_KEY = 'video-kadr:keyboard-shortcuts:v1'
 
 export type ShortcutMode = 'legacy' | 'composition'
 export type ShortcutGroup = 'playback' | 'history' | 'timeline'

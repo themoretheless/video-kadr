@@ -7,9 +7,9 @@ use axum::http::{header, Request, StatusCode};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use video_editor_backend::library::MediaEntry;
-use video_editor_backend::project_archive::ARCHIVE_MEDIA_TYPE;
-use video_editor_backend::tools;
+use video_kadr_backend::library::MediaEntry;
+use video_kadr_backend::project_archive::ARCHIVE_MEDIA_TYPE;
+use video_kadr_backend::tools;
 
 use support::{assert_api_error, make_state, router};
 
@@ -84,7 +84,7 @@ fn document(source_id: &str) -> Value {
     })
 }
 
-async fn local_probe_available(state: &video_editor_backend::state::AppState) -> bool {
+async fn local_probe_available(state: &video_kadr_backend::state::AppState) -> bool {
     tools::check_tool(&state.process_runtime, "ffmpeg", "-version")
         .await
         .0

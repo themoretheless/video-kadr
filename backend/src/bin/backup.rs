@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
-use video_editor_backend::backup::{create_snapshot, restore_snapshot, verify_snapshot};
-use video_editor_backend::db::Db;
+use video_kadr_backend::backup::{create_snapshot, restore_snapshot, verify_snapshot};
+use video_kadr_backend::db::Db;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,8 +1,8 @@
 [package]
-name = "video-editor-backend"
+name = "video-kadr-backend"
 version = "0.1.0"
 edition = "2021"
-default-run = "video-editor-backend"
+default-run = "video-kadr-backend"
 
 [dependencies]
 axum = { version = "0.7", features = ["multipart"] }

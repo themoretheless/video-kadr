@@ -126,9 +126,9 @@ import {
 } from '../subtitles/srt'
 import type { Capabilities, MediaEntry, MediaInfo, MediaType, ResultInfo } from '../types'
 
-const LEGACY_DRAFT_KEY = 'video-editor:composition-draft:v1'
-const DRAFTS_KEY = 'video-editor:composition-drafts:v2'
-const MODE_KEY = 'video-editor:editor-mode:v1'
+const LEGACY_DRAFT_KEY = 'video-kadr:composition-draft:v1'
+const DRAFTS_KEY = 'video-kadr:composition-drafts:v2'
+const MODE_KEY = 'video-kadr:editor-mode:v1'
 const DEFAULT_IMAGE_DURATION_TICKS = 5 * COMPOSITION_TIME_BASE
 const DEFAULT_TEXT_DURATION_TICKS = 4 * COMPOSITION_TIME_BASE
 const SNAP_THRESHOLD_PX = 8

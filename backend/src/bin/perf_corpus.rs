@@ -6,12 +6,12 @@ use anyhow::Result;
 use serde::Serialize;
 use serde_json::json;
 use uuid::Uuid;
-use video_editor_backend::db::Db;
-use video_editor_backend::domain::artifact_graph::Fingerprint;
-use video_editor_backend::domain::media_probe::ProbeResult;
-use video_editor_backend::library::{Library, MediaEntry};
-use video_editor_backend::model::EditRequest;
-use video_editor_backend::services::render::{EditPlan, SourceMediaMetadata};
+use video_kadr_backend::db::Db;
+use video_kadr_backend::domain::artifact_graph::Fingerprint;
+use video_kadr_backend::domain::media_probe::ProbeResult;
+use video_kadr_backend::library::{Library, MediaEntry};
+use video_kadr_backend::model::EditRequest;
+use video_kadr_backend::services::render::{EditPlan, SourceMediaMetadata};
 
 const SCHEMA_VERSION: u32 = 1;
 
@@ -301,7 +301,7 @@ struct TemporaryRoot(PathBuf);
 
 impl TemporaryRoot {
     fn new() -> Result<Self> {
-        let path = std::env::temp_dir().join(format!("video-editor-perf-{}", Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("video-kadr-perf-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&path)?;
         Ok(Self(path))
     }

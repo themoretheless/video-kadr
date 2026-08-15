@@ -18,7 +18,7 @@ import {
   openCompositionDocumentAsNew,
 } from './composition.svelte'
 
-const TEMPLATE_CATALOG_KEY = 'video-editor:composition-templates:v1'
+const TEMPLATE_CATALOG_KEY = 'video-kadr:composition-templates:v1'
 export const MAX_TEMPLATE_CATALOG_ITEMS = 32
 export const MAX_TEMPLATE_CATALOG_BYTES = 4 * 1024 * 1024
 

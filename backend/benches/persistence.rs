@@ -2,11 +2,11 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
-use video_editor_backend::db::Db;
-use video_editor_backend::jobs::persistence_profile::{
+use video_kadr_backend::db::Db;
+use video_kadr_backend::jobs::persistence_profile::{
     should_evaluate_external_store, PersistenceSample,
 };
-use video_editor_backend::jobs::{JobKind, QueueLimits, SqliteJobStore};
+use video_kadr_backend::jobs::{JobKind, QueueLimits, SqliteJobStore};
 
 fn main() {
     let runtime = tokio::runtime::Builder::new_current_thread()

@@ -11,7 +11,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use support::{assert_api_error, get, make_state, router, send};
-use video_editor_backend::build_router;
+use video_kadr_backend::build_router;
 
 fn post_multipart_file(filename: &str, bytes: &[u8]) -> Request<Body> {
     post_multipart_file_with_type(filename, "application/octet-stream", bytes)

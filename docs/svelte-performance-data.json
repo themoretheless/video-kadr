@@ -31,7 +31,7 @@
   "frameworks": {
     "vue": {
       "package": {
-        "name": "video-editor-frontend",
+        "name": "video-kadr-frontend",
         "version": "0.1.0",
         "runtime": "vue",
         "runtimeVersion": "3.5.35",
@@ -342,7 +342,7 @@
     },
     "svelte": {
       "package": {
-        "name": "video-editor-frontend-svelte",
+        "name": "video-kadr-frontend-svelte",
         "version": "0.1.0",
         "runtime": "svelte",
         "runtimeVersion": "5.56.8",

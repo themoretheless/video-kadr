@@ -45,7 +45,7 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_TARGET_ADDRESSES: usize = 16;
 const MAX_CONNECTIONS: usize = 64;
 const BLOCK_STATUS_CODE: u16 = 472;
-pub(super) const BLOCK_MESSAGE: &str = "blocked by video-editor egress policy";
+pub(super) const BLOCK_MESSAGE: &str = "blocked by video-kadr egress policy";
 
 type BoxError = Box<dyn Error + Send + Sync>;
 type ProxyBody = BoxBody<Bytes, BoxError>;

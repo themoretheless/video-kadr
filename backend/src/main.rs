@@ -6,13 +6,13 @@ use std::time::{Duration, SystemTime};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use video_editor_backend::build_router_with_cors;
-use video_editor_backend::config::AppConfig;
-use video_editor_backend::db::Db;
-use video_editor_backend::library::{Library, MediaEntry};
-use video_editor_backend::process_control::ProcessRuntime;
-use video_editor_backend::state::{AppState, ToolInfo};
-use video_editor_backend::tools;
+use video_kadr_backend::build_router_with_cors;
+use video_kadr_backend::config::AppConfig;
+use video_kadr_backend::db::Db;
+use video_kadr_backend::library::{Library, MediaEntry};
+use video_kadr_backend::process_control::ProcessRuntime;
+use video_kadr_backend::state::{AppState, ToolInfo};
+use video_kadr_backend::tools;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -89,8 +89,8 @@ async fn main() -> anyhow::Result<()> {
     state.recover_jobs().await;
     state.rebuild_media_search().await;
     state.cleanup_thumbnail_cache().await;
-    video_editor_backend::handlers::start_job_dispatcher(&state);
-    state.spawn_task(video_editor_backend::jobs::run_quarantine_cleanup(
+    video_kadr_backend::handlers::start_job_dispatcher(&state);
+    state.spawn_task(video_kadr_backend::jobs::run_quarantine_cleanup(
         state.job_store.clone(),
         state.shutdown_token(),
     ));

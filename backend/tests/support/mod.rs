@@ -6,10 +6,10 @@ use axum::Router;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use video_editor_backend::build_router;
-use video_editor_backend::db::Db;
-use video_editor_backend::library::Library;
-use video_editor_backend::state::{AppState, ToolInfo};
+use video_kadr_backend::build_router;
+use video_kadr_backend::db::Db;
+use video_kadr_backend::library::Library;
+use video_kadr_backend::state::{AppState, ToolInfo};
 
 pub const UPLOAD_LIMIT: usize = 64 * 1024 * 1024;
 

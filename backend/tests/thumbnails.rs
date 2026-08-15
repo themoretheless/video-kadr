@@ -9,11 +9,11 @@ use tokio::process::Command;
 use tower::ServiceExt;
 
 use support::{assert_api_error, get, make_state, router};
-use video_editor_backend::db::Db;
-use video_editor_backend::library::{now_secs, Library, MediaEntry};
-use video_editor_backend::process_control::ProcessRuntime;
-use video_editor_backend::state::{AppState, ToolInfo};
-use video_editor_backend::tools;
+use video_kadr_backend::db::Db;
+use video_kadr_backend::library::{now_secs, Library, MediaEntry};
+use video_kadr_backend::process_control::ProcessRuntime;
+use video_kadr_backend::state::{AppState, ToolInfo};
+use video_kadr_backend::tools;
 
 async fn add_entry(state: &AppState, id: &str, filename: &str, media_type: &str, bytes: &[u8]) {
     add_entry_with_duration(state, id, filename, media_type, bytes, 1.0).await;

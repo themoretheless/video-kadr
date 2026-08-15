@@ -1,4 +1,4 @@
-//! Library crate for the video-editor backend.
+//! Library crate for the video-kadr backend.
 //!
 //! `main.rs` is a thin wrapper around this crate. Exposing the modules and the
 //! router builder as a library lets the integration tests in `tests/` drive the

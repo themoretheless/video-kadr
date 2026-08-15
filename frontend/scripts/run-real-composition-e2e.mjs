@@ -14,7 +14,7 @@ const cargoTargetRoot = process.env.CARGO_TARGET_DIR
 const backendBinary = join(
   cargoTargetRoot,
   'debug',
-  process.platform === 'win32' ? 'video-editor-backend.exe' : 'video-editor-backend',
+  process.platform === 'win32' ? 'video-kadr-backend.exe' : 'video-kadr-backend',
 )
 const children = new Set()
 let temporaryRoot
@@ -172,7 +172,7 @@ if (!hasCommand('ffmpeg') || !hasCommand('ffprobe')) {
 }
 
 try {
-  temporaryRoot = await mkdtemp(join(tmpdir(), 'video-editor-real-e2e-'))
+  temporaryRoot = await mkdtemp(join(tmpdir(), 'video-kadr-real-e2e-'))
   const storageDir = join(temporaryRoot, 'storage')
   const fixturePath = join(temporaryRoot, 'real-composition-fixture.mp4')
   const [backendPort, frontendPort] = await Promise.all([reservePort(), reservePort()])
@@ -194,7 +194,7 @@ try {
 
   await spawnBounded(
     'cargo',
-    ['build', '--bin', 'video-editor-backend'],
+    ['build', '--bin', 'video-kadr-backend'],
     { cwd: backendRoot, env: process.env },
     240_000,
   )

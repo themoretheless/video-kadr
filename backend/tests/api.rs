@@ -13,12 +13,12 @@ use axum::Router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use video_editor_backend::db::{Db, MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES};
-use video_editor_backend::handlers::resume_pending_jobs;
-use video_editor_backend::jobs::{EnqueueOutcome, JobKind, QueueLimits};
-use video_editor_backend::library::{Library, MediaEntry};
-use video_editor_backend::model::{EditRequest, Job, JobStatus};
-use video_editor_backend::state::{AppState, ToolInfo};
+use video_kadr_backend::db::{Db, MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES};
+use video_kadr_backend::handlers::resume_pending_jobs;
+use video_kadr_backend::jobs::{EnqueueOutcome, JobKind, QueueLimits};
+use video_kadr_backend::library::{Library, MediaEntry};
+use video_kadr_backend::model::{EditRequest, Job, JobStatus};
+use video_kadr_backend::state::{AppState, ToolInfo};
 
 use support::{assert_api_error, get, make_state, router, send};
 
@@ -154,9 +154,15 @@ fn delete(uri: &str) -> Request<Body> {
 
 /// Poll a job until it reaches a terminal state. The background worker runs on
 /// the test runtime; the sleeps give it slots to make progress.
+///
+/// The bound is deliberately generous: the worker only makes progress when the
+/// runtime hands it a slot, so on a loaded machine (the first run right after
+/// compilation, or the whole suite running in parallel) a short budget fails
+/// even though nothing is wrong. A healthy job still returns in milliseconds,
+/// so the ceiling only costs wall-clock time when something is genuinely stuck.
 async fn poll_terminal(app: &Router, id: &str) -> Value {
     let mut last = Value::Null;
-    for _ in 0..400 {
+    for _ in 0..3_000 {
         let (status, body, _) = send(app, get(&format!("/api/jobs/{id}"))).await;
         assert_eq!(
             status,
@@ -171,7 +177,7 @@ async fn poll_terminal(app: &Router, id: &str) -> Value {
             }
         }
     }
-    panic!("job {id} never reached a terminal state; last snapshot: {last}");
+    panic!("job {id} never reached a terminal state after 3000 polls; last snapshot: {last}");
 }
 
 #[tokio::test]
@@ -802,8 +808,7 @@ async fn edit_cache_hit_returns_existing_output() {
     // Pre-seed the render cache for a specific edit, with its output file present.
     let req_json = json!({ "videoId": "vidX", "trim": { "start": 0.0, "end": 5.0 } });
     let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
-    let key =
-        video_editor_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
+    let key = video_kadr_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
     let filename = "cached.mp4";
     tokio::fs::write(state.outputs_dir().join(filename), b"x")
         .await
@@ -837,8 +842,7 @@ async fn edit_stale_render_cache_entry_is_evicted() {
     let (state, _d) = make_state(true, true).await;
     let req_json = json!({ "videoId": "missing-video", "trim": { "start": 0.0, "end": 5.0 } });
     let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
-    let key =
-        video_editor_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
+    let key = video_kadr_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
     state
         .db
         .cache_put(
@@ -1553,7 +1557,7 @@ async fn outbox_row_created_before_a_crash_is_executed_after_restart() {
 
     {
         let db = Db::open(&storage).await.unwrap();
-        let store = video_editor_backend::jobs::SqliteJobStore::new(db);
+        let store = video_kadr_backend::jobs::SqliteJobStore::new(db);
         let outcome = store
             .enqueue(
                 "crash-job".into(),

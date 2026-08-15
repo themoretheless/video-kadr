@@ -10,17 +10,17 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use video_editor_backend::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
-use video_editor_backend::domain::artifact_graph::Fingerprint;
-use video_editor_backend::model::EditRequest;
-use video_editor_backend::ports::{
+use video_kadr_backend::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
+use video_kadr_backend::domain::artifact_graph::Fingerprint;
+use video_kadr_backend::model::EditRequest;
+use video_kadr_backend::ports::{
     CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest,
 };
-use video_editor_backend::process_control::ProcessRuntime;
-use video_editor_backend::services::render::{
+use video_kadr_backend::process_control::ProcessRuntime;
+use video_kadr_backend::services::render::{
     EditPlan, ExportExecutionProfile, RenderExecution, RenderResources, SourceMediaMetadata,
 };
-use video_editor_backend::tools::{
+use video_kadr_backend::tools::{
     check_tool, probe_video, run_compiled_ffmpeg, run_ffmpeg, Done, FfmpegExportCompiler,
 };
 
@@ -91,7 +91,7 @@ fn compile_export(
     input: &std::path::Path,
     output: &std::path::Path,
     request: EditRequest,
-    source: &video_editor_backend::tools::ProbeInfo,
+    source: &video_kadr_backend::tools::ProbeInfo,
 ) -> CompiledExportCommand {
     let plan = Arc::new(
         EditPlan::compile(
@@ -136,7 +136,7 @@ fn compile_export_with_lut(
     output: &std::path::Path,
     lut_path: &std::path::Path,
     request: EditRequest,
-    source: &video_editor_backend::tools::ProbeInfo,
+    source: &video_kadr_backend::tools::ProbeInfo,
 ) -> CompiledExportCommand {
     let plan = Arc::new(
         EditPlan::compile(

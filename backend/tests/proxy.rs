@@ -9,9 +9,9 @@ use axum::http::{header, Request, StatusCode};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use video_editor_backend::library::MediaEntry;
-use video_editor_backend::model::JobStatus;
-use video_editor_backend::tools;
+use video_kadr_backend::library::MediaEntry;
+use video_kadr_backend::model::JobStatus;
+use video_kadr_backend::tools;
 
 use support::{assert_api_error, make_state, router};
 
@@ -24,7 +24,7 @@ fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
         .unwrap()
 }
 
-async fn tools_and_h264_available(state: &video_editor_backend::state::AppState) -> bool {
+async fn tools_and_h264_available(state: &video_kadr_backend::state::AppState) -> bool {
     if !tools::check_tool(&state.process_runtime, "ffmpeg", "-version")
         .await
         .0
