@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::capabilities::Capabilities;
-use crate::db::{Db, Project};
+use crate::db::{CompositionProject, Db, Project};
 use crate::state::ToolInfo;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -104,5 +104,67 @@ impl ProjectPort for SqliteProjectPort {
 
     async fn delete(&self, id: &str) -> Result<bool> {
         self.db.delete_project(id).await
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompositionProjectDraft {
+    pub name: String,
+    pub document: Value,
+    pub source_ids: Vec<String>,
+}
+
+#[axum::async_trait]
+pub trait CompositionProjectPort: Send + Sync {
+    async fn create(&self, draft: CompositionProjectDraft) -> Result<CompositionProject>;
+    async fn update(
+        &self,
+        id: &str,
+        draft: CompositionProjectDraft,
+    ) -> Result<Option<CompositionProject>>;
+    async fn list(&self) -> Result<Vec<CompositionProject>>;
+    async fn get(&self, id: &str) -> Result<Option<CompositionProject>>;
+    async fn delete(&self, id: &str) -> Result<bool>;
+}
+
+#[derive(Clone)]
+pub struct SqliteCompositionProjectPort {
+    db: Db,
+}
+
+impl SqliteCompositionProjectPort {
+    pub fn new(db: Db) -> Self {
+        Self { db }
+    }
+}
+
+#[axum::async_trait]
+impl CompositionProjectPort for SqliteCompositionProjectPort {
+    async fn create(&self, draft: CompositionProjectDraft) -> Result<CompositionProject> {
+        self.db
+            .create_composition_project(&draft.name, &draft.document, &draft.source_ids)
+            .await
+    }
+
+    async fn update(
+        &self,
+        id: &str,
+        draft: CompositionProjectDraft,
+    ) -> Result<Option<CompositionProject>> {
+        self.db
+            .update_composition_project(id, &draft.name, &draft.document, &draft.source_ids)
+            .await
+    }
+
+    async fn list(&self) -> Result<Vec<CompositionProject>> {
+        self.db.list_composition_projects().await
+    }
+
+    async fn get(&self, id: &str) -> Result<Option<CompositionProject>> {
+        self.db.get_composition_project(id).await
+    }
+
+    async fn delete(&self, id: &str) -> Result<bool> {
+        self.db.delete_composition_project(id).await
     }
 }

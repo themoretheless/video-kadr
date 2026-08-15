@@ -7,12 +7,16 @@ import {
   buildEditPayload,
   defaultEdit,
   deleteTimelineSegment,
+  doUpload,
   duplicateTimelineSegment,
   endEditTransaction,
   hasMeaningfulChanges,
   history,
+  identityColorWheels,
   identityCurves,
+  identitySelectiveHsl,
   initStateEffects,
+  loadLibrary,
   loadCapabilities,
   moveTimelineSegment,
   normalizeCrop,
@@ -91,6 +95,8 @@ beforeEach(() => {
   setVideo(12, 1920, 1080)
   state.capabilities = null
   state.backendStatus = 'checking'
+  state.library = []
+  state.librarySnapshotReady = false
   state.seekTimelineSegmentId = null
   presets.list = []
   resetHistory()
@@ -123,6 +129,12 @@ describe('pure edit helpers', () => {
 
     expect(second.curves).toEqual(identityCurves())
     expect(second.curves.red).not.toBe(first.curves.red)
+    first.hsl.red.hue = 90
+    first.colorWheels.shadows.blue = 0.5
+    expect(second.hsl).toEqual(identitySelectiveHsl())
+    expect(second.colorWheels).toEqual(identityColorWheels())
+    expect(second.hsl.red).not.toBe(first.hsl.red)
+    expect(second.colorWheels.shadows).not.toBe(first.colorWheels.shadows)
   })
 
   it('canonicalizes persisted curves and LUT metadata', () => {
@@ -177,6 +189,55 @@ describe('pure edit helpers', () => {
       chromaKeySpill: 0,
     })
     expect(sanitizeEditState({ chromaKeyColor: 'green' }).chromaKeyColor).toBe('#00ff00')
+  })
+
+  it('canonicalizes persisted HSL bands and tonal color wheels', () => {
+    const edit = sanitizeEditState({
+      hsl: {
+        red: { hue: 999, saturation: -5, lightness: 0.25 },
+        blue: { hue: Number.NaN, saturation: 0.4, lightness: Number.POSITIVE_INFINITY },
+      },
+      colorWheels: {
+        shadows: { red: 2, green: -2, blue: 0.2 },
+        midtones: { red: Number.NaN },
+        preserveLuminosity: false,
+      },
+    })
+
+    expect(edit.hsl.red).toEqual({ hue: 180, saturation: -1, lightness: 0.25 })
+    expect(edit.hsl.blue).toEqual({ hue: 0, saturation: 0.4, lightness: 0 })
+    expect(edit.colorWheels.shadows).toEqual({ red: 1, green: -1, blue: 0.2 })
+    expect(edit.colorWheels.midtones).toEqual({ red: 0, green: 0, blue: 0 })
+    expect(edit.colorWheels.preserveLuminosity).toBe(false)
+  })
+
+  it('canonicalizes persisted deterministic audio DSP controls', () => {
+    const edit = sanitizeEditState({
+      pan: 4,
+      audioEqEnabled: true,
+      audioEq: { lowGainDb: -99, midGainDb: 3.5, highGainDb: 99 },
+      compressorEnabled: true,
+      compressor: {
+        thresholdDb: -99,
+        ratio: 99,
+        attackMs: 0,
+        releaseMs: 99_999,
+        makeupGainDb: Number.NaN,
+      },
+      limiterEnabled: true,
+      limiter: { ceilingDb: -99, releaseMs: 0 },
+    })
+
+    expect(edit.pan).toBe(1)
+    expect(edit.audioEq).toEqual({ lowGainDb: -24, midGainDb: 3.5, highGainDb: 24 })
+    expect(edit.compressor).toEqual({
+      thresholdDb: -60,
+      ratio: 20,
+      attackMs: 0.01,
+      releaseMs: 9_000,
+      makeupGainDb: 0,
+    })
+    expect(edit.limiter).toEqual({ ceilingDb: -24, releaseMs: 1 })
   })
 })
 
@@ -275,6 +336,46 @@ describe('edit API payload parity', () => {
     expect('lutSize' in payload).toBe(false)
   })
 
+  it('omits identity manual color and emits only canonical HSL/wheel payloads', () => {
+    expect('hsl' in buildEditPayload()).toBe(false)
+    expect('colorWheels' in buildEditPayload()).toBe(false)
+
+    state.edit.hsl.red = { hue: 250, saturation: -2, lightness: 0.2 }
+    state.edit.colorWheels.highlights = { red: -0.2, green: 0.1, blue: 3 }
+    state.edit.colorWheels.preserveLuminosity = false
+    const payload = buildEditPayload()
+
+    expect(payload.hsl).toMatchObject({
+      red: { hue: 180, saturation: -1, lightness: 0.2 },
+      blue: { hue: 0, saturation: 0, lightness: 0 },
+    })
+    expect(payload.colorWheels).toEqual({
+      shadows: { red: 0, green: 0, blue: 0 },
+      midtones: { red: 0, green: 0, blue: 0 },
+      highlights: { red: -0.2, green: 0.1, blue: 1 },
+      preserveLuminosity: false,
+    })
+  })
+
+  it('emits bounded pan, EQ, compressor, and limiter only when enabled', () => {
+    expect('pan' in buildEditPayload()).toBe(false)
+    expect('audioEq' in buildEditPayload()).toBe(false)
+    state.edit.pan = -2
+    state.edit.audioEqEnabled = true
+    state.edit.audioEq = { lowGainDb: -30, midGainDb: 2, highGainDb: 30 }
+    state.edit.compressorEnabled = true
+    state.edit.compressor = { thresholdDb: -18, ratio: 4, attackMs: 10, releaseMs: 180, makeupGainDb: 3 }
+    state.edit.limiterEnabled = true
+    state.edit.limiter = { ceilingDb: -1, releaseMs: 80 }
+
+    expect(buildEditPayload()).toMatchObject({
+      pan: -1,
+      audioEq: { lowGainDb: -24, midGainDb: 2, highGainDb: 24 },
+      compressor: { thresholdDb: -18, ratio: 4, attackMs: 10, releaseMs: 180, makeupGainDb: 3 },
+      limiter: { ceilingDb: -1, releaseMs: 80 },
+    })
+  })
+
   it('normalizes unsafe crop input before it reaches the backend', () => {
     state.edit.cropEnabled = true
     state.edit.crop = {
@@ -367,6 +468,52 @@ describe('runtime capabilities', () => {
       available: true,
     })
     expect(selectedExportUnavailableReason()).toBeNull()
+  })
+})
+
+describe('media upload routing', () => {
+  it('returns audio metadata without replacing the legacy video editor state', async () => {
+    const original = state.video
+    vi.mocked(api.uploadFile).mockResolvedValue({
+      id: 'audio-source',
+      url: '/files/sources/audio.wav',
+      filename: 'audio.wav',
+      mediaType: 'audio',
+      duration: 4,
+      width: 0,
+      height: 0,
+      acodec: 'pcm_s16le',
+    })
+
+    const uploaded = await doUpload(new File(['audio'], 'audio.wav', { type: 'audio/wav' }))
+
+    expect(uploaded).toMatchObject({ id: 'audio-source', mediaType: 'audio' })
+    expect(state.video).toBe(original)
+  })
+})
+
+describe('authoritative library snapshots', () => {
+  it('marks only the latest successful fetch as safe for composition pruning', async () => {
+    const entry = {
+      id: 'source-one',
+      kind: 'source' as const,
+      filename: 'source-one.mp4',
+      url: '/files/sources/source-one.mp4',
+      mediaType: 'video' as const,
+      duration: 2,
+      width: 1280,
+      height: 720,
+      createdAt: 1,
+    }
+    vi.mocked(api.getLibrary).mockResolvedValueOnce([entry])
+    await expect(loadLibrary()).resolves.toBe(true)
+    expect(state.librarySnapshotReady).toBe(true)
+    expect(state.library).toEqual([entry])
+
+    vi.mocked(api.getLibrary).mockRejectedValueOnce(new Error('offline'))
+    await expect(loadLibrary()).resolves.toBe(false)
+    expect(state.librarySnapshotReady).toBe(false)
+    expect(state.library).toEqual([entry])
   })
 })
 

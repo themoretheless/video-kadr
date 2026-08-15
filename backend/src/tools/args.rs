@@ -4,7 +4,9 @@
 use std::path::Path;
 
 use crate::config::encode_budget::EncodeBudget;
-use crate::domain::edit::{EditSpec, Rotation, TimeRange, ToneCurve, ToneCurves};
+use crate::domain::edit::{
+    ColorWheels, EditSpec, HslAdjustments, HslBand, Rotation, TimeRange, ToneCurve, ToneCurves,
+};
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
 use crate::ports::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
@@ -79,6 +81,47 @@ fn curves_filter(curves: &ToneCurves) -> String {
     }
     options.push("interp=pchip".into());
     format!("curves={}", options.join(":"))
+}
+
+fn hsl_filters(adjustments: &HslAdjustments) -> Vec<String> {
+    [
+        ("r", adjustments.red),
+        ("y", adjustments.yellow),
+        ("g", adjustments.green),
+        ("c", adjustments.cyan),
+        ("b", adjustments.blue),
+        ("m", adjustments.magenta),
+    ]
+    .into_iter()
+    .filter_map(|(color, band)| hsl_band_filter(color, band))
+    .collect()
+}
+
+fn hsl_band_filter(color: &str, band: HslBand) -> Option<String> {
+    (!band.is_identity()).then(|| {
+        format!(
+            "huesaturation=hue={:.6}:saturation={:.6}:intensity={:.6}:colors={color}:strength=1",
+            band.hue, band.saturation, band.lightness
+        )
+    })
+}
+
+fn color_wheels_filter(wheels: &ColorWheels) -> Option<String> {
+    (!wheels.is_identity()).then(|| {
+        format!(
+            "colorbalance=rs={:.6}:gs={:.6}:bs={:.6}:rm={:.6}:gm={:.6}:bm={:.6}:rh={:.6}:gh={:.6}:bh={:.6}:pl={}",
+            wheels.shadows.red,
+            wheels.shadows.green,
+            wheels.shadows.blue,
+            wheels.midtones.red,
+            wheels.midtones.green,
+            wheels.midtones.blue,
+            wheels.highlights.red,
+            wheels.highlights.green,
+            wheels.highlights.blue,
+            u8::from(wheels.preserve_luminosity),
+        )
+    })
 }
 
 /// Escape a path for one quoted FFmpeg filter option. This is filtergraph
@@ -169,6 +212,14 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
             "eq=brightness={:.3}:contrast={:.3}:saturation={:.3}",
             video.brightness, video.contrast, video.saturation
         ));
+    }
+    if let Some(hsl) = &video.hsl {
+        before_lut.extend(hsl_filters(hsl));
+    }
+    if let Some(color_wheels) = &video.color_wheels {
+        if let Some(filter) = color_wheels_filter(color_wheels) {
+            before_lut.push(filter);
+        }
     }
     // Curves and 3D LUT mixing share an explicit high-bit RGB(A) working
     // format. Besides avoiding 8-bit curve-point quantisation, retaining alpha
@@ -286,8 +337,35 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
     if audio.highpass {
         af.push("highpass=f=100".into());
     }
+    if let Some(eq) = audio.eq.filter(|eq| !eq.is_identity()) {
+        for (frequency, gain) in [
+            (100, eq.low_gain_db),
+            (1_000, eq.mid_gain_db),
+            (10_000, eq.high_gain_db),
+        ] {
+            if gain.abs() > 1e-9 {
+                af.push(format!(
+                    "equalizer=f={frequency}:t=q:w=0.707:g={gain:.6}:n=1"
+                ));
+            }
+        }
+    }
     if (audio.volume - 1.0).abs() > 1e-6 {
         af.push(format!("volume={:.3}", audio.volume));
+    }
+    if audio.pan.abs() > 1e-9 {
+        af.push("aformat=channel_layouts=stereo".into());
+        af.push(format!("stereotools=balance_out={:.6}", audio.pan));
+    }
+    if let Some(compressor) = audio.compressor {
+        af.push(format!(
+            "acompressor=threshold={:.9}:ratio={:.6}:attack={:.6}:release={:.6}:makeup={:.9}:knee=2.828427:link=average:detection=rms:mix=1",
+            db_to_linear(compressor.threshold_db),
+            compressor.ratio,
+            compressor.attack_ms,
+            compressor.release_ms,
+            db_to_linear(compressor.makeup_gain_db),
+        ));
     }
     let speed = timing.speed;
     if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
@@ -308,7 +386,18 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
     if audio.normalize {
         af.push("loudnorm=I=-14:TP=-1.5:LRA=11".into());
     }
+    if let Some(limiter) = audio.limiter {
+        af.push(format!(
+            "alimiter=limit={:.9}:attack=5:release={:.6}:level=0:latency=1",
+            db_to_linear(limiter.ceiling_db),
+            limiter.release_ms,
+        ));
+    }
     af
+}
+
+fn db_to_linear(decibels: f64) -> f64 {
+    10_f64.powf(decibels / 20.0)
 }
 
 /// Append audio options when the compiled output includes an audio stream.
@@ -1037,6 +1126,69 @@ mod tests {
     }
 
     #[test]
+    fn selective_hsl_and_color_wheels_compile_in_declared_tonal_order() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "brightness": 0.1,
+                "hsl": {
+                    "red": {"hue": 15.0, "saturation": -0.2, "lightness": 0.1},
+                    "blue": {"hue": -20.0, "saturation": 0.3, "lightness": -0.15}
+                },
+                "colorWheels": {
+                    "shadows": {"red": 0.2, "green": -0.1, "blue": 0.05},
+                    "midtones": {"blue": 0.12},
+                    "highlights": {"red": -0.08, "green": 0.04},
+                    "preserveLuminosity": false
+                },
+                "curves": {
+                    "master": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}]
+                }
+            }),
+            10.0,
+        );
+        let chain = vf(&args);
+        let red = "huesaturation=hue=15.000000:saturation=-0.200000:intensity=0.100000:colors=r:strength=1";
+        let blue = "huesaturation=hue=-20.000000:saturation=0.300000:intensity=-0.150000:colors=b:strength=1";
+        let wheels = "colorbalance=rs=0.200000:gs=-0.100000:bs=0.050000:rm=0.000000:gm=0.000000:bm=0.120000:rh=-0.080000:gh=0.040000:bh=0.000000:pl=0";
+
+        assert!(chain.contains(red), "{chain}");
+        assert!(chain.contains(blue), "{chain}");
+        assert!(chain.contains(wheels), "{chain}");
+        assert!(
+            chain.find("eq=").unwrap() < chain.find(red).unwrap(),
+            "{chain}"
+        );
+        assert!(
+            chain.find(red).unwrap() < chain.find(blue).unwrap(),
+            "{chain}"
+        );
+        assert!(
+            chain.find(blue).unwrap() < chain.find(wheels).unwrap(),
+            "{chain}"
+        );
+        assert!(
+            chain.find(wheels).unwrap() < chain.find("curves=").unwrap(),
+            "{chain}"
+        );
+        assert_eq!(chain.matches("huesaturation=").count(), 2, "{chain}");
+    }
+
+    #[test]
+    fn identity_manual_color_objects_emit_no_filters() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "hsl": {},
+                "colorWheels": {}
+            }),
+            10.0,
+        );
+        assert!(!args.iter().any(|argument| argument == "-vf"));
+        assert!(!args.iter().any(|argument| argument == "-filter_complex"));
+    }
+
+    #[test]
     fn custom_curves_emit_normalized_channels_before_post_effects() {
         let args = args_for(
             json!({
@@ -1348,6 +1500,54 @@ mod tests {
         let chain = af(&args).expect("has -af");
         assert!(chain.contains("loudnorm"), "{chain}");
         assert!(chain.contains("highpass=f=100"), "{chain}");
+    }
+
+    #[test]
+    fn deterministic_audio_dsp_compiles_in_stable_order() {
+        let args = args_for(
+            json!({
+                "videoId": "x",
+                "highpass": true,
+                "audioEq": {"lowGainDb": 2.0, "midGainDb": -1.5, "highGainDb": 0.0},
+                "volume": 1.25,
+                "pan": -0.4,
+                "compressor": {
+                    "thresholdDb": -18.0,
+                    "ratio": 4.0,
+                    "attackMs": 10.0,
+                    "releaseMs": 180.0,
+                    "makeupGainDb": 3.0
+                },
+                "normalizeAudio": true,
+                "limiter": {"ceilingDb": -1.0, "releaseMs": 80.0}
+            }),
+            10.0,
+        );
+        let chain = af(&args).expect("has -af");
+        let low = "equalizer=f=100:t=q:w=0.707:g=2.000000:n=1";
+        let mid = "equalizer=f=1000:t=q:w=0.707:g=-1.500000:n=1";
+        let compressor = "acompressor=threshold=0.125892541:ratio=4.000000:attack=10.000000:release=180.000000:makeup=1.412537545";
+        let limiter = "alimiter=limit=0.891250938:attack=5:release=80.000000:level=0:latency=1";
+
+        for expected in [
+            "highpass=f=100",
+            low,
+            mid,
+            "volume=1.250",
+            "aformat=channel_layouts=stereo",
+            "stereotools=balance_out=-0.400000",
+            compressor,
+            "loudnorm=I=-14:TP=-1.5:LRA=11",
+            limiter,
+        ] {
+            assert!(chain.contains(expected), "missing {expected} in {chain}");
+        }
+        let position = |value: &str| chain.find(value).unwrap();
+        assert!(position("highpass") < position(low));
+        assert!(position(mid) < position("volume="));
+        assert!(position("stereotools") < position("acompressor"));
+        assert!(position("acompressor") < position("loudnorm"));
+        assert!(position("loudnorm") < position("alimiter"));
     }
 
     #[test]

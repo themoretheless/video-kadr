@@ -217,7 +217,7 @@ fn display_title(original: &str) -> String {
         .to_owned()
 }
 
-fn safe_upload_extension(info: &ProbeInfo) -> Option<&'static str> {
+pub(crate) fn safe_upload_extension(info: &ProbeInfo) -> Option<&'static str> {
     let formats = info.format_name.as_deref().unwrap_or_default();
     let has = |expected: &str| formats.split(',').any(|format| format == expected);
 
@@ -256,7 +256,7 @@ fn safe_upload_extension(info: &ProbeInfo) -> Option<&'static str> {
     }
 }
 
-fn media_type(info: &ProbeInfo) -> Option<&'static str> {
+pub(crate) fn media_type(info: &ProbeInfo) -> Option<&'static str> {
     if still_image_extension(info).is_some() {
         Some("image")
     } else if info.vcodec.is_some() && info.width > 0 && info.height > 0 {

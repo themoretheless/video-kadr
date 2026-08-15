@@ -99,6 +99,30 @@ impl AppError {
         Self::client(StatusCode::GATEWAY_TIMEOUT, "gateway_timeout", message)
     }
 
+    pub fn service_unavailable(message: impl Into<String>) -> Self {
+        Self::client(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "service_unavailable",
+            message,
+        )
+    }
+
+    pub fn thumbnail_unavailable(message: impl Into<String>) -> Self {
+        Self::client(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "thumbnail_unavailable",
+            message,
+        )
+    }
+
+    pub fn filmstrip_unavailable(message: impl Into<String>) -> Self {
+        Self::client(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "filmstrip_unavailable",
+            message,
+        )
+    }
+
     pub fn internal(context: &'static str, source: impl Into<anyhow::Error>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,

@@ -13,7 +13,7 @@ use axum::Router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use video_editor_backend::db::Db;
+use video_editor_backend::db::{Db, MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES};
 use video_editor_backend::handlers::resume_pending_jobs;
 use video_editor_backend::jobs::{EnqueueOutcome, JobKind, QueueLimits};
 use video_editor_backend::library::{Library, MediaEntry};
@@ -37,6 +37,82 @@ fn post_json(uri: &str, body: Value) -> Request<Body> {
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap()
+}
+
+fn put_json(uri: &str, body: Value) -> Request<Body> {
+    Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap()
+}
+
+fn patch_json(uri: &str, body: Value) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap()
+}
+
+fn composition_request(source_id: &str) -> Value {
+    json!({
+        "schemaVersion": 1,
+        "composition": {
+            "schemaVersion": 1,
+            "timeBase": 1_000_000,
+            "canvas": {
+                "width": 1280,
+                "height": 720,
+                "fpsMilli": 30_000,
+                "background": { "red": 0.0, "green": 0.0, "blue": 0.0, "alpha": 1.0 }
+            },
+            "sources": {
+                (source_id): {
+                    "id": source_id,
+                    "kind": "video",
+                    "durationTicks": 2_000_000,
+                    "width": 1280,
+                    "height": 720,
+                    "hasAudio": false
+                }
+            },
+            "tracks": [{
+                "kind": "video",
+                "id": "video-main",
+                "name": "Main",
+                "hidden": false,
+                "locked": false,
+                "clips": [{
+                    "id": "clip-main",
+                    "sourceId": source_id,
+                    "placement": {
+                        "timelineStartTick": 0,
+                        "sourceInTick": 0,
+                        "sourceOutTick": 1_000_000,
+                        "speed": 1.0
+                    },
+                    "transform": {
+                        "x": { "mode": "constant", "value": 0.0 },
+                        "y": { "mode": "constant", "value": 0.0 },
+                        "scaleX": { "mode": "constant", "value": 1.0 },
+                        "scaleY": { "mode": "constant", "value": 1.0 },
+                        "rotationDegrees": { "mode": "constant", "value": 0.0 },
+                        "anchorX": 0.5,
+                        "anchorY": 0.5
+                    },
+                    "opacity": { "mode": "constant", "value": 1.0 },
+                    "blendMode": "normal",
+                    "effects": [],
+                    "enabled": true
+                }],
+                "transitions": []
+            }]
+        },
+        "output": { "format": "mp4", "codec": "h264", "qualityTier": "medium" }
+    })
 }
 
 fn post_identity_lut() -> Request<Body> {
@@ -79,6 +155,7 @@ fn delete(uri: &str) -> Request<Body> {
 /// Poll a job until it reaches a terminal state. The background worker runs on
 /// the test runtime; the sleeps give it slots to make progress.
 async fn poll_terminal(app: &Router, id: &str) -> Value {
+    let mut last = Value::Null;
     for _ in 0..400 {
         let (status, body, _) = send(app, get(&format!("/api/jobs/{id}"))).await;
         assert_eq!(
@@ -88,10 +165,13 @@ async fn poll_terminal(app: &Router, id: &str) -> Value {
         );
         match body["status"].as_str().unwrap_or("") {
             "done" | "error" | "cancelled" => return body,
-            _ => tokio::time::sleep(Duration::from_millis(10)).await,
+            _ => {
+                last = body;
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
         }
     }
-    panic!("job {id} never reached a terminal state");
+    panic!("job {id} never reached a terminal state; last snapshot: {last}");
 }
 
 #[tokio::test]
@@ -168,6 +248,36 @@ async fn request_id_is_validated_and_propagated() {
         .unwrap()
         .contains("x-request-id"));
 
+    let patch_preflight = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/library/item/metadata")
+        .header("origin", "http://localhost:5173")
+        .header("access-control-request-method", "PATCH")
+        .header("access-control-request-headers", "content-type")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(patch_preflight).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers()["access-control-allow-methods"]
+        .to_str()
+        .unwrap()
+        .contains("PATCH"));
+
+    let composition_preflight = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/compositions/render")
+        .header("origin", "http://localhost:5173")
+        .header("access-control-request-method", "POST")
+        .header("access-control-request-headers", "content-type")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(composition_preflight).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers()["access-control-allow-methods"]
+        .to_str()
+        .unwrap()
+        .contains("POST"));
+
     let cors_get = Request::builder()
         .uri("/api/health")
         .header("origin", "http://localhost:5173")
@@ -187,6 +297,67 @@ async fn unknown_job_is_404() {
     let (status, body, _) = send(&app, get("/api/jobs/does-not-exist")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_api_error(&body, "not_found");
+}
+
+#[tokio::test]
+async fn composition_render_is_durable_and_reports_a_missing_source() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let legacy = composition_request("missing-source");
+    let (status, accepted, _) = send(&app, post_json("/api/compositions/render", legacy)).await;
+    assert_eq!(status, StatusCode::OK);
+    let job_id = accepted["jobId"].as_str().unwrap();
+
+    let mut canonical = composition_request("missing-source");
+    canonical["output"] = json!({
+        "profile": { "container": "mp4", "codec": "h264" },
+        "qualityTier": "medium"
+    });
+    let (status, duplicate, _) = send(&app, post_json("/api/compositions/render", canonical)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(duplicate["jobId"], job_id);
+
+    let terminal = poll_terminal(&app, job_id).await;
+    assert_eq!(terminal["status"], "error");
+    assert!(terminal["error"].as_str().unwrap().contains("не найден"));
+}
+
+#[tokio::test]
+async fn composition_delivery_profile_is_request_gated_and_invalid_pairs_fail_closed() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+
+    let mut unavailable = composition_request("missing-source");
+    unavailable["output"] = json!({
+        "profile": { "container": "mov", "profile": "hq" },
+        "qualityTier": "high"
+    });
+    let (status, body, _) = send(&app, post_json("/api/compositions/render", unavailable)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+    assert!(body["error"].as_str().unwrap().contains("pcm_s16le"));
+
+    let mut invalid = composition_request("missing-source");
+    invalid["output"] = json!({
+        "profile": { "container": "mp4", "codec": "vp9" },
+        "qualityTier": "medium"
+    });
+    let (status, body, _) = send(&app, post_json("/api/compositions/render", invalid)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
+}
+
+#[tokio::test]
+async fn composition_render_rejects_path_like_source_ids_before_enqueue() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let (status, body, _) = send(
+        &app,
+        post_json("/api/compositions/render", composition_request("../escape")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "invalid_json");
 }
 
 #[tokio::test]
@@ -789,6 +960,8 @@ async fn library_list_add_delete_flow() {
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["id"], "abc");
+    assert_eq!(arr[0]["favorite"], false);
+    assert_eq!(arr[0]["tags"], json!([]));
 
     // Delete it -> 204 and the file is gone.
     let (status, _b, _) = send(&app, delete("/api/library/abc")).await;
@@ -799,6 +972,205 @@ async fn library_list_add_delete_flow() {
     // Deleting again is a 404.
     let (status, _b, _) = send(&app, delete("/api/library/abc")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn library_metadata_put_patch_search_fields_and_delete_cleanup() {
+    let (state, _directory) = make_state(true, true).await;
+    let filename = "interview-audio.webm";
+    tokio::fs::write(state.sources_dir().join(filename), b"audio")
+        .await
+        .unwrap();
+    state
+        .library
+        .add(MediaEntry::from_result(
+            "source",
+            &json!({
+                "id": "voice-1",
+                "filename": filename,
+                "url": format!("/files/sources/{filename}"),
+                "title": "Imported title",
+                "mediaType": "audio"
+            }),
+        ))
+        .await;
+    let app = router(state.clone());
+
+    let (put_status, put_body, _) = send(
+        &app,
+        put_json(
+            "/api/library/voice-1/metadata",
+            json!({
+                "title": "  Customer interview  ",
+                "favorite": true,
+                "tags": [" work ", "voice"]
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(put_status, StatusCode::OK);
+    assert_eq!(put_body["title"], "Customer interview");
+    assert_eq!(put_body["favorite"], true);
+    assert_eq!(put_body["tags"], json!(["work", "voice"]));
+
+    let (patch_status, patch_body, _) = send(
+        &app,
+        patch_json(
+            "/api/library/voice-1/metadata",
+            json!({ "favorite": false }),
+        ),
+    )
+    .await;
+    assert_eq!(patch_status, StatusCode::OK);
+    assert_eq!(patch_body["favorite"], false);
+    assert_eq!(patch_body["title"], "Customer interview");
+    assert_eq!(patch_body["tags"], json!(["work", "voice"]));
+
+    let (clear_status, clear_body, _) = send(
+        &app,
+        patch_json("/api/library/voice-1/metadata", json!({ "title": null })),
+    )
+    .await;
+    assert_eq!(clear_status, StatusCode::OK);
+    assert_eq!(clear_body["title"], "Imported title");
+
+    let (list_status, list_body, _) = send(&app, get("/api/library")).await;
+    assert_eq!(list_status, StatusCode::OK);
+    assert_eq!(list_body[0]["title"], "Imported title");
+    assert_eq!(list_body[0]["tags"], json!(["work", "voice"]));
+
+    let (delete_status, _, _) = send(&app, delete("/api/library/voice-1")).await;
+    assert_eq!(delete_status, StatusCode::NO_CONTENT);
+    assert!(state
+        .db
+        .get_library_metadata("voice-1")
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn library_metadata_rejects_invalid_or_ambiguous_payloads() {
+    let (state, _directory) = make_state(true, true).await;
+    let filename = "clip.mp4";
+    tokio::fs::write(state.sources_dir().join(filename), b"video")
+        .await
+        .unwrap();
+    state
+        .library
+        .add(MediaEntry::from_result(
+            "source",
+            &json!({ "id": "clip-meta", "filename": filename, "url": "/files/sources/clip.mp4" }),
+        ))
+        .await;
+    let app = router(state);
+
+    for payload in [
+        json!({ "title": "x".repeat(121), "favorite": false, "tags": [] }),
+        json!({ "title": null, "favorite": false, "tags": ["Work", "work"] }),
+        json!({ "title": null, "favorite": false, "tags": (0..21).map(|i| format!("tag-{i}")).collect::<Vec<_>>() }),
+    ] {
+        let (status, body, _) =
+            send(&app, put_json("/api/library/clip-meta/metadata", payload)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_api_error(&body, "bad_request");
+    }
+
+    let (empty_status, empty_body, _) = send(
+        &app,
+        patch_json("/api/library/clip-meta/metadata", json!({})),
+    )
+    .await;
+    assert_eq!(empty_status, StatusCode::BAD_REQUEST);
+    assert_api_error(&empty_body, "bad_request");
+
+    let (missing_status, missing_body, _) = send(
+        &app,
+        patch_json("/api/library/missing/metadata", json!({ "favorite": true })),
+    )
+    .await;
+    assert_eq!(missing_status, StatusCode::NOT_FOUND);
+    assert_api_error(&missing_body, "not_found");
+}
+
+#[tokio::test]
+async fn library_source_delete_is_blocked_while_a_composition_project_references_it() {
+    let (state, _directory) = make_state(true, true).await;
+    let filename = "referenced.mp4";
+    tokio::fs::write(state.sources_dir().join(filename), b"fixture")
+        .await
+        .unwrap();
+    state
+        .library
+        .add(MediaEntry::from_result(
+            "source",
+            &json!({
+                "id": "referenced-source",
+                "filename": filename,
+                "url": format!("/files/sources/{filename}"),
+                "mediaType": "video"
+            }),
+        ))
+        .await;
+    state
+        .db
+        .replace_library_metadata(
+            "referenced-source",
+            Some("Protected source".into()),
+            true,
+            vec!["composition".into()],
+        )
+        .await
+        .unwrap();
+    let app = router(state.clone());
+    let (created_status, project, _) = send(
+        &app,
+        post_json(
+            "/api/composition-projects",
+            json!({
+                "schemaVersion": 2,
+                "mode": "composition",
+                "name": "Uses source",
+                "document": {
+                    "schemaVersion": 1,
+                    "sources": {
+                        "referenced-source": {"id": "referenced-source"}
+                    }
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(created_status, StatusCode::CREATED);
+
+    let (blocked_status, blocked, _) = send(&app, delete("/api/library/referenced-source")).await;
+    assert_eq!(blocked_status, StatusCode::CONFLICT);
+    assert_api_error(&blocked, "conflict");
+    assert!(tokio::fs::metadata(state.sources_dir().join(filename))
+        .await
+        .is_ok());
+    assert!(state
+        .db
+        .get_library_metadata("referenced-source")
+        .await
+        .unwrap()
+        .is_some());
+
+    let project_id = project["id"].as_str().unwrap();
+    let (deleted_project, _, _) = send(
+        &app,
+        delete(&format!("/api/composition-projects/{project_id}")),
+    )
+    .await;
+    assert_eq!(deleted_project, StatusCode::NO_CONTENT);
+    let (deleted_source, _, _) = send(&app, delete("/api/library/referenced-source")).await;
+    assert_eq!(deleted_source, StatusCode::NO_CONTENT);
+    assert!(state
+        .db
+        .get_library_metadata("referenced-source")
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]
@@ -912,6 +1284,213 @@ async fn project_upsert_list_get_delete_flow() {
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, _b, _) = send(&app, get(&format!("/api/projects/{pid}"))).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn composition_project_create_update_list_get_delete_flow() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+
+    let (status, empty, _) = send(&app, get("/api/composition-projects")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(empty.as_array().unwrap().is_empty());
+
+    let (status, first, _) = send(
+        &app,
+        post_json(
+            "/api/composition-projects",
+            json!({
+                "schemaVersion": 2,
+                "mode": "composition",
+                "name": "Two sources",
+                "document": {
+                    "schemaVersion": 1,
+                    "sources": {
+                        "source-a": {"id": "source-a", "kind": "video"},
+                        "source-b": {"id": "source-b", "kind": "audio"}
+                    },
+                    "tracks": []
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let first_id = first["id"].as_str().unwrap().to_owned();
+    assert!(uuid::Uuid::parse_str(&first_id).is_ok());
+    assert_eq!(first["schemaVersion"], 2);
+    assert_eq!(first["mode"], "composition");
+    assert_eq!(first["sourceIds"], json!(["source-a", "source-b"]));
+
+    let (status, stored, _) =
+        send(&app, get(&format!("/api/composition-projects/{first_id}"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(stored, first);
+
+    let (status, second, _) = send(
+        &app,
+        post_json(
+            "/api/composition-projects",
+            json!({
+                "schemaVersion": 2,
+                "mode": "composition",
+                "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(second["name"], "Без названия");
+
+    let (status, updated, _) = send(
+        &app,
+        put_json(
+            &format!("/api/composition-projects/{first_id}"),
+            json!({
+                "schemaVersion": 2,
+                "mode": "composition",
+                "name": "Updated",
+                "document": {
+                    "schemaVersion": 1,
+                    "sources": {"source-c": {"id": "source-c", "kind": "image"}},
+                    "tracks": [],
+                    "revision": 2
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["id"], first_id);
+    assert_eq!(updated["createdAt"], first["createdAt"]);
+    assert_eq!(updated["sourceIds"], json!(["source-c"]));
+    assert_eq!(updated["document"]["revision"], 2);
+
+    let (status, projects, _) = send(&app, get("/api/composition-projects")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(projects.as_array().unwrap().len(), 2);
+    assert_eq!(projects[0]["id"], first_id, "last write sorts first");
+
+    let (status, legacy, _) = send(&app, get("/api/projects")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(legacy.as_array().unwrap().is_empty());
+
+    let (status, _, _) = send(
+        &app,
+        delete(&format!("/api/composition-projects/{first_id}")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, body, _) = send(&app, get(&format!("/api/composition-projects/{first_id}"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
+}
+
+#[tokio::test]
+async fn composition_project_rejects_invalid_envelopes_and_updates_without_partial_writes() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let (_, created, _) = send(
+        &app,
+        post_json(
+            "/api/composition-projects",
+            json!({
+                "schemaVersion": 2,
+                "mode": "composition",
+                "document": {
+                    "schemaVersion": 1,
+                    "sources": {"source-old": {"id": "source-old"}},
+                    "revision": 1
+                }
+            }),
+        ),
+    )
+    .await;
+    let id = created["id"].as_str().unwrap();
+
+    for invalid in [
+        json!({
+            "schemaVersion": 3,
+            "mode": "composition",
+            "document": {"schemaVersion": 1, "sources": {}}
+        }),
+        json!({
+            "schemaVersion": 2,
+            "mode": "clip",
+            "document": {"schemaVersion": 1, "sources": {}}
+        }),
+        json!({
+            "schemaVersion": 2,
+            "mode": "composition",
+            "document": {"schemaVersion": 2, "sources": {}}
+        }),
+        json!({
+            "schemaVersion": 2,
+            "mode": "composition",
+            "document": {"schemaVersion": 1, "sources": {"source-key": {"id": "other"}}}
+        }),
+        json!({
+            "schemaVersion": 2,
+            "mode": "composition",
+            "document": {"schemaVersion": 1, "sources": {"../escape": {"id": "../escape"}}}
+        }),
+    ] {
+        let (status, body, _) = send(
+            &app,
+            put_json(&format!("/api/composition-projects/{id}"), invalid),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_api_error(&body, "bad_request");
+    }
+
+    let (status, unchanged, _) = send(&app, get(&format!("/api/composition-projects/{id}"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unchanged["document"]["revision"], 1);
+    assert_eq!(unchanged["sourceIds"], json!(["source-old"]));
+
+    let (status, body, _) = send(
+        &app,
+        put_json(
+            "/api/composition-projects/00000000-0000-4000-8000-000000000000",
+            json!({
+                "schemaVersion": 2,
+                "mode": "composition",
+                "document": {"schemaVersion": 1, "sources": {}}
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
+}
+
+#[tokio::test]
+async fn composition_project_document_has_an_independent_two_mib_limit() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let oversized = "x".repeat(MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES + 1);
+
+    let (status, body, _) = send(
+        &app,
+        post_json(
+            "/api/composition-projects",
+            json!({
+                "schemaVersion": 2,
+                "mode": "composition",
+                "document": {
+                    "schemaVersion": 1,
+                    "sources": {},
+                    "blob": oversized
+                }
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_api_error(&body, "payload_too_large");
+    let (_, projects, _) = send(&app, get("/api/composition-projects")).await;
+    assert!(projects.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

@@ -22,6 +22,7 @@ pub mod packaging;
 pub mod ports;
 pub mod privacy;
 pub mod process_control;
+pub mod project_archive;
 pub mod render;
 pub mod runtime;
 pub mod services;
@@ -33,20 +34,20 @@ use axum::extract::DefaultBodyLimit;
 use std::sync::Arc;
 
 use axum::http::{header, HeaderValue, Method};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
 
 use config::CorsOrigins;
-use http::ports::{RuntimeSystemPort, SqliteProjectPort};
+use http::ports::{RuntimeSystemPort, SqliteCompositionProjectPort, SqliteProjectPort};
 use state::AppState;
 
 /// Build the application router. `max_upload` caps the `/api/upload` body size.
 ///
-/// Static files are served only from `sources/` and `outputs/` with HTTP range
-/// support (the browser needs it to seek videos). The SQLite DB lives next to
-/// those directories but is intentionally not reachable via `/files`.
+/// Static files are served only from `sources/`, `outputs/`, and the isolated
+/// proxy media directory with HTTP range support. Proxy manifests and the
+/// SQLite DB live outside these mounts and are intentionally unreachable.
 pub fn build_router(state: AppState, max_upload: usize) -> Router {
     build_router_with_cors(state, max_upload, &CorsOrigins::default())
 }
@@ -59,6 +60,7 @@ pub fn build_router_with_cors(
     let storage = state.storage.clone();
     let system_port = Arc::new(RuntimeSystemPort::new(state.tools.clone()));
     let project_port = Arc::new(SqliteProjectPort::new(state.db.clone()));
+    let composition_project_port = Arc::new(SqliteCompositionProjectPort::new(state.db.clone()));
     let core_api = Router::new()
         .route("/import", post(handlers::import_handler))
         .route(
@@ -73,6 +75,10 @@ pub fn build_router_with_cors(
         )
         .route("/luts/:id", get(handlers::lut_get_handler))
         .route("/edit", post(handlers::edit_handler))
+        .route(
+            "/compositions/render",
+            post(handlers::composition_render_handler),
+        )
         .route("/jobs/failed", get(handlers::failed_jobs_handler))
         .route("/jobs/registry", get(handlers::job_registry_handler))
         .route("/jobs/:id", get(handlers::job_status_handler))
@@ -81,27 +87,77 @@ pub fn build_router_with_cors(
         .route("/jobs/:id/discard", post(handlers::discard_job_handler))
         .route("/library", get(handlers::library_list_handler))
         .route("/library/search", get(handlers::library_search_handler))
+        .route(
+            "/library/:id/thumbnail",
+            get(handlers::library_thumbnail_handler),
+        )
+        .route(
+            "/library/:id/thumbnail/:key",
+            get(handlers::library_thumbnail_version_handler),
+        )
+        .route(
+            "/library/:id/filmstrip",
+            get(handlers::library_filmstrip_handler),
+        )
+        .route(
+            "/library/:id/filmstrip/:key",
+            get(handlers::library_filmstrip_version_handler),
+        )
         .route("/library/:id", delete(handlers::library_delete_handler))
+        .route(
+            "/library/:id/proxies",
+            get(handlers::proxy_list_handler).post(handlers::proxy_create_handler),
+        )
+        .route(
+            "/library/:id/proxies/:key",
+            delete(handlers::proxy_delete_handler),
+        )
+        .route(
+            "/library/:id/metadata",
+            patch(handlers::library_metadata_patch_handler)
+                .put(handlers::library_metadata_put_handler),
+        )
+        .route(
+            "/composition-projects/import",
+            post(handlers::composition_project_archive_import_handler).layer(
+                DefaultBodyLimit::max(project_archive::MAX_ARCHIVE_MULTIPART_BYTES),
+            ),
+        )
+        .route(
+            "/composition-projects/:id/archive",
+            get(handlers::composition_project_archive_export_handler),
+        )
         .with_state(state);
     let api = core_api
         .merge(http::system_router(system_port))
         .merge(http::project_router(project_port))
+        .merge(http::composition_project_router(composition_project_port))
         .fallback(handlers::api_not_found_handler)
         .method_not_allowed_fallback(handlers::method_not_allowed_handler);
 
     let router = Router::new()
         .nest("/api", api)
         .nest_service("/files/sources", ServeDir::new(storage.join("sources")))
-        .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")));
+        .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")))
+        .nest_service(
+            "/files/proxies",
+            ServeDir::new(storage.join("proxies").join("media")),
+        );
     http::policy::apply_public_layers(router, cors_layer(cors_origins))
 }
 
 fn cors_layer(origins: &CorsOrigins) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(cors_header_values(origins)))
-        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
         .allow_headers([header::CONTENT_TYPE, telemetry::REQUEST_ID_HEADER])
-        .expose_headers([telemetry::REQUEST_ID_HEADER])
+        .expose_headers([telemetry::REQUEST_ID_HEADER, header::CONTENT_DISPOSITION])
 }
 
 fn cors_header_values(origins: &CorsOrigins) -> Vec<HeaderValue> {

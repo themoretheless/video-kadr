@@ -6,21 +6,32 @@ pub mod ports;
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::capabilities::Capabilities;
-use crate::db::Project;
+use crate::db::{
+    valid_composition_source_id, CompositionProject, Project, COMPOSITION_PROJECT_MODE,
+    COMPOSITION_PROJECT_SCHEMA_VERSION, MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES,
+    MAX_COMPOSITION_PROJECT_NAME_BYTES, MAX_COMPOSITION_PROJECT_SOURCES,
+};
 use crate::error::{ApiJson, AppError, AppResult};
 use crate::model::WireSchemaVersion;
 
-use ports::{HealthStatus, ProjectDraft, ProjectPort, SystemPort};
+use ports::{
+    CompositionProjectDraft, CompositionProjectPort, HealthStatus, ProjectDraft, ProjectPort,
+    SystemPort,
+};
 
 const MAX_PROJECT_JSON_BYTES: usize = 64 * 1024;
+const COMPOSITION_DOCUMENT_SCHEMA_VERSION: u64 = 1;
+const MAX_COMPOSITION_PROJECT_REQUEST_BYTES: usize =
+    MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES + 64 * 1024;
 
 pub fn system_router(port: Arc<dyn SystemPort>) -> Router {
     Router::new()
@@ -40,6 +51,22 @@ pub fn project_router(port: Arc<dyn ProjectPort>) -> Router {
             "/projects/:id",
             get(project_get_handler).delete(project_delete_handler),
         )
+        .with_state(port)
+}
+
+pub fn composition_project_router(port: Arc<dyn CompositionProjectPort>) -> Router {
+    Router::new()
+        .route(
+            "/composition-projects",
+            post(composition_project_create_handler).get(composition_project_list_handler),
+        )
+        .route(
+            "/composition-projects/:id",
+            get(composition_project_get_handler)
+                .merge(put(composition_project_update_handler))
+                .delete(composition_project_delete_handler),
+        )
+        .layer(DefaultBodyLimit::max(MAX_COMPOSITION_PROJECT_REQUEST_BYTES))
         .with_state(port)
 }
 
@@ -64,6 +91,16 @@ struct ProjectUpsertRequest {
     video: Option<Value>,
     #[serde(default)]
     edit: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CompositionProjectSaveRequest {
+    schema_version: u32,
+    mode: String,
+    #[serde(default)]
+    name: Option<String>,
+    document: Value,
 }
 
 async fn project_upsert_handler(
@@ -119,6 +156,61 @@ async fn project_delete_handler(
     }
 }
 
+async fn composition_project_create_handler(
+    State(port): State<Arc<dyn CompositionProjectPort>>,
+    ApiJson(body): ApiJson<CompositionProjectSaveRequest>,
+) -> AppResult<(StatusCode, Json<CompositionProject>)> {
+    let draft = parse_composition_project_body(body)?;
+    port.create(draft)
+        .await
+        .map(|project| (StatusCode::CREATED, Json(project)))
+        .map_err(|error| AppError::internal("create composition project", error))
+}
+
+async fn composition_project_list_handler(
+    State(port): State<Arc<dyn CompositionProjectPort>>,
+) -> AppResult<Json<Vec<CompositionProject>>> {
+    port.list()
+        .await
+        .map(Json)
+        .map_err(|error| AppError::internal("list composition projects", error))
+}
+
+async fn composition_project_get_handler(
+    State(port): State<Arc<dyn CompositionProjectPort>>,
+    AxPath(id): AxPath<String>,
+) -> AppResult<Json<CompositionProject>> {
+    port.get(&id)
+        .await
+        .map_err(|error| AppError::internal("get composition project", error))?
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("Композиционный проект не найден"))
+}
+
+async fn composition_project_update_handler(
+    State(port): State<Arc<dyn CompositionProjectPort>>,
+    AxPath(id): AxPath<String>,
+    ApiJson(body): ApiJson<CompositionProjectSaveRequest>,
+) -> AppResult<Json<CompositionProject>> {
+    let draft = parse_composition_project_body(body)?;
+    port.update(&id, draft)
+        .await
+        .map_err(|error| AppError::internal("update composition project", error))?
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("Композиционный проект не найден"))
+}
+
+async fn composition_project_delete_handler(
+    State(port): State<Arc<dyn CompositionProjectPort>>,
+    AxPath(id): AxPath<String>,
+) -> AppResult<StatusCode> {
+    match port.delete(&id).await {
+        Ok(true) => Ok(StatusCode::NO_CONTENT),
+        Ok(false) => Err(AppError::not_found("Композиционный проект не найден")),
+        Err(error) => Err(AppError::internal("delete composition project", error)),
+    }
+}
+
 fn parse_project_body(body: ProjectUpsertRequest) -> AppResult<ProjectDraft> {
     let video_id = body
         .video_id
@@ -164,6 +256,82 @@ fn ensure_project_json_size(field: &str, value: &Value) -> AppResult<()> {
         )));
     }
     Ok(())
+}
+
+fn parse_composition_project_body(
+    body: CompositionProjectSaveRequest,
+) -> AppResult<CompositionProjectDraft> {
+    if body.schema_version != COMPOSITION_PROJECT_SCHEMA_VERSION
+        || body.mode != COMPOSITION_PROJECT_MODE
+    {
+        return Err(AppError::bad_request(
+            "поддерживается только schemaVersion 2 с mode composition",
+        ));
+    }
+    let document = body
+        .document
+        .as_object()
+        .ok_or_else(|| AppError::bad_request("document должен быть JSON-объектом"))?;
+    if document.get("schemaVersion").and_then(Value::as_u64)
+        != Some(COMPOSITION_DOCUMENT_SCHEMA_VERSION)
+    {
+        return Err(AppError::bad_request(
+            "composition document должен иметь schemaVersion 1",
+        ));
+    }
+    let document_size = serde_json::to_vec(&body.document)
+        .map_err(|error| AppError::internal("serialize composition project document", error))?
+        .len();
+    if document_size > MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES {
+        return Err(AppError::payload_too_large(format!(
+            "document больше {MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES} байт"
+        )));
+    }
+    let sources = document
+        .get("sources")
+        .and_then(Value::as_object)
+        .ok_or_else(|| AppError::bad_request("document.sources должен быть JSON-объектом"))?;
+    if sources.len() > MAX_COMPOSITION_PROJECT_SOURCES {
+        return Err(AppError::bad_request(
+            "в composition document слишком много sources",
+        ));
+    }
+    let mut source_ids = Vec::with_capacity(sources.len());
+    for (source_id, source) in sources {
+        if !valid_composition_source_id(source_id) {
+            return Err(AppError::bad_request("некорректный source id"));
+        }
+        let embedded_id = source
+            .as_object()
+            .and_then(|object| object.get("id"))
+            .and_then(Value::as_str);
+        if embedded_id != Some(source_id.as_str()) {
+            return Err(AppError::bad_request(
+                "ключ document.sources должен совпадать с source.id",
+            ));
+        }
+        source_ids.push(source_id.clone());
+    }
+    let fallback_name = document
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("Без названия");
+    let name = body
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(fallback_name)
+        .trim();
+    if name.is_empty() || name.len() > MAX_COMPOSITION_PROJECT_NAME_BYTES {
+        return Err(AppError::bad_request(
+            "некорректное имя composition project",
+        ));
+    }
+    Ok(CompositionProjectDraft {
+        name: name.to_owned(),
+        document: body.document,
+        source_ids,
+    })
 }
 
 #[cfg(test)]

@@ -5,8 +5,18 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Interpolation {
+    /// Keep the left value until the next keyframe tick.
     Hold,
+    /// Linear progress `p` over the segment.
     Linear,
+    /// Cubic ease-in, `p^3`.
+    EaseIn,
+    /// Cubic ease-out, `1 - (1 - p)^3`.
+    EaseOut,
+    /// Symmetric cubic ease-in/out.
+    EaseInOut,
+    /// Legacy wire token retained for saved-project compatibility. It is
+    /// semantically identical to `EaseInOut`.
     EaseInOutCubic,
 }
 
@@ -102,8 +112,14 @@ impl KeyframeTrack<f64> {
         let eased = match self.interpolation {
             Interpolation::Hold => 0.0,
             Interpolation::Linear => progress,
-            Interpolation::EaseInOutCubic if progress < 0.5 => 4.0 * progress.powi(3),
-            Interpolation::EaseInOutCubic => 1.0 - (-2.0 * progress + 2.0).powi(3) / 2.0,
+            Interpolation::EaseIn => progress.powi(3),
+            Interpolation::EaseOut => 1.0 - (1.0 - progress).powi(3),
+            Interpolation::EaseInOut | Interpolation::EaseInOutCubic if progress < 0.5 => {
+                4.0 * progress.powi(3)
+            }
+            Interpolation::EaseInOut | Interpolation::EaseInOutCubic => {
+                1.0 - (-2.0 * progress + 2.0).powi(3) / 2.0
+            }
         };
         left.value + (right.value - left.value) * eased
     }
@@ -144,13 +160,30 @@ impl<'a> FfmpegKeyframeAdapter<'a> {
     /// expression over `t`. Cubic easing remains a domain concern and is
     /// expanded into arithmetic instead of leaking preview implementation.
     pub fn expression(&self, time_variable: &str) -> Result<String, KeyframeError> {
+        self.expression_shifted(time_variable, 0.0)
+    }
+
+    /// As [`Self::expression`], with keyframe zero occurring `offset_seconds`
+    /// after the filter's time origin. This is used when a clip-local track is
+    /// evaluated by a timeline-global FFmpeg filter such as `overlay`.
+    pub fn expression_shifted(
+        &self,
+        time_variable: &str,
+        offset_seconds: f64,
+    ) -> Result<String, KeyframeError> {
         if time_variable.is_empty()
             || !time_variable
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            || !offset_seconds.is_finite()
         {
             return Err(KeyframeError::InvalidVariable);
         }
+        let time_expression = if offset_seconds == 0.0 {
+            time_variable.to_owned()
+        } else {
+            format!("({time_variable}-{})", format_number(offset_seconds))
+        };
         let mut expression = format_number(self.track.keyframes.last().unwrap().value);
         for window in self.track.keyframes.windows(2).rev() {
             let left = &window[0];
@@ -158,14 +191,16 @@ impl<'a> FfmpegKeyframeAdapter<'a> {
             let start = left.tick as f64 / self.track.time_base as f64;
             let end = right.tick as f64 / self.track.time_base as f64;
             let progress = format!(
-                "(({time_variable}-{})/{})",
+                "(({time_expression}-{})/{})",
                 format_number(start),
                 format_number(end - start)
             );
             let eased = match self.track.interpolation {
                 Interpolation::Hold => "0".to_owned(),
                 Interpolation::Linear => progress,
-                Interpolation::EaseInOutCubic => {
+                Interpolation::EaseIn => format!("pow({progress},3)"),
+                Interpolation::EaseOut => format!("1-pow(1-{progress},3)"),
+                Interpolation::EaseInOut | Interpolation::EaseInOutCubic => {
                     format!("if(lt({progress},0.5),4*pow({progress},3),1-pow(-2*{progress}+2,3)/2)")
                 }
             };
@@ -177,14 +212,14 @@ impl<'a> FfmpegKeyframeAdapter<'a> {
                 eased
             );
             expression = format!(
-                "if(lt({time_variable},{}),{segment},{expression})",
+                "if(lt({time_expression},{}),{segment},{expression})",
                 format_number(end)
             );
         }
         let first = &self.track.keyframes[0];
         let first_time = first.tick as f64 / self.track.time_base as f64;
         Ok(format!(
-            "if(lt({time_variable},{}),{},{expression})",
+            "if(lt({time_expression},{}),{},{expression})",
             format_number(first_time),
             format_number(first.value)
         ))
@@ -208,6 +243,7 @@ pub enum KeyframeError {
     InvalidTimeBase,
     EmptyTrack,
     DuplicateTick,
+    TooManyKeyframes,
     NonFinite,
     InvalidVariable,
 }
@@ -265,6 +301,35 @@ mod tests {
             expression,
             "if(lt(t,0),0,if(lt(t,1),0+(10-0)*((t-0)/1),if(lt(t,2),10+(20-10)*((t-1)/1),20)))"
         );
+        let shifted = FfmpegKeyframeAdapter::new(&track(Interpolation::Hold))
+            .expression_shifted("t", 2.5)
+            .unwrap();
+        assert!(shifted.contains("lt((t-2.5),1)"), "{shifted}");
+    }
+
+    #[test]
+    fn cubic_easing_modes_match_preview_and_ffmpeg_contract() {
+        assert_eq!(track(Interpolation::EaseIn).sample_tick(500), 1.25);
+        assert_eq!(track(Interpolation::EaseOut).sample_tick(500), 8.75);
+        assert_eq!(track(Interpolation::EaseInOut).sample_tick(500), 5.0);
+        assert_eq!(
+            track(Interpolation::EaseInOutCubic).sample_tick(500),
+            track(Interpolation::EaseInOut).sample_tick(500)
+        );
+        for interpolation in [
+            Interpolation::EaseIn,
+            Interpolation::EaseOut,
+            Interpolation::EaseInOut,
+            Interpolation::EaseInOutCubic,
+        ] {
+            let expression = FfmpegKeyframeAdapter::new(&track(interpolation))
+                .expression("T")
+                .unwrap();
+            assert!(
+                expression.contains("pow("),
+                "{interpolation:?}: {expression}"
+            );
+        }
     }
 
     #[test]

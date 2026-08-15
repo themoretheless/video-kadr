@@ -29,7 +29,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.ts', 'e2e/**/*.ts', 'scripts/**/*.mjs', 'playwright.config.ts', 'vitest.config.ts', 'vite.config.ts'],
+    files: ['**/*.test.ts', 'e2e/**/*.ts', 'scripts/**/*.mjs', 'playwright*.config.ts', 'vitest.config.ts', 'vite*.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
   {

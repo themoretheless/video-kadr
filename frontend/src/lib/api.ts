@@ -1,4 +1,23 @@
-import type { Capabilities, EditState, Job, LutAsset, MediaEntry, VideoInfo } from './types'
+import type { Composition, CompositionRenderRequest } from './composition/types'
+import {
+  parseProxyCreateResult,
+  parseProxyList,
+  parseProxyProfile,
+  requireProxyKey,
+  type ProxyCreateResult,
+  type ProxyList,
+  type ProxyProfile,
+} from './proxy/types'
+import type { Capabilities, EditState, Job, LutAsset, MediaEntry, MediaInfo, VideoInfo } from './types'
+
+export type {
+  ProxyArtifact,
+  ProxyCodec,
+  ProxyCreateResult,
+  ProxyJobSummary,
+  ProxyList,
+  ProxyProfile,
+} from './proxy/types'
 
 const BACKEND_DOWN = 'Сервер недоступен. Запущен ли бэкенд? (cargo run на :8080)'
 
@@ -57,14 +76,18 @@ async function requireOk(response: Response, fallback: string): Promise<void> {
   if (!response.ok) throw await responseError(response, fallback)
 }
 
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await safeFetch(path, init)
+  await requireOk(res, `${path} -> HTTP ${res.status}`)
+  return res.json()
+}
+
 async function postJson(path: string, body: unknown): Promise<{ jobId: string }> {
-  const res = await safeFetch(path, {
+  return requestJson(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  await requireOk(res, `${path} -> HTTP ${res.status}`)
-  return res.json()
 }
 
 export function importUrl(body: Record<string, unknown>): Promise<{ jobId: string }> {
@@ -75,13 +98,18 @@ export function edit(payload: unknown): Promise<{ jobId: string }> {
   return postJson('/api/edit', payload)
 }
 
-/** Upload a local video file; the backend probes it and returns VideoInfo. */
-export async function uploadFile(file: File): Promise<VideoInfo> {
+/** Upload local video/audio/image media; the backend probes it before storage. */
+export async function uploadFile(file: File): Promise<MediaInfo> {
   const fd = new FormData()
   fd.append('file', file)
   const res = await safeFetch('/api/upload', { method: 'POST', body: fd })
   await requireOk(res, `upload -> HTTP ${res.status}`)
   return res.json()
+}
+
+/** Queue a schema-v1 multi-source composition render. */
+export function renderComposition(request: CompositionRenderRequest): Promise<{ jobId: string }> {
+  return postJson('/api/compositions/render', request)
 }
 
 /** Upload and validate a 3D `.cube` LUT. */
@@ -119,9 +147,91 @@ export async function getLibrary(): Promise<MediaEntry[]> {
   return res.json()
 }
 
+/** Same-origin stable URL for a lazily loaded library thumbnail. */
+export function libraryThumbnailUrl(id: string): string {
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) {
+    throw new TypeError('Invalid library media id')
+  }
+  return '/api/library/' + encodeURIComponent(id) + '/thumbnail'
+}
+
+/** Same-origin stable URL for the bounded eight-cell video filmstrip. */
+export function libraryFilmstripUrl(id: string): string {
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) {
+    throw new TypeError('Invalid library media id')
+  }
+  return '/api/library/' + encodeURIComponent(id) + '/filmstrip'
+}
+
+/** Enqueue a content-addressed proxy for one original source video. */
+export async function createLibraryProxy(
+  sourceId: string,
+  profile: ProxyProfile,
+): Promise<ProxyCreateResult> {
+  const path = `/api/library/${encodeURIComponent(sourceId)}/proxies`
+  const raw = await requestJson<unknown>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(parseProxyProfile(profile)),
+  })
+  return parseProxyCreateResult(raw)
+}
+
+/** Return only verified proxies for the source's current fingerprint. */
+export async function getLibraryProxies(sourceId: string): Promise<ProxyList> {
+  const path = `/api/library/${encodeURIComponent(sourceId)}/proxies`
+  return parseProxyList(await requestJson<unknown>(path), sourceId)
+}
+
+/** Cancel matching work and remove the source-owned proxy artifact. */
+export async function deleteLibraryProxy(sourceId: string, key: string): Promise<void> {
+  const safeKey = requireProxyKey(key)
+  const path = `/api/library/${encodeURIComponent(sourceId)}/proxies/${safeKey}`
+  const res = await safeFetch(path, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) {
+    throw await responseError(res, `proxy delete -> HTTP ${res.status}`)
+  }
+}
+
+export interface LibraryMetadataPatch {
+  title?: string | null
+  favorite?: boolean
+  tags?: string[]
+}
+
+export interface LibraryMetadataPut {
+  title: string | null
+  favorite: boolean
+  tags: string[]
+}
+
+/** Update only the supplied local metadata fields for one library item. */
+export function patchLibraryMetadata(
+  id: string,
+  metadata: LibraryMetadataPatch,
+): Promise<MediaEntry> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/metadata`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(metadata),
+  })
+}
+
+/** Replace all local metadata fields for one library item. */
+export function putLibraryMetadata(
+  id: string,
+  metadata: LibraryMetadataPut,
+): Promise<MediaEntry> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/metadata`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(metadata),
+  })
+}
+
 /** Delete a library entry (and its file on disk). */
 export async function deleteLibraryItem(id: string): Promise<void> {
-  const res = await safeFetch(`/api/library/${id}`, { method: 'DELETE' })
+  const res = await safeFetch(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 404) {
     throw await responseError(res, `delete -> HTTP ${res.status}`)
   }
@@ -169,6 +279,106 @@ export async function deleteProject(id: string): Promise<void> {
   if (!res.ok && res.status !== 404) {
     throw await responseError(res, `projects -> HTTP ${res.status}`)
   }
+}
+
+export interface CompositionProjectDto {
+  id: string
+  name: string
+  schemaVersion: 2
+  mode: 'composition'
+  document: Composition
+  sourceIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** The API helper supplies the fixed project envelope fields. */
+export interface CompositionProjectSaveRequest {
+  name?: string
+  document: Composition
+}
+
+export interface CompositionProjectArchiveImportResponse {
+  project: CompositionProjectDto
+  sourceMapping: Record<string, string>
+}
+
+/** Mirrors the backend's complete archive limit and fails before allocating FormData. */
+export const MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024 + 4 * 1024 * 1024
+
+function compositionProjectBody(body: CompositionProjectSaveRequest): Record<string, unknown> {
+  return {
+    schemaVersion: 2,
+    mode: 'composition',
+    ...(body.name === undefined ? {} : { name: body.name }),
+    document: body.document,
+  }
+}
+
+export function createCompositionProject(
+  body: CompositionProjectSaveRequest,
+): Promise<CompositionProjectDto> {
+  return requestJson('/api/composition-projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(compositionProjectBody(body)),
+  })
+}
+
+export function getCompositionProjects(): Promise<CompositionProjectDto[]> {
+  return requestJson('/api/composition-projects')
+}
+
+export async function getCompositionProject(id: string): Promise<CompositionProjectDto | null> {
+  const path = `/api/composition-projects/${encodeURIComponent(id)}`
+  const res = await safeFetch(path)
+  if (res.status === 404) return null
+  await requireOk(res, `${path} -> HTTP ${res.status}`)
+  return res.json()
+}
+
+export function updateCompositionProject(
+  id: string,
+  body: CompositionProjectSaveRequest,
+): Promise<CompositionProjectDto> {
+  const path = `/api/composition-projects/${encodeURIComponent(id)}`
+  return requestJson(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(compositionProjectBody(body)),
+  })
+}
+
+export async function deleteCompositionProject(id: string): Promise<void> {
+  const res = await safeFetch(`/api/composition-projects/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok && res.status !== 404) {
+    throw await responseError(res, `composition project delete -> HTTP ${res.status}`)
+  }
+}
+
+/**
+ * Direct navigation keeps multi-gigabyte archives streaming to disk instead
+ * of materializing them as an in-memory browser Blob.
+ */
+export function compositionProjectArchiveUrl(id: string): string {
+  return `/api/composition-projects/${encodeURIComponent(id)}/archive`
+}
+
+/** Upload, verify and relink a portable `.veproj` into a new local project. */
+export async function importCompositionProjectArchive(
+  file: File,
+): Promise<CompositionProjectArchiveImportResponse> {
+  if (file.size > MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES) {
+    throw new Error('Архив проекта превышает лимит 2 ГиБ')
+  }
+  const body = new FormData()
+  body.append('file', file)
+  const path = '/api/composition-projects/import'
+  const res = await safeFetch(path, { method: 'POST', body })
+  await requireOk(res, `${path} -> HTTP ${res.status}`)
+  return res.json()
 }
 
 /** Ask the backend to cancel a running/pending job. Best-effort. */

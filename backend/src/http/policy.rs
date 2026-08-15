@@ -110,6 +110,12 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
         controls: JSON,
     },
     RoutePolicy {
+        method: "POST",
+        path: "/api/compositions/render",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
         method: "GET",
         path: "/api/jobs/failed",
         class: RouteClass::Query,
@@ -158,8 +164,62 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
         controls: QUERY,
     },
     RoutePolicy {
+        method: "GET",
+        path: "/api/library/:id/thumbnail",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/library/:id/thumbnail/:key",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/library/:id/filmstrip",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/library/:id/filmstrip/:key",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
         method: "DELETE",
         path: "/api/library/:id",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "PATCH",
+        path: "/api/library/:id/metadata",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "PUT",
+        path: "/api/library/:id/metadata",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/library/:id/proxies",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/library/:id/proxies",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "DELETE",
+        path: "/api/library/:id/proxies/:key",
         class: RouteClass::JsonCommand,
         controls: JSON,
     },
@@ -191,6 +251,48 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
         method: "DELETE",
         path: "/api/projects/:id",
         class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/composition-projects",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/composition-projects",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/composition-projects/:id",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "PUT",
+        path: "/api/composition-projects/:id",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "DELETE",
+        path: "/api/composition-projects/:id",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/composition-projects/:id/archive",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/composition-projects/import",
+        class: RouteClass::Upload,
         controls: JSON,
     },
     RoutePolicy {
@@ -255,5 +357,30 @@ mod tests {
         let snapshot = policy_snapshot();
         assert!(snapshot.contains("local_deployment_boundary"));
         assert!(snapshot.contains("service_deadline"));
+        for (method, path) in [
+            ("GET", "/api/library/:id/thumbnail"),
+            ("GET", "/api/library/:id/thumbnail/:key"),
+            ("GET", "/api/library/:id/filmstrip"),
+            ("GET", "/api/library/:id/filmstrip/:key"),
+            ("PATCH", "/api/library/:id/metadata"),
+            ("PUT", "/api/library/:id/metadata"),
+            ("GET", "/api/library/:id/proxies"),
+            ("POST", "/api/library/:id/proxies"),
+            ("DELETE", "/api/library/:id/proxies/:key"),
+            ("GET", "/api/composition-projects"),
+            ("POST", "/api/composition-projects"),
+            ("GET", "/api/composition-projects/:id"),
+            ("PUT", "/api/composition-projects/:id"),
+            ("DELETE", "/api/composition-projects/:id"),
+            ("GET", "/api/composition-projects/:id/archive"),
+            ("POST", "/api/composition-projects/import"),
+        ] {
+            assert!(
+                ROUTE_POLICIES
+                    .iter()
+                    .any(|policy| policy.method == method && policy.path == path),
+                "missing route policy for {method} {path}"
+            );
+        }
     }
 }

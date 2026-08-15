@@ -19,4 +19,4 @@ pub use job_cell::{JobCell, JobPermit};
 pub use maintenance::run_quarantine_cleanup;
 pub use outbox::{JobEnvelope, JobKind};
 pub use registry::{JobLifecycle, LifecycleCounts, ReconciliationReport};
-pub use store::{EnqueueOutcome, SqliteJobStore};
+pub use store::{ActiveJobRequest, EnqueueOutcome, SqliteJobStore};

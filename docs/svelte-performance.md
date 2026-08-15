@@ -16,12 +16,19 @@ Browser medians in this loopback microbenchmark are sensitive to scheduler and t
 
 ## Post-migration bundle verification
 
-After the paired run, the canonical Svelte build gained the missing interactive
-curve-editor handlers/tests and chroma-key controls. Its final verified bundle is
-47.99 KiB JavaScript + 4.79 KiB CSS = 52.77 KiB gzip. That is 14.6% below the
-historical Vue bundle of 61.79 KiB, but it is not a new paired benchmark because
-the post-migration Svelte tree contains additional feature work. The tables below
-remain the exact, reproducible results of the original same-fixture comparison.
+After the paired run, the canonical Svelte build first gained the missing
+curve-editor and chroma-key controls; that historical snapshot measured
+47.99 KiB JavaScript + 4.79 KiB CSS = 52.77 KiB gzip. The product later gained a
+multitrack editor, capture, proxies, audio/color tools, templates and portable
+projects, so comparing its current aggregate bytes with the old Vue fixture
+would no longer be a like-for-like framework benchmark.
+
+The production build now has an explicit dynamic-import boundary before the
+Multitrack workspace. `npm run check:bundle` reads Vite's manifest and reports
+both startup assets and all lazy chunks. It enforces separate initial JS/CSS/
+total limits, aggregate limits and a per-async-JS-chunk limit. Those limits are
+regression guardrails for the expanded product, not replacement samples for the
+historical paired benchmark below.
 
 ## Build and bundle
 

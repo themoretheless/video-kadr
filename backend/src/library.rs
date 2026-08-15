@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -27,6 +27,15 @@ pub struct MediaEntry {
     pub width: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
+    /// Probed frame rate and stream codecs. Additive optional fields keep old
+    /// `library.json` files readable while allowing relink/proxy UIs to avoid
+    /// guessing whether a video has an audio stream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vcodec: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acodec: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
     pub created_at: u64,
@@ -45,6 +54,9 @@ impl MediaEntry {
             duration: v["duration"].as_f64(),
             width: v["width"].as_u64().map(|n| n as u32),
             height: v["height"].as_u64().map(|n| n as u32),
+            fps: v["fps"].as_f64(),
+            vcodec: v["vcodec"].as_str().map(str::to_owned),
+            acodec: v["acodec"].as_str().map(str::to_owned),
             size_bytes: v["sizeBytes"].as_u64(),
             created_at: now_secs(),
         }
@@ -98,7 +110,10 @@ impl Library {
     pub async fn add(&self, entry: MediaEntry) -> bool {
         // Reject malformed entries: an empty id would collapse unrelated media
         // into one slot via the dedup-by-id below (and serve a broken url).
-        if entry.id.is_empty() || entry.filename.is_empty() {
+        if entry.id.is_empty()
+            || entry.filename.is_empty()
+            || self.unresolved_file_path(&entry).is_err()
+        {
             tracing::warn!("library: skipping add of entry with empty id/filename");
             return false;
         }
@@ -124,7 +139,7 @@ impl Library {
         let entries = self.entries.lock().await.clone();
         let mut kept = Vec::with_capacity(entries.len());
         for e in entries {
-            if tokio::fs::metadata(self.file_path(&e)).await.is_ok() {
+            if self.resolve_media_path(&e).await.is_ok() {
                 kept.push(e);
             }
         }
@@ -150,6 +165,7 @@ impl Library {
             return false;
         };
         let entry = guard[pos].clone();
+        let file_path = self.resolve_media_path(&entry).await.ok();
         let mut next = guard.clone();
         next.remove(pos);
         if let Err(e) = self.save(&next).await {
@@ -158,17 +174,58 @@ impl Library {
         }
         *guard = next;
         drop(guard);
-        let _ = tokio::fs::remove_file(self.file_path(&entry)).await;
+        if let Some(path) = file_path {
+            let _ = tokio::fs::remove_file(path).await;
+        }
         true
     }
 
-    fn file_path(&self, e: &MediaEntry) -> PathBuf {
-        let sub = if e.kind == "output" {
+    /// Resolve a library entry to a regular, non-symlink file inside its
+    /// declared source/output directory. Persisted metadata is untrusted, so a
+    /// corrupted library file cannot escape storage.
+    pub async fn resolve_media_path(&self, entry: &MediaEntry) -> std::io::Result<PathBuf> {
+        let candidate = self.unresolved_file_path(entry)?;
+        let metadata = tokio::fs::symlink_metadata(&candidate).await?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "library entry is not a regular file",
+            ));
+        }
+        let base = tokio::fs::canonicalize(self.storage.join(entry.storage_subdir())).await?;
+        let resolved = tokio::fs::canonicalize(candidate).await?;
+        if !resolved.starts_with(&base) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "library entry escapes storage",
+            ));
+        }
+        Ok(resolved)
+    }
+
+    fn unresolved_file_path(&self, entry: &MediaEntry) -> std::io::Result<PathBuf> {
+        let path = Path::new(&entry.filename);
+        let mut components = path.components();
+        if !matches!(components.next(), Some(Component::Normal(_)))
+            || components.next().is_some()
+            || !matches!(entry.kind.as_str(), "source" | "output")
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid library filename or kind",
+            ));
+        }
+        Ok(self.storage.join(entry.storage_subdir()).join(path))
+    }
+}
+
+impl MediaEntry {
+    pub fn storage_subdir(&self) -> &'static str {
+        if self.kind == "output" {
             "outputs"
         } else {
             "sources"
-        };
-        self.storage.join(sub).join(&e.filename)
+        }
     }
 }
 
@@ -205,6 +262,9 @@ mod tests {
             duration: None,
             width: None,
             height: None,
+            fps: None,
+            vcodec: None,
+            acodec: None,
             size_bytes: None,
             created_at,
         }
@@ -281,6 +341,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn path_traversal_and_symlinks_are_never_resolved_or_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        tokio::fs::create_dir_all(storage.join("sources"))
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(storage.join("outputs"))
+            .await
+            .unwrap();
+        let outside = dir.path().join("outside.mp4");
+        tokio::fs::write(&outside, b"private").await.unwrap();
+        let lib = Library::load(storage.clone()).await;
+        let traversal = entry("bad", "source", "../outside.mp4", 1);
+        assert!(!lib.add(traversal.clone()).await);
+        assert!(lib.resolve_media_path(&traversal).await.is_err());
+        assert_eq!(tokio::fs::read(&outside).await.unwrap(), b"private");
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, storage.join("sources/link.mp4")).unwrap();
+            let linked = entry("link", "source", "link.mp4", 1);
+            assert!(lib.resolve_media_path(&linked).await.is_err());
+        }
+    }
+
+    #[tokio::test]
     async fn entries_persist_across_reload() {
         let dir = tempfile::tempdir().unwrap();
         let storage = dir.path().to_path_buf();
@@ -321,6 +407,9 @@ mod tests {
             "duration": 12.5,
             "width": 1280,
             "height": 720,
+            "fps": 29.97,
+            "vcodec": "h264",
+            "acodec": "aac",
             "sizeBytes": 999
         });
         let e = MediaEntry::from_result("source", &v);
@@ -331,6 +420,9 @@ mod tests {
         assert_eq!(e.duration, Some(12.5));
         assert_eq!(e.width, Some(1280));
         assert_eq!(e.height, Some(720));
+        assert_eq!(e.fps, Some(29.97));
+        assert_eq!(e.vcodec.as_deref(), Some("h264"));
+        assert_eq!(e.acodec.as_deref(), Some("aac"));
         assert_eq!(e.size_bytes, Some(999));
     }
 }

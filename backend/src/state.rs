@@ -9,6 +9,8 @@ use tokio::sync::{AcquireError, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::analysis::proxy::ProxyService;
+use crate::analysis::thumbnail::{infer_thumbnail_kind, ThumbnailService, ThumbnailSource};
 use crate::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
 use crate::config::WorkloadConfig;
 use crate::db::Db;
@@ -19,6 +21,8 @@ use crate::ports::{MediaDocument, MediaIndexWriter, MediaSearchQuery, SqliteMedi
 use crate::process_control::ProcessRuntime;
 use crate::runtime::cpu_pool::{CpuPool, CpuPoolConfig};
 use crate::runtime::TaskSupervisor;
+use crate::tools::proxy::FfmpegProxyEncoder;
+use crate::tools::thumbnail::FfmpegThumbnailEncoder;
 
 /// Availability and versions of the external tools we shell out to. Probed once
 /// at startup and surfaced via `/api/health`.
@@ -60,6 +64,8 @@ pub struct AppState {
     pub cpu_pool: CpuPool,
     pub encode_budget: EncodeBudget,
     pub process_runtime: ProcessRuntime,
+    pub proxy_service: ProxyService<FfmpegProxyEncoder>,
+    pub thumbnail_service: ThumbnailService<FfmpegThumbnailEncoder>,
     pub tools: Arc<ToolInfo>,
     pub library: Library,
     pub db: Db,
@@ -142,12 +148,23 @@ impl AppState {
         let media_adapter = Arc::new(SqliteMediaSearch::new(db.clone()));
         let media_search: Arc<dyn MediaSearchQuery> = media_adapter.clone();
         let media_index: Arc<dyn MediaIndexWriter> = media_adapter;
+        let proxy_service = ProxyService::new(
+            storage.clone(),
+            cpu_pool.clone(),
+            Arc::new(FfmpegProxyEncoder::new(process_runtime.clone())),
+        );
+        let render_semaphore = Arc::new(Semaphore::new(max_concurrent_renders));
+        let thumbnail_service = ThumbnailService::new(
+            storage.join("thumbnails"),
+            Arc::new(FfmpegThumbnailEncoder::new(process_runtime.clone())),
+            render_semaphore.clone(),
+        );
         Ok(AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             render_locks: Arc::new(Mutex::new(HashMap::new())),
             jobs_semaphore: Arc::new(Semaphore::new(max_concurrent)),
-            render_semaphore: Arc::new(Semaphore::new(max_concurrent_renders)),
+            render_semaphore,
             upload_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             max_concurrent_renders,
             workload: Arc::new(WorkloadConfig::default()),
@@ -155,6 +172,8 @@ impl AppState {
             cpu_pool,
             encode_budget,
             process_runtime,
+            proxy_service,
+            thumbnail_service,
             tools: Arc::new(tools),
             library,
             db,
@@ -168,6 +187,29 @@ impl AppState {
     pub fn with_workload_config(mut self, workload: WorkloadConfig) -> Self {
         self.workload = Arc::new(workload);
         self
+    }
+
+    /// Reconcile private thumbnail derivatives against the current library
+    /// before the HTTP server starts serving cache keys.
+    pub async fn cleanup_thumbnail_cache(&self) {
+        let mut sources = Vec::new();
+        for entry in self.library.list().await {
+            let Some(kind) = infer_thumbnail_kind(&entry) else {
+                continue;
+            };
+            let Ok(path) = self.library.resolve_media_path(&entry).await else {
+                continue;
+            };
+            sources.push(ThumbnailSource {
+                id: entry.id,
+                path,
+                kind,
+                duration_seconds: entry.duration,
+            });
+        }
+        if let Err(error) = self.thumbnail_service.cleanup_stale(&sources).await {
+            tracing::warn!(%error, "failed to reconcile thumbnail cache");
+        }
     }
 
     pub async fn set_job(&self, job: Job) {

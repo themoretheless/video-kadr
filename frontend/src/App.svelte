@@ -2,19 +2,51 @@
   import { onMount } from 'svelte'
   import EditPanel from '$lib/components/EditPanel.svelte'
   import MediaLibrary from '$lib/components/MediaLibrary.svelte'
+  import ShortcutSettings from '$lib/components/ShortcutSettings.svelte'
+  import LazyCompositionWorkspace from '$lib/components/composition/LazyCompositionWorkspace.svelte'
   import ResultPanel from '$lib/components/ResultPanel.svelte'
   import Toasts from '$lib/components/Toasts.svelte'
   import UrlImport from '$lib/components/UrlImport.svelte'
   import VideoPreview from '$lib/components/VideoPreview.svelte'
+  import { clipEndTicks, COMPOSITION_TIME_BASE } from '$lib/composition/types.js'
+  import type { ShortcutCommandId } from '$lib/shortcuts.js'
   import {
+    compositionState,
+    deleteSelectedCompositionClip,
+    duplicateSelectedCompositionClip,
+    editorMode,
+    moveCompositionClip,
+    reorderCompositionTrack,
+    redoComposition,
+    selectedCompositionClip,
+    selectedCompositionTrack,
+    setCompositionPlayhead,
+    setEditorMode,
+    splitSelectedCompositionClip,
+    toggleCompositionPlayback,
+    toggleCompositionSnapping,
+    trimCompositionClip,
+    undoComposition,
+  } from '$lib/state/composition.svelte.js'
+  import {
+    openShortcutSettings,
+    shortcutCommandForEvent,
+    shortcutLabel,
+    shortcutState,
+  } from '$lib/state/shortcuts.svelte.js'
+  import {
+    deleteTimelineSegment,
+    duplicateTimelineSegment,
     initTheme,
     loadCapabilities,
     loadLibrary,
     loadPresets,
+    moveTimelineSegment,
     redo,
     seekRelative,
     setTrimEndFromPlayer,
     setTrimStartFromPlayer,
+    splitTimelineSegment,
     state,
     togglePlay,
     toggleTheme,
@@ -23,57 +55,152 @@
   } from '$lib/state/store.svelte.js'
 
   function isTyping(target: EventTarget | null): boolean {
-    const element = target as HTMLElement | null
+    const element = target instanceof Element ? target : null
     if (!element) return false
-    return element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable
+    const interactive = element.closest('input, textarea, select, button, a, [role="textbox"], [contenteditable]:not([contenteditable="false"])')
+    return Boolean(interactive) || (element instanceof HTMLElement && element.isContentEditable)
+  }
+
+  function runCompositionShortcut(action: () => void): boolean {
+    try {
+      compositionState.ui.message = ''
+      action()
+    } catch (error) {
+      compositionState.ui.message = error instanceof Error ? error.message : String(error)
+    }
+    return true
+  }
+
+  function compositionFrameTicks(): number {
+    const fps = compositionState.document.canvas.fps
+    return Math.max(1, Math.round(COMPOSITION_TIME_BASE / (Number.isFinite(fps) && fps > 0 ? fps : 30)))
+  }
+
+  function runCompositionCommand(command: ShortcutCommandId): boolean {
+    const frameTicks = compositionFrameTicks()
+    switch (command) {
+      case 'composition.playPause': return runCompositionShortcut(toggleCompositionPlayback)
+      case 'composition.framePrevious': return runCompositionShortcut(() => setCompositionPlayhead(compositionState.transport.playheadTicks - frameTicks))
+      case 'composition.frameNext': return runCompositionShortcut(() => setCompositionPlayhead(compositionState.transport.playheadTicks + frameTicks))
+      case 'composition.seekPrevious': return runCompositionShortcut(() => setCompositionPlayhead(compositionState.transport.playheadTicks - COMPOSITION_TIME_BASE / 10))
+      case 'composition.seekNext': return runCompositionShortcut(() => setCompositionPlayhead(compositionState.transport.playheadTicks + COMPOSITION_TIME_BASE / 10))
+      case 'composition.seekPreviousLarge': return runCompositionShortcut(() => setCompositionPlayhead(compositionState.transport.playheadTicks - 5 * COMPOSITION_TIME_BASE))
+      case 'composition.seekNextLarge': return runCompositionShortcut(() => setCompositionPlayhead(compositionState.transport.playheadTicks + 5 * COMPOSITION_TIME_BASE))
+      case 'composition.undo': return runCompositionShortcut(undoComposition)
+      case 'composition.redo': return runCompositionShortcut(redoComposition)
+      case 'composition.split':
+        return compositionState.ui.selectedClipId ? runCompositionShortcut(splitSelectedCompositionClip) : false
+      case 'composition.duplicate':
+        return compositionState.ui.selectedClipId ? runCompositionShortcut(duplicateSelectedCompositionClip) : false
+      case 'composition.delete':
+        return compositionState.ui.selectedClipId ? runCompositionShortcut(deleteSelectedCompositionClip) : false
+      case 'composition.toggleSnapping': return runCompositionShortcut(toggleCompositionSnapping)
+      case 'composition.nudgePrevious': return nudgeCompositionClip(-frameTicks)
+      case 'composition.nudgeNext': return nudgeCompositionClip(frameTicks)
+      case 'composition.trimStart': return trimCompositionAtPlayhead('start')
+      case 'composition.trimEnd': return trimCompositionAtPlayhead('end')
+      case 'composition.trackUp': return reorderSelectedCompositionTrack(-1)
+      case 'composition.trackDown': return reorderSelectedCompositionTrack(1)
+      default: return false
+    }
+  }
+
+  function nudgeCompositionClip(deltaTicks: number): boolean {
+    const clip = selectedCompositionClip()
+    const track = selectedCompositionTrack()
+    if (!clip || !track) return false
+    return runCompositionShortcut(() => moveCompositionClip(clip.id, track.id, Math.max(0, clip.timelineStartTicks + deltaTicks), false))
+  }
+
+  function trimCompositionAtPlayhead(edge: 'start' | 'end'): boolean {
+    const clip = selectedCompositionClip()
+    if (!clip) return false
+    return runCompositionShortcut(() => trimCompositionClip(
+      clip.id,
+      edge === 'start' ? compositionState.transport.playheadTicks : clip.timelineStartTicks,
+      edge === 'end' ? compositionState.transport.playheadTicks : clipEndTicks(clip),
+    ))
+  }
+
+  function reorderSelectedCompositionTrack(direction: -1 | 1): boolean {
+    const track = selectedCompositionTrack()
+    if (!track) return false
+    const index = compositionState.document.tracks.findIndex((candidate) => candidate.id === track.id)
+    const target = index + direction
+    if (target < 0 || target >= compositionState.document.tracks.length) return false
+    return runCompositionShortcut(() => reorderCompositionTrack(track.id, target))
+  }
+
+  function runLegacyCommand(command: ShortcutCommandId): boolean {
+    if (!state.video) return false
+    const sourceFps = state.video.fps
+    const fps = typeof sourceFps === 'number' && Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : 30
+    switch (command) {
+      case 'legacy.playPause': togglePlay(); return true
+      case 'legacy.framePrevious': seekRelative(-1 / fps); return true
+      case 'legacy.frameNext': seekRelative(1 / fps); return true
+      case 'legacy.seekPrevious': seekRelative(-1); return true
+      case 'legacy.seekNext': seekRelative(1); return true
+      case 'legacy.seekPreviousLarge': seekRelative(-5); return true
+      case 'legacy.seekNextLarge': seekRelative(5); return true
+      case 'legacy.trimStart': setTrimStartFromPlayer(); return true
+      case 'legacy.trimEnd': setTrimEndFromPlayer(); return true
+      case 'legacy.undo': undo(); return true
+      case 'legacy.redo': redo(); return true
+      case 'legacy.timelineSplit': return runLegacyTimelineSplit()
+      case 'legacy.timelineDuplicate': return runLegacyTimelineDuplicate()
+      case 'legacy.timelineDelete': return runLegacyTimelineDelete()
+      case 'legacy.timelineMovePrevious': return runLegacyTimelineMove(-1)
+      case 'legacy.timelineMoveNext': return runLegacyTimelineMove(1)
+      default: return false
+    }
+  }
+
+  function selectedLegacyTimelineId(): string | null {
+    if (!state.edit.timelineEnabled) return null
+    const selected = state.timelineSelectedSegmentId
+    return state.edit.timelineSegments.some((segment) => segment.id === selected)
+      ? selected
+      : state.edit.timelineSegments[0]?.id ?? null
+  }
+
+  function runLegacyTimelineSplit(): boolean {
+    const selected = selectedLegacyTimelineId()
+    if (!selected) return false
+    const next = splitTimelineSegment(selected)
+    if (next) state.timelineSelectedSegmentId = next
+    return true
+  }
+
+  function runLegacyTimelineDuplicate(): boolean {
+    const selected = selectedLegacyTimelineId()
+    if (!selected) return false
+    const next = duplicateTimelineSegment(selected)
+    if (next) state.timelineSelectedSegmentId = next
+    return true
+  }
+
+  function runLegacyTimelineDelete(): boolean {
+    const selected = selectedLegacyTimelineId()
+    if (!selected) return false
+    const next = deleteTimelineSegment(selected)
+    if (next) state.timelineSelectedSegmentId = next
+    return true
+  }
+
+  function runLegacyTimelineMove(direction: -1 | 1): boolean {
+    const selected = selectedLegacyTimelineId()
+    return selected ? moveTimelineSegment(selected, direction) : false
   }
 
   function onKey(event: KeyboardEvent): void {
-    if (!state.video || isTyping(event.target)) return
-    if ((event.metaKey || event.ctrlKey) && (event.key === 'z' || event.key === 'Z')) {
-      event.preventDefault()
-      if (event.shiftKey) redo()
-      else undo()
-      return
-    }
-    if ((event.metaKey || event.ctrlKey) && (event.key === 'y' || event.key === 'Y')) {
-      event.preventDefault()
-      redo()
-      return
-    }
-    const fps = state.video.fps || 30
-    switch (event.key) {
-      case ' ':
-        event.preventDefault()
-        togglePlay()
-        break
-      case 'i':
-      case 'I':
-        event.preventDefault()
-        setTrimStartFromPlayer()
-        break
-      case 'o':
-      case 'O':
-        event.preventDefault()
-        setTrimEndFromPlayer()
-        break
-      case 'ArrowLeft':
-        event.preventDefault()
-        seekRelative(event.shiftKey ? -5 : -1)
-        break
-      case 'ArrowRight':
-        event.preventDefault()
-        seekRelative(event.shiftKey ? 5 : 1)
-        break
-      case ',':
-        event.preventDefault()
-        seekRelative(-1 / fps)
-        break
-      case '.':
-        event.preventDefault()
-        seekRelative(1 / fps)
-        break
-    }
+    if (event.defaultPrevented || shortcutState.capturingCommandId || isTyping(event.target)) return
+    const command = shortcutCommandForEvent(editorMode.value, event)
+    if (!command) return
+    const handled = editorMode.value === 'composition'
+      ? runCompositionCommand(command)
+      : runLegacyCommand(command)
+    if (handled) event.preventDefault()
   }
 
   onMount(() => {
@@ -96,20 +223,34 @@
         {/if}
         <button
           class="btn ghost sm theme-toggle"
+          type="button"
           title={ui.theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
           onclick={toggleTheme}
         >
           {ui.theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная'}
         </button>
+        <button
+          class="btn ghost sm"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={shortcutState.dialogOpen}
+          onclick={openShortcutSettings}
+        >⌨ Клавиши</button>
       </div>
     </div>
     <p class="sub">Вставь ссылку на видео (например, VK Видео), обрежь и скачай результат.</p>
+    <div class="editor-mode-switch" role="group" aria-label="Режим редактора">
+      <button class:active={editorMode.value === 'legacy'} class="btn ghost sm" type="button" aria-pressed={editorMode.value === 'legacy'} onclick={() => setEditorMode('legacy')}>Legacy</button>
+      <button class:active={editorMode.value === 'composition'} class="btn ghost sm" type="button" aria-pressed={editorMode.value === 'composition'} onclick={() => setEditorMode('composition')}>Multitrack</button>
+    </div>
   </header>
 
   <UrlImport />
   <MediaLibrary />
 
-  {#if state.video}
+  {#if editorMode.value === 'composition'}
+    <LazyCompositionWorkspace />
+  {:else if state.video}
     <main class="editor">
       <section class="left"><VideoPreview /></section>
       <section class="right">
@@ -121,8 +262,15 @@
 
   <footer class="foot">
     Локальный MVP · скачивание через yt-dlp · обработка через ffmpeg ·
-    <span class="kbd-hint">горячие клавиши: Space, I, O, ←/→, , .</span>
+    <span class="kbd-hint">
+      {#if editorMode.value === 'composition'}
+        горячие клавиши: {shortcutLabel('composition.playPause')}, {shortcutLabel('composition.framePrevious')}/{shortcutLabel('composition.frameNext')}, {shortcutLabel('composition.split')}, {shortcutLabel('composition.delete')}
+      {:else}
+        горячие клавиши: {shortcutLabel('legacy.playPause')}, {shortcutLabel('legacy.trimStart')}, {shortcutLabel('legacy.trimEnd')}, {shortcutLabel('legacy.framePrevious')}/{shortcutLabel('legacy.frameNext')}
+      {/if}
+    </span>
   </footer>
 
+  <ShortcutSettings />
   <Toasts />
 </div>

@@ -9,12 +9,17 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::config::encode_budget::EncodeBudget;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::edit::{
-    AspectRatio, AudioEffects, CensorColor, CensorSpec, ChromaKeySpec, EditSpec, GeometrySpec,
+    AspectRatio, AudioCompressor, AudioEffects, AudioEq, AudioLimiter, CensorColor, CensorSpec,
+    ChromaKeySpec, ColorWheel, ColorWheels, EditSpec, GeometrySpec, HslAdjustments, HslBand,
     LookPreset, LutGrade, OutputScale, PixelRect, Rotation, TimeRange, TimingSpec, ToneCurve,
     ToneCurvePoint, ToneCurves, VideoEffects, MAX_TIMELINE_OUTPUT_SECONDS, MAX_TIMELINE_SEGMENTS,
 };
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
-use crate::model::{Crop, EditRequest, Scale, Trim};
+use crate::model::{
+    AudioCompressorSelection, AudioEqSelection, AudioLimiterSelection, ColorWheelSelection,
+    ColorWheelsSelection, Crop, EditRequest, HslAdjustmentsSelection, HslBandSelection, Scale,
+    Trim,
+};
 
 const EDIT_PLAN_SCHEMA_VERSION: u32 = 3;
 
@@ -469,6 +474,11 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             )
         })
         .transpose()?;
+    let hsl = request.hsl.map(map_hsl_adjustments);
+    let color_wheels = request.color_wheels.map(map_color_wheels);
+    let audio_eq = request.audio_eq.map(map_audio_eq);
+    let compressor = request.compressor.map(map_audio_compressor);
+    let limiter = request.limiter.map(map_audio_limiter);
     let pad_aspect = request.pad.as_deref().map(AspectRatio::parse).transpose()?;
     let edit = EditSpec::new(
         TimingSpec {
@@ -492,6 +502,8 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             brightness: request.brightness,
             contrast: request.contrast,
             saturation: request.saturation,
+            hsl,
+            color_wheels,
             chroma_key,
             look,
             vignette: request.vignette,
@@ -506,6 +518,10 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             volume: request.volume,
             normalize: request.normalize_audio,
             highpass: request.highpass,
+            pan: request.pan,
+            eq: audio_eq,
+            compressor,
+            limiter,
         },
     )?;
     let format = OutputFormat::parse(request.format.as_deref())?;
@@ -528,6 +544,67 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
     Ok((edit, output))
 }
 
+fn map_hsl_band(value: HslBandSelection) -> HslBand {
+    HslBand {
+        hue: value.hue,
+        saturation: value.saturation,
+        lightness: value.lightness,
+    }
+}
+
+fn map_hsl_adjustments(value: HslAdjustmentsSelection) -> HslAdjustments {
+    HslAdjustments {
+        red: map_hsl_band(value.red),
+        yellow: map_hsl_band(value.yellow),
+        green: map_hsl_band(value.green),
+        cyan: map_hsl_band(value.cyan),
+        blue: map_hsl_band(value.blue),
+        magenta: map_hsl_band(value.magenta),
+    }
+}
+
+fn map_color_wheel(value: ColorWheelSelection) -> ColorWheel {
+    ColorWheel {
+        red: value.red,
+        green: value.green,
+        blue: value.blue,
+    }
+}
+
+fn map_color_wheels(value: ColorWheelsSelection) -> ColorWheels {
+    ColorWheels {
+        shadows: map_color_wheel(value.shadows),
+        midtones: map_color_wheel(value.midtones),
+        highlights: map_color_wheel(value.highlights),
+        preserve_luminosity: value.preserve_luminosity,
+    }
+}
+
+fn map_audio_eq(value: AudioEqSelection) -> AudioEq {
+    AudioEq {
+        low_gain_db: value.low_gain_db,
+        mid_gain_db: value.mid_gain_db,
+        high_gain_db: value.high_gain_db,
+    }
+}
+
+fn map_audio_compressor(value: AudioCompressorSelection) -> AudioCompressor {
+    AudioCompressor {
+        threshold_db: value.threshold_db,
+        ratio: value.ratio,
+        attack_ms: value.attack_ms,
+        release_ms: value.release_ms,
+        makeup_gain_db: value.makeup_gain_db,
+    }
+}
+
+fn map_audio_limiter(value: AudioLimiterSelection) -> AudioLimiter {
+    AudioLimiter {
+        ceiling_db: value.ceiling_db,
+        release_ms: value.release_ms,
+    }
+}
+
 fn map_curve(points: Vec<crate::model::CurvePoint>) -> anyhow::Result<ToneCurve> {
     ToneCurve::new(
         points
@@ -542,6 +619,25 @@ fn map_curve(points: Vec<crate::model::CurvePoint>) -> anyhow::Result<ToneCurve>
 /// work. Source-dependent geometry is still validated when the full edit plan
 /// is compiled, but LUT/curve bounds do not need media metadata.
 pub fn validate_color_grade_request(request: &EditRequest) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        request.pan.is_finite() && (-1.0..=1.0).contains(&request.pan),
+        "Недопустимая стереопанорама"
+    );
+    if let Some(eq) = request.audio_eq {
+        map_audio_eq(eq).validate()?;
+    }
+    if let Some(compressor) = request.compressor {
+        map_audio_compressor(compressor).validate()?;
+    }
+    if let Some(limiter) = request.limiter {
+        map_audio_limiter(limiter).validate()?;
+    }
+    if let Some(hsl) = &request.hsl {
+        map_hsl_adjustments(hsl.clone()).validate()?;
+    }
+    if let Some(color_wheels) = &request.color_wheels {
+        map_color_wheels(color_wheels.clone()).validate()?;
+    }
     if let Some(curves) = &request.curves {
         let validated = ToneCurves::new(
             curves.master.clone().map(map_curve).transpose()?,

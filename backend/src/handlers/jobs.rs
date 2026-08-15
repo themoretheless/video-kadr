@@ -10,7 +10,10 @@ use crate::jobs::{ErrorKind, JobEvent, JobKind};
 use crate::model::Job;
 use crate::state::{AppState, CancelJobOutcome};
 
-use super::{apply_job_event, spawn_edit_job, spawn_import_job, EditWork, ImportWork};
+use super::{
+    apply_job_event, spawn_composition_job, spawn_edit_job, spawn_import_job, spawn_proxy_job,
+    CompositionWork, EditWork, ImportWork, ProxyWork,
+};
 
 pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
     // The hot job map is bounded at startup. Hydrate older durable work before
@@ -75,6 +78,37 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
                 let lease =
                     JobLeaseHeartbeat::start(state, job_id, envelope.attempt, lease_seconds);
                 spawn_edit_job(
+                    state.clone(),
+                    job_id.into(),
+                    work,
+                    envelope.attempt,
+                    token,
+                    lease,
+                );
+            }
+            JobKind::Composition => {
+                let work = serde_json::from_value::<CompositionWork>(envelope.payload)?;
+                anyhow::ensure!(
+                    work.schema_version
+                        == crate::services::composition::COMPOSITION_RENDER_SCHEMA_VERSION,
+                    "unsupported composition work version"
+                );
+                let lease =
+                    JobLeaseHeartbeat::start(state, job_id, envelope.attempt, lease_seconds);
+                spawn_composition_job(
+                    state.clone(),
+                    job_id.into(),
+                    work,
+                    envelope.attempt,
+                    token,
+                    lease,
+                );
+            }
+            JobKind::Proxy => {
+                let work = serde_json::from_value::<ProxyWork>(envelope.payload)?;
+                let lease =
+                    JobLeaseHeartbeat::start(state, job_id, envelope.attempt, lease_seconds);
+                spawn_proxy_job(
                     state.clone(),
                     job_id.into(),
                     work,

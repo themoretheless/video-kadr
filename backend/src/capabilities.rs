@@ -15,6 +15,9 @@ pub struct Capabilities {
     pub codecs: Vec<CapabilityOption>,
     pub filters: Vec<CapabilityOption>,
     pub hardware: Vec<CapabilityOption>,
+    /// End-to-end workflows whose availability depends on several codecs and
+    /// filters rather than one selectable export option.
+    pub features: Vec<CapabilityOption>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,6 +154,42 @@ impl Capabilities {
                 has_filter("chromakey") && has_filter("despill"),
                 "нужны filters chromakey и despill",
             ),
+            option(
+                "selective-hsl",
+                "HSL по цветовым диапазонам",
+                has_filter("huesaturation"),
+                "нужен filter huesaturation",
+            ),
+            option(
+                "color-wheels",
+                "Цветовые колёса",
+                has_filter("colorbalance"),
+                "нужен filter colorbalance",
+            ),
+            option(
+                "audio-eq",
+                "Трёхполосный EQ",
+                has_filter("equalizer"),
+                "нужен filter equalizer",
+            ),
+            option(
+                "audio-pan",
+                "Стереопанорама",
+                has_filter("aformat") && has_filter("stereotools"),
+                "нужны filters aformat и stereotools",
+            ),
+            option(
+                "audio-compressor",
+                "Компрессор",
+                has_filter("acompressor"),
+                "нужен filter acompressor",
+            ),
+            option(
+                "audio-limiter",
+                "Лимитер",
+                has_filter("alimiter"),
+                "нужен filter alimiter",
+            ),
         ]);
         let hardware = [
             (
@@ -171,6 +210,194 @@ impl Capabilities {
             )
         })
         .collect();
+        let composition_filters = [
+            "trim",
+            "setpts",
+            "scale",
+            "pad",
+            "setsar",
+            "fps",
+            "concat",
+            "split",
+            "asplit",
+            "format",
+            "color",
+            "overlay",
+            "xfade",
+            "drawtext",
+            "rotate",
+            "colorchannelmixer",
+            "geq",
+            "blend",
+            "alphaextract",
+            "maskedmerge",
+            "chromakey",
+            "despill",
+            "atrim",
+            "asetpts",
+            "aresample",
+            "aformat",
+            "anullsrc",
+            "atempo",
+            "volume",
+            "pan",
+            "aeval",
+            "afade",
+            "adelay",
+            "amix",
+            "alimiter",
+        ];
+        let composition_missing = composition_filters
+            .into_iter()
+            .filter(|filter| !has_filter(filter))
+            .collect::<Vec<_>>();
+        let composition_available = has_muxer("mp4")
+            && has_encoder("libx264")
+            && has_encoder("aac")
+            && composition_missing.is_empty();
+        let composition_reason = if composition_available {
+            String::new()
+        } else if !composition_missing.is_empty() {
+            format!("нужны FFmpeg filters {}", composition_missing.join(", "))
+        } else {
+            "нужны muxer mp4 и encoders libx264/aac".into()
+        };
+        let optical_flow_missing = ["minterpolate", "tpad"]
+            .into_iter()
+            .filter(|filter| !has_filter(filter))
+            .collect::<Vec<_>>();
+        let optical_flow_reason = if optical_flow_missing.is_empty() {
+            String::new()
+        } else {
+            format!("нужны FFmpeg filters {}", optical_flow_missing.join(", "))
+        };
+        let reverse_missing = ["reverse", "areverse"]
+            .into_iter()
+            .filter(|filter| !has_filter(filter))
+            .collect::<Vec<_>>();
+        let reverse_reason = if reverse_missing.is_empty() {
+            String::new()
+        } else {
+            format!("нужны FFmpeg filters {}", reverse_missing.join(", "))
+        };
+        let freeze_missing = ["tpad"]
+            .into_iter()
+            .filter(|filter| !has_filter(filter))
+            .collect::<Vec<_>>();
+        let freeze_reason = if freeze_missing.is_empty() {
+            String::new()
+        } else {
+            format!("нужны FFmpeg filters {}", freeze_missing.join(", "))
+        };
+        let stabilization_available = has_filter("deshake");
+        let stabilization_reason = if stabilization_available {
+            String::new()
+        } else {
+            "нужен FFmpeg filter deshake".to_owned()
+        };
+        let speed_ramp_missing = [
+            "trim", "setpts", "tpad", "fps", "atrim", "asetpts", "asplit", "atempo", "concat",
+        ]
+        .into_iter()
+        .filter(|filter| !has_filter(filter))
+        .collect::<Vec<_>>();
+        let speed_ramp_reason = if speed_ramp_missing.is_empty() {
+            String::new()
+        } else {
+            format!("нужны FFmpeg filters {}", speed_ramp_missing.join(", "))
+        };
+        let delivery_missing = |muxer: &str, encoders: &[&str]| {
+            let mut missing = Vec::new();
+            if !has_muxer(muxer) {
+                missing.push(format!("muxer {muxer}"));
+            }
+            for encoder in encoders {
+                if !has_encoder(encoder) {
+                    missing.push(format!("encoder {encoder}"));
+                }
+            }
+            missing
+        };
+        let delivery_reason = |missing: &[String]| {
+            if missing.is_empty() {
+                String::new()
+            } else {
+                format!("нужны {}", missing.join(", "))
+            }
+        };
+        let composition_h265_missing = delivery_missing("mp4", &["libx265", "aac"]);
+        let composition_vp9_missing = delivery_missing("webm", &["libvpx-vp9", "libopus"]);
+        let mut composition_av1_missing = delivery_missing("webm", &["libopus"]);
+        if !has_encoder("libsvtav1") && !has_encoder("libaom-av1") {
+            composition_av1_missing.push("encoder libsvtav1 or libaom-av1".to_owned());
+        }
+        let composition_prores_missing = delivery_missing("mov", &["prores_ks", "pcm_s16le"]);
+        let composition_h265_reason = delivery_reason(&composition_h265_missing);
+        let composition_vp9_reason = delivery_reason(&composition_vp9_missing);
+        let composition_av1_reason = delivery_reason(&composition_av1_missing);
+        let composition_prores_reason = delivery_reason(&composition_prores_missing);
+        let features = vec![
+            option(
+                "composition-v1",
+                "Многодорожечный монтаж",
+                composition_available,
+                &composition_reason,
+            ),
+            option(
+                "optical-flow",
+                "Оптический поток",
+                optical_flow_missing.is_empty(),
+                &optical_flow_reason,
+            ),
+            option(
+                "reverse-playback",
+                "Обратное воспроизведение",
+                reverse_missing.is_empty(),
+                &reverse_reason,
+            ),
+            option(
+                "freeze-frame",
+                "Стоп-кадр",
+                freeze_missing.is_empty(),
+                &freeze_reason,
+            ),
+            option(
+                "stabilization",
+                "Стабилизация",
+                stabilization_available,
+                &stabilization_reason,
+            ),
+            option(
+                "speed-ramp",
+                "Кривая скорости",
+                speed_ramp_missing.is_empty(),
+                &speed_ramp_reason,
+            ),
+            option(
+                "composition-mp4-h265",
+                "Composition MP4 H.265",
+                composition_h265_missing.is_empty(),
+                &composition_h265_reason,
+            ),
+            option(
+                "composition-webm-vp9",
+                "Composition WebM VP9",
+                composition_vp9_missing.is_empty(),
+                &composition_vp9_reason,
+            ),
+            option(
+                "composition-webm-av1",
+                "Composition WebM AV1",
+                composition_av1_missing.is_empty(),
+                &composition_av1_reason,
+            ),
+            option(
+                "composition-mov-prores",
+                "Composition MOV ProRes",
+                composition_prores_missing.is_empty(),
+                &composition_prores_reason,
+            ),
+        ];
 
         Self {
             schema_version: 1,
@@ -179,6 +406,7 @@ impl Capabilities {
             codecs,
             filters,
             hardware,
+            features,
         }
     }
 }
@@ -246,6 +474,14 @@ mod tests {
             .unwrap_or_else(|| panic!("missing look preset capability {id}"))
     }
 
+    fn feature_option<'a>(capabilities: &'a Capabilities, id: &str) -> &'a CapabilityOption {
+        capabilities
+            .features
+            .iter()
+            .find(|option| option.id == id)
+            .unwrap_or_else(|| panic!("missing feature capability {id}"))
+    }
+
     #[test]
     fn manifest_reports_runtime_requirements_and_stable_fingerprint() {
         let tools = ToolInfo {
@@ -300,6 +536,271 @@ mod tests {
                 .unwrap()
                 .available
         );
+    }
+
+    #[test]
+    fn manual_color_capabilities_match_exact_ffmpeg_filters() {
+        let tools = ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["huesaturation".into(), "colorbalance".into()],
+            ..ToolInfo::default()
+        };
+        let capabilities = Capabilities::from_tools(&tools);
+        assert!(
+            capabilities
+                .filters
+                .iter()
+                .find(|option| option.id == "selective-hsl")
+                .unwrap()
+                .available
+        );
+        assert!(
+            capabilities
+                .filters
+                .iter()
+                .find(|option| option.id == "color-wheels")
+                .unwrap()
+                .available
+        );
+    }
+
+    #[test]
+    fn deterministic_audio_dsp_capabilities_match_exact_filters() {
+        let tools = ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec![
+                "equalizer".into(),
+                "aformat".into(),
+                "stereotools".into(),
+                "acompressor".into(),
+                "alimiter".into(),
+            ],
+            ..ToolInfo::default()
+        };
+        let capabilities = Capabilities::from_tools(&tools);
+        for id in ["audio-eq", "audio-pan", "audio-compressor", "audio-limiter"] {
+            assert!(
+                capabilities
+                    .filters
+                    .iter()
+                    .find(|option| option.id == id)
+                    .unwrap()
+                    .available
+            );
+        }
+    }
+
+    #[test]
+    fn composition_feature_requires_the_complete_offline_pipeline() {
+        let filters = [
+            "trim",
+            "setpts",
+            "scale",
+            "pad",
+            "setsar",
+            "fps",
+            "concat",
+            "split",
+            "asplit",
+            "format",
+            "color",
+            "overlay",
+            "xfade",
+            "drawtext",
+            "rotate",
+            "colorchannelmixer",
+            "geq",
+            "blend",
+            "alphaextract",
+            "maskedmerge",
+            "chromakey",
+            "despill",
+            "atrim",
+            "asetpts",
+            "aresample",
+            "aformat",
+            "anullsrc",
+            "atempo",
+            "volume",
+            "pan",
+            "aeval",
+            "afade",
+            "adelay",
+            "amix",
+            "alimiter",
+        ];
+        let mut tools = ToolInfo {
+            ffmpeg: true,
+            ffmpeg_encoders: vec!["libx264".into(), "aac".into()],
+            ffmpeg_muxers: vec!["mp4".into()],
+            ffmpeg_filters: filters.iter().map(|filter| (*filter).into()).collect(),
+            ..ToolInfo::default()
+        };
+        let available = Capabilities::from_tools(&tools);
+        assert!(available.features[0].available);
+
+        tools.ffmpeg_filters.retain(|filter| filter != "overlay");
+        let unavailable = Capabilities::from_tools(&tools);
+        assert!(!unavailable.features[0].available);
+        assert!(unavailable.features[0]
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("overlay"));
+    }
+
+    #[test]
+    fn optional_composition_delivery_profiles_report_exact_components() {
+        let mut tools = ToolInfo {
+            ffmpeg: true,
+            ffmpeg_encoders: vec!["libx264".into(), "aac".into()],
+            ffmpeg_muxers: vec!["mp4".into()],
+            ..ToolInfo::default()
+        };
+        let base_only = Capabilities::from_tools(&tools);
+        assert_eq!(
+            feature_option(&base_only, "composition-mp4-h265")
+                .reason
+                .as_deref(),
+            Some("нужны encoder libx265")
+        );
+        assert_eq!(
+            feature_option(&base_only, "composition-webm-vp9")
+                .reason
+                .as_deref(),
+            Some("нужны muxer webm, encoder libvpx-vp9, encoder libopus")
+        );
+        assert_eq!(
+            feature_option(&base_only, "composition-webm-av1")
+                .reason
+                .as_deref(),
+            Some("нужны muxer webm, encoder libopus, encoder libsvtav1 or libaom-av1")
+        );
+        assert_eq!(
+            feature_option(&base_only, "composition-mov-prores")
+                .reason
+                .as_deref(),
+            Some("нужны muxer mov, encoder prores_ks, encoder pcm_s16le")
+        );
+
+        tools.ffmpeg_muxers.extend(["webm".into(), "mov".into()]);
+        tools.ffmpeg_encoders.extend([
+            "libx265".into(),
+            "libvpx-vp9".into(),
+            "libopus".into(),
+            "libaom-av1".into(),
+            "prores_ks".into(),
+            "pcm_s16le".into(),
+        ]);
+        let complete = Capabilities::from_tools(&tools);
+        for id in [
+            "composition-mp4-h265",
+            "composition-webm-vp9",
+            "composition-webm-av1",
+            "composition-mov-prores",
+        ] {
+            assert!(feature_option(&complete, id).available, "{id}");
+        }
+    }
+
+    #[test]
+    fn optical_flow_is_optional_and_does_not_gate_base_composition() {
+        let base_filters = [
+            "trim",
+            "setpts",
+            "scale",
+            "pad",
+            "setsar",
+            "fps",
+            "concat",
+            "split",
+            "asplit",
+            "format",
+            "color",
+            "overlay",
+            "xfade",
+            "drawtext",
+            "rotate",
+            "colorchannelmixer",
+            "geq",
+            "blend",
+            "alphaextract",
+            "maskedmerge",
+            "chromakey",
+            "despill",
+            "atrim",
+            "asetpts",
+            "aresample",
+            "aformat",
+            "anullsrc",
+            "atempo",
+            "volume",
+            "pan",
+            "aeval",
+            "afade",
+            "adelay",
+            "amix",
+            "alimiter",
+        ];
+        let mut tools = ToolInfo {
+            ffmpeg: true,
+            ffmpeg_encoders: vec!["libx264".into(), "aac".into()],
+            ffmpeg_muxers: vec!["mp4".into()],
+            ffmpeg_filters: base_filters.iter().map(|filter| (*filter).into()).collect(),
+            ..ToolInfo::default()
+        };
+
+        let without_optical_flow = Capabilities::from_tools(&tools);
+        assert!(feature_option(&without_optical_flow, "composition-v1").available);
+        assert!(!feature_option(&without_optical_flow, "freeze-frame").available);
+        assert!(!feature_option(&without_optical_flow, "reverse-playback").available);
+        let stabilization = feature_option(&without_optical_flow, "stabilization");
+        assert!(!stabilization.available);
+        assert!(stabilization.reason.as_deref().unwrap().contains("deshake"));
+        let optical_flow = feature_option(&without_optical_flow, "optical-flow");
+        assert!(!optical_flow.available);
+        assert!(optical_flow
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("minterpolate"));
+        let speed_ramp = feature_option(&without_optical_flow, "speed-ramp");
+        assert!(!speed_ramp.available);
+        assert_eq!(
+            speed_ramp.reason.as_deref(),
+            Some("нужны FFmpeg filters tpad")
+        );
+
+        tools.ffmpeg_filters.push("minterpolate".into());
+        let without_tpad = Capabilities::from_tools(&tools);
+        assert!(!feature_option(&without_tpad, "optical-flow").available);
+        assert!(feature_option(&without_tpad, "optical-flow")
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("tpad"));
+
+        tools.ffmpeg_filters.push("tpad".into());
+        let with_tpad = Capabilities::from_tools(&tools);
+        assert!(feature_option(&with_tpad, "optical-flow").available);
+        assert!(feature_option(&with_tpad, "freeze-frame").available);
+        assert!(feature_option(&with_tpad, "speed-ramp").available);
+        assert!(!feature_option(&with_tpad, "reverse-playback").available);
+
+        tools.ffmpeg_filters.push("reverse".into());
+        let without_audio_reverse = Capabilities::from_tools(&tools);
+        assert!(!feature_option(&without_audio_reverse, "reverse-playback").available);
+        assert!(feature_option(&without_audio_reverse, "reverse-playback")
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("areverse"));
+        tools.ffmpeg_filters.push("areverse".into());
+        assert!(feature_option(&Capabilities::from_tools(&tools), "reverse-playback").available);
+        tools.ffmpeg_filters.push("deshake".into());
+        let complete_optional = Capabilities::from_tools(&tools);
+        assert!(feature_option(&complete_optional, "stabilization").available);
+        assert!(feature_option(&complete_optional, "composition-v1").available);
     }
 
     #[test]
@@ -358,7 +859,7 @@ mod tests {
         let all_filters = all_look_filters();
         let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
 
-        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 5);
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 11);
         for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
             assert_eq!(option.id, definition.id());
             assert_eq!(option.label, definition.label);

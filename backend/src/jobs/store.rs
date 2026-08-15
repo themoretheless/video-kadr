@@ -85,6 +85,12 @@ pub enum EnqueueOutcome {
     RateLimited,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActiveJobRequest {
+    pub job: Job,
+    pub payload: Value,
+}
+
 #[derive(Clone)]
 pub struct SqliteJobStore {
     db: Db,
@@ -373,6 +379,50 @@ impl SqliteJobStore {
         rows.into_iter()
             .map(|row| row.try_get("job_id").map_err(Into::into))
             .collect()
+    }
+
+    /// Bounded durable request/status view for a feature-specific status API.
+    /// Terminal request payloads are erased by the job lifecycle and therefore
+    /// never reappear here.
+    pub async fn active_requests(
+        &self,
+        kind: JobKind,
+        limit: u32,
+    ) -> Result<Vec<ActiveJobRequest>> {
+        let limit = limit.clamp(1, 256);
+        let rows = sqlx::query(
+            "SELECT j.id, j.status, j.result_json, j.error, j.stage, j.progress, \
+                    r.payload_json \
+             FROM jobs j JOIN job_requests r ON r.job_id = j.id \
+             WHERE r.kind = ? AND r.payload_json <> 'null' \
+               AND j.status IN ('pending', 'running') \
+             ORDER BY r.created_at DESC, j.id LIMIT ?",
+        )
+        .bind(kind.as_str())
+        .bind(i64::from(limit.saturating_add(1)))
+        .fetch_all(self.db.pool())
+        .await?;
+        if rows.len() > limit as usize {
+            return Err(anyhow!("active job request listing exceeds its limit"));
+        }
+        rows.into_iter()
+            .map(|row| {
+                Ok(ActiveJobRequest {
+                    job: row_to_job(&row)?,
+                    payload: serde_json::from_str(&row.try_get::<String, _>("payload_json")?)?,
+                })
+            })
+            .collect()
+    }
+
+    /// Drop only the short-lived dedupe pointer. The durable job, audit events,
+    /// and request lifecycle remain intact.
+    pub async fn forget_dedupe(&self, dedupe_key: &str) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM job_dedupe WHERE dedupe_key = ?")
+            .bind(dedupe_key)
+            .execute(self.db.pool())
+            .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn record_transition(

@@ -4,14 +4,20 @@
 //! and re-exports the public surface so callers keep using `tools::*`.
 
 mod args;
+mod composition_args;
 mod egress_proxy;
 pub(crate) mod looks;
 mod net;
 pub mod proxy;
+pub mod thumbnail;
 
 pub use args::{
     build_ffmpeg_args, build_ffmpeg_args_with_budget, expected_output_secs, output_ext,
     FfmpegExportCompiler,
+};
+pub use composition_args::{
+    build_composition_ffmpeg_args, build_composition_ffmpeg_command,
+    build_composition_ffmpeg_command_for_output, FfmpegCompositionExportCompiler,
 };
 pub use net::validate_url;
 

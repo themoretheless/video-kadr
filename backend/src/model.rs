@@ -183,6 +183,15 @@ pub struct EditRequest {
     /// High-pass filter to cut low-frequency rumble/hum from the voice.
     #[serde(default)]
     pub highpass: bool,
+    /// Stereo balance, -1 = left and +1 = right.
+    #[serde(default)]
+    pub pan: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_eq: Option<AudioEqSelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compressor: Option<AudioCompressorSelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limiter: Option<AudioLimiterSelection>,
     /// eq filter params: brightness -1..1, contrast/saturation around 1.0.
     #[serde(default)]
     pub brightness: f64,
@@ -190,6 +199,13 @@ pub struct EditRequest {
     pub contrast: f64,
     #[serde(default = "default_one")]
     pub saturation: f64,
+    /// Selective HSL adjustments for the six deterministic FFmpeg colour
+    /// ranges. Omitted/zero-valued bands are identity operations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hsl: Option<HslAdjustmentsSelection>,
+    /// Shadows/midtones/highlights RGB balance, matching FFmpeg colorbalance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_wheels: Option<ColorWheelsSelection>,
     /// Optional deterministic chroma key. The colour is a strict six-digit
     /// RGB hex value; similarity, edge blend and spill suppression are 0..=1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -263,6 +279,125 @@ pub struct ChromaKeySelection {
     pub spill_suppression: f64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslBandSelection {
+    #[serde(default)]
+    pub hue: f64,
+    #[serde(default)]
+    pub saturation: f64,
+    #[serde(default)]
+    pub lightness: f64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslAdjustmentsSelection {
+    #[serde(default)]
+    pub red: HslBandSelection,
+    #[serde(default)]
+    pub yellow: HslBandSelection,
+    #[serde(default)]
+    pub green: HslBandSelection,
+    #[serde(default)]
+    pub cyan: HslBandSelection,
+    #[serde(default)]
+    pub blue: HslBandSelection,
+    #[serde(default)]
+    pub magenta: HslBandSelection,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheelSelection {
+    #[serde(default)]
+    pub red: f64,
+    #[serde(default)]
+    pub green: f64,
+    #[serde(default)]
+    pub blue: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheelsSelection {
+    #[serde(default)]
+    pub shadows: ColorWheelSelection,
+    #[serde(default)]
+    pub midtones: ColorWheelSelection,
+    #[serde(default)]
+    pub highlights: ColorWheelSelection,
+    #[serde(default = "default_true")]
+    pub preserve_luminosity: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioEqSelection {
+    #[serde(default)]
+    pub low_gain_db: f64,
+    #[serde(default)]
+    pub mid_gain_db: f64,
+    #[serde(default)]
+    pub high_gain_db: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioCompressorSelection {
+    #[serde(default = "default_compressor_threshold_db")]
+    pub threshold_db: f64,
+    #[serde(default = "default_compressor_ratio")]
+    pub ratio: f64,
+    #[serde(default = "default_compressor_attack_ms")]
+    pub attack_ms: f64,
+    #[serde(default = "default_compressor_release_ms")]
+    pub release_ms: f64,
+    #[serde(default)]
+    pub makeup_gain_db: f64,
+}
+
+impl Default for AudioCompressorSelection {
+    fn default() -> Self {
+        Self {
+            threshold_db: default_compressor_threshold_db(),
+            ratio: default_compressor_ratio(),
+            attack_ms: default_compressor_attack_ms(),
+            release_ms: default_compressor_release_ms(),
+            makeup_gain_db: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioLimiterSelection {
+    #[serde(default = "default_limiter_ceiling_db")]
+    pub ceiling_db: f64,
+    #[serde(default = "default_limiter_release_ms")]
+    pub release_ms: f64,
+}
+
+impl Default for AudioLimiterSelection {
+    fn default() -> Self {
+        Self {
+            ceiling_db: default_limiter_ceiling_db(),
+            release_ms: default_limiter_release_ms(),
+        }
+    }
+}
+
+impl Default for ColorWheelsSelection {
+    fn default() -> Self {
+        Self {
+            shadows: ColorWheelSelection::default(),
+            midtones: ColorWheelSelection::default(),
+            highlights: ColorWheelSelection::default(),
+            preserve_luminosity: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CurvePoint {
@@ -289,6 +424,34 @@ fn default_speed() -> f64 {
 
 fn default_one() -> f64 {
     1.0
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_compressor_threshold_db() -> f64 {
+    -18.0
+}
+
+fn default_compressor_ratio() -> f64 {
+    3.0
+}
+
+fn default_compressor_attack_ms() -> f64 {
+    20.0
+}
+
+fn default_compressor_release_ms() -> f64 {
+    250.0
+}
+
+fn default_limiter_ceiling_db() -> f64 {
+    -1.0
+}
+
+fn default_limiter_release_ms() -> f64 {
+    50.0
 }
 
 fn default_chroma_similarity() -> f64 {
@@ -416,6 +579,53 @@ mod tests {
         assert_eq!(e.lut.as_ref().unwrap().intensity, 0.65);
         assert_eq!(e.curves.as_ref().unwrap().master.as_ref().unwrap().len(), 2);
         assert!(e.curves.as_ref().unwrap().green.is_none());
+    }
+
+    #[test]
+    fn edit_request_reads_selective_hsl_and_color_wheels() {
+        let edit: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "hsl": {
+                "red": {"hue": 12.0, "saturation": -0.25, "lightness": 0.1},
+                "blue": {"hue": -8.0}
+            },
+            "colorWheels": {
+                "shadows": {"red": 0.2, "blue": -0.1},
+                "highlights": {"green": 0.15}
+            }
+        }))
+        .unwrap();
+
+        let hsl = edit.hsl.unwrap();
+        assert_eq!(hsl.red.hue, 12.0);
+        assert_eq!(hsl.red.saturation, -0.25);
+        assert_eq!(hsl.blue.hue, -8.0);
+        assert_eq!(hsl.green, HslBandSelection::default());
+        let wheels = edit.color_wheels.unwrap();
+        assert_eq!(wheels.shadows.red, 0.2);
+        assert_eq!(wheels.shadows.blue, -0.1);
+        assert_eq!(wheels.highlights.green, 0.15);
+        assert!(wheels.preserve_luminosity);
+    }
+
+    #[test]
+    fn edit_request_reads_deterministic_audio_dsp_defaults() {
+        let edit: EditRequest = serde_json::from_value(json!({
+            "videoId": "x",
+            "pan": -0.4,
+            "audioEq": {"lowGainDb": 2.0},
+            "compressor": {},
+            "limiter": {}
+        }))
+        .unwrap();
+
+        assert_eq!(edit.pan, -0.4);
+        assert_eq!(edit.audio_eq.unwrap().low_gain_db, 2.0);
+        assert_eq!(
+            edit.compressor.unwrap(),
+            AudioCompressorSelection::default()
+        );
+        assert_eq!(edit.limiter.unwrap(), AudioLimiterSelection::default());
     }
 
     #[test]

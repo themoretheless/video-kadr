@@ -27,6 +27,7 @@ import type {
   Job,
   LutAsset,
   MediaEntry,
+  MediaInfo,
   ResultInfo,
   TimelineSegment,
   VideoInfo,
@@ -34,20 +35,29 @@ import type {
 
 export {
   defaultEdit,
+  identityColorWheels,
   identityCurve,
   identityCurves,
+  identitySelectiveHsl,
+  isIdentityColorWheels,
   isIdentityCurve,
   isIdentityCurves,
+  isIdentitySelectiveHsl,
   parseTime,
   sanitizeCurve,
   sanitizeChromaKeyColor,
   sanitizeChromaSimilarity,
   sanitizeChromaUnit,
   sanitizeCurves,
+  sanitizeColorWheels,
   sanitizeEditState,
+  sanitizeSelectiveHsl,
   sanitizeLutIntensity,
   sanitizeLutId,
   sampleCurvePchip,
+  sanitizeAudioCompressor,
+  sanitizeAudioEq,
+  sanitizeAudioLimiter,
   tierToCrf,
 } from '../domain/edit'
 
@@ -85,6 +95,8 @@ export const state = $state({
   exportJobId: null as string | null,
   result: null as ResultInfo | null,
   library: [] as MediaEntry[],
+  /** True only while `library` is the latest successfully fetched snapshot. */
+  librarySnapshotReady: false,
   capabilities: null as Capabilities | null,
   backendStatus: 'checking' as 'checking' | 'online' | 'offline',
   // Player bridge: VideoPreview owns the <video>; the rest of the app talks to
@@ -92,6 +104,7 @@ export const state = $state({
   playerTime: 0,
   seekTo: null as number | null,
   seekTimelineSegmentId: null as string | null,
+  timelineSelectedSegmentId: null as string | null,
   playToggle: 0,
 })
 
@@ -103,9 +116,9 @@ function isCancel(e: unknown): boolean {
   return e instanceof Error && e.message === 'cancelled'
 }
 
-export async function doImport(): Promise<void> {
+export async function doImport(): Promise<VideoInfo | null> {
   const url = state.url.trim()
-  if (!url || state.importing) return
+  if (!url || state.importing) return null
 
   // Optional import range (download only a section of long videos).
   const start = parseTime(state.importStart)
@@ -113,7 +126,7 @@ export async function doImport(): Promise<void> {
   if (start !== null && end !== null && end <= start) {
     state.importError = 'Конец диапазона должен быть больше начала'
     toast('error', state.importError)
-    return
+    return null
   }
   const body: Record<string, unknown> = { url }
   if (start !== null) body.start = start
@@ -144,6 +157,7 @@ export async function doImport(): Promise<void> {
     state.importStatus = ''
     void loadLibrary()
     toast('success', v.title ? `Загружено: ${v.title}` : 'Видео загружено')
+    return v
   } catch (e) {
     if (isCancel(e)) {
       state.importStatus = ''
@@ -153,6 +167,7 @@ export async function doImport(): Promise<void> {
       state.importStatus = ''
       toast('error', state.importError)
     }
+    return null
   } finally {
     state.importing = false
     state.importProgress = null
@@ -171,8 +186,8 @@ export async function cancelImport(): Promise<void> {
 }
 
 /** Import a local file via multipart upload (no job: it returns directly). */
-export async function doUpload(file: File): Promise<void> {
-  if (state.importing) return
+export async function doUpload(file: File, openLegacy = true): Promise<MediaInfo | null> {
+  if (state.importing) return null
   state.importing = true
   state.importError = ''
   state.importStatus = 'Загружаю файл…'
@@ -181,21 +196,26 @@ export async function doUpload(file: File): Promise<void> {
   state.result = null
 
   try {
-    const v = await api.uploadFile(file)
-    state.video = v
-    const edit = defaultEdit()
-    edit.trimEnd = v.duration
-    edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
-    edit.scale = { w: v.width, h: -2 }
-    state.edit = edit
-    resetHistory()
+    const media = await api.uploadFile(file)
+    if (openLegacy && (media.mediaType === undefined || media.mediaType === 'video')) {
+      const video: VideoInfo = { ...media, mediaType: 'video' }
+      state.video = video
+      const edit = defaultEdit()
+      edit.trimEnd = video.duration
+      edit.crop = { x: 0, y: 0, w: video.width, h: video.height }
+      edit.scale = { w: video.width, h: -2 }
+      state.edit = edit
+      resetHistory()
+    }
     state.importStatus = ''
     void loadLibrary()
-    toast('success', v.title ? `Загружено: ${v.title}` : 'Файл загружен')
+    toast('success', media.title ? `Загружено: ${media.title}` : 'Файл загружен')
+    return media
   } catch (e) {
     state.importError = e instanceof Error ? e.message : String(e)
     state.importStatus = ''
     toast('error', state.importError)
+    return null
   } finally {
     state.importing = false
     state.importProgress = null
@@ -504,12 +524,33 @@ export function moveTimelineSegment(id: string, direction: -1 | 1): boolean {
 
 // --- media library ---
 
-export async function loadLibrary(): Promise<void> {
+let libraryLoadRevision = 0
+
+export async function loadLibrary(): Promise<boolean> {
+  const revision = ++libraryLoadRevision
+  state.librarySnapshotReady = false
   try {
-    state.library = await api.getLibrary()
+    const entries = await api.getLibrary()
+    if (revision !== libraryLoadRevision) return false
+    state.library = entries
+    state.librarySnapshotReady = true
+    return true
   } catch {
-    // Non-fatal: the library panel just stays empty.
+    if (revision === libraryLoadRevision) state.librarySnapshotReady = false
+    // Non-fatal: retain the last visible snapshot, but never use it to prune
+    // composition bindings after this failed refresh.
+    return false
   }
+}
+
+/** Persist a partial local metadata update and replace the matching entry in-place. */
+export async function updateLibraryMetadata(
+  id: string,
+  metadata: api.LibraryMetadataPatch,
+): Promise<MediaEntry> {
+  const updated = await api.patchLibraryMetadata(id, metadata)
+  state.library = state.library.map((entry) => (entry.id === id ? updated : entry))
+  return updated
 }
 
 export async function loadCapabilities(): Promise<void> {
@@ -591,7 +632,7 @@ function colorCapabilityUnavailableReason(ids: string[], missing: string): strin
 
 /** Reopen a stored source clip in the editor. */
 export function openFromLibrary(entry: MediaEntry): void {
-  if (entry.kind !== 'source') return
+  if (entry.kind !== 'source' || (entry.mediaType && entry.mediaType !== 'video')) return
   restoringProjectFor = entry.id
   clearProjectSaveTimer()
   const v: VideoInfo = {
@@ -603,6 +644,7 @@ export function openFromLibrary(entry: MediaEntry): void {
     height: entry.height ?? 0,
     title: entry.title ?? null,
     sizeBytes: entry.sizeBytes ?? null,
+    mediaType: 'video',
   }
   state.video = v
   state.result = null

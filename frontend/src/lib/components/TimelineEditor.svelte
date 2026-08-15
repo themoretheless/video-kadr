@@ -1,6 +1,7 @@
 <script lang="ts">
   import TrimSlider from './TrimSlider.svelte'
   import type { TimelineSegment } from '$lib/types.js'
+  import { shortcutAria, shortcutLabel } from '$lib/state/shortcuts.svelte.js'
   import {
     activateTimeline,
     beginEditTransaction,
@@ -18,9 +19,9 @@
     updateTimelineSegmentRange,
   } from '$lib/state/store.svelte.js'
 
-  let selectedId = $state('')
   let duration = $derived(appState.video?.duration ?? 0)
   let segments = $derived(appState.edit.timelineSegments)
+  let selectedId = $derived(appState.timelineSelectedSegmentId ?? '')
   let selectedIndex = $derived(segments.findIndex((segment) => segment.id === selectedId))
   let selected = $derived(segments[selectedIndex] ?? null)
   let totalDuration = $derived(totalTimelineDuration(segments))
@@ -39,8 +40,8 @@
 
   $effect(() => {
     const ids = appState.edit.timelineSegments.map((segment) => segment.id).join('|')
-    if (!appState.edit.timelineEnabled) selectedId = ''
-    else if (!ids.split('|').includes(selectedId)) selectedId = appState.edit.timelineSegments[0]?.id ?? ''
+    if (!appState.edit.timelineEnabled) appState.timelineSelectedSegmentId = null
+    else if (!ids.split('|').includes(selectedId)) appState.timelineSelectedSegmentId = appState.edit.timelineSegments[0]?.id ?? null
   })
 
   function fmt(value: number): string {
@@ -49,7 +50,7 @@
     return `${minutes}:${(value - minutes * 60).toFixed(3).padStart(6, '0')}`
   }
   function selectSegment(id: string): void {
-    selectedId = id
+    appState.timelineSelectedSegmentId = id
     const segment = segments.find((candidate) => candidate.id === id)
     if (segment) seekTo(segment.start, segment.id)
   }
@@ -122,23 +123,25 @@
       {/each}
     </div>
     <div class="timeline-actions" aria-label="Операции с выбранным фрагментом">
-      <button class="btn ghost sm" type="button" aria-label="Переместить выбранный фрагмент левее" title="Переместить левее" disabled={selectedIndex <= 0} onclick={() => moveSelected(-1)}>←</button>
-      <button class="btn ghost sm" type="button" aria-label="Переместить выбранный фрагмент правее" title="Переместить правее" disabled={selectedIndex < 0 || selectedIndex >= segments.length - 1} onclick={() => moveSelected(1)}>→</button>
+      <button class="btn ghost sm" type="button" aria-label="Переместить выбранный фрагмент левее" aria-keyshortcuts={shortcutAria('legacy.timelineMovePrevious')} title={`Переместить левее (${shortcutLabel('legacy.timelineMovePrevious')})`} disabled={selectedIndex <= 0} onclick={() => moveSelected(-1)}>←</button>
+      <button class="btn ghost sm" type="button" aria-label="Переместить выбранный фрагмент правее" aria-keyshortcuts={shortcutAria('legacy.timelineMoveNext')} title={`Переместить правее (${shortcutLabel('legacy.timelineMoveNext')})`} disabled={selectedIndex < 0 || selectedIndex >= segments.length - 1} onclick={() => moveSelected(1)}>→</button>
       <button
         class="btn ghost sm timeline-split"
         type="button"
         disabled={!canSplit}
-        title={segments.length >= MAX_TIMELINE_SEGMENTS ? `Достигнут лимит ${MAX_TIMELINE_SEGMENTS} фрагментов` : `Разделить на позиции плеера ${fmt(appState.playerTime)}`}
+        aria-keyshortcuts={shortcutAria('legacy.timelineSplit')}
+        title={segments.length >= MAX_TIMELINE_SEGMENTS ? `Достигнут лимит ${MAX_TIMELINE_SEGMENTS} фрагментов` : `Разделить на позиции плеера ${fmt(appState.playerTime)} (${shortcutLabel('legacy.timelineSplit')})`}
         onclick={splitSelected}
       >Разделить здесь</button>
       <button
         class="btn ghost sm"
         type="button"
         disabled={!selected || segments.length >= MAX_TIMELINE_SEGMENTS}
-        title={segments.length >= MAX_TIMELINE_SEGMENTS ? `Достигнут лимит ${MAX_TIMELINE_SEGMENTS} фрагментов` : 'Дублировать выбранный фрагмент'}
+        aria-keyshortcuts={shortcutAria('legacy.timelineDuplicate')}
+        title={segments.length >= MAX_TIMELINE_SEGMENTS ? `Достигнут лимит ${MAX_TIMELINE_SEGMENTS} фрагментов` : `Дублировать выбранный фрагмент (${shortcutLabel('legacy.timelineDuplicate')})`}
         onclick={duplicateSelected}
       >Дубль</button>
-      <button class="btn ghost sm timeline-delete" type="button" disabled={segments.length <= 1} title="Удалить выбранный фрагмент" onclick={deleteSelected}>Удалить</button>
+      <button class="btn ghost sm timeline-delete" type="button" disabled={segments.length <= 1} aria-keyshortcuts={shortcutAria('legacy.timelineDelete')} title={`Удалить выбранный фрагмент (${shortcutLabel('legacy.timelineDelete')})`} onclick={deleteSelected}>Удалить</button>
     </div>
     {#if selected}
       <div class="timeline-range-editor">

@@ -27,18 +27,32 @@ use crate::services::render::{
 use crate::state::{AppState, ToolInfo};
 use crate::tools::{self, Done};
 
+mod composition;
 mod jobs;
 mod library;
 mod luts;
+mod project_archive;
+mod proxy;
 mod upload;
 
+pub use composition::composition_render_handler;
+use composition::{spawn_composition_job, CompositionWork};
 pub use jobs::{
     cancel_handler, discard_job_handler, failed_jobs_handler, job_registry_handler,
     job_status_handler, resume_pending_jobs, retry_job_handler, start_job_dispatcher,
 };
 use jobs::{dispatch_job, JobLeaseHeartbeat};
-pub use library::{library_delete_handler, library_list_handler, library_search_handler};
+pub use library::{
+    library_delete_handler, library_filmstrip_handler, library_filmstrip_version_handler,
+    library_list_handler, library_metadata_patch_handler, library_metadata_put_handler,
+    library_search_handler, library_thumbnail_handler, library_thumbnail_version_handler,
+};
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
+pub use project_archive::{
+    composition_project_archive_export_handler, composition_project_archive_import_handler,
+};
+pub use proxy::{proxy_create_handler, proxy_delete_handler, proxy_list_handler};
+use proxy::{spawn_proxy_job, ProxyWork};
 pub use upload::upload_handler;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -329,6 +343,8 @@ pub async fn edit_handler(
         req.lut = None;
         req.curves = None;
         req.chroma_key = None;
+        req.hsl = None;
+        req.color_wheels = None;
     } else if req
         .lut
         .as_ref()
@@ -336,8 +352,9 @@ pub async fn edit_handler(
     {
         req.lut = None;
     }
-    validate_color_grade_request(&req)
-        .map_err(|_| AppError::bad_request("некорректные параметры цвета или chroma key"))?;
+    validate_color_grade_request(&req).map_err(|_| {
+        AppError::bad_request("некорректные параметры цвета, chroma key или audio DSP")
+    })?;
     validate_color_grade_capabilities(&state, &req)?;
     let job_id = Uuid::new_v4().to_string();
     let runtime_fingerprint = render_runtime_fingerprint(state.tools.as_ref());
@@ -388,6 +405,36 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
     if request.curves.is_some() && !has_filter("curves") {
         return Err(AppError::bad_request(
             "кривые недоступны: FFmpeg filter curves не найден",
+        ));
+    }
+    if request.hsl.is_some() && !has_filter("huesaturation") {
+        return Err(AppError::bad_request(
+            "HSL недоступен: FFmpeg filter huesaturation не найден",
+        ));
+    }
+    if request.color_wheels.is_some() && !has_filter("colorbalance") {
+        return Err(AppError::bad_request(
+            "цветовые колёса недоступны: FFmpeg filter colorbalance не найден",
+        ));
+    }
+    if request.audio_eq.is_some() && !has_filter("equalizer") {
+        return Err(AppError::bad_request(
+            "аудио EQ недоступен: FFmpeg filter equalizer не найден",
+        ));
+    }
+    if request.pan.abs() > 1e-9 && (!has_filter("aformat") || !has_filter("stereotools")) {
+        return Err(AppError::bad_request(
+            "стереопанорама недоступна: нужны FFmpeg filters aformat и stereotools",
+        ));
+    }
+    if request.compressor.is_some() && !has_filter("acompressor") {
+        return Err(AppError::bad_request(
+            "компрессор недоступен: FFmpeg filter acompressor не найден",
+        ));
+    }
+    if request.limiter.is_some() && !has_filter("alimiter") {
+        return Err(AppError::bad_request(
+            "лимитер недоступен: FFmpeg filter alimiter не найден",
         ));
     }
     if let Some(chroma_key) = &request.chroma_key {
@@ -1068,6 +1115,58 @@ mod tests {
             ..ToolInfo::default()
         });
         assert!(validate_color_grade_capabilities(&st, &without_spill).is_ok());
+    }
+
+    #[tokio::test]
+    async fn manual_color_capabilities_fail_closed_for_hsl_and_wheels() {
+        let (mut state, _directory) = state().await;
+        let request: EditRequest = serde_json::from_value(json!({
+            "videoId": "source",
+            "hsl": {"red": {"hue": 12.0}},
+            "colorWheels": {"shadows": {"blue": 0.2}}
+        }))
+        .unwrap();
+
+        assert!(validate_color_grade_capabilities(&state, &request).is_err());
+        state.tools = Arc::new(ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["huesaturation".into()],
+            ..ToolInfo::default()
+        });
+        assert!(validate_color_grade_capabilities(&state, &request).is_err());
+        state.tools = Arc::new(ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["huesaturation".into(), "colorbalance".into()],
+            ..ToolInfo::default()
+        });
+        assert!(validate_color_grade_capabilities(&state, &request).is_ok());
+    }
+
+    #[tokio::test]
+    async fn deterministic_audio_dsp_capabilities_fail_closed() {
+        let (mut state, _directory) = state().await;
+        let request: EditRequest = serde_json::from_value(json!({
+            "videoId": "source",
+            "pan": 0.2,
+            "audioEq": {"lowGainDb": 2.0},
+            "compressor": {},
+            "limiter": {}
+        }))
+        .unwrap();
+
+        assert!(validate_color_grade_capabilities(&state, &request).is_err());
+        state.tools = Arc::new(ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec![
+                "aformat".into(),
+                "stereotools".into(),
+                "equalizer".into(),
+                "acompressor".into(),
+                "alimiter".into(),
+            ],
+            ..ToolInfo::default()
+        });
+        assert!(validate_color_grade_capabilities(&state, &request).is_ok());
     }
 
     #[tokio::test]

@@ -88,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
     // new media; incremental indexing owns every change after this boundary.
     state.recover_jobs().await;
     state.rebuild_media_search().await;
+    state.cleanup_thumbnail_cache().await;
     video_editor_backend::handlers::start_job_dispatcher(&state);
     state.spawn_task(video_editor_backend::jobs::run_quarantine_cleanup(
         state.job_store.clone(),
@@ -166,6 +167,7 @@ async fn shutdown_signal() {
 fn spawn_cleanup(state: &AppState, storage: PathBuf, library: Library, db: Db, ttl_hours: u64) {
     let shutdown = state.shutdown_token();
     let media_index = state.media_index.clone();
+    let thumbnail_service = state.thumbnail_service.clone();
     state.spawn_task(async move {
         let ttl = Duration::from_secs(ttl_hours * 3600);
         let mut tick = tokio::time::interval(Duration::from_secs(30 * 60));
@@ -206,6 +208,9 @@ fn spawn_cleanup(state: &AppState, storage: PathBuf, library: Library, db: Db, t
                     if let Some(entry) = entry {
                         let entry_id = entry.id.clone();
                         if library.remove(&entry_id).await {
+                            if let Err(error) = thumbnail_service.remove_source(&entry_id).await {
+                                tracing::warn!(media.id = %entry_id, %error, "cleanup thumbnail cache");
+                            }
                             if let Err(error) = media_index.remove(&entry_id).await {
                                 tracing::warn!(media.id = %entry_id, %error, "cleanup search index");
                             }

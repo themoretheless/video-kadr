@@ -539,12 +539,117 @@ pub struct GeometrySpec {
     pub(crate) censor: Option<CensorSpec>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslBand {
+    pub(crate) hue: f64,
+    pub(crate) saturation: f64,
+    pub(crate) lightness: f64,
+}
+
+impl HslBand {
+    fn validate(self) -> Result<(), EditSpecError> {
+        if self.hue.is_finite()
+            && (-180.0..=180.0).contains(&self.hue)
+            && self.saturation.is_finite()
+            && (-1.0..=1.0).contains(&self.saturation)
+            && self.lightness.is_finite()
+            && (-1.0..=1.0).contains(&self.lightness)
+        {
+            Ok(())
+        } else {
+            Err(EditSpecError::InvalidHslAdjustment)
+        }
+    }
+
+    pub(crate) fn is_identity(self) -> bool {
+        self.hue.abs() <= 1e-9 && self.saturation.abs() <= 1e-9 && self.lightness.abs() <= 1e-9
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslAdjustments {
+    pub(crate) red: HslBand,
+    pub(crate) yellow: HslBand,
+    pub(crate) green: HslBand,
+    pub(crate) cyan: HslBand,
+    pub(crate) blue: HslBand,
+    pub(crate) magenta: HslBand,
+}
+
+impl HslAdjustments {
+    pub(crate) fn validate(&self) -> Result<(), EditSpecError> {
+        for band in [
+            self.red,
+            self.yellow,
+            self.green,
+            self.cyan,
+            self.blue,
+            self.magenta,
+        ] {
+            band.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheel {
+    pub(crate) red: f64,
+    pub(crate) green: f64,
+    pub(crate) blue: f64,
+}
+
+impl ColorWheel {
+    fn validate(self) -> Result<(), EditSpecError> {
+        if [self.red, self.green, self.blue]
+            .into_iter()
+            .all(|value| value.is_finite() && (-1.0..=1.0).contains(&value))
+        {
+            Ok(())
+        } else {
+            Err(EditSpecError::InvalidColorWheels)
+        }
+    }
+
+    pub(crate) fn is_identity(self) -> bool {
+        self.red.abs() <= 1e-9 && self.green.abs() <= 1e-9 && self.blue.abs() <= 1e-9
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorWheels {
+    pub(crate) shadows: ColorWheel,
+    pub(crate) midtones: ColorWheel,
+    pub(crate) highlights: ColorWheel,
+    pub(crate) preserve_luminosity: bool,
+}
+
+impl ColorWheels {
+    pub(crate) fn validate(&self) -> Result<(), EditSpecError> {
+        self.shadows.validate()?;
+        self.midtones.validate()?;
+        self.highlights.validate()
+    }
+
+    pub(crate) fn is_identity(&self) -> bool {
+        self.shadows.is_identity() && self.midtones.is_identity() && self.highlights.is_identity()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoEffects {
     pub(crate) brightness: f64,
     pub(crate) contrast: f64,
     pub(crate) saturation: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hsl: Option<HslAdjustments>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color_wheels: Option<ColorWheels>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) chroma_key: Option<ChromaKeySpec>,
     pub(crate) look: Option<LookPreset>,
@@ -558,6 +663,84 @@ pub struct VideoEffects {
     pub(crate) lut: Option<LutGrade>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioEq {
+    pub(crate) low_gain_db: f64,
+    pub(crate) mid_gain_db: f64,
+    pub(crate) high_gain_db: f64,
+}
+
+impl AudioEq {
+    pub(crate) fn validate(self) -> Result<(), EditSpecError> {
+        if [self.low_gain_db, self.mid_gain_db, self.high_gain_db]
+            .into_iter()
+            .all(|gain| gain.is_finite() && (-24.0..=24.0).contains(&gain))
+        {
+            Ok(())
+        } else {
+            Err(EditSpecError::InvalidAudioEq)
+        }
+    }
+
+    pub(crate) fn is_identity(self) -> bool {
+        self.low_gain_db.abs() <= 1e-9
+            && self.mid_gain_db.abs() <= 1e-9
+            && self.high_gain_db.abs() <= 1e-9
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioCompressor {
+    pub(crate) threshold_db: f64,
+    pub(crate) ratio: f64,
+    pub(crate) attack_ms: f64,
+    pub(crate) release_ms: f64,
+    pub(crate) makeup_gain_db: f64,
+}
+
+impl AudioCompressor {
+    pub(crate) fn validate(self) -> Result<(), EditSpecError> {
+        if self.threshold_db.is_finite()
+            && (-60.0..=0.0).contains(&self.threshold_db)
+            && self.ratio.is_finite()
+            && (1.0..=20.0).contains(&self.ratio)
+            && self.attack_ms.is_finite()
+            && (0.01..=2_000.0).contains(&self.attack_ms)
+            && self.release_ms.is_finite()
+            && (0.01..=9_000.0).contains(&self.release_ms)
+            && self.makeup_gain_db.is_finite()
+            && (-36.0..=36.0).contains(&self.makeup_gain_db)
+        {
+            Ok(())
+        } else {
+            Err(EditSpecError::InvalidAudioCompressor)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioLimiter {
+    pub(crate) ceiling_db: f64,
+    pub(crate) release_ms: f64,
+}
+
+impl AudioLimiter {
+    pub(crate) fn validate(self) -> Result<(), EditSpecError> {
+        if self.ceiling_db.is_finite()
+            && (-24.0..=0.0).contains(&self.ceiling_db)
+            && self.release_ms.is_finite()
+            && (1.0..=8_000.0).contains(&self.release_ms)
+        {
+            Ok(())
+        } else {
+            Err(EditSpecError::InvalidAudioLimiter)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AudioEffects {
@@ -565,6 +748,14 @@ pub struct AudioEffects {
     pub(crate) volume: f64,
     pub(crate) normalize: bool,
     pub(crate) highpass: bool,
+    #[serde(default)]
+    pub(crate) pan: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) eq: Option<AudioEq>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) compressor: Option<AudioCompressor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) limiter: Option<AudioLimiter>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -695,14 +886,33 @@ impl EditSpec {
         if let Some(curves) = &self.video.curves {
             curves.validate()?;
         }
+        if let Some(hsl) = &self.video.hsl {
+            hsl.validate()?;
+        }
+        if let Some(color_wheels) = &self.video.color_wheels {
+            color_wheels.validate()?;
+        }
         if let Some(chroma_key) = &self.video.chroma_key {
             chroma_key.validate()?;
         }
         if let Some(lut) = &self.video.lut {
             lut.validate()?;
         }
-        if !self.audio.volume.is_finite() || !(0.0..=4.0).contains(&self.audio.volume) {
+        if !self.audio.volume.is_finite()
+            || !(0.0..=4.0).contains(&self.audio.volume)
+            || !self.audio.pan.is_finite()
+            || !(-1.0..=1.0).contains(&self.audio.pan)
+        {
             return Err(EditSpecError::InvalidAudioEffect);
+        }
+        if let Some(eq) = self.audio.eq {
+            eq.validate()?;
+        }
+        if let Some(compressor) = self.audio.compressor {
+            compressor.validate()?;
+        }
+        if let Some(limiter) = self.audio.limiter {
+            limiter.validate()?;
         }
         Ok(())
     }
@@ -723,10 +933,15 @@ pub enum EditSpecError {
     TooManyTimelineSegments,
     TimelineTooLong,
     InvalidVideoEffect,
+    InvalidHslAdjustment,
+    InvalidColorWheels,
     InvalidChromaKey,
     InvalidToneCurve,
     InvalidLut,
     InvalidAudioEffect,
+    InvalidAudioEq,
+    InvalidAudioCompressor,
+    InvalidAudioLimiter,
 }
 
 impl fmt::Display for EditSpecError {
@@ -764,6 +979,8 @@ mod tests {
                 brightness: 0.0,
                 contrast: 1.0,
                 saturation: 1.0,
+                hsl: None,
+                color_wheels: None,
                 chroma_key: None,
                 look: None,
                 vignette: false,
@@ -778,6 +995,10 @@ mod tests {
                 volume: 1.0,
                 normalize: false,
                 highpass: false,
+                pan: 0.0,
+                eq: None,
+                compressor: None,
+                limiter: None,
             },
         )
         .unwrap()
@@ -801,6 +1022,68 @@ mod tests {
         ])
         .unwrap();
         assert!(serde_json::from_value::<EditSpec>(invalid).is_err());
+    }
+
+    #[test]
+    fn validates_selective_hsl_and_color_wheel_bounds() {
+        let mut spec = valid_spec();
+        spec.video.hsl = Some(HslAdjustments {
+            red: HslBand {
+                hue: 180.0,
+                saturation: -1.0,
+                lightness: 1.0,
+            },
+            ..HslAdjustments::default()
+        });
+        spec.video.color_wheels = Some(ColorWheels {
+            shadows: ColorWheel {
+                red: -1.0,
+                green: 0.0,
+                blue: 1.0,
+            },
+            midtones: ColorWheel::default(),
+            highlights: ColorWheel::default(),
+            preserve_luminosity: true,
+        });
+        assert_eq!(spec.validate(), Ok(()));
+
+        spec.video.hsl.as_mut().unwrap().cyan.hue = 180.01;
+        assert_eq!(spec.validate(), Err(EditSpecError::InvalidHslAdjustment));
+        spec.video.hsl.as_mut().unwrap().cyan.hue = 0.0;
+        spec.video.color_wheels.as_mut().unwrap().midtones.green = f64::NAN;
+        assert_eq!(spec.validate(), Err(EditSpecError::InvalidColorWheels));
+    }
+
+    #[test]
+    fn validates_deterministic_audio_dsp_bounds() {
+        let mut spec = valid_spec();
+        spec.audio.pan = -1.0;
+        spec.audio.eq = Some(AudioEq {
+            low_gain_db: -24.0,
+            mid_gain_db: 0.0,
+            high_gain_db: 24.0,
+        });
+        spec.audio.compressor = Some(AudioCompressor {
+            threshold_db: -18.0,
+            ratio: 4.0,
+            attack_ms: 10.0,
+            release_ms: 200.0,
+            makeup_gain_db: 3.0,
+        });
+        spec.audio.limiter = Some(AudioLimiter {
+            ceiling_db: -1.0,
+            release_ms: 50.0,
+        });
+        assert_eq!(spec.validate(), Ok(()));
+
+        spec.audio.eq.as_mut().unwrap().low_gain_db = -24.01;
+        assert_eq!(spec.validate(), Err(EditSpecError::InvalidAudioEq));
+        spec.audio.eq.as_mut().unwrap().low_gain_db = 0.0;
+        spec.audio.compressor.as_mut().unwrap().ratio = 20.01;
+        assert_eq!(spec.validate(), Err(EditSpecError::InvalidAudioCompressor));
+        spec.audio.compressor.as_mut().unwrap().ratio = 4.0;
+        spec.audio.limiter.as_mut().unwrap().ceiling_db = -24.01;
+        assert_eq!(spec.validate(), Err(EditSpecError::InvalidAudioLimiter));
     }
 
     #[test]

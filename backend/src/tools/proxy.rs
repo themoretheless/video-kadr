@@ -30,18 +30,15 @@ impl ProxyEncoder for FfmpegProxyEncoder {
         source: &SourceIdentity,
         profile: &ProxyProfile,
         staging_path: &Path,
+        progress: &mpsc::UnboundedSender<f64>,
         cancellation: &CancellationToken,
     ) -> Result<()> {
         let args = build_proxy_args(&source.original_path, staging_path, profile);
-        let (progress, receiver) = mpsc::unbounded_channel();
-        // This adapter has no progress consumer. Dropping the receiver makes
-        // sends no-ops instead of retaining every update for a long encode.
-        drop(receiver);
         match run_ffmpeg(
             &self.runtime,
             &args,
             source.duration_seconds,
-            &progress,
+            progress,
             cancellation,
             Duration::from_secs(2 * 60 * 60),
         )

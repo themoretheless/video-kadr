@@ -2,7 +2,9 @@
   import TimelineEditor from './TimelineEditor.svelte'
   import TrimSlider from './TrimSlider.svelte'
   import CurvesEditor from './edit/CurvesEditor.svelte'
+  import AudioEffects from './edit/AudioEffects.svelte'
   import ExportControls from './edit/ExportControls.svelte'
+  import HslColorWheels from './edit/HslColorWheels.svelte'
   import LutControl from './edit/LutControl.svelte'
   import type { Preset } from '$lib/state/store.svelte.js'
   import {
@@ -291,6 +293,7 @@
     </div>
     <div class="advanced-color-stack">
       <LutControl />
+      <HslColorWheels />
       {#if !curvesUnavailableReason}
         <CurvesEditor value={appState.edit.curves} onchange={(curves) => { appState.edit.curves = curves }} oninteractionstart={() => beginEditTransaction('curves')} oninteractionend={endEditTransaction} />
         <p class="advanced-color-note">Кривые не отображаются в предпросмотре; точный результат виден после экспорта.</p>
@@ -309,6 +312,7 @@
     {#if !appState.edit.mute}
       <div class="field"><label for="audio-volume">Громкость: {Math.round(appState.edit.volume * 100)}%</label><input id="audio-volume" type="range" min="0" max="2" step="0.05" aria-label="Громкость" bind:value={appState.edit.volume} /></div>
       <div class="field inline"><label class="toggle"><input type="checkbox" bind:checked={appState.edit.normalizeAudio} /> Нормализация громкости</label><label class="toggle"><input type="checkbox" bind:checked={appState.edit.highpass} /> Убрать гул (highpass)</label></div>
+      <AudioEffects />
     {/if}
   </section>
 

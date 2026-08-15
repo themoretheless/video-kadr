@@ -44,6 +44,26 @@
 - Очередь задач с ограничением параллелизма, таймауты, опциональная очистка старых файлов.
 - Горячие клавиши: `Space` (плей/пауза), `I`/`O` (точки входа/выхода), `←`/`→` (перемотка,
   с `Shift` крупнее), `,`/`.` (по кадру), `Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z` (отмена/повтор).
+- Отдельный multitrack-режим: несколько video/audio/image/text дорожек, markers,
+  snapping/track magnet, ripple delete, lock/mute/solo/hide и настраиваемые shortcuts.
+- Composition layers: position/scale/rotation/opacity keyframes с graph editor,
+  Rectangle/Ellipse masks, chroma key, восемь blend modes и шесть transitions.
+- Motion: Hold/Linear speed curves с preserve-pitch/mute audio policy, reverse/freeze,
+  optical-flow slow motion, deterministic deshake и локальный classical point
+  tracker, который записывает парные X/Y keyframes без моделей.
+- Multicam: 2–8 ракурсов, ручная или waveform-correlation синхронизация, angle viewer,
+  live switching и отдельный непрерывный master audio.
+- Auto Beat: bounded локальный energy-flux detector оценивает BPM и атомарно
+  создаёт timeline markers, не затрагивая ручные маркеры.
+- Ручные UTF-8/SRT субтитры, text templates, разрешённые локальные шрифты и
+  переносимые project templates без ASR или генеративных инструментов.
+- Screen/window/tab capture, webcam PiP, mic/system audio, countdown, pause/resume,
+  annotations, teleprompter и отдельная voiceover-запись с локальным DSP.
+- Production proxies H.264/ProRes, waveform cache, content-addressed thumbnails
+  и 8-frame hover filmstrip, original-only final export и безопасный relink
+  отсутствующих source-файлов.
+- Composition projects сохраняются отдельно и переносятся как детерминированные
+  `.veproj`-пакеты с checksums, bounded parser и вложенными media assets.
 
 Нормализованная карта текущего паритета, следующих локальных слоёв и функций,
 которым нужен внешний AI/cloud, — в [docs/capcut-parity.md](docs/capcut-parity.md).
@@ -53,6 +73,7 @@
 ```
 POST /api/import            { url, start?, end? }        -> { jobId }
 POST /api/edit              { videoId, trim?, crop?, ... } -> { jobId }
+POST /api/compositions/render { schemaVersion:1, composition, output } -> { jobId }
 POST /api/upload            multipart file               -> VideoInfo
 POST /api/luts              multipart 3D .cube            -> LutAsset
 GET  /api/luts                                             -> [ LutAsset ]
@@ -65,17 +86,37 @@ POST /api/jobs/:id/retry    -> 200 pending | 404 | 409
 POST /api/jobs/:id/discard  -> 200 discarded | 404
 GET  /api/library           -> [ MediaEntry ]  (sources + outputs, newest first)
 GET  /api/library/search?q= -> [ SearchHit ]  (SQLite FTS5, prefix/ranking)
+PATCH /api/library/:id/metadata { title?, favorite?, tags? } -> MediaEntry
+PUT   /api/library/:id/metadata { title, favorite, tags } -> MediaEntry
+GET  /api/library/:id/thumbnail -> 307 на content-addressed PNG
+GET  /api/library/:id/filmstrip -> 307 на content-addressed PNG sprite (8×160×90)
+POST /api/library/:id/proxies { codec, height } -> { jobId, ... }
+GET  /api/library/:id/proxies -> проверенные proxy-артефакты текущего source
+DELETE /api/library/:id/proxies/:key -> 204 | 404
 DELETE /api/library/:id     -> 204 | 404  (also deletes the file)
 POST /api/projects          { videoId, video, edit, name? } -> Project  (autosave/upsert by clip)
 GET  /api/projects          -> [ Project ]  (newest first)
 GET  /api/projects/by-video/:videoId -> Project | 404
 GET  /api/projects/:id      -> Project | 404
 DELETE /api/projects/:id    -> 204 | 404
+POST /api/composition-projects { name?, document } -> CompositionProject
+GET  /api/composition-projects -> [ CompositionProject ]
+GET  /api/composition-projects/:id -> CompositionProject | 404
+PUT  /api/composition-projects/:id { name?, document } -> CompositionProject
+DELETE /api/composition-projects/:id -> 204 | 404
+GET  /api/composition-projects/:id/archive -> переносимый .veproj
+POST /api/composition-projects/import multipart .veproj -> CompositionProject
 GET  /api/health            -> { status, ffmpeg, ytdlp, ffmpegVersion, ytdlpVersion }
 GET  /api/capabilities      -> { schemaVersion, toolFingerprint, formats, codecs, filters, hardware }
 GET  /files/sources/...     -> исходники (с поддержкой Range)
 GET  /files/outputs/...     -> результаты (с поддержкой Range)
+GET  /files/proxies/...     -> проверенные proxy-файлы (с поддержкой Range)
 ```
+
+`output.profile` для composition принимает MP4/H.264 или H.265, WebM/VP9 или
+AV1 и MOV/ProRes Proxy/LT/Standard/HQ; `qualityTier` — `high`, `medium` или
+`compact`. Старый `{ format: "mp4", codec: "h264" }` остаётся совместимым и
+канонизируется в тот же render/cache identity.
 
 Все ошибки приложения в `/api` имеют один JSON-контракт:
 `{"error":"Понятное сообщение","code":"machine_readable_code"}`. Frontend
@@ -138,20 +179,31 @@ dev-прокси, значит не поднят backend: Vite не может �
 
 ## Разработка и тесты
 
-Бэкенд покрыт юнит-тестами (сборка ffmpeg-аргументов, валидация URL, медиатека,
-модель) и HTTP-интеграционными тестами (роутер гоняется через
-`tower::ServiceExt::oneshot`, без сокета). Есть один реальный ffmpeg-тест рендера
-(`backend/tests/render.rs`), который сам пропускается, если `ffmpeg`/`ffprobe` нет
-в `PATH`, и реальный `yt-dlp`-тест редиректа в приватную сеть (также skip без
-`yt-dlp`). Фронтенд — ESLint + Vitest на логику стора (`buildEditPayload`,
-`parseTime`, пресеты, polling с fake timers). Playwright проверяет offline boot,
-mocked import/edit/export и отсутствие overflow на 390 px в Chromium, Firefox и
-WebKit. Upload security и HTTP backpressure вынесены в отдельные backend suites.
+Бэкенд покрыт юнит-тестами (доменные модели, FFmpeg-компиляторы, валидация,
+медиатека и durable jobs), HTTP-интеграционными тестами через
+`tower::ServiceExt::oneshot` и отдельными real-FFmpeg suites для legacy/composition
+render, delivery profiles, proxy, thumbnail/filmstrip и project archive. Такие
+smoke-тесты пропускаются только когда нужного binary/filter действительно нет в
+`PATH`; реальный `yt-dlp`-тест аналогично проверяет redirect в приватную сеть.
+Фронтенд проходит ESLint, Svelte typecheck и Vitest для domain/state/API и
+компонентов. Playwright проверяет offline boot, mocked import/edit/export,
+multitrack lazy-load и отсутствие overflow на 390 px в Chromium, Firefox и
+WebKit; это browser-contract smoke, а не замена real-backend acceptance. Upload
+security и HTTP backpressure вынесены в отдельные backend suites.
 Linux CI запускает все три движка; локально на macOS Firefox можно включить
 через `PLAYWRIGHT_FIREFOX=1 npm run test:e2e` (по умолчанию остаются Chromium и
 WebKit из-за зависания teardown текущей bundled Firefox-сборки). E2E поднимает
 собственный strict dev-server на порту, детерминированном от пути worktree; его
 можно заменить через `PLAYWRIGHT_PORT`, чужой сервер не переиспользуется.
+
+Отдельный `cd frontend && npm run test:e2e:real` — bounded acceptance без API
+mock'ов: harness собирает и поднимает настоящий Rust backend во временном
+`STORAGE_DIR`, запускает Vite на свободных loopback-портах, создаёт
+детерминированный H.264/AAC fixture, загружает его через UI, запускает composition
+export, скачивает результат и проверяет его через `ffprobe`. Тест автоматически
+пропускается только если `ffmpeg` или `ffprobe` действительно отсутствуют. Запрет
+среды на bind к `127.0.0.1` (`EPERM`/`EACCES`) остаётся ошибкой: для acceptance
+нужно явно разрешить временные loopback-серверы, ослабленного/mock fallback нет.
 
 ```
 make check   # всё как в CI: backend + frontend + bundle budget + Playwright
@@ -171,8 +223,19 @@ cd frontend && npm run typecheck
 cd frontend && npm run test
 cd frontend && npx playwright install chromium firefox webkit # один раз локально
 cd frontend && npm run test:e2e
+cd frontend && npm run test:e2e:real # настоящий UI -> backend -> ffprobe acceptance
 cd frontend && npm run build && npm run check:bundle
 ```
+
+Bundle gate использует Vite manifest: стартовые статические imports считаются
+отдельно от lazy Multitrack chunk, но проверяются и общий вес всех chunks, и
+максимум одного async JS chunk. Текущие feature-adjusted ceilings (gzip level 9):
+initial 112/12/124 КиБ для JS/CSS/total, all chunks 160/16/176 КиБ и 56 КиБ на
+async JS chunk. Их можно ужесточить в CI через
+`BUNDLE_BUDGET_{INITIAL,ALL}_*`; старые `BUNDLE_BUDGET_JS_GZIP`,
+`BUNDLE_BUDGET_CSS_GZIP`, `BUNDLE_BUDGET_TOTAL_GZIP` остаются совместимыми.
+Production build использует закреплённый `terser@5.47.1` и modern `esnext`
+target; browser-контракт проверяется Chromium/Firefox/WebKit smoke-тестами.
 
 Решение оставить Svelte основано на локальном парном замере с Vue. Методика,
 медианы и сырые samples сохранены в
@@ -468,18 +531,19 @@ terminal-состояние после исчерпания policy. Одинак
   использования и вопрос авторских прав. Используй для своего контента / в личных
   целях.
 - Приватные и закрытые видео скачать нельзя — только публично доступные.
-- Монтажная линия пока **не мультитрек**: все фрагменты ссылаются на один исходный
-  клип. Отдельных video/audio/image/text tracks, переходов между разными файлами
-  и layer compositing ещё нет; порядок зависимостей описан в
-  [матрице паритета](docs/capcut-parity.md).
+- Legacy-режим остаётся однодорожечным редактором одного исходника. Для нескольких
+  файлов используется отдельный multitrack composition workspace с video/audio/
+  image/text tracks, переходами и layer compositing; точные ограничения экспорта
+  перечислены в [матрице паритета](docs/capcut-parity.md).
 - Кадрирование можно задавать интерактивной рамкой прямо на видео (тянешь углы),
   а не только числами.
 - Живое превью в браузере: цвет (яркость/контраст/насыщенность/пресеты), отражение,
   скорость и громкость видны сразу; обрезка зациклена внутри отрезка. Финальные
   поворот и ресайз видны после экспорта.
-- Наложение текста (drawtext) и вшивание субтитров (subtitles) требуют сборки ffmpeg
-  с `libfreetype`/`libass`; в стандартной brew-сборке их может не быть (в Docker-образе
-  ffmpeg полный). Поэтому в редакторе пока цензура-прямоугольник, виньетка и letterbox.
+- Наложение текста (`drawtext`) и вшивание субтитров (`subtitles`) требуют сборки
+  FFmpeg с `libfreetype`/`libass`; если фильтра нет, capability gate отклоняет такой
+  экспорт заранее с явной причиной. Ручные text/SRT layers в composition workspace
+  доступны на совместимой сборке FFmpeg.
 - Это MVP: нет аутентификации. Проекты, задачи и медиатека персистятся (SQLite +
   файлы на диске) и переживают перезапуск. Не выставляй наружу как есть.
 - Stored XSS через подменённое расширение локального upload закрыт: публикация

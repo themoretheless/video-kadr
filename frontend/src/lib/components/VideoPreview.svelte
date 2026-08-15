@@ -1,5 +1,8 @@
 <script lang="ts">
   import RectOverlay from './RectOverlay.svelte'
+  import ColorScopes from './edit/ColorScopes.svelte'
+  import { formatProxyProfile } from '$lib/proxy/model.js'
+  import { proxyController } from '$lib/proxy/state.svelte.js'
   import {
     enterOrderedTimeline,
     remapOrderedTimelineCursor,
@@ -9,16 +12,37 @@
     activeTimelineSegments,
     beginEditTransaction,
     endEditTransaction,
+    isIdentityColorWheels,
     isIdentityCurves,
+    isIdentitySelectiveHsl,
     state as appState,
   } from '$lib/state/store.svelte.js'
 
-  let videoEl: HTMLVideoElement
+  let videoEl = $state<HTMLVideoElement>()
   let timelineSegmentIndex = $state(0)
   let timelineSegmentId = $state('')
   let showOriginal = $state(false)
-  let previousVideoUrl: string | undefined
+  let previousVideoId: string | undefined
+  let previousPlaybackUrl: string | undefined
+  let ensuredProxySourceId: string | undefined
   let previousPlayToggle = appState.playToggle
+
+  let proxyPlayback = $derived.by(() => {
+    const video = appState.video
+    return video ? proxyController.playback(video.id, video.url) : null
+  })
+  let previewUrl = $derived(proxyPlayback?.url)
+  let proxyIndicator = $derived.by(() => {
+    if (proxyPlayback?.kind === 'proxy' && proxyPlayback.artifact) {
+      return `Proxy · ${formatProxyProfile(proxyPlayback.artifact.profile)}`
+    }
+    return 'Original'
+  })
+  let proxyStatusDetail = $derived.by(() => {
+    if (!appState.video) return ''
+    const proxyUi = proxyController.state.sources[appState.video.id]
+    return proxyUi?.playbackError || proxyUi?.error || proxyPlayback?.fallbackReason || ''
+  })
 
   function previewDuration(element: HTMLVideoElement): number {
     const sourceDuration = appState.video?.duration
@@ -100,11 +124,23 @@
     }
   })
   $effect(() => {
-    const url = appState.video?.url
-    if (url !== previousVideoUrl) {
-      previousVideoUrl = url
+    const sourceId = appState.video?.id
+    if (sourceId !== previousVideoId) {
+      previousVideoId = sourceId
       setTimelineCursor([], 0)
       showOriginal = false
+    }
+  })
+  $effect(() => {
+    const sourceId = appState.video?.id
+    if (sourceId && sourceId !== ensuredProxySourceId) {
+      ensuredProxySourceId = sourceId
+      proxyController.ensure(sourceId)
+    }
+  })
+  $effect(() => {
+    if (previewUrl !== previousPlaybackUrl) {
+      previousPlaybackUrl = previewUrl
       videoEl?.load()
     }
   })
@@ -151,10 +187,10 @@
   let advancedColorNotice = $derived.by(() => {
     const lut = Boolean(appState.edit.lutId) && appState.edit.lutIntensity > 0
     const curves = !isIdentityCurves(appState.edit.curves)
-    if (lut && curves) return 'LUT и кривые включены.'
-    if (lut) return 'LUT включён.'
-    if (curves) return 'Кривые включены.'
-    return ''
+    const hsl = !isIdentitySelectiveHsl(appState.edit.hsl)
+    const wheels = !isIdentityColorWheels(appState.edit.colorWheels)
+    const enabled = [lut && 'LUT', curves && 'кривые', hsl && 'HSL', wheels && 'цветовые колёса'].filter(Boolean)
+    return enabled.length ? `Активно: ${enabled.join(', ')}.` : ''
   })
   let compareStatus = $derived(showOriginal
     ? 'Оригинал: монтаж, скорость, громкость, mute, CSS-эффекты и области редактирования отключены.'
@@ -170,6 +206,11 @@
     if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} ГБ`
     if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} МБ`
     return `${Math.max(1, Math.round(bytes / 1024))} КБ`
+  }
+  function onMediaError(): void {
+    const video = appState.video
+    const artifact = proxyPlayback?.artifact
+    if (video && artifact) proxyController.markPlaybackFailed(video.id, artifact.key)
   }
   let meta = $derived.by(() => {
     const video = appState.video
@@ -201,6 +242,10 @@
         <span class:active={!showOriginal} class="preview-compare-option">С правками</span>
       </button>
       <p id="preview-compare-status" class="preview-compare-status" role="status" aria-live="polite">{compareStatus}</p>
+      <div class="preview-source-status" data-preview-source={proxyPlayback?.kind ?? 'original'} role="status" aria-live="polite">
+        <strong>Медиа: {proxyIndicator}</strong>
+        {#if proxyStatusDetail}<span>{proxyStatusDetail}</span>{/if}
+      </div>
     </div>
   {/if}
   <div class="player-wrap">
@@ -208,7 +253,7 @@
       id="preview-media"
       bind:this={videoEl}
       class="player"
-      src={appState.video?.url}
+      src={previewUrl}
       style:filter={videoFilter || undefined}
       style:transform={videoTransform || undefined}
       muted={showOriginal ? false : appState.edit.mute}
@@ -217,6 +262,7 @@
       onplay={onPlay}
       ontimeupdate={onTimeUpdate}
       onended={onEnded}
+      onerror={onMediaError}
     ></video>
     {#if appState.video && !showOriginal && appState.edit.cropEnabled}
       <RectOverlay rect={appState.edit.crop} onrectchange={(rect) => { appState.edit.crop = rect }} oninteractionstart={() => beginEditTransaction('crop-drag')} oninteractionend={endEditTransaction} />
@@ -229,5 +275,34 @@
   {#if advancedColorNotice}
     <p class="preview-color-notice" role="status"><strong>{advancedColorNotice}</strong> Эти настройки не отображаются в предпросмотре; точный результат виден после экспорта.</p>
   {/if}
+  {#if appState.video}<ColorScopes video={videoEl} />{/if}
   {#if appState.video}<p class="hint">{playbackHint}</p>{/if}
 </div>
+
+<style>
+  .preview-source-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 0 100%;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .preview-source-status strong {
+    flex: none;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+  }
+  .preview-source-status[data-preview-source='proxy'] strong {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .preview-source-status span { color: var(--warn); }
+  @media (max-width: 560px) {
+    .preview-source-status { align-items: flex-start; flex-direction: column; }
+  }
+</style>

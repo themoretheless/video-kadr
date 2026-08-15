@@ -136,6 +136,9 @@ async fn measure_library_list(
             duration: Some(10.0),
             width: Some(1920),
             height: Some(1080),
+            fps: Some(30.0),
+            vcodec: Some("h264".into()),
+            acodec: Some("aac".into()),
             size_bytes: Some(7),
             created_at: u64::from(index),
         });

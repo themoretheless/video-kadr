@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -20,6 +20,8 @@ use crate::runtime::cpu_pool::CpuPool;
 use crate::runtime::TaskSupervisor;
 
 const PROXY_SCHEMA_VERSION: u32 = 1;
+const MAX_PROXY_MANIFEST_DIRECTORY_ENTRIES: usize = 1_024;
+pub const MAX_PROXY_ARTIFACTS_PER_SOURCE: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -123,6 +125,7 @@ pub trait ProxyEncoder: Send + Sync {
         source: &SourceIdentity,
         profile: &ProxyProfile,
         staging_path: &Path,
+        progress: &mpsc::UnboundedSender<f64>,
         cancellation: &CancellationToken,
     ) -> Result<()>;
 }
@@ -195,14 +198,33 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         profile: ProxyProfile,
         cancellation: CancellationToken,
     ) -> Result<ProxyArtifact> {
+        let (progress, receiver) = mpsc::unbounded_channel();
+        drop(receiver);
+        self.ensure_with_progress(source, profile, progress, cancellation)
+            .await
+    }
+
+    pub async fn ensure_with_progress(
+        &self,
+        source: SourceIdentity,
+        profile: ProxyProfile,
+        progress: mpsc::UnboundedSender<f64>,
+        cancellation: CancellationToken,
+    ) -> Result<ProxyArtifact> {
         profile.validate()?;
         let key = proxy_key(&source, &profile);
         let lock = self.key_lock(&key).await;
-        let _guard = lock.lock().await;
+        let guard = tokio::select! {
+            guard = lock.lock() => guard,
+            _ = cancellation.cancelled() => {
+                self.release_key_lock(&key, &lock).await;
+                return Err(anyhow!("proxy generation cancelled"));
+            }
+        };
         let result = self
-            .ensure_locked(source, profile, key.clone(), cancellation)
+            .ensure_locked(source, profile, key.clone(), progress, cancellation)
             .await;
-        drop(_guard);
+        drop(guard);
         self.release_key_lock(&key, &lock).await;
         result
     }
@@ -212,12 +234,14 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         source: SourceIdentity,
         profile: ProxyProfile,
         key: Fingerprint,
+        progress: mpsc::UnboundedSender<f64>,
         cancellation: CancellationToken,
     ) -> Result<ProxyArtifact> {
         if let Some(artifact) = self
             .load_ready(&source, &profile, &key, cancellation.child_token())
             .await?
         {
+            let _ = progress.send(100.0);
             return Ok(artifact);
         }
         if cancellation.is_cancelled() {
@@ -225,10 +249,11 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         }
         let staging_dir = self.root.join("staging").join("proxies");
         tokio::fs::create_dir_all(&staging_dir).await?;
+        cleanup_staging_for_key(&staging_dir, &key).await?;
         let staging = proxy_staging_path(&staging_dir, &key, &profile);
         if let Err(error) = self
             .encoder
-            .generate(&source, &profile, &staging, &cancellation)
+            .generate(&source, &profile, &staging, &progress, &cancellation)
             .await
         {
             let _ = tokio::fs::remove_file(&staging).await;
@@ -239,12 +264,161 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
             return Err(anyhow!("proxy generation cancelled"));
         }
         let published = self
-            .publish(&source, profile, key, &staging, cancellation)
+            .publish(&source, profile, key, &staging, cancellation.clone())
             .await;
-        if published.is_err() {
-            let _ = tokio::fs::remove_file(&staging).await;
+        match published {
+            Ok(artifact) if cancellation.is_cancelled() => {
+                self.remove(&artifact).await?;
+                Err(anyhow!("proxy generation cancelled"))
+            }
+            Ok(artifact) => {
+                let _ = progress.send(100.0);
+                Ok(artifact)
+            }
+            Err(error) => {
+                let _ = tokio::fs::remove_file(&staging).await;
+                Err(error)
+            }
         }
-        published
+    }
+
+    /// Return only verified artifacts for the source's current fingerprint.
+    /// Stale or corrupt derivatives are disposable and are removed while the
+    /// bounded manifest directory is inspected.
+    pub async fn list_ready(
+        &self,
+        source: &SourceIdentity,
+        cancellation: CancellationToken,
+    ) -> Result<Vec<ProxyArtifact>> {
+        let mut ready = Vec::new();
+        for (key, manifest_path) in self.manifest_candidates().await? {
+            if cancellation.is_cancelled() {
+                return Err(anyhow!("proxy listing cancelled"));
+            }
+            let artifact =
+                match read_json_bounded::<ProxyArtifact>(&manifest_path, DEFAULT_MANIFEST_LIMIT)
+                    .await
+                {
+                    Ok(artifact) => artifact,
+                    Err(error)
+                        if error
+                            .downcast_ref::<std::io::Error>()
+                            .is_some_and(|error| error.kind() != std::io::ErrorKind::NotFound) =>
+                    {
+                        return Err(error);
+                    }
+                    Err(_) => {
+                        self.cleanup_candidate(&key).await?;
+                        continue;
+                    }
+                };
+            if artifact.key != key || artifact.profile.validate().is_err() {
+                self.cleanup_candidate(&key).await?;
+                continue;
+            }
+            if artifact.source_id != source.id {
+                continue;
+            }
+            if artifact.source_fingerprint != source.fingerprint
+                || proxy_key(source, &artifact.profile) != key
+            {
+                self.cleanup_candidate(&key).await?;
+                continue;
+            }
+            if let Some(artifact) = self
+                .load_ready(source, &artifact.profile, &key, cancellation.child_token())
+                .await?
+            {
+                ready.push(artifact);
+                if ready.len() > MAX_PROXY_ARTIFACTS_PER_SOURCE {
+                    return Err(anyhow!("source proxy listing exceeds its limit"));
+                }
+            }
+        }
+        ready.sort_by(|left, right| left.key.cmp(&right.key));
+        Ok(ready)
+    }
+
+    /// Remove one source-owned proxy key without trusting a caller-supplied
+    /// filename or a manifest path.
+    pub async fn remove_key_for_source(&self, source_id: &str, key: &Fingerprint) -> Result<bool> {
+        let lock = self.key_lock(key).await;
+        let guard = lock.lock().await;
+        let result = self.remove_key_for_source_locked(source_id, key).await;
+        drop(guard);
+        self.release_key_lock(key, &lock).await;
+        result
+    }
+
+    async fn remove_key_for_source_locked(
+        &self,
+        source_id: &str,
+        key: &Fingerprint,
+    ) -> Result<bool> {
+        let manifest_path = self.root.join(proxy_manifest_path(key));
+        let artifact = match read_json_bounded::<ProxyArtifact>(
+            &manifest_path,
+            DEFAULT_MANIFEST_LIMIT,
+        )
+        .await
+        {
+            Ok(artifact) => artifact,
+            Err(error)
+                if error
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+            {
+                return Ok(false);
+            }
+            Err(error) if error.downcast_ref::<std::io::Error>().is_some() => return Err(error),
+            Err(_) => {
+                self.cleanup_candidate(key).await?;
+                return Ok(false);
+            }
+        };
+        if artifact.source_id != source_id {
+            return Ok(false);
+        }
+        if artifact.key != *key
+            || artifact.profile.validate().is_err()
+            || artifact.file.path != path_token(&proxy_relative_path(key, &artifact.profile))?
+        {
+            self.cleanup_candidate(key).await?;
+            return Ok(true);
+        }
+        self.remove(&artifact).await?;
+        Ok(true)
+    }
+
+    /// Remove every bounded, source-owned derivative. Corrupt manifests are
+    /// purged as disposable data instead of being trusted for path resolution.
+    pub async fn remove_source(&self, source_id: &str) -> Result<usize> {
+        let mut removed = 0;
+        for (key, manifest_path) in self.manifest_candidates().await? {
+            let artifact =
+                match read_json_bounded::<ProxyArtifact>(&manifest_path, DEFAULT_MANIFEST_LIMIT)
+                    .await
+                {
+                    Ok(artifact) => artifact,
+                    Err(error)
+                        if error
+                            .downcast_ref::<std::io::Error>()
+                            .is_some_and(|error| error.kind() != std::io::ErrorKind::NotFound) =>
+                    {
+                        return Err(error);
+                    }
+                    Err(_) => {
+                        self.cleanup_candidate(&key).await?;
+                        continue;
+                    }
+                };
+            if artifact.source_id == source_id
+                && self.remove_key_for_source(source_id, &key).await?
+            {
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 
     pub fn schedule(
@@ -350,7 +524,10 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
         cancellation: CancellationToken,
     ) -> Result<ProxyArtifact> {
         let identity =
-            fingerprint_file(&self.cpu_pool, staging.to_path_buf(), cancellation).await?;
+            fingerprint_file(&self.cpu_pool, staging.to_path_buf(), cancellation.clone()).await?;
+        if cancellation.is_cancelled() {
+            return Err(anyhow!("proxy generation cancelled"));
+        }
         let relative = proxy_relative_path(&key, &profile);
         let final_path = self.root.join(&relative);
         let parent = final_path
@@ -358,6 +535,10 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
             .ok_or_else(|| anyhow!("proxy path needs a parent"))?;
         tokio::fs::create_dir_all(parent).await?;
         tokio::fs::rename(staging, &final_path).await?;
+        if cancellation.is_cancelled() {
+            let _ = tokio::fs::remove_file(&final_path).await;
+            return Err(anyhow!("proxy generation cancelled"));
+        }
         let artifact = ProxyArtifact {
             schema_version: PROXY_SCHEMA_VERSION,
             key: key.clone(),
@@ -370,9 +551,12 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
                 sha256: identity.sha256,
             },
         };
-        if let Err(error) =
-            write_json_atomic(&self.root.join(proxy_manifest_path(&key)), &artifact).await
-        {
+        let manifest_path = self.root.join(proxy_manifest_path(&key));
+        let manifest_parent = manifest_path
+            .parent()
+            .ok_or_else(|| anyhow!("proxy manifest path needs a parent"))?;
+        tokio::fs::create_dir_all(manifest_parent).await?;
+        if let Err(error) = write_json_atomic(&manifest_path, &artifact).await {
             let _ = tokio::fs::remove_file(&final_path).await;
             return Err(error);
         }
@@ -397,22 +581,91 @@ impl<E: ProxyEncoder + ?Sized + 'static> ProxyService<E> {
             locks.remove(key);
         }
     }
+
+    async fn manifest_candidates(&self) -> Result<Vec<(Fingerprint, PathBuf)>> {
+        let directory = self.root.join("proxies").join("manifests");
+        let mut entries = match tokio::fs::read_dir(&directory).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
+        };
+        let mut candidates = Vec::new();
+        let mut seen = 0_usize;
+        while let Some(entry) = entries.next_entry().await? {
+            seen += 1;
+            if seen > MAX_PROXY_MANIFEST_DIRECTORY_ENTRIES {
+                return Err(anyhow!("proxy manifest directory exceeds its limit"));
+            }
+            let file_type = entry.file_type().await?;
+            if !file_type.is_file() || file_type.is_symlink() {
+                continue;
+            }
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                remove_if_exists(&entry.path()).await?;
+                continue;
+            };
+            let Some(stem) = name.strip_suffix(".json") else {
+                remove_if_exists(&entry.path()).await?;
+                continue;
+            };
+            let Ok(key) = Fingerprint::parse(stem) else {
+                remove_if_exists(&entry.path()).await?;
+                continue;
+            };
+            if key.as_str() != stem {
+                remove_if_exists(&entry.path()).await?;
+                continue;
+            }
+            candidates.push((key, entry.path()));
+        }
+        candidates.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(candidates)
+    }
+
+    async fn cleanup_candidate(&self, key: &Fingerprint) -> Result<()> {
+        remove_if_exists(&self.root.join(proxy_manifest_path(key))).await?;
+        for codec in [ProxyCodec::H264, ProxyCodec::ProresProxy] {
+            let profile = ProxyProfile {
+                codec,
+                ..ProxyProfile::default()
+            };
+            remove_if_exists(&self.root.join(proxy_relative_path(key, &profile))).await?;
+        }
+        Ok(())
+    }
 }
 
-fn proxy_key(source: &SourceIdentity, profile: &ProxyProfile) -> Fingerprint {
+pub fn proxy_key(source: &SourceIdentity, profile: &ProxyProfile) -> Fingerprint {
+    proxy_key_for_fingerprint(&source.id, &source.fingerprint, profile)
+}
+
+pub fn proxy_key_for_fingerprint(
+    source_id: &str,
+    source_fingerprint: &Fingerprint,
+    profile: &ProxyProfile,
+) -> Fingerprint {
     Fingerprint::combine([
         b"proxy-v1".as_slice(),
-        source.fingerprint.as_str().as_bytes(),
+        source_id.as_bytes(),
+        source_fingerprint.as_str().as_bytes(),
         profile.fingerprint().as_str().as_bytes(),
     ])
 }
 
 fn proxy_relative_path(key: &Fingerprint, profile: &ProxyProfile) -> PathBuf {
-    PathBuf::from("proxies").join(format!("{key}.{}", profile.extension()))
+    PathBuf::from("proxies")
+        .join("media")
+        .join(proxy_media_filename(key, profile))
 }
 
 fn proxy_manifest_path(key: &Fingerprint) -> PathBuf {
-    PathBuf::from("proxies").join(format!("{key}.json"))
+    PathBuf::from("proxies")
+        .join("manifests")
+        .join(format!("{key}.json"))
+}
+
+pub fn proxy_media_filename(key: &Fingerprint, profile: &ProxyProfile) -> String {
+    format!("{key}.{}", profile.extension())
 }
 
 fn proxy_staging_path(directory: &Path, key: &Fingerprint, profile: &ProxyProfile) -> PathBuf {
@@ -433,16 +686,48 @@ async fn remove_if_exists(path: &Path) -> Result<()> {
     }
 }
 
+async fn cleanup_staging_for_key(directory: &Path, key: &Fingerprint) -> Result<()> {
+    let mut entries = match tokio::fs::read_dir(directory).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let prefix = format!("{key}.");
+    let mut seen = 0_usize;
+    while let Some(entry) = entries.next_entry().await? {
+        seen += 1;
+        if seen > MAX_PROXY_MANIFEST_DIRECTORY_ENTRIES {
+            return Err(anyhow!("proxy staging directory exceeds its limit"));
+        }
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if name.starts_with(&prefix) && (name.ends_with(".tmp.mp4") || name.ends_with(".tmp.mov")) {
+            let file_type = entry.file_type().await?;
+            if file_type.is_file() && !file_type.is_symlink() {
+                remove_if_exists(&entry.path()).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crate::runtime::cpu_pool::CpuPoolConfig;
+    use tokio::sync::Notify;
 
     use super::*;
 
     struct FakeEncoder {
         calls: AtomicUsize,
+    }
+
+    struct BlockingEncoder {
+        started: Notify,
+        release: Notify,
     }
 
     #[axum::async_trait]
@@ -452,6 +737,7 @@ mod tests {
             source: &SourceIdentity,
             profile: &ProxyProfile,
             staging_path: &Path,
+            _progress: &mpsc::UnboundedSender<f64>,
             _cancellation: &CancellationToken,
         ) -> Result<()> {
             self.calls.fetch_add(1, Ordering::SeqCst);
@@ -460,6 +746,23 @@ mod tests {
                 format!("{}:{}", source.fingerprint, profile.max_width),
             )
             .await?;
+            Ok(())
+        }
+    }
+
+    #[axum::async_trait]
+    impl ProxyEncoder for BlockingEncoder {
+        async fn generate(
+            &self,
+            _source: &SourceIdentity,
+            _profile: &ProxyProfile,
+            staging_path: &Path,
+            _progress: &mpsc::UnboundedSender<f64>,
+            _cancellation: &CancellationToken,
+        ) -> Result<()> {
+            self.started.notify_one();
+            self.release.notified().await;
+            tokio::fs::write(staging_path, b"late proxy publish").await?;
             Ok(())
         }
     }
@@ -616,5 +919,135 @@ mod tests {
             .relink_verified(&source, wrong, CancellationToken::new())
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn key_locked_delete_waits_for_late_publish_and_leaves_no_ready_proxy() {
+        let root = tempfile::tempdir().unwrap();
+        let original = root.path().join("source.mp4");
+        tokio::fs::write(&original, b"original video")
+            .await
+            .unwrap();
+        let encoder = Arc::new(BlockingEncoder {
+            started: Notify::new(),
+            release: Notify::new(),
+        });
+        let service = ProxyService::new(root.path().to_path_buf(), pool(), encoder.clone());
+        let source = service
+            .inspect_source(
+                SourceMedia {
+                    id: "source".into(),
+                    original_path: original,
+                    duration_seconds: 1.0,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        let profile = ProxyProfile::default();
+        let key = proxy_key(&source, &profile);
+        let generating = {
+            let service = service.clone();
+            let source = source.clone();
+            let profile = profile.clone();
+            tokio::spawn(async move {
+                service
+                    .ensure(source, profile, CancellationToken::new())
+                    .await
+            })
+        };
+        encoder.started.notified().await;
+        let deleting = {
+            let service = service.clone();
+            let key = key.clone();
+            tokio::spawn(async move { service.remove_key_for_source("source", &key).await })
+        };
+        tokio::task::yield_now().await;
+        assert!(!deleting.is_finished());
+        encoder.release.notify_one();
+        let artifact = generating.await.unwrap().unwrap();
+        assert!(deleting.await.unwrap().unwrap());
+        assert!(!root.path().join(&artifact.file.path).exists());
+        assert!(service
+            .list_ready(&source, CancellationToken::new())
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn stale_fingerprint_is_hidden_and_source_cleanup_is_scoped() {
+        let root = tempfile::tempdir().unwrap();
+        let first_path = root.path().join("first.mp4");
+        let second_path = root.path().join("second.mp4");
+        tokio::fs::write(&first_path, b"first-v1").await.unwrap();
+        tokio::fs::write(&second_path, b"second").await.unwrap();
+        let service = ProxyService::new(
+            root.path().to_path_buf(),
+            pool(),
+            Arc::new(FakeEncoder {
+                calls: AtomicUsize::new(0),
+            }),
+        );
+        let first = service
+            .inspect_source(
+                SourceMedia {
+                    id: "first".into(),
+                    original_path: first_path.clone(),
+                    duration_seconds: 1.0,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        let second = service
+            .inspect_source(
+                SourceMedia {
+                    id: "second".into(),
+                    original_path: second_path,
+                    duration_seconds: 1.0,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        let first_artifact = service
+            .ensure(first, ProxyProfile::default(), CancellationToken::new())
+            .await
+            .unwrap();
+        let second_artifact = service
+            .ensure(
+                second.clone(),
+                ProxyProfile::default(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        tokio::fs::write(&first_path, b"first-v2").await.unwrap();
+        let changed = service
+            .inspect_source(
+                SourceMedia {
+                    id: "first".into(),
+                    original_path: first_path,
+                    duration_seconds: 1.0,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert!(service
+            .list_ready(&changed, CancellationToken::new())
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(!root.path().join(first_artifact.file.path).exists());
+        assert_eq!(service.remove_source("second").await.unwrap(), 1);
+        assert!(!root.path().join(second_artifact.file.path).exists());
+        assert!(service
+            .list_ready(&second, CancellationToken::new())
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

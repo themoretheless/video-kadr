@@ -1,4 +1,13 @@
-import type { ColorCurves, CurvePoint, EditState, VideoInfo } from '../types'
+import type {
+  ColorCurves,
+  ColorWheelAdjustment,
+  ColorWheels,
+  CurvePoint,
+  EditState,
+  HslBandAdjustment,
+  SelectiveHsl,
+  VideoInfo,
+} from '../types'
 import {
   activeTimelineSegments,
   sanitizeTimelineSegments,
@@ -29,6 +38,34 @@ export function identityCurves(): ColorCurves {
   }
 }
 
+function identityHslBand(): HslBandAdjustment {
+  return { hue: 0, saturation: 0, lightness: 0 }
+}
+
+export function identitySelectiveHsl(): SelectiveHsl {
+  return {
+    red: identityHslBand(),
+    yellow: identityHslBand(),
+    green: identityHslBand(),
+    cyan: identityHslBand(),
+    blue: identityHslBand(),
+    magenta: identityHslBand(),
+  }
+}
+
+function identityColorWheel(): ColorWheelAdjustment {
+  return { red: 0, green: 0, blue: 0 }
+}
+
+export function identityColorWheels(): ColorWheels {
+  return {
+    shadows: identityColorWheel(),
+    midtones: identityColorWheel(),
+    highlights: identityColorWheel(),
+    preserveLuminosity: true,
+  }
+}
+
 export const EDIT_DEFAULTS = {
   timelineEnabled: false,
   timelineSegments: [],
@@ -50,9 +87,18 @@ export const EDIT_DEFAULTS = {
   fadeOut: 0,
   normalizeAudio: false,
   highpass: false,
+  pan: 0,
+  audioEqEnabled: false,
+  audioEq: { lowGainDb: 0, midGainDb: 0, highGainDb: 0 },
+  compressorEnabled: false,
+  compressor: { thresholdDb: -18, ratio: 3, attackMs: 20, releaseMs: 250, makeupGainDb: 0 },
+  limiterEnabled: false,
+  limiter: { ceilingDb: -1, releaseMs: 50 },
   brightness: 0,
   contrast: 1,
   saturation: 1,
+  hsl: identitySelectiveHsl(),
+  colorWheels: identityColorWheels(),
   chromaKeyEnabled: false,
   chromaKeyColor: '#00ff00',
   chromaKeySimilarity: 0.1,
@@ -88,6 +134,11 @@ export function defaultEdit(): EditState {
     scale: { ...EDIT_DEFAULTS.scale },
     censor: { ...EDIT_DEFAULTS.censor },
     curves: cloneCurves(EDIT_DEFAULTS.curves),
+    hsl: cloneSelectiveHsl(EDIT_DEFAULTS.hsl),
+    colorWheels: cloneColorWheels(EDIT_DEFAULTS.colorWheels),
+    audioEq: { ...EDIT_DEFAULTS.audioEq },
+    compressor: { ...EDIT_DEFAULTS.compressor },
+    limiter: { ...EDIT_DEFAULTS.limiter },
   }
 }
 
@@ -97,6 +148,26 @@ export function cloneCurves(curves: ColorCurves): ColorCurves {
     red: curves.red.map((point) => ({ ...point })),
     green: curves.green.map((point) => ({ ...point })),
     blue: curves.blue.map((point) => ({ ...point })),
+  }
+}
+
+export function cloneSelectiveHsl(hsl: SelectiveHsl): SelectiveHsl {
+  return {
+    red: { ...hsl.red },
+    yellow: { ...hsl.yellow },
+    green: { ...hsl.green },
+    cyan: { ...hsl.cyan },
+    blue: { ...hsl.blue },
+    magenta: { ...hsl.magenta },
+  }
+}
+
+export function cloneColorWheels(wheels: ColorWheels): ColorWheels {
+  return {
+    shadows: { ...wheels.shadows },
+    midtones: { ...wheels.midtones },
+    highlights: { ...wheels.highlights },
+    preserveLuminosity: wheels.preserveLuminosity,
   }
 }
 
@@ -167,9 +238,24 @@ export function buildEditPayload(
   if (edit.fadeOut > 0) payload.fadeOut = edit.fadeOut
   if (edit.normalizeAudio) payload.normalizeAudio = true
   if (edit.highpass) payload.highpass = true
+  const pan = Math.max(-1, Math.min(1, finiteOr(edit.pan, 0)))
+  if (pan !== 0) payload.pan = pan
+  if (edit.audioEqEnabled) {
+    payload.audioEq = sanitizeAudioEq(edit.audioEq)
+  }
+  if (edit.compressorEnabled) {
+    payload.compressor = sanitizeAudioCompressor(edit.compressor)
+  }
+  if (edit.limiterEnabled) {
+    payload.limiter = sanitizeAudioLimiter(edit.limiter)
+  }
   if (edit.brightness !== EDIT_DEFAULTS.brightness) payload.brightness = edit.brightness
   if (edit.contrast !== EDIT_DEFAULTS.contrast) payload.contrast = edit.contrast
   if (edit.saturation !== EDIT_DEFAULTS.saturation) payload.saturation = edit.saturation
+  const hsl = sanitizeSelectiveHsl(edit.hsl)
+  if (!isIdentitySelectiveHsl(hsl)) payload.hsl = hsl
+  const colorWheels = sanitizeColorWheels(edit.colorWheels)
+  if (!isIdentityColorWheels(colorWheels)) payload.colorWheels = colorWheels
   if (edit.chromaKeyEnabled) {
     payload.chromaKey = {
       keyColor: sanitizeChromaKeyColor(edit.chromaKeyColor),
@@ -248,6 +334,91 @@ export function sanitizeChromaSimilarity(value: unknown): number {
 
 export function sanitizeChromaUnit(value: unknown, fallback = 0): number {
   return Math.max(0, Math.min(1, finiteOr(value, fallback)))
+}
+
+function sanitizeSignedUnit(value: unknown): number {
+  return Math.max(-1, Math.min(1, finiteOr(value, 0)))
+}
+
+export function sanitizeAudioEq(value: unknown): EditState['audioEq'] {
+  const source = isRecord(value) ? value : {}
+  return {
+    lowGainDb: Math.max(-24, Math.min(24, finiteOr(source.lowGainDb, 0))),
+    midGainDb: Math.max(-24, Math.min(24, finiteOr(source.midGainDb, 0))),
+    highGainDb: Math.max(-24, Math.min(24, finiteOr(source.highGainDb, 0))),
+  }
+}
+
+export function sanitizeAudioCompressor(value: unknown): EditState['compressor'] {
+  const source = isRecord(value) ? value : {}
+  return {
+    thresholdDb: Math.max(-60, Math.min(0, finiteOr(source.thresholdDb, -18))),
+    ratio: Math.max(1, Math.min(20, finiteOr(source.ratio, 3))),
+    attackMs: Math.max(0.01, Math.min(2_000, finiteOr(source.attackMs, 20))),
+    releaseMs: Math.max(0.01, Math.min(9_000, finiteOr(source.releaseMs, 250))),
+    makeupGainDb: Math.max(-36, Math.min(36, finiteOr(source.makeupGainDb, 0))),
+  }
+}
+
+export function sanitizeAudioLimiter(value: unknown): EditState['limiter'] {
+  const source = isRecord(value) ? value : {}
+  return {
+    ceilingDb: Math.max(-24, Math.min(0, finiteOr(source.ceilingDb, -1))),
+    releaseMs: Math.max(1, Math.min(8_000, finiteOr(source.releaseMs, 50))),
+  }
+}
+
+function sanitizeHslBand(value: unknown): HslBandAdjustment {
+  const source = isRecord(value) ? value : {}
+  return {
+    hue: Math.max(-180, Math.min(180, finiteOr(source.hue, 0))),
+    saturation: sanitizeSignedUnit(source.saturation),
+    lightness: sanitizeSignedUnit(source.lightness),
+  }
+}
+
+export function sanitizeSelectiveHsl(value: unknown): SelectiveHsl {
+  const source = isRecord(value) ? value : {}
+  return {
+    red: sanitizeHslBand(source.red),
+    yellow: sanitizeHslBand(source.yellow),
+    green: sanitizeHslBand(source.green),
+    cyan: sanitizeHslBand(source.cyan),
+    blue: sanitizeHslBand(source.blue),
+    magenta: sanitizeHslBand(source.magenta),
+  }
+}
+
+function sanitizeColorWheel(value: unknown): ColorWheelAdjustment {
+  const source = isRecord(value) ? value : {}
+  return {
+    red: sanitizeSignedUnit(source.red),
+    green: sanitizeSignedUnit(source.green),
+    blue: sanitizeSignedUnit(source.blue),
+  }
+}
+
+export function sanitizeColorWheels(value: unknown): ColorWheels {
+  const source = isRecord(value) ? value : {}
+  return {
+    shadows: sanitizeColorWheel(source.shadows),
+    midtones: sanitizeColorWheel(source.midtones),
+    highlights: sanitizeColorWheel(source.highlights),
+    preserveLuminosity:
+      typeof source.preserveLuminosity === 'boolean' ? source.preserveLuminosity : true,
+  }
+}
+
+export function isIdentitySelectiveHsl(hsl: SelectiveHsl): boolean {
+  return Object.values(hsl).every(
+    (band) => band.hue === 0 && band.saturation === 0 && band.lightness === 0,
+  )
+}
+
+export function isIdentityColorWheels(wheels: ColorWheels): boolean {
+  return [wheels.shadows, wheels.midtones, wheels.highlights].every(
+    (wheel) => wheel.red === 0 && wheel.green === 0 && wheel.blue === 0,
+  )
 }
 
 /**
@@ -484,6 +655,20 @@ export function sanitizeEditState(value: unknown, base: EditState = defaultEdit(
       source.chromaKeySpill ?? base.chromaKeySpill,
       base.chromaKeySpill,
     ),
+    hsl: sanitizeSelectiveHsl(source.hsl ?? base.hsl),
+    colorWheels: sanitizeColorWheels(source.colorWheels ?? base.colorWheels),
+    pan: Math.max(-1, Math.min(1, finiteOr(source.pan, base.pan))),
+    audioEqEnabled:
+      typeof source.audioEqEnabled === 'boolean' ? source.audioEqEnabled : base.audioEqEnabled,
+    audioEq: sanitizeAudioEq(source.audioEq ?? base.audioEq),
+    compressorEnabled:
+      typeof source.compressorEnabled === 'boolean'
+        ? source.compressorEnabled
+        : base.compressorEnabled,
+    compressor: sanitizeAudioCompressor(source.compressor ?? base.compressor),
+    limiterEnabled:
+      typeof source.limiterEnabled === 'boolean' ? source.limiterEnabled : base.limiterEnabled,
+    limiter: sanitizeAudioLimiter(source.limiter ?? base.limiter),
     lutId,
     lutName: lutId && typeof rawLutName === 'string' ? rawLutName.trim() : '',
     lutSize: lutId ? lutSize : null,
@@ -497,6 +682,8 @@ export function resetColorAdjustments(edit: EditState): void {
   edit.brightness = EDIT_DEFAULTS.brightness
   edit.contrast = EDIT_DEFAULTS.contrast
   edit.saturation = EDIT_DEFAULTS.saturation
+  edit.hsl = identitySelectiveHsl()
+  edit.colorWheels = identityColorWheels()
   edit.chromaKeyEnabled = EDIT_DEFAULTS.chromaKeyEnabled
   edit.chromaKeyColor = EDIT_DEFAULTS.chromaKeyColor
   edit.chromaKeySimilarity = EDIT_DEFAULTS.chromaKeySimilarity

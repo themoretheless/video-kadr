@@ -1,14 +1,34 @@
 <script lang="ts">
   import ProgressBar from './ProgressBar.svelte'
+  import { addMediaInfoToComposition, compositionState, editorMode } from '$lib/state/composition.svelte.js'
   import { cancelImport, doImport, doUpload, state as appState } from '$lib/state/store.svelte.js'
 
   let picker: HTMLInputElement
   let dragover = $state(false)
 
+  async function importForCurrentMode(): Promise<void> {
+    const media = await doImport()
+    if (media && editorMode.value === 'composition') addToComposition(media)
+  }
+
+  async function uploadForCurrentMode(file: File): Promise<void> {
+    const media = await doUpload(file, editorMode.value === 'legacy')
+    if (media && editorMode.value === 'composition') addToComposition(media)
+  }
+
+  function addToComposition(media: Parameters<typeof addMediaInfoToComposition>[0]): void {
+    try {
+      compositionState.ui.message = ''
+      addMediaInfoToComposition(media)
+    } catch (error) {
+      compositionState.ui.message = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   function onPick(event: Event): void {
     const input = event.currentTarget as HTMLInputElement
     const file = input.files?.[0]
-    if (file) void doUpload(file)
+    if (file) void uploadForCurrentMode(file)
     input.value = ''
   }
 
@@ -16,7 +36,7 @@
     event.preventDefault()
     dragover = false
     const file = event.dataTransfer?.files?.[0]
-    if (file) void doUpload(file)
+    if (file) void uploadForCurrentMode(file)
   }
 </script>
 
@@ -24,7 +44,7 @@
   class:dragover
   class="card import"
   role="region"
-  aria-label="Импорт видео"
+  aria-label="Импорт медиа"
   ondragover={(event) => { event.preventDefault(); dragover = true }}
   ondragleave={(event) => { event.preventDefault(); dragover = false }}
   ondrop={onDrop}
@@ -36,9 +56,9 @@
       type="url"
       placeholder="https://vkvideo.ru/video-220018529_456248395"
       disabled={appState.importing}
-      onkeydown={(event) => { if (event.key === 'Enter') void doImport() }}
+      onkeydown={(event) => { if (event.key === 'Enter') void importForCurrentMode() }}
     />
-    <button class="btn primary" disabled={appState.importing || !appState.url.trim()} onclick={() => void doImport()}>
+    <button class="btn primary" disabled={appState.importing || !appState.url.trim()} onclick={() => void importForCurrentMode()}>
       {appState.importing ? 'Загрузка…' : 'Импорт'}
     </button>
   </div>
@@ -49,9 +69,9 @@
   </div>
   <div class="import-or"><span>или</span></div>
   <button type="button" class="dropzone" disabled={appState.importing} onclick={() => picker?.click()}>
-    <input bind:this={picker} type="file" accept="video/*" class="hidden-file" onchange={onPick} />
+    <input bind:this={picker} type="file" accept="video/*,audio/*,image/png,image/jpeg,image/webp" class="hidden-file" onchange={onPick} />
     <span class="dropzone-icon">📁</span>
-    <span>Перетащи видеофайл сюда или нажми, чтобы выбрать</span>
+    <span>Перетащи видео, аудио, PNG, JPEG или WebP сюда либо нажми, чтобы выбрать</span>
   </button>
   {#if appState.importing}
     <ProgressBar

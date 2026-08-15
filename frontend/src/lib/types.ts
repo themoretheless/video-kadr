@@ -1,7 +1,10 @@
-export interface VideoInfo {
+export type MediaType = 'video' | 'audio' | 'image'
+
+export interface MediaInfo {
   id: string
   url: string
   filename: string
+  mediaType?: MediaType
   duration: number
   width: number
   height: number
@@ -10,6 +13,10 @@ export interface VideoInfo {
   vcodec?: string | null
   acodec?: string | null
   sizeBytes?: number | null
+}
+
+export interface VideoInfo extends MediaInfo {
+  mediaType?: 'video'
 }
 
 export interface CapabilityOption {
@@ -26,6 +33,8 @@ export interface Capabilities {
   codecs: CapabilityOption[]
   filters: CapabilityOption[]
   hardware: CapabilityOption[]
+  /** Absent on older backends. */
+  features?: CapabilityOption[]
 }
 
 export interface ResultInfo {
@@ -56,6 +65,53 @@ export interface ColorCurves {
   red: CurvePoint[]
   green: CurvePoint[]
   blue: CurvePoint[]
+}
+
+export interface HslBandAdjustment {
+  hue: number
+  saturation: number
+  lightness: number
+}
+
+export interface SelectiveHsl {
+  red: HslBandAdjustment
+  yellow: HslBandAdjustment
+  green: HslBandAdjustment
+  cyan: HslBandAdjustment
+  blue: HslBandAdjustment
+  magenta: HslBandAdjustment
+}
+
+export interface ColorWheelAdjustment {
+  red: number
+  green: number
+  blue: number
+}
+
+export interface ColorWheels {
+  shadows: ColorWheelAdjustment
+  midtones: ColorWheelAdjustment
+  highlights: ColorWheelAdjustment
+  preserveLuminosity: boolean
+}
+
+export interface AudioEq {
+  lowGainDb: number
+  midGainDb: number
+  highGainDb: number
+}
+
+export interface AudioCompressor {
+  thresholdDb: number
+  ratio: number
+  attackMs: number
+  releaseMs: number
+  makeupGainDb: number
+}
+
+export interface AudioLimiter {
+  ceilingDb: number
+  releaseMs: number
 }
 
 /** A source range kept by the single-source timeline. Array order is playback order. */
@@ -90,9 +146,18 @@ export interface EditState {
   fadeOut: number
   normalizeAudio: boolean
   highpass: boolean
+  pan: number
+  audioEqEnabled: boolean
+  audioEq: AudioEq
+  compressorEnabled: boolean
+  compressor: AudioCompressor
+  limiterEnabled: boolean
+  limiter: AudioLimiter
   brightness: number
   contrast: number
   saturation: number
+  hsl: SelectiveHsl
+  colorWheels: ColorWheels
   chromaKeyEnabled: boolean
   chromaKeyColor: string
   chromaKeySimilarity: number
@@ -126,10 +191,18 @@ export interface MediaEntry {
   kind: 'source' | 'output'
   filename: string
   url: string
+  mediaType?: MediaType | null
   title?: string | null
+  /** Local-only library metadata. Absent when talking to an older backend. */
+  favorite?: boolean
+  /** Ordered, user-authored local tags. Absent when talking to an older backend. */
+  tags?: string[]
   duration?: number | null
   width?: number | null
   height?: number | null
+  fps?: number | null
+  vcodec?: string | null
+  acodec?: string | null
   sizeBytes?: number | null
   createdAt: number
 }

@@ -39,6 +39,7 @@ async function mockApi(page: Page): Promise<void> {
 
     if (path === '/api/capabilities') body = capabilities
     else if (path === '/api/library') body = []
+    else if (path === '/api/composition-projects' && request.method() === 'GET') body = []
     else if (path === '/api/import' && request.method() === 'POST') body = { jobId: 'import-1' }
     else if (path === '/api/luts' && request.method() === 'POST') {
       body = {
@@ -104,6 +105,16 @@ test('editor shell opens and explains that the backend is offline', async ({ pag
   await expect(page.getByRole('heading', { name: /Видеоредактор/ })).toBeVisible()
   await expect(page.getByRole('status')).toHaveText('Сервер недоступен')
   await expect(page.getByPlaceholder('https://vkvideo.ru/video-220018529_456248395')).toBeVisible()
+})
+
+test('multitrack workspace loads through its lazy production boundary', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Multitrack' }).click()
+  await expect(page.getByLabel('Название композиции')).toHaveValue('Новая композиция')
+  await expect(page.getByRole('main')).toHaveClass(/composition-workspace/)
+  await expect(page.getByText('Локальные шаблоны')).toBeVisible()
 })
 
 test('mocked import, LUT/curves edit and export workflow completes', async ({ page }) => {
