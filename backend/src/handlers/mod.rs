@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use uuid::Uuid;
 
+use crate::assets::AssetKind;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::output::OutputFormat;
 use crate::error::{ApiJson, AppError, AppResult};
@@ -27,11 +28,16 @@ use crate::services::render::{
 use crate::state::{AppState, ToolInfo};
 use crate::tools::{self, Done};
 
+mod assets;
 mod jobs;
 mod library;
 mod luts;
 mod upload;
 
+pub use assets::{
+    asset_delete_handler, asset_get_handler, asset_list_handler, asset_upload_handler,
+    MAX_ASSET_BODY_BYTES,
+};
 pub use jobs::{
     cancel_handler, discard_job_handler, failed_jobs_handler, job_registry_handler,
     job_status_handler, resume_pending_jobs, retry_job_handler, start_job_dispatcher,
@@ -343,6 +349,96 @@ fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) ->
             ));
         }
     }
+    validate_parity_capabilities(state, request)
+}
+
+/// Reject a parity-wave request whose FFmpeg filter is missing from this build
+/// before a job is queued. Without the check the render fails deep inside the
+/// process with an opaque FFmpeg error; `drawtext` (freetype), `subtitles`
+/// (libass) and vidstab are all optional at build time.
+fn validate_parity_capabilities(state: &AppState, request: &EditRequest) -> AppResult<()> {
+    let has_filter = |name: &str| {
+        state.tools.ffmpeg
+            && state
+                .tools
+                .ffmpeg_filters
+                .iter()
+                .any(|candidate| candidate == name)
+    };
+    let required: [(bool, &str, &str); 8] = [
+        (
+            request.titles.as_ref().is_some_and(|list| !list.is_empty()),
+            "drawtext",
+            "титры недоступны: FFmpeg собран без drawtext (freetype)",
+        ),
+        (
+            request
+                .subtitles
+                .as_ref()
+                .is_some_and(|subtitles| subtitles.burn_in),
+            "subtitles",
+            "вшитые субтитры недоступны: FFmpeg собран без subtitles (libass)",
+        ),
+        (
+            request
+                .stabilize
+                .as_ref()
+                .is_some_and(|value| value.mode == "precise"),
+            "vidstabtransform",
+            "точная стабилизация недоступна: FFmpeg собран без libvidstab",
+        ),
+        (
+            request
+                .stabilize
+                .as_ref()
+                .is_some_and(|value| value.mode == "fast"),
+            "deshake",
+            "быстрая стабилизация недоступна: FFmpeg filter deshake не найден",
+        ),
+        (
+            request.reframe360.is_some(),
+            "v360",
+            "перекадрирование 360 недоступно: FFmpeg filter v360 не найден",
+        ),
+        (
+            request
+                .overlays
+                .as_ref()
+                .is_some_and(|list| !list.is_empty()),
+            "overlay",
+            "наложения недоступны: FFmpeg filter overlay не найден",
+        ),
+        (
+            request
+                .audio_tracks
+                .as_ref()
+                .is_some_and(|list| !list.is_empty()),
+            "amix",
+            "дополнительные аудиодорожки недоступны: FFmpeg filter amix не найден",
+        ),
+        (
+            request.motion.is_some(),
+            "zoompan",
+            "анимация кадра недоступна: FFmpeg filter zoompan не найден",
+        ),
+    ];
+    for (needed, filter, message) in required {
+        if needed && !has_filter(filter) {
+            return Err(AppError::bad_request(message));
+        }
+    }
+    // Transitions need xfade only when one is actually requested.
+    let wants_transition = request.segment_transition.is_some()
+        || request
+            .clips
+            .iter()
+            .flatten()
+            .any(|clip| clip.transition_in.is_some());
+    if wants_transition && !has_filter("xfade") {
+        return Err(AppError::bad_request(
+            "переходы недоступны: FFmpeg filter xfade не найден",
+        ));
+    }
     Ok(())
 }
 
@@ -375,6 +471,20 @@ fn spawn_edit_job(
                 finish_job(&st, &jid, Err(error), "output").await;
                 return;
             }
+        };
+        // Two-pass stabilization writes a frame-indexed transform file. The
+        // path is per job so two renders can never share one.
+        let resources = if req
+            .stabilize
+            .as_ref()
+            .is_some_and(|value| value.mode == "precise")
+        {
+            resources.with_asset(
+                crate::render::graph::spatial::TRANSFORMS_CONTEXT_KEY,
+                st.staging_dir().join(format!("vidstab-{out_id}.trf")),
+            )
+        } else {
+            resources
         };
         let runtime_fingerprint = render_runtime_fingerprint(st.tools.as_ref());
         let cache_key =
@@ -428,7 +538,8 @@ fn spawn_edit_job(
                 probe.height,
                 probe.duration,
                 probe.acodec.is_some(),
-            )?;
+            )?
+            .with_fps(probe.fps);
             let plan = Arc::new(EditPlan::compile(source_fingerprint, req, source)?);
             let execution = RenderExecution::new_with_resources(
                 plan,
@@ -444,6 +555,26 @@ fn spawn_edit_job(
                 parallel_jobs: st.render_parallelism(),
                 execution: &execution,
             })?;
+            if let Some(prepass) = &command.prepass {
+                tracing::info!("running stabilization analysis pass");
+                let analysed = tools::run_ffmpeg_prepass(
+                    &st.process_runtime,
+                    prepass,
+                    command.expected_duration_seconds,
+                    &tx,
+                    &token,
+                    st.job_timeout(),
+                )
+                .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
+                .await;
+                if analysed.is_err() {
+                    let _ = tokio::fs::remove_file(&prepass.output).await;
+                }
+                if matches!(analysed?, Done::Cancelled) {
+                    let _ = tokio::fs::remove_file(&prepass.output).await;
+                    return Ok::<Option<Value>, anyhow::Error>(None);
+                }
+            }
             tracing::info!(output.format = %execution.output().format, "starting render");
             let done = tools::run_compiled_ffmpeg(
                 &st.process_runtime,
@@ -453,8 +584,13 @@ fn spawn_edit_job(
                 st.job_timeout(),
             )
             .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
-            .await?;
-            if matches!(done, Done::Cancelled) {
+            .await;
+            // The transform file is scratch: it is never served and must not
+            // outlive the job, successful or not.
+            if let Some(prepass) = &command.prepass {
+                let _ = tokio::fs::remove_file(&prepass.output).await;
+            }
+            if matches!(done?, Done::Cancelled) {
                 let _ = tokio::fs::remove_file(&output_path).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
             }
@@ -499,6 +635,67 @@ fn spawn_edit_job(
 /// renderer never accepts a path from the wire request, and the resolved path
 /// is carried separately from the serializable edit plan.
 async fn resolve_render_resources(
+    state: &AppState,
+    request: &EditRequest,
+) -> anyhow::Result<RenderResources> {
+    let resources = resolve_lut_resource(state, request).await?;
+    resolve_edit_assets(state, request, resources).await
+}
+
+/// Turn every parity-wave asset reference into a private path. Overlays, title
+/// fonts, subtitles and audio beds come from the asset store; clip sources come
+/// from the media library, exactly like the primary `videoId`.
+async fn resolve_edit_assets(
+    state: &AppState,
+    request: &EditRequest,
+    mut resources: RenderResources,
+) -> anyhow::Result<RenderResources> {
+    let mut wanted: Vec<(String, AssetKind)> = Vec::new();
+    for overlay in request.overlays.iter().flatten() {
+        let kind = match overlay.kind.as_str() {
+            "video" => AssetKind::Video,
+            _ => AssetKind::Image,
+        };
+        wanted.push((overlay.asset_id.clone(), kind));
+    }
+    for title in request.titles.iter().flatten() {
+        if let Some(id) = title.font_asset_id.as_ref() {
+            wanted.push((id.clone(), AssetKind::Font));
+        }
+    }
+    if let Some(subtitles) = request.subtitles.as_ref() {
+        wanted.push((subtitles.asset_id.clone(), AssetKind::Subtitle));
+    }
+    for track in request.audio_tracks.iter().flatten() {
+        wanted.push((track.asset_id.clone(), AssetKind::Audio));
+    }
+    for (id, kind) in wanted {
+        let path = state
+            .assets
+            .resolve(&id, kind)
+            .ok_or_else(|| anyhow::anyhow!("Файл {id} не найден"))?;
+        resources = resources.with_asset(id, path);
+    }
+
+    // Clip sources are library media ids. The first clip is normally the
+    // primary input and needs no extra registration, but registering it costs
+    // nothing and keeps the composer's lookup uniform.
+    let sources = state.sources_dir();
+    let mut seen: Vec<String> = Vec::new();
+    for clip in request.clips.iter().flatten() {
+        if seen.contains(&clip.source_id) {
+            continue;
+        }
+        let path = tools::find_source(&sources, &clip.source_id)
+            .await
+            .map_err(|_| anyhow::anyhow!("Исходное видео {} не найдено", clip.source_id))?;
+        seen.push(clip.source_id.clone());
+        resources = resources.with_asset(clip.source_id.clone(), path);
+    }
+    Ok(resources)
+}
+
+async fn resolve_lut_resource(
     state: &AppState,
     request: &EditRequest,
 ) -> anyhow::Result<RenderResources> {

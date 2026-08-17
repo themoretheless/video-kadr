@@ -1,4 +1,13 @@
-import type { Capabilities, EditState, Job, LutAsset, MediaEntry, VideoInfo } from './types'
+import type {
+  AssetEntry,
+  AssetKind,
+  Capabilities,
+  EditState,
+  Job,
+  LutAsset,
+  MediaEntry,
+  VideoInfo,
+} from './types'
 import * as browserMedia from './browser-media'
 
 export const clientOnlyMode = browserMedia.isBrowserProcessing()
@@ -37,8 +46,8 @@ async function safeFetch(path: string, init?: RequestInit): Promise<Response> {
   }
 }
 
-async function responseError(response: Response, fallback: string): Promise<ApiError> {
-  const text = await response.text().catch(() => '')
+/** Build an ApiError from a raw error body (JSON `{error, code}` or plain text). */
+function apiErrorFromText(text: string, status: number, fallback: string): ApiError {
   const trimmed = text.trim()
   let message = fallback
   let code: string | undefined
@@ -53,7 +62,12 @@ async function responseError(response: Response, fallback: string): Promise<ApiE
     }
   }
 
-  return new ApiError(message, response.status, code)
+  return new ApiError(message, status, code)
+}
+
+async function responseError(response: Response, fallback: string): Promise<ApiError> {
+  const text = await response.text().catch(() => '')
+  return apiErrorFromText(text, response.status, fallback)
 }
 
 async function requireOk(response: Response, fallback: string): Promise<void> {
@@ -108,6 +122,117 @@ export async function getLut(id: string): Promise<LutAsset> {
   return res.json()
 }
 
+// --- media assets (images, audio, video, fonts, subtitles) ---
+// Assets are referenced by id everywhere; the backend resolves an id to a
+// private path right before the render runs, exactly like a stored LUT.
+
+/** Thrown in the browser-only build, which has no asset storage at all. */
+export class AssetsRequireServerError extends Error {
+  constructor() {
+    super('Медиа-ассеты доступны только при запущенном сервере')
+    this.name = 'AssetsRequireServerError'
+  }
+}
+
+export interface UploadOptions {
+  signal?: AbortSignal
+  /** Called with 0..100 while the request body is being sent. */
+  onProgress?: (percent: number) => void
+}
+
+/**
+ * Multipart upload over XHR: `fetch` cannot report upload progress, and asset
+ * bodies go up to 64 MiB. Errors are normalized to the same ApiError /
+ * BackendUnavailableError pair the fetch helpers throw.
+ */
+function uploadMultipart(path: string, form: FormData, options?: UploadOptions): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    if (options?.signal?.aborted) {
+      reject(new Error('cancelled'))
+      return
+    }
+    const xhr = new XMLHttpRequest()
+    const onAbort = () => xhr.abort()
+    const cleanup = () => options?.signal?.removeEventListener('abort', onAbort)
+
+    xhr.open('POST', path)
+    if (options?.onProgress) {
+      xhr.upload.addEventListener('progress', (event) => {
+        if (!event.lengthComputable || event.total <= 0) return
+        options.onProgress?.(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))))
+      })
+    }
+    xhr.addEventListener('load', () => {
+      cleanup()
+      const text = typeof xhr.responseText === 'string' ? xhr.responseText : ''
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(apiErrorFromText(text, xhr.status, `${path} -> HTTP ${xhr.status}`))
+        return
+      }
+      try {
+        resolve(text.trim() ? JSON.parse(text) : null)
+      } catch {
+        reject(new ApiError(`${path} -> некорректный ответ сервера`, xhr.status))
+      }
+    })
+    xhr.addEventListener('error', () => {
+      cleanup()
+      reject(new BackendUnavailableError())
+    })
+    xhr.addEventListener('timeout', () => {
+      cleanup()
+      reject(new BackendUnavailableError())
+    })
+    xhr.addEventListener('abort', () => {
+      cleanup()
+      reject(new Error('cancelled'))
+    })
+    options?.signal?.addEventListener('abort', onAbort)
+    xhr.send(form)
+  })
+}
+
+/** Upload an asset. The backend sniffs the content; `kind` is only a hint. */
+export async function uploadAsset(
+  file: File,
+  kind: AssetKind,
+  options?: UploadOptions,
+): Promise<AssetEntry> {
+  if (clientOnlyMode) throw new AssetsRequireServerError()
+  const form = new FormData()
+  form.append('file', file)
+  form.append('kind', kind)
+  return (await uploadMultipart('/api/assets', form, options)) as AssetEntry
+}
+
+/** List every stored asset. */
+export async function getAssets(): Promise<AssetEntry[]> {
+  if (clientOnlyMode) throw new AssetsRequireServerError()
+  const res = await safeFetch('/api/assets')
+  await requireOk(res, `assets -> HTTP ${res.status}`)
+  const body: unknown = await res.json()
+  if (typeof body !== 'object' || body === null) return []
+  const assets = (body as { assets?: unknown }).assets
+  return Array.isArray(assets) ? (assets as AssetEntry[]) : []
+}
+
+/** Resolve metadata for a single stored asset. */
+export async function getAsset(id: string): Promise<AssetEntry> {
+  if (clientOnlyMode) throw new AssetsRequireServerError()
+  const res = await safeFetch(`/api/assets/${encodeURIComponent(id)}`)
+  await requireOk(res, `asset lookup -> HTTP ${res.status}`)
+  return res.json()
+}
+
+/** Delete a stored asset. A missing asset is treated as already deleted. */
+export async function deleteAsset(id: string): Promise<void> {
+  if (clientOnlyMode) throw new AssetsRequireServerError()
+  const res = await safeFetch(`/api/assets/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) {
+    throw await responseError(res, `asset delete -> HTTP ${res.status}`)
+  }
+}
+
 export async function getJob(jobId: string): Promise<Job> {
   if (clientOnlyMode) return browserMedia.getJob(jobId)
   const res = await safeFetch(`/api/jobs/${jobId}`)
@@ -142,13 +267,20 @@ export async function deleteLibraryItem(id: string): Promise<void> {
   }
 }
 
+/**
+ * The persisted edit recipe. Feature module state rides inside `edit.modules`
+ * because the projects endpoint denies unknown top-level fields; it is absent
+ * for projects that use none of the new features.
+ */
+export type PersistedEdit = Partial<EditState> & { modules?: unknown }
+
 /** A saved editing project: a clip plus its persisted edit recipe. */
 export interface ProjectDto {
   id: string
   name: string
   videoId: string
   video: VideoInfo
-  edit: Partial<EditState>
+  edit: PersistedEdit
   createdAt: number
   updatedAt: number
 }

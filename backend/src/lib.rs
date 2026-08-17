@@ -6,6 +6,7 @@
 
 pub mod analysis;
 pub mod artifacts;
+pub mod assets;
 pub mod backup;
 pub mod capabilities;
 pub mod config;
@@ -72,6 +73,16 @@ pub fn build_router_with_cors(
                 .layer(DefaultBodyLimit::max(handlers::MAX_LUT_BODY_BYTES)),
         )
         .route("/luts/:id", get(handlers::lut_get_handler))
+        .route(
+            "/assets",
+            get(handlers::asset_list_handler)
+                .post(handlers::asset_upload_handler)
+                .layer(DefaultBodyLimit::max(handlers::MAX_ASSET_BODY_BYTES)),
+        )
+        .route(
+            "/assets/:id",
+            get(handlers::asset_get_handler).delete(handlers::asset_delete_handler),
+        )
         .route("/edit", post(handlers::edit_handler))
         .route("/jobs/failed", get(handlers::failed_jobs_handler))
         .route("/jobs/registry", get(handlers::job_registry_handler))
@@ -92,7 +103,8 @@ pub fn build_router_with_cors(
     let router = Router::new()
         .nest("/api", api)
         .nest_service("/files/sources", ServeDir::new(storage.join("sources")))
-        .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")));
+        .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")))
+        .nest_service("/files/assets", ServeDir::new(storage.join("assets")));
     http::policy::apply_public_layers(router, cors_layer(cors_origins))
 }
 

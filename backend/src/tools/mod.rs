@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 
 use egress_proxy::EgressProxy;
 
-use crate::ports::CompiledExportCommand;
+use crate::ports::{CompiledExportCommand, CompiledPrepass};
 use crate::process_control::{
     capture_output, is_process_timeout, stream_with_progress, ProcessRuntime, ProcessStatus,
 };
@@ -333,6 +333,59 @@ pub async fn run_ffmpeg(
     timeout: Duration,
 ) -> Result<Done> {
     run_ffmpeg_scoped(runtime, args, &[], expected_secs, progress, cancel, timeout).await
+}
+
+/// Run the analysis pass of a two-pass render. The pass writes only its
+/// transform file, so its write scope is that file rather than the output.
+pub async fn run_ffmpeg_prepass(
+    runtime: &ProcessRuntime,
+    prepass: &CompiledPrepass,
+    expected_secs: f64,
+    progress: &UnboundedSender<f64>,
+    cancel: &CancellationToken,
+    timeout: Duration,
+) -> Result<Done> {
+    if let Some(parent) = prepass.output.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let (inputs, _) = ffmpeg_filesystem_scope(&prepass.arguments)?;
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-protocol_whitelist")
+        .arg(OFFLINE_PROTOCOLS)
+        .arg("-nostats")
+        .arg("-progress")
+        .arg("pipe:1")
+        .args(&prepass.arguments);
+    let expected = expected_secs.max(0.001);
+    let parse = move |line: &str| -> Option<f64> {
+        let rest = line
+            .strip_prefix("out_time_us=")
+            .or_else(|| line.strip_prefix("out_time_ms="))?;
+        let us: f64 = rest.trim().parse().ok()?;
+        Some((us / 1_000_000.0) / expected * 100.0)
+    };
+    let policy = runtime.render_policy(inputs, prepass.output.clone());
+    let (status, stderr) =
+        stream_with_progress(runtime, cmd, policy, parse, progress, cancel, timeout)
+            .await
+            .context("failed to spawn ffmpeg (is it installed and on PATH?)")?;
+    match status {
+        ProcessStatus::Ok => {
+            let written = tokio::fs::metadata(&prepass.output)
+                .await
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            if written == 0 {
+                anyhow::bail!("Анализ стабилизации не дал результата");
+            }
+            Ok(Done::Completed)
+        }
+        ProcessStatus::Cancelled => Ok(Done::Cancelled),
+        ProcessStatus::TimedOut => Err(anyhow!("Превышен лимит времени обработки")),
+        ProcessStatus::Failed => Err(anyhow!("ffmpeg failed: {}", tail(&stderr, 15))),
+    }
 }
 
 /// Execute a compiled command while carrying its explicit auxiliary read scope.

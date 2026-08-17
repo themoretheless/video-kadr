@@ -234,6 +234,440 @@ pub struct EditRequest {
     /// Quality as CRF (lower = better). Defaults per format/codec.
     #[serde(default)]
     pub quality: Option<u32>,
+    // --- parity wave: every field below is optional and omitted when absent so
+    // an untouched edit keeps today's exact canonical serialization ---
+    /// Multi-source timeline. When non-empty it replaces `videoId` + `segments`
+    /// as the source of the edit; `videoId` still names the primary source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clips: Option<Vec<Clip>>,
+    /// Transition inserted between plain `segments` when `clips` is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segment_transition: Option<Transition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlays: Option<Vec<Overlay>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub titles: Option<Vec<Title>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitles: Option<Subtitles>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_tracks: Option<Vec<AudioTrack>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_dynamics: Option<AudioDynamics>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<Motion>,
+    /// Keyframed speed multipliers over the output timeline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_ramps: Option<Vec<Keyframe>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reframe360: Option<Reframe360>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stabilize: Option<Stabilize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lens_correction: Option<LensCorrection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_advanced: Option<ColorAdvanced>,
+}
+
+/// Interpolation between two keyframes, as sent on the wire.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeyframeInterpolation {
+    Hold,
+    #[default]
+    Linear,
+    Smooth,
+}
+
+impl KeyframeInterpolation {
+    /// Stable wire token, matched by `domain::keyframes::Interpolation`.
+    pub fn as_token(self) -> &'static str {
+        match self {
+            Self::Hold => "hold",
+            Self::Linear => "linear",
+            Self::Smooth => "smooth",
+        }
+    }
+}
+
+/// One keyframe on the OUTPUT timeline: `t` seconds, `v` parameter value.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Keyframe {
+    pub t: f64,
+    pub v: f64,
+    #[serde(default)]
+    pub interp: KeyframeInterpolation,
+}
+
+/// Colour wheel offsets/multipliers. Ranges are validated in the domain.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rgb {
+    pub r: f64,
+    pub g: f64,
+    pub b: f64,
+}
+
+/// A cross-fade between two neighbouring clips or segments.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Transition {
+    pub kind: String,
+    pub duration: f64,
+}
+
+/// One clip on the multi-source timeline. `start`/`end` are in-points and
+/// out-points inside the SOURCE, not on the output timeline.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Clip {
+    pub source_id: String,
+    pub start: f64,
+    pub end: f64,
+    #[serde(default = "default_one")]
+    pub speed: f64,
+    #[serde(default = "default_one")]
+    pub volume: f64,
+    #[serde(default)]
+    pub muted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition_in: Option<Transition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChromaKey {
+    pub color: String,
+    pub similarity: f64,
+    pub blend: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OverlayAudio {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_one")]
+    pub volume: f64,
+}
+
+/// Image or video overlay: watermark, logo, picture-in-picture, green screen.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Overlay {
+    pub asset_id: String,
+    pub kind: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    /// A null height keeps the source aspect ratio.
+    #[serde(default)]
+    pub height: Option<f64>,
+    #[serde(default = "default_one")]
+    pub opacity: f64,
+    #[serde(default)]
+    pub rotation: f64,
+    #[serde(default)]
+    pub start: f64,
+    #[serde(default)]
+    pub end: Option<f64>,
+    #[serde(default)]
+    pub fade_in: f64,
+    #[serde(default)]
+    pub fade_out: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chroma_key: Option<ChromaKey>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<OverlayAudio>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TitleBox {
+    pub color: String,
+    pub opacity: f64,
+    pub padding: f64,
+}
+
+/// Burned-in title or lower third.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Title {
+    pub text: String,
+    /// A null font asset selects the bundled default font.
+    #[serde(default)]
+    pub font_asset_id: Option<String>,
+    #[serde(default = "default_font_size")]
+    pub font_size: f64,
+    #[serde(default = "default_white")]
+    pub color: String,
+    pub x: f64,
+    pub y: f64,
+    #[serde(default = "default_center")]
+    pub align: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#box: Option<TitleBox>,
+    #[serde(default)]
+    pub border_width: f64,
+    #[serde(default = "default_black")]
+    pub border_color: String,
+    #[serde(default)]
+    pub shadow_x: f64,
+    #[serde(default)]
+    pub shadow_y: f64,
+    #[serde(default = "default_black")]
+    pub shadow_color: String,
+    #[serde(default)]
+    pub start: f64,
+    #[serde(default)]
+    pub end: Option<f64>,
+    #[serde(default)]
+    pub fade_in: f64,
+    #[serde(default)]
+    pub fade_out: f64,
+    #[serde(default = "default_none_animation")]
+    pub animation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Subtitles {
+    pub asset_id: String,
+    #[serde(default)]
+    pub burn_in: bool,
+    #[serde(default = "default_subtitle_size")]
+    pub font_size: f64,
+    #[serde(default = "default_white")]
+    pub color: String,
+    #[serde(default)]
+    pub outline_width: f64,
+    #[serde(default = "default_bottom")]
+    pub position: String,
+    #[serde(default)]
+    pub margin_v: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Ducking {
+    #[serde(default)]
+    pub enabled: bool,
+    pub threshold: f64,
+    pub ratio: f64,
+    pub attack: f64,
+    pub release: f64,
+}
+
+/// One extra audio track laid onto the output timeline.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioTrack {
+    pub asset_id: String,
+    pub role: String,
+    #[serde(default = "default_one")]
+    pub gain: f64,
+    #[serde(default)]
+    pub start: f64,
+    #[serde(default)]
+    pub source_start: f64,
+    #[serde(default)]
+    pub end: Option<f64>,
+    #[serde(default)]
+    pub r#loop: bool,
+    #[serde(default)]
+    pub fade_in: f64,
+    #[serde(default)]
+    pub fade_out: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ducking: Option<Ducking>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Compressor {
+    pub threshold: f64,
+    pub ratio: f64,
+    pub attack: f64,
+    pub release: f64,
+    #[serde(default = "default_one")]
+    pub makeup: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Limiter {
+    pub ceiling: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Gate {
+    pub threshold: f64,
+    pub ratio: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioDynamics {
+    #[serde(default)]
+    pub denoise: f64,
+    #[serde(default)]
+    pub dereverb: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compressor: Option<Compressor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limiter: Option<Limiter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate: Option<Gate>,
+    #[serde(default)]
+    pub deesser: bool,
+    /// Overrides the legacy `highpass` boolean when present.
+    #[serde(default)]
+    pub highpass_hz: Option<f64>,
+    #[serde(default)]
+    pub lowpass_hz: Option<f64>,
+    #[serde(default = "default_audio_bitrate")]
+    pub bitrate_kbps: u32,
+    /// Multiplies `volume` over the output timeline.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub volume_envelope: Vec<Keyframe>,
+}
+
+/// Animated transform: Ken Burns and animated reframing.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Motion {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub zoom: Vec<Keyframe>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pan_x: Vec<Keyframe>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pan_y: Vec<Keyframe>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rotation: Vec<Keyframe>,
+}
+
+/// Insta360 / action-cam reframing of a spherical or fisheye source.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Reframe360 {
+    pub input_projection: String,
+    pub output_projection: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fov: Vec<Keyframe>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub yaw: Vec<Keyframe>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pitch: Vec<Keyframe>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roll: Vec<Keyframe>,
+    #[serde(default = "default_reframe_width")]
+    pub output_width: u32,
+    #[serde(default = "default_reframe_height")]
+    pub output_height: u32,
+    #[serde(default)]
+    pub horizon_lock: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Stabilize {
+    pub mode: String,
+    #[serde(default = "default_smoothing")]
+    pub smoothing: f64,
+    #[serde(default)]
+    pub zoom: f64,
+    #[serde(default)]
+    pub horizon_lock: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LensCorrection {
+    #[serde(default)]
+    pub k1: f64,
+    #[serde(default)]
+    pub k2: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HslBandAdjust {
+    pub band: String,
+    #[serde(default)]
+    pub hue: f64,
+    #[serde(default = "default_one")]
+    pub saturation: f64,
+    #[serde(default = "default_one")]
+    pub luminance: f64,
+}
+
+/// Resolve-lite primary grade: white balance, exposure, wheels and HSL.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ColorAdvanced {
+    #[serde(default)]
+    pub temperature: f64,
+    #[serde(default)]
+    pub tint: f64,
+    #[serde(default)]
+    pub exposure: f64,
+    #[serde(default)]
+    pub highlights: f64,
+    #[serde(default)]
+    pub shadows: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lift: Option<Rgb>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gamma: Option<Rgb>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gain: Option<Rgb>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hsl: Vec<HslBandAdjust>,
+}
+
+fn default_font_size() -> f64 {
+    48.0
+}
+
+fn default_subtitle_size() -> f64 {
+    24.0
+}
+
+fn default_white() -> String {
+    "#FFFFFF".into()
+}
+
+fn default_black() -> String {
+    "#000000".into()
+}
+
+fn default_center() -> String {
+    "center".into()
+}
+
+fn default_bottom() -> String {
+    "bottom".into()
+}
+
+fn default_none_animation() -> String {
+    "none".into()
+}
+
+fn default_audio_bitrate() -> u32 {
+    128
+}
+
+fn default_reframe_width() -> u32 {
+    1920
+}
+
+fn default_reframe_height() -> u32 {
+    1080
+}
+
+fn default_smoothing() -> f64 {
+    10.0
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -398,6 +832,28 @@ mod tests {
         let value = serde_json::to_value(e).unwrap();
         assert!(value.get("lut").is_none());
         assert!(value.get("curves").is_none());
+    }
+
+    /// Render-cache keys hash the canonical re-serialization of an
+    /// `EditRequest`. Every field added for the parity wave is optional and
+    /// skipped when absent, so an untouched edit must still produce exactly
+    /// these bytes. Changing this string invalidates every cached render.
+    const GOLDEN_DEFAULT_EDIT_REQUEST: &str = concat!(
+        r#"{"videoId":"x","trim":null,"segments":null,"crop":null,"scale":null,"mute":false,"#,
+        r#""speed":1.0,"rotate":0,"flipH":false,"flipV":false,"volume":1.0,"fadeIn":0.0,"#,
+        r#""fadeOut":0.0,"normalizeAudio":false,"highpass":false,"brightness":0.0,"#,
+        r#""contrast":1.0,"saturation":1.0,"filter":null,"reverse":false,"fps":null,"#,
+        r#""censor":null,"censorColor":null,"vignette":false,"denoise":false,"sharpen":0.0,"#,
+        r#""grain":0.0,"pad":null,"format":null,"codec":null,"quality":null}"#
+    );
+
+    #[test]
+    fn untouched_edit_request_serializes_byte_identically() {
+        let request: EditRequest = serde_json::from_value(json!({ "videoId": "x" })).unwrap();
+        assert_eq!(
+            serde_json::to_string(&request).unwrap(),
+            GOLDEN_DEFAULT_EDIT_REQUEST
+        );
     }
 
     #[test]

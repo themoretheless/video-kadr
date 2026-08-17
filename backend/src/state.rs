@@ -9,6 +9,7 @@ use tokio::sync::{AcquireError, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::assets::AssetStore;
 use crate::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
 use crate::config::WorkloadConfig;
 use crate::db::Db;
@@ -62,6 +63,8 @@ pub struct AppState {
     pub process_runtime: ProcessRuntime,
     pub tools: Arc<ToolInfo>,
     pub library: Library,
+    /// Private media assets addressed by id (overlays, audio beds, fonts, subs).
+    pub assets: AssetStore,
     pub db: Db,
     pub job_store: SqliteJobStore,
     pub media_search: Arc<dyn MediaSearchQuery>,
@@ -157,6 +160,7 @@ impl AppState {
             process_runtime,
             tools: Arc::new(tools),
             library,
+            assets: AssetStore::load(storage.clone()),
             db,
             job_store,
             media_search,
@@ -454,6 +458,10 @@ impl AppState {
 
     pub fn luts_dir(&self) -> PathBuf {
         self.storage.join("luts")
+    }
+
+    pub fn assets_dir(&self) -> PathBuf {
+        self.storage.join("assets")
     }
 
     pub fn render_parallelism(&self) -> usize {

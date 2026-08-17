@@ -15,6 +15,16 @@ pub struct ExportCompileRequest<'a> {
     pub execution: &'a RenderExecution,
 }
 
+/// An analysis pass the runner must complete before the render pass. Today only
+/// two-pass stabilization needs one: it writes a frame-indexed transform file
+/// that the render command reads back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompiledPrepass {
+    pub arguments: Vec<String>,
+    /// File the pass writes; the runner must remove it afterwards.
+    pub output: PathBuf,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledExportCommand {
     pub arguments: Vec<String>,
@@ -22,6 +32,8 @@ pub struct CompiledExportCommand {
     /// Auxiliary immutable files referenced from filter options rather than
     /// regular `-i` arguments (for example a private `.cube` LUT).
     pub read_only_files: Vec<PathBuf>,
+    /// Optional analysis pass to run first.
+    pub prepass: Option<CompiledPrepass>,
 }
 
 pub trait ExportCommandCompiler: Send + Sync {

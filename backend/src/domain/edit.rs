@@ -9,7 +9,143 @@ use std::fmt;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use super::audio_mix::{AudioDynamicsSpec, AudioTrackSpec};
+use super::color_grade::ColorAdvancedSpec;
+use super::composition::{CompositionSpec, TransitionSpec};
+use super::keyframes::{Interpolation, Keyframe, KeyframeTrack, OUTPUT_TIME_BASE};
+use super::motion::MotionSpec;
+use super::overlay::{OverlaySpec, SubtitlesSpec, TitleSpec};
+use super::spatial::{LensCorrectionSpec, Reframe360Spec, StabilizeSpec};
+use crate::model;
+
 pub const EDIT_SPEC_SCHEMA_VERSION: u32 = 1;
+
+/// Collection caps from the feature contract.
+pub const MAX_CLIPS: usize = 200;
+pub const MAX_OVERLAYS: usize = 32;
+pub const MAX_TITLES: usize = 32;
+pub const MAX_AUDIO_TRACKS: usize = 8;
+pub const MAX_KEYFRAMES: usize = 64;
+pub const MAX_TEXT_CHARS: usize = 512;
+/// Asset references are opaque ids; the store applies the real allow-list.
+const MAX_ASSET_REFERENCE_CHARS: usize = 128;
+
+/// Reject non-finite values, then clamp into the documented range. Clamping
+/// (rather than rejecting) keeps a slightly out-of-range slider usable while
+/// still guaranteeing every value the FFmpeg adapter sees is bounded.
+pub fn clamped(value: f64, min: f64, max: f64, error: EditSpecError) -> Result<f64, EditSpecError> {
+    if !value.is_finite() {
+        return Err(error);
+    }
+    Ok(value.clamp(min, max))
+}
+
+/// Length-cap a user string and reject control characters. Newlines survive
+/// because titles are allowed to wrap.
+pub fn bounded_text(
+    value: &str,
+    max_chars: usize,
+    error: EditSpecError,
+) -> Result<String, EditSpecError> {
+    if value.chars().count() > max_chars
+        || value
+            .chars()
+            .any(|character| character.is_control() && character != '\n')
+    {
+        return Err(error);
+    }
+    Ok(value.to_owned())
+}
+
+/// Validate an opaque asset reference. The same rule `LutGrade` applies: no
+/// separators, no dots, so an id can never become a path fragment on its own.
+pub fn asset_reference(value: &str) -> Result<String, EditSpecError> {
+    if value.is_empty()
+        || value.len() > MAX_ASSET_REFERENCE_CHARS
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(EditSpecError::InvalidAssetReference);
+    }
+    Ok(value.to_owned())
+}
+
+/// A validated `#RRGGBB` colour. Stored uppercase so equal colours produce
+/// equal plan fingerprints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct HexColor([u8; 3]);
+
+impl HexColor {
+    pub fn parse(value: &str) -> Result<Self, EditSpecError> {
+        let digits = value
+            .strip_prefix('#')
+            .filter(|rest| rest.len() == 6 && rest.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .ok_or(EditSpecError::InvalidColor)?;
+        let mut channels = [0_u8; 3];
+        for (index, channel) in channels.iter_mut().enumerate() {
+            *channel = u8::from_str_radix(&digits[index * 2..index * 2 + 2], 16)
+                .map_err(|_| EditSpecError::InvalidColor)?;
+        }
+        Ok(Self(channels))
+    }
+
+    pub fn as_hex(self) -> String {
+        format!("#{:02X}{:02X}{:02X}", self.0[0], self.0[1], self.0[2])
+    }
+
+    /// The `0xRRGGBB` form every FFmpeg colour option accepts. It contains only
+    /// hex digits, so it is safe inside a filter string without escaping.
+    pub fn ffmpeg_color(self) -> String {
+        format!("0x{:02X}{:02X}{:02X}", self.0[0], self.0[1], self.0[2])
+    }
+}
+
+impl TryFrom<String> for HexColor {
+    type Error = EditSpecError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(&value)
+    }
+}
+
+impl From<HexColor> for String {
+    fn from(value: HexColor) -> Self {
+        value.as_hex()
+    }
+}
+
+/// Convert a wire keyframe list into a validated domain track. An empty list
+/// means "parameter unused" and yields `None`.
+///
+/// The wire carries `interp` per keyframe while the domain track carries one
+/// interpolation for the whole track, so the first keyframe decides the mode.
+pub fn keyframe_track(
+    points: &[model::Keyframe],
+    error: EditSpecError,
+) -> Result<Option<KeyframeTrack<f64>>, EditSpecError> {
+    if points.is_empty() {
+        return Ok(None);
+    }
+    if points.len() > MAX_KEYFRAMES {
+        return Err(error);
+    }
+    let interpolation = Interpolation::from_wire(points[0].interp.as_token()).ok_or(error)?;
+    let mut keyframes = Vec::with_capacity(points.len());
+    for point in points {
+        if !point.t.is_finite() || point.t < 0.0 || !point.v.is_finite() {
+            return Err(error);
+        }
+        keyframes.push(Keyframe {
+            tick: (point.t * f64::from(OUTPUT_TIME_BASE)).round() as u64,
+            value: point.v,
+        });
+    }
+    KeyframeTrack::new(OUTPUT_TIME_BASE, interpolation, keyframes)
+        .map(Some)
+        .map_err(|_| error)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -468,6 +604,195 @@ pub struct AudioEffects {
     pub(crate) highpass: bool,
 }
 
+/// Everything the parity wave adds to an edit. Absent by default, skipped on
+/// serialization when empty, so an untouched `EditSpec` keeps the exact plan
+/// fingerprint (and therefore the render-cache key) it has today.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditExtensions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) composition: Option<CompositionSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) segment_transition: Option<TransitionSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) overlays: Vec<OverlaySpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) titles: Vec<TitleSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) subtitles: Option<SubtitlesSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) audio_tracks: Vec<AudioTrackSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) audio_dynamics: Option<AudioDynamicsSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) motion: Option<MotionSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) speed_ramps: Option<KeyframeTrack<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reframe360: Option<Reframe360Spec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) stabilize: Option<StabilizeSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) lens_correction: Option<LensCorrectionSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color_advanced: Option<ColorAdvancedSpec>,
+}
+
+impl EditExtensions {
+    /// True when nothing in this edit uses a parity-wave feature.
+    pub fn is_empty(&self) -> bool {
+        self.composition.is_none()
+            && self.segment_transition.is_none()
+            && self.overlays.is_empty()
+            && self.titles.is_empty()
+            && self.subtitles.is_none()
+            && self.audio_tracks.is_empty()
+            && self.audio_dynamics.is_none()
+            && self.motion.is_none()
+            && self.speed_ramps.is_none()
+            && self.reframe360.is_none()
+            && self.stabilize.is_none()
+            && self.lens_correction.is_none()
+            && self.color_advanced.is_none()
+    }
+
+    /// Validate the optional wire payload of one edit request. A request that
+    /// sets none of the new fields returns the empty value.
+    pub fn from_request(request: &model::EditRequest) -> Result<Self, EditSpecError> {
+        let overlays = request.overlays.as_deref().unwrap_or_default();
+        if overlays.len() > MAX_OVERLAYS {
+            return Err(EditSpecError::InvalidOverlay);
+        }
+        let titles = request.titles.as_deref().unwrap_or_default();
+        if titles.len() > MAX_TITLES {
+            return Err(EditSpecError::InvalidTitle);
+        }
+        let audio_tracks = request.audio_tracks.as_deref().unwrap_or_default();
+        if audio_tracks.len() > MAX_AUDIO_TRACKS {
+            return Err(EditSpecError::InvalidAudioTrack);
+        }
+        Ok(Self {
+            composition: request
+                .clips
+                .as_deref()
+                .map(CompositionSpec::from_wire)
+                .transpose()?
+                .flatten(),
+            segment_transition: request
+                .segment_transition
+                .as_ref()
+                .map(TransitionSpec::from_wire)
+                .transpose()?,
+            overlays: overlays
+                .iter()
+                .map(OverlaySpec::from_wire)
+                .collect::<Result<Vec<_>, _>>()?,
+            titles: titles
+                .iter()
+                .map(TitleSpec::from_wire)
+                .collect::<Result<Vec<_>, _>>()?,
+            subtitles: request
+                .subtitles
+                .as_ref()
+                .map(SubtitlesSpec::from_wire)
+                .transpose()?,
+            audio_tracks: audio_tracks
+                .iter()
+                .map(AudioTrackSpec::from_wire)
+                .collect::<Result<Vec<_>, _>>()?,
+            audio_dynamics: request
+                .audio_dynamics
+                .as_ref()
+                .map(AudioDynamicsSpec::from_wire)
+                .transpose()?,
+            motion: request
+                .motion
+                .as_ref()
+                .map(MotionSpec::from_wire)
+                .transpose()?
+                .flatten(),
+            speed_ramps: keyframe_track(
+                request.speed_ramps.as_deref().unwrap_or_default(),
+                EditSpecError::InvalidMotion,
+            )?,
+            reframe360: request
+                .reframe360
+                .as_ref()
+                .map(Reframe360Spec::from_wire)
+                .transpose()?,
+            stabilize: request
+                .stabilize
+                .as_ref()
+                .map(StabilizeSpec::from_wire)
+                .transpose()?
+                .flatten(),
+            lens_correction: request
+                .lens_correction
+                .as_ref()
+                .map(LensCorrectionSpec::from_wire)
+                .transpose()?
+                .flatten(),
+            color_advanced: request
+                .color_advanced
+                .as_ref()
+                .map(ColorAdvancedSpec::from_wire)
+                .transpose()?,
+        })
+    }
+
+    fn validate(&self) -> Result<(), EditSpecError> {
+        if let Some(composition) = &self.composition {
+            composition.validate()?;
+        }
+        if let Some(transition) = &self.segment_transition {
+            transition.validate()?;
+        }
+        if self.overlays.len() > MAX_OVERLAYS || self.titles.len() > MAX_TITLES {
+            return Err(EditSpecError::InvalidOverlay);
+        }
+        for overlay in &self.overlays {
+            overlay.validate()?;
+        }
+        for title in &self.titles {
+            title.validate()?;
+        }
+        if let Some(subtitles) = &self.subtitles {
+            subtitles.validate()?;
+        }
+        if self.audio_tracks.len() > MAX_AUDIO_TRACKS {
+            return Err(EditSpecError::InvalidAudioTrack);
+        }
+        for track in &self.audio_tracks {
+            track.validate()?;
+        }
+        if let Some(dynamics) = &self.audio_dynamics {
+            dynamics.validate()?;
+        }
+        if let Some(motion) = &self.motion {
+            motion.validate()?;
+        }
+        if let Some(ramps) = &self.speed_ramps {
+            if ramps.keyframes.len() > MAX_KEYFRAMES {
+                return Err(EditSpecError::InvalidMotion);
+            }
+            super::motion::validate_speed_ramps(ramps)?;
+        }
+        if let Some(reframe) = &self.reframe360 {
+            reframe.validate()?;
+        }
+        if let Some(stabilize) = &self.stabilize {
+            stabilize.validate()?;
+        }
+        if let Some(lens) = &self.lens_correction {
+            lens.validate()?;
+        }
+        if let Some(color) = &self.color_advanced {
+            color.validate()?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditSpec {
@@ -476,6 +801,8 @@ pub struct EditSpec {
     pub(crate) geometry: GeometrySpec,
     pub(crate) video: VideoEffects,
     pub(crate) audio: AudioEffects,
+    #[serde(default, skip_serializing_if = "EditExtensions::is_empty")]
+    pub(crate) extensions: EditExtensions,
 }
 
 #[derive(Deserialize)]
@@ -486,6 +813,8 @@ struct EditSpecWire {
     geometry: GeometrySpec,
     video: VideoEffects,
     audio: AudioEffects,
+    #[serde(default)]
+    extensions: EditExtensions,
 }
 
 impl<'de> Deserialize<'de> for EditSpec {
@@ -497,7 +826,9 @@ impl<'de> Deserialize<'de> for EditSpec {
         if wire.schema_version != EDIT_SPEC_SCHEMA_VERSION {
             return Err(D::Error::custom("unsupported edit specification schema"));
         }
-        Self::new(wire.timing, wire.geometry, wire.video, wire.audio).map_err(D::Error::custom)
+        Self::new(wire.timing, wire.geometry, wire.video, wire.audio)
+            .and_then(|spec| spec.with_extensions(wire.extensions))
+            .map_err(D::Error::custom)
     }
 }
 
@@ -514,9 +845,18 @@ impl EditSpec {
             geometry,
             video,
             audio,
+            extensions: EditExtensions::default(),
         };
         value.validate()?;
         Ok(value)
+    }
+
+    /// Attach the validated parity-wave payload. Kept separate from `new` so
+    /// the four-section constructor its existing callers use stays unchanged.
+    pub fn with_extensions(mut self, extensions: EditExtensions) -> Result<Self, EditSpecError> {
+        extensions.validate()?;
+        self.extensions = extensions;
+        Ok(self)
     }
 
     pub fn timing(&self) -> &TimingSpec {
@@ -533,6 +873,80 @@ impl EditSpec {
 
     pub fn audio(&self) -> &AudioEffects {
         &self.audio
+    }
+
+    /// True when a parity-wave feature other than the timeline itself is
+    /// active. Stage ordering depends on it: as soon as one of those stages
+    /// runs, the plain `segments` timeline has to be built inside the same
+    /// `filter_complex` instead of by the legacy concat path, otherwise the
+    /// cuts would be silently dropped.
+    pub fn uses_non_timeline_extensions(&self) -> bool {
+        let extensions = &self.extensions;
+        !extensions.overlays.is_empty()
+            || !extensions.titles.is_empty()
+            || extensions.subtitles.is_some()
+            || !extensions.audio_tracks.is_empty()
+            || extensions.audio_dynamics.is_some()
+            || extensions.motion.is_some()
+            || extensions.speed_ramps.is_some()
+            || extensions.reframe360.is_some()
+            || extensions.stabilize.is_some()
+            || extensions.lens_correction.is_some()
+            || extensions.color_advanced.is_some()
+    }
+
+    /// Multi-source timeline, or `None` when `segments`/`trim` still drive it.
+    pub fn composition(&self) -> Option<&CompositionSpec> {
+        self.extensions.composition.as_ref()
+    }
+
+    /// Transition inserted between plain `segments`.
+    pub fn segment_transition(&self) -> Option<&TransitionSpec> {
+        self.extensions.segment_transition.as_ref()
+    }
+
+    pub fn overlays(&self) -> &[OverlaySpec] {
+        &self.extensions.overlays
+    }
+
+    pub fn titles(&self) -> &[TitleSpec] {
+        &self.extensions.titles
+    }
+
+    pub fn subtitles(&self) -> Option<&SubtitlesSpec> {
+        self.extensions.subtitles.as_ref()
+    }
+
+    pub fn audio_tracks(&self) -> &[AudioTrackSpec] {
+        &self.extensions.audio_tracks
+    }
+
+    pub fn audio_dynamics(&self) -> Option<&AudioDynamicsSpec> {
+        self.extensions.audio_dynamics.as_ref()
+    }
+
+    pub fn motion(&self) -> Option<&MotionSpec> {
+        self.extensions.motion.as_ref()
+    }
+
+    pub fn speed_ramps(&self) -> Option<&KeyframeTrack<f64>> {
+        self.extensions.speed_ramps.as_ref()
+    }
+
+    pub fn reframe360(&self) -> Option<&Reframe360Spec> {
+        self.extensions.reframe360.as_ref()
+    }
+
+    pub fn stabilize(&self) -> Option<&StabilizeSpec> {
+        self.extensions.stabilize.as_ref()
+    }
+
+    pub fn lens_correction(&self) -> Option<&LensCorrectionSpec> {
+        self.extensions.lens_correction.as_ref()
+    }
+
+    pub fn color_advanced(&self) -> Option<&ColorAdvancedSpec> {
+        self.extensions.color_advanced.as_ref()
     }
 
     pub fn validate(&self) -> Result<(), EditSpecError> {
@@ -592,11 +1006,12 @@ impl EditSpec {
         if !self.audio.volume.is_finite() || !(0.0..=4.0).contains(&self.audio.volume) {
             return Err(EditSpecError::InvalidAudioEffect);
         }
+        self.extensions.validate()?;
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditSpecError {
     UnsupportedSchema(u32),
     InvalidTimeRange,
@@ -613,6 +1028,18 @@ pub enum EditSpecError {
     InvalidToneCurve,
     InvalidLut,
     InvalidAudioEffect,
+    InvalidAssetReference,
+    InvalidColor,
+    InvalidClip,
+    InvalidTransition,
+    InvalidOverlay,
+    InvalidTitle,
+    InvalidSubtitles,
+    InvalidAudioTrack,
+    InvalidAudioDynamics,
+    InvalidMotion,
+    InvalidSpatial,
+    InvalidColorGrade,
 }
 
 impl fmt::Display for EditSpecError {
@@ -666,6 +1093,100 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn untouched_extensions_do_not_change_the_spec_serialization() {
+        // The plan fingerprint hashes this JSON, so an edit that uses no
+        // parity-wave feature must serialize exactly as it did before them.
+        let value = serde_json::to_value(valid_spec()).unwrap();
+        assert!(value.get("extensions").is_none(), "{value}");
+
+        let request: crate::model::EditRequest =
+            serde_json::from_value(serde_json::json!({ "videoId": "x" })).unwrap();
+        assert!(EditExtensions::from_request(&request).unwrap().is_empty());
+    }
+
+    #[test]
+    fn populated_extensions_round_trip_through_the_spec() {
+        let request: crate::model::EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "x",
+            "overlays": [{
+                "assetId": "ast_0123456789abcdef",
+                "kind": "image",
+                "x": 0.05, "y": 0.05, "width": 0.25
+            }],
+            "colorAdvanced": { "temperature": 0.2 },
+            "stabilize": { "mode": "fast" },
+            "segmentTransition": { "kind": "wipeleft", "duration": 0.5 }
+        }))
+        .unwrap();
+        let extensions = EditExtensions::from_request(&request).unwrap();
+        assert!(!extensions.is_empty());
+
+        let spec = valid_spec().with_extensions(extensions).unwrap();
+        assert_eq!(spec.overlays().len(), 1);
+        assert_eq!(spec.overlays()[0].asset_id(), "ast_0123456789abcdef");
+        assert_eq!(spec.color_advanced().unwrap().temperature(), 0.2);
+        assert!(spec.stabilize().is_some());
+        assert_eq!(
+            spec.segment_transition().unwrap().kind().ffmpeg_name(),
+            "wipeleft"
+        );
+        assert!(spec.motion().is_none() && spec.composition().is_none());
+        assert!(spec.titles().is_empty() && spec.audio_tracks().is_empty());
+
+        let value = serde_json::to_value(&spec).unwrap();
+        assert!(value.get("extensions").is_some());
+        assert_eq!(serde_json::from_value::<EditSpec>(value).unwrap(), spec);
+    }
+
+    #[test]
+    fn serde_cannot_bypass_extension_invariants() {
+        let request: crate::model::EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "x",
+            "titles": [{ "text": "Заголовок", "x": 0.5, "y": 0.85 }]
+        }))
+        .unwrap();
+        let spec = valid_spec()
+            .with_extensions(EditExtensions::from_request(&request).unwrap())
+            .unwrap();
+        let mut tampered = serde_json::to_value(spec).unwrap();
+        tampered["extensions"]["titles"][0]["fontSize"] = serde_json::json!(100_000.0);
+        assert!(serde_json::from_value::<EditSpec>(tampered).is_err());
+    }
+
+    #[test]
+    fn speed_ramps_are_range_checked_like_every_other_track() {
+        let ramp = |value: f64| serde_json::json!({ "videoId": "x", "speedRamps": [{ "t": 0.0, "v": value }] });
+        let ok: crate::model::EditRequest = serde_json::from_value(ramp(2.0)).unwrap();
+        let extensions = EditExtensions::from_request(&ok).unwrap();
+        assert!(valid_spec().with_extensions(extensions).is_ok());
+
+        let hot: crate::model::EditRequest = serde_json::from_value(ramp(99.0)).unwrap();
+        let extensions = EditExtensions::from_request(&hot).unwrap();
+        assert_eq!(
+            valid_spec().with_extensions(extensions),
+            Err(EditSpecError::InvalidMotion)
+        );
+    }
+
+    #[test]
+    fn collection_caps_are_enforced_at_the_wire_boundary() {
+        let overlay = serde_json::json!({
+            "assetId": "ast_0123456789abcdef",
+            "kind": "image",
+            "x": 0.0, "y": 0.0, "width": 0.1
+        });
+        let request: crate::model::EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "x",
+            "overlays": vec![overlay; MAX_OVERLAYS + 1]
+        }))
+        .unwrap();
+        assert_eq!(
+            EditExtensions::from_request(&request),
+            Err(EditSpecError::InvalidOverlay)
+        );
     }
 
     #[test]

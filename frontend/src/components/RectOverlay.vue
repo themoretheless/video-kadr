@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { contentBox } from '../domain/contentBox'
 import {
   clampRect,
   point,
@@ -36,6 +37,31 @@ const emit = defineEmits<{
 
 const root = ref<HTMLElement | null>(null)
 const MIN = 16
+
+// The overlay element spans the whole player, but the decoded frame is
+// letterboxed inside it. Every mapping below goes through the content box, so a
+// source whose aspect ratio differs from the element still drags true.
+const elementSize = ref({ width: 0, height: 0 })
+let observer: ResizeObserver | null = null
+
+function measure() {
+  const element = root.value
+  if (!element) return
+  const box = element.getBoundingClientRect()
+  elementSize.value = { width: box.width, height: box.height }
+}
+
+onMounted(() => {
+  measure()
+  if (typeof ResizeObserver === 'undefined' || !root.value) return
+  observer = new ResizeObserver(measure)
+  observer.observe(root.value)
+})
+
+const content = computed(() => {
+  const { W, H } = dims()
+  return contentBox(elementSize.value, { width: W, height: H })
+})
 
 type Mode = 'move' | 'nw' | 'ne' | 'sw' | 'se'
 let dragMode: Mode | null = null
@@ -85,11 +111,12 @@ const rectStyle = computed(() => {
   const normalized = Transform2D.scale<SourceSpace, NormalizedSpace>(1 / W, 1 / H).applyRect(
     geometryRect<SourceSpace>(c.x, c.y, c.w, c.h),
   )
+  const box = content.value
   return {
-    left: `${normalized.x * 100}%`,
-    top: `${normalized.y * 100}%`,
-    width: `${normalized.width * 100}%`,
-    height: `${normalized.height * 100}%`,
+    left: `${box.left + normalized.x * box.width}px`,
+    top: `${box.top + normalized.y * box.height}px`,
+    width: `${normalized.width * box.width}px`,
+    height: `${normalized.height * box.height}px`,
     borderColor: props.color,
     boxShadow: props.mode === 'crop' ? '0 0 0 9999px rgba(0, 0, 0, 0.45)' : 'none',
     background: props.mode === 'mask' ? 'rgba(255, 80, 80, 0.32)' : 'transparent',
@@ -97,12 +124,15 @@ const rectStyle = computed(() => {
 })
 
 function toSrc(dxPx: number, dyPx: number) {
-  const element = root.value
-  if (!element) return null
-  const r = element.getBoundingClientRect()
-  if (r.width <= 0 || r.height <= 0) return null
+  if (!root.value) return null
+  measure()
+  const box = content.value
+  if (box.width <= 0 || box.height <= 0) return null
   const { W, H } = dims()
-  const sourceToPreview = Transform2D.scale<SourceSpace, PreviewSpace>(r.width / W, r.height / H)
+  const sourceToPreview = Transform2D.scale<SourceSpace, PreviewSpace>(
+    box.width / W,
+    box.height / H,
+  )
   const delta = sourceToPreview.inverse().applyVector(point<PreviewSpace>(dxPx, dyPx))
   return { dx: delta.x, dy: delta.y }
 }
@@ -165,7 +195,11 @@ function stopDrag() {
   if (wasDragging) emit('interaction-end')
 }
 
-onUnmounted(stopDrag)
+onUnmounted(() => {
+  stopDrag()
+  observer?.disconnect()
+  observer = null
+})
 </script>
 
 <template>

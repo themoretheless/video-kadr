@@ -47,7 +47,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] **upload без MIME/magic/quota/concurrency cap** - body-size quota уже есть; клиентское расширение игнорируется, контейнер проходит bounded `ffprobe`/allow-list перед publish, статика получает `nosniff` + sandbox CSP; отдельный upload-pool отвечает `429` при насыщении. `handlers/upload.rs`, `state.rs`, `lib.rs`
 - [ ] **ffmpeg без CPU/RAM/threads/filesize-лимитов**; нет no-progress watchdog (из audit-500 разделов «Ресурсы»).
 - [x] **Логировать падение задачи** - `finish_job` пишет `tracing::error!` с job ID, internal detail остаётся в серверном логе. `handlers/mod.rs`
-- [ ] **RectOverlay: координаты по letterbox, не по контенту видео** - при разнице пропорций crop/censor попадает мимо. Считать реальный content-box. `components/RectOverlay.vue:37-77`
+- [x] **RectOverlay: координаты по letterbox, не по контенту видео** - маппинг переведён на `domain/contentBox.ts`: прямоугольник позиционируется и тянется относительно реального content-box, а не элемента плеера. `components/RectOverlay.vue`, `domain/contentBox.ts`
 - [x] **`applyPreset` перетирает format/codec/quality** - look-presets отделены от export-настроек; старый preset больше не меняет контейнер/codec/quality. `domain/edit.ts`, `store.ts`
 - [x] Единый `AppError`/`IntoResponse` и JSON envelope введены в раунде 8.
 - [ ] Перевести создание async-задач с `200 OK` на `202 Accepted` и закрепить contract-тестами.
@@ -71,6 +71,7 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] Исследовательский раунд (14 июля 2026): изучены 100 активных высокорейтинговых репозиториев и первичные papers/specs; добавлены и синхронизированы карточки №784-883. Рабочий набор теперь 665 пунктов (565 SOLID/DRY + 100 research-backed).
 - [x] Research wave 1/10 (14 июля 2026): закрыты №790/824/828/829/831/844/846/847/850/854; добавлены runtime/shutdown/contract/privacy/perf/UI/security gates и отдельные regression suites.
 - [ ] Research wave 2/10: №784/786/787/803/814/817/820/823/825/826 - typed media/timeline domain и HTTP ports/policy.
+- [x] Волна паритета (август 2026, 13 агентов + интеграция): мультиклиповый таймлайн с переходами, наложения и хромакей, титры и субтитры, микс звука с дакингом и динамикой, Ken Burns и рампы скорости, 360-перекадрирование и стабилизация, расширенный цвет, `/api/assets`. Проверено реальными рендерами в `backend/tests/parity_render.rs` (15 тестов), контракт фронт-бэк закреплён в `backend/tests/wire_contract.rs`. Не проверено локально: титры/субтитры (нет `drawtext`/`subtitles` в ffmpeg этой машины) и точная стабилизация (нет `libvidstab`).
 - [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
 
 ---

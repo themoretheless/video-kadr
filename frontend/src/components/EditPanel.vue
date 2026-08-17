@@ -22,6 +22,14 @@ import TrimSlider from './TrimSlider.vue'
 import CurvesEditor from './edit/CurvesEditor.vue'
 import ExportControls from './edit/ExportControls.vue'
 import LutControl from './edit/LutControl.vue'
+// Feature panels. Each one owns its own store module and collapsible section;
+// this file is the only place they are registered.
+import TimelinePanel from './edit/TimelinePanel.vue'
+import TextOverlayPanel from './edit/TextOverlayPanel.vue'
+import AudioMixPanel from './edit/AudioMixPanel.vue'
+import MotionPanel from './edit/MotionPanel.vue'
+import SpatialPanel from './edit/SpatialPanel.vue'
+import ColorGradePanel from './edit/ColorGradePanel.vue'
 
 const canUndo = computed(() => history.past.length > 0)
 const canRedo = computed(() => history.future.length > 0)
@@ -654,6 +662,17 @@ function applyPlatform(name: string) {
           </label>
         </div>
       </template>
+    </section>
+
+    <!-- Feature panels -->
+    <section class="group">
+      <div class="group-title">Расширенные возможности</div>
+      <TimelinePanel />
+      <TextOverlayPanel />
+      <AudioMixPanel />
+      <MotionPanel />
+      <SpatialPanel />
+      <ColorGradePanel />
     </section>
 
     <ExportControls @platform="applyPlatform" />

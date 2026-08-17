@@ -1,0 +1,214 @@
+{
+    "videoId": "x",
+    "clips": [
+        {
+            "sourceId": "vid_a",
+            "start": 0,
+            "end": 2
+        },
+        {
+            "sourceId": "vid_b",
+            "start": 0,
+            "end": 2,
+            "speed": 1.5,
+            "volume": 0.8,
+            "transitionIn": {
+                "kind": "fade",
+                "duration": 0.5
+            }
+        }
+    ],
+    "segmentTransition": {
+        "kind": "wipeleft",
+        "duration": 0.4
+    },
+    "overlays": [
+        {
+            "assetId": "ast_0123456789abcdef",
+            "kind": "image",
+            "x": 0.1,
+            "y": 0.1,
+            "width": 0.2,
+            "height": null,
+            "opacity": 0.9,
+            "rotation": 5,
+            "end": 3,
+            "fadeIn": 0.2,
+            "fadeOut": 0.2,
+            "chromaKey": {
+                "color": "#00FF00",
+                "similarity": 0.1,
+                "blend": 0.05
+            }
+        }
+    ],
+    "titles": [
+        {
+            "text": "Заголовок",
+            "fontSize": 48,
+            "color": "#FFFFFF",
+            "x": 0.5,
+            "y": 0.85,
+            "align": "center",
+            "box": {
+                "color": "#000000",
+                "opacity": 0.5,
+                "padding": 12
+            },
+            "borderWidth": 1,
+            "borderColor": "#000000",
+            "end": 3,
+            "fadeIn": 0.2,
+            "fadeOut": 0.2,
+            "animation": "fade"
+        }
+    ],
+    "subtitles": {
+        "assetId": "ast_abcdef0123456789",
+        "burnIn": true,
+        "fontSize": 24,
+        "color": "#FFFFFF",
+        "outlineWidth": 2,
+        "position": "bottom",
+        "marginV": 40
+    },
+    "audioTracks": [
+        {
+            "assetId": "ast_1111111111111111",
+            "role": "music",
+            "gain": 0.7,
+            "start": 1,
+            "loop": true,
+            "fadeIn": 0.3,
+            "fadeOut": 0.3,
+            "ducking": {
+                "enabled": true,
+                "threshold": 0.05,
+                "ratio": 8,
+                "attack": 20,
+                "release": 300
+            }
+        }
+    ],
+    "audioDynamics": {
+        "denoise": 0.4,
+        "dereverb": true,
+        "compressor": {
+            "threshold": -18,
+            "ratio": 3,
+            "attack": 20,
+            "release": 250,
+            "makeup": 1
+        },
+        "limiter": {
+            "ceiling": -1
+        },
+        "gate": {
+            "threshold": -45,
+            "ratio": 2
+        },
+        "deesser": true,
+        "highpassHz": 80,
+        "lowpassHz": 15000,
+        "bitrateKbps": 192,
+        "volumeEnvelope": [
+            {
+                "t": 0,
+                "v": 1,
+                "interp": "linear"
+            },
+            {
+                "t": 2,
+                "v": 0.5,
+                "interp": "linear"
+            }
+        ]
+    },
+    "motion": {
+        "zoom": [
+            {
+                "t": 0,
+                "v": 1,
+                "interp": "linear"
+            },
+            {
+                "t": 3,
+                "v": 1.5,
+                "interp": "linear"
+            }
+        ]
+    },
+    "speedRamps": [
+        {
+            "t": 0,
+            "v": 1,
+            "interp": "linear"
+        },
+        {
+            "t": 3,
+            "v": 2,
+            "interp": "linear"
+        }
+    ],
+    "reframe360": {
+        "inputProjection": "equirect",
+        "outputProjection": "flat",
+        "outputWidth": 1920,
+        "outputHeight": 1080,
+        "horizonLock": true,
+        "yaw": [
+            {
+                "t": 0,
+                "v": 0,
+                "interp": "linear"
+            }
+        ],
+        "fov": [
+            {
+                "t": 0,
+                "v": 90,
+                "interp": "linear"
+            }
+        ]
+    },
+    "stabilize": {
+        "mode": "fast",
+        "smoothing": 10,
+        "zoom": 2,
+        "horizonLock": false
+    },
+    "lensCorrection": {
+        "k1": -0.05,
+        "k2": 0.01
+    },
+    "colorAdvanced": {
+        "temperature": 0.2,
+        "tint": -0.1,
+        "exposure": 0.3,
+        "highlights": -0.2,
+        "shadows": 0.1,
+        "lift": {
+            "r": 0.05,
+            "g": 0,
+            "b": -0.05
+        },
+        "gamma": {
+            "r": 1.1,
+            "g": 1,
+            "b": 0.9
+        },
+        "gain": {
+            "r": 1.05,
+            "g": 1,
+            "b": 1.1
+        },
+        "hsl": [
+            {
+                "band": "red",
+                "hue": 5,
+                "saturation": 1.2,
+                "luminance": 1
+            }
+        ]
+    }
+}

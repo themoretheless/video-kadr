@@ -1,11 +1,26 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
+  beginEditTransaction,
   doExport,
+  endEditTransaction,
   hasMeaningfulChanges,
   selectedExportUnavailableReason,
   state,
 } from '../../store'
+import ProgressBar from '../ProgressBar.vue'
+import { applyFraming, batchState, clearBatch, runBatchExport } from '../spatial/batchExport'
+import {
+  ASPECT_PRESETS,
+  framingForAspect,
+  isAspectActive,
+  PLATFORM_PRESETS,
+  platformPatch,
+  type AspectPreset,
+  type FitMode,
+  type PlatformId,
+  type PlatformPreset,
+} from '../spatial/exportPresets'
 
 type Platform = 'telegram' | 'shorts' | 'reels' | 'youtube'
 
@@ -97,6 +112,81 @@ watch(
   },
   { deep: true },
 )
+
+// --- aspect ratio and platform presets ---
+// `crop` fills the target ratio and loses the edges, `pad` keeps the whole
+// frame and adds bars. The two are mutually exclusive, so switching presets
+// never leaves a stale crop behind a new letterbox.
+
+const fitMode = ref<FitMode>('crop')
+const fitModes: { value: FitMode; label: string }[] = [
+  { value: 'crop', label: 'Заполнить' },
+  { value: 'pad', label: 'Вписать в поля' },
+]
+
+const aspectPresets = ASPECT_PRESETS
+const platformPresets = PLATFORM_PRESETS
+
+function applyAspect(preset: AspectPreset): void {
+  const video = state.video
+  if (!video) return
+  const framing = framingForAspect(video, preset, fitMode.value)
+  beginEditTransaction('aspect-preset')
+  state.edit.cropEnabled = framing.cropEnabled
+  state.edit.crop = { ...framing.crop }
+  state.edit.pad = framing.pad
+  endEditTransaction()
+}
+
+function aspectActive(preset: AspectPreset): boolean {
+  return isAspectActive(state.edit, preset, fitMode.value)
+}
+
+function setFitMode(mode: FitMode): void {
+  fitMode.value = mode
+}
+
+function applyPlatform(preset: PlatformPreset): void {
+  const video = state.video
+  if (!video) return
+  beginEditTransaction('platform-preset')
+  applyFraming(platformPatch(video, preset))
+  endEditTransaction()
+}
+
+// --- batch export ---
+// One edit, several presets. Submission and polling stay in the store; this
+// panel only picks the presets and shows the queue.
+
+const batchSelection = ref<PlatformId[]>([])
+
+function toggleBatch(id: PlatformId): void {
+  const index = batchSelection.value.indexOf(id)
+  if (index >= 0) batchSelection.value.splice(index, 1)
+  else batchSelection.value.push(id)
+}
+
+function startBatch(): void {
+  if (!batchSelection.value.length) return
+  void runBatchExport([...batchSelection.value])
+}
+
+const batchDisabled = computed(
+  () =>
+    !state.video ||
+    state.exporting ||
+    batchState.running ||
+    !batchSelection.value.length ||
+    Boolean(exportUnavailable.value),
+)
+
+const batchStatusLabels: Record<string, string> = {
+  pending: 'в очереди',
+  running: 'идёт',
+  done: 'готово',
+  error: 'ошибка',
+  skipped: 'пропущено',
+}
 </script>
 
 <template>
@@ -170,13 +260,110 @@ watch(
     </div>
 
     <div class="field">
+      <label>Пропорции кадра</label>
+      <div class="chips" role="group" aria-label="Режим подгонки">
+        <button
+          v-for="mode in fitModes"
+          :key="mode.value"
+          type="button"
+          class="chip"
+          :class="{ active: fitMode === mode.value }"
+          :aria-pressed="fitMode === mode.value"
+          @click="setFitMode(mode.value)"
+        >
+          {{ mode.label }}
+        </button>
+      </div>
+      <div class="chips" role="group" aria-label="Пропорции кадра">
+        <button
+          v-for="preset in aspectPresets"
+          :key="preset.id"
+          type="button"
+          class="chip"
+          :class="{ active: aspectActive(preset) }"
+          :aria-pressed="aspectActive(preset)"
+          :disabled="!state.video"
+          @click="applyAspect(preset)"
+        >
+          {{ preset.label }}
+        </button>
+      </div>
+      <p class="hint">
+        «Заполнить» кадрирует по центру, «Вписать в поля» добавляет чёрные поля и сохраняет весь
+        кадр. 2.39:1 уходит на сервер как 98:41: там пропорции задаются целыми числами.
+      </p>
+    </div>
+
+    <div class="field">
       <label>Под платформу</label>
       <div class="chips" role="group" aria-label="Платформа публикации">
         <button type="button" class="chip" @click="emit('platform', 'telegram')">Telegram</button>
-        <button type="button" class="chip" @click="emit('platform', 'shorts')">Shorts</button>
-        <button type="button" class="chip" @click="emit('platform', 'reels')">Reels</button>
-        <button type="button" class="chip" @click="emit('platform', 'youtube')">YouTube</button>
+        <button
+          v-for="preset in platformPresets"
+          :key="preset.id"
+          type="button"
+          class="chip"
+          :disabled="!state.video"
+          :title="preset.hint"
+          @click="applyPlatform(preset)"
+        >
+          {{ preset.label }}
+        </button>
       </div>
+    </div>
+
+    <div class="field">
+      <label>Пакетный экспорт</label>
+      <div class="chips" role="group" aria-label="Пресеты пакетного экспорта">
+        <button
+          v-for="preset in platformPresets"
+          :key="preset.id"
+          type="button"
+          class="chip"
+          :class="{ active: batchSelection.includes(preset.id) }"
+          :aria-pressed="batchSelection.includes(preset.id)"
+          :disabled="batchState.running"
+          @click="toggleBatch(preset.id)"
+        >
+          {{ preset.label }}
+        </button>
+      </div>
+      <div class="chips">
+        <button type="button" class="btn ghost sm" :disabled="batchDisabled" @click="startBatch">
+          {{ batchState.running ? 'Экспортирую…' : 'Экспортировать пакетом' }}
+        </button>
+        <button
+          v-if="batchState.jobs.length && !batchState.running"
+          type="button"
+          class="btn ghost sm"
+          @click="clearBatch"
+        >
+          Очистить список
+        </button>
+      </div>
+      <p class="hint">
+        Тот же монтаж уходит в каждый выбранный пресет по очереди. Пропорции и размер меняются
+        только на время очереди и возвращаются обратно в конце.
+      </p>
+      <ul v-if="batchState.jobs.length" class="batch-queue">
+        <li v-for="job in batchState.jobs" :key="job.id" class="batch-job">
+          <div class="batch-job-head">
+            <span class="batch-job-label">{{ job.label }}</span>
+            <span class="batch-job-status" :class="`is-${job.status}`">
+              {{ batchStatusLabels[job.status] }}
+            </span>
+          </div>
+          <ProgressBar
+            v-if="job.status === 'running'"
+            :progress="job.progress"
+            :stage="state.exportStage"
+          />
+          <a v-else-if="job.status === 'done'" class="batch-job-link" :href="job.url" download>
+            {{ job.filename }}
+          </a>
+          <span v-else-if="job.error" class="batch-job-error">{{ job.error }}</span>
+        </li>
+      </ul>
     </div>
 
     <p v-if="formatHint" class="hint">{{ formatHint }}</p>
@@ -200,10 +387,66 @@ watch(
   <button
     type="button"
     class="btn primary big export-submit"
-    :disabled="state.exporting || Boolean(exportUnavailable)"
+    :disabled="state.exporting || batchState.running || Boolean(exportUnavailable)"
     :title="exportUnavailable || undefined"
     @click="requestExport"
   >
     {{ state.exporting ? 'Обработка…' : 'Экспортировать' }}
   </button>
 </template>
+
+<style scoped>
+.batch-queue {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.batch-job {
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.batch-job-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.batch-job-label {
+  font-weight: 600;
+}
+
+.batch-job-status {
+  color: var(--muted);
+}
+
+.batch-job-status.is-done {
+  color: var(--ok);
+}
+
+.batch-job-status.is-error {
+  color: var(--danger);
+}
+
+.batch-job-status.is-skipped {
+  color: var(--warn);
+}
+
+.batch-job-link {
+  color: var(--accent);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.batch-job-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+</style>

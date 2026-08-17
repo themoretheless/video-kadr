@@ -2,12 +2,28 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+/// Output-timeline keyframes arrive in seconds. The domain stores millisecond
+/// ticks so track equality and plan fingerprints stay exact.
+pub const OUTPUT_TIME_BASE: u32 = 1_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Interpolation {
     Hold,
     Linear,
     EaseInOutCubic,
+}
+
+impl Interpolation {
+    /// Map the wire token. `smooth` is the client-facing name of the cubic ease.
+    pub fn from_wire(token: &str) -> Option<Self> {
+        match token {
+            "hold" => Some(Self::Hold),
+            "linear" => Some(Self::Linear),
+            "smooth" => Some(Self::EaseInOutCubic),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

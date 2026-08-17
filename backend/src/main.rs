@@ -61,6 +61,11 @@ async fn main() -> anyhow::Result<()> {
     } else {
         (Vec::new(), Vec::new(), Vec::new())
     };
+    // `drawtext` is an optional FFmpeg build feature; the titles stage refuses
+    // to emit text filters when the local binary cannot render them.
+    video_editor_backend::render::graph::titles::set_text_rendering_available(
+        ffmpeg_filters.iter().any(|filter| filter == "drawtext"),
+    );
     let tool_info = ToolInfo {
         ffmpeg,
         ytdlp,

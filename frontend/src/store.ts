@@ -11,6 +11,15 @@ import {
   sanitizeRect,
 } from './domain/edit'
 import { cloneValue, PatchCommand } from './domain/history'
+import {
+  applyFeatureModules,
+  captureFeatureModules,
+  featureModulePayload,
+  featureModulesActive,
+  featureModuleStates,
+  resetFeatureModules,
+  type FeatureModuleSnapshot,
+} from './store/modules'
 import { toast } from './toasts'
 import type { Capabilities, EditState, Job, LutAsset, MediaEntry, ResultInfo, VideoInfo } from './types'
 
@@ -29,6 +38,18 @@ export {
   sampleCurvePchip,
   tierToCrf,
 } from './domain/edit'
+
+// Asset library facade. Components must not import the transport layer, so the
+// asset store is re-exported here alongside the rest of the editor state.
+export {
+  assetsState,
+  assetUrl,
+  assetsOfKind,
+  deleteAsset,
+  findAsset,
+  loadAssets,
+  uploadAsset,
+} from './store/assets'
 
 export const MAX_LUT_UPLOAD_BYTES = 16 * 1024 * 1024
 export const clientOnlyMode = api.clientOnlyMode
@@ -64,11 +85,35 @@ export const state = reactive({
   playToggle: 0,
 })
 
+/**
+ * Everything an undo step, an autosave or a restore has to carry: the classic
+ * edit fields plus one entry per feature store module. The module keys cannot
+ * collide with EditState keys, so a flat merge keeps PatchCommand's per-field
+ * granularity.
+ */
+type EditSnapshot = EditState & FeatureModuleSnapshot
+
+function captureEditSnapshot(): EditSnapshot {
+  return { ...cloneValue(state.edit), ...captureFeatureModules() }
+}
+
+/** Split a snapshot back into `state.edit` and the feature module states. */
+function restoreEditSnapshot(snapshot: EditSnapshot): void {
+  const edit = defaultEdit()
+  const target = edit as unknown as Record<string, unknown>
+  const source = snapshot as unknown as Record<string, unknown>
+  for (const key of Object.keys(edit)) {
+    if (Object.hasOwn(source, key)) target[key] = cloneValue(source[key])
+  }
+  state.edit = edit
+  applyFeatureModules(snapshot)
+}
+
 // A synchronous revision guard lets async lookups prove that the user has not
 // edited the current recipe while a response was in flight.
 let editRevision = 0
 watch(
-  () => state.edit,
+  () => [state.edit, ...featureModuleStates()],
   () => {
     editRevision += 1
   },
@@ -116,6 +161,7 @@ export async function doImport(): Promise<void> {
     edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
+    resetFeatureModules()
     resetHistory()
     state.importStatus = ''
     void loadLibrary()
@@ -164,6 +210,7 @@ export async function doUpload(file: File): Promise<void> {
     edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
     edit.scale = { w: v.width, h: -2 }
     state.edit = edit
+    resetFeatureModules()
     resetHistory()
     state.importStatus = ''
     void loadLibrary()
@@ -248,11 +295,11 @@ export function resetColor(): void {
 }
 
 export function buildEditPayload(): Record<string, unknown> {
-  return buildPayload(state.edit, state.video)
+  return buildPayload(state.edit, state.video, featureModulePayload())
 }
 
 export function hasMeaningfulChanges(): boolean {
-  return hasMeaningfulEditChanges(state.edit, state.video)
+  return hasMeaningfulEditChanges(state.edit, state.video, featureModulePayload())
 }
 
 export function normalizeCrop(): void {
@@ -426,6 +473,7 @@ export function openFromLibrary(entry: MediaEntry): void {
   edit.crop = { x: 0, y: 0, w: v.width, h: v.height }
   edit.scale = { w: v.width, h: -2 }
   state.edit = edit
+  resetFeatureModules()
   resetHistory()
   // Restore any saved edit for this clip (overrides the defaults above).
   void restoreProject(v.id)
@@ -448,11 +496,11 @@ export async function deleteFromLibrary(id: string): Promise<void> {
 // transactions make every pointer drag one undo step; other rapid controls are
 // grouped by the debounce boundary.
 
-type EditCommand = PatchCommand<EditState>
+type EditCommand = PatchCommand<EditSnapshot>
 export const history = reactive({ past: [] as EditCommand[], future: [] as EditCommand[] })
-let historyBaseline = cloneValue(state.edit)
+let historyBaseline = captureEditSnapshot()
 let historyTimer: ReturnType<typeof setTimeout> | null = null
-let historyTransaction: { key: string; before: EditState; depth: number } | null = null
+let historyTransaction: { key: string; before: EditSnapshot; depth: number } | null = null
 
 function commitHistory(command: EditCommand | null): void {
   if (!command) return
@@ -463,7 +511,7 @@ function commitHistory(command: EditCommand | null): void {
 
 function recordChange(): void {
   historyTimer = null
-  const current = cloneValue(state.edit)
+  const current = captureEditSnapshot()
   commitHistory(PatchCommand.between(historyBaseline, current, 'debounced-edit'))
   historyBaseline = current
 }
@@ -477,7 +525,7 @@ export function resetHistory(): void {
   history.past = []
   history.future = []
   historyTransaction = null
-  historyBaseline = cloneValue(state.edit)
+  historyBaseline = captureEditSnapshot()
 }
 
 function applyHistory(command: EditCommand): void {
@@ -485,9 +533,9 @@ function applyHistory(command: EditCommand): void {
     clearTimeout(historyTimer)
     historyTimer = null
   }
-  state.edit = command.apply(state.edit)
+  restoreEditSnapshot(command.apply(captureEditSnapshot()))
   // Pin the baseline so the watch fired by this assignment records no command.
-  historyBaseline = cloneValue(state.edit)
+  historyBaseline = captureEditSnapshot()
 }
 
 export function undo(): void {
@@ -523,7 +571,7 @@ export function beginEditTransaction(key: string): void {
     historyTransaction.depth++
     return
   }
-  historyTransaction = { key, before: cloneValue(state.edit), depth: 1 }
+  historyTransaction = { key, before: captureEditSnapshot(), depth: 1 }
 }
 
 export function endEditTransaction(): void {
@@ -531,14 +579,14 @@ export function endEditTransaction(): void {
   if (!transaction) return
   transaction.depth--
   if (transaction.depth > 0) return
-  const current = cloneValue(state.edit)
+  const current = captureEditSnapshot()
   commitHistory(PatchCommand.between(transaction.before, current, transaction.key))
   historyBaseline = current
   historyTransaction = null
 }
 
 watch(
-  () => state.edit,
+  () => [state.edit, ...featureModuleStates()],
   () => {
     if (historyTransaction) return
     if (historyTimer) clearTimeout(historyTimer)
@@ -732,7 +780,10 @@ async function restoreProject(videoId: string): Promise<void> {
     // Guard against a clip switch while the lookup was in flight.
     if (!p?.edit || state.video?.id !== videoId || sequence !== projectRestoreSequence) return
     if (editRevision !== startingRevision) return
-    const restored = sanitizeEditState(p.edit, baseEdit)
+    // `modules` is a sibling of the edit fields inside the persisted recipe;
+    // it must not leak into EditState.
+    const { modules, ...persistedEdit } = p.edit
+    const restored = sanitizeEditState(persistedEdit, baseEdit)
     const missingLut = await resolvePersistedLut(restored)
     if (
       state.video?.id !== videoId ||
@@ -742,6 +793,7 @@ async function restoreProject(videoId: string): Promise<void> {
       return
     }
     state.edit = restored
+    applyFeatureModules(modules)
     resetHistory()
     applied = true
     if (missingLut) toastMissingLut(missingLut)
@@ -789,11 +841,15 @@ function toastMissingLut(label: string): void {
 async function persistProject(): Promise<void> {
   const v = state.video
   if (!v) return
+  // Only projects that actually use a new feature grow a `modules` block, so
+  // existing saved recipes keep their exact shape.
+  const edit: Record<string, unknown> = { ...cloneValue(state.edit) }
+  if (featureModulesActive()) edit.modules = captureFeatureModules()
   try {
     await api.saveProject({
       videoId: v.id,
       video: v,
-      edit: state.edit,
+      edit,
       name: v.title || v.filename,
     })
   } catch {
@@ -810,7 +866,7 @@ function scheduleProjectSave(): void {
 }
 
 watch(
-  () => [state.video, state.edit],
+  () => [state.video, state.edit, ...featureModuleStates()],
   () => {
     if (!state.video) return
     if (restoringProjectFor === state.video.id) {

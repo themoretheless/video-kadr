@@ -109,9 +109,17 @@ export function parseTime(input: string): number | null {
   return seconds
 }
 
+/**
+ * Build the `/api/edit` body. `modulePayload` is the merged contribution of the
+ * feature store modules; it is passed in rather than imported so this file stays
+ * framework- and transport-independent. Every module returns nothing while it
+ * sits at its defaults, so an untouched project still produces exactly the
+ * payload this app has always sent.
+ */
 export function buildEditPayload(
   edit: EditState,
   video: VideoInfo | null,
+  modulePayload: Record<string, unknown> = {},
 ): Record<string, unknown> {
   if (!video) return {}
 
@@ -171,12 +179,18 @@ export function buildEditPayload(
   if (edit.format === 'mp4' && edit.codec === 'h265') payload.codec = 'h265'
   const crf = tierToCrf(edit.qualityTier, edit.format)
   if (crf !== null) payload.quality = crf
+  Object.assign(payload, modulePayload)
   return payload
 }
 
 /** True when export would alter media or non-default output settings. */
-export function hasMeaningfulChanges(edit: EditState, video: VideoInfo | null): boolean {
-  const payload = buildEditPayload(edit, video)
+export function hasMeaningfulChanges(
+  edit: EditState,
+  video: VideoInfo | null,
+  modulePayload: Record<string, unknown> = {},
+): boolean {
+  if (Object.keys(modulePayload).length > 0) return true
+  const payload = buildEditPayload(edit, video, modulePayload)
   return Object.entries(payload).some(([key, value]) => {
     if (key === 'videoId') return false
     if (key === 'mute') return value !== false

@@ -1,5 +1,6 @@
 //! Offline render service contract: immutable edit plan plus resource policy.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -24,6 +25,9 @@ pub struct SourceMediaMetadata {
     pub height: u32,
     pub duration_seconds: f64,
     pub has_audio: bool,
+    /// Probed source frame rate. Composed stages need it to keep a multi-clip
+    /// timeline at one rate and to avoid resampling an animated reframe.
+    pub fps: Option<f64>,
 }
 
 impl SourceMediaMetadata {
@@ -45,7 +49,15 @@ impl SourceMediaMetadata {
             height,
             duration_seconds,
             has_audio,
+            fps: None,
         })
+    }
+
+    /// Attach the probed frame rate. A non-finite or non-positive value is
+    /// dropped rather than propagated into a filter option.
+    pub fn with_fps(mut self, fps: Option<f64>) -> Self {
+        self.fps = fps.filter(|value| value.is_finite() && *value > 0.0);
+        self
     }
 }
 
@@ -56,6 +68,17 @@ pub struct SourceMediaSpec {
     pub height: u32,
     pub duration_micros: u64,
     pub has_audio: bool,
+    /// Frame rate in milli-fps, absent when the probe did not report one. It is
+    /// skipped when absent so a plan without it keeps its existing fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps_milli: Option<u32>,
+}
+
+impl SourceMediaSpec {
+    /// Source frame rate in frames per second, when the probe reported one.
+    pub fn fps(&self) -> Option<f64> {
+        self.fps_milli.map(|value| f64::from(value) / 1000.0)
+    }
 }
 
 impl SourceMediaSpec {
@@ -64,11 +87,16 @@ impl SourceMediaSpec {
         if duration_micros > u64::MAX as f64 {
             anyhow::bail!("Длительность источника слишком велика");
         }
+        let fps_milli = value
+            .fps
+            .filter(|fps| fps.is_finite() && *fps > 0.0 && *fps * 1000.0 <= f64::from(u32::MAX))
+            .map(|fps| (fps * 1000.0).round() as u32);
         Ok(Self {
             width: value.width,
             height: value.height,
             duration_micros: duration_micros.round() as u64,
             has_audio: value.has_audio,
+            fps_milli,
         })
     }
 
@@ -312,6 +340,9 @@ fn validate_scale(scale: &Scale) -> anyhow::Result<()> {
 }
 
 fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
+    // Parity-wave fields are validated and clamped up front, while the wire
+    // request is still owned here; they attach to the spec below.
+    let extensions = crate::domain::edit::EditExtensions::from_request(&request)?;
     let trim = request
         .trim
         .map(|value| TimeRange::new(value.start, value.end))
@@ -401,7 +432,8 @@ fn map_request(request: EditRequest) -> anyhow::Result<(EditSpec, OutputSpec)> {
             normalize: request.normalize_audio,
             highpass: request.highpass,
         },
-    )?;
+    )?
+    .with_extensions(extensions)?;
     let format = OutputFormat::parse(request.format.as_deref())?;
     let codec = match (format, request.codec.as_deref()) {
         (OutputFormat::Mp4, value) => Some(VideoCodec::parse_mp4(value)?),
@@ -460,6 +492,9 @@ pub struct ExportExecutionProfile {
 pub struct RenderResources {
     lut_path: Option<PathBuf>,
     lut_sha256: Option<String>,
+    /// Private paths for every asset or clip source id the edit refers to,
+    /// resolved by the HTTP adapter before the FFmpeg adapter runs.
+    assets: BTreeMap<String, PathBuf>,
 }
 
 impl RenderResources {
@@ -467,6 +502,7 @@ impl RenderResources {
         Self {
             lut_path: Some(path.into()),
             lut_sha256: None,
+            assets: BTreeMap::new(),
         }
     }
 
@@ -474,7 +510,15 @@ impl RenderResources {
         Self {
             lut_path: Some(path.into()),
             lut_sha256: Some(sha256),
+            assets: BTreeMap::new(),
         }
+    }
+
+    /// Register a resolved id -> path pair. Ids come from the wire request but
+    /// are only ever used as map keys; the path is chosen by the adapter.
+    pub fn with_asset(mut self, id: impl Into<String>, path: impl Into<PathBuf>) -> Self {
+        self.assets.insert(id.into(), path.into());
+        self
     }
 
     pub fn lut_path(&self) -> Option<&Path> {
@@ -483,6 +527,10 @@ impl RenderResources {
 
     pub fn lut_sha256(&self) -> Option<&str> {
         self.lut_sha256.as_deref()
+    }
+
+    pub fn assets(&self) -> &BTreeMap<String, PathBuf> {
+        &self.assets
     }
 }
 

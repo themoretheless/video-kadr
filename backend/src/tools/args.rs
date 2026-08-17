@@ -1,14 +1,17 @@
 //! Pure FFmpeg adapter: compiles an immutable `EditPlan` into command arguments.
 //! No I/O and no process spawning, so it is fully unit-testable.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::config::encode_budget::EncodeBudget;
 use crate::domain::edit::{EditSpec, Rotation, TimeRange, ToneCurve, ToneCurves};
 use crate::domain::filter_graph::{FilterGraph, MediaKind};
 use crate::domain::output::{OutputFormat, OutputSpec, VideoCodec};
-use crate::ports::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
-use crate::services::render::EditPlan;
+use crate::ports::{
+    CompiledExportCommand, CompiledPrepass, ExportCommandCompiler, ExportCompileRequest,
+};
+use crate::render::graph::{self, ComplexPlan, InputSpec, RenderContext};
+use crate::services::render::{EditPlan, RenderResources};
 
 use super::looks::look_preset_definition;
 
@@ -26,7 +29,7 @@ impl ExportCommandCompiler for FfmpegExportCompiler {
             request.execution.plan(),
             &request.execution.profile.encode_budget,
             request.parallel_jobs,
-            request.execution.resources().lut_path(),
+            request.execution.resources(),
         )
     }
 }
@@ -260,20 +263,15 @@ fn video_filter_program(
     Ok(VideoFilterProgram::Complex(graph))
 }
 
-/// Build the audio filter chain: areverse -> volume -> atempo -> afade.
+/// Build the audio filter chain: areverse -> highpass -> atempo -> afade ->
+/// loudnorm -> volume.
 fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
     let timing = edit.timing();
-    let audio = edit.audio();
     let mut af: Vec<String> = Vec::new();
     if timing.reverse {
         af.push("areverse".into());
     }
-    if audio.highpass {
-        af.push("highpass=f=100".into());
-    }
-    if (audio.volume - 1.0).abs() > 1e-6 {
-        af.push(format!("volume={:.3}", audio.volume));
-    }
+    af.extend(graph::audio_mix::legacy_highpass_filter(edit));
     let speed = timing.speed;
     if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
         // atempo only accepts 0.5..=2.0; EditPlan validates that range.
@@ -289,10 +287,9 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
             timing.fade_out_seconds
         ));
     }
-    // Loudness normalization is applied last, on the finished chain.
-    if audio.normalize {
-        af.push("loudnorm=I=-14:TP=-1.5:LRA=11".into());
-    }
+    // Normalization runs before the volume slider, so the slider stays a
+    // deliberate offset from the loudness target instead of being discarded.
+    af.extend(graph::audio_mix::master_tail_filters(edit));
     af
 }
 
@@ -316,7 +313,7 @@ fn push_audio(
     args.push("-c:a".into());
     args.push(codec.into());
     args.push("-b:a".into());
-    args.push("128k".into());
+    args.push(graph::audio_mix::bitrate_argument(edit));
 }
 
 fn push_fps(args: &mut Vec<String>, output: &OutputSpec) {
@@ -364,7 +361,7 @@ fn map_optional_audio_for_complex_video(
 /// filter graph; geometry/colour/speed/fade then operate on the trimmed stream.
 /// The output container/codecs depend on `edit.format` (mp4/webm/gif/png/mp3).
 pub fn build_ffmpeg_args(input: &Path, destination: &Path, plan: &EditPlan) -> Vec<String> {
-    compile_ffmpeg_command(input, destination, plan, None)
+    compile_ffmpeg_command(input, destination, plan, &RenderResources::default())
         .expect("build_ffmpeg_args requires all selected render resources")
         .arguments
 }
@@ -373,13 +370,35 @@ fn compile_ffmpeg_command(
     input: &Path,
     destination: &Path,
     plan: &EditPlan,
-    lut_path: Option<&Path>,
+    resources: &RenderResources,
 ) -> anyhow::Result<CompiledExportCommand> {
+    let lut_path = resources.lut_path();
     let edit = &plan.edit;
     let output = &plan.output;
     let format = output.format;
     let source_duration = plan.source.duration_seconds();
     let out_dur = expected_output_secs(edit, source_duration);
+
+    // Parity-wave stages (overlays, titles, extra audio, 360, motion, ...) are
+    // composed into a multi-input filter_complex first. An edit that uses none
+    // of them leaves the plan trivial and takes the untouched legacy path
+    // below, so its arguments stay byte-identical.
+    let (complex, context) = compose_graph(input, plan, out_dur, resources)?;
+    if !complex.is_trivial() {
+        // Two-pass stabilization analyses the source before the render pass.
+        let prepass = graph::spatial::prepass_command(&complex, edit, &context)?.map(|pass| {
+            CompiledPrepass {
+                arguments: pass.args,
+                output: pass.transforms_path,
+            }
+        });
+        return Ok(CompiledExportCommand {
+            arguments: build_graph_args(input, destination, plan, &complex, out_dur, lut_path)?,
+            expected_duration_seconds: out_dur,
+            read_only_files: graph_read_only_files(&complex, lut_path),
+            prepass,
+        });
+    }
 
     // Multi-segment edits (cut from the middle / stitch ranges) need a concat
     // filter graph; only meaningful for the video containers.
@@ -394,6 +413,7 @@ fn compile_ffmpeg_command(
             arguments: build_concat_args(input, destination, plan, segs, out_dur, lut_path)?,
             expected_duration_seconds: out_dur,
             read_only_files: lut_path.into_iter().map(Path::to_path_buf).collect(),
+            prepass: None,
         });
     }
 
@@ -527,6 +547,7 @@ fn compile_ffmpeg_command(
         arguments: args,
         expected_duration_seconds: out_dur,
         read_only_files: lut_path.into_iter().map(Path::to_path_buf).collect(),
+        prepass: None,
     })
 }
 
@@ -539,9 +560,16 @@ pub fn build_ffmpeg_args_with_budget(
     budget: &EncodeBudget,
     parallel_jobs: usize,
 ) -> Vec<String> {
-    compile_ffmpeg_command_with_budget(input, output, plan, budget, parallel_jobs, None)
-        .expect("build_ffmpeg_args_with_budget requires all selected render resources")
-        .arguments
+    compile_ffmpeg_command_with_budget(
+        input,
+        output,
+        plan,
+        budget,
+        parallel_jobs,
+        &RenderResources::default(),
+    )
+    .expect("build_ffmpeg_args_with_budget requires all selected render resources")
+    .arguments
 }
 
 fn compile_ffmpeg_command_with_budget(
@@ -550,9 +578,9 @@ fn compile_ffmpeg_command_with_budget(
     plan: &EditPlan,
     budget: &EncodeBudget,
     parallel_jobs: usize,
-    lut_path: Option<&Path>,
+    resources: &RenderResources,
 ) -> anyhow::Result<CompiledExportCommand> {
-    let mut command = compile_ffmpeg_command(input, output, plan, lut_path)?;
+    let mut command = compile_ffmpeg_command(input, output, plan, resources)?;
     let destination = command
         .arguments
         .pop()
@@ -635,6 +663,202 @@ fn push_video_codec(args: &mut Vec<String>, output: &OutputSpec) {
         }
         _ => unreachable!("still, GIF, and audio-only outputs do not use video codec options"),
     }
+}
+
+/// Run the parity-wave stages over an immutable plan. The render context
+/// carries probe facts and expected duration; resolved asset paths still have
+/// to be threaded in by the HTTP adapter (see `RenderContext::with_asset`).
+fn compose_graph(
+    input: &Path,
+    plan: &EditPlan,
+    out_dur: f64,
+    resources: &RenderResources,
+) -> anyhow::Result<(ComplexPlan, RenderContext)> {
+    let mut context = RenderContext::new(
+        plan.source.width,
+        plan.source.height,
+        plan.source.duration_seconds(),
+        plan.source.has_audio,
+        // Composed stages need the SOURCE rate: the output override is usually
+        // absent, and resampling a 24 or 60 fps clip to a guessed rate is wrong.
+        plan.source.fps().or_else(|| plan.output.fps()),
+        out_dur,
+    );
+    // Asset ids stay in the immutable plan; only the execution envelope owns
+    // the private paths they resolve to.
+    for (id, path) in resources.assets() {
+        context = context.with_asset(id.clone(), path.clone());
+    }
+    let mut complex = ComplexPlan::new(
+        InputSpec::source(input),
+        plan.output.audio_codec.is_some() && plan.source.has_audio,
+    );
+    graph::compose(&mut complex, &plan.edit, &context)?;
+    Ok((complex, context))
+}
+
+/// Auxiliary files a composed command reads: the LUT plus every extra input.
+/// The primary input is already covered by the process render policy.
+fn graph_read_only_files(complex: &ComplexPlan, lut_path: Option<&Path>) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = lut_path.into_iter().map(Path::to_path_buf).collect();
+    files.extend(
+        complex
+            .inputs()
+            .iter()
+            .skip(1)
+            .map(|input| input.path.clone()),
+    );
+    files.sort();
+    files.dedup();
+    files
+}
+
+/// `-map` target for a pad label: a raw input stream such as `0:a` is mapped
+/// by name, while a filter output pad is mapped in brackets.
+fn map_target(label: &str) -> String {
+    let is_input_stream = label.split_once(':').is_some_and(|(index, kind)| {
+        !index.is_empty()
+            && index.bytes().all(|byte| byte.is_ascii_digit())
+            && matches!(kind, "v" | "a")
+    });
+    if is_input_stream {
+        label.to_owned()
+    } else {
+        format!("[{label}]")
+    }
+}
+
+/// Assemble the command for a non-trivial composed plan: the primary input
+/// keeps its input-side trim, every extra input the stages registered is
+/// appended, and the existing per-format filter program is re-rooted onto the
+/// plan's terminal pads.
+fn build_graph_args(
+    input: &Path,
+    destination: &Path,
+    plan: &EditPlan,
+    complex: &ComplexPlan,
+    out_dur: f64,
+    lut_path: Option<&Path>,
+) -> anyhow::Result<Vec<String>> {
+    let edit = &plan.edit;
+    let output = &plan.output;
+    let format = output.format;
+    if !matches!(
+        format,
+        OutputFormat::Mp4 | OutputFormat::Webm | OutputFormat::Av1 | OutputFormat::Prores
+    ) {
+        anyhow::bail!("composed render stages support only the video containers, not {format}");
+    }
+    // Segments still belong to the legacy concat path. If a stage ran but left
+    // the raw input pad in place, nothing consumed them and the output would
+    // silently be the untrimmed source.
+    if !valid_segments(edit).is_empty() && !complex.timeline_consumed() {
+        anyhow::bail!("composed render stages must consume the segment timeline");
+    }
+
+    let mut graph = complex.render();
+    let append = |graph: &mut String, statement: String| {
+        if !graph.is_empty() {
+            graph.push(';');
+        }
+        graph.push_str(&statement);
+    };
+
+    let video_label = complex.video_label().to_owned();
+    let vmap = match video_filter_program(edit, out_dur, true, lut_path, &video_label, "vout")? {
+        VideoFilterProgram::Linear(filters) if filters.is_empty() => map_target(&video_label),
+        VideoFilterProgram::Linear(filters) => {
+            append(
+                &mut graph,
+                format!(
+                    "[{video_label}]{}[vout]",
+                    serialize_filter_chain(MediaKind::Video, &filters)
+                ),
+            );
+            "[vout]".to_owned()
+        }
+        VideoFilterProgram::Complex(lut_graph) => {
+            append(&mut graph, lut_graph);
+            "[vout]".to_owned()
+        }
+    };
+
+    let include_audio = output.audio_codec.is_some();
+    let amap = include_audio.then(|| {
+        let audio_label = complex.audio_label().unwrap_or("0:a").to_owned();
+        let filters = audio_filters(edit, out_dur);
+        if filters.is_empty() {
+            return map_target(&audio_label);
+        }
+        append(
+            &mut graph,
+            format!(
+                "[{audio_label}]{}[aout]",
+                serialize_filter_chain(MediaKind::Audio, &filters)
+            ),
+        );
+        "[aout]".to_owned()
+    });
+
+    let mut args: Vec<String> = vec!["-y".into()];
+    // An input-side seek would shift every clip in-point the composed timeline
+    // already resolved against the untrimmed source, so it is suppressed once a
+    // stage owns the timeline.
+    if let Some(trim) = edit.timing().trim.filter(|_| !complex.timeline_consumed()) {
+        args.push("-ss".into());
+        args.push(format_secs(trim.start_seconds()));
+        args.push("-t".into());
+        args.push(format_secs(trim.duration_seconds()));
+    }
+    args.push("-i".into());
+    args.push(input.to_string_lossy().into_owned());
+    let mut has_looped_still = false;
+    for extra in complex.inputs().iter().skip(1) {
+        if extra.loop_still {
+            has_looped_still = true;
+            args.push("-loop".into());
+            args.push("1".into());
+        }
+        if let Some(seek) = extra.seek {
+            args.push("-ss".into());
+            args.push(format_secs(seek));
+        }
+        args.push("-i".into());
+        args.push(extra.path.to_string_lossy().into_owned());
+    }
+    args.push("-filter_complex".into());
+    args.push(graph);
+    args.push("-map".into());
+    args.push(vmap);
+    if let Some(audio) = &amap {
+        args.push("-map".into());
+        args.push(audio.clone());
+    }
+
+    push_video_codec(&mut args, output);
+    if amap.is_some() {
+        args.push("-c:a".into());
+        args.push(
+            match format {
+                OutputFormat::Webm => "libopus",
+                OutputFormat::Prores => "pcm_s16le",
+                _ => "aac",
+            }
+            .into(),
+        );
+        if format != OutputFormat::Prores {
+            args.push("-b:a".into());
+            args.push(graph::audio_mix::bitrate_argument(edit));
+        }
+    }
+    // A looped still image is an endless input; without this the mux never
+    // reaches an end of stream.
+    if has_looped_still {
+        args.push("-shortest".into());
+    }
+
+    args.push(destination.to_string_lossy().into_owned());
+    Ok(args)
 }
 
 /// Build args for a multi-segment edit: trim each keep-segment, concat them,
@@ -737,7 +961,7 @@ fn build_concat_args(
         );
         if format != OutputFormat::Prores {
             args.push("-b:a".into());
-            args.push("128k".into());
+            args.push(graph::audio_mix::bitrate_argument(edit));
         }
     }
 
@@ -752,6 +976,11 @@ fn valid_segments(edit: &EditSpec) -> &[TimeRange] {
 
 /// Expected output duration (seconds) for an edit, used to scale ffmpeg progress.
 pub fn expected_output_secs(edit: &EditSpec, source_duration: f64) -> f64 {
+    // A composed timeline (clips, or segments stitched with xfade) knows its own
+    // length: transitions consume overlap that the plain sum below cannot see.
+    if let Some(seconds) = graph::transitions::expected_output_seconds(edit, source_duration) {
+        return seconds;
+    }
     let segs = valid_segments(edit);
     let base = if !segs.is_empty() {
         segs.iter().map(|range| range.duration_seconds()).sum()
@@ -822,7 +1051,7 @@ mod tests {
             Path::new("/in.mp4"),
             Path::new("/out.mp4"),
             &plan_for_duration(value, duration),
-            Some(lut_path),
+            &RenderResources::with_lut_path(lut_path),
         )
         .unwrap()
     }
@@ -1611,6 +1840,142 @@ mod tests {
             ),
             3.0
         ));
+    }
+
+    /// A plan with one overlay-style extra input and a composed video pad,
+    /// standing in for what a feature stage will produce.
+    fn composed_plan(plan: &EditPlan) -> ComplexPlan {
+        let mut complex = ComplexPlan::new(
+            InputSpec::source("/in.mp4"),
+            plan.output.audio_codec.is_some(),
+        );
+        complex.add_input(InputSpec::still("/private/assets/logo.png"));
+        let label = complex.next_label("overlay");
+        complex.push(format!("[0:v][1:v]overlay=x=10:y=10[{label}]"));
+        complex.set_video_label(label);
+        complex
+    }
+
+    #[test]
+    fn composing_an_untouched_edit_keeps_the_legacy_arguments() {
+        // The acceptance bar: with every stage a no-op the composer must not
+        // change a single argument, so render-cache keys stay valid.
+        let plan = plan_for_duration(json!({ "videoId": "x", "sharpen": 1.0 }), 10.0);
+        let complex = compose_graph(
+            Path::new("/in.mp4"),
+            &plan,
+            10.0,
+            &RenderResources::default(),
+        )
+        .unwrap();
+        assert!(complex.0.is_trivial());
+
+        let args = build_ffmpeg_args(Path::new("/in.mp4"), Path::new("/out.mp4"), &plan);
+        assert!(!args.contains(&"-filter_complex".to_string()));
+        assert!(vf(&args).contains("unsharp="));
+    }
+
+    #[test]
+    fn a_composed_plan_reroots_the_existing_program_onto_its_pads() {
+        let plan = plan_for_duration(
+            json!({ "videoId": "x", "scale": { "w": 640, "h": 360 }, "volume": 1.5 }),
+            10.0,
+        );
+        let complex = composed_plan(&plan);
+        let args = build_graph_args(
+            Path::new("/in.mp4"),
+            Path::new("/out.mp4"),
+            &plan,
+            &complex,
+            10.0,
+            None,
+        )
+        .unwrap();
+        let graph = filter_complex(&args);
+
+        assert!(
+            graph.starts_with("[0:v][1:v]overlay=x=10:y=10[overlay_1]"),
+            "{graph}"
+        );
+        assert!(graph.contains(";[overlay_1]scale=640:360[vout]"), "{graph}");
+        assert!(graph.contains("[0:a]volume=1.500[aout]"), "{graph}");
+        assert!(args.windows(2).any(|pair| pair == ["-map", "[vout]"]));
+        assert!(args.windows(2).any(|pair| pair == ["-map", "[aout]"]));
+        // The still input is looped and the mux is bounded by the shortest input.
+        assert!(args.windows(2).any(|pair| pair == ["-loop", "1"]));
+        assert!(args.contains(&"-shortest".to_string()));
+        assert!(args.contains(&"libx264".to_string()));
+        assert!(args.contains(&"aac".to_string()));
+        assert_eq!(args.last().unwrap(), "/out.mp4");
+    }
+
+    #[test]
+    fn a_composed_plan_without_extra_filters_maps_its_terminal_pads_directly() {
+        let plan = plan_for_duration(json!({ "videoId": "x" }), 10.0);
+        let complex = composed_plan(&plan);
+        let args = build_graph_args(
+            Path::new("/in.mp4"),
+            Path::new("/out.mp4"),
+            &plan,
+            &complex,
+            10.0,
+            None,
+        )
+        .unwrap();
+
+        // The video pad is a filter output, the untouched audio pad is a raw
+        // input stream, so only the former is mapped in brackets.
+        assert!(args.windows(2).any(|pair| pair == ["-map", "[overlay_1]"]));
+        assert!(args.windows(2).any(|pair| pair == ["-map", "0:a"]));
+        assert_eq!(map_target("0:v"), "0:v");
+        assert_eq!(map_target("12:a"), "12:a");
+        assert_eq!(map_target("overlay_1"), "[overlay_1]");
+    }
+
+    #[test]
+    fn composed_extra_inputs_are_declared_read_only() {
+        let plan = plan_for_duration(json!({ "videoId": "x" }), 10.0);
+        let complex = composed_plan(&plan);
+        assert_eq!(
+            graph_read_only_files(&complex, Some(Path::new("/private/luts/look.cube"))),
+            [
+                PathBuf::from("/private/assets/logo.png"),
+                PathBuf::from("/private/luts/look.cube")
+            ]
+        );
+    }
+
+    #[test]
+    fn composed_plans_reject_unsupported_formats_and_unconsumed_segments() {
+        let still = plan_for_duration(json!({ "videoId": "x", "format": "gif" }), 10.0);
+        assert!(build_graph_args(
+            Path::new("/in.mp4"),
+            Path::new("/out.gif"),
+            &still,
+            &composed_plan(&still),
+            10.0,
+            None,
+        )
+        .is_err());
+
+        let segmented = plan_for_duration(
+            json!({
+                "videoId": "x",
+                "segments": [{ "start": 0.0, "end": 1.0 }, { "start": 2.0, "end": 3.0 }]
+            }),
+            5.0,
+        );
+        let mut untouched = ComplexPlan::new(InputSpec::source("/in.mp4"), true);
+        untouched.add_input(InputSpec::still("/private/assets/logo.png"));
+        assert!(build_graph_args(
+            Path::new("/in.mp4"),
+            Path::new("/out.mp4"),
+            &segmented,
+            &untouched,
+            2.0,
+            None,
+        )
+        .is_err());
     }
 
     #[test]
