@@ -1,6 +1,7 @@
 //! Pure editor domain. Modules in this tree own media semantics and must not
 //! depend on HTTP extractors, async runtimes, subprocesses, or persistence.
 
+pub mod arithmetic;
 pub mod artifact_graph;
 pub mod audio_output;
 pub mod audio_pipeline;

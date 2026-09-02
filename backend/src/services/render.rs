@@ -160,12 +160,12 @@ impl EditPlan {
 
     fn compile_with_timeline_semantics(
         source_fingerprint: Fingerprint,
-        mut request: EditRequest,
+        request: EditRequest,
         metadata: SourceMediaMetadata,
         timeline_semantics: TimelineSemantics,
     ) -> anyhow::Result<Self> {
         let source = SourceMediaSpec::from_metadata(metadata)?;
-        normalize_request(&mut request, source, timeline_semantics)?;
+        let request = normalize_edit_request_for_source(request, source, timeline_semantics)?;
         let (edit, mut output) = map_request(request)?;
         if !source.has_audio {
             if output.format == OutputFormat::Mp3 {
@@ -220,6 +220,29 @@ impl EditPlan {
     }
 }
 
+/// Canonicalize a wire request at the same source-aware boundary used by the
+/// plan compiler. Exposed for deterministic property and adapter contract
+/// tests; callers still need `EditPlan::compile` before execution.
+pub fn normalize_edit_request(
+    request: EditRequest,
+    metadata: SourceMediaMetadata,
+) -> anyhow::Result<EditRequest> {
+    normalize_edit_request_for_source(
+        request,
+        SourceMediaSpec::from_metadata(metadata)?,
+        TimelineSemantics::Ordered,
+    )
+}
+
+fn normalize_edit_request_for_source(
+    mut request: EditRequest,
+    source: SourceMediaSpec,
+    timeline_semantics: TimelineSemantics,
+) -> anyhow::Result<EditRequest> {
+    normalize_request(&mut request, source, timeline_semantics)?;
+    Ok(request)
+}
+
 fn calculate_plan_fingerprint(
     source_fingerprint: &Fingerprint,
     source: &SourceMediaSpec,
@@ -256,6 +279,7 @@ fn normalize_request(
     edit.contrast = finite_non_negative(edit.contrast, "Недопустимый контраст")?.clamp(0.0, 3.0);
     edit.saturation =
         finite_non_negative(edit.saturation, "Недопустимая насыщенность")?.clamp(0.0, 3.0);
+    edit.pan = finite_number(edit.pan, "Недопустимая стереопанорама")?.clamp(-1.0, 1.0);
     if let Some(chroma_key) = edit.chroma_key.as_mut() {
         chroma_key.similarity =
             finite_positive(chroma_key.similarity, "Недопустимое сходство chroma key")?

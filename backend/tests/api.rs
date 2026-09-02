@@ -324,7 +324,7 @@ async fn composition_render_is_durable_and_reports_a_missing_source() {
     let app = router(state);
     let legacy = composition_request("missing-source");
     let (status, accepted, _) = send(&app, post_json("/api/compositions/render", legacy)).await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::ACCEPTED);
     let job_id = accepted["jobId"].as_str().unwrap();
 
     let mut canonical = composition_request("missing-source");
@@ -333,7 +333,7 @@ async fn composition_render_is_durable_and_reports_a_missing_source() {
         "qualityTier": "medium"
     });
     let (status, duplicate, _) = send(&app, post_json("/api/compositions/render", canonical)).await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::ACCEPTED);
     assert_eq!(duplicate["jobId"], job_id);
 
     let terminal = poll_terminal(&app, job_id).await;
@@ -387,8 +387,8 @@ async fn duplicate_import_reuses_job_and_failed_actions_are_audited() {
 
     let (first_status, first, _) = send(&app, post_json("/api/import", request.clone())).await;
     let (second_status, second, _) = send(&app, post_json("/api/import", request)).await;
-    assert_eq!(first_status, StatusCode::OK);
-    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(first_status, StatusCode::ACCEPTED);
+    assert_eq!(second_status, StatusCode::ACCEPTED);
     assert_eq!(first["jobId"], second["jobId"]);
     let id = first["jobId"].as_str().unwrap();
     assert_eq!(poll_terminal(&app, id).await["status"], "error");
@@ -551,7 +551,7 @@ async fn import_accepts_and_returns_job_id() {
         post_json("/api/import", json!({ "url": "https://example.com/v.mp4" })),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::ACCEPTED);
     assert!(body["jobId"].as_str().is_some());
 }
 
@@ -617,6 +617,85 @@ async fn edit_with_missing_source_fails_job() {
 }
 
 #[tokio::test]
+async fn edit_handler_renders_a_real_source_when_ffmpeg_is_available() {
+    let ffmpeg_available = tokio::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .await
+        .is_ok_and(|output| output.status.success());
+    let ffprobe_available = tokio::process::Command::new("ffprobe")
+        .arg("-version")
+        .output()
+        .await
+        .is_ok_and(|output| output.status.success());
+    if !ffmpeg_available || !ffprobe_available {
+        eprintln!("skipping real edit handler test: ffmpeg/ffprobe not on PATH");
+        return;
+    }
+
+    let (state, _directory) = make_state(true, true).await;
+    let source = state.sources_dir().join("api-real-source.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=64x48:d=0.25",
+            "-pix_fmt",
+            "yuv420p",
+            "-y",
+        ])
+        .arg(&source)
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "failed to generate real API fixture: {}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    assert!(
+        state
+            .library
+            .add(MediaEntry::from_result(
+                "source",
+                &json!({
+                    "id": "api-real-source",
+                    "filename": "api-real-source.mp4",
+                    "url": "/files/sources/api-real-source.mp4",
+                    "duration": 0.25,
+                    "width": 64,
+                    "height": 48
+                }),
+            ))
+            .await
+    );
+
+    let app = router(state.clone());
+    let (status, accepted, _) = send(
+        &app,
+        post_json(
+            "/api/edit",
+            json!({
+                "videoId": "api-real-source",
+                "brightness": 0.1,
+                "format": "mp4",
+                "codec": "h264"
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let job_id = accepted["jobId"].as_str().unwrap();
+    let terminal = poll_terminal(&app, job_id).await;
+    assert_eq!(terminal["status"], "done", "terminal job: {terminal}");
+    let filename = terminal["result"]["filename"].as_str().unwrap();
+    assert!(state.outputs_dir().join(filename).is_file());
+}
+
+#[tokio::test]
 async fn color_grade_path_like_lut_id_is_rejected_before_enqueue() {
     let (state, storage) = make_state(true, true).await;
     let outside = storage.path().join("outside.cube");
@@ -658,7 +737,7 @@ async fn color_grade_unknown_well_formed_lut_fails_before_source_lookup() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::ACCEPTED);
     let id = queued["jobId"].as_str().expect("edit should be enqueued");
     let job = poll_terminal(&app, id).await;
     assert_eq!(job["status"], "error");
@@ -682,7 +761,7 @@ async fn color_grade_zero_intensity_lut_bypasses_asset_resolution() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::ACCEPTED);
     let id = queued["jobId"].as_str().expect("edit should be enqueued");
     let job = poll_terminal(&app, id).await;
     assert_eq!(job["status"], "error");
@@ -694,7 +773,7 @@ async fn color_grade_zero_intensity_lut_bypasses_asset_resolution() {
         post_json("/api/edit", json!({ "videoId": source_id })),
     )
     .await;
-    assert_eq!(plain_status, StatusCode::OK);
+    assert_eq!(plain_status, StatusCode::ACCEPTED);
     assert_eq!(plain["jobId"], queued["jobId"]);
 }
 
@@ -720,7 +799,7 @@ async fn mp3_canonicalizes_video_grading_before_validation_and_dedupe() {
         ),
     )
     .await;
-    assert_eq!(first_status, StatusCode::OK);
+    assert_eq!(first_status, StatusCode::ACCEPTED);
 
     let (second_status, second, _) = send(
         &app,
@@ -730,7 +809,7 @@ async fn mp3_canonicalizes_video_grading_before_validation_and_dedupe() {
         ),
     )
     .await;
-    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(second_status, StatusCode::ACCEPTED);
     assert_eq!(first["jobId"], second["jobId"]);
 }
 
@@ -807,7 +886,7 @@ async fn color_grade_uploaded_lut_is_resolved_before_the_source_lookup() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::ACCEPTED);
     let id = queued["jobId"].as_str().expect("edit should be enqueued");
     let job = poll_terminal(&app, id).await;
     assert_eq!(job["status"], "error");

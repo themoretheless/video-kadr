@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "license": "CC0-1.0",
+  "provenance": "Deterministically generated from FFmpeg lavfi sources during the test run; no third-party media is redistributed.",
+  "cases": [
+    { "id": "vfr", "expects": ["nonUniformPacketDurations", "normalizedVideoStream"] },
+    { "id": "hdr", "expects": ["bt2020Primaries", "smpte2084Transfer", "bt2020NonConstantLuminance"] },
+    { "id": "rotation", "expects": ["clockwise90DisplayMatrix"] },
+    { "id": "surround51", "expects": ["sixChannels", "channelLayout51"] },
+    { "id": "subtitles", "expects": ["subtitleStream"] },
+    { "id": "corrupt", "expects": ["probeFailure"] }
+  ]
+}

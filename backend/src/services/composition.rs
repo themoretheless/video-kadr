@@ -10,6 +10,7 @@ use anyhow::{bail, ensure, Result};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::domain::arithmetic::frame_count_ceil;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::composition::{
     AnimatableValue, BlendMode, ClipPlacement, Composition, CompositionSource, CompositionTrack,
@@ -757,12 +758,14 @@ fn validate_optical_flow_work(
         duration_ticks <= MAX_OPTICAL_FLOW_CLIP_TICKS,
         "optical flow clip {clip_id} превышает duration budget"
     );
-    let denominator = u128::from(composition.time_base) * 1_000;
-    let frame_numerator = u128::from(duration_ticks) * u128::from(composition.canvas.fps_milli);
-    let output_frames = frame_numerator
-        .checked_add(denominator - 1)
-        .ok_or_else(|| anyhow::anyhow!("optical-flow frame count overflow"))?
-        / denominator;
+    let output_frames = u128::from(
+        frame_count_ceil(
+            duration_ticks,
+            composition.time_base,
+            composition.canvas.fps_milli,
+        )
+        .ok_or_else(|| anyhow::anyhow!("optical-flow frame count overflow"))?,
+    );
     let work = pixels
         .checked_mul(output_frames)
         .ok_or_else(|| anyhow::anyhow!("optical-flow work overflow"))?;
@@ -794,13 +797,14 @@ fn validate_reverse_work(
             <= u128::from(MAX_REVERSE_CLIP_TICKS) * u128::from(composition.time_base),
         "reverse clip {clip_id} превышает buffered duration budget"
     );
-    let denominator = u128::from(composition.time_base) * 1_000;
-    let frame_numerator =
-        u128::from(source_duration_ticks) * u128::from(composition.canvas.fps_milli);
-    let buffered_frames = frame_numerator
-        .checked_add(denominator - 1)
-        .ok_or_else(|| anyhow::anyhow!("reverse frame count overflow"))?
-        / denominator;
+    let buffered_frames = u128::from(
+        frame_count_ceil(
+            source_duration_ticks,
+            composition.time_base,
+            composition.canvas.fps_milli,
+        )
+        .ok_or_else(|| anyhow::anyhow!("reverse frame count overflow"))?,
+    );
     let work = pixels
         .checked_mul(buffered_frames)
         .ok_or_else(|| anyhow::anyhow!("reverse work overflow"))?;
@@ -847,13 +851,14 @@ fn validate_stabilization_work(
             <= u128::from(MAX_STABILIZATION_CLIP_TICKS) * u128::from(composition.time_base),
         "stabilization clip {clip_id} превышает duration budget"
     );
-    let denominator = u128::from(composition.time_base) * 1_000;
-    let frame_numerator =
-        u128::from(source_duration_ticks) * u128::from(composition.canvas.fps_milli);
-    let frames = frame_numerator
-        .checked_add(denominator - 1)
-        .ok_or_else(|| anyhow::anyhow!("stabilization frame count overflow"))?
-        / denominator;
+    let frames = u128::from(
+        frame_count_ceil(
+            source_duration_ticks,
+            composition.time_base,
+            composition.canvas.fps_milli,
+        )
+        .ok_or_else(|| anyhow::anyhow!("stabilization frame count overflow"))?,
+    );
     let work = pixels
         .checked_mul(frames)
         .ok_or_else(|| anyhow::anyhow!("stabilization work overflow"))?;

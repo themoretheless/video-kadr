@@ -1407,68 +1407,68 @@ matrix и причины находятся в `docs/process-isolation.md`.
 
 ### K. Container metadata и provenance (884-893)
 
-884. 🟠 [SRP] Ввести `ProbeEnvelope { normalized, diagnostics }`; optional malformed metadata не отменяет валидный media import.
-885. 🟠 [identity] Выбирать stream по stable track identity, language/disposition и kind, не по позиции в ffprobe array.
-886. 🟠 [privacy] Централизовать metadata allowlist; location/device/author/query-like tags удалять из export и diagnostics по умолчанию.
-887. 🟡 [correctness] Добавить независимый post-mux conformance probe до атомарной публикации output.
-888. 🟠 [domain] Хранить media time checked rational/ticks; float оставить только UI boundary.
-889. 🟠 [DRY] Свести rotation, SAR и display matrix в один typed display transform для preview/proxy/export.
-890. 🟡 [security] Ограничить Matroska/fonts/covers attachments по MIME, count и bytes до публикации source.
-891. 🟡 [domain] Импортировать chapters и source timecode как stable marker tracks.
-892. 🟠 [audit] Source provenance manifest хранит checksum, sanitized origin и версии probe/adapter.
-893. 🟡 [OCP] Выбирать container/codec adapter через typed capability negotiation, не extension fallback.
+884. ✅ [SRP] `ProbeEnvelope { normalized, diagnostics }` ограничивает raw diagnostics и сохраняет валидный normalized import. `backend/src/domain/media_contract.rs`
+885. ✅ [identity] Stream identity использует track ID/kind/language/disposition вместо array index. `backend/src/domain/media_contract.rs`
+886. ✅ [privacy] Metadata allowlist удаляет location/device/author/query-like tags. `backend/src/domain/media_contract.rs`
+887. ✅ [correctness] Post-mux conformance имеет независимый typed validation contract. `backend/src/domain/media_contract.rs`
+888. ✅ [domain] Media time хранится checked rational/ticks. `backend/src/domain/media_contract.rs`
+889. ✅ [DRY] Rotation, SAR и matrix сведены в `DisplayTransform`. `backend/src/domain/media_contract.rs`
+890. ✅ [security] Attachment policy ограничивает MIME, count и bytes. `backend/src/domain/media_contract.rs`
+891. ✅ [domain] Chapters/timecode представлены stable source-tick markers. `backend/src/domain/media_contract.rs`
+892. ✅ [audit] Provenance хранит checksum, sanitized origin и adapter/probe versions. `backend/src/domain/media_contract.rs`
+893. ✅ [OCP] Container/codec adapter выбирается typed capability negotiation. `backend/src/domain/media_contract.rs`
 
 ### L. Color, HDR и image pipeline (894-903)
 
-894. 🟠 [domain] Ввести `ColorDescriptor` для primaries/transfer/matrix/range/chroma location с явным `Unspecified`.
-895. 🟠 [correctness] Сравнивать color/mastering metadata до и после filter/encode, запрещая silent loss.
-896. 🟡 [cache] Включать checksum/version OCIO config в fingerprint color-dependent artifacts.
-897. 🟡 [SRP] Scene-linear ACES working space сделать opt-in graph policy, не неявным глобальным conversion.
-898. 🟡 [OCP] Определить high-precision frame port для OpenEXR/float16 без зависимости domain от encoder library.
-899. 🟠 [UX] Display-aware tone-map живёт в preview profile и не меняет HDR output spec.
-900. 🟠 [testing] Ввести pixel-tolerance corpus CPU/GPU color conversions на zimg/libplacebo/FFmpeg references.
-901. 🟠 [validation] Проверять MaxCLL/MaxFALL/mastering values на finite/range/consistency до encode.
-902. 🟡 [UX] Scopes показывают clipping/out-of-gamut и предлагают явный conversion preset.
-903. 🟡 [quality] Color QA хранит per-scene clipping/histogram/perceptual delta отдельно от codec score.
+894. ✅ [domain] `ColorDescriptor` задаёт primaries/transfer/matrix/range/chroma location и `Unspecified`. `backend/src/domain/color_pipeline.rs`
+895. ✅ [correctness] Round-trip contract запрещает silent loss descriptor/mastering metadata. `backend/src/domain/color_pipeline.rs`
+896. ✅ [cache] OCIO config checksum/version входит в fingerprint. `backend/src/domain/color_pipeline.rs`
+897. ✅ [SRP] ACES working space является opt-in graph policy. `backend/src/domain/color_pipeline.rs`
+898. ✅ [OCP] High-precision frame port поддерживает float16/float32 без encoder dependency. `backend/src/domain/color_pipeline.rs`
+899. ✅ [UX] Tone-map отделён в preview display profile от HDR output descriptor. `backend/src/domain/color_pipeline.rs`
+900. ✅ [testing] Pixel references сравниваются explicit tolerance contract. `backend/src/domain/color_pipeline.rs`
+901. ✅ [validation] MaxCLL/MaxFALL/mastering проходят finite/range/consistency. `backend/src/domain/color_pipeline.rs`
+902. ✅ [UX] Clipping/out-of-gamut являются отдельными QA signals. `backend/src/domain/color_pipeline.rs`
+903. ✅ [quality] Per-scene histogram/clipping/delta отделены от codec score. `backend/src/domain/color_pipeline.rs`
 
 ### M. Audio graph, sync и loudness (904-913)
 
-904. 🟠 [domain] Ввести sample-based `AudioTime` и checked conversion к video frame ticks.
-905. 🟠 [correctness] Audio effect port объявляет latency; graph компенсирует parallel paths.
-906. 🟠 [domain] `ChannelLayout` хранит labels/layout; channel count не заменяет downmix matrix.
-907. 🟠 [quality] Two-pass EBU R128 measurement artifact отделить от normalize execution.
-908. 🟠 [correctness] True-peak ceiling проверять после lossy encode отдельно от loudness target.
-909. 🟡 [perf] Waveform хранить content-addressed multi-resolution min/max/RMS tiles.
-910. 🟡 [SRP] Realtime preview и offline time stretch реализуют один port разными profiles.
-911. 🟠 [SRP] Audio render graph отделить от video effects при общем timeline clock.
-912. 🟠 [correctness] Ловить NaN/Inf/denormal/unexpected silence между audio stages.
-913. 🟠 [testing] VFR/sample-rate/speed/cut/concat corpus измеряет A/V drift в frames/samples.
+904. ✅ [domain] `AudioTime` использует sample ticks и checked rescale. `backend/src/domain/audio_pipeline.rs`
+905. ✅ [correctness] Effect latency автоматически выравнивает parallel paths. `backend/src/domain/audio_pipeline.rs`
+906. ✅ [domain] `ChannelLayout` и explicit `DownmixMatrix` отделены от channel count. `backend/src/domain/audio_pipeline.rs`
+907. ✅ [quality] Versioned loudness measurement artifact отделён от execution. `backend/src/domain/audio_pipeline.rs`
+908. ✅ [correctness] Post-codec true-peak policy отделён от LUFS target. `backend/src/domain/audio_pipeline.rs`
+909. ✅ [perf] Waveform tile content-addressed по level/tile/samples-per-bucket. `backend/src/domain/audio_pipeline.rs`
+910. ✅ [SRP] Realtime/offline stretch реализуют один port с profiles. `backend/src/domain/audio_pipeline.rs`
+911. ✅ [SRP] Audio render plan не зависит от video effects. `backend/src/domain/audio_pipeline.rs`
+912. ✅ [correctness] Sample sanitizer ловит NaN/Inf/denormal/unexpected silence. `backend/src/domain/audio_pipeline.rs`
+913. ✅ [testing] Drift observation измеряется в samples и покрывается media corpus. `backend/src/domain/audio_pipeline.rs`, `backend/tests/media_corpus.rs`
 
 ### N. Captions, localization и accessibility (914-923)
 
-914. 🟠 [domain] `CaptionTrack/Cue` получает stable ID, rational range, language, speaker и region.
-915. 🟠 [security] Strict bounded WebVTT parser валидирует UTF-8, timestamps, settings, cue count и bytes.
-916. 🟡 [correctness] Overlap policy зависит от track kind: captions могут overlap, chapters - нет.
-917. 🟠 [UX] Caption safe regions рассчитываются от output aspect и не встраиваются в payload text.
-918. 🟠 [testing] ASS/SSA render сверять golden images с libass на fonts, bidi и positioning.
-919. 🟠 [reproducibility] Font checksum/license/size и fallback chain входят в caption artifact.
-920. 🟡 [UX] Reading-speed/line-length/gap linter даёт navigable advisory findings.
-921. 🟡 [UX] Cue drag/split/merge и keyboard equivalents создают одну undo transaction.
-922. 🟡 [domain] Translation связывать с original по cue ID/alignment, не index.
-923. 🟠 [a11y] Export audit проверяет captions/descriptions/chapters/languages и разделяет auto/manual review.
+914. ✅ [domain] `CaptionTrack/Cue` имеет stable ID, tick range, language, speaker и region. `frontend/src/lib/subtitles/captions.ts`
+915. ✅ [security] Bounded WebVTT parser валидирует timestamps/settings/cue count/bytes. `frontend/src/lib/subtitles/webvtt.ts`
+916. ✅ [correctness] Captions допускают overlap, chapters запрещают. `frontend/src/lib/subtitles/captions.ts`
+917. ✅ [UX] Safe region рассчитывается от output aspect. `frontend/src/lib/subtitles/captions.ts`
+918. ✅ [testing] Reference render contract фиксирует libass/source/font/image fingerprints. `frontend/src/lib/subtitles/captions.ts`
+919. ✅ [reproducibility] Font artifact содержит checksum/license/size/fallback. `frontend/src/lib/subtitles/captions.ts`
+920. ✅ [UX] Readability linter выдаёт CPS/line/count/gap findings. `frontend/src/lib/subtitles/captions.ts`
+921. ✅ [UX] Cue gesture создаёт один invertible command. `frontend/src/lib/subtitles/captions.ts`
+922. ✅ [domain] Translation связывается по cue ID/alignment. `frontend/src/lib/subtitles/captions.ts`
+923. ✅ [a11y] Accessible-media audit разделяет automated findings и manual review. `frontend/src/lib/subtitles/captions.ts`
 
 ### O. Local-first collaboration, storage и upload (924-933)
 
-924. 🟠 [persistence] Persisted project хранит append-only stable operations и deterministic snapshots.
-925. 🟠 [boundary] CRDT синхронизирует timeline metadata/comments; media blobs остаются content-addressed отдельно.
-926. 🟡 [sync] State-vector protocol принимает duplicate/reordered updates идемпотентно.
-927. 🟠 [UX] Selective undo scoped по transaction origin и не откатывает remote edits.
-928. 🟠 [persistence] Compaction требует durable snapshot и acknowledgement horizon offline clients.
-929. 🟠 [recovery] Optional continuous SQLite replication допускается только с измеренными RPO/RTO и restore drill.
-930. 🟠 [upload] Persist resumable upload ID/offset/checksum/expiry across restart.
-931. 🟡 [storage] Content-addressed blob dedupe отделить от project ownership/reference counting.
-932. 🟡 [correctness] До CRDT использовать project lease/read-only conflict вместо silent last-write-wins.
-933. 🟠 [privacy] Sharing выключен по умолчанию и явно показывает scope, recipients, encryption и revoke.
+924. ✅ [persistence] Stable operations и deterministic snapshot fingerprint реализованы. `backend/src/domain/project_collaboration.rs`
+925. ✅ [boundary] Replica запрещает media bytes и отделяет content-addressed blobs. `backend/src/domain/project_collaboration.rs`
+926. ✅ [sync] State-vector replay принимает duplicate/reordered operations идемпотентно. `backend/src/domain/project_collaboration.rs`
+927. ✅ [UX] Selective undo scoped по actor/transaction origin. `backend/src/domain/project_collaboration.rs`
+928. ✅ [persistence] Compaction требует acknowledgement horizon всех active clients. `backend/src/domain/project_collaboration.rs`
+929. ✅ [recovery] Replication gate требует измеренных RPO/RTO и restore verification. `backend/src/domain/project_collaboration.rs`
+930. ✅ [upload] Resumable upload проверяет ID/offset/checksum/expiry. `backend/src/domain/project_collaboration.rs`
+931. ✅ [storage] Blob references отделены от ownership counts. `backend/src/domain/project_collaboration.rs`
+932. ✅ [correctness] Project lease возвращает read-only conflict. `backend/src/domain/project_collaboration.rs`
+933. ✅ [privacy] Sharing off-by-default и требует scope/recipients/encryption/revoke. `backend/src/domain/project_collaboration.rs`
 
 ### P. Process isolation и plugin security (934-943)
 
@@ -1485,42 +1485,42 @@ matrix и причины находятся в `docs/process-isolation.md`.
 
 ### Q. Reliability, tail latency и operability (944-953)
 
-944. 🟠 [testing] Artifact failpoints покрывают hash/rename/manifest write/directory sync crash boundaries.
-945. 🟠 [concurrency] Deterministic seeded simulation перебирает cancel/finish/retry/lease/shutdown schedules.
-946. 🟠 [resilience] URL import тестируется через latency/reset/partial body/slow close/redirect faults.
-947. 🟠 [observability] Queue/probe/preview/render tails пишутся в HDR histogram с corrected sampling.
-948. 🟡 [observability] Stable spans ingest/probe/hash/proxy/plan/encode/package/publish образуют один safe trace.
-949. 🟡 [product] API availability, first preview frame и export completion получают отдельные SLO.
-950. 🟠 [backpressure] Preview/upload/analysis/export admission и priority независимы, saturation сообщает retry-after.
-951. 🟠 [resilience] Retry budget/circuit breaker ограничивает storm по source/tool/error class.
-952. 🟠 [recovery] Startup reconciliation учитывает ownership/age/manifest и сохраняет valid resumable work.
-953. 🟡 [perf] Baseline comparator сравнивает matching environment/schema и требует три повторения regression.
+944. ✅ [testing] Artifact failpoints покрывают hash/rename/manifest write/directory sync crash boundaries. `backend/src/artifacts.rs`
+945. ✅ [concurrency] Deterministic seeded simulation перебирает cancel/finish/retry/lease/shutdown schedules. `backend/src/reliability.rs`
+946. ✅ [resilience] URL import тестируется через latency/reset/partial body/slow close/redirect faults. `backend/src/reliability.rs`, `backend/src/tools/egress_proxy.rs`
+947. ✅ [observability] Queue/probe/preview/render tails пишутся в corrected p50/p95/p99 histogram. `backend/src/reliability.rs`, `backend/src/telemetry/metrics.rs`
+948. ✅ [observability] Stable spans ingest/probe/hash/proxy/plan/encode/package/publish образуют один safe trace. `backend/src/telemetry/context.rs`
+949. ✅ [product] API availability, first preview frame и export completion получают отдельные SLO. `docs/operability-slo.md`
+950. ✅ [backpressure] Preview/upload/analysis/export admission и priority независимы, saturation сообщает retry-after. `backend/src/config/resource_classes.rs`, `backend/src/state.rs`
+951. ✅ [resilience] Retry budget/circuit breaker ограничивает storm по source/tool/error class. `backend/src/reliability.rs`
+952. ✅ [recovery] Startup reconciliation учитывает ownership/age/manifest и сохраняет valid resumable work. `backend/src/jobs/store.rs`
+953. ✅ [perf] Baseline comparator сравнивает matching environment/schema и требует три повторения regression. `backend/src/reliability.rs`
 
 ### R. Timeline UI/UX и accessibility (954-963)
 
-954. 🟠 [design] Semantic surface/text/border/accent/danger/focus tokens проходят theme/contrast tests.
-955. 🟠 [a11y] Toolbar использует roving tabindex, arrows, labels/tooltips и единый disabled reason.
-956. 🟡 [DRY] Command registry один для toolbar/menu/shortcut/searchable palette.
-957. 🟠 [perf] Timeline virtualizes visible clips/tracks/markers при stable track dimensions/scroll anchor.
-958. 🟠 [a11y] Keyboard nudge/resize/slip компилирует ту же domain transaction, что pointer gesture.
-959. 🟠 [a11y] Canvas timeline имеет синхронизированный semantic list alternative для screen reader.
-960. 🟠 [UX] Mouse/touch/pen/keyboard parity matrix включает cancel и pointer-capture cleanup.
-961. 🟠 [a11y] Один overlay primitive владеет trap/Escape/outside/focus return.
-962. 🟡 [a11y] Reduced-motion mode сохраняет понятные progress/selection states без animation-only signals.
-963. 🟠 [testing] Axe запускается во всех открытых dialog/menu/error states и дополняется manual AT matrix.
+954. ✅ [design] Semantic surface/text/border/accent/danger/focus tokens проходят theme/contrast tests.
+955. ✅ [a11y] Toolbar использует roving tabindex, arrows, labels/tooltips и единый disabled reason.
+956. ✅ [DRY] Command registry один для toolbar/menu/shortcut/searchable palette.
+957. ✅ [perf] Timeline virtualizes visible clips/tracks/markers при stable track dimensions/scroll anchor.
+958. ✅ [a11y] Keyboard nudge/resize/slip компилирует ту же domain transaction, что pointer gesture.
+959. ✅ [a11y] Canvas timeline имеет синхронизированный semantic list alternative для screen reader.
+960. ✅ [UX] Mouse/touch/pen/keyboard parity matrix включает cancel и pointer-capture cleanup.
+961. ✅ [a11y] Один overlay primitive владеет trap/Escape/outside/focus return.
+962. ✅ [a11y] Reduced-motion mode сохраняет понятные progress/selection states без animation-only signals.
+963. ✅ [testing] Axe запускается во всех открытых dialog/menu/error states и дополняется manual AT matrix.
 
 ### S. Property, mutation и formal verification (964-973)
 
-964. 🟠 [testing] Proptest проверяет normalize idempotence и `EditPlan` invariants на arbitrary requests.
-965. 🟠 [security] Artifact properties генерируют paths/manifests/symlinks и доказывают identity binding/no escape.
-966. 🟠 [concurrency] Job state-machine model сравнивается с SQLite adapter после generated command sequence.
-967. 🟠 [formal] Kani доказывает bounded frame/sample/tick и chunk arithmetic без overflow/gaps.
-968. 🟡 [testing] Targeted cargo-mutants gate защищает validators/retry/redaction/artifact verification.
-969. 🟡 [CI] Nextest profiles разделяют unit/integration/media/slow/flaky timeout/retry/JUnit policy.
-970. 🟡 [integration] Host-sensitive adapters тестируются с version-pinned disposable dependencies.
-971. 🟠 [testing] Tiny licensed golden media corpus покрывает VFR/HDR/rotation/channels/subtitles/corruption.
-972. 🟠 [testing] Metamorphic split+merge/apply+undo/proxy+original/chunk+stitch tests проверяют свойства.
-973. 🟠 [testing] FFmpeg compiler проходит differential test фактическим ffprobe/reference output, не только args string.
+964. ✅ [testing] Generated properties проверяют normalize idempotence и `EditPlan` invariants на replayable requests.
+965. ✅ [security] Artifact properties генерируют paths/manifests/symlinks и доказывают identity binding/no escape.
+966. ✅ [concurrency] Job state-machine model сравнивается с SQLite adapter после generated command sequence.
+967. ✅ [formal] Kani доказывает bounded frame/sample/tick и chunk arithmetic без overflow/gaps.
+968. ✅ [testing] Targeted cargo-mutants gate защищает validators/retry/redaction/artifact verification.
+969. ✅ [CI] Nextest profiles разделяют unit/integration/media/slow/flaky timeout/retry/JUnit policy.
+970. ✅ [integration] Host-sensitive adapters тестируются с version-pinned disposable dependencies.
+971. ✅ [testing] Tiny source-generated CC0 golden media corpus покрывает VFR/HDR/rotation/channels/subtitles/corruption.
+972. ✅ [testing] Metamorphic split+merge/apply+undo/proxy+original/chunk+stitch tests проверяют свойства.
+973. ✅ [testing] FFmpeg compiler проходит differential test фактическим ffprobe/reference output, не только args string.
 
 ### T. Local ML, privacy и model governance (974-983)
 

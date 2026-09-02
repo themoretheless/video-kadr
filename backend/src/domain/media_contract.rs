@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::arithmetic::rescale_ticks_i64;
 use super::media_probe::{ProbeError, ProbeResult, Rational, StreamKind, StreamMetadata};
 
 pub const MAX_RAW_DIAGNOSTIC_BYTES: usize = 64 * 1024;
@@ -101,29 +102,17 @@ impl MediaTime {
         if target.numerator <= 0 || target.denominator <= 0 {
             return None;
         }
-        let numerator = i128::from(self.ticks)
-            .checked_mul(i128::from(self.time_base.numerator))?
-            .checked_mul(i128::from(target.denominator))?;
-        let denominator =
-            i128::from(self.time_base.denominator).checked_mul(i128::from(target.numerator))?;
-        let rounded = div_round_nearest(numerator, denominator)?;
         Some(Self {
-            ticks: i64::try_from(rounded).ok()?,
+            ticks: rescale_ticks_i64(
+                self.ticks,
+                self.time_base.numerator,
+                self.time_base.denominator,
+                target.numerator,
+                target.denominator,
+            )?,
             time_base: target,
         })
     }
-}
-
-fn div_round_nearest(numerator: i128, denominator: i128) -> Option<i128> {
-    if denominator <= 0 {
-        return None;
-    }
-    let adjustment = denominator / 2;
-    Some(if numerator >= 0 {
-        numerator.checked_add(adjustment)? / denominator
-    } else {
-        numerator.checked_sub(adjustment)? / denominator
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

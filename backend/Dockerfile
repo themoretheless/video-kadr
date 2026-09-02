@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1-bookworm AS build
+FROM rust:1.89.0-bookworm AS build
 WORKDIR /app
 COPY . .
 RUN cargo build --release
@@ -27,4 +27,6 @@ ENV BIND_ADDR=127.0.0.1
 VOLUME /data
 EXPOSE 8080
 USER 10001:10001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
 CMD ["video-kadr-backend"]

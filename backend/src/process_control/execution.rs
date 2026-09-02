@@ -500,4 +500,39 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(1200)).await;
         assert!(!marker.exists(), "background child survived timeout");
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancellation_kills_the_process_group() {
+        let runtime = ProcessRuntime::local_default();
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("escaped-cancelled-child");
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("trap '' TERM; (trap '' TERM; sleep 1; touch \"$1\") & wait")
+            .arg("runner")
+            .arg(&marker);
+        let (progress, _receiver) = tokio::sync::mpsc::unbounded_channel();
+        let cancellation = CancellationToken::new();
+        let worker_cancellation = cancellation.clone();
+        let worker = tokio::spawn(async move {
+            stream_with_progress(
+                &runtime,
+                command,
+                runtime.discovery_policy(),
+                |_| None,
+                &progress,
+                &worker_cancellation,
+                Duration::from_secs(10),
+            )
+            .await
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        cancellation.cancel();
+        let (status, _) = worker.await.unwrap().unwrap();
+        assert_eq!(status, ProcessStatus::Cancelled);
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(!marker.exists(), "background child survived cancellation");
+    }
 }

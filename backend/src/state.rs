@@ -294,6 +294,7 @@ impl AppState {
             EnqueueOutcome::Created(job) => {
                 self.job_kinds.lock().await.insert(job.id.clone(), kind);
                 self.remember_job(job.clone()).await;
+                tracing::info!(job.id = %job.id, job.kind = kind.as_str(), "job created");
             }
             EnqueueOutcome::Existing(id) => {
                 self.job_kinds.lock().await.insert(id.clone(), kind);
@@ -397,6 +398,7 @@ impl AppState {
             Err(error) => return Err(error),
         };
         if applied {
+            log_job_transition(id, &event);
             let outcome = match event {
                 JobEvent::Succeeded { .. } => Some(JobOutcome::Succeeded),
                 JobEvent::Failed { .. } | JobEvent::Interrupted { .. } => Some(JobOutcome::Failed),
@@ -667,6 +669,44 @@ impl AppState {
 
     async fn job_cell(&self, id: &str) -> Option<Arc<JobCell>> {
         self.jobs.lock().await.get(id).cloned()
+    }
+}
+
+fn log_job_transition(id: &str, event: &JobEvent) {
+    match event {
+        JobEvent::Created => tracing::info!(job.id = id, job.event = "created", "job lifecycle"),
+        JobEvent::Queued => tracing::info!(job.id = id, job.event = "queued", "job lifecycle"),
+        JobEvent::Started { stage, attempt } => tracing::info!(
+            job.id = id,
+            job.event = "started",
+            job.stage = stage,
+            job.attempt = attempt,
+            "job lifecycle"
+        ),
+        JobEvent::Succeeded { .. } => {
+            tracing::info!(job.id = id, job.event = "succeeded", "job lifecycle")
+        }
+        JobEvent::Cancelled => {
+            tracing::info!(job.id = id, job.event = "cancelled", "job lifecycle")
+        }
+        JobEvent::Discarded { .. } => {
+            tracing::info!(job.id = id, job.event = "discarded", "job lifecycle")
+        }
+        JobEvent::RetryScheduled { attempt, .. } => tracing::warn!(
+            job.id = id,
+            job.event = "retry_scheduled",
+            job.attempt = attempt,
+            "job lifecycle"
+        ),
+        JobEvent::Failed { kind, .. } => tracing::error!(
+            job.id = id,
+            job.event = "failed",
+            error.kind = kind.as_str(),
+            "job lifecycle"
+        ),
+        JobEvent::Interrupted { .. } => {
+            tracing::warn!(job.id = id, job.event = "interrupted", "job lifecycle")
+        }
     }
 }
 

@@ -147,7 +147,7 @@ enforcement находится в [docs/process-isolation.md](docs/process-isola
 
 ## Требования
 
-- Rust (cargo)
+- Rust 1.89+ (`rust-toolchain.toml` pins the repository toolchain)
 - Node.js 20+ (`.nvmrc` зафиксирован на 20)
 - `ffmpeg` и `yt-dlp` в `PATH`
   ```
@@ -495,6 +495,15 @@ CPU/FD/file-size rlimits, Linux также `RLIMIT_AS`; timeout и оставш�
 group. №936, 937 и 939 остаются
 частично открыты до mount/network namespaces, cgroup pids/memory и per-tenant
 uid; NsJail/Bubblewrap нельзя выбрать, пока adapter реально не реализован.
+
+**Не-AI completion wave (2 сентября 2026).** Закрыты contract-пакеты K-O и Q-S
+второго research-слоя: media provenance/time/conformance, color/HDR, audio,
+captions, local-first collaboration, reliability/operability, timeline a11y и
+property/mutation/formal verification. Async import/edit/composition отвечают
+`202 Accepted`; Rust/MSRV закреплён на 1.89, Docker runtime остаётся non-root и
+имеет healthcheck. Пакет T (№974-983) и прежняя ML-волна №874-883 намеренно
+отложены как AI; public multi-tenant режим остаётся fail-closed до полноценного
+auth и kernel sandbox adapter.
 
 ```
 frontend (Svelte 5 + Vite)

@@ -1,0 +1,29 @@
+# Critical mutation gate only. The full crate remains covered by unit,
+# integration, property, fuzz and model-checking lanes.
+all_features = true
+test_tool = "nextest"
+additional_cargo_args = ["--lib", "--test", "property_contracts"]
+additional_cargo_test_args = [
+  "-E",
+  "binary(property_contracts) or test(/^artifacts::tests::/) or test(/^domain::arithmetic::tests::/) or test(/^domain::edit::tests::/) or test(/^jobs::attempt::tests::/) or test(/^privacy::redaction::tests::/)",
+]
+timeout_multiplier = 2.0
+build_timeout_multiplier = 2.0
+minimum_test_timeout = 60.0
+cap_lints = true
+examine_globs = [
+  "src/artifacts.rs",
+  "src/domain/arithmetic.rs",
+  "src/domain/edit.rs",
+  "src/jobs/attempt.rs",
+  "src/privacy/redaction.rs",
+]
+examine_re = [
+  "ArtifactFile::verify|contained_existing_path|safe_relative_token|safe_relative_path",
+  "rescale_ticks_i64|rescale_count_u64|frame_count_ceil|range_end|chunk_end",
+  "TimeRange::validate|OutputScale::validate|EditSpec::validate",
+  "ErrorKind::retryable|RetryPolicy::next_delay",
+  "RedactionTransform::sanitize|sanitize_value",
+]
+exclude_globs = ["tests/**", "benches/**"]
+exclude_re = ["verification::"]

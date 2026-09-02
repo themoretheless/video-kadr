@@ -132,7 +132,7 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
   await page.getByRole('button', { name: 'Сепия' }).click()
   const preview = page.locator('video.player').first()
   await page.getByRole('button', { name: '2×', exact: true }).click()
-  await page.getByRole('slider', { name: 'Громкость' }).fill('0.4')
+  await page.getByRole('slider', { name: 'Громкость', exact: true }).fill('0.4')
   await page.getByLabel('Без звука').check()
   await expect.poll(() => preview.evaluate((element) => element.style.filter)).toContain('sepia')
   await expect.poll(() => preview.evaluate((element) => element.playbackRate)).toBe(2)
@@ -222,10 +222,9 @@ test('mocked import, LUT/curves edit and export workflow completes', async ({ pa
   if (!plotBox) throw new Error('Curve plot has no bounding box')
 
   // Clicking the graph adds a point and immediately starts a bounded drag.
-  await page.mouse.click(
-    plotBox.x + plotBox.width * 0.4,
-    plotBox.y + plotBox.height * 0.3,
-  )
+  await curvePlot.click({
+    position: { x: plotBox.width * 0.4, y: plotBox.height * 0.3 },
+  })
   await expect(pointCount).toHaveText('3 / 16 точек')
   await expect(curveX).toBeEnabled()
   await expect(deletePoint).toBeEnabled()

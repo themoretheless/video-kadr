@@ -85,10 +85,12 @@ impl OutputScale {
             matches!(value, -2 | -1) || (2..=7680).contains(&value)
         }
 
-        if !valid_dimension(self.width)
-            || !valid_dimension(self.height)
-            || (self.width < 0 && self.height < 0)
-        {
+        if !valid_dimension(self.width) || !valid_dimension(self.height) {
+            return Err(EditSpecError::InvalidScale);
+        }
+        let width_is_automatic = matches!(self.width, -2 | -1);
+        let height_is_automatic = matches!(self.height, -2 | -1);
+        if width_is_automatic && height_is_automatic {
             return Err(EditSpecError::InvalidScale);
         }
         Ok(())
@@ -1022,6 +1024,126 @@ mod tests {
         ])
         .unwrap();
         assert!(serde_json::from_value::<EditSpec>(invalid).is_err());
+    }
+
+    #[test]
+    fn primitive_boundaries_are_independent_and_exact() {
+        assert!(TimeRange::new(0.0, 0.011).is_ok());
+        assert!(TimeRange::new(1.0, 1.011).is_ok());
+        for (start, end) in [
+            (f64::NAN, 1.0),
+            (0.0, f64::INFINITY),
+            (-0.1, 1.0),
+            (0.0, 0.01),
+            (1.0, 1.005),
+        ] {
+            assert_eq!(
+                TimeRange::new(start, end),
+                Err(EditSpecError::InvalidTimeRange)
+            );
+        }
+
+        for scale in [
+            OutputScale {
+                width: -2,
+                height: 2,
+            },
+            OutputScale {
+                width: 7_680,
+                height: -1,
+            },
+        ] {
+            assert_eq!(scale.validate(), Ok(()));
+        }
+        for scale in [
+            OutputScale {
+                width: -1,
+                height: -2,
+            },
+            OutputScale {
+                width: 0,
+                height: 2,
+            },
+            OutputScale {
+                width: 2,
+                height: 1,
+            },
+            OutputScale {
+                width: 7_681,
+                height: 2,
+            },
+            OutputScale {
+                width: 2,
+                height: 7_681,
+            },
+        ] {
+            assert_eq!(scale.validate(), Err(EditSpecError::InvalidScale));
+        }
+    }
+
+    #[test]
+    fn edit_effect_and_timeline_boundaries_fail_one_at_a_time() {
+        let mut spec = valid_spec();
+        spec.timing.segments = vec![TimeRange::new(0.0, 1.0).unwrap(); MAX_TIMELINE_SEGMENTS];
+        spec.timing.trim = None;
+        assert_eq!(spec.validate(), Ok(()));
+
+        spec.timing.segments = vec![TimeRange::new(0.0, 3_600.0).unwrap(); 24];
+        assert_eq!(spec.validate(), Ok(()));
+        spec.timing
+            .segments
+            .push(TimeRange::new(0.0, 0.011).unwrap());
+        assert_eq!(spec.validate(), Err(EditSpecError::TimelineTooLong));
+
+        for speed in [f64::NAN, 0.49, 2.01] {
+            let mut invalid = valid_spec();
+            invalid.timing.speed = speed;
+            assert_eq!(invalid.validate(), Err(EditSpecError::InvalidSpeed));
+        }
+        for fade in [f64::NAN, -0.1] {
+            let mut invalid = valid_spec();
+            invalid.timing.fade_in_seconds = fade;
+            assert_eq!(invalid.validate(), Err(EditSpecError::InvalidFade));
+        }
+
+        for (field, value) in [
+            ("brightness", f64::NAN),
+            ("brightness", 1.01),
+            ("contrast", f64::NAN),
+            ("contrast", -0.01),
+            ("saturation", f64::NAN),
+            ("saturation", 3.01),
+            ("sharpen", f64::NAN),
+            ("sharpen", 5.01),
+            ("grain", f64::NAN),
+            ("grain", 100.01),
+        ] {
+            let mut invalid = valid_spec();
+            match field {
+                "brightness" => invalid.video.brightness = value,
+                "contrast" => invalid.video.contrast = value,
+                "saturation" => invalid.video.saturation = value,
+                "sharpen" => invalid.video.sharpen = value,
+                "grain" => invalid.video.grain = value,
+                _ => unreachable!(),
+            }
+            assert_eq!(invalid.validate(), Err(EditSpecError::InvalidVideoEffect));
+        }
+
+        for (field, value) in [
+            ("volume", f64::NAN),
+            ("volume", 4.01),
+            ("pan", f64::NAN),
+            ("pan", 1.01),
+        ] {
+            let mut invalid = valid_spec();
+            match field {
+                "volume" => invalid.audio.volume = value,
+                "pan" => invalid.audio.pan = value,
+                _ => unreachable!(),
+            }
+            assert_eq!(invalid.validate(), Err(EditSpecError::InvalidAudioEffect));
+        }
     }
 
     #[test]

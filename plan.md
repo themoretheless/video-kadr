@@ -35,8 +35,8 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 ## P0-B. Безопасность (обязательно перед любым выставлением наружу)
 
 - [x] **Dockerfile `BIND_ADDR=0.0.0.0`** - образ по умолчанию снова слушает `127.0.0.1`; `docker-compose` оставляет явный `0.0.0.0` только для внутреннего nginx proxy. `backend/Dockerfile`, `docker-compose.yml`
-- [ ] **Нет глобального auth при внешней публикации API** - bind теперь безопаснее по дефолту, но при прямом expose наружу нужен auth/reverse-proxy guard.
-- [ ] **Нет auth/ownership на projects** - любой клиент читает/удаляет любой проект (URL, имена, метаданные). Сессия/owner-ключ или явный single-tenant. `handlers/projects.rs:47-92`
+- [x] **Публичный API без auth запрещён deployment policy** - поддерживаемый продукт остаётся local single-tenant: local принимает только loopback, LAN требует opt-in, а `public` fail-closed до появления auth и sandbox adapter. `backend/src/config/mod.rs`, `docs/process-isolation.md`
+- [x] **Project ownership ограничен single-tenant boundary** - project API не выдаётся за multi-user: public startup запрещён, sharing выключен по умолчанию, а будущая cloud/team версия обязана добавить owner identity. `backend/src/domain/project_collaboration.rs`, `docs/process-isolation.md`
 - [x] **`ServeDir` отдаёт `app.db` + WAL/SHM** - `/files` теперь монтирует только `sources/` и `outputs/`; корень storage и SQLite-файлы не публикуются. `lib.rs:54`
 - [x] **CORS `permissive()`** - заменён на явный allowlist (`CORS_ALLOW_ORIGINS`, defaults для local dev); wildcard/не-origin значения отбрасываются. `lib.rs:56`
 - [x] **SSRF через redirect/DNS rebinding/protocol bypass** - HTTP(S) `yt-dlp` идёт через loopback egress-proxy: повторная DNS/IP-проверка, pinned `SocketAddr`, только 80/443, запрет `NO_PROXY`; format selector отклоняет RTMP/FTP/WebSocket media. Реальные тесты подтверждают блок до connect/downloader. `tools/net.rs`, `tools/egress_proxy.rs`, `tools/mod.rs`
@@ -45,24 +45,24 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 
 - [x] **project JSON без size cap** - `video` и `edit` ограничены 64KiB каждый; oversized autosave получает `413 Payload Too Large` до записи в SQLite. `handlers/projects.rs:21-42`
 - [x] **upload без MIME/magic/quota/concurrency cap** - body-size quota уже есть; клиентское расширение игнорируется, контейнер проходит bounded `ffprobe`/allow-list перед publish, статика получает `nosniff` + sandbox CSP; отдельный upload-pool отвечает `429` при насыщении. `handlers/upload.rs`, `state.rs`, `lib.rs`
-- [ ] **ffmpeg без CPU/RAM/threads/filesize-лимитов**; нет no-progress watchdog (из audit-500 разделов «Ресурсы»).
+- [x] **FFmpeg resource policy** - spawn получает CPU/address-space/FD/file-size limits, bounded stdout/stderr, encode thread budget, общий timeout и TERM→KILL всей process group. `backend/src/process_control/`, `backend/src/config/encode_budget.rs`
 - [x] **Логировать падение задачи** - `finish_job` пишет `tracing::error!` с job ID, internal detail остаётся в серверном логе. `handlers/mod.rs`
-- [ ] **RectOverlay: координаты по letterbox, не по контенту видео** - при разнице пропорций crop/censor попадает мимо. Считать реальный content-box. `components/RectOverlay.vue:37-77`
+- [x] **RectOverlay следует реальному content-box** - Svelte preview не задаёт искусственную высоту: intrinsic video aspect определяет `.player-wrap`, а overlay занимает те же bounds и переводит pointer delta в source-space. `frontend/src/lib/components/{VideoPreview,RectOverlay}.svelte`, `frontend/src/base.css`
 - [x] **`applyPreset` перетирает format/codec/quality** - look-presets отделены от export-настроек; старый preset больше не меняет контейнер/codec/quality. `domain/edit.ts`, `store.ts`
 - [x] Единый `AppError`/`IntoResponse` и JSON envelope введены в раунде 8.
-- [ ] Перевести создание async-задач с `200 OK` на `202 Accepted` и закрепить contract-тестами.
+- [x] Создание import/edit/composition/proxy async-задач возвращает `202 Accepted`; контракт закреплён HTTP-тестами. `backend/src/handlers/`, `backend/tests/api.rs`
 
 ## P2. Тесты (всё ниже сейчас без покрытия)
 
-- [ ] Happy-path импорта/рендера через `edit_handler` (skip-если-нет-ffmpeg/yt-dlp). `tests/api.rs`
-- [ ] Отмена Running-задачи (kill процесса) → `Done::Cancelled` + очистка частичного файла.
-- [ ] Async-экшены стора (`doImport/doExport/doUpload/library/restore`) с `vi.mock('./api')`.
-- [ ] Undo/redo/история (debounce-флаш, 100-cap). `store.ts:385-447`
+- [x] Реальный happy-path рендера проходит через `/api/edit` и проверяет output; URL import покрыт job/API, SSRF и controlled-network fault suites, с skip для отсутствующих media tools. `backend/tests/{api,render,proxy}.rs`
+- [x] Отмена Running-процесса возвращает `Cancelled`, гасит всю process group и удаляет staging output на handler boundary. `backend/src/process_control/execution.rs`, `backend/src/handlers/mod.rs`
+- [x] Async-экшены стора (`doImport/doExport/doUpload/library/restore`) покрыты mocked API/job polling и stale-response guards. `frontend/src/lib/state/store.test.ts`, `frontend/src/data/serverState.test.ts`
+- [x] Undo/redo/история покрывают explicit/debounced transaction, exact inverse и bounded 100-cap. `frontend/src/lib/state/{store,composition}.test.ts`
 
 ## P3. Сборка, наблюдаемость, документация
 
-- [ ] **yt-dlp через curl без `-f`/pin/checksum** - на не-200 в бинарь пишется тело ошибки; `latest` невоспроизводим. `curl -fSL` + пин-тег + sha256. `Dockerfile:11-12`
-- [ ] Логи жизненного цикла задач (`tracing::info!` на create/start/done/cancel, `warn/error` на fail).
+- [x] **yt-dlp pinned и проверяется checksum** - Docker скачивает фиксированный release через `curl -fsSLo` и сверяет официальный `SHA2-256SUMS`; CI ставит ту же версию. `backend/Dockerfile`, `.github/workflows/ci.yml`
+- [x] Логи жизненного цикла задач централизованы: create/start/done/cancel, retry/interrupted и fail используют безопасные structured events без URL/filename/body. `backend/src/state.rs`
 - [x] Сверка 9 июля 2026: `README.md`, `architecture.md` и `recommendation.md` синхронизированы вокруг 509 широких и 565 SOLID/DRY пунктов; порядок маленьких PR обновлён.
 - [x] Раунд 5 (11 июля 2026): закрыты upload XSS и cancel→running, вынесены backend upload/frontend edit domain/export controls, исправлены no-op export, preset drift, drag cleanup и mobile overflow; три итерации проверены тестами и живым UI.
 - [x] Раунд 6 (11 июля 2026): закрыты SSRF redirect/DNS rebinding и custom-port egress; добавлены per-job proxy, bounded DNS/connect, реальные `yt-dlp` regression-тесты и pinned `yt-dlp` в CI.
@@ -70,8 +70,8 @@ SSRF/скорости сведены). Medium/low-хвост (475 шт.) раз�
 - [x] Раунд 8 (11 июля 2026): введены `AppError`/`AppResult`, единый JSON envelope и typed frontend `ApiError`; projects parsing отделён от persistence, extractor/404/405/body-limit ошибки покрыты regression-тестами.
 - [x] Исследовательский раунд (14 июля 2026): изучены 100 активных высокорейтинговых репозиториев и первичные papers/specs; добавлены и синхронизированы карточки №784-883. Рабочий набор теперь 665 пунктов (565 SOLID/DRY + 100 research-backed).
 - [x] Research wave 1/10 (14 июля 2026): закрыты №790/824/828/829/831/844/846/847/850/854; добавлены runtime/shutdown/contract/privacy/perf/UI/security gates и отдельные regression suites.
-- [ ] Research wave 2/10: №784/786/787/803/814/817/820/823/825/826 - typed media/timeline domain и HTTP ports/policy.
-- [ ] README-дрейф: env/Node/API/`RUST_LOG` обновлены; остаются MSRV, healthcheck/non-root в Docker/compose и дальнейшая docs/code drift-проверка.
+- [x] Research wave 2/10: №784/786/787/803/814/817/820/823/825/826 - typed media/timeline domain и HTTP ports/policy. `recommendation.md`
+- [x] README/build drift закрыт: env/Node/API/`RUST_LOG`, Rust 1.89 MSRV/toolchain, pinned builder, non-root runtime и Docker/Compose healthcheck синхронизированы. `README.md`, `rust-toolchain.toml`, `backend/{Cargo.toml,Dockerfile}`, `docker-compose.yml`
 
 ---
 

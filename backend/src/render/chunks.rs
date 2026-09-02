@@ -10,6 +10,7 @@ use crate::artifacts::{
     fingerprint_file, path_token, read_json_bounded, write_json_atomic, ArtifactFile,
     DEFAULT_MANIFEST_LIMIT,
 };
+use crate::domain::arithmetic::chunk_end;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::runtime::cpu_pool::CpuPool;
 
@@ -128,7 +129,8 @@ impl ChunkManifest {
         let mut start = 0_u64;
         let mut chunks = Vec::new();
         while start < total_frames {
-            let hard_end = start.saturating_add(max_chunk_frames).min(total_frames);
+            let hard_end = chunk_end(start, total_frames, max_chunk_frames)
+                .ok_or_else(|| anyhow!("chunk range cannot advance"))?;
             let end = confirmed
                 .iter()
                 .copied()

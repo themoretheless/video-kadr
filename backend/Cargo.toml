@@ -2,8 +2,15 @@
 name = "video-kadr-backend"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.89"
 default-run = "video-kadr-backend"
 publish = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[package.metadata.kani.flags]
+output-format = "terse"
 
 [features]
 default = []
@@ -16,7 +23,10 @@ tokio-util = { version = "0.7", features = ["io", "rt"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "fs", "set-header", "trace"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Persisted edit-plan fingerprints include canonical JSON float bytes. Exact
+# parsing keeps serde round-trips bit-stable instead of using the smaller,
+# approximate default float parser.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 anyhow = "1"

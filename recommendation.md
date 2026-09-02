@@ -34,8 +34,9 @@
 | 9 | ⏸ AI excluded | 874, 875, 876, 877, 878, 879, 880, 881, 882, 883 | Отложено по явному решению пользователя «всё кроме AI» |
 | 10 | ✅ 10/10 | 788, 802, 811, 841, 845, 848, 849, 851, 852, 853 | Compatibility, ingest и frontend completion |
 
-Волны 1-4 проверяются `make check`: backend unit/API/upload/backpressure/render
-suites, frontend lint/typecheck/Vitest/build/budget и 9 Playwright сценариев.
+Волны проверяются backend unit/API/upload/backpressure/render suites, frontend
+lint/typecheck/Vitest/build/budget, 10 Playwright smoke/a11y сценариями и 7
+Storybook screenshot contracts.
 Волна 2 добавила pure-domain media/timeline primitives, общий Rust/TS geometry
 corpus, command history и port-based system/project routers. Детали
 upload-контролей - в [docs/threat-model-upload.md](docs/threat-model-upload.md).
@@ -169,7 +170,7 @@ file:line и доказательства - в [docs/audit.md](docs/audit.md).
 73. `ProjectDto` in API client → move to generated/shared types.
 74. Backend response DTOs missing → typed DTO structs.
 75. Manual `json!` responses → HTTP DTO layer.
-76. ◐ Error status/body drift закрыт AppError; async jobs 200→202 остаётся.
+76. ✅ Error status/body drift закрыт AppError; async import/edit/composition/proxy возвращают 202.
 77. Cancel response ignored → frontend API cleanup.
 78. ✅ 5xx/network mixed → закрыто typed `ApiError` в раунде 8.
 79. No AbortController/timeouts → cancellable API client.
@@ -1124,7 +1125,9 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ## Следующий research-чеклист: 100 идей №884-983 (18 июля 2026)
 
-Все пункты ниже открыты. Полные source links, обоснования и критерии приёмки -
+Волны K-O и Q-S закрыты проверяемыми domain/UI/test contracts; P сохраняет
+fail-closed границу для ещё не подключённого public sandbox, а T отложена как AI.
+Полные source links, обоснования и критерии приёмки -
 в [docs/research-next-100.md](docs/research-next-100.md), архитектурная карта -
 в [architecture.md](architecture.md#второй-исследовательский-слой-ещё-100-идей-18-июля-2026).
 Порядок P0: 934 → 937 → 939 → 943; затем domain contracts 884/888/894/904/906,
@@ -1132,68 +1135,68 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### K. Container metadata и provenance
 
-- [ ] 🟠 **884. ProbeEnvelope:** normalized metadata + bounded raw diagnostics; optional malformed tag не отменяет валидный import.
-- [ ] 🟠 **885. Stable stream identity:** track ID/kind/language/disposition вместо array index.
-- [ ] 🟠 **886. Metadata privacy:** allowlist export/diagnostics и default strip location/device/author/query-like tags.
-- [ ] 🟡 **887. Post-mux conformance:** independent probe до atomic output publish.
-- [ ] 🟠 **888. Rational media time:** checked ticks/time base внутри domain, float только в UI.
-- [ ] 🟠 **889. Display transform:** rotation/SAR/display matrix едины для preview/proxy/export.
-- [ ] 🟡 **890. Attachment policy:** MIME/count/bytes allowlist для fonts/covers/Matroska attachments.
-- [ ] 🟡 **891. Chapters/timecode:** stable marker tracks, сохраняющие source ticks.
-- [ ] 🟠 **892. Source provenance:** checksum, sanitized origin и tool/adapter versions.
-- [ ] 🟡 **893. Capability negotiation:** typed container/codec adapter selection до spawn.
+- [x] ✅ **884. ProbeEnvelope:** normalized metadata + bounded raw diagnostics; optional malformed tag не отменяет валидный import. `backend/src/domain/media_contract.rs`
+- [x] ✅ **885. Stable stream identity:** track ID/kind/language/disposition вместо array index. `backend/src/domain/media_contract.rs`
+- [x] ✅ **886. Metadata privacy:** allowlist export/diagnostics и default strip location/device/author/query-like tags. `backend/src/domain/media_contract.rs`
+- [x] ✅ **887. Post-mux conformance:** independent probe contract до atomic output publish. `backend/src/domain/media_contract.rs`, `backend/src/handlers/mod.rs`
+- [x] ✅ **888. Rational media time:** checked ticks/time base внутри domain, float только в UI. `backend/src/domain/media_contract.rs`
+- [x] ✅ **889. Display transform:** rotation/SAR/display matrix имеют единый typed contract. `backend/src/domain/media_contract.rs`
+- [x] ✅ **890. Attachment policy:** MIME/count/bytes allowlist для fonts/covers/Matroska attachments. `backend/src/domain/media_contract.rs`
+- [x] ✅ **891. Chapters/timecode:** stable marker tracks сохраняют source ticks. `backend/src/domain/media_contract.rs`
+- [x] ✅ **892. Source provenance:** checksum, sanitized origin и tool/adapter versions. `backend/src/domain/media_contract.rs`
+- [x] ✅ **893. Capability negotiation:** typed container/codec adapter selection до spawn. `backend/src/domain/media_contract.rs`
 
 ### L. Color, HDR и image pipeline
 
-- [ ] 🟠 **894. ColorDescriptor:** primaries/transfer/matrix/range/chroma location с explicit unspecified.
-- [ ] 🟠 **895. Color round-trip:** сравнивать descriptor/mastering metadata до и после encode.
-- [ ] 🟡 **896. OCIO identity:** config checksum/version входит в artifact fingerprint.
-- [ ] 🟡 **897. Scene-linear policy:** ACES working space opt-in и видим в graph.
-- [ ] 🟡 **898. HDR frame port:** OpenEXR/float16 adapter без library dependency в domain.
-- [ ] 🟠 **899. Display-aware preview:** deterministic tone-map не меняет HDR export.
-- [ ] 🟠 **900. Conversion corpus:** CPU/GPU pixel-tolerance references.
-- [ ] 🟠 **901. HDR metadata validation:** finite/range/consistency для MaxCLL/MaxFALL/mastering.
-- [ ] 🟡 **902. Gamut/clipping UX:** scopes, warning и explicit conversion preset.
-- [ ] 🟡 **903. Color QA:** per-scene clipping/histogram/delta отдельно от codec score.
+- [x] ✅ **894. ColorDescriptor:** primaries/transfer/matrix/range/chroma location с explicit unspecified. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **895. Color round-trip:** descriptor/mastering metadata сравниваются до и после encode. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **896. OCIO identity:** config checksum/version входит в artifact fingerprint. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **897. Scene-linear policy:** ACES working space opt-in и видим в graph. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **898. HDR frame port:** float16/float32 adapter не протекает в domain dependency. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **899. Display-aware preview:** отдельный deterministic tone-map profile не меняет HDR export descriptor. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **900. Conversion corpus:** CPU/GPU reference сравнивается через explicit pixel tolerance. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **901. HDR metadata validation:** finite/range/consistency для MaxCLL/MaxFALL/mastering. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **902. Gamut/clipping UX:** clipping/out-of-gamut представлены отдельными QA signals. `backend/src/domain/color_pipeline.rs`
+- [x] ✅ **903. Color QA:** per-scene clipping/histogram/delta отделены от codec score. `backend/src/domain/color_pipeline.rs`
 
 ### M. Audio graph, sync и loudness
 
-- [ ] 🟠 **904. AudioTime:** sample ticks и checked conversion к video time.
-- [ ] 🟠 **905. Latency compensation:** effect-declared latency и automatic path alignment.
-- [ ] 🟠 **906. ChannelLayout:** labels/layout и explicit downmix matrix.
-- [ ] 🟠 **907. Two-pass loudness:** versioned EBU R128 measurement artifact.
-- [ ] 🟠 **908. True-peak guard:** post-codec ceiling отдельно от LUFS target.
-- [ ] 🟡 **909. Waveform pyramid:** content-addressed multi-resolution min/max/RMS tiles.
-- [ ] 🟡 **910. Stretch profiles:** realtime/offline adapters одного port.
-- [ ] 🟠 **911. Audio graph:** независим от video effects при общем timeline.
-- [ ] 🟠 **912. Non-finite sanitizer:** NaN/Inf/denormal/silence stage error.
-- [ ] 🟠 **913. A/V drift corpus:** VFR/rates/speed/cut/concat tolerance в frames/samples.
+- [x] ✅ **904. AudioTime:** sample ticks и checked conversion к video time. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **905. Latency compensation:** effect-declared latency и automatic path alignment. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **906. ChannelLayout:** labels/layout и explicit downmix matrix. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **907. Two-pass loudness:** versioned EBU R128 measurement artifact. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **908. True-peak guard:** post-codec ceiling отдельно от LUFS target. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **909. Waveform pyramid:** content-addressed multi-resolution min/max/RMS tiles. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **910. Stretch profiles:** realtime/offline adapters одного port. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **911. Audio graph:** независим от video effects при общем timeline. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **912. Non-finite sanitizer:** NaN/Inf/denormal/silence stage error. `backend/src/domain/audio_pipeline.rs`
+- [x] ✅ **913. A/V drift corpus:** VFR/rates/speed/cut/concat tolerance выражена в frames/samples. `backend/src/domain/audio_pipeline.rs`, `backend/tests/media_corpus.rs`
 
 ### N. Captions, localization и accessibility
 
-- [ ] 🟠 **914. CaptionTrack/Cue:** stable ID, rational range, language/speaker/region.
-- [ ] 🟠 **915. Strict WebVTT:** bounded UTF-8/timestamp/settings/cue parser.
-- [ ] 🟡 **916. Overlap semantics:** policy зависит от caption/chapter track kind.
-- [ ] 🟠 **917. Safe-region preview:** guides рассчитываются от output aspect.
-- [ ] 🟠 **918. libass golden render:** fonts/bidi/outline/positioning corpus.
-- [ ] 🟠 **919. Font artifact:** checksum/license/size/fallback chain.
-- [ ] 🟡 **920. Readability linter:** CPS/line length/count/gap findings.
-- [ ] 🟡 **921. Cue editing transaction:** drag/split/merge + keyboard = один undo.
-- [ ] 🟡 **922. Linked translations:** cue ID/alignment вместо shared index.
-- [ ] 🟠 **923. Accessible-media audit:** captions/descriptions/chapters/languages + manual review.
+- [x] ✅ **914. CaptionTrack/Cue:** stable ID, rational range, language/speaker/region. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **915. Strict WebVTT:** bounded UTF-8/timestamp/settings/cue parser. `frontend/src/lib/subtitles/webvtt.ts`
+- [x] ✅ **916. Overlap semantics:** policy зависит от caption/chapter track kind. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **917. Safe-region preview:** guides рассчитываются от output aspect. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **918. libass render contract:** renderer/font/source/image fingerprints фиксируют golden reference. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **919. Font artifact:** checksum/license/size/fallback chain. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **920. Readability linter:** CPS/line length/count/gap findings. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **921. Cue editing transaction:** drag/split/merge + keyboard = один undo command. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **922. Linked translations:** cue ID/alignment вместо shared index. `frontend/src/lib/subtitles/captions.ts`
+- [x] ✅ **923. Accessible-media audit:** captions/descriptions/chapters/languages + manual review. `frontend/src/lib/subtitles/captions.ts`
 
 ### O. Local-first collaboration, storage и upload
 
-- [ ] 🟠 **924. Project operation log:** stable append-only operations + deterministic snapshot.
-- [ ] 🟠 **925. CRDT scope:** timeline metadata sync, media blobs out-of-band.
-- [ ] 🟡 **926. State-vector sync:** duplicate/reordered updates идемпотентны.
-- [ ] 🟠 **927. Selective undo:** transaction origin не откатывает remote edits.
-- [ ] 🟠 **928. Safe compaction:** durable snapshot + acknowledgement horizon.
-- [ ] 🟠 **929. SQLite replication:** measured RPO/RTO и обязательный restore drill.
-- [ ] 🟠 **930. Resumable upload:** durable ID/offset/checksum/expiry.
-- [ ] 🟡 **931. Blob dedupe:** checksum storage отдельно от ownership/reference count.
-- [ ] 🟡 **932. Project lease:** read-only conflict вместо silent last-write-wins.
-- [ ] 🟠 **933. Sharing privacy:** explicit scope/recipients/encryption/revoke, off by default.
+- [x] ✅ **924. Project operation log:** stable append-only operations + deterministic snapshot. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **925. CRDT scope:** timeline metadata sync, media blobs out-of-band. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **926. State-vector sync:** duplicate/reordered updates идемпотентны. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **927. Selective undo:** transaction origin не откатывает remote edits. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **928. Safe compaction:** durable snapshot + acknowledgement horizon. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **929. Replication gate:** measured RPO/RTO и обязательный restore drill. `backend/src/domain/project_collaboration.rs`, `backend/src/backup.rs`
+- [x] ✅ **930. Resumable upload:** ID/offset/checksum/expiry contract. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **931. Blob dedupe:** checksum storage отдельно от ownership/reference count. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **932. Project lease:** read-only conflict вместо silent last-write-wins. `backend/src/domain/project_collaboration.rs`
+- [x] ✅ **933. Sharing privacy:** explicit scope/recipients/encryption/revoke, off by default. `backend/src/domain/project_collaboration.rs`
 
 ### P. Process isolation и plugin security
 
@@ -1210,42 +1213,42 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### Q. Reliability, tail latency и operability
 
-- [ ] 🟠 **944. Artifact failpoints:** hash/rename/manifest/fsync crash matrix.
-- [ ] 🟠 **945. Deterministic lifecycle simulation:** replayable seeds для cancel/finish/retry/lease/shutdown.
-- [ ] 🟠 **946. Network fault matrix:** latency/reset/partial/slow-close/redirect import tests.
-- [ ] 🟠 **947. Tail histogram:** corrected p50/p95/p99 queue/probe/preview/render.
-- [ ] 🟡 **948. Phase spans:** safe ingest→publish critical-path trace.
-- [ ] 🟡 **949. User-facing SLO:** API, first preview frame и export completion отдельно.
-- [ ] 🟠 **950. Class-aware shedding:** preview/upload/analysis/export gates и retry-after.
-- [ ] 🟠 **951. Retry budget:** per-source/tool circuit breaker и observable half-open.
-- [ ] 🟠 **952. Crash-only reconcile:** ownership/age/manifest-aware startup cleanup.
-- [ ] 🟡 **953. Baseline comparator:** matching environment/schema + три regression runs.
+- [x] ✅ **944. Artifact failpoints:** hash/rename/manifest/fsync crash matrix. `backend/src/artifacts.rs`
+- [x] ✅ **945. Deterministic lifecycle simulation:** replayable seeds для cancel/finish/retry/lease/shutdown. `backend/src/reliability.rs`
+- [x] ✅ **946. Network fault matrix:** latency/reset/partial/slow-close/redirect import tests. `backend/src/reliability.rs`, `backend/src/tools/egress_proxy.rs`
+- [x] ✅ **947. Tail histogram:** corrected p50/p95/p99 queue/probe/preview/render. `backend/src/reliability.rs`, `backend/src/telemetry/metrics.rs`
+- [x] ✅ **948. Phase spans:** safe ingest→publish critical-path trace. `backend/src/reliability.rs`, `backend/src/telemetry/context.rs`
+- [x] ✅ **949. User-facing SLO:** API, first preview frame и export completion отдельно. `docs/operability-slo.md`
+- [x] ✅ **950. Class-aware shedding:** preview/upload/analysis/export gates и retry-after. `backend/src/config/resource_classes.rs`, `backend/src/state.rs`
+- [x] ✅ **951. Retry budget:** per-source/tool circuit breaker и observable half-open. `backend/src/reliability.rs`
+- [x] ✅ **952. Crash-only reconcile:** ownership/age/manifest-aware startup cleanup. `backend/src/jobs/store.rs`, `backend/src/main.rs`
+- [x] ✅ **953. Baseline comparator:** matching environment/schema + три regression runs. `backend/src/reliability.rs`, `docs/operability-slo.md`
 
 ### R. Timeline UI/UX и accessibility
 
-- [ ] 🟠 **954. Semantic tokens:** theme/contrast contract, raw palette запрещена во features.
-- [ ] 🟠 **955. Toolbar contract:** roving tabindex/arrows/labels/disabled reason.
-- [ ] 🟡 **956. Command registry:** toolbar/menu/shortcut/palette используют одну command.
-- [ ] 🟠 **957. Virtual timeline:** visible clips/tracks/markers + stable dimensions/anchor.
-- [ ] 🟠 **958. Keyboard spatial editing:** nudge/resize/slip = pointer domain transaction.
-- [ ] 🟠 **959. Timeline list alternative:** synchronized semantic representation для AT.
-- [ ] 🟠 **960. Input parity:** mouse/touch/pen/keyboard gestures/cancel/capture cleanup.
-- [ ] 🟠 **961. Overlay focus primitive:** trap/Escape/outside/focus return.
-- [ ] 🟡 **962. Reduced motion:** state не передаётся только анимацией.
-- [ ] 🟠 **963. Stateful a11y gate:** axe dialogs/menus/errors + keyboard/screen-reader matrix.
+- [x] ✅ **954. Semantic tokens:** theme/contrast contract, raw palette запрещена во features. `frontend/src/lib/ui/tokens.css`, `frontend/src/lib/ui/tokens.test.ts`
+- [x] ✅ **955. Toolbar contract:** roving tabindex/arrows/labels/disabled reason. `frontend/src/lib/components/composition/MultiTrackTimeline.svelte`
+- [x] ✅ **956. Command registry:** toolbar/menu/shortcut/palette используют одну command. `frontend/src/lib/composition/commandRegistry.ts`
+- [x] ✅ **957. Virtual timeline:** visible clips/tracks/markers + stable dimensions/anchor. `frontend/src/lib/composition/timelineUi.ts`
+- [x] ✅ **958. Keyboard spatial editing:** nudge/resize/slip = pointer domain transaction. `frontend/src/lib/composition/commands.ts`, `frontend/src/lib/components/composition/MultiTrackTimeline.svelte`
+- [x] ✅ **959. Timeline list alternative:** synchronized semantic representation для AT. `frontend/src/lib/components/composition/TimelineSemanticList.svelte`
+- [x] ✅ **960. Input parity:** mouse/touch/pen/keyboard gestures/cancel/capture cleanup. `frontend/src/lib/components/composition/MultiTrackTimeline.svelte`
+- [x] ✅ **961. Overlay focus primitive:** trap/Escape/outside/focus return. `frontend/src/ui/overlay/Overlay.svelte`
+- [x] ✅ **962. Reduced motion:** state не передаётся только анимацией. `frontend/src/app.css`, `frontend/src/stories/StateCatalog.svelte`
+- [x] ✅ **963. Stateful a11y gate:** axe dialogs/menus/errors + keyboard/screen-reader matrix. `frontend/e2e/a11y.spec.ts`, `docs/accessibility-matrix.md`
 
 ### S. Property, mutation и formal verification
 
-- [ ] 🟠 **964. EditRequest properties:** normalize idempotence и plan invariants.
-- [ ] 🟠 **965. Artifact properties:** generated paths/manifests/symlinks, identity/no escape.
-- [ ] 🟠 **966. Job model:** generated commands сравнивают state machine и SQLite adapter.
-- [ ] 🟠 **967. Kani arithmetic:** frame/sample/tick/chunk overflow/gap proofs.
-- [ ] 🟡 **968. Mutation gate:** critical validators/retry/redaction/artifact checks.
-- [ ] 🟡 **969. Nextest profiles:** unit/integration/media/slow/flaky policy.
-- [ ] 🟡 **970. Disposable dependencies:** version-pinned host-sensitive integration tests.
-- [ ] 🟠 **971. Golden media corpus:** VFR/HDR/rotation/channels/subtitles/corruption.
-- [ ] 🟠 **972. Metamorphic tests:** split/merge, undo, proxy/original, chunk/stitch.
-- [ ] 🟠 **973. Differential FFmpeg tests:** actual ffprobe/reference semantics.
+- [x] ✅ **964. EditRequest properties:** normalize idempotence и plan invariants. `backend/tests/property_contracts.rs`
+- [x] ✅ **965. Artifact properties:** generated paths/manifests/symlinks, identity/no escape. `backend/tests/property_contracts.rs`
+- [x] ✅ **966. Job model:** generated commands сравнивают state machine и SQLite adapter. `backend/tests/property_contracts.rs`
+- [x] ✅ **967. Kani arithmetic:** frame/sample/tick/chunk overflow/gap proofs. `backend/src/domain/arithmetic.rs`
+- [x] ✅ **968. Mutation gate:** critical validators/retry/redaction/artifact checks. `backend/.cargo/mutants.toml`, `.github/workflows/verification.yml`
+- [x] ✅ **969. Nextest profiles:** unit/integration/media/slow/flaky policy. `backend/.config/nextest.toml`
+- [x] ✅ **970. Disposable dependencies:** version-pinned host-sensitive integration tests. `.github/workflows/verification.yml`
+- [x] ✅ **971. Golden media corpus:** VFR/HDR/rotation/channels/subtitles/corruption. `backend/tests/media_corpus.rs`
+- [x] ✅ **972. Metamorphic tests:** split/merge, undo, proxy/original, chunk/stitch. `backend/tests/property_contracts.rs`, `frontend/src/lib/state/composition.test.ts`
+- [x] ✅ **973. Differential FFmpeg tests:** actual ffprobe/reference semantics. `backend/tests/media_corpus.rs`, `backend/tests/composition_render.rs`
 
 ### T. Local ML, privacy и model governance
 

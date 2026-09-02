@@ -1,0 +1,78 @@
+name: Extended verification
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/verification.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/verification.yml"
+  schedule:
+    - cron: "31 3 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nextest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.137
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: Install media reference tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Record media tool version
+        run: ffmpeg -version
+      - name: Run deterministic CI profile
+        run: cargo nextest run --all-features --profile ci
+
+  kani:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove bounded media arithmetic
+        uses: model-checking/kani-github-action@v1
+        with:
+          kani-version: "0.67.0"
+          working-directory: backend
+          args: "--lib"
+
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.137,cargo-mutants@27.1.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: Run targeted critical mutation gate
+        # GitHub's checkout is disposable. In-place mode keeps the shared
+        # cross-language fixture corpus visible to Rust include_str! tests.
+        run: cargo mutants --in-place --build-timeout 120
+      - name: Preserve mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-mutants-report
+          path: backend/mutants.out
+          if-no-files-found: warn

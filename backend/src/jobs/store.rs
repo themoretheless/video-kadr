@@ -433,7 +433,11 @@ impl SqliteJobStore {
         tool_version: Option<&str>,
     ) -> Result<bool> {
         let now = now_secs() as i64;
-        let mut tx = self.db.pool().begin().await?;
+        // Reserve the SQLite writer before reading the next event sequence.
+        // A deferred read-then-write transaction can otherwise lose a race to
+        // a concurrent deduplicated enqueue and fail with BUSY_SNAPSHOT,
+        // leaving a claimed job pending until its lease expires.
+        let mut tx = self.db.pool().begin_with("BEGIN IMMEDIATE").await?;
         if !append_event(&mut tx, &snapshot.id, event, idempotency_key, now).await? {
             tx.commit().await?;
             return Ok(false);

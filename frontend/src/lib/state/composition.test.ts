@@ -216,6 +216,7 @@ describe('composition editor state', () => {
 
   it('keeps split edits in bounded undo/redo history', () => {
     const originalId = addMediaInfoToComposition(video)
+    const originalDocument = JSON.parse(JSON.stringify(compositionState.document)) as unknown
     setCompositionPlayhead(4 * COMPOSITION_TIME_BASE)
     const rightId = splitSelectedCompositionClip()
 
@@ -223,7 +224,7 @@ describe('composition editor state', () => {
     expect(compositionState.document.tracks[0]!.clips).toHaveLength(2)
     expect(compositionState.document.tracks[0]!.clips[0]!.id).toBe(originalId)
     undoComposition()
-    expect(compositionState.document.tracks[0]!.clips).toHaveLength(1)
+    expect(compositionState.document).toEqual(originalDocument)
     redoComposition()
     expect(compositionState.document.tracks[0]!.clips).toHaveLength(2)
   })

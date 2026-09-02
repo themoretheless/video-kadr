@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::{header, HeaderValue};
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use axum::Json;
@@ -157,7 +157,7 @@ pub async fn import_handler(
     State(state): State<AppState>,
     trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(req): ApiJson<ImportRequest>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<(StatusCode, Json<Value>)> {
     let job_id = Uuid::new_v4().to_string();
     let work = ImportWork {
         schema_version: 1,
@@ -183,7 +183,7 @@ pub async fn import_handler(
         }
     };
     dispatch_job(&state, &resolved_id).await;
-    Ok(Json(json!({ "jobId": resolved_id })))
+    Ok((StatusCode::ACCEPTED, Json(json!({ "jobId": resolved_id }))))
 }
 
 fn spawn_import_job(
@@ -371,7 +371,7 @@ pub async fn edit_handler(
     State(state): State<AppState>,
     trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(mut req): ApiJson<EditRequest>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<(StatusCode, Json<Value>)> {
     // Audio-only exports have no video filter graph. Canonicalise video-only
     // colour fields before validation, durable dedupe, and cache identity.
     if req.format.as_deref() == Some("mp3") {
@@ -426,7 +426,7 @@ pub async fn edit_handler(
         }
     };
     dispatch_job(&state, &resolved_id).await;
-    Ok(Json(json!({ "jobId": resolved_id })))
+    Ok((StatusCode::ACCEPTED, Json(json!({ "jobId": resolved_id }))))
 }
 
 fn validate_color_grade_capabilities(state: &AppState, request: &EditRequest) -> AppResult<()> {

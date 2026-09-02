@@ -1,5 +1,6 @@
 import { tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { pollJob } from '../../data/jobs.js'
 import * as api from '../api'
 import {
   activateTimeline,
@@ -7,6 +8,8 @@ import {
   buildEditPayload,
   defaultEdit,
   deleteTimelineSegment,
+  doExport,
+  doImport,
   doUpload,
   duplicateTimelineSegment,
   endEditTransaction,
@@ -70,6 +73,10 @@ vi.mock('../api', () => {
     getCapabilities: vi.fn(() => Promise.resolve(null)),
   }
 })
+
+vi.mock('../../data/jobs.js', () => ({
+  pollJob: vi.fn(),
+}))
 
 function setVideo(duration = 10, width = 1280, height = 720): void {
   const video: VideoInfo = {
@@ -472,6 +479,64 @@ describe('runtime capabilities', () => {
 })
 
 describe('media upload routing', () => {
+  it('runs URL import through the async job and resets editor state from its result', async () => {
+    state.url = ' https://example.com/source.mp4 '
+    state.importStart = '1:02'
+    state.importEnd = '70'
+    state.edit.speed = 1.5
+    vi.mocked(api.importUrl).mockResolvedValue({ jobId: 'import-job' })
+    vi.mocked(pollJob).mockImplementation(async (_id, options) => {
+      options?.onTick?.({ id: 'import-job', status: 'running', progress: 0.5, stage: 'download' })
+      return {
+        id: 'import-job',
+        status: 'done',
+        result: {
+          id: 'imported',
+          url: '/files/sources/imported.mp4',
+          filename: 'imported.mp4',
+          duration: 8,
+          width: 640,
+          height: 360,
+        },
+      }
+    })
+
+    const imported = await doImport()
+
+    expect(api.importUrl).toHaveBeenCalledWith({
+      url: 'https://example.com/source.mp4',
+      start: 62,
+      end: 70,
+    })
+    expect(pollJob).toHaveBeenCalledWith('import-job', expect.any(Object))
+    expect(imported?.id).toBe('imported')
+    expect(state.video?.id).toBe('imported')
+    expect(state.edit).toMatchObject({ trimEnd: 8, crop: { x: 0, y: 0, w: 640, h: 360 } })
+    expect(state.importing).toBe(false)
+    expect(state.importJobId).toBeNull()
+  })
+
+  it('runs export through the async job and publishes its result', async () => {
+    vi.mocked(api.edit).mockResolvedValue({ jobId: 'export-job' })
+    vi.mocked(pollJob).mockResolvedValue({
+      id: 'export-job',
+      status: 'done',
+      result: {
+        id: 'rendered',
+        url: '/files/outputs/rendered.mp4',
+        filename: 'rendered.mp4',
+      },
+    })
+
+    await doExport()
+
+    expect(api.edit).toHaveBeenCalledWith(expect.objectContaining({ videoId: 'vid' }))
+    expect(pollJob).toHaveBeenCalledWith('export-job', expect.any(Object))
+    expect(state.result).toMatchObject({ id: 'rendered', filename: 'rendered.mp4' })
+    expect(state.exporting).toBe(false)
+    expect(state.exportJobId).toBeNull()
+  })
+
   it('returns audio metadata without replacing the legacy video editor state', async () => {
     const original = state.video
     vi.mocked(api.uploadFile).mockResolvedValue({

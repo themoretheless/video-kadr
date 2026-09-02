@@ -2,6 +2,7 @@
 /backend/target/
 /backend/fuzz/target/
 /backend/sqlx-check.db
+/backend/mutants.out*/
 
 # Node
 /frontend/node_modules/

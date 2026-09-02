@@ -1,0 +1,46 @@
+[profile.default]
+fail-fast = true
+retries = 0
+test-threads = 8
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+[profile.ci]
+inherits = "default"
+fail-fast = false
+flaky-result = "fail"
+global-timeout = "45m"
+
+[profile.ci.junit]
+path = "target/nextest/ci/junit.xml"
+report-name = "video-kadr-backend"
+store-success-output = false
+store-failure-output = true
+
+[profile.media]
+inherits = "ci"
+default-filter = "binary(composition_render) or binary(media) or binary(media_corpus) or binary(proxy) or binary(render) or binary(thumbnails)"
+test-threads = 2
+slow-timeout = { period = "2m", terminate-after = 3 }
+
+[profile.slow]
+inherits = "ci"
+default-filter = "binary(project_archive) | binary(property_contracts)"
+slow-timeout = { period = "2m", terminate-after = 3 }
+
+[profile.flaky]
+inherits = "ci"
+retries = 2
+flaky-result = "fail"
+
+[test-groups]
+media-process = { max-threads = 1 }
+sqlite-writer = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = "binary(composition_render) or binary(media) or binary(media_corpus) or binary(proxy) or binary(render) or binary(thumbnails)"
+test-group = "media-process"
+slow-timeout = { period = "2m", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = "binary(api) or binary(http_backpressure) or binary(project_archive) or binary(property_contracts)"
+test-group = "sqlite-writer"

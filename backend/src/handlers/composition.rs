@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, ensure, Context};
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -63,7 +64,7 @@ pub async fn composition_render_handler(
     State(state): State<AppState>,
     trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(request): ApiJson<CompositionRenderRequest>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<(StatusCode, Json<Value>)> {
     if request.schema_version != COMPOSITION_RENDER_SCHEMA_VERSION {
         return Err(AppError::bad_request(
             "неподдерживаемая версия composition render",
@@ -115,7 +116,7 @@ pub async fn composition_render_handler(
         }
     };
     dispatch_job(&state, &resolved_id).await;
-    Ok(Json(json!({ "jobId": resolved_id })))
+    Ok((StatusCode::ACCEPTED, Json(json!({ "jobId": resolved_id }))))
 }
 
 fn validate_composition_capabilities(

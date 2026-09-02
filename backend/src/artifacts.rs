@@ -217,21 +217,37 @@ async fn contained_existing_path(root: &Path, relative: &Path) -> Result<PathBuf
 }
 
 pub fn safe_relative_token(token: &str) -> Result<PathBuf> {
-    safe_relative_path(Path::new(token))
+    if token.contains('\\') || token.chars().any(char::is_control) {
+        return Err(anyhow!(
+            "artifact token must use canonical printable forward-separated text"
+        ));
+    }
+    let path = safe_relative_path(Path::new(token))?;
+    if path_token(&path)? != token {
+        return Err(anyhow!("artifact token must be canonical"));
+    }
+    Ok(path)
 }
 
 pub fn safe_relative_path(path: &Path) -> Result<PathBuf> {
     let mut components = 0_usize;
+    let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::Normal(value) if !value.is_empty() => components += 1,
+            Component::Normal(value) => {
+                components += 1;
+                normalized.push(value);
+            }
             _ => return Err(anyhow!("artifact path must be relative and normalized")),
         }
     }
     if components == 0 || components > 16 {
         return Err(anyhow!("artifact path has an invalid component count"));
     }
-    Ok(path.to_path_buf())
+    if normalized.as_os_str() != path.as_os_str() {
+        return Err(anyhow!("artifact path must be relative and normalized"));
+    }
+    Ok(normalized)
 }
 
 pub fn path_token(path: &Path) -> Result<String> {
