@@ -1,0 +1,18 @@
+version: 1
+environment: staging
+collector:
+  image: ghcr.io/parca-dev/parca:v0.28.0
+  bind: 127.0.0.1:7070
+retention_days: 7
+build:
+  cargo_profile: profiling
+  symbols: required
+  strip: false
+comparison:
+  baseline_minutes: 15
+  candidate_minutes: 15
+  required_for_labels:
+    - performance
+    - concurrency
+production:
+  enabled: false

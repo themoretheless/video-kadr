@@ -28,6 +28,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
+      - name: Verify SQLx offline metadata
+        run: |
+          cargo install sqlx-cli --version 0.8.6 --no-default-features --features sqlite --locked
+          cargo sqlx database setup --database-url sqlite://sqlx-check.db
+          cargo sqlx prepare --check --database-url sqlite://sqlx-check.db
       - name: Format
         run: cargo fmt --check
       - name: Clippy

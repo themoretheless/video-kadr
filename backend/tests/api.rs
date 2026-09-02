@@ -297,6 +297,19 @@ async fn request_id_is_validated_and_propagated() {
 }
 
 #[tokio::test]
+async fn metrics_exposition_uses_only_low_cardinality_dimensions() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let (status, _json, text) = send(&app, get("/metrics")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(text.contains("video_kadr_queue_wait_seconds"));
+    assert!(text.contains("class=\"ingest\""));
+    for forbidden in ["job_id=", "request_id=", "url=", "filename="] {
+        assert!(!text.contains(forbidden));
+    }
+}
+
+#[tokio::test]
 async fn unknown_job_is_404() {
     let (state, _d) = make_state(true, true).await;
     let app = router(state);
@@ -919,8 +932,14 @@ async fn cancel_pending_job_marks_cancelled() {
 #[tokio::test]
 async fn cancel_queued_edit_does_not_wait_for_permit() {
     let (state, _d) = make_state(true, true).await;
-    let _p1 = state.acquire_job_slot().await.unwrap();
-    let _p2 = state.acquire_job_slot().await.unwrap();
+    let _p1 = state
+        .acquire_job_slot(video_kadr_backend::config::resource_classes::ResourceClass::Export)
+        .await
+        .unwrap();
+    let _p2 = state
+        .acquire_job_slot(video_kadr_backend::config::resource_classes::ResourceClass::Export)
+        .await
+        .unwrap();
     let app = router(state);
 
     let (_s, body, _) = send(

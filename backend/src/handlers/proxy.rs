@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{anyhow, ensure, Context};
 use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
+use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -17,6 +18,7 @@ use crate::analysis::proxy::{
     proxy_key, proxy_key_for_fingerprint, proxy_media_filename, ProxyArtifact, ProxyProfile,
     SourceIdentity, SourceMedia, MAX_PROXY_ARTIFACTS_PER_SOURCE,
 };
+use crate::config::resource_classes::ResourceClass;
 use crate::db::valid_composition_source_id;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::error::{ApiJson, AppError, AppResult};
@@ -42,6 +44,8 @@ pub(super) struct ProxyWork {
     source_id: String,
     source_fingerprint: Fingerprint,
     profile: ProxyProfile,
+    #[serde(default)]
+    trace_context: crate::telemetry::context::TraceContext,
 }
 
 #[derive(Serialize)]
@@ -105,6 +109,7 @@ pub struct ProxyListResponse {
 pub async fn proxy_create_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(profile): ApiJson<ProxyProfile>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
     validate_profile(&profile)?;
@@ -123,6 +128,7 @@ pub async fn proxy_create_handler(
         source_id: id,
         source_fingerprint: source.fingerprint.clone(),
         profile,
+        trace_context: trace.map(|Extension(value)| value).unwrap_or_default(),
     };
     let dedupe = proxy_job_dedupe_key(&work.source_id, &key)?;
     let payload = serde_json::to_value(&work)
@@ -317,7 +323,7 @@ pub(super) fn spawn_proxy_job(
 ) {
     let st = state.clone();
     let jid = job_id.clone();
-    let span = tracing::info_span!("job", job.id = %job_id, job.kind = "proxy");
+    let span = work.trace_context.job_span(&job_id, "proxy");
     let task = async move {
         let _lease = lease;
         if !mark_queued(&st, &jid).await {
@@ -328,10 +334,12 @@ pub(super) fn spawn_proxy_job(
             Some(permit) => permit,
             None => return,
         };
-        let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
-            Some(permit) => permit,
-            None => return,
-        };
+        let _permit =
+            match acquire_job_permit_or_cancelled(&st, &jid, &token, ResourceClass::Analysis).await
+            {
+                Some(permit) => permit,
+                None => return,
+            };
         if token.is_cancelled() {
             mark_cancelled(&st, &jid).await;
             return;
@@ -627,6 +635,7 @@ mod tests {
             source_id: "source-id".into(),
             source_fingerprint: Fingerprint::digest(b"source"),
             profile: ProxyProfile::default(),
+            trace_context: Default::default(),
         };
         let value = serde_json::to_value(work).unwrap();
         assert_eq!(value["sourceId"], json!("source-id"));
@@ -671,6 +680,7 @@ mod tests {
             source_id: "missing-source".into(),
             source_fingerprint: Fingerprint::digest(b"missing"),
             profile: ProxyProfile::default(),
+            trace_context: Default::default(),
         };
         first
             .enqueue_job(

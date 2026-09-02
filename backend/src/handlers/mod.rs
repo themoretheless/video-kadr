@@ -2,6 +2,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use axum::extract::State;
+use axum::http::{header, HeaderValue};
+use axum::response::{IntoResponse, Response};
+use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -12,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use uuid::Uuid;
 
+use crate::config::resource_classes::ResourceClass;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::output::OutputFormat;
 use crate::error::{ApiJson, AppError, AppResult};
@@ -19,6 +23,7 @@ use crate::jobs::{dedupe_key, EnqueueOutcome, ErrorKind, JobEvent, JobKind, JobP
 use crate::library::MediaEntry;
 use crate::luts::MAX_LUT_FILE_BYTES;
 use crate::model::{EditRequest, ImportRequest};
+use crate::ports::telemetry::TelemetryEvent;
 use crate::ports::{ExportCommandCompiler, ExportCompileRequest};
 use crate::services::render::{
     validate_color_grade_request, EditPlan, ExportExecutionProfile, RenderExecution,
@@ -55,12 +60,30 @@ pub use proxy::{proxy_create_handler, proxy_delete_handler, proxy_list_handler};
 use proxy::{spawn_proxy_job, ProxyWork};
 pub use upload::upload_handler;
 
+pub async fn metrics_handler(State(state): State<AppState>) -> Response {
+    match state.prometheus_metrics() {
+        Some(body) => (
+            [(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(
+                    "application/openmetrics-text; version=1.0.0; charset=utf-8",
+                ),
+            )],
+            body,
+        )
+            .into_response(),
+        None => axum::http::StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ImportWork {
     schema_version: u32,
     request: ImportRequest,
     video_id: String,
+    #[serde(default)]
+    trace_context: crate::telemetry::context::TraceContext,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,6 +93,8 @@ struct EditWork {
     request: EditRequest,
     output_id: String,
     cache_key: String,
+    #[serde(default)]
+    trace_context: crate::telemetry::context::TraceContext,
 }
 
 const EDIT_WORK_SCHEMA_VERSION: u32 = 2;
@@ -127,6 +152,7 @@ struct EditDedupeIdentity<'a> {
 /// and immediately return a job id to poll.
 pub async fn import_handler(
     State(state): State<AppState>,
+    trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(req): ApiJson<ImportRequest>,
 ) -> AppResult<Json<Value>> {
     let job_id = Uuid::new_v4().to_string();
@@ -134,6 +160,7 @@ pub async fn import_handler(
         schema_version: 1,
         request: req,
         video_id: Uuid::new_v4().to_string(),
+        trace_context: trace.map(|Extension(value)| value).unwrap_or_default(),
     };
     let key = dedupe_key("import", &work.request)
         .map_err(|error| AppError::internal("build import dedupe key", error))?;
@@ -166,9 +193,10 @@ fn spawn_import_job(
 ) {
     let st = state.clone();
     let jid = job_id.clone();
+    let trace_context = work.trace_context.clone();
     let req = work.request;
     let vid = work.video_id;
-    let span = tracing::info_span!("job", job.id = %job_id, job.kind = "import");
+    let span = trace_context.job_span(&job_id, "import");
     state.spawn_task(
         async move {
             let _lease = lease;
@@ -192,10 +220,13 @@ fn spawn_import_job(
                 st.clear_cancel(&jid).await;
                 return;
             }
-            let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
-                Some(p) => p,
-                None => return,
-            };
+            let _permit =
+                match acquire_job_permit_or_cancelled(&st, &jid, &token, ResourceClass::Ingest)
+                    .await
+                {
+                    Some(p) => p,
+                    None => return,
+                };
             if token.is_cancelled() {
                 mark_cancelled(&st, &jid).await;
                 return;
@@ -335,6 +366,7 @@ fn render_runtime_fingerprint(tools: &ToolInfo) -> String {
 /// video and return a job id to poll for the rendered result.
 pub async fn edit_handler(
     State(state): State<AppState>,
+    trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(mut req): ApiJson<EditRequest>,
 ) -> AppResult<Json<Value>> {
     // Audio-only exports have no video filter graph. Canonicalise video-only
@@ -373,6 +405,7 @@ pub async fn edit_handler(
         request: req,
         output_id: Uuid::new_v4().to_string(),
         cache_key,
+        trace_context: trace.map(|Extension(value)| value).unwrap_or_default(),
     };
     let payload = serde_json::to_value(&work)
         .map_err(|error| AppError::internal("serialize edit job", error))?;
@@ -480,10 +513,11 @@ fn spawn_edit_job(
         request: req,
         output_id: out_id,
         cache_key: _,
+        trace_context,
     } = work;
     let st = state.clone();
     let jid = job_id.clone();
-    let span = tracing::info_span!("job", job.id = %job_id, job.kind = "edit");
+    let span = trace_context.job_span(&job_id, "edit");
     let task = async move {
         let _lease = lease;
         if !mark_queued(&st, &jid).await {
@@ -518,10 +552,11 @@ fn spawn_edit_job(
             Some(p) => p,
             None => return,
         };
-        let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
-            Some(p) => p,
-            None => return,
-        };
+        let _permit =
+            match acquire_job_permit_or_cancelled(&st, &jid, &token, ResourceClass::Export).await {
+                Some(p) => p,
+                None => return,
+            };
         if token.is_cancelled() {
             mark_cancelled(&st, &jid).await;
             return;
@@ -753,6 +788,8 @@ async fn apply_job_event(st: &AppState, jid: &str, event: JobEvent) -> bool {
 
 async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> bool {
     let Ok(Some((output, filename))) = st.db.cache_get(cache_key).await else {
+        st.telemetry
+            .record(TelemetryEvent::CacheLookup { result: "miss" });
         return false;
     };
     if !is_plain_filename(&filename) {
@@ -767,6 +804,8 @@ async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> 
         return false;
     }
     let updated = apply_job_event(st, jid, JobEvent::Succeeded { result: output }).await;
+    st.telemetry
+        .record(TelemetryEvent::CacheLookup { result: "hit" });
     st.clear_cancel(jid).await;
     updated
 }
@@ -802,9 +841,10 @@ async fn acquire_job_permit_or_cancelled(
     st: &AppState,
     jid: &str,
     token: &CancellationToken,
+    class: ResourceClass,
 ) -> Option<JobPermit> {
     tokio::select! {
-        permit = st.acquire_job_slot() => match permit {
+        permit = st.acquire_job_slot(class) => match permit {
             Ok(p) => Some(p),
             Err(_) => {
                 mark_queue_closed(st, jid).await;
@@ -1258,6 +1298,7 @@ mod tests {
             request,
             output_id: "output".into(),
             cache_key: ordered,
+            trace_context: Default::default(),
         };
         assert_eq!(
             serde_json::to_value(work).unwrap()["schemaVersion"],

@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::EnvFilter;
 
 use video_kadr_backend::build_router_with_cors;
 use video_kadr_backend::config::AppConfig;
@@ -16,13 +15,8 @@ use video_kadr_backend::tools;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,tower_http=info".into()),
-        )
-        .init();
-
     let config = AppConfig::from_env()?;
+    video_kadr_backend::telemetry::console::init(&config.console)?;
     let process_runtime = ProcessRuntime::new(config.process_runtime.clone())?;
     process_runtime.validate_deployment(config.bind_addr)?;
     tracing::info!(
@@ -73,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
 
     let lib = Library::load(storage.clone()).await;
     let db = Db::open(&storage).await?;
-    let state = AppState::new_with_process_runtime(
+    let state = AppState::new_with_resource_limits(
         storage.clone(),
         config.max_concurrent_jobs,
         tool_info,
@@ -82,12 +76,13 @@ async fn main() -> anyhow::Result<()> {
         config.encode_budget.clone(),
         config.cpu_queue_capacity,
         process_runtime.clone(),
+        config.resource_classes,
     )?
     .with_workload_config(config.workload);
     // Reconcile durable jobs and rebuild derived state before workers can add
     // new media; incremental indexing owns every change after this boundary.
     state.recover_jobs().await;
-    state.rebuild_media_search().await;
+    state.sync_media_search().await;
     state.cleanup_thumbnail_cache().await;
     video_kadr_backend::handlers::start_job_dispatcher(&state);
     state.spawn_task(video_kadr_backend::jobs::run_quarantine_cleanup(

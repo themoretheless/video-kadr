@@ -12,15 +12,18 @@ use uuid::Uuid;
 use crate::analysis::proxy::ProxyService;
 use crate::analysis::thumbnail::{infer_thumbnail_kind, ThumbnailService, ThumbnailSource};
 use crate::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
+use crate::config::resource_classes::{ResourceClass, ResourceClassLimits};
 use crate::config::WorkloadConfig;
 use crate::db::Db;
 use crate::jobs::{EnqueueOutcome, JobCell, JobEvent, JobKind, JobPermit, SqliteJobStore};
 use crate::library::Library;
 use crate::model::Job;
-use crate::ports::{MediaDocument, MediaIndexWriter, MediaSearchQuery, SqliteMediaSearch};
+use crate::ports::telemetry::{JobOutcome, ResourceObservation, TelemetryEvent, TelemetryPort};
+use crate::ports::{MediaIndexWriter, MediaSearchQuery, SqliteMediaSearch};
 use crate::process_control::ProcessRuntime;
 use crate::runtime::cpu_pool::{CpuPool, CpuPoolConfig};
 use crate::runtime::TaskSupervisor;
+use crate::services::media_indexer::MediaIndexer;
 use crate::tools::proxy::FfmpegProxyEncoder;
 use crate::tools::thumbnail::FfmpegThumbnailEncoder;
 
@@ -48,14 +51,18 @@ pub struct ToolInfo {
 #[derive(Clone)]
 pub struct AppState {
     jobs: Arc<Mutex<HashMap<String, Arc<JobCell>>>>,
+    job_kinds: Arc<Mutex<HashMap<String, JobKind>>>,
     /// Per-job cancellation handles, removed when the job finishes.
     cancels: Arc<Mutex<HashMap<String, CancellationToken>>>,
     /// Per-render-cache-key locks. They serialize identical edit requests so
     /// only one worker renders while followers wait and then reuse the cache.
     render_locks: Arc<Mutex<HashMap<String, Weak<Mutex<()>>>>>,
-    /// Downloads/renders queue here; uploads use a separate pool so a slow
-    /// client cannot consume every render slot.
-    jobs_semaphore: Arc<Semaphore>,
+    /// Independent admission pools prevent ingest saturation from consuming
+    /// analysis or export capacity.
+    ingest_semaphore: Arc<Semaphore>,
+    analysis_semaphore: Arc<Semaphore>,
+    export_semaphore: Arc<Semaphore>,
+    resource_limits: ResourceClassLimits,
     render_semaphore: Arc<Semaphore>,
     upload_semaphore: Arc<Semaphore>,
     max_concurrent_renders: usize,
@@ -72,6 +79,8 @@ pub struct AppState {
     pub job_store: SqliteJobStore,
     pub media_search: Arc<dyn MediaSearchQuery>,
     pub media_index: Arc<dyn MediaIndexWriter>,
+    pub media_indexer: MediaIndexer,
+    pub telemetry: Arc<dyn TelemetryPort>,
     pub storage: PathBuf,
 }
 
@@ -139,6 +148,38 @@ impl AppState {
         process_runtime: ProcessRuntime,
     ) -> anyhow::Result<Self> {
         let max_concurrent = max_concurrent.max(1);
+        Self::new_with_resource_limits(
+            storage,
+            max_concurrent,
+            tools,
+            library,
+            db,
+            encode_budget,
+            cpu_queue_capacity,
+            process_runtime,
+            ResourceClassLimits::balanced(max_concurrent),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_resource_limits(
+        storage: PathBuf,
+        max_concurrent: usize,
+        tools: ToolInfo,
+        library: Library,
+        db: Db,
+        encode_budget: EncodeBudget,
+        cpu_queue_capacity: usize,
+        process_runtime: ProcessRuntime,
+        resource_limits: ResourceClassLimits,
+    ) -> anyhow::Result<Self> {
+        let max_concurrent = max_concurrent.max(1);
+        anyhow::ensure!(
+            ResourceClass::ALL
+                .into_iter()
+                .all(|class| resource_limits.get(class) > 0),
+            "resource class limits must be greater than zero"
+        );
         let max_concurrent_renders = max_concurrent.min(encode_budget.threads).max(1);
         let cpu_pool = CpuPool::new(CpuPoolConfig {
             threads: encode_budget.threads,
@@ -148,6 +189,7 @@ impl AppState {
         let media_adapter = Arc::new(SqliteMediaSearch::new(db.clone()));
         let media_search: Arc<dyn MediaSearchQuery> = media_adapter.clone();
         let media_index: Arc<dyn MediaIndexWriter> = media_adapter;
+        let media_indexer = MediaIndexer::new(db.clone(), media_index.clone());
         let proxy_service = ProxyService::new(
             storage.clone(),
             cpu_pool.clone(),
@@ -161,9 +203,13 @@ impl AppState {
         );
         Ok(AppState {
             jobs: Arc::new(Mutex::new(HashMap::new())),
+            job_kinds: Arc::new(Mutex::new(HashMap::new())),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             render_locks: Arc::new(Mutex::new(HashMap::new())),
-            jobs_semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            ingest_semaphore: Arc::new(Semaphore::new(resource_limits.ingest)),
+            analysis_semaphore: Arc::new(Semaphore::new(resource_limits.analysis)),
+            export_semaphore: Arc::new(Semaphore::new(resource_limits.export)),
+            resource_limits,
             render_semaphore,
             upload_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             max_concurrent_renders,
@@ -180,12 +226,19 @@ impl AppState {
             job_store,
             media_search,
             media_index,
+            media_indexer,
+            telemetry: Arc::new(crate::telemetry::metrics::PrometheusTelemetry::default()),
             storage,
         })
     }
 
     pub fn with_workload_config(mut self, workload: WorkloadConfig) -> Self {
         self.workload = Arc::new(workload);
+        self
+    }
+
+    pub fn with_telemetry(mut self, telemetry: Arc<dyn TelemetryPort>) -> Self {
+        self.telemetry = telemetry;
         self
     }
 
@@ -237,8 +290,15 @@ impl AppState {
             .job_store
             .enqueue(id, kind, payload, dedupe_key, self.workload.queue_limits)
             .await?;
-        if let EnqueueOutcome::Created(job) = &outcome {
-            self.remember_job(job.clone()).await;
+        match &outcome {
+            EnqueueOutcome::Created(job) => {
+                self.job_kinds.lock().await.insert(job.id.clone(), kind);
+                self.remember_job(job.clone()).await;
+            }
+            EnqueueOutcome::Existing(id) => {
+                self.job_kinds.lock().await.insert(id.clone(), kind);
+            }
+            EnqueueOutcome::RateLimited => {}
         }
         Ok(outcome)
     }
@@ -317,7 +377,7 @@ impl AppState {
         let store = self.job_store.clone();
         let persisted_event = event.clone();
         let persisted_key = idempotency_key.to_string();
-        match cell
+        let applied = match cell
             .apply_durable(&event, move |snapshot| async move {
                 let inserted = store
                     .record_transition(
@@ -332,10 +392,27 @@ impl AppState {
             })
             .await
         {
-            Ok(Some(_)) => Ok(true),
-            Ok(None) => Ok(false),
-            Err(error) => Err(error),
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(error) => return Err(error),
+        };
+        if applied {
+            let outcome = match event {
+                JobEvent::Succeeded { .. } => Some(JobOutcome::Succeeded),
+                JobEvent::Failed { .. } | JobEvent::Interrupted { .. } => Some(JobOutcome::Failed),
+                JobEvent::Cancelled | JobEvent::Discarded { .. } => Some(JobOutcome::Cancelled),
+                _ => None,
+            };
+            if let Some(outcome) = outcome {
+                if let Some(kind) = self.job_kinds.lock().await.remove(id) {
+                    self.telemetry.record(TelemetryEvent::JobTerminal {
+                        kind: kind.as_str(),
+                        outcome,
+                    });
+                }
+            }
         }
+        Ok(applied)
     }
 
     /// Write the current in-memory state of a job to the database (best-effort).
@@ -424,12 +501,19 @@ impl AppState {
 
     /// Wait for a download/render slot. Cancellation remains the caller's
     /// responsibility because job workers already own their cancellation token.
-    pub async fn acquire_job_slot(&self) -> Result<JobPermit, AcquireError> {
-        self.jobs_semaphore
+    pub async fn acquire_job_slot(&self, class: ResourceClass) -> Result<JobPermit, AcquireError> {
+        let started = std::time::Instant::now();
+        let permit = self
+            .resource_semaphore(class)
             .clone()
             .acquire_owned()
             .await
-            .map(JobPermit::new)
+            .map(JobPermit::new);
+        self.telemetry.record(TelemetryEvent::QueueWait {
+            class,
+            duration: started.elapsed(),
+        });
+        permit
     }
 
     /// Render admission is additionally capped by the process-wide encoder
@@ -445,7 +529,9 @@ impl AppState {
 
     /// Stop admitting queued jobs; this is the queue-level shutdown boundary.
     pub fn close_job_queue(&self) {
-        self.jobs_semaphore.close();
+        self.ingest_semaphore.close();
+        self.analysis_semaphore.close();
+        self.export_semaphore.close();
         self.render_semaphore.close();
     }
 
@@ -462,7 +548,9 @@ impl AppState {
     }
 
     pub fn begin_shutdown(&self) {
-        self.jobs_semaphore.close();
+        self.ingest_semaphore.close();
+        self.analysis_semaphore.close();
+        self.export_semaphore.close();
         self.render_semaphore.close();
         self.upload_semaphore.close();
         self.supervisor.begin_shutdown();
@@ -478,8 +566,13 @@ impl AppState {
 
     /// Uploads are synchronous HTTP requests, so they fail fast instead of
     /// occupying connections in an invisible queue.
-    pub fn try_acquire_upload_slot(&self) -> Option<OwnedSemaphorePermit> {
-        self.upload_semaphore.clone().try_acquire_owned().ok()
+    pub fn try_acquire_upload_slot(&self) -> Option<UploadPermit> {
+        let ingest = self.ingest_semaphore.clone().try_acquire_owned().ok()?;
+        let upload = self.upload_semaphore.clone().try_acquire_owned().ok()?;
+        Some(UploadPermit {
+            _ingest: ingest,
+            _upload: upload,
+        })
     }
 
     pub fn sources_dir(&self) -> PathBuf {
@@ -502,6 +595,34 @@ impl AppState {
         self.max_concurrent_renders
     }
 
+    pub fn resource_limit(&self, class: ResourceClass) -> usize {
+        self.resource_limits.get(class)
+    }
+
+    pub fn resource_available(&self, class: ResourceClass) -> usize {
+        self.resource_semaphore(class).available_permits()
+    }
+
+    pub fn prometheus_metrics(&self) -> Option<String> {
+        let resources: Vec<_> = ResourceClass::ALL
+            .into_iter()
+            .map(|class| ResourceObservation {
+                class,
+                available: self.resource_available(class),
+                limit: self.resource_limit(class),
+            })
+            .collect();
+        self.telemetry.render_prometheus(&resources)
+    }
+
+    fn resource_semaphore(&self, class: ResourceClass) -> &Arc<Semaphore> {
+        match class {
+            ResourceClass::Ingest => &self.ingest_semaphore,
+            ResourceClass::Analysis => &self.analysis_semaphore,
+            ResourceClass::Export => &self.export_semaphore,
+        }
+    }
+
     pub fn job_timeout(&self) -> Duration {
         self.workload.job_timeout
     }
@@ -511,20 +632,35 @@ impl AppState {
     }
 
     pub async fn rebuild_media_search(&self) {
-        let documents: Vec<_> = self
-            .library
-            .list()
-            .await
-            .iter()
-            .map(MediaDocument::from)
-            .collect();
-        if let Err(error) = self.media_index.rebuild(&documents).await {
-            tracing::warn!(%error, "rebuild media search index");
+        let entries = self.library.list().await;
+        match self.media_indexer.rebuild(&entries).await {
+            Ok(report) if !report.bad_entries.is_empty() => tracing::warn!(
+                media_index.bad_entries = report.bad_entries.len(),
+                "rebuilt media index with isolated bad entries"
+            ),
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "rebuild media search index"),
+        }
+    }
+
+    pub async fn sync_media_search(&self) {
+        let entries = self.library.list().await;
+        match self.media_indexer.sync_incremental(&entries).await {
+            Ok(report) => {
+                if !report.bad_entries.is_empty() || report.deferred_error.is_some() {
+                    tracing::warn!(
+                        media_index.bad_entries = report.bad_entries.len(),
+                        media_index.deferred = report.deferred_error.is_some(),
+                        "incremental media index completed with isolated entries"
+                    );
+                }
+            }
+            Err(error) => tracing::warn!(%error, "sync media search index"),
         }
     }
 
     pub async fn index_media(&self, entry: &crate::library::MediaEntry) {
-        if let Err(error) = self.media_index.index(&MediaDocument::from(entry)).await {
+        if let Err(error) = self.media_indexer.index_entry(entry).await {
             tracing::warn!(media.id = %entry.id, %error, "index media");
         }
     }
@@ -532,6 +668,11 @@ impl AppState {
     async fn job_cell(&self, id: &str) -> Option<Arc<JobCell>> {
         self.jobs.lock().await.get(id).cloned()
     }
+}
+
+pub struct UploadPermit {
+    _ingest: OwnedSemaphorePermit,
+    _upload: OwnedSemaphorePermit,
 }
 
 #[cfg(test)]
@@ -603,8 +744,8 @@ mod tests {
         let db = Db::open(&storage).await.unwrap();
         let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
 
-        let _job_a = st.acquire_job_slot().await.unwrap();
-        let _job_b = st.acquire_job_slot().await.unwrap();
+        let _job_a = st.acquire_job_slot(ResourceClass::Export).await.unwrap();
+        let _job_b = st.acquire_job_slot(ResourceClass::Export).await.unwrap();
         let upload_a = st.try_acquire_upload_slot().unwrap();
         let _upload_b = st.try_acquire_upload_slot().unwrap();
         assert!(st.try_acquire_upload_slot().is_none());
@@ -634,6 +775,64 @@ mod tests {
         let _render = st.acquire_render_slot().await.unwrap();
         assert!(st.render_semaphore.try_acquire().is_err());
         assert_eq!(st.render_parallelism(), 1);
+    }
+
+    #[tokio::test]
+    async fn saturated_ingest_does_not_delay_export_admission_p95() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let st = AppState::new(storage, 2, ToolInfo::default(), lib, db);
+        let _ingest_a = st.acquire_job_slot(ResourceClass::Ingest).await.unwrap();
+        let _ingest_b = st.acquire_job_slot(ResourceClass::Ingest).await.unwrap();
+
+        let mut samples = Vec::new();
+        for _ in 0..100 {
+            let started = std::time::Instant::now();
+            let export = tokio::time::timeout(
+                Duration::from_millis(25),
+                st.acquire_job_slot(ResourceClass::Export),
+            )
+            .await
+            .expect("ingest saturation must not block export")
+            .unwrap();
+            samples.push(started.elapsed());
+            drop(export);
+        }
+        samples.sort_unstable();
+        assert!(samples[94] < Duration::from_millis(25));
+        assert_eq!(st.resource_available(ResourceClass::Ingest), 0);
+        assert_eq!(st.resource_available(ResourceClass::Export), 2);
+    }
+
+    #[tokio::test]
+    async fn terminal_job_records_bounded_kind_and_outcome_metrics() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        let db = Db::open(&storage).await.unwrap();
+        let telemetry = Arc::new(crate::ports::telemetry::TestTelemetry::default());
+        let st = AppState::new(storage, 1, ToolInfo::default(), lib, db)
+            .with_telemetry(telemetry.clone());
+        st.enqueue_job(
+            "metric-job".into(),
+            JobKind::Import,
+            &json!({}),
+            "metric-dedupe",
+        )
+        .await
+        .unwrap();
+        st.transition_job("metric-job", JobEvent::Queued)
+            .await
+            .unwrap();
+        st.transition_job("metric-job", JobEvent::Succeeded { result: json!({}) })
+            .await
+            .unwrap();
+        assert!(telemetry.events().contains(&TelemetryEvent::JobTerminal {
+            kind: "import",
+            outcome: JobOutcome::Succeeded,
+        }));
     }
 
     #[tokio::test]

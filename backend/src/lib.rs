@@ -61,6 +61,9 @@ pub fn build_router_with_cors(
     let system_port = Arc::new(RuntimeSystemPort::new(state.tools.clone()));
     let project_port = Arc::new(SqliteProjectPort::new(state.db.clone()));
     let composition_project_port = Arc::new(SqliteCompositionProjectPort::new(state.db.clone()));
+    let metrics = Router::new()
+        .route("/metrics", get(handlers::metrics_handler))
+        .with_state(state.clone());
     let core_api = Router::new()
         .route("/import", post(handlers::import_handler))
         .route(
@@ -136,6 +139,7 @@ pub fn build_router_with_cors(
         .method_not_allowed_fallback(handlers::method_not_allowed_handler);
 
     let router = Router::new()
+        .merge(metrics)
         .nest("/api", api)
         .nest_service("/files/sources", ServeDir::new(storage.join("sources")))
         .nest_service("/files/outputs", ServeDir::new(storage.join("outputs")))

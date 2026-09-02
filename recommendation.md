@@ -30,7 +30,7 @@
 | 5 | ✅ 10/10 | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 | Player/canvas state machines и accessibility |
 | 6 | ☑ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 | Quality/codecs/design tokens и benchmarks |
 | 7 | ☑ | 833, 855, 856, 857, 858, 859, 860, 861, 862, 863 | Deployment security, fuzzing и supply chain |
-| 8 | ☐ | 812, 813, 830, 864, 865, 866, 867, 868, 869, 873 | Resource classes, SQL contract и observability |
+| 8 | ☑ | 812, 813, 830, 864, 865, 866, 867, 868, 869, 873 | Resource classes, SQL contract и observability |
 | 9 | ☐ | 874, 875, 876, 877, 878, 879, 880, 881, 882, 883 | Versioned local-first ML artifacts |
 | 10 | ☐ | 788, 802, 811, 841, 845, 848, 849, 851, 852, 853 | Compatibility, ingest и frontend completion |
 
@@ -1028,8 +1028,8 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **809. MediaElement:** Local/progressive/HLS/DASH sources и события нормализованы в один player model и suite. `frontend/src/lib/adapters/player/sources.ts`
 - [x] ✅ **810. Media Chrome:** Custom controls разбиты на headless commands/labels без чтения global store; Svelte boundary только применяет commands. `frontend/src/lib/ui/media-controls/model.ts`
 - [ ] 🟡 **811. MediaMTX:** Держать live ingest gateway отдельным сервисом, отдающим редактору только immutable recording artifact. `services/ingest-gateway` (future)
-- [ ] 🟠 **812. SRS:** Развести pools/quotas ingest/analysis/export и проверить, что saturation ingest не ломает export p95. `backend/src/config/resource_classes.rs` (target)
-- [ ] 🟡 **813. Jellyfin:** Добавить incremental media indexer с cursor, изоляцией bad entries и rebuildable eventual index. `backend/src/services/media_indexer.rs` (target)
+- [x] ✅ **812. SRS:** Ingest/analysis/export используют независимые admission pools с отдельными env quotas; 100-sample regression держит export admission p95 доступным при полностью занятом ingest. `backend/src/config/resource_classes.rs`, `backend/src/state.rs`
+- [x] ✅ **813. Jellyfin:** FTS5 adapter получил durable `(created_at,id)` cursor, incremental startup sync, изоляцию malformed entries, deferred transient errors и полный rebuild derived state. `backend/src/services/media_indexer.rs`
 
 ### D. Editor interactions и canvas
 
@@ -1052,7 +1052,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **827. Actix Web:** In-process Axum baseline фиксирует throughput/p50/p95/p99/peak RSS; локальный release run: 1.61M req/s, 0.58/0.67/0.75 µs, 2.23 MB. Framework rewrite требует ADR и сопоставимого profile. `backend/benches/http_baseline.rs`
 - [x] ✅ **828. Hyper:** Реальные TCP-тесты доказывают incremental upload, cleanup после disconnect и отзывчивость API при slow Range reader. `backend/tests/http_backpressure.rs`
 - [x] ✅ **829. Serde:** Wire DTO strict, поддерживают `schemaVersion: 1`; project envelope strict, вложенные persisted documents tolerant. `backend/src/model.rs`, `backend/src/http/mod.rs`, `backend/tests/api.rs`
-- [ ] 🟡 **830. SQLx:** Добавить offline metadata и `cargo sqlx prepare --check` против query/schema drift. `.github/workflows/ci.yml` (target)
+- [x] ✅ **830. SQLx:** Schema-bound cursor query использует checked macro, migration создаёт compile database, `.sqlx` metadata проходит offline build и CI выполняет pinned `cargo sqlx prepare --check`. `backend/.sqlx/`, `backend/migrations/`, `.github/workflows/ci.yml`
 - [x] ✅ **831. tracing:** Span tree `request -> job -> process`, CORS-visible request ID, path-only HTTP fields и URL/query/path canary-redaction реализованы. `backend/src/telemetry.rs`, `backend/src/privacy.rs`
 - [x] ✅ **832. Rayon:** Named bounded Rayon pool имеет fail-fast queue admission, cooperative cancellation, panic isolation и saturation/completion metrics; hashing использует этот port. `backend/src/runtime/cpu_pool.rs`, `backend/src/artifacts.rs`
 - [x] ✅ **833. rustls:** Deployment ADR разрешает plaintext только на loopback, требует TLS termination для LAN/public, не доверяет forwarded headers без allowlisted proxy hop и запрещает public plaintext profile; image теперь non-root и pinned-download verified. `docs/deployment-security.md`, `backend/Dockerfile`
@@ -1098,16 +1098,16 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### I. Observability и performance
 
-- [ ] 🟠 **864. Prometheus:** Определить low-cardinality queue/process/failure/saturation/cache/bytes metrics; запретить ID/URL/filename labels. `backend/src/telemetry/metrics.rs` (target)
-- [ ] 🟠 **865. Loki:** Labels только service/env/level/error_kind, чувствительные high-cardinality данные - redacted fields. `backend/src/telemetry/log_policy.rs` (target)
-- [ ] 🟠 **866. Jaeger:** Сохранять trace/link context в job и восстанавливать после queue boundary с sampling budget. `backend/src/telemetry/context.rs` (target)
-- [ ] 🟠 **867. OpenTelemetry:** Ввести exporter-neutral telemetry port и semantic names с noop/test/export adapters. `backend/src/ports/telemetry.rs` (target)
-- [ ] 🔴 **868. Vector:** Один allowlist/redaction transform для logs и diagnostic bundle; canary fixture не должен утечь никуда. `backend/src/privacy/redaction.rs` (target)
-- [ ] 🟡 **869. Parca:** Staging-only continuous profiling, symbolized builds, retention и before/after profile для perf PR. `ops/profiling/` (target)
+- [x] ✅ **864. Prometheus:** `/metrics` отдаёт OpenMetrics queue wait/resource saturation/cache/bytes contract; labels закрыты enum-наборами, тест запрещает ID/URL/filename dimensions. `backend/src/telemetry/metrics.rs`
+- [x] ✅ **865. Loki:** Promotion policy разрешает только service/env/level/error_kind с bounded values; request/job/trace IDs остаются fields, URL и filename labels запрещены. `backend/src/telemetry/log_policy.rs`, `ops/observability/vector-policy.yaml`
+- [x] ✅ **866. Jaeger:** Deterministic 10% sampling link сохраняется в versioned durable work payload и восстанавливается в job span после SQLite queue boundary. `backend/src/telemetry/context.rs`, `backend/src/handlers/`
+- [x] ✅ **867. OpenTelemetry:** Exporter-neutral `TelemetryPort` задаёт semantic events и имеет noop/test/Prometheus adapters без vendor API в domain/services. `backend/src/ports/telemetry.rs`
+- [x] ✅ **868. Vector:** Единый allowlist `RedactionTransform` обслуживает log/diagnostic bundle paths; canary fixture доказывает удаление credentials, query secret, absolute path и unknown sensitive fields. `backend/src/privacy/redaction.rs`
+- [x] ✅ **869. Parca:** Staging-only policy pins Parca 0.28.0, symbolized profiling profile, 7-day retention и обязательные same-corpus before/after 15-minute captures для perf/concurrency PR. `ops/profiling/`
 - [x] ✅ **870. Loom:** `JobCell` и terminal/permit/cancel single-claim invariants model-check'ятся Loom. `backend/src/jobs/job_cell.rs`
 - [x] ✅ **871. Hyperfine:** Versioned cold/warm corpus измеряет probe/list/cache-hit/plan compile, пишет median/p95, checksums и environment metadata; optional Hyperfine wrapper готов. `bench/perf/`
 - [x] ✅ **872. Flamegraph:** Profile-before-optimize policy и reproducible script сохраняют deterministic SVG + folded stacks для каждого corpus workload. `bench/perf/profile.sh`, `docs/performance.md`
-- [ ] 🟡 **873. tokio-console:** Добавить защищённый staging-only async diagnostics profile и task-leak runbook. `backend/src/telemetry/console.rs` (target)
+- [x] ✅ **873. tokio-console:** Optional feature запускается только при explicit staging+loopback config; production/local fail closed, runbook требует authenticated tunnel и проверку возврата task count к baseline. `backend/src/telemetry/console.rs`, `ops/profiling/README.md`
 
 ### J. ML-assisted media
 

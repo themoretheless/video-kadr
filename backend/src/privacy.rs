@@ -1,5 +1,8 @@
 //! Redaction helpers used before sensitive values reach logs or diagnostics.
 
+pub mod redaction;
+pub use redaction::RedactionTransform;
+
 use std::fmt;
 
 use serde_json::Value;

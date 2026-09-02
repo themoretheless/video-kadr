@@ -1,5 +1,10 @@
 //! Stable, low-cardinality tracing schema for HTTP requests and background work.
 
+pub mod console;
+pub mod context;
+pub mod log_policy;
+pub mod metrics;
+
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue};
 use axum::middleware::Next;
@@ -22,10 +27,14 @@ pub async fn request_context(mut request: Request, next: Next) -> Response {
     request
         .headers_mut()
         .insert(REQUEST_ID_HEADER.clone(), header_value(&request_id));
+    let trace_context = context::TraceContext::from_request_id(&request_id);
+    request.extensions_mut().insert(trace_context.clone());
 
     let span = tracing::info_span!(
         "request",
         request.id = %request_id,
+        trace.id = %trace_context.trace_id,
+        trace.sampled = trace_context.sampled,
         http.request.method = %method,
         url.path = %path,
     );

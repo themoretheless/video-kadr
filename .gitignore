@@ -1,6 +1,7 @@
 # Rust
 /backend/target/
 /backend/fuzz/target/
+/backend/sqlx-check.db
 
 # Node
 /frontend/node_modules/

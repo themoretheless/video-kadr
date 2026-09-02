@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, ensure, Context};
 use axum::extract::State;
+use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -14,6 +15,7 @@ use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::artifacts::fingerprint_file;
+use crate::config::resource_classes::ResourceClass;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::composition::{
     Composition, CompositionClipId, CompositionSource, CompositionTrack, SourceId, SourceKind,
@@ -45,6 +47,8 @@ pub(super) struct CompositionWork {
     pub schema_version: u32,
     pub request: CompositionRenderRequest,
     pub output_id: String,
+    #[serde(default)]
+    pub trace_context: crate::telemetry::context::TraceContext,
 }
 
 #[derive(Serialize)]
@@ -57,6 +61,7 @@ struct CompositionDedupeIdentity<'a> {
 
 pub async fn composition_render_handler(
     State(state): State<AppState>,
+    trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(request): ApiJson<CompositionRenderRequest>,
 ) -> AppResult<Json<Value>> {
     if request.schema_version != COMPOSITION_RENDER_SCHEMA_VERSION {
@@ -92,6 +97,7 @@ pub async fn composition_render_handler(
         schema_version: COMPOSITION_RENDER_SCHEMA_VERSION,
         request,
         output_id: Uuid::new_v4().to_string(),
+        trace_context: trace.map(|Extension(value)| value).unwrap_or_default(),
     };
     let payload = serde_json::to_value(&work)
         .map_err(|error| AppError::internal("serialize composition job", error))?;
@@ -253,7 +259,7 @@ pub(super) fn spawn_composition_job(
 ) {
     let st = state.clone();
     let jid = job_id.clone();
-    let span = tracing::info_span!("job", job.id = %job_id, job.kind = "composition");
+    let span = work.trace_context.job_span(&job_id, "composition");
     let task = async move {
         let _lease = lease;
         if !mark_queued(&st, &jid).await {
@@ -307,10 +313,11 @@ pub(super) fn spawn_composition_job(
             Some(permit) => permit,
             None => return,
         };
-        let _permit = match acquire_job_permit_or_cancelled(&st, &jid, &token).await {
-            Some(permit) => permit,
-            None => return,
-        };
+        let _permit =
+            match acquire_job_permit_or_cancelled(&st, &jid, &token, ResourceClass::Export).await {
+                Some(permit) => permit,
+                None => return,
+            };
         if token.is_cancelled() {
             mark_cancelled(&st, &jid).await;
             return;

@@ -134,6 +134,7 @@ impl Db {
             .migrate()
             .await?;
         crate::ports::SqliteMediaSearch::migrate(&db).await?;
+        crate::services::media_indexer::MediaIndexer::migrate(&db).await?;
         Ok(db)
     }
 

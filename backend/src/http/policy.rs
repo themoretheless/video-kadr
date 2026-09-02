@@ -92,6 +92,12 @@ const MEDIA: [(Control, Enforcement); 6] = controls(
 
 pub const ROUTE_POLICIES: &[RoutePolicy] = &[
     RoutePolicy {
+        method: "GET",
+        path: "/metrics",
+        class: RouteClass::Health,
+        controls: HEALTH,
+    },
+    RoutePolicy {
         method: "POST",
         path: "/api/import",
         class: RouteClass::JsonCommand,

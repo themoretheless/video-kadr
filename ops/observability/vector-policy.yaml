@@ -1,0 +1,20 @@
+version: 1
+source_contract:
+  required_field:
+    redaction_version: v1
+  on_missing: drop
+loki_labels:
+  - service
+  - env
+  - level
+  - error_kind
+forbidden_labels:
+  - request_id
+  - job_id
+  - trace_id
+  - url
+  - filename
+  - title
+payload_policy:
+  transform: backend::privacy::redaction::RedactionTransform
+  unknown_fields: drop

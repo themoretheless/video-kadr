@@ -1,6 +1,6 @@
 //! Validated process configuration. Environment access ends at this module.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -11,8 +11,10 @@ use crate::process_control::{
     IsolationTier, KernelLimits, OutputBudget, ProcessRuntime, ProcessRuntimeConfig, SandboxBackend,
 };
 use encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
+use resource_classes::ResourceClassLimits;
 
 pub mod encode_budget;
+pub mod resource_classes;
 
 const LOCAL_CORS_ORIGINS: [&str; 4] = [
     "http://localhost:5173",
@@ -95,6 +97,7 @@ impl Default for WorkloadConfig {
 pub struct AppConfig {
     pub storage: PathBuf,
     pub max_concurrent_jobs: usize,
+    pub resource_classes: ResourceClassLimits,
     pub max_upload_bytes: usize,
     pub file_ttl_hours: u64,
     pub bind_addr: IpAddr,
@@ -104,6 +107,14 @@ pub struct AppConfig {
     pub process_runtime: ProcessRuntimeConfig,
     pub cors_origins: CorsOrigins,
     pub workload: WorkloadConfig,
+    pub console: TelemetryConsoleConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TelemetryConsoleConfig {
+    pub enabled: bool,
+    pub environment: String,
+    pub bind: SocketAddr,
 }
 
 impl AppConfig {
@@ -121,6 +132,23 @@ impl AppConfig {
             .unwrap_or_else(|| PathBuf::from("storage"));
         let max_concurrent_jobs =
             positive_usize("MAX_CONCURRENT_JOBS", lookup("MAX_CONCURRENT_JOBS"), 2)?;
+        let resource_classes = ResourceClassLimits {
+            ingest: positive_usize(
+                "INGEST_CONCURRENCY",
+                lookup("INGEST_CONCURRENCY"),
+                max_concurrent_jobs,
+            )?,
+            analysis: positive_usize(
+                "ANALYSIS_CONCURRENCY",
+                lookup("ANALYSIS_CONCURRENCY"),
+                max_concurrent_jobs,
+            )?,
+            export: positive_usize(
+                "EXPORT_CONCURRENCY",
+                lookup("EXPORT_CONCURRENCY"),
+                max_concurrent_jobs,
+            )?,
+        };
         let max_upload_bytes = positive_usize(
             "MAX_UPLOAD_BYTES",
             lookup("MAX_UPLOAD_BYTES"),
@@ -249,10 +277,29 @@ impl AppConfig {
             },
         };
         ProcessRuntime::new(process_runtime.clone())?.validate_deployment(bind_addr)?;
+        let console = TelemetryConsoleConfig {
+            enabled: parse_or(
+                "ENABLE_TOKIO_CONSOLE",
+                lookup("ENABLE_TOKIO_CONSOLE"),
+                false,
+            )?,
+            environment: lookup("DEPLOY_ENV").unwrap_or_else(|| "local".into()),
+            bind: lookup("TOKIO_CONSOLE_BIND")
+                .unwrap_or_else(|| "127.0.0.1:6669".into())
+                .parse()
+                .context("TOKIO_CONSOLE_BIND must be a socket address")?,
+        };
+        if console.enabled && (console.environment != "staging" || !console.bind.ip().is_loopback())
+        {
+            return Err(anyhow!(
+                "tokio-console is allowed only in staging on a loopback address"
+            ));
+        }
 
         Ok(Self {
             storage,
             max_concurrent_jobs,
+            resource_classes,
             max_upload_bytes,
             file_ttl_hours,
             bind_addr,
@@ -262,6 +309,7 @@ impl AppConfig {
             process_runtime,
             cors_origins,
             workload,
+            console,
         })
     }
 }
@@ -361,6 +409,8 @@ mod tests {
         assert!(value.encode_budget.memory_mib <= 4096);
         assert_eq!(value.process_runtime.tier, IsolationTier::Local);
         assert_eq!(value.process_runtime.sandbox, SandboxBackend::None);
+        assert_eq!(value.resource_classes, ResourceClassLimits::balanced(2));
+        assert!(!value.console.enabled);
         assert_eq!(value.workload, WorkloadConfig::default());
         assert_eq!(
             value.cors_origins.iter().collect::<Vec<_>>(),
@@ -375,6 +425,9 @@ mod tests {
             ("ISOLATION_TIER", "lan"),
             ("PORT", "9000"),
             ("MAX_CONCURRENT_JOBS", "4"),
+            ("INGEST_CONCURRENCY", "2"),
+            ("ANALYSIS_CONCURRENCY", "1"),
+            ("EXPORT_CONCURRENCY", "3"),
             ("ENCODE_PROFILE", "quality"),
             ("ENCODE_THREADS", "6"),
             ("ENCODE_MEMORY_MIB", "2048"),
@@ -395,6 +448,9 @@ mod tests {
         assert_eq!(value.bind_addr, IpAddr::from([0, 0, 0, 0]));
         assert_eq!(value.port, 9000);
         assert_eq!(value.max_concurrent_jobs, 4);
+        assert_eq!(value.resource_classes.ingest, 2);
+        assert_eq!(value.resource_classes.analysis, 1);
+        assert_eq!(value.resource_classes.export, 3);
         assert_eq!(value.encode_budget.threads, 6);
         assert_eq!(value.encode_budget.memory_mib, 2048);
         assert_eq!(value.process_runtime.tier, IsolationTier::Lan);
@@ -421,6 +477,7 @@ mod tests {
     fn invalid_values_fail_startup_instead_of_silently_defaulting() {
         assert!(config(&[("PORT", "not-a-port")]).is_err());
         assert!(config(&[("MAX_CONCURRENT_JOBS", "0")]).is_err());
+        assert!(config(&[("INGEST_CONCURRENCY", "0")]).is_err());
         assert!(config(&[("ENCODE_THREADS", "99")]).is_err());
         assert!(config(&[("ENCODE_MEMORY_MIB", "8192")]).is_err());
         assert!(config(&[("BIND_ADDR", "0.0.0.0")]).is_err());
@@ -439,6 +496,13 @@ mod tests {
         assert!(config(&[("CORS_ALLOW_ORIGINS", "*")]).is_err());
         assert!(config(&[("CORS_ALLOW_ORIGINS", "https://app.example/path")]).is_err());
         assert!(config(&[("CORS_ALLOW_ORIGINS", "https://app.example?token=secret")]).is_err());
+        assert!(config(&[("ENABLE_TOKIO_CONSOLE", "true")]).is_err());
+        assert!(config(&[
+            ("ENABLE_TOKIO_CONSOLE", "true"),
+            ("DEPLOY_ENV", "staging"),
+            ("TOKIO_CONSOLE_BIND", "0.0.0.0:6669")
+        ])
+        .is_err());
         assert!(config(&[
             ("PROCESS_MAX_CAPTURE_BYTES", "1024"),
             ("PROCESS_MAX_LINE_BYTES", "2048")

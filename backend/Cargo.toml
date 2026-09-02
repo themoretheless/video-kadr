@@ -5,6 +5,10 @@ edition = "2021"
 default-run = "video-kadr-backend"
 publish = false
 
+[features]
+default = []
+tokio-console = ["dep:console-subscriber"]
+
 [dependencies]
 axum = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
@@ -22,9 +26,10 @@ hyper = { version = "1", features = ["client", "http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+console-subscriber = { version = "0.4", optional = true }
 libc = "0.2"
 # Embedded SQLite (statically bundled) for persistent projects / jobs.
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros"] }
 # Hashing the (source + edit) into a render-cache key.
 sha2 = "0.10"
 # CPU-heavy hashing/analysis runs outside Tokio on a bounded local pool.
@@ -44,3 +49,8 @@ harness = false
 [[bench]]
 name = "http_baseline"
 harness = false
+
+[profile.profiling]
+inherits = "release"
+debug = 1
+strip = false

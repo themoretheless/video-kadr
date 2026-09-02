@@ -7,6 +7,7 @@ use serde_json::Value;
 use tower::ServiceExt;
 
 use video_kadr_backend::build_router;
+use video_kadr_backend::config::encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
 use video_kadr_backend::db::Db;
 use video_kadr_backend::library::Library;
 use video_kadr_backend::state::{AppState, ToolInfo};
@@ -74,7 +75,18 @@ pub async fn make_state(ffmpeg: bool, ytdlp: bool) -> (AppState, tempfile::TempD
             Vec::new()
         },
     };
-    (AppState::new(storage, 2, tools, library, db), dir)
+    let encode_budget = EncodeBudget::for_profile(
+        EncodeProfile::Balanced,
+        RuntimeLimits {
+            logical_cpus: 2,
+            memory_mib: Some(1024),
+        },
+    )
+    .unwrap();
+    (
+        AppState::new_with_runtime(storage, 2, tools, library, db, encode_budget, 2).unwrap(),
+        dir,
+    )
 }
 
 pub fn router(state: AppState) -> Router {

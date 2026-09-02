@@ -2,6 +2,7 @@ pub mod composition_export;
 pub mod media_export;
 pub mod media_search;
 pub mod still_encoder;
+pub mod telemetry;
 
 pub use composition_export::{
     CompositionAv1Encoder, CompositionExportCommandCompiler, CompositionExportCompileRequest,
