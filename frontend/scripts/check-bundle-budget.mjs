@@ -7,14 +7,16 @@ const assetDirectory = new URL('../dist/assets/', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('.vite/manifest.json', distDirectory), 'utf8'))
 
 // Feature-adjusted guardrail after the editor was split at the Multitrack
-// boundary (2026-08-14). Startup and whole-product bytes are intentionally
+// boundary (2026-08-14). The accessible headless player/canvas controls added
+// on 2026-09-02 moved 3 KiB of the unchanged total allowance from CSS headroom
+// to JavaScript. Startup and whole-product bytes are intentionally
 // separate: adding an optional editor must not masquerade as startup cost, but
 // lazy chunks are still bounded individually and in aggregate.
 const budgets = {
   initialJs: envBytes('BUNDLE_BUDGET_INITIAL_JS_GZIP', 'BUNDLE_BUDGET_JS_GZIP', 112 * 1024),
   initialCss: envBytes('BUNDLE_BUDGET_INITIAL_CSS_GZIP', 'BUNDLE_BUDGET_CSS_GZIP', 12 * 1024),
   initialTotal: envBytes('BUNDLE_BUDGET_INITIAL_TOTAL_GZIP', undefined, 124 * 1024),
-  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 160 * 1024),
+  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 163 * 1024),
   allCss: envBytes('BUNDLE_BUDGET_ALL_CSS_GZIP', undefined, 16 * 1024),
   allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 176 * 1024),
   asyncJsChunk: envBytes('BUNDLE_BUDGET_ASYNC_JS_CHUNK_GZIP', undefined, 56 * 1024),

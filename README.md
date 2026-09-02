@@ -230,7 +230,7 @@ cd frontend && npm run build && npm run check:bundle
 Bundle gate использует Vite manifest: стартовые статические imports считаются
 отдельно от lazy Multitrack chunk, но проверяются и общий вес всех chunks, и
 максимум одного async JS chunk. Текущие feature-adjusted ceilings (gzip level 9):
-initial 112/12/124 КиБ для JS/CSS/total, all chunks 160/16/176 КиБ и 56 КиБ на
+initial 112/12/124 КиБ для JS/CSS/total, all chunks 163/16/176 КиБ и 56 КиБ на
 async JS chunk. Их можно ужесточить в CI через
 `BUNDLE_BUDGET_{INITIAL,ALL}_*`; старые `BUNDLE_BUDGET_JS_GZIP`,
 `BUNDLE_BUDGET_CSS_GZIP`, `BUNDLE_BUDGET_TOTAL_GZIP` остаются совместимыми.

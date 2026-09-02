@@ -74,4 +74,31 @@ describe('VideoPreview proxy playback', () => {
     expect(state.video?.id).toBe('source-one')
     expect(state.video?.url).toBe(originalUrl)
   })
+
+  it('exposes keyboard-labelled controls and seeks through the player adapter', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      sourceId: 'source-one', sourceFingerprint: 'b'.repeat(64), status: 'ready', proxies: [], jobs: [],
+    }), { status: 200 })))
+    component = mount(VideoPreview, { target })
+    await tick()
+
+    const toolbar = target.querySelector<HTMLElement>('[role="toolbar"]')
+    const video = target.querySelector<HTMLVideoElement>('video')
+    const seek = target.querySelector<HTMLInputElement>('input[aria-label^="Позиция"]')
+    expect(toolbar).not.toBeNull()
+    expect(video).not.toBeNull()
+    expect(seek?.getAttribute('aria-valuetext')).toBe('0:00 из 0:10')
+    expect(target.querySelector('button[aria-label="Воспроизвести"]')).not.toBeNull()
+
+    if (!toolbar || !video || !seek) throw new Error('Preview controls not found')
+    seek.value = '4'
+    seek.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+    expect(video.currentTime).toBe(4)
+    expect(state.playerTime).toBe(4)
+
+    toolbar.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await tick()
+    expect(video.currentTime).toBe(9)
+  })
 })

@@ -27,7 +27,7 @@
 | 2 | ✅ 10/10 | 784, 786, 787, 803, 814, 817, 820, 823, 825, 826 | Typed media/timeline domain и HTTP ports |
 | 3 | ✅ 10/10 | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 | Durable jobs, outbox, replay и concurrency invariants |
 | 4 | ✅ 10/10 | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 | Proxy/render artifacts и измеряемый media performance |
-| 5 | ☐ | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 | Player/canvas state machines и accessibility |
+| 5 | ✅ 10/10 | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 | Player/canvas state machines и accessibility |
 | 6 | ☐ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 | Quality/codecs/design tokens и benchmarks |
 | 7 | ☐ | 833, 855, 856, 857, 858, 859, 860, 861, 862, 863 | Deployment security, fuzzing и supply chain |
 | 8 | ☐ | 812, 813, 830, 864, 865, 866, 867, 868, 869, 873 | Resource classes, SQL contract и observability |
@@ -995,7 +995,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 ### A. NLE и media pipeline
 
 - [x] ✅ **784. FFmpeg:** `FilterGraph` DAG типизирует audio/video pads, валидирует topology/required inputs/single-input и даёт стабильные JSON/DOT; текущие ffmpeg audio/video chains компилируются через него. `backend/src/domain/filter_graph.rs`, `backend/src/tools/args.rs`
-- [ ] 🟠 **785. GStreamer:** Оформить preview как `Idle/Ready/Paused/Playing/Draining/Failed` state machine с monotonic clock и fake-time race tests. `frontend/src/features/player/previewSession.ts` (target)
+- [x] ✅ **785. GStreamer:** Preview оформлен как `Idle/Ready/Paused/Playing/Draining/Failed` state machine с monotonic clock и fake-time race tests. `frontend/src/lib/features/player/previewSession.ts`
 - [x] ✅ **786. MLT:** Независимые `Producer/Filter/Transition/Consumer` ports, role-scoped registry и стабильный manifest не импортируют process/CLI/runtime types. `backend/src/domain/media_pipeline.rs`
 - [x] ✅ **787. Olive:** Стабильные `ClipId`/`OperationId`, immutable timeline operations и invertible move command сохраняют ссылки после reorder/undo/serde round-trip. `backend/src/domain/timeline.rs`
 - [ ] 🟡 **788. OpenShot:** Создать golden corpus версий проекта, migration-to-latest и policy test для неизвестных операций. `backend/tests/fixtures/projects/` (target)
@@ -1020,13 +1020,13 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### C. Playback и streaming
 
-- [ ] 🟠 **804. Video.js:** Ввести `PlayerAdapter`; store больше не импортирует `HTMLVideoElement`. `frontend/src/ports/player.ts` (target)
-- [ ] 🟠 **805. hls.js:** Разделить playback errors на network/media/config/unsupported и fatal/recoverable, задать bounded recovery. `frontend/src/features/player/errors.ts` (target)
-- [ ] 🟡 **806. Shaka Player:** Возвращать typed unsupported-capability result с причиной/fallback вместо пустого player. `frontend/src/features/player/capabilities.ts` (target)
-- [ ] 🟡 **807. dash.js:** Выделить preview representation policy для быстрого seek; запретить ей менять export. `frontend/src/features/player/representationPolicy.ts` (target)
-- [ ] 🟠 **808. Plyr:** Зафиксировать keyboard/focus/label/`aria-valuetext` contract media controls и desktop/mobile AT tests. `frontend/src/ui/media-controls/` (target)
-- [ ] 🟡 **809. MediaElement:** Нормализовать local/progressive/HLS source adapters в один player event model и suite. `frontend/src/adapters/player/` (target)
-- [ ] 🟡 **810. Media Chrome:** Разбить custom media controls на headless primitives без чтения global store. `frontend/src/ui/media-controls/` (target)
+- [x] ✅ **804. Video.js:** `PlayerAdapter` отделяет preview/store contracts от `HTMLMediaElement`; browser adapter изолирован. `frontend/src/lib/ports/player.ts`, `frontend/src/lib/adapters/player/mediaElement.ts`
+- [x] ✅ **805. hls.js:** Playback errors разделены на network/media/config/unsupported и fatal/recoverable; recovery имеет bounded attempts/backoff. `frontend/src/lib/features/player/errors.ts`
+- [x] ✅ **806. Shaka Player:** Unsupported capability возвращается typed result с причиной и progressive fallback. `frontend/src/lib/features/player/capabilities.ts`
+- [x] ✅ **807. dash.js:** Preview representation policy выбирает seek-friendly вариант и типово не меняет export spec. `frontend/src/lib/features/player/representationPolicy.ts`
+- [x] ✅ **808. Plyr:** Keyboard/label/`aria-valuetext` contract подключён к preview controls и покрыт component/headless tests. `frontend/src/lib/ui/media-controls/`, `frontend/src/lib/components/VideoPreview.svelte`
+- [x] ✅ **809. MediaElement:** Local/progressive/HLS/DASH sources и события нормализованы в один player model и suite. `frontend/src/lib/adapters/player/sources.ts`
+- [x] ✅ **810. Media Chrome:** Custom controls разбиты на headless commands/labels без чтения global store; Svelte boundary только применяет commands. `frontend/src/lib/ui/media-controls/model.ts`
 - [ ] 🟡 **811. MediaMTX:** Держать live ingest gateway отдельным сервисом, отдающим редактору только immutable recording artifact. `services/ingest-gateway` (future)
 - [ ] 🟠 **812. SRS:** Развести pools/quotas ingest/analysis/export и проверить, что saturation ingest не ломает export p95. `backend/src/config/resource_classes.rs` (target)
 - [ ] 🟡 **813. Jellyfin:** Добавить incremental media indexer с cursor, изоляцией bad entries и rebuildable eventual index. `backend/src/services/media_indexer.rs` (target)
@@ -1034,10 +1034,10 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 ### D. Editor interactions и canvas
 
 - [x] ✅ **814. Excalidraw:** Full-state JSON snapshots заменены field-level `PatchCommand.apply/invert/merge`; crop/censor pointer lifecycle открывает и закрывает одну drag transaction. `frontend/src/domain/history.ts`, `frontend/src/store.ts`
-- [ ] 🟠 **815. tldraw:** Создать tool state machine и единый идемпотентный pointer-capture lifecycle. `frontend/src/features/canvas/toolMachine.ts` (target)
+- [x] ✅ **815. tldraw:** Tool state machine владеет единым идемпотентным pointer-capture/cancel lifecycle и подключён к crop/censor overlay. `frontend/src/lib/features/canvas/toolMachine.ts`, `frontend/src/lib/components/RectOverlay.svelte`
 - [ ] 🟡 **816. Penpot:** Сделать semantic design tokens versioned contract с state/contrast tests и запретом raw palette в features. `frontend/src/ui/tokens.css` (target)
 - [x] ✅ **817. Fabric.js:** Branded source/preview/export/normalized spaces и immutable `Transform2D` подключены к overlay mapping; matrix round-trip/rotation/scale проверяются corpus/property tests. `frontend/src/domain/geometry.ts`, `frontend/src/components/RectOverlay.vue`
-- [ ] 🟡 **818. Konva:** Разделить media/guides/overlays/handles на scene layers; hit testing оставить interactive layer. `frontend/src/features/canvas/scene.ts` (target)
+- [x] ✅ **818. Konva:** Media/guides/overlays/handles разделены на scene layers; hit testing ограничен interactive overlay/handle layers. `frontend/src/lib/features/canvas/scene.ts`
 - [ ] 🟡 **819. PixiJS:** Измерить DOM/Canvas2D/WebGL на длинной timeline; вводить GPU только после threshold и с context-loss fallback. `frontend/bench/canvas/` (target)
 - [x] ✅ **820. Paper.js:** Rust и TS geometry kernels читают один fixture corpus; clamp containment, inverse transforms, singular/NaN rejection и fuzz-like inputs проверяются с обеих сторон. `backend/src/domain/geometry.rs`, `frontend/src/domain/geometry.ts`, `fixtures/geometry/`
 - [ ] 🟡 **821. TUI Image Editor:** Ввести declarative tool descriptor registry и проверить уникальность ID/shortcut. `frontend/src/features/tools/registry.ts` (target)
