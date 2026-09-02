@@ -12,6 +12,7 @@
   --faint: #7a828f;
   --accent: #4f8cff;
   --accent-2: #3f7bef;
+  --accent-foreground: #0d1014;
   --accent-soft: rgba(79, 140, 255, 0.16);
   --danger: #ff6b6b;
   --ok: #3ecf8e;
@@ -36,6 +37,7 @@
   --faint: #8a94a3;
   --accent: #2f6fed;
   --accent-2: #2a63d6;
+  --accent-foreground: #ffffff;
   --accent-soft: rgba(47, 111, 237, 0.14);
   --danger: #e0484d;
   --ok: #1f9d63;

@@ -12,6 +12,7 @@ import {
   reorderTrack,
   snapClipStart,
   snapTick,
+  slipClip,
   splitClip,
   trimClip,
   upsertTransition,
@@ -737,6 +738,17 @@ describe('composition validation', () => {
 })
 
 describe('immutable composition commands', () => {
+  it('slips source media without changing the timeline range and clamps to source bounds', () => {
+    let composition = createComposition(canvas, { [videoSource.id]: videoSource })
+    composition = addTrack(composition, videoTrack('video', [videoClip('slip', seconds(4), seconds(2), seconds(7))]))
+    const slipped = slipClip(composition, 'slip', seconds(3))
+    const clip = slipped.tracks[0]!.clips[0]!
+    expect(clip.timelineStartTicks).toBe(seconds(4))
+    expect(clip).toMatchObject({ sourceInTicks: seconds(5), sourceOutTicks: seconds(10) })
+    const clamped = slipClip(slipped, 'slip', seconds(99)).tracks[0]!.clips[0]!
+    expect(clamped).toMatchObject({ sourceInTicks: seconds(15), sourceOutTicks: seconds(20) })
+  })
+
   it('adds tracks and clips without mutating frozen input state', () => {
     const before = deepFreeze(emptyComposition())
     const withTrack = addTrack(before, videoTrack('video-a'))

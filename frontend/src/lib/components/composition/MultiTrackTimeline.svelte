@@ -1,36 +1,37 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import AudioWaveform from '$lib/audio/AudioWaveform.svelte'
   import type { LocalWaveformCache } from '$lib/audio/waveformCache.js'
-  import { clipDurationTicks, clipEndTicks, COMPOSITION_TIME_BASE, type CompositionClip } from '$lib/composition/types.js'
+  import { clipDurationTicks, clipEndTicks, COMPOSITION_TIME_BASE, type CompositionClip, type CompositionTrack } from '$lib/composition/types.js'
   import { MAX_COMPOSITION_MARKERS } from '$lib/composition/markers.js'
+  import { COMPOSITION_TOOLBAR_COMMANDS, compositionCommandState, executeCompositionCommand } from '$lib/composition/commandRegistry.js'
+  import { captureScrollAnchor, restoreScrollAnchor, timelineViewport, visibleRulerMarks, visibleTimelineItems } from '$lib/composition/timelineUi.js'
+  import { shortcutDefinition } from '$lib/shortcuts.js'
   import { shortcutAria, shortcutLabel } from '$lib/state/shortcuts.svelte.js'
+  import TimelineSemanticList from './TimelineSemanticList.svelte'
   import {
     compositionDuration,
     compositionMarkerList,
     compositionState,
     addCompositionTrack,
     addCompositionMarkerAtPlayhead,
-    deleteSelectedCompositionClip,
-    duplicateSelectedCompositionClip,
     moveCompositionClip,
     magnetizeCompositionTrack,
     reorderCompositionTrack,
     selectCompositionClip,
     setCompositionPlayhead,
     setCompositionZoom,
-    splitSelectedCompositionClip,
+    slipCompositionClip,
     toggleCompositionSnapping,
     toggleCompositionTrackFlag,
     trimCompositionClip,
-    undoComposition,
-    redoComposition,
     removeCompositionMarker,
     rippleDeleteSelectedCompositionClip,
     seekCompositionMarker,
     updateCompositionMarker,
   } from '$lib/state/composition.svelte.js'
 
-  type GestureMode = 'move' | 'trim-start' | 'trim-end'
+  type GestureMode = 'move' | 'slip' | 'trim-start' | 'trim-end'
   interface Props { waveformCache?: LocalWaveformCache }
   interface Gesture {
     clipId: string
@@ -46,14 +47,22 @@
 
   let gesture = $state<Gesture | null>(null)
   let previewRange = $state<PreviewRange | null>(null)
+  let slipDelta = $state(0)
+  let timelineScroll = $state<HTMLDivElement>()
+  let scrollLeft = $state(0)
+  let viewportWidth = $state(1_200)
+  let semanticListOpen = $state(false)
+  let commandPaletteOpen = $state(false)
+  let toolbarFocusIndex = $state(0)
+  let paletteFocusIndex = $state(0)
   const markers = $derived(compositionMarkerList())
   const timelineExtent = $derived(Math.max(compositionDuration(), markers.at(-1)?.tick ?? 0))
   const contentWidth = $derived(
     Math.max(760, (timelineExtent / COMPOSITION_TIME_BASE) * compositionState.ui.zoomPxPerSecond + 160),
   )
-  const rulerMarks = $derived(
-    Array.from({ length: Math.ceil(contentWidth / compositionState.ui.zoomPxPerSecond) + 1 }, (_, index) => index),
-  )
+  const viewport = $derived(timelineViewport(scrollLeft, viewportWidth, contentWidth))
+  const rulerMarks = $derived(visibleRulerMarks(viewport, compositionState.ui.zoomPxPerSecond))
+  const toolbarCommands = $derived(COMPOSITION_TOOLBAR_COMMANDS.map((id) => ({ id, ...compositionCommandState(id) })))
 
   function run(action: () => void): void {
     try {
@@ -93,15 +102,17 @@
     const track = compositionState.document.tracks.find((candidate) => candidate.id === trackId)
     if (track?.locked) return
     selectCompositionClip(trackId, clip.id)
+    const resolvedMode = mode === 'move' && event.altKey && (clip.kind === 'video' || clip.kind === 'audio') ? 'slip' : mode
     gesture = {
       clipId: clip.id,
       trackId,
-      mode,
+      mode: resolvedMode,
       pointerStartX: event.clientX,
       originalStart: clip.timelineStartTicks,
       originalEnd: clipEndTicks(clip),
     }
     previewRange = { clipId: clip.id, start: clip.timelineStartTicks, end: clipEndTicks(clip) }
+    slipDelta = 0
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   }
 
@@ -109,7 +120,9 @@
     if (!gesture || !previewRange) return
     const delta = pxToTicks(event.clientX - gesture.pointerStartX)
     const minimum = Math.max(1, Math.round(COMPOSITION_TIME_BASE / 100))
-    if (gesture.mode === 'move') {
+    if (gesture.mode === 'slip') {
+      slipDelta = delta
+    } else if (gesture.mode === 'move') {
       const duration = gesture.originalEnd - gesture.originalStart
       const start = Math.max(0, gesture.originalStart + delta)
       previewRange = { ...previewRange, start, end: start + duration }
@@ -133,7 +146,9 @@
     gesture = null
     previewRange = null
     run(() => {
-      if (current.mode === 'move') {
+      if (current.mode === 'slip') {
+        slipCompositionClip(current.clipId, slipDelta)
+      } else if (current.mode === 'move') {
         const underPointer = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-track-id]')
         const targetTrackId = underPointer?.dataset.trackId ?? current.trackId
         moveCompositionClip(current.clipId, targetTrackId, range.start)
@@ -141,6 +156,17 @@
         trimCompositionClip(current.clipId, range.start, range.end)
       }
     })
+    slipDelta = 0
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture?.(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+
+  function cancelGesture(event: PointerEvent): void {
+    gesture = null
+    previewRange = null
+    slipDelta = 0
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture?.(event.pointerId)) target.releasePointerCapture(event.pointerId)
   }
 
   function seekOnLane(event: MouseEvent): void {
@@ -169,14 +195,22 @@
     return Math.max(0, Math.round(Number((event.currentTarget as HTMLInputElement).value) * COMPOSITION_TIME_BASE))
   }
 
-  function onClipKey(event: KeyboardEvent, trackId: string, clipId: string): void {
+  function onClipKey(event: KeyboardEvent, trackId: string, clip: CompositionClip): void {
+    const clipId = clip.id
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       selectCompositionClip(trackId, clipId)
     } else if (event.key === 'Delete' || event.key === 'Backspace') {
       event.preventDefault()
       selectCompositionClip(trackId, clipId)
-      run(deleteSelectedCompositionClip)
+      executeCompositionCommand('composition.delete')
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      selectCompositionClip(trackId, clipId)
+      const frame = Math.max(1, Math.round(COMPOSITION_TIME_BASE / (compositionState.document.canvas.fps || 30)))
+      const delta = event.key === 'ArrowLeft' ? -frame : frame
+      if (event.shiftKey) run(() => slipCompositionClip(clipId, delta))
+      else run(() => moveCompositionClip(clipId, trackId, Math.max(0, clip.timelineStartTicks + delta), false))
     }
   }
 
@@ -194,16 +228,94 @@
       false,
     ))
   }
+
+  function visibleClips(track: CompositionTrack): readonly CompositionClip[] {
+    return visibleTimelineItems(
+      track.clips as readonly CompositionClip[],
+      viewport,
+      (clip) => ticksToPx(clip.timelineStartTicks),
+      (clip) => ticksToPx(clipEndTicks(clip)),
+    )
+  }
+
+  function updateViewport(event: Event): void {
+    const element = event.currentTarget as HTMLDivElement
+    scrollLeft = element.scrollLeft
+    viewportWidth = element.clientWidth || viewportWidth
+  }
+
+  async function updateZoom(event: Event): Promise<void> {
+    const anchor = captureScrollAnchor(scrollLeft, compositionState.ui.zoomPxPerSecond, COMPOSITION_TIME_BASE)
+    setCompositionZoom(Number((event.currentTarget as HTMLInputElement).value))
+    await tick()
+    if (timelineScroll) {
+      timelineScroll.scrollLeft = restoreScrollAnchor(anchor, compositionState.ui.zoomPxPerSecond, COMPOSITION_TIME_BASE)
+      scrollLeft = timelineScroll.scrollLeft
+    }
+  }
+
+  function onToolbarKeydown(event: KeyboardEvent): void {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    const toolbar = event.currentTarget as HTMLElement
+    const buttons = [...toolbar.querySelectorAll<HTMLButtonElement>('[data-timeline-command]')]
+    if (!buttons.length) return
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (Math.max(0, current) + (event.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length
+    event.preventDefault()
+    toolbarFocusIndex = next
+    buttons[next]!.focus()
+  }
+
+  async function toggleCommandPalette(): Promise<void> {
+    commandPaletteOpen = !commandPaletteOpen
+    if (!commandPaletteOpen) return
+    paletteFocusIndex = 0
+    await tick()
+    document.querySelector<HTMLButtonElement>('#timeline-command-palette [role="menuitem"]')?.focus()
+  }
+
+  function onPaletteKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      commandPaletteOpen = false
+      return
+    }
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+    const menu = event.currentTarget as HTMLElement
+    const items = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    if (!items.length) return
+    const current = items.indexOf(document.activeElement as HTMLButtonElement)
+    paletteFocusIndex = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (Math.max(0, current) + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length
+    event.preventDefault()
+    items[paletteFocusIndex]!.focus()
+  }
+
+  function executePaletteCommand(command: (typeof COMPOSITION_TOOLBAR_COMMANDS)[number]): void {
+    executeCompositionCommand(command)
+    commandPaletteOpen = false
+  }
 </script>
 
 <section class="composition-timeline card" aria-label="Многодорожечная монтажная линия">
-  <div class="composition-timeline-toolbar">
+  <div class="composition-timeline-toolbar" role="toolbar" tabindex="-1" aria-label="Команды монтажной линии" onkeydown={onToolbarKeydown}>
     <strong>Монтажная линия</strong>
-    <button class="btn ghost sm" type="button" onclick={undoComposition} disabled={!compositionState.history.past.length} aria-label="Отменить" aria-keyshortcuts={shortcutAria('composition.undo')} title={`Отменить (${shortcutLabel('composition.undo')})`}>↶</button>
-    <button class="btn ghost sm" type="button" onclick={redoComposition} disabled={!compositionState.history.future.length} aria-label="Повторить" aria-keyshortcuts={shortcutAria('composition.redo')} title={`Повторить (${shortcutLabel('composition.redo')})`}>↷</button>
-    <button class="btn ghost sm" type="button" onclick={() => run(splitSelectedCompositionClip)} disabled={!compositionState.ui.selectedClipId} aria-keyshortcuts={shortcutAria('composition.split')} title={`Разрезать (${shortcutLabel('composition.split')})`}>Разрезать</button>
-    <button class="btn ghost sm" type="button" onclick={() => run(duplicateSelectedCompositionClip)} disabled={!compositionState.ui.selectedClipId} aria-keyshortcuts={shortcutAria('composition.duplicate')} title={`Дублировать (${shortcutLabel('composition.duplicate')})`}>Дубликат</button>
-    <button class="btn ghost sm danger" type="button" onclick={() => run(deleteSelectedCompositionClip)} disabled={!compositionState.ui.selectedClipId} aria-keyshortcuts={shortcutAria('composition.delete')} title={`Удалить (${shortcutLabel('composition.delete')})`}>Удалить</button>
+    {#each toolbarCommands as command, index (command.id)}
+      <button
+        class:danger={command.id === 'composition.delete'}
+        class="btn ghost sm"
+        type="button"
+        data-timeline-command={command.id}
+        tabindex={index === toolbarFocusIndex ? 0 : -1}
+        aria-disabled={!command.enabled}
+        aria-label={shortcutDefinition(command.id).label}
+        aria-keyshortcuts={shortcutAria(command.id)}
+        aria-describedby={!command.enabled ? `timeline-command-reason-${index}` : undefined}
+        title={`${command.disabledReason ?? shortcutDefinition(command.id).description} (${shortcutLabel(command.id)})`}
+        onfocus={() => { toolbarFocusIndex = index }}
+        onclick={() => command.enabled && executeCompositionCommand(command.id)}
+      >{command.id === 'composition.undo' ? '↶' : command.id === 'composition.redo' ? '↷' : shortcutDefinition(command.id).label}</button>
+      {#if !command.enabled}<span id={`timeline-command-reason-${index}`} class="visually-hidden">{command.disabledReason}</span>{/if}
+    {/each}
     <button class="btn ghost sm danger" type="button" onclick={() => run(rippleDeleteSelectedCompositionClip)} disabled={!compositionState.ui.selectedClipId} title="Удалить выбранный clip и сдвинуть только последующие clips этой дорожки">Ripple delete</button>
     <button class="btn ghost sm" type="button" onclick={() => run(addCompositionMarkerAtPlayhead)} disabled={markers.length >= MAX_COMPOSITION_MARKERS} title={`Добавить marker на playhead (${markers.length}/${MAX_COMPOSITION_MARKERS})`}>+ Marker</button>
     <span class="composition-toolbar-separator" aria-hidden="true"></span>
@@ -212,8 +324,26 @@
     <button class="btn ghost sm" type="button" onclick={() => run(() => addCompositionTrack('image'))}>+ Image track</button>
     <button class="btn ghost sm" type="button" onclick={() => run(() => addCompositionTrack('text'))}>+ Text track</button>
     <label class="composition-snap-toggle"><input type="checkbox" checked={compositionState.ui.snapEnabled} onchange={toggleCompositionSnapping} /> магнит</label>
-    <label class="composition-zoom">масштаб <input type="range" min="24" max="320" value={compositionState.ui.zoomPxPerSecond} oninput={(event) => setCompositionZoom(Number(event.currentTarget.value))} /></label>
+    <button class="btn ghost sm" type="button" aria-expanded={semanticListOpen} aria-controls="timeline-semantic-list" onclick={() => { semanticListOpen = !semanticListOpen }}>Список для ассистивных технологий</button>
+    <button class="btn ghost sm" type="button" aria-haspopup="menu" aria-expanded={commandPaletteOpen} aria-controls="timeline-command-palette" onclick={() => void toggleCommandPalette()}>Команды</button>
+    <label class="composition-zoom">масштаб <input type="range" min="24" max="320" value={compositionState.ui.zoomPxPerSecond} oninput={(event) => void updateZoom(event)} /></label>
   </div>
+
+  {#if commandPaletteOpen}
+    <div id="timeline-command-palette" class="timeline-command-palette" role="menu" tabindex="-1" aria-label="Команды монтажной линии" onkeydown={onPaletteKeydown}>
+      {#each toolbarCommands as command, index (command.id)}
+        <button
+          type="button"
+          role="menuitem"
+          tabindex={index === paletteFocusIndex ? 0 : -1}
+          aria-disabled={!command.enabled}
+          title={command.disabledReason}
+          onfocus={() => { paletteFocusIndex = index }}
+          onclick={() => command.enabled && executePaletteCommand(command.id)}
+        >{shortcutDefinition(command.id).label}<span>{shortcutLabel(command.id)}</span></button>
+      {/each}
+    </div>
+  {/if}
 
   {#if compositionState.ui.message}<p class="composition-inline-error" role="alert">{compositionState.ui.message}</p>{/if}
 
@@ -239,7 +369,13 @@
     </div>
   {/if}
 
-  <div class="composition-timeline-scroll">
+  {#if semanticListOpen}
+    <div id="timeline-semantic-list">
+      <TimelineSemanticList tracks={compositionState.document.tracks} selectedClipId={compositionState.ui.selectedClipId} clipLabel={clipName} onselect={selectCompositionClip} />
+    </div>
+  {/if}
+
+  <div class="composition-timeline-scroll" bind:this={timelineScroll} onscroll={updateViewport}>
     <div class="composition-ruler-row">
       <div class="composition-track-spacer"></div>
       <div
@@ -298,7 +434,7 @@
           onclick={seekOnLane}
           onkeydown={seekWithKeyboard}
         >
-          {#each track.clips as clip (clip.id)}
+          {#each visibleClips(track) as clip (clip.id)}
             <div
               class={`composition-clip ${clip.kind}`}
               class:selected={compositionState.ui.selectedClipId === clip.id}
@@ -311,9 +447,10 @@
               onpointerdown={(event) => beginGesture(event, clip, track.id, 'move')}
               onpointermove={moveGesture}
               onpointerup={endGesture}
-              onpointercancel={() => { gesture = null; previewRange = null }}
+              onpointercancel={cancelGesture}
+              onlostpointercapture={cancelGesture}
               onclick={(event) => event.stopPropagation()}
-              onkeydown={(event) => onClipKey(event, track.id, clip.id)}
+              onkeydown={(event) => onClipKey(event, track.id, clip)}
             >
               <button type="button" class="composition-trim-handle left" aria-label={`Подрезать начало «${clipName(clip)}»`} title="Стрелки изменяют границу на один кадр" onpointerdown={(event) => beginGesture(event, clip, track.id, 'trim-start')} onkeydown={(event) => onTrimKey(event, track.id, clip, 'start')}></button>
               {#if clip.kind === 'audio' && compositionState.media[clip.sourceId]}

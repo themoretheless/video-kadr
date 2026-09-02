@@ -14,13 +14,16 @@ const manifest = JSON.parse(await readFile(new URL('.vite/manifest.json', distDi
 // lazy chunks are still bounded individually and in aggregate. Wave 10's
 // measured TanStack Query cache added 2.1 KiB to startup and 7.2 KiB overall;
 // the guardrail moved by 3/8 KiB respectively instead of silently disabling it.
+// Wave R's shared command boundary and opt-in semantic timeline added 0.4 KiB
+// to startup and 1.7 KiB overall. Keep the per-kind and async-chunk limits,
+// while rounding only the affected aggregate ceilings to the next KiB.
 const budgets = {
   initialJs: envBytes('BUNDLE_BUDGET_INITIAL_JS_GZIP', 'BUNDLE_BUDGET_JS_GZIP', 115 * 1024),
   initialCss: envBytes('BUNDLE_BUDGET_INITIAL_CSS_GZIP', 'BUNDLE_BUDGET_CSS_GZIP', 12 * 1024),
-  initialTotal: envBytes('BUNDLE_BUDGET_INITIAL_TOTAL_GZIP', undefined, 124 * 1024),
-  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 171 * 1024),
+  initialTotal: envBytes('BUNDLE_BUDGET_INITIAL_TOTAL_GZIP', undefined, 125 * 1024),
+  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 173 * 1024),
   allCss: envBytes('BUNDLE_BUDGET_ALL_CSS_GZIP', undefined, 16 * 1024),
-  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 184 * 1024),
+  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 186 * 1024),
   asyncJsChunk: envBytes('BUNDLE_BUDGET_ASYNC_JS_CHUNK_GZIP', undefined, 56 * 1024),
 }
 

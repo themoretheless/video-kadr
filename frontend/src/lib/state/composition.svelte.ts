@@ -26,6 +26,7 @@ import {
   snapClipStart,
   snapTick,
   splitClip,
+  slipClip,
   trimClip,
   upsertTransition,
 } from '../composition/commands'
@@ -1009,6 +1010,10 @@ export function trimCompositionClip(
     end = snapTick(end, targets, snapThresholdTicks()).valueTicks
   }
   commitDocument(trimClip(compositionState.document, clipId, start, end))
+}
+
+export function slipCompositionClip(clipId: string, sourceDeltaTicks: number): void {
+  commitDocument(slipClip(compositionState.document, clipId, Math.round(sourceDeltaTicks)))
 }
 
 export function splitSelectedCompositionClip(): string | null {

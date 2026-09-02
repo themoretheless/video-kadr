@@ -154,4 +154,33 @@ describe('MultiTrackTimeline', () => {
 
     await unmount(component)
   })
+
+  it('keeps disabled reasons focusable and roves through toolbar and command menu', async () => {
+    const component = mount(MultiTrackTimeline, { target })
+    await tick()
+
+    const commands = [...target.querySelectorAll<HTMLButtonElement>('[data-timeline-command]')]
+    const disabled = commands.find((command) => command.getAttribute('aria-disabled') === 'true')
+    expect(disabled).toBeDefined()
+    const reasonId = disabled!.getAttribute('aria-describedby')
+    expect(reasonId).toBeTruthy()
+    expect(target.querySelector(`#${reasonId}`)?.textContent?.trim()).not.toBe('')
+
+    commands[0]!.focus()
+    commands[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+    await tick()
+    expect(document.activeElement).toBe(commands[1])
+    expect(commands[1]!.tabIndex).toBe(0)
+
+    button('Команды').click()
+    await tick()
+    const menuItems = [...target.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    expect(document.activeElement).toBe(menuItems[0])
+    menuItems[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }))
+    await tick()
+    expect(document.activeElement).toBe(menuItems[1])
+    expect(menuItems[1]!.tabIndex).toBe(0)
+
+    await unmount(component)
+  })
 })

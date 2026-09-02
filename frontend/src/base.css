@@ -123,7 +123,7 @@ body {
   display: flex;
   align-items: center;
   text-align: center;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 13px;
   margin: 14px 0;
 }
@@ -387,7 +387,7 @@ body {
 
 .preview-compare-option.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-foreground);
 }
 
 .preview-compare-separator {
@@ -760,7 +760,7 @@ body {
 .chip.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-foreground);
 }
 
 /* Trim slider */
@@ -881,7 +881,7 @@ body {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-foreground);
 }
 
 .btn.primary:hover:not(:disabled) {

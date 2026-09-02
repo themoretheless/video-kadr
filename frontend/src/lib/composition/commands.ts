@@ -189,6 +189,30 @@ export function moveClip(
   return finalize({ ...composition, tracks })
 }
 
+/** Move media under a fixed timeline range without changing clip placement. */
+export function slipClip(composition: Composition, clipId: string, sourceDeltaTicks: number): Composition {
+  assertValidComposition(composition)
+  if (!Number.isSafeInteger(sourceDeltaTicks)) throw commandError('invalid-range', 'Slip delta must be a safe tick')
+  const location = findClipLocation(composition, clipId)
+  ensureUnlocked(location.track)
+  if (location.clip.kind !== 'video' && location.clip.kind !== 'audio') {
+    throw commandError('track-kind', 'Only video and audio clips can slip')
+  }
+  if (location.clip.speedRamp || (location.clip.kind === 'video' && location.clip.playbackMode?.mode === 'freeze')) {
+    throw commandError('invalid-range', 'Freeze and speed-ramped clips cannot slip')
+  }
+  const source = composition.sources[location.clip.sourceId]
+  if (!source) throw commandError('missing-source', `Source ${location.clip.sourceId} does not exist`)
+  const span = location.clip.sourceOutTicks - location.clip.sourceInTicks
+  const sourceInTicks = Math.max(0, Math.min(source.durationTicks - span, location.clip.sourceInTicks + sourceDeltaTicks))
+  if (sourceInTicks === location.clip.sourceInTicks) return composition
+  return finalize(replaceLocatedClip(composition, location, {
+    ...location.clip,
+    sourceInTicks,
+    sourceOutTicks: sourceInTicks + span,
+  }))
+}
+
 /**
  * Trim against composition-time boundaries. Source clips move their source-in
  * and source-out by the same deltas; image/text clips update duration.
