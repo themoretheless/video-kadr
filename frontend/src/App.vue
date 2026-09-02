@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import {
   state,
   ui,
@@ -37,6 +37,8 @@ import ProjectArchivePanel from './components/ProjectArchivePanel.vue'
 import { initializeDerivedTasks, onDerivedVisibilityChange } from './derived-task-center'
 
 const RecorderPanel = defineAsyncComponent(() => import('./components/RecorderPanel.vue'))
+const DesignHub = defineAsyncComponent(() => import('./components/DesignHub.vue'))
+const designHubOpen = ref(false)
 
 const legacyInspectorAvailable = computed(() => {
   const document = timelineState.document
@@ -168,6 +170,9 @@ onUnmounted(() => {
     <UrlImport />
 
     <RecorderPanel />
+
+    <button type="button" class="btn ghost" :aria-expanded="designHubOpen" aria-controls="design-hub-lazy" @click="designHubOpen = !designHubOpen">{{ designHubOpen ? 'Скрыть шаблоны и Brand kit' : 'Открыть шаблоны и Brand kit' }}</button>
+    <div v-if="designHubOpen" id="design-hub-lazy"><DesignHub :has-active-project="Boolean(state.video)" /></div>
 
     <ProjectArchivePanel />
 

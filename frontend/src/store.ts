@@ -31,6 +31,7 @@ import {
   createProjectDocumentFromLegacy,
   ensureCreatorTrackLayout,
   legacyProjectValues,
+  validateProjectDocument,
   updateLegacyProjectValues,
 } from './project-schema'
 import { toast } from './toasts'
@@ -1536,6 +1537,60 @@ function initializeTimelineDocument(video: VideoInfo): void {
   timelineState.error = ''
   timelineState.revision++
   syncStructuralHistoryState()
+}
+
+/** Atomically open a fully validated template instance using existing durable library assets. */
+export function openInstantiatedProject(document: ProjectDocument): void {
+  validateProjectDocument(document)
+  const next = structuredClone(document)
+  for (const media of next.media) {
+    if (!media.assetRef || !media.contentFingerprint) throw new Error(`Медиа ${media.id} не содержит каноническую зависимость`)
+    const available = state.library.find(item => item.kind === 'source'
+      && (item.assetId === media.assetRef || item.id === media.assetRef)
+      && item.fingerprint === media.contentFingerprint)
+    const expectedBytes = media.metadata.sizeBytes
+    if (!available || available.availability === 'offline' || available.availability === 'permission-required'
+      || (typeof expectedBytes === 'number' && typeof available.sizeBytes === 'number' && expectedBytes !== available.sizeBytes)) {
+      throw new Error(`Медиа ${media.id} недоступно или не прошло проверку целостности`)
+    }
+  }
+  const primary = next.media.find(item => item.id === next.primaryMediaId)
+  if (!primary?.assetRef || !primary.contentFingerprint) throw new Error('Шаблон не содержит каноническую ссылку на основное медиа')
+  const source = state.library.find(item =>
+    item.kind === 'source'
+    && (item.assetId === primary.assetRef || item.id === primary.assetRef)
+    && item.fingerprint === primary.contentFingerprint,
+  )
+  if (!source || source.availability === 'offline' || source.availability === 'permission-required') {
+    throw new Error('Исходник шаблона недоступен; выполните relink в медиатеке')
+  }
+  const duration = source.duration ?? Number(primary.metadata.duration)
+  const width = source.width ?? Number(primary.metadata.width)
+  const height = source.height ?? Number(primary.metadata.height)
+  if (!source.url || !Number.isFinite(duration) || duration <= 0 || !Number.isFinite(width) || width < 0 || !Number.isFinite(height) || height < 0) {
+    throw new Error('Метаданные основного медиа шаблона некорректны')
+  }
+  const video: VideoInfo = {
+    id: source.id, url: source.url, filename: source.filename,
+    duration, width, height, title: source.title, fps: source.fps,
+    vcodec: source.vcodec, acodec: source.acodec, mediaKind: source.mediaKind,
+    assetId: source.assetId, fingerprint: source.fingerprint,
+    availability: source.availability, sizeBytes: source.sizeBytes,
+    colorManagement: source.colorManagement,
+  }
+  const edit = sanitizeEditState({ ...defaultEdit(), ...legacyProjectValues(next).edit })
+  resetProjectPersistenceContext()
+  state.video = video
+  state.edit = edit
+  state.result = null
+  resetHistory()
+  timelineState.document = next
+  timelineState.selectedClipId = next.sequences
+    .find(sequence => sequence.id === next.activeSequenceId)?.tracks
+    .flatMap(track => track.clips)[0]?.id ?? null
+  timelineState.revision++
+  syncStructuralHistoryState()
+  scheduleProjectSave()
 }
 
 function syncStructuralHistoryState(): void {

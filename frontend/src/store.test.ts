@@ -41,6 +41,7 @@ import {
   relinkLibraryMedia,
   relinkState,
   openSavedProject,
+  openInstantiatedProject,
   setProjectProxyPolicy,
   publishPlayerState,
   buildActiveMulticamFlattenPayload,
@@ -1358,6 +1359,21 @@ describe('project restore autosave', () => {
     expect(timelineState.error).toContain('найдите исходный файл')
     expect(JSON.stringify(timelineState.document)).toBe(before)
     expect(timelineState.canUndo).toBe(canUndoBefore)
+  })
+
+  it('preflights every instantiated media dependency before mutating editor state', () => {
+    const activeBefore = migrateProjectDocument({ videoId: 'active', video: { id: 'active', duration: 1 }, edit: {} })
+    timelineState.document = activeBefore
+    const activeReference = timelineState.document
+    const candidate = migrateProjectDocument({
+      videoId: 'primary', video: { id: 'primary', assetId: 'asset-primary', fingerprint: 'a'.repeat(64), filename: 'primary.mp4', fileType: 'video/mp4', sizeBytes: 100, duration: 2, width: 320, height: 180 }, edit: {},
+    })
+    candidate.media.push({ id: 'secondary', kind: 'video', assetRef: 'asset-secondary', contentFingerprint: 'b'.repeat(64), metadata: { filename: 'secondary.mp4', fileType: 'video/mp4', sizeBytes: 50, duration: 1 } })
+    state.library = [{ id: 'asset-primary', assetId: 'asset-primary', kind: 'source', fingerprint: 'a'.repeat(64), filename: 'primary.mp4', url: '/primary', sizeBytes: 100, duration: 2, width: 320, height: 180, availability: 'ready', createdAt: 1 }]
+    const videoBefore = state.video
+    expect(() => openInstantiatedProject(candidate)).toThrow('Медиа secondary недоступно')
+    expect(timelineState.document).toBe(activeReference)
+    expect(state.video).toBe(videoBefore)
   })
 
   it('bulk upload adds every successful file to the same active project', async () => {
