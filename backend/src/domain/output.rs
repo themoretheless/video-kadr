@@ -6,6 +6,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::artifact_graph::Fingerprint;
+use super::audio_output::{AudioOutputError, AudioOutputSpec};
 use super::edit::OutputScale;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -218,6 +219,13 @@ impl OutputSpec {
         self.fps_milli.map(|value| f64::from(value) / 1000.0)
     }
 
+    /// Expanded audio policy for encoder adapters without changing the stable wire contract.
+    pub fn audio_output_spec(&self) -> Result<Option<AudioOutputSpec>, AudioOutputError> {
+        self.audio_codec
+            .map(|codec| AudioOutputSpec::default_for(self.format, codec))
+            .transpose()
+    }
+
     pub fn validate(&self) -> Result<(), OutputSpecError> {
         let expected_video = match self.format {
             OutputFormat::Mp4 => {
@@ -350,5 +358,13 @@ mod tests {
         let mut invalid = serde_json::to_value(spec(OutputFormat::Mp4, None, None)).unwrap();
         invalid["crf"] = serde_json::json!(99);
         assert!(serde_json::from_value::<OutputSpec>(invalid).is_err());
+    }
+
+    #[test]
+    fn audio_policy_expands_from_stable_output_contract() {
+        let output = spec(OutputFormat::Webm, None, None);
+        let audio = output.audio_output_spec().unwrap().unwrap();
+        assert_eq!(audio.codec, AudioCodec::Opus);
+        assert_eq!(audio.sample_rate_hz, 48_000);
     }
 }

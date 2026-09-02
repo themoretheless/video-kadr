@@ -2,6 +2,7 @@
 //! depend on HTTP extractors, async runtimes, subprocesses, or persistence.
 
 pub mod artifact_graph;
+pub mod audio_output;
 pub mod composition;
 pub mod edit;
 pub mod filter_graph;
@@ -10,4 +11,5 @@ pub mod keyframes;
 pub mod media_pipeline;
 pub mod media_probe;
 pub mod output;
+pub mod still_container;
 pub mod timeline;

@@ -38,6 +38,9 @@ for (const file of files.sort()) {
 // mangling once turned the constructor read into `.e` while the caller still
 // emitted the literal `sourceAdapter`, silently disabling voiceover capture.
 const sourceAdapterReferences = productionJavaScript.match(/\bsourceAdapter\b/g)?.length ?? 0
+if (productionJavaScript.includes('video-kadr-render-dag-devtools')) {
+  throw new Error('Development render DAG visualizer leaked into the production bundle')
+}
 const missingSourceAdapterEdges = [
   ['constructor', /this\.sourceAdapter=/],
   ['acquire', /\.sourceAdapter\.acquire\(/],

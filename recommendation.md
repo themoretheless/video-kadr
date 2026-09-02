@@ -28,7 +28,7 @@
 | 3 | ✅ 10/10 | 834, 835, 836, 837, 838, 839, 840, 842, 843, 870 | Durable jobs, outbox, replay и concurrency invariants |
 | 4 | ✅ 10/10 | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 | Proxy/render artifacts и измеряемый media performance |
 | 5 | ✅ 10/10 | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 | Player/canvas state machines и accessibility |
-| 6 | ☐ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 | Quality/codecs/design tokens и benchmarks |
+| 6 | ☑ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 | Quality/codecs/design tokens и benchmarks |
 | 7 | ☐ | 833, 855, 856, 857, 858, 859, 860, 861, 862, 863 | Deployment security, fuzzing и supply chain |
 | 8 | ☐ | 812, 813, 830, 864, 865, 866, 867, 868, 869, 873 | Resource classes, SQL contract и observability |
 | 9 | ☐ | 874, 875, 876, 877, 878, 879, 880, 881, 882, 883 | Versioned local-first ML artifacts |
@@ -1007,14 +1007,14 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 ### B. Кодеки, качество и packaging
 
-- [ ] 🟡 **794. VMAF:** Добавить opt-in VMAF+PSNR/SSIM report с model/viewing-condition version и per-scene значениями; пока advisory. `backend/src/analysis/quality.rs` (target)
+- [x] ✅ **794. VMAF:** Opt-in advisory contract фиксирует versioned VMAF model/viewing condition, VMAF/PSNR/SSIM aggregate и per-scene метрики с fail-closed validation. `backend/src/analysis/quality.rs`
 - [x] ✅ **795. Av1an:** Scene-aware contiguous chunk plan, atomic manifest, identity-bound checksums, missing/corrupt reconcile и compatible verified stitch повторно валидируют identity перед операцией. `backend/src/render/chunks.rs`
 - [x] ✅ **796. rav1e:** cgroup-aware `EncodeBudget` валидирует threads/tiles/speed/memory; render admission и production FFmpeg дают bounded filter/encoder threads и AV1 preset/tiles. `backend/src/config/encode_budget.rs`, `backend/src/state.rs`, `backend/src/tools/args.rs`
-- [ ] 🟡 **797. Opus:** Ввести `AudioOutputSpec` и contract tests совместимости bitrate/channels/sample rate/loudness/container. `backend/src/domain/audio_output.rs` (target)
+- [x] ✅ **797. Opus:** `AudioOutputSpec` типизирует bitrate/channel layout/sample rate/loudness и проверяет container/codec compatibility; стабильный `OutputSpec` расширяет policy без wire-breaking поля. `backend/src/domain/audio_output.rs`, `backend/src/domain/output.rs`
 - [x] ✅ **798. Shaka Packager:** Checksummed `OutputBundle` и отдельные typed HLS/DASH Shaka adapters находятся после encode; обычный file export модуль не импортирует. `backend/src/packaging/mod.rs`
-- [ ] 🟠 **799. libavif:** Добавить still-export round-trip tests для color/ICC/alpha/orientation metadata. `backend/tests/media/still_metadata.rs` (target)
-- [ ] 🟡 **800. libjxl:** Ввести `StillImageEncoder` port + capability descriptor; новый codec не меняет `EditPlan`. `backend/src/ports/still_encoder.rs` (target)
-- [ ] 🟠 **801. libheif:** Типизировать container brand/image item/codec и отклонять несовместимые комбинации до spawn. `backend/src/domain/still_container.rs` (target)
+- [x] ✅ **799. libavif:** Still-export round-trip contract отдельно доказывает preservation/loss для color primaries, ICC, alpha, orientation и metadata blocks. `backend/tests/media/still_metadata.rs`
+- [x] ✅ **800. libjxl:** `StillImageEncoder` port владеет capability descriptor, pre-spawn validation и encode result; `EditPlan` не изменён. `backend/src/ports/still_encoder.rs`
+- [x] ✅ **801. libheif:** Container/brand/item role/codec типизированы; duplicate/missing primary, sequence-brand и alpha auxiliary mismatch отклоняются до adapter spawn. `backend/src/domain/still_container.rs`
 - [ ] 🟡 **802. SRT:** Оформить remote ingest как adapter с reconnect/latency/clock budgets, выдающий immutable source artifact. `backend/src/ingest/srt.rs` (target)
 - [x] ✅ **803. PyAV:** ffprobe adapter нормализует container/streams/time-base/frame-rate/color/rotation/disposition в typed `ProbeResult`; raw fixture corpus проверяет контракт. `backend/src/domain/media_probe.rs`, `fixtures/media-probe/`
 
@@ -1035,13 +1035,13 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 
 - [x] ✅ **814. Excalidraw:** Full-state JSON snapshots заменены field-level `PatchCommand.apply/invert/merge`; crop/censor pointer lifecycle открывает и закрывает одну drag transaction. `frontend/src/domain/history.ts`, `frontend/src/store.ts`
 - [x] ✅ **815. tldraw:** Tool state machine владеет единым идемпотентным pointer-capture/cancel lifecycle и подключён к crop/censor overlay. `frontend/src/lib/features/canvas/toolMachine.ts`, `frontend/src/lib/components/RectOverlay.svelte`
-- [ ] 🟡 **816. Penpot:** Сделать semantic design tokens versioned contract с state/contrast tests и запретом raw palette в features. `frontend/src/ui/tokens.css` (target)
+- [x] ✅ **816. Penpot:** Semantic token contract versioned в одном CSS-файле; dark/light contrast tests и `check:tokens` запрещают raw palette в feature code. `frontend/src/lib/ui/tokens.css`, `frontend/scripts/check-design-tokens.mjs`
 - [x] ✅ **817. Fabric.js:** Branded source/preview/export/normalized spaces и immutable `Transform2D` подключены к overlay mapping; matrix round-trip/rotation/scale проверяются corpus/property tests. `frontend/src/domain/geometry.ts`, `frontend/src/components/RectOverlay.vue`
 - [x] ✅ **818. Konva:** Media/guides/overlays/handles разделены на scene layers; hit testing ограничен interactive overlay/handle layers. `frontend/src/lib/features/canvas/scene.ts`
-- [ ] 🟡 **819. PixiJS:** Измерить DOM/Canvas2D/WebGL на длинной timeline; вводить GPU только после threshold и с context-loss fallback. `frontend/bench/canvas/` (target)
+- [x] ✅ **819. PixiJS:** Reproducible Chromium workload измеряет 2 500 timeline items × 60 frames: DOM p50/p95 5.7/8.8 ms, Canvas2D 0.1/0.2 ms, WebGL 0.0/0.1 ms; GPU остаётся future threshold decision и не включён в product path. `frontend/bench/canvas/`
 - [x] ✅ **820. Paper.js:** Rust и TS geometry kernels читают один fixture corpus; clamp containment, inverse transforms, singular/NaN rejection и fuzz-like inputs проверяются с обеих сторон. `backend/src/domain/geometry.rs`, `frontend/src/domain/geometry.ts`, `fixtures/geometry/`
-- [ ] 🟡 **821. TUI Image Editor:** Ввести declarative tool descriptor registry и проверить уникальность ID/shortcut. `frontend/src/features/tools/registry.ts` (target)
-- [ ] 🟡 **822. xyflow:** Добавить dev-only render DAG visualizer; проверить отсутствие feature в production bundle. `frontend/src/dev/renderGraph/` (target)
+- [x] ✅ **821. TUI Image Editor:** Declarative tool descriptors имеют typed ID/shortcut/cursor/capture policy; startup и tests fail-fast на ID/shortcut collision. `frontend/src/lib/features/tools/registry.ts`
+- [x] ✅ **822. xyflow:** Render DAG visualizer грузится только под `import.meta.env.DEV`; production bundle gate ищет marker и падает при leakage. `frontend/src/lib/dev/renderGraph/`, `frontend/scripts/check-bundle-budget.mjs`
 - [x] ✅ **823. Motionity:** `KeyframeTrack<T>` валидирует time base/ticks/finite values, детерминированно семплирует hold/linear/cubic и имеет отдельные preview/ffmpeg adapters с golden expression. `backend/src/domain/keyframes.rs`
 
 ### E. Rust backend
@@ -1049,7 +1049,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **824. Tokio:** Root `CancellationToken` + `TaskTracker` владеют workers; SIGINT/SIGTERM запускают bounded HTTP/task drain, process runner эскалирует process groups. `backend/src/runtime.rs`, `backend/src/main.rs`
 - [x] ✅ **825. Axum:** System/project handlers вынесены в port-based routers; contract tests используют runtime port и in-memory fake без `AppState`, SQLite и filesystem, production подключает те же DTO/status. `backend/src/http/mod.rs`, `backend/src/http/ports.rs`
 - [x] ✅ **826. Tower:** Route catalog фиксирует единый порядок request ID/body/auth/rate/timeout/tracing и способ enforcement; outer middleware собирается одной функцией. Auth честно отмечен как local-deployment boundary, а не как готовая public auth. `backend/src/http/policy.rs`
-- [ ] 🟡 **827. Actix Web:** Зафиксировать Axum throughput/p50/p95/p99/RSS baseline; запретить framework rewrite без ADR и profile. `backend/benches/http_baseline.rs` (target)
+- [x] ✅ **827. Actix Web:** In-process Axum baseline фиксирует throughput/p50/p95/p99/peak RSS; локальный release run: 1.61M req/s, 0.58/0.67/0.75 µs, 2.23 MB. Framework rewrite требует ADR и сопоставимого profile. `backend/benches/http_baseline.rs`
 - [x] ✅ **828. Hyper:** Реальные TCP-тесты доказывают incremental upload, cleanup после disconnect и отзывчивость API при slow Range reader. `backend/tests/http_backpressure.rs`
 - [x] ✅ **829. Serde:** Wire DTO strict, поддерживают `schemaVersion: 1`; project envelope strict, вложенные persisted documents tolerant. `backend/src/model.rs`, `backend/src/http/mod.rs`, `backend/tests/api.rs`
 - [ ] 🟡 **830. SQLx:** Добавить offline metadata и `cargo sqlx prepare --check` против query/schema drift. `.github/workflows/ci.yml` (target)

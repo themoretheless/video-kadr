@@ -39,3 +39,7 @@ loom = "0.7"
 [[bench]]
 name = "persistence"
 harness = false
+
+[[bench]]
+name = "http_baseline"
+harness = false

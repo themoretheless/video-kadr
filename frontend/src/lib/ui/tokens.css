@@ -1,0 +1,45 @@
+/* Public semantic token contract. Increment when a token is removed or changes meaning. */
+:root {
+  --design-token-version: 1;
+  --bg: #0d1014;
+  --panel: #161a21;
+  --panel-2: #1e242d;
+  --panel-3: #262d38;
+  --border: #2b323d;
+  --border-strong: #3a434f;
+  --text: #e8ebf1;
+  --muted: #aab3c0;
+  --faint: #7a828f;
+  --accent: #4f8cff;
+  --accent-2: #3f7bef;
+  --accent-soft: rgba(79, 140, 255, 0.16);
+  --danger: #ff6b6b;
+  --ok: #3ecf8e;
+  --warn: #f5b84f;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 8px;
+  --ring: 0 0 0 3px var(--accent-soft);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --panel-2: #f1f4f9;
+  --panel-3: #e7ecf3;
+  --border: #d9dfe8;
+  --border-strong: #c2cad6;
+  --text: #1a1f29;
+  --muted: #56606f;
+  --faint: #8a94a3;
+  --accent: #2f6fed;
+  --accent-2: #2a63d6;
+  --accent-soft: rgba(47, 111, 237, 0.14);
+  --danger: #e0484d;
+  --ok: #1f9d63;
+  --warn: #c8881f;
+  --shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  color-scheme: light;
+}
