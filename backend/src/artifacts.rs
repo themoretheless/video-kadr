@@ -106,6 +106,22 @@ pub async fn fingerprint_file(
 }
 
 pub async fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    write_json_atomic_with_fault(path, value, None).await
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArtifactFailpoint {
+    BeforeManifestWrite,
+    AfterFileSync,
+    AfterRename,
+    AfterDirectorySync,
+}
+
+async fn write_json_atomic_with_fault<T: Serialize>(
+    path: &Path,
+    value: &T,
+    failpoint: Option<ArtifactFailpoint>,
+) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| anyhow!("artifact manifest needs a parent directory"))?;
@@ -120,6 +136,7 @@ pub async fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(
         .ok_or_else(|| anyhow!("artifact manifest needs a UTF-8 filename"))?;
     let temporary = parent.join(format!(".{file_name}.{}.tmp", Uuid::new_v4()));
     let result = async {
+        inject_artifact_fault(failpoint, ArtifactFailpoint::BeforeManifestWrite)?;
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -127,8 +144,12 @@ pub async fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(
             .await?;
         file.write_all(&bytes).await?;
         file.sync_all().await?;
+        inject_artifact_fault(failpoint, ArtifactFailpoint::AfterFileSync)?;
         drop(file);
         tokio::fs::rename(&temporary, path).await?;
+        inject_artifact_fault(failpoint, ArtifactFailpoint::AfterRename)?;
+        sync_directory(parent).await?;
+        inject_artifact_fault(failpoint, ArtifactFailpoint::AfterDirectorySync)?;
         Ok::<_, anyhow::Error>(())
     }
     .await;
@@ -136,6 +157,31 @@ pub async fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(
         let _ = tokio::fs::remove_file(&temporary).await;
     }
     result
+}
+
+fn inject_artifact_fault(
+    active: Option<ArtifactFailpoint>,
+    current: ArtifactFailpoint,
+) -> Result<()> {
+    if active == Some(current) {
+        Err(anyhow!("injected artifact fault: {current:?}"))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+async fn sync_directory(path: &Path) -> Result<()> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || std::fs::File::open(path)?.sync_all())
+        .await
+        .map_err(|error| anyhow!("directory sync task failed: {error}"))??;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+async fn sync_directory(_path: &Path) -> Result<()> {
+    Ok(())
 }
 
 pub async fn read_json_bounded<T: DeserializeOwned>(path: &Path, limit: usize) -> Result<T> {
@@ -231,6 +277,56 @@ mod tests {
         assert!(read_json_bounded::<serde_json::Value>(&path, 1024)
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn artifact_failpoint_matrix_never_exposes_mixed_manifest_bytes() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("manifest.json");
+        let old = serde_json::json!({"schemaVersion": 1, "generation": "old"});
+        let new = serde_json::json!({"schemaVersion": 1, "generation": "new"});
+        write_json_atomic(&path, &old).await.unwrap();
+
+        for failpoint in [
+            ArtifactFailpoint::BeforeManifestWrite,
+            ArtifactFailpoint::AfterFileSync,
+            ArtifactFailpoint::AfterRename,
+            ArtifactFailpoint::AfterDirectorySync,
+        ] {
+            write_json_atomic(&path, &old).await.unwrap();
+            assert!(write_json_atomic_with_fault(&path, &new, Some(failpoint))
+                .await
+                .is_err());
+            let loaded: serde_json::Value = read_json_bounded(&path, 1024).await.unwrap();
+            assert!(
+                loaded == old || loaded == new,
+                "mixed state at {failpoint:?}"
+            );
+            assert_eq!(
+                directory
+                    .path()
+                    .read_dir()
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+                    .count(),
+                0,
+                "temporary file leaked at {failpoint:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_hash_is_retryable_and_never_changes_the_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("source.bin");
+        tokio::fs::write(&path, b"immutable").await.unwrap();
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+        assert!(fingerprint_file(&pool(), path.clone(), cancellation)
+            .await
+            .is_err());
+        assert_eq!(tokio::fs::read(path).await.unwrap(), b"immutable");
     }
 
     #[tokio::test]

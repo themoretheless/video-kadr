@@ -2,6 +2,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::config::resource_classes::ResourceClass;
+use crate::reliability::CriticalPhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobOutcome {
@@ -41,6 +42,11 @@ pub enum TelemetryEvent {
     Bytes {
         direction: &'static str,
         amount: u64,
+    },
+    PhaseLatency {
+        phase: CriticalPhase,
+        duration: Duration,
+        expected_interval: Duration,
     },
 }
 

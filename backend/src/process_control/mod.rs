@@ -8,12 +8,16 @@ mod execution;
 mod limits;
 mod policy;
 mod runtime;
+mod sandbox;
 
 pub use policy::{
     EnvironmentAccess, FilesystemAccess, IsolationTier, KernelLimits, NetworkAccess, OutputBudget,
     ProcessPolicy, ProcessRuntimeConfig, SandboxBackend, ToolRole,
 };
 pub use runtime::{PreparedCommand, ProcessRuntime};
+pub use sandbox::{
+    NsJailAdapter, NsJailProfile, SandboxCapability, SeccompProfile, TenantIdentity, WasmLimits,
+};
 
 #[cfg(test)]
 pub(crate) use execution::test_timeout_error;

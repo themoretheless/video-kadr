@@ -1,8 +1,11 @@
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::config::resource_classes::ResourceClass;
 use crate::ports::telemetry::{ResourceObservation, TelemetryEvent, TelemetryPort};
+use crate::reliability::{CorrectedHistogram, CriticalPhase};
 
 #[derive(Debug, Default)]
 pub struct PrometheusTelemetry {
@@ -15,6 +18,7 @@ pub struct PrometheusTelemetry {
     process_micros: [AtomicU64; 6],
     bytes_ingress: AtomicU64,
     bytes_egress: AtomicU64,
+    phase_latency: Mutex<[CorrectedHistogram; 5]>,
 }
 
 impl TelemetryPort for PrometheusTelemetry {
@@ -26,6 +30,12 @@ impl TelemetryPort for PrometheusTelemetry {
                 self.queue_wait_micros[index].fetch_add(
                     duration.as_micros().try_into().unwrap_or(u64::MAX),
                     Ordering::Relaxed,
+                );
+                record_phase(
+                    &self.phase_latency,
+                    CriticalPhase::Queue,
+                    duration,
+                    Duration::from_millis(1),
                 );
             }
             TelemetryEvent::JobTerminal { kind, outcome } => {
@@ -57,6 +67,14 @@ impl TelemetryPort for PrometheusTelemetry {
                         Ordering::Relaxed,
                     );
                 }
+                if tool == "ffmpeg" {
+                    record_phase(
+                        &self.phase_latency,
+                        CriticalPhase::Render,
+                        duration,
+                        Duration::from_millis(10),
+                    );
+                }
             }
             TelemetryEvent::Bytes {
                 direction: "ingress",
@@ -71,6 +89,11 @@ impl TelemetryPort for PrometheusTelemetry {
                 self.bytes_egress.fetch_add(amount, Ordering::Relaxed);
             }
             TelemetryEvent::Bytes { .. } => {}
+            TelemetryEvent::PhaseLatency {
+                phase,
+                duration,
+                expected_interval,
+            } => record_phase(&self.phase_latency, phase, duration, expected_interval),
         }
     }
 
@@ -168,8 +191,51 @@ impl TelemetryPort for PrometheusTelemetry {
             "video_kadr_bytes_total{{direction=\"egress\"}} {}",
             self.bytes_egress.load(Ordering::Relaxed)
         );
+        output.push_str(
+            "# HELP video_kadr_phase_latency_seconds Corrected critical-path tail latency.\n\
+             # TYPE video_kadr_phase_latency_seconds gauge\n",
+        );
+        if let Ok(histograms) = self.phase_latency.lock() {
+            for phase in CriticalPhase::ALL {
+                if let Some(tail) = histograms[phase_index(phase)].percentiles() {
+                    for (quantile, micros) in [
+                        ("0.50", tail.p50_micros),
+                        ("0.95", tail.p95_micros),
+                        ("0.99", tail.p99_micros),
+                    ] {
+                        let seconds = micros as f64 / 1_000_000.0;
+                        let _ = writeln!(
+                            output,
+                            "video_kadr_phase_latency_seconds{{phase=\"{}\",quantile=\"{quantile}\"}} {seconds}",
+                            phase.label()
+                        );
+                    }
+                }
+            }
+        }
         output.push_str("# EOF\n");
         Some(output)
+    }
+}
+
+fn record_phase(
+    histograms: &Mutex<[CorrectedHistogram; 5]>,
+    phase: CriticalPhase,
+    duration: Duration,
+    expected_interval: Duration,
+) {
+    if let Ok(mut histograms) = histograms.lock() {
+        let _ = histograms[phase_index(phase)].record(duration, expected_interval);
+    }
+}
+
+fn phase_index(phase: CriticalPhase) -> usize {
+    match phase {
+        CriticalPhase::Queue => 0,
+        CriticalPhase::Probe => 1,
+        CriticalPhase::FirstPreviewFrame => 2,
+        CriticalPhase::Render => 3,
+        CriticalPhase::Publish => 4,
     }
 }
 
@@ -215,6 +281,11 @@ mod tests {
             class: ResourceClass::Export,
             duration: Duration::from_millis(3),
         });
+        telemetry.record(TelemetryEvent::PhaseLatency {
+            phase: CriticalPhase::FirstPreviewFrame,
+            duration: Duration::from_millis(40),
+            expected_interval: Duration::from_millis(10),
+        });
         let output = telemetry
             .render_prometheus(&[ResourceObservation {
                 class: ResourceClass::Export,
@@ -223,6 +294,8 @@ mod tests {
             }])
             .unwrap();
         assert!(output.contains("class=\"export\""));
+        assert!(output.contains("phase=\"queue\",quantile=\"0.99\""));
+        assert!(output.contains("phase=\"first_preview_frame\",quantile=\"0.95\""));
         for forbidden in ["job_id", "request_id", "url", "filename"] {
             assert!(!output.contains(forbidden));
         }

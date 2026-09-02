@@ -24,6 +24,7 @@ pub mod ports;
 pub mod privacy;
 pub mod process_control;
 pub mod project_archive;
+pub mod reliability;
 pub mod render;
 pub mod runtime;
 pub mod services;

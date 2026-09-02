@@ -35,9 +35,13 @@ production modules запрещён архитектурной границей 
 | `lan` | Явно разрешён | Доверенная приватная сеть | Требует явного `ISOLATION_TIER=lan`; auth и tenant isolation отсутствуют |
 | `public` | Потенциально внешний | Недоверенные users/media | Всегда отклоняется до auth, ownership, cgroup и executable sandbox adapter |
 
-`PROCESS_SANDBOX=nsjail|bubblewrap` тоже отклоняется: выбор имени адаптера не
-считается работающим sandbox. Он станет допустимым только после integration и
-codec regression corpus.
+`PROCESS_SANDBOX=nsjail|bubblewrap` по-прежнему отклоняется на startup: выбор
+имени адаптера не считается deployment authorization. В коде есть исполняемый
+компилятор профиля NsJail 3.6 (`sandbox.rs`) с mandatory mount allowlist,
+отдельными user/mount/PID/IPC/UTS/network/cgroup namespaces, loopback off,
+versioned seccomp checksum, cgroup v2 memory/PID/CPU budgets и отдельным
+tenant UID/GID. Public wiring включается только вместе с auth и ownership, без
+fallback на прямой запуск.
 
 ## Реальное enforcement
 
@@ -91,9 +95,9 @@ FFmpeg и ffprobe запускаются с protocol allowlist
 
 ## Следующие обязательные шаги
 
-1. №935: executable NsJail adapter с namespace/cgroup/seccomp и dropped uid.
-2. №936: bind mounts source read-only, staging/output writable, home/siblings hidden.
-3. №937: отдельный network namespace; egress socket только downloader proxy.
-4. №938: versioned seccomp profile, связанный с tool fingerprint и codec corpus.
-5. №939/940: cgroup CPU/memory/pids и per-tenant uid/work directory.
-6. Auth и ownership должны быть готовы до снятия public startup block.
+1. Подготовить и подписать production seccomp policy на codec corpus; модель
+   связывает policy checksum с tool fingerprint, но сам policy не генерируется.
+2. Добавить auth и ownership до снятия public startup block.
+3. Прогнать adversarial Linux deployment suite с реальным NsJail 3.6 и cgroup v2.
+4. Для downloader спроектировать отдельный namespace transport к pinned proxy;
+   обычные probe/render остаются полностью offline.
