@@ -62,14 +62,20 @@ jobs:
         run: npm run test
       - name: Design token policy
         run: npm run check:tokens
+      - name: Browser lifecycle policy
+        run: npm run check:lifecycle
       - name: Build
         run: npm run build
+      - name: Build Storybook catalog
+        run: npm run build-storybook
       - name: Bundle budget
         run: npm run check:bundle
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Browser smoke
         run: npm run test:e2e
+      - name: Storybook visual contracts
+        run: npm run test:stories
 
   real-composition-e2e:
     runs-on: ubuntu-latest

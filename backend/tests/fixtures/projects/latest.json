@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 3,
+  "timeline": { "tracks": [{ "clips": [{ "id": "clip-a", "sourceId": "source-a" }] }] },
+  "metadata": {},
+  "operations": []
+}

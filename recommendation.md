@@ -998,7 +998,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **785. GStreamer:** Preview оформлен как `Idle/Ready/Paused/Playing/Draining/Failed` state machine с monotonic clock и fake-time race tests. `frontend/src/lib/features/player/previewSession.ts`
 - [x] ✅ **786. MLT:** Независимые `Producer/Filter/Transition/Consumer` ports, role-scoped registry и стабильный manifest не импортируют process/CLI/runtime types. `backend/src/domain/media_pipeline.rs`
 - [x] ✅ **787. Olive:** Стабильные `ClipId`/`OperationId`, immutable timeline operations и invertible move command сохраняют ссылки после reorder/undo/serde round-trip. `backend/src/domain/timeline.rs`
-- [ ] 🟡 **788. OpenShot:** Создать golden corpus версий проекта, migration-to-latest и policy test для неизвестных операций. `backend/tests/fixtures/projects/` (target)
+- [x] ✅ **788. OpenShot:** Golden corpus v1/v2/v3 мигрирует в canonical latest; неизвестные required operations fail-closed, optional сохраняются непрозрачно. `backend/src/domain/project_version.rs`, `backend/tests/fixtures/projects/`
 - [x] ✅ **789. Kdenlive:** Content-addressed proxy service проверяет source checksum, single-flight background generation, relink и удаление; staging имеет media suffix, progress без consumer не буферизуется, `MediaIntent::Export` всегда возвращает original. `backend/src/analysis/proxy.rs`, `backend/src/tools/proxy.rs`
 - [x] ✅ **790. Shotcut:** Runtime manifest encoders/muxers/filters/hardware с fingerprint и disabled-reason подключён к UI. `backend/src/capabilities.rs`, `frontend/src/components/`
 - [x] ✅ **791. Blender:** Typed artifact DAG проверяет dependency existence, fingerprint identity и точечную downstream invalidation; serde не обходит key/dependency/cycle invariants. `backend/src/domain/artifact_graph.rs`
@@ -1015,7 +1015,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **799. libavif:** Still-export round-trip contract отдельно доказывает preservation/loss для color primaries, ICC, alpha, orientation и metadata blocks. `backend/tests/media/still_metadata.rs`
 - [x] ✅ **800. libjxl:** `StillImageEncoder` port владеет capability descriptor, pre-spawn validation и encode result; `EditPlan` не изменён. `backend/src/ports/still_encoder.rs`
 - [x] ✅ **801. libheif:** Container/brand/item role/codec типизированы; duplicate/missing primary, sequence-brand и alpha auxiliary mismatch отклоняются до adapter spawn. `backend/src/domain/still_container.rs`
-- [ ] 🟡 **802. SRT:** Оформить remote ingest как adapter с reconnect/latency/clock budgets, выдающий immutable source artifact. `backend/src/ingest/srt.rs` (target)
+- [x] ✅ **802. SRT:** Remote ingest adapter ограничивает reconnect/latency/clock budgets, удаляет partial staging и атомарно публикует checksummed immutable source только после clean close. `backend/src/ingest/srt.rs`
 - [x] ✅ **803. PyAV:** ffprobe adapter нормализует container/streams/time-base/frame-rate/color/rotation/disposition в typed `ProbeResult`; raw fixture corpus проверяет контракт. `backend/src/domain/media_probe.rs`, `fixtures/media-probe/`
 
 ### C. Playback и streaming
@@ -1027,7 +1027,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **808. Plyr:** Keyboard/label/`aria-valuetext` contract подключён к preview controls и покрыт component/headless tests. `frontend/src/lib/ui/media-controls/`, `frontend/src/lib/components/VideoPreview.svelte`
 - [x] ✅ **809. MediaElement:** Local/progressive/HLS/DASH sources и события нормализованы в один player model и suite. `frontend/src/lib/adapters/player/sources.ts`
 - [x] ✅ **810. Media Chrome:** Custom controls разбиты на headless commands/labels без чтения global store; Svelte boundary только применяет commands. `frontend/src/lib/ui/media-controls/model.ts`
-- [ ] 🟡 **811. MediaMTX:** Держать live ingest gateway отдельным сервисом, отдающим редактору только immutable recording artifact. `services/ingest-gateway` (future)
+- [x] ✅ **811. MediaMTX:** Отдельный non-root SRT-only gateway на pinned MediaMTX 1.20.0 атомарно публикует hash manifest закрытого recording artifact; image build и startup проверены. `services/ingest-gateway/`
 - [x] ✅ **812. SRS:** Ingest/analysis/export используют независимые admission pools с отдельными env quotas; 100-sample regression держит export admission p95 доступным при полностью занятом ingest. `backend/src/config/resource_classes.rs`, `backend/src/state.rs`
 - [x] ✅ **813. Jellyfin:** FTS5 adapter получил durable `(created_at,id)` cursor, incremental startup sync, изоляцию malformed entries, deferred transient errors и полный rebuild derived state. `backend/src/services/media_indexer.rs`
 
@@ -1066,22 +1066,22 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [x] ✅ **838. RQ:** Lifecycle registries и startup reconciliation requeue abandoned attempts по policy. `backend/src/jobs/registry.rs`
 - [x] ✅ **839. River:** Job/request/event/dedupe/outbox enqueue атомарен; claim защищён attempt heartbeat, due retry и shutdown recovery, terminal payload очищается, пять failpoints не оставляют partial state; orchestration вынесен из media handlers. `backend/src/jobs/outbox.rs`, `backend/src/jobs/store.rs`, `backend/src/handlers/jobs.rs`
 - [x] ✅ **840. Restic:** Content-addressed backup, manifest/checksums/integrity verify и restore drill реализованы; staging исключён. `backend/src/backup.rs`, `backend/src/bin/backup.rs`
-- [ ] 🟡 **841. Borg:** Измерить chunk dedup на media corpus и определить prune policy до добавления зависимости. `bench/backup-dedup.md` (target)
+- [x] ✅ **841. Borg:** Детерминированный corpus дал 2.458x/59.3% для content-defined chunks; зафиксированы dependency gate и safe 7 daily/5 weekly/12 monthly prune policy. `bench/backup-dedup.md`, `bench/backup_dedup.py`
 - [x] ✅ **842. RocksDB:** SQLite WAL benchmark и migration thresholds зафиксированы; локальные p95-прогоны 0.241-0.632 ms ниже gate 50 ms. `backend/benches/persistence.rs`, `backend/src/jobs/persistence_profile.rs`
 - [x] ✅ **843. Meilisearch:** `MediaSearch` port, SQLite FTS5 default и rebuild from source of truth реализованы. `backend/src/ports/media_search.rs`
 
 ### G. Vue, frontend и testing
 
 - [x] ✅ **844. Vue:** ESLint запрещает domain→transport/UI, component→API и transport→store/component imports; доступ идёт через store/facade. `frontend/eslint.config.js`
-- [ ] 🟠 **845. Pinia:** Выделить pilot `project`/`ui` stores с facade и command-only cross-store interaction. `frontend/src/stores/` (target)
+- [x] ✅ **845. Pinia:** Pilot project/ui stores инкапсулируют mutation commands; единственный editor facade координирует их без cross-import/mutation. `frontend/src/stores/`
 - [x] ✅ **846. Vite:** Initial JS/CSS/total gzip budgets измеряются после build и падают в Make/CI; текущая сборка укладывается в total 60 KiB. `frontend/scripts/check-bundle-budget.mjs`, CI
 - [x] ✅ **847. Vitest:** Polling terminal/cancel cases используют fake timers/table cases; autosave/history suites также без real-time sleep. `frontend/src/api.test.ts`, `frontend/src/store.test.ts`
-- [ ] 🟡 **848. VueUse:** Централизовать global listeners/resize/online в lifecycle-safe composables и запретить обход lint-аудитом. `frontend/src/composables/` (target)
-- [ ] 🟠 **849. Storybook:** Каталогизировать empty/loading/error/long/localized/mobile/reduced-motion states с a11y/screenshots. `frontend/src/**/*.stories.ts` (target)
+- [x] ✅ **848. VueUse:** Global listener/resize/online lifecycle вынесен в composables; pointer surfaces мигрированы, отдельный CI audit запрещает прямой обход. `frontend/src/composables/`, `frontend/scripts/check-global-listeners.mjs`
+- [x] ✅ **849. Storybook:** Каталог empty/loading/error/long/localized/mobile/reduced-motion имеет strict a11y addon, production build и 7 платформенно-независимых Playwright screenshot baselines. `frontend/src/stories/`, `frontend/storybook-e2e/`
 - [x] ✅ **850. Playwright:** 9 browser smoke cases покрывают backendless offline shell, mocked import/edit/export и 390px no-overflow в трёх движках; harness владеет strict isolated server. `frontend/e2e/smoke.spec.ts`, `frontend/playwright.config.ts`
-- [ ] 🟡 **851. Cypress:** Сравнить один fault scenario и оформить ADR выбора ровно одного E2E runner. `docs/adr/e2e-runner.md` (target)
-- [ ] 🟠 **852. TanStack Query:** Вынести library/projects/jobs server cache/invalidation/polling из mutable UI stores. `frontend/src/data/` (target)
-- [ ] 🟠 **853. Floating UI:** Создать один tooltip/menu/popover primitive с collision/focus return/Escape/outside-click tests. `frontend/src/ui/overlay/` (target)
+- [x] ✅ **851. Cypress:** Один job-error fault scenario сопоставлен; ADR оставляет Playwright единственным E2E runner и Vitest component/domain runner. `docs/adr/e2e-runner.md`
+- [x] ✅ **852. TanStack Query:** Library/projects/jobs cache, invalidation и polling mirror вынесены из mutable UI stores в keyed TanStack Query Core layer. `frontend/src/data/`
+- [x] ✅ **853. Floating UI:** Общий tooltip/menu/popover primitive использует offset/flip/shift/autoUpdate и покрыт collision, focus return, Escape/outside-click tests. `frontend/src/ui/overlay/`
 
 ### H. Security и supply chain
 

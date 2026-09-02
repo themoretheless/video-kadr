@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
+  import { eventListener, listenMany } from '../../../composables/globalListeners.js'
   import { SvelteSet } from 'svelte/reactivity'
   import {
     cloneCurves,
@@ -46,6 +47,7 @@
   let selectedIndex = $state(0)
   const interactionSources = new SvelteSet<InteractionSource>()
   let pointerDrag: PointerDrag | null = null
+  let disposePointerListeners = () => {}
   let activeOption = $derived(channels.find((channel) => channel.key === activeChannel) ?? channels[0]!)
   let activePoints = $derived(sanitizeCurve(value[activeChannel]))
   let selectedPoint = $derived(activePoints[selectedIndex] ?? activePoints[0]!)
@@ -179,9 +181,11 @@
     }
     beginInteraction('pointer')
     plot?.setPointerCapture?.(event.pointerId)
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-    window.addEventListener('pointercancel', onPointerUp)
+    disposePointerListeners = listenMany([
+      [window, 'pointermove', eventListener(onPointerMove)],
+      [window, 'pointerup', eventListener(onPointerUp)],
+      [window, 'pointercancel', eventListener(onPointerUp)],
+    ])
     event.preventDefault()
   }
 
@@ -226,9 +230,8 @@
     const drag = pointerDrag
     if (!drag) return
     pointerDrag = null
-    window.removeEventListener('pointermove', onPointerMove)
-    window.removeEventListener('pointerup', onPointerUp)
-    window.removeEventListener('pointercancel', onPointerUp)
+    disposePointerListeners()
+    disposePointerListeners = () => {}
     if (plot?.hasPointerCapture?.(drag.pointerId)) plot.releasePointerCapture(drag.pointerId)
     endInteraction('pointer')
   }

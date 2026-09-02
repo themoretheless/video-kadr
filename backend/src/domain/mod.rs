@@ -11,5 +11,6 @@ pub mod keyframes;
 pub mod media_pipeline;
 pub mod media_probe;
 pub mod output;
+pub mod project_version;
 pub mod still_container;
 pub mod timeline;

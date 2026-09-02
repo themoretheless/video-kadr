@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 3,
+  "timeline": { "tracks": [] },
+  "metadata": {},
+  "operations": [{ "type": "vendor.annotation", "optional": true, "payload": { "label": "note" } }]
+}

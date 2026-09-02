@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { eventListener, listenMany } from '../../composables/globalListeners.js'
 
   interface Props {
     min: number
@@ -26,6 +27,7 @@
     oninteractionstart,
     oninteractionend,
   }: Props = $props()
+  let disposeDragListeners = () => {}
 
   let track: HTMLElement
   let active: 'start' | 'end' | null = null
@@ -54,9 +56,8 @@
   function stopDrag(): void {
     const wasActive = active !== null
     active = null
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', stopDrag)
-    window.removeEventListener('pointercancel', stopDrag)
+    disposeDragListeners()
+    disposeDragListeners = () => {}
     if (wasActive) oninteractionend?.()
   }
 
@@ -65,9 +66,11 @@
     if (!active) oninteractionstart?.()
     active = which
     ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', stopDrag)
-    window.addEventListener('pointercancel', stopDrag)
+    disposeDragListeners = listenMany([
+      [window, 'pointermove', eventListener(onMove)],
+      [window, 'pointerup', eventListener(stopDrag)],
+      [window, 'pointercancel', eventListener(stopDrag)],
+    ])
   }
 
   function onTrackDown(event: PointerEvent): void {

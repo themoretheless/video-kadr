@@ -1,4 +1,12 @@
 import * as api from '../api'
+import { pollJob } from '../../data/jobs.js'
+import {
+  cacheCompositionProject,
+  fetchCompositionProject,
+  fetchCompositionProjects,
+  removeCompositionProject,
+} from '../../data/projects.js'
+import { editorFacade } from '../../stores/editorFacade.js'
 import type { TimelineBeat } from '../audio/beatMarkers'
 import { estimateWaveformOffset, MAX_SYNC_SAMPLES, waveformEnergy } from '../audio/sync'
 import { localWaveformCache } from '../audio/waveformCache'
@@ -1651,10 +1659,10 @@ export async function exportComposition(capabilities: Capabilities | null): Prom
     const request = buildCompositionRenderRequest(compositionState.document, compositionRenderOutput())
     const { jobId } = await api.renderComposition(request)
     compositionState.export.jobId = jobId
-    const job = await api.pollJob(jobId, (current) => {
+    const job = await pollJob(jobId, { onTick: (current) => {
       compositionState.export.progress = typeof current.progress === 'number' ? current.progress : null
       compositionState.export.stage = current.stage ?? null
-    })
+    } })
     compositionState.export.result = job.result as ResultInfo
   } catch (error) {
     compositionState.export.error =
@@ -1677,7 +1685,9 @@ export async function cancelCompositionExport(): Promise<void> {
 
 export async function loadCompositionProjects(): Promise<void> {
   try {
-    compositionState.projects = await api.getCompositionProjects()
+    const projects = await fetchCompositionProjects()
+    editorFacade.replaceProjects(projects)
+    compositionState.projects = [...editorFacade.projects]
     compositionState.save.error = ''
   } catch (error) {
     compositionState.save.error = error instanceof Error ? error.message : String(error)
@@ -1695,6 +1705,8 @@ export async function saveCompositionProject(): Promise<void> {
     const project = compositionState.projectId
       ? await api.updateCompositionProject(compositionState.projectId, body)
       : await api.createCompositionProject(body)
+    cacheCompositionProject(project)
+    editorFacade.projectSaved(project)
     const wasUnsaved = compositionState.projectId === null
     compositionState.projectId = project.id
     compositionState.projectName = project.name
@@ -1720,9 +1732,10 @@ export async function openCompositionProject(id: string): Promise<void> {
   compositionState.save.busy = true
   compositionState.save.error = ''
   try {
-    const project = await api.getCompositionProject(id)
+    const project = await fetchCompositionProject(id)
     if (revision !== openCompositionRevision) return
     if (!project) throw new Error('Композиционный проект не найден')
+    editorFacade.selectProject(project.id)
     const local = readStoredDraftCollection()?.projects[project.id]
     activateStoredDraft(local?.dirty ? local : {
       document: normalizeComposition(project.document),
@@ -1747,7 +1760,8 @@ export async function deleteCompositionProject(id: string): Promise<void> {
   compositionState.save.busy = true
   compositionState.save.error = ''
   try {
-    await api.deleteCompositionProject(id)
+    await removeCompositionProject(id)
+    editorFacade.projectDeleted(id)
     compositionState.projects = compositionState.projects.filter((project) => project.id !== id)
     removeStoredProjectDraft(id)
     if (compositionState.projectId === id) {

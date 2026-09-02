@@ -22,7 +22,10 @@ check:
 	cd frontend && npm run lint
 	cd frontend && npm run typecheck
 	cd frontend && npm run test
+	cd frontend && npm run check:tokens
+	cd frontend && npm run check:lifecycle
 	cd frontend && npm run build
+	cd frontend && npm run build-storybook
 	cd frontend && npm run check:bundle
 	cd frontend && npm run test:e2e
 

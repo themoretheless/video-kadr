@@ -14,6 +14,7 @@ pub mod domain;
 pub mod error;
 pub mod handlers;
 pub mod http;
+pub mod ingest;
 pub mod jobs;
 pub mod library;
 pub mod luts;

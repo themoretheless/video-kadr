@@ -1,0 +1,25 @@
+logLevel: info
+api: false
+metrics: false
+pprof: false
+rtsp: false
+rtmp: false
+hls: false
+webrtc: false
+moq: false
+srt: true
+srtAddress: :8890
+
+pathDefaults:
+  source: publisher
+  record: true
+  recordPath: /var/lib/ingest/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: mpegts
+  recordPartDuration: 1s
+  recordMaxPartSize: 50M
+  recordSegmentDuration: 5m
+  recordDeleteAfter: 24h
+  runOnRecordSegmentComplete: /usr/local/bin/publish-artifact "$MTX_PATH" "$MTX_SEGMENT_PATH" "$MTX_SEGMENT_DURATION"
+
+paths:
+  all_others: {}

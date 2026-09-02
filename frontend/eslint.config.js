@@ -4,7 +4,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'coverage'] },
+  { ignores: ['dist', 'storybook-static', 'node_modules', 'coverage'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...svelte.configs['flat/recommended'],
@@ -29,7 +29,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.ts', 'e2e/**/*.ts', 'scripts/**/*.mjs', 'playwright*.config.ts', 'vitest.config.ts', 'vite*.config.ts'],
+    files: ['**/*.test.ts', 'e2e/**/*.ts', 'storybook-e2e/**/*.ts', 'scripts/**/*.mjs', 'playwright*.config.ts', 'storybook.playwright.config.ts', 'vitest.config.ts', 'vite*.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
   {

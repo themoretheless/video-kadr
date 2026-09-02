@@ -1,0 +1,20 @@
+services:
+  ingest-gateway:
+    build:
+      context: .
+    image: video-kadr-ingest-gateway:1.20.0
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8890:8890/udp"
+    volumes:
+      - ingest-data:/var/lib/ingest
+
+volumes:
+  ingest-data: {}

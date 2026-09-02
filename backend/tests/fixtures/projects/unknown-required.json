@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 3,
+  "timeline": { "tracks": [] },
+  "metadata": {},
+  "operations": [{ "type": "future.magic", "payload": {} }]
+}

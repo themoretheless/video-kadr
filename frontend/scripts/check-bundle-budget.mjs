@@ -11,14 +11,16 @@ const manifest = JSON.parse(await readFile(new URL('.vite/manifest.json', distDi
 // on 2026-09-02 moved 3 KiB of the unchanged total allowance from CSS headroom
 // to JavaScript. Startup and whole-product bytes are intentionally
 // separate: adding an optional editor must not masquerade as startup cost, but
-// lazy chunks are still bounded individually and in aggregate.
+// lazy chunks are still bounded individually and in aggregate. Wave 10's
+// measured TanStack Query cache added 2.1 KiB to startup and 7.2 KiB overall;
+// the guardrail moved by 3/8 KiB respectively instead of silently disabling it.
 const budgets = {
-  initialJs: envBytes('BUNDLE_BUDGET_INITIAL_JS_GZIP', 'BUNDLE_BUDGET_JS_GZIP', 112 * 1024),
+  initialJs: envBytes('BUNDLE_BUDGET_INITIAL_JS_GZIP', 'BUNDLE_BUDGET_JS_GZIP', 115 * 1024),
   initialCss: envBytes('BUNDLE_BUDGET_INITIAL_CSS_GZIP', 'BUNDLE_BUDGET_CSS_GZIP', 12 * 1024),
   initialTotal: envBytes('BUNDLE_BUDGET_INITIAL_TOTAL_GZIP', undefined, 124 * 1024),
-  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 163 * 1024),
+  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 171 * 1024),
   allCss: envBytes('BUNDLE_BUDGET_ALL_CSS_GZIP', undefined, 16 * 1024),
-  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 176 * 1024),
+  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 184 * 1024),
   asyncJsChunk: envBytes('BUNDLE_BUDGET_ASYNC_JS_CHUNK_GZIP', undefined, 56 * 1024),
 }
 

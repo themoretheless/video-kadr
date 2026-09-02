@@ -2,6 +2,7 @@
   import { sceneLayerAttributes } from '$lib/features/canvas/scene.js'
   import { CanvasToolMachine } from '$lib/features/canvas/toolMachine.js'
   import { state } from '$lib/state/store.svelte.js'
+  import { eventListener, listenMany } from '../../composables/globalListeners.js'
 
   interface OverlayRect { x: number; y: number; w: number; h: number }
   interface Props {
@@ -31,6 +32,7 @@
   let startX = 0
   let startY = 0
   let original: OverlayRect = { x: 0, y: 0, w: 0, h: 0 }
+  let disposeDragListeners = () => {}
 
   const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max))
   const dims = () => ({ width: state.video?.width || 1, height: state.video?.height || 1 })
@@ -76,10 +78,13 @@
     startY = event.clientY
     original = normalize(rect)
     oninteractionstart?.()
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', stopDrag)
-    window.addEventListener('pointercancel', cancelDrag)
-    window.addEventListener('keydown', onWindowKeydown)
+    disposeDragListeners()
+    disposeDragListeners = listenMany([
+      [window, 'pointermove', eventListener(onMove)],
+      [window, 'pointerup', eventListener((event: PointerEvent) => stopDrag(event))],
+      [window, 'pointercancel', eventListener((event: PointerEvent) => cancelDrag(event))],
+      [window, 'keydown', eventListener(onWindowKeydown)],
+    ])
     event.preventDefault()
     event.stopPropagation()
   }
@@ -107,10 +112,8 @@
     onrectchange?.(normalize({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 }))
   }
   function removeDragListeners(): void {
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', stopDrag)
-    window.removeEventListener('pointercancel', cancelDrag)
-    window.removeEventListener('keydown', onWindowKeydown)
+    disposeDragListeners()
+    disposeDragListeners = () => {}
   }
   function stopDrag(event?: PointerEvent): void {
     const activePointer = toolMachine.snapshot().pointerId

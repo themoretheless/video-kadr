@@ -6,6 +6,8 @@
 # Node
 /frontend/node_modules/
 /frontend/dist/
+/frontend/storybook-static/
+/frontend/debug-storybook.log
 /frontend/playwright-report/
 /frontend/test-results/
 

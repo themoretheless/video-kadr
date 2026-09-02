@@ -1,4 +1,6 @@
 import * as api from '../api'
+import { pollJob } from '../../data/jobs.js'
+import { fetchLibrary, updateCachedLibrary } from '../../data/library.js'
 import {
   buildEditPayload as buildPayload,
   defaultEdit,
@@ -143,7 +145,7 @@ export async function doImport(): Promise<VideoInfo | null> {
     const { jobId } = await api.importUrl(body)
     state.importJobId = jobId
     state.importStatus = 'Скачиваю видео (это может занять время)…'
-    const job = await api.pollJob(jobId, onImportTick)
+    const job = await pollJob(jobId, { onTick: onImportTick })
     const v = job.result as VideoInfo
     state.video = v
 
@@ -324,7 +326,7 @@ export async function doExport(): Promise<void> {
   try {
     const { jobId } = await api.edit(buildEditPayload())
     state.exportJobId = jobId
-    const job = await api.pollJob(jobId, onExportTick)
+    const job = await pollJob(jobId, { onTick: onExportTick })
     state.result = job.result as ResultInfo
     state.exportStatus = ''
     void loadLibrary()
@@ -530,7 +532,7 @@ export async function loadLibrary(): Promise<boolean> {
   const revision = ++libraryLoadRevision
   state.librarySnapshotReady = false
   try {
-    const entries = await api.getLibrary()
+    const entries = await fetchLibrary()
     if (revision !== libraryLoadRevision) return false
     state.library = entries
     state.librarySnapshotReady = true
@@ -549,6 +551,7 @@ export async function updateLibraryMetadata(
   metadata: api.LibraryMetadataPatch,
 ): Promise<MediaEntry> {
   const updated = await api.patchLibraryMetadata(id, metadata)
+  updateCachedLibrary(updated)
   state.library = state.library.map((entry) => (entry.id === id ? updated : entry))
   return updated
 }
