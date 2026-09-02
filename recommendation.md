@@ -29,7 +29,7 @@
 | 4 | ✅ 10/10 | 789, 791, 792, 793, 795, 796, 798, 832, 871, 872 | Proxy/render artifacts и измеряемый media performance |
 | 5 | ✅ 10/10 | 785, 804, 805, 806, 807, 808, 809, 810, 815, 818 | Player/canvas state machines и accessibility |
 | 6 | ☑ | 794, 797, 799, 800, 801, 816, 819, 821, 822, 827 | Quality/codecs/design tokens и benchmarks |
-| 7 | ☐ | 833, 855, 856, 857, 858, 859, 860, 861, 862, 863 | Deployment security, fuzzing и supply chain |
+| 7 | ☑ | 833, 855, 856, 857, 858, 859, 860, 861, 862, 863 | Deployment security, fuzzing и supply chain |
 | 8 | ☐ | 812, 813, 830, 864, 865, 866, 867, 868, 869, 873 | Resource classes, SQL contract и observability |
 | 9 | ☐ | 874, 875, 876, 877, 878, 879, 880, 881, 882, 883 | Versioned local-first ML artifacts |
 | 10 | ☐ | 788, 802, 811, 841, 845, 848, 849, 851, 852, 853 | Compatibility, ingest и frontend completion |
@@ -1055,7 +1055,7 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 - [ ] 🟡 **830. SQLx:** Добавить offline metadata и `cargo sqlx prepare --check` против query/schema drift. `.github/workflows/ci.yml` (target)
 - [x] ✅ **831. tracing:** Span tree `request -> job -> process`, CORS-visible request ID, path-only HTTP fields и URL/query/path canary-redaction реализованы. `backend/src/telemetry.rs`, `backend/src/privacy.rs`
 - [x] ✅ **832. Rayon:** Named bounded Rayon pool имеет fail-fast queue admission, cooperative cancellation, panic isolation и saturation/completion metrics; hashing использует этот port. `backend/src/runtime/cpu_pool.rs`, `backend/src/artifacts.rs`
-- [ ] 🟠 **833. rustls:** Принять deployment ADR для TLS termination и trusted proxy headers; запретить public plaintext profile. `docs/deployment-security.md` (target)
+- [x] ✅ **833. rustls:** Deployment ADR разрешает plaintext только на loopback, требует TLS termination для LAN/public, не доверяет forwarded headers без allowlisted proxy hop и запрещает public plaintext profile; image теперь non-root и pinned-download verified. `docs/deployment-security.md`, `backend/Dockerfile`
 
 ### F. Jobs и persistence
 
@@ -1086,15 +1086,15 @@ SOLID/DRY-пунктов. Отбор, точные рейтинги GitHub, pape
 ### H. Security и supply chain
 
 - [x] ✅ **854. OWASP:** Extension/MIME/probe/generated name/private staging/storage headers/body+concurrency limits связаны с 6 focused regressions и residual risks. `docs/threat-model-upload.md`, `backend/tests/upload_security.rs`
-- [ ] 🟠 **855. OSS-Fuzz:** Подготовить hermetic continuous fuzz targets, sanitizer build, corpus и triage SLA. `fuzz/oss-fuzz/` (target)
-- [ ] 🟠 **856. cargo-fuzz:** Targets для edit normalization, multipart path, library JSON, URL policy и cache key; crashes идут в regression corpus. `backend/fuzz/` (target)
-- [ ] 🟠 **857. RustSec:** У каждого advisory ignore должны быть owner/rationale/expiry; просрочка падает в CI. `.cargo/audit.toml` (target)
-- [ ] 🟠 **858. cargo-deny:** Ввести license/source/duplicate policy и поштучные исключения. `deny.toml` (target)
-- [ ] 🟠 **859. Trivy:** Сканировать built image/filesystem/Compose-IaC, публиковать SARIF, исключения делать expiring. `.github/workflows/security.yml` (target)
-- [ ] 🟡 **860. OSV-Scanner:** Проверять оба lockfile и сопоставлять с native audit tools, показывая fixed version/path. `.github/workflows/security.yml` (target)
-- [ ] 🟠 **861. Cosign:** Генерировать SBOM/SLSA provenance, подписывать digest и проверять policy до deploy. `.github/workflows/release.yml` (target)
-- [ ] 🔴 **862. Gitleaks:** PR+history secret scan с custom query-token rules и минимальным reviewed baseline. `.gitleaks.toml` (target)
-- [ ] 🟠 **863. SOPS:** Хранить deploy secrets зашифрованно, внешние keys, rotation drill и отсутствие plaintext на диске/в логах. `ops/secrets/` (target)
+- [x] ✅ **855. OSS-Fuzz:** Hermetic OSS-Fuzz project builds five libFuzzer targets under ASan/UBSan, packages seed corpora и фиксирует security/non-security triage SLA. `fuzz/oss-fuzz/`, `backend/fuzz/README.md`
+- [x] ✅ **856. cargo-fuzz:** Edit normalization, multipart/archive path, library JSON, DNS-free URL policy и cache-key targets собраны sanitizer build; crash policy требует сначала regression test, затем corpus seed. `backend/fuzz/`
+- [x] ✅ **857. RustSec:** Audit ignores по умолчанию пусты; CI требует exact companion exception record с owner/rationale/tracking/expiry и падает на просрочке. Проверка выявила и обновила vulnerable `anyhow` 1.0.102. `.cargo/audit.toml`, `security/advisory-exceptions.toml`
+- [x] ✅ **858. cargo-deny:** License/source/yanked/wildcard/duplicate policy включена; private workspace отмечен непубликуемым, текущие advisories/licenses/sources проходят. `deny.toml`, `backend/Cargo.toml`
+- [x] ✅ **859. Trivy:** Security workflow сканирует filesystem, Compose/Dockerfile IaC и собранный image, публикует раздельный SARIF; companion exception schema требует expiry. `.github/workflows/security.yml`, `security/trivy-exceptions.toml`
+- [x] ✅ **860. OSV-Scanner:** OSV проверяет Rust и npm lockfile в том же workflow, а native RustSec/cargo-deny дают независимую сверку dependency path/fixed version. `.github/workflows/security.yml`
+- [x] ✅ **861. Cosign:** Tag release строит immutable digest, создаёт SPDX SBOM и SLSA provenance, keyless-signs digest и блокирует deploy-stage до identity/provenance verification. `.github/workflows/release.yml`
+- [x] ✅ **862. Gitleaks:** PR+full-history scan использует default rules, custom query/Bearer token rules и пустой reviewed baseline. `.gitleaks.toml`, `.gitleaksignore`
+- [x] ✅ **863. SOPS:** Repo разрешает только SOPS `*.enc.yaml`, external age/KMS keys и quarterly rotation drill; CI отклоняет plaintext-shaped deploy secret files. `ops/secrets/`, `.sops.yaml`, `scripts/check-encrypted-secrets.py`
 
 ### I. Observability и performance
 

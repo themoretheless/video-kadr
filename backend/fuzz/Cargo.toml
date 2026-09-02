@@ -1,0 +1,48 @@
+[package]
+name = "video-kadr-backend-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+video-kadr-backend = { path = ".." }
+
+[[bin]]
+name = "edit_normalization"
+path = "fuzz_targets/edit_normalization.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "multipart_path"
+path = "fuzz_targets/multipart_path.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "library_json"
+path = "fuzz_targets/library_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "url_policy"
+path = "fuzz_targets/url_policy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cache_key"
+path = "fuzz_targets/cache_key.rs"
+test = false
+doc = false
+bench = false

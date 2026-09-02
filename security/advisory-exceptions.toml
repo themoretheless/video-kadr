@@ -1,0 +1,9 @@
+schema_version = 1
+
+# Example (do not copy without review):
+# [[exceptions]]
+# id = "RUSTSEC-YYYY-NNNN"
+# owner = "@team"
+# rationale = "Why no fixed dependency can be selected yet"
+# expires = "2026-10-01"
+# tracking = "https://github.com/owner/repo/issues/123"

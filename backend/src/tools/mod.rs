@@ -19,7 +19,7 @@ pub use composition_args::{
     build_composition_ffmpeg_args, build_composition_ffmpeg_command,
     build_composition_ffmpeg_command_for_output, FfmpegCompositionExportCompiler,
 };
-pub use net::validate_url;
+pub use net::{validate_url, validate_url_structure};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

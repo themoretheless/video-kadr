@@ -1,0 +1,116 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  policy-and-native-audits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate expiring security exceptions
+        run: python scripts/check-security-exceptions.py
+      - name: Reject plaintext deploy secrets
+        run: python scripts/check-encrypted-secrets.py
+      - name: RustSec
+        run: cargo audit --file backend/Cargo.lock
+      - name: License, source and duplicate policy
+        run: cargo deny --manifest-path backend/Cargo.toml check
+      - name: Gitleaks PR and repository history
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  osv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan Rust and npm lockfiles with dependency paths/fixes
+        uses: google/osv-scanner-action/osv-scanner-action@v2.0.2
+        with:
+          scan-args: |-
+            --lockfile=backend/Cargo.lock
+            --lockfile=backend/fuzz/Cargo.lock
+            --lockfile=frontend/package-lock.json
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Filesystem dependency scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-filesystem.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - name: Upload filesystem SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-filesystem.sarif
+          category: trivy-filesystem
+      - name: Compose and Dockerfile IaC scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: HIGH,CRITICAL
+      - name: Upload IaC SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+      - name: Build backend image for scan
+        run: docker build --tag video-kadr-backend:security backend
+      - name: Image vulnerability scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: video-kadr-backend:security
+          format: sarif
+          output: trivy-image.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - name: Upload image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  fuzz-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: Build every libFuzzer target with sanitizers
+        working-directory: backend
+        run: |
+          cargo fuzz build edit_normalization
+          cargo fuzz build multipart_path
+          cargo fuzz build library_json
+          cargo fuzz build url_policy
+          cargo fuzz build cache_key

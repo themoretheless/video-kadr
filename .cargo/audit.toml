@@ -1,0 +1,5 @@
+[advisories]
+# Ignores are forbidden without a matching, unexpired record in
+# security/advisory-exceptions.toml. CI compares the two sets.
+ignore = []
+informational_warnings = ["unmaintained"]

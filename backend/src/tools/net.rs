@@ -27,6 +27,21 @@ where
     F: FnOnce(String, u16) -> Fut,
     Fut: Future<Output = io::Result<Vec<IpAddr>>>,
 {
+    let (host, port) = validate_url_structure(raw)?;
+    if host.parse::<IpAddr>().is_ok() {
+        return Ok(());
+    }
+    let ips = resolve(host, port)
+        .await
+        .map_err(|_| anyhow!("Недопустимый URL"))?;
+    if !resolved_ips_are_public(&ips) {
+        return Err(anyhow!("Недопустимый URL"));
+    }
+    Ok(())
+}
+
+/// Pure, DNS-free URL policy used before resolution and by fuzz/security tests.
+pub fn validate_url_structure(raw: &str) -> Result<(String, u16)> {
     let u = Url::parse(raw).map_err(|_| anyhow!("Недопустимый URL"))?;
     if !matches!(u.scheme(), "http" | "https") {
         return Err(anyhow!("Недопустимый URL"));
@@ -42,16 +57,7 @@ where
     if !is_allowed_port(port) || !is_allowed_host(&host) {
         return Err(anyhow!("Недопустимый URL"));
     }
-    if host.parse::<IpAddr>().is_ok() {
-        return Ok(());
-    }
-    let ips = resolve(host, port)
-        .await
-        .map_err(|_| anyhow!("Недопустимый URL"))?;
-    if !resolved_ips_are_public(&ips) {
-        return Err(anyhow!("Недопустимый URL"));
-    }
-    Ok(())
+    Ok((host, port))
 }
 
 pub(super) fn normalize_host(host: &str) -> String {
@@ -202,5 +208,15 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[test]
+    fn structural_policy_is_dns_free_and_matches_public_ip_rules() {
+        assert_eq!(
+            validate_url_structure("https://example.com/video").unwrap(),
+            ("example.com".to_owned(), 443)
+        );
+        assert!(validate_url_structure("https://user@example.com/video").is_err());
+        assert!(validate_url_structure("http://127.0.0.1/video").is_err());
     }
 }

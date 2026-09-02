@@ -1,0 +1,11 @@
+homepage: "https://github.com/themoretheless/video-editor"
+language: rust
+primary_contact: "d.o.mezhov@gmail.com"
+main_repo: "https://github.com/themoretheless/video-editor.git"
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - address
+  - undefined
+architectures:
+  - x86_64

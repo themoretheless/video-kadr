@@ -21,7 +21,7 @@ jobs:
         # ffprobe ships with ffmpeg; pinned yt-dlp runs the local redirect SSRF test.
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
-          python -m pip install yt-dlp==2026.7.4
+          python -m pip install yt-dlp==2026.08.19
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -55,6 +55,8 @@ jobs:
         run: npm run typecheck
       - name: Test
         run: npm run test
+      - name: Design token policy
+        run: npm run check:tokens
       - name: Build
         run: npm run build
       - name: Bundle budget
