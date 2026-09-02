@@ -4,7 +4,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Rational {
     pub numerator: i64,
@@ -27,7 +27,7 @@ impl Rational {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StreamKind {
     Video,
@@ -52,6 +52,7 @@ pub struct ColorMetadata {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StreamMetadata {
     pub index: u32,
+    pub track_id: Option<String>,
     pub kind: StreamKind,
     pub codec_name: Option<String>,
     pub codec_long_name: Option<String>,
@@ -184,6 +185,8 @@ fn normalize_stream(stream: &Value) -> StreamMetadata {
         .find(|rate| rate.numerator > 0 && rate.denominator > 0);
     StreamMetadata {
         index: unsigned32(stream.get("index")).unwrap_or(0),
+        track_id: string(stream, "id")
+            .or_else(|| unsigned(stream.get("id")).map(|id| id.to_string())),
         kind: match stream.get("codec_type").and_then(Value::as_str) {
             Some("video") => StreamKind::Video,
             Some("audio") => StreamKind::Audio,

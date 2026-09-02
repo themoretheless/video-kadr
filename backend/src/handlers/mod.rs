@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -17,6 +18,8 @@ use uuid::Uuid;
 
 use crate::config::resource_classes::ResourceClass;
 use crate::domain::artifact_graph::Fingerprint;
+use crate::domain::media_contract::{validate_conformance, ConformanceSpec, MediaTime};
+use crate::domain::media_probe::{Rational, StreamKind};
 use crate::domain::output::OutputFormat;
 use crate::error::{ApiJson, AppError, AppResult};
 use crate::jobs::{dedupe_key, EnqueueOutcome, ErrorKind, JobEvent, JobKind, JobPermit};
@@ -578,6 +581,7 @@ fn spawn_edit_job(
         let ext = tools::output_ext(requested_format);
         let filename = format!("{out_id}.{ext}");
         let output_path = outputs.join(&filename);
+        let staging_output = st.staging_dir().join(format!("{out_id}.render.{ext}"));
 
         let outcome = async {
             let input = tools::find_source(&sources, &req.video_id).await?;
@@ -601,7 +605,7 @@ fn spawn_edit_job(
             );
             let command = tools::FfmpegExportCompiler.compile(ExportCompileRequest {
                 input: &input,
-                destination: &output_path,
+                destination: &staging_output,
                 parallel_jobs: st.render_parallelism(),
                 execution: &execution,
             })?;
@@ -616,9 +620,18 @@ fn spawn_edit_job(
             .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
             .await?;
             if matches!(done, Done::Cancelled) {
-                let _ = tokio::fs::remove_file(&output_path).await;
+                let _ = tokio::fs::remove_file(&staging_output).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
             }
+            let output_probe = tools::probe_video(&st.process_runtime, &staging_output).await?;
+            let conformance = render_conformance_spec(
+                requested_format,
+                command.expected_duration_seconds,
+                output_probe.duration,
+            );
+            validate_conformance(&output_probe, &conformance)
+                .map_err(|reason| anyhow::anyhow!("post-mux conformance failed: {reason}"))?;
+            tokio::fs::rename(&staging_output, &output_path).await?;
             let size = tokio::fs::metadata(&output_path)
                 .await
                 .map(|m| m.len())
@@ -634,6 +647,7 @@ fn spawn_edit_job(
 
         if outcome.is_err() {
             let _ = tokio::fs::remove_file(&output_path).await;
+            let _ = tokio::fs::remove_file(&staging_output).await;
         }
 
         let cache_info = match &outcome {
@@ -654,6 +668,43 @@ fn spawn_edit_job(
     }
     .instrument(span);
     state.spawn_task(task);
+}
+
+fn render_conformance_spec(
+    format: OutputFormat,
+    expected_duration_seconds: f64,
+    actual_duration_seconds: f64,
+) -> ConformanceSpec {
+    let formats = match format {
+        OutputFormat::Mp4 | OutputFormat::Av1 => ["mov", "mp4"].as_slice(),
+        OutputFormat::Prores => ["mov"].as_slice(),
+        OutputFormat::Webm => ["matroska", "webm"].as_slice(),
+        OutputFormat::Gif => ["gif"].as_slice(),
+        OutputFormat::Png | OutputFormat::Jpg => ["image2"].as_slice(),
+        OutputFormat::Mp3 => ["mp3"].as_slice(),
+    };
+    let still = matches!(format, OutputFormat::Png | OutputFormat::Jpg);
+    let duration = if still {
+        actual_duration_seconds
+    } else {
+        expected_duration_seconds
+    };
+    let time_base = Rational {
+        numerator: 1,
+        denominator: 1_000,
+    };
+    ConformanceSpec {
+        formats: formats.iter().map(|value| (*value).to_owned()).collect(),
+        required_streams: BTreeSet::from([if format == OutputFormat::Mp3 {
+            StreamKind::Audio
+        } else {
+            StreamKind::Video
+        }]),
+        expected_duration: MediaTime::new((duration * 1_000.0).round() as i64, time_base)
+            .expect("fixed millisecond time base is valid"),
+        duration_tolerance: MediaTime::new(if still { 1_000 } else { 1_100 }, time_base)
+            .expect("fixed millisecond time base is valid"),
+    }
 }
 
 /// Resolve client-visible immutable asset ids to private, regular files. The
