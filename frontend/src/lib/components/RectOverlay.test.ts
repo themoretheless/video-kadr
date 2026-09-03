@@ -52,4 +52,21 @@ describe('RectOverlay accessibility', () => {
     expect(oninteractionstart).toHaveBeenCalledTimes(2)
     expect(oninteractionend).toHaveBeenCalledTimes(2)
   })
+
+  it('keeps a selected crop aspect during keyboard resize', async () => {
+    const onrectchange = vi.fn()
+    component = mount(RectOverlay, {
+      target,
+      props: {
+        rect: { x: 100, y: 100, w: 320, h: 180 },
+        aspectRatio: 16 / 9,
+        onrectchange,
+      },
+    })
+    await tick()
+
+    target.querySelector<HTMLElement>('.crop-handle.se')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }))
+    expect(onrectchange).toHaveBeenLastCalledWith({ x: 100, y: 100, w: 338, h: 190 })
+  })
 })

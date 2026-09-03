@@ -16,14 +16,23 @@ import { state as legacyState } from '$lib/state/store.svelte.js'
 import type { CaptureRuntime, RecorderPort } from '$lib/capture/types.js'
 import type { AudioGraphPort, AudioRecorderPort, VoiceoverRuntime } from '$lib/audio/types.js'
 import type { MediaInfo } from '$lib/types.js'
+import { setAuthSessionForTests } from '$lib/state/auth.svelte.js'
+import { spacesState } from '$lib/state/spaces.svelte.js'
+import { createCompositionTemplate } from '$lib/composition/templates.js'
 import CompositionWorkspace from './CompositionWorkspace.svelte'
 
 let target: HTMLDivElement
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('[]', { status: 200 })))
+  setAuthSessionForTests({
+    user: { id: 'user-1', username: 'alice', createdAt: 1 },
+    token: 'session-token',
+    expiresAt: 9999999999,
+  })
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response('[]', { status: 200 }))))
   resetCompositionForTests()
   resetCompositionTemplateCatalogForTests()
+  spacesState.selectedId = ''
   legacyState.library = []
   legacyState.librarySnapshotReady = false
   legacyState.importError = ''
@@ -43,6 +52,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setAuthSessionForTests(null)
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   target?.remove()
@@ -154,6 +164,73 @@ describe('CompositionWorkspace local integrations', () => {
     expect(compositionTemplateState.templates).toHaveLength(1)
     expect(compositionTemplateState.templates[0]!.slots).toHaveLength(2)
 
+    await unmount(component)
+  })
+
+  it('loads a Space template and makes it usable in the local catalog', async () => {
+    const sharedTemplate = createCompositionTemplate(
+      'shared-template',
+      'Командный промо',
+      compositionState.document,
+      [],
+    )
+    spacesState.selectedId = 'space-1'
+    const fetchMock = vi.fn().mockImplementation(async (path: string) => {
+      if (path === '/api/spaces') {
+        return new Response(JSON.stringify([{
+          id: 'space-1', name: 'Studio', role: 'editor', createdAt: 1, updatedAt: 1,
+        }]), { status: 200 })
+      }
+      if (path === '/api/spaces/space-1/members') {
+        return new Response(JSON.stringify([{ actor: 'alice', role: 'editor' }]), { status: 200 })
+      }
+      if (path === '/api/spaces/space-1/templates') {
+        return new Response(JSON.stringify([{
+          id: 'server-template', spaceId: 'space-1', template: sharedTemplate,
+          createdBy: 'alice', revision: 1, createdAt: 1, updatedAt: 1,
+        }]), { status: 200 })
+      }
+      return new Response('[]', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const component = mount(CompositionWorkspace, { target })
+    await settle()
+    await settle()
+
+    expect(target.textContent).toContain('Командный промо')
+    button('Добавить локально').click()
+    await settle()
+    expect(compositionTemplateState.templates.map((template) => template.name)).toEqual(['Командный промо'])
+    expect(fetchMock.mock.calls.some(([path]) => path === '/api/spaces/space-1/templates')).toBe(true)
+
+    await unmount(component)
+  })
+
+  it('searches licensed stock with visible provider and author attribution', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (path: string) => path.startsWith('/api/stock/search?')
+      ? new Response(JSON.stringify({
+          provider: 'Pexels', providerUrl: 'https://www.pexels.com', page: 1, totalResults: 1,
+          assets: [{
+            providerId: 7, mediaType: 'video', title: 'Ocean', author: 'Ada',
+            authorUrl: 'https://www.pexels.com/@ada', sourcePageUrl: 'https://www.pexels.com/video/7',
+            previewUrl: 'https://images.pexels.com/7.jpg', importUrl: 'https://videos.pexels.com/7.mp4',
+            width: 1920, height: 1080, duration: 5,
+          }],
+        }), { status: 200 })
+      : new Response('[]', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const component = mount(CompositionWorkspace, { target })
+    await settle()
+    const input = target.querySelector<HTMLInputElement>('input[aria-label="Поиск Pexels"]')!
+    input.value = 'ocean'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+    input.closest('form')!.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }))
+    await settle(); await settle()
+
+    expect(target.textContent).toContain('Ada · Pexels')
+    expect(target.querySelector('a[href="https://www.pexels.com/video/7"]')).not.toBeNull()
+    expect(fetchMock.mock.calls.some(([path]) => String(path).startsWith('/api/stock/search?q=ocean'))).toBe(true)
     await unmount(component)
   })
 

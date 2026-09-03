@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, ensure, Context};
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -24,9 +24,9 @@ use crate::domain::composition::{
 use crate::error::{ApiJson, AppError, AppResult};
 use crate::jobs::{dedupe_key, EnqueueOutcome, JobKind};
 use crate::ports::{
-    CompositionAv1Encoder, CompositionExportCommandCompiler, CompositionExportCompileRequest,
-    CompositionExportProfile, CompositionExportSpec, CompositionMp4Codec, CompositionTextResource,
-    CompositionWebmCodec,
+    CompositionAudioCodec, CompositionAv1Encoder, CompositionExportCommandCompiler,
+    CompositionExportCompileRequest, CompositionExportProfile, CompositionExportSpec,
+    CompositionMp4Codec, CompositionTextResource, CompositionWebmCodec,
 };
 use crate::services::composition::{
     source_requirements, CompositionOutputRequest, CompositionPlan, CompositionRenderRequest,
@@ -49,6 +49,8 @@ pub(super) struct CompositionWork {
     pub request: CompositionRenderRequest,
     pub output_id: String,
     #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
     pub trace_context: crate::telemetry::context::TraceContext,
 }
 
@@ -62,9 +64,11 @@ struct CompositionDedupeIdentity<'a> {
 
 pub async fn composition_render_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(request): ApiJson<CompositionRenderRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    let owner = optional_render_actor(&state, &headers).await?;
     if request.schema_version != COMPOSITION_RENDER_SCHEMA_VERSION {
         return Err(AppError::bad_request(
             "неподдерживаемая версия composition render",
@@ -98,6 +102,7 @@ pub async fn composition_render_handler(
         schema_version: COMPOSITION_RENDER_SCHEMA_VERSION,
         request,
         output_id: Uuid::new_v4().to_string(),
+        owner,
         trace_context: trace.map(|Extension(value)| value).unwrap_or_default(),
     };
     let payload = serde_json::to_value(&work)
@@ -124,6 +129,10 @@ fn validate_composition_capabilities(
     composition: &Composition,
 ) -> AppResult<()> {
     let mut required = Vec::new();
+    if composition.requires_canvas_blur() {
+        required.push("gblur");
+    }
+    required.extend(composition.required_style_effect_filters());
     if composition.requires_optical_flow() {
         required.extend(["minterpolate", "tpad"]);
     }
@@ -144,6 +153,18 @@ fn validate_composition_capabilities(
     }
     if composition.requires_speed_ramp_pitch_audio() {
         required.extend(["atrim", "asetpts", "asplit", "atempo", "concat"]);
+    }
+    if composition.requires_audio_ducking() {
+        required.extend(["asplit", "sidechaincompress"]);
+    }
+    if composition.requires_audio_echo() {
+        required.extend(["aecho", "atrim", "asetpts"]);
+    }
+    if composition.requires_audio_robot() {
+        required.extend(["tremolo", "highpass", "lowpass"]);
+    }
+    if composition.requires_audio_tone() {
+        required.extend(["bass", "treble"]);
     }
     required.sort_unstable();
     required.dedup();
@@ -238,6 +259,17 @@ fn resolve_composition_output(
                 }
             }
         }
+        CompositionExportProfile::Audio { codec } => {
+            let encoder = match codec {
+                CompositionAudioCodec::Mp3 => "libmp3lame",
+                CompositionAudioCodec::Wav => "pcm_s16le",
+                CompositionAudioCodec::Aac => "aac",
+                CompositionAudioCodec::Flac => "flac",
+            };
+            if !has_encoder(encoder) {
+                missing.push(format!("encoder {encoder}"));
+            }
+        }
     }
     if missing.is_empty() {
         Ok(output.export_spec(av1_encoder))
@@ -307,7 +339,7 @@ pub(super) fn spawn_composition_job(
                 Some(guard) => guard,
                 None => return,
             };
-        if finish_from_render_cache(&st, &jid, &cache_key).await {
+        if finish_from_render_cache(&st, &jid, &cache_key, work.owner.as_deref()).await {
             return;
         }
         let _render_permit = match acquire_render_permit_or_cancelled(&st, &jid, &token).await {
@@ -378,6 +410,12 @@ pub(super) fn spawn_composition_job(
         let updated = finish_job(&st, &jid, outcome, "output").await;
         if updated {
             if let Some(info) = cache_info {
+                if let (Some(owner), Some(output_id)) = (work.owner.as_deref(), info["id"].as_str())
+                {
+                    if let Err(error) = st.db.grant_output_access(output_id, owner).await {
+                        tracing::error!(%error, %output_id, "grant composition output access");
+                    }
+                }
                 if let Err(error) = st.db.cache_put(&cache_key, &info, &filename).await {
                     tracing::warn!(%error, "cache composition render");
                 }
@@ -386,6 +424,24 @@ pub(super) fn spawn_composition_job(
     }
     .instrument(span);
     state.spawn_task(task);
+}
+
+async fn optional_render_actor(state: &AppState, headers: &HeaderMap) -> AppResult<Option<String>> {
+    let Some(token) = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    state
+        .db
+        .resolve_auth_session(token)
+        .await
+        .map_err(|error| AppError::internal("authenticate composition render", error))?
+        .map(|user| Some(user.username))
+        .ok_or_else(|| AppError::unauthorized("Сессия недействительна или истекла"))
 }
 
 async fn resolve_sources(
@@ -404,7 +460,15 @@ async fn resolve_sources(
             !token.is_cancelled(),
             "composition source resolution cancelled"
         );
-        let path = tools::find_source(&state.sources_dir(), id.as_str())
+        let entry = state
+            .library
+            .get(id.as_str())
+            .await
+            .filter(|entry| entry.kind == "source")
+            .with_context(|| format!("источник {} не найден", id.as_str()))?;
+        let path = state
+            .library
+            .resolve_media_path(&entry)
             .await
             .with_context(|| format!("источник {} не найден", id.as_str()))?;
         let identity = fingerprint_file(&state.cpu_pool, path.clone(), token.clone()).await?;
@@ -623,7 +687,7 @@ fn composition_result_info(
         "id": output_id,
         "url": format!("/files/outputs/{filename}"),
         "filename": filename,
-        "mediaType": "video",
+        "mediaType": if profile.is_audio_only() { "audio" } else { "video" },
         "container": profile.extension(),
         "videoCodec": profile.video_codec(),
         "audioCodec": profile.audio_codec(),
@@ -635,10 +699,11 @@ fn composition_result_info(
 mod tests {
     use super::*;
     use crate::domain::composition::{
-        AnimatableValue, BlendMode, CanvasSpec, ClipPlacement, CompositionClipId,
-        CompositionSource, FrameInterpolation, PlaybackMode, Rgba, SpeedRampAudioPolicy,
-        SpeedRampInterpolation, SpeedRampPoint, SpeedRampSpec, StabilizationSpec, TextClip,
-        TextStyle, TrackId, TransformSpec, VideoClip,
+        AnimatableValue, BlendMode, CanvasBackgroundMode, CanvasSpec, ClipPlacement,
+        CompositionClipId, CompositionSource, FrameInterpolation, PlaybackMode, Rgba,
+        SpeedRampAudioPolicy, SpeedRampInterpolation, SpeedRampPoint, SpeedRampSpec,
+        StabilizationSpec, TextClip, TextStyle, TrackId, TransformSpec, VideoClip, VideoEffect,
+        VideoEffectPreset,
     };
     use axum::http::StatusCode;
 
@@ -674,6 +739,8 @@ mod tests {
                 codec: CompositionMp4Codec::H265,
             },
             quality_tier: crate::services::composition::CompositionQualityTier::Medium,
+            video_bitrate_kbps: None,
+            range: None,
         };
         assert_eq!(
             resolve_composition_output(&base, h265).unwrap_err(),
@@ -685,6 +752,8 @@ mod tests {
                 codec: CompositionWebmCodec::Av1,
             },
             quality_tier: crate::services::composition::CompositionQualityTier::High,
+            video_bitrate_kbps: None,
+            range: None,
         };
         assert_eq!(
             resolve_composition_output(&base, av1).unwrap_err(),
@@ -730,6 +799,30 @@ mod tests {
                 "sizeBytes": 42,
             })
         );
+        let wav = CompositionOutputRequest {
+            profile: CompositionExportProfile::Audio {
+                codec: CompositionAudioCodec::Wav,
+            },
+            quality_tier: crate::services::composition::CompositionQualityTier::Medium,
+            video_bitrate_kbps: None,
+            range: Some(crate::ports::CompositionExportRange {
+                start_ticks: 250_000,
+                end_ticks: 750_000,
+            }),
+        };
+        let wav_tools = crate::state::ToolInfo {
+            ffmpeg: true,
+            ffmpeg_encoders: vec!["pcm_s16le".into()],
+            ffmpeg_muxers: vec!["wav".into()],
+            ..crate::state::ToolInfo::default()
+        };
+        let wav_spec = resolve_composition_output(&wav_tools, wav).unwrap();
+        assert_eq!(wav_spec.video_quality, 0);
+        assert_eq!(wav_spec.range, wav.range);
+        assert_eq!(
+            composition_result_info("audio", "audio.wav", wav.profile, Some(84))["mediaType"],
+            "audio"
+        );
     }
 
     #[test]
@@ -742,7 +835,7 @@ mod tests {
     }
 
     #[test]
-    fn optical_flow_capability_is_checked_only_for_requests_that_use_it() {
+    fn optional_composition_capabilities_are_checked_only_for_requests_that_use_them() {
         let source_id = SourceId::parse("motion-source").unwrap();
         let mut composition = Composition::new(CanvasSpec::default());
         composition.sources.insert(
@@ -791,9 +884,41 @@ mod tests {
         validate_composition_capabilities(&crate::state::ToolInfo::default(), &composition)
             .unwrap();
 
+        composition.canvas.background_mode = CanvasBackgroundMode::Blur;
+        let unavailable =
+            validate_composition_capabilities(&crate::state::ToolInfo::default(), &composition)
+                .unwrap_err();
+        assert_eq!(unavailable.status(), StatusCode::BAD_REQUEST);
+        let blur_tools = crate::state::ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["gblur".into()],
+            ..crate::state::ToolInfo::default()
+        };
+        validate_composition_capabilities(&blur_tools, &composition).unwrap();
+        composition.canvas.background_mode = CanvasBackgroundMode::Color;
+
         let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
             unreachable!();
         };
+        clips[0].effects.push(VideoEffect::Style {
+            preset: VideoEffectPreset::Edge,
+            intensity: 0.5,
+        });
+        assert!(validate_composition_capabilities(
+            &crate::state::ToolInfo::default(),
+            &composition
+        )
+        .is_err());
+        let effect_tools = crate::state::ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["edgedetect".into()],
+            ..crate::state::ToolInfo::default()
+        };
+        validate_composition_capabilities(&effect_tools, &composition).unwrap();
+        let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        clips[0].effects.clear();
         clips[0].frame_interpolation = FrameInterpolation::OpticalFlow;
         composition.validate().unwrap();
         let unavailable =

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import type { ReviewThreadDto } from '$lib/api.js'
   import AudioWaveform from '$lib/audio/AudioWaveform.svelte'
   import type { LocalWaveformCache } from '$lib/audio/waveformCache.js'
   import { clipDurationTicks, clipEndTicks, COMPOSITION_TIME_BASE, type CompositionClip, type CompositionTrack } from '$lib/composition/types.js'
@@ -13,6 +14,7 @@
     compositionDuration,
     compositionMarkerList,
     compositionState,
+    clearCompositionExportRange,
     addCompositionTrack,
     addCompositionMarkerAtPlayhead,
     moveCompositionClip,
@@ -20,6 +22,7 @@
     reorderCompositionTrack,
     selectCompositionClip,
     setCompositionPlayhead,
+    setCompositionExportRangePoint,
     setCompositionZoom,
     slipCompositionClip,
     toggleCompositionSnapping,
@@ -32,7 +35,10 @@
   } from '$lib/state/composition.svelte.js'
 
   type GestureMode = 'move' | 'slip' | 'trim-start' | 'trim-end'
-  interface Props { waveformCache?: LocalWaveformCache }
+  interface Props {
+    waveformCache?: LocalWaveformCache
+    reviewThreads?: ReviewThreadDto[]
+  }
   interface Gesture {
     clipId: string
     trackId: string
@@ -43,7 +49,7 @@
   }
   interface PreviewRange { clipId: string; start: number; end: number }
 
-  let { waveformCache }: Props = $props()
+  let { waveformCache, reviewThreads = [] }: Props = $props()
 
   let gesture = $state<Gesture | null>(null)
   let previewRange = $state<PreviewRange | null>(null)
@@ -56,7 +62,8 @@
   let toolbarFocusIndex = $state(0)
   let paletteFocusIndex = $state(0)
   const markers = $derived(compositionMarkerList())
-  const timelineExtent = $derived(Math.max(compositionDuration(), markers.at(-1)?.tick ?? 0))
+  const reviewTicks = $derived(reviewThreads.map((thread) => thread.comments[0]?.timelineTick ?? 0))
+  const timelineExtent = $derived(Math.max(compositionDuration(), markers.at(-1)?.tick ?? 0, ...reviewTicks))
   const contentWidth = $derived(
     Math.max(760, (timelineExtent / COMPOSITION_TIME_BASE) * compositionState.ui.zoomPxPerSecond + 160),
   )
@@ -182,6 +189,16 @@
     setCompositionPlayhead(compositionState.transport.playheadTicks + direction * COMPOSITION_TIME_BASE / 10)
   }
 
+  function onExportRangeShortcut(event: KeyboardEvent): void {
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
+    const target = event.target as HTMLElement | null
+    if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return
+    const key = event.key.toLowerCase()
+    if (key !== 'i' && key !== 'o') return
+    event.preventDefault()
+    run(() => setCompositionExportRangePoint(key === 'i' ? 'in' : 'out'))
+  }
+
   function clipName(clip: CompositionClip): string {
     if (clip.kind === 'text') return clip.text
     return compositionState.media[clip.sourceId]?.filename ?? clip.sourceId
@@ -296,6 +313,8 @@
   }
 </script>
 
+<svelte:window onkeydown={onExportRangeShortcut} />
+
 <section class="composition-timeline card" aria-label="Многодорожечная монтажная линия">
   <div class="composition-timeline-toolbar" role="toolbar" tabindex="-1" aria-label="Команды монтажной линии" onkeydown={onToolbarKeydown}>
     <strong>Монтажная линия</strong>
@@ -318,6 +337,9 @@
     {/each}
     <button class="btn ghost sm danger" type="button" onclick={() => run(rippleDeleteSelectedCompositionClip)} disabled={!compositionState.ui.selectedClipId} title="Удалить выбранный clip и сдвинуть только последующие clips этой дорожки">Ripple delete</button>
     <button class="btn ghost sm" type="button" onclick={() => run(addCompositionMarkerAtPlayhead)} disabled={markers.length >= MAX_COMPOSITION_MARKERS} title={`Добавить marker на playhead (${markers.length}/${MAX_COMPOSITION_MARKERS})`}>+ Marker</button>
+    <button class="btn ghost sm" type="button" aria-keyshortcuts="I" onclick={() => run(() => setCompositionExportRangePoint('in'))}>In · I</button>
+    <button class="btn ghost sm" type="button" aria-keyshortcuts="O" onclick={() => run(() => setCompositionExportRangePoint('out'))}>Out · O</button>
+    <button class="btn ghost sm" type="button" disabled={compositionState.export.rangeInTicks === null && compositionState.export.rangeOutTicks === null} onclick={clearCompositionExportRange}>Очистить In/Out</button>
     <span class="composition-toolbar-separator" aria-hidden="true"></span>
     <button class="btn ghost sm" type="button" onclick={() => run(() => addCompositionTrack('video'))}>+ Video track</button>
     <button class="btn ghost sm" type="button" onclick={() => run(() => addCompositionTrack('audio'))}>+ Audio track</button>
@@ -390,6 +412,14 @@
         onclick={seekOnLane}
         onkeydown={seekWithKeyboard}
       >
+        {#if compositionState.export.rangeInTicks !== null && compositionState.export.rangeOutTicks !== null && compositionState.export.rangeInTicks < compositionState.export.rangeOutTicks}
+          <div
+            class="composition-export-range"
+            style:left={`${ticksToPx(compositionState.export.rangeInTicks)}px`}
+            style:width={`${ticksToPx(compositionState.export.rangeOutTicks - compositionState.export.rangeInTicks)}px`}
+            aria-hidden="true"
+          ></div>
+        {/if}
         {#each rulerMarks as second (second)}
           <span style:left={`${second * compositionState.ui.zoomPxPerSecond}px`}>{second}s</span>
         {/each}
@@ -404,6 +434,18 @@
             title={`${marker.label} · ${formatShort(marker.tick)}`}
             onclick={(event) => { event.stopPropagation(); run(() => seekCompositionMarker(marker.id)) }}
           ></button>
+        {/each}
+        {#each reviewThreads as thread (thread.id)}
+          {@const reviewTick = thread.comments[0]?.timelineTick ?? 0}
+          <button
+            class="composition-review-handle"
+            class:resolved={thread.resolvedAt != null}
+            type="button"
+            style:left={`${ticksToPx(reviewTick)}px`}
+            aria-label={`Review ${thread.resolvedAt == null ? 'открыто' : 'закрыто'}, ${formatShort(reviewTick)}`}
+            title={`${thread.comments[0]?.body ?? 'Review'} · ${formatShort(reviewTick)}`}
+            onclick={(event) => { event.stopPropagation(); setCompositionPlayhead(reviewTick) }}
+          >◆</button>
         {/each}
       </div>
     </div>

@@ -53,7 +53,7 @@ describe('Auto Beat composition mapping', () => {
     ])
   })
 
-  it('honors video source-audio and forward-playback gates', () => {
+  it('maps forward and reverse video source audio onto the timeline', () => {
     expect(mapDetectedBeatsToTimeline(fixture(), 'video-clip', {
       estimatedBpm: null,
       beats: [{ timeSeconds: 3, strength: 2 }],
@@ -66,7 +66,135 @@ describe('Auto Beat composition mapping', () => {
       ...composition,
       tracks: [{ ...track, clips: [{ ...track.clips[0]!, playbackMode: { mode: 'reverse' } }] }, composition.tracks[1]!],
     }
-    expect(() => mapDetectedBeatsToTimeline(reverse, 'video-clip', { estimatedBpm: null, beats: [] })).toThrow('forward')
+    expect(mapDetectedBeatsToTimeline(reverse, 'video-clip', {
+      estimatedBpm: null,
+      beats: [
+        { timeSeconds: 3, strength: 2 },
+        { timeSeconds: 7, strength: 4 },
+      ],
+    })).toEqual([
+      { tick: second, strength: 4 },
+      { tick: 5 * second, strength: 2 },
+    ])
+
+    const freeze: Composition = {
+      ...composition,
+      tracks: [{ ...track, clips: [{ ...track.clips[0]!, playbackMode: { mode: 'freeze', sourceTick: 3 * second } }] }, composition.tracks[1]!],
+    }
+    expect(() => mapDetectedBeatsToTimeline(freeze, 'video-clip', { estimatedBpm: null, beats: [] })).toThrow('Freeze')
+  })
+
+  it('maps hold and linear speed-ramp source progress through reciprocal-speed time', () => {
+    const composition = fixture()
+    const track = composition.tracks[1]!
+    if (track.kind !== 'audio') throw new Error('fixture')
+    const baseClip = track.clips[0]!
+    const hold: Composition = {
+      ...composition,
+      tracks: [composition.tracks[0]!, {
+        ...track,
+        clips: [{
+          ...baseClip,
+          speed: 1,
+          speedRamp: {
+            interpolation: 'hold',
+            points: [
+              { sourceProgressTick: 0, speed: 1 },
+              { sourceProgressTick: 4 * second, speed: 2 },
+              { sourceProgressTick: 8 * second, speed: 2 },
+            ],
+            audioPolicy: 'preserve_pitch',
+          },
+        }],
+      }],
+    }
+    expect(mapDetectedBeatsToTimeline(hold, 'audio-clip', {
+      estimatedBpm: null,
+      beats: [
+        { timeSeconds: 3, strength: 2 },
+        { timeSeconds: 7, strength: 4 },
+      ],
+    })).toEqual([
+      { tick: 7 * second, strength: 2 },
+      { tick: 10 * second, strength: 4 },
+    ])
+
+    const linearTrack = hold.tracks[1]!
+    if (linearTrack.kind !== 'audio') throw new Error('fixture')
+    const linear: Composition = {
+      ...hold,
+      tracks: [hold.tracks[0]!, {
+        ...linearTrack,
+        clips: [{
+          ...linearTrack.clips[0]!,
+          speedRamp: {
+            interpolation: 'linear',
+            points: [
+              { sourceProgressTick: 0, speed: 1 },
+              { sourceProgressTick: 4 * second, speed: 2 },
+              { sourceProgressTick: 8 * second, speed: 2 },
+            ],
+            audioPolicy: 'preserve_pitch',
+          },
+        }],
+      }],
+    }
+    expect(mapDetectedBeatsToTimeline(linear, 'audio-clip', {
+      estimatedBpm: null,
+      beats: [
+        { timeSeconds: 3, strength: 2 },
+        { timeSeconds: 5, strength: 3 },
+        { timeSeconds: 7, strength: 4 },
+      ],
+    })).toEqual([
+      { tick: 6_621_860, strength: 2 },
+      { tick: 7_772_589, strength: 3 },
+      { tick: 8_772_589, strength: 4 },
+    ])
+  })
+
+  it('maps reverse speed-ramp video and rejects muted ramp audio', () => {
+    const composition = fixture()
+    const track = composition.tracks[0]!
+    if (track.kind !== 'video') throw new Error('fixture')
+    const ramp = {
+      interpolation: 'hold' as const,
+      points: [
+        { sourceProgressTick: 0, speed: 1 },
+        { sourceProgressTick: 3 * second, speed: 2 },
+        { sourceProgressTick: 6 * second, speed: 2 },
+      ],
+      audioPolicy: 'preserve_pitch' as const,
+    }
+    const reverse: Composition = {
+      ...composition,
+      tracks: [{
+        ...track,
+        clips: [{ ...track.clips[0]!, playbackMode: { mode: 'reverse' }, speedRamp: ramp }],
+      }, composition.tracks[1]!],
+    }
+    expect(mapDetectedBeatsToTimeline(reverse, 'video-clip', {
+      estimatedBpm: null,
+      beats: [
+        { timeSeconds: 3, strength: 2 },
+        { timeSeconds: 7, strength: 4 },
+      ],
+    })).toEqual([
+      { tick: second, strength: 4 },
+      { tick: 4 * second, strength: 2 },
+    ])
+
+    const mutedRamp: Composition = {
+      ...reverse,
+      tracks: [{
+        ...track,
+        clips: [{ ...track.clips[0]!, playbackMode: { mode: 'reverse' }, speedRamp: { ...ramp, audioPolicy: 'mute' } }],
+      }, composition.tracks[1]!],
+    }
+    expect(() => mapDetectedBeatsToTimeline(mutedRamp, 'video-clip', {
+      estimatedBpm: null,
+      beats: [],
+    })).toThrow('Speed-ramp audio выключен')
   })
 
   it('fails closed for muted or unprobed audio', () => {

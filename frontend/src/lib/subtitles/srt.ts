@@ -32,6 +32,34 @@ export function parseSrt(input: string): SubtitleCue[] {
   return cues
 }
 
+/** Parse a timecoded SRT or plain-text caption file exported by desktop editors. */
+export function parseTimecodedText(input: string): SubtitleCue[] {
+  try {
+    return parseSrt(input)
+  } catch (srtError) {
+    const normalized = input.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim()
+    const lines = normalized.split('\n').filter((line) => line.trim())
+    const cues = lines.map((line, index) => {
+      const match = line.trim().match(
+        /^\[?(\d{1,3}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,3}):(\d{2}):(\d{2})[,.](\d{3})\]?\s+(.+)$/,
+      )
+      if (!match) throw srtError
+      const cue: SubtitleCue = {
+        id: `subtitle-${index + 1}`,
+        startTicks: timestampToTicks(match.slice(1, 5).map(Number)),
+        endTicks: timestampToTicks(match.slice(5, 9).map(Number)),
+        text: match[9]!.trim(),
+      }
+      validateCue(cue, index)
+      return cue
+    })
+    if (cues.length > MAX_SRT_CUES) {
+      throw new SubtitleFormatError(`Subtitle file contains more than ${MAX_SRT_CUES} cues`)
+    }
+    return cues
+  }
+}
+
 export function formatSrt(cues: readonly SubtitleCue[]): string {
   if (cues.length > MAX_SRT_CUES) {
     throw new SubtitleFormatError(`SRT contains more than ${MAX_SRT_CUES} cues`)

@@ -9,6 +9,7 @@
     rect: OverlayRect
     color?: string
     mode?: 'crop' | 'mask'
+    aspectRatio?: number
     onrectchange?: (rect: OverlayRect) => void
     oninteractionstart?: () => void
     oninteractionend?: () => void
@@ -18,6 +19,7 @@
     rect,
     color = 'var(--accent)',
     mode = 'crop',
+    aspectRatio,
     onrectchange,
     oninteractionstart,
     oninteractionend,
@@ -101,6 +103,10 @@
       onrectchange?.(normalize({ ...original, x: original.x + delta.dx, y: original.y + delta.dy }))
       return
     }
+    if (aspectRatio && Number.isFinite(aspectRatio) && aspectRatio > 0) {
+      onrectchange?.(resizeLocked(original, dragMode, delta.dx, delta.dy, aspectRatio, width, height))
+      return
+    }
     let x1 = original.x
     let y1 = original.y
     let x2 = original.x + original.w
@@ -110,6 +116,35 @@
     if (dragMode.includes('n')) y1 = clamp(original.y + delta.dy, 0, y2 - minHeight)
     if (dragMode.includes('s')) y2 = clamp(original.y + original.h + delta.dy, y1 + minHeight, height)
     onrectchange?.(normalize({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 }))
+  }
+  function resizeLocked(
+    value: OverlayRect,
+    mode: Exclude<DragMode, 'move'>,
+    dx: number,
+    dy: number,
+    ratio: number,
+    width: number,
+    height: number,
+  ): OverlayRect {
+    const west = mode.includes('w')
+    const north = mode.includes('n')
+    const anchorX = west ? value.x + value.w : value.x
+    const anchorY = north ? value.y + value.h : value.y
+    let nextWidth = Math.abs(dx / value.w) >= Math.abs(dy / value.h)
+      ? value.w + (west ? -dx : dx)
+      : (value.h + (north ? -dy : dy)) * ratio
+    const maxWidth = Math.min(
+      west ? anchorX : width - anchorX,
+      (north ? anchorY : height - anchorY) * ratio,
+    )
+    nextWidth = clamp(nextWidth, Math.min(maxWidth, Math.max(MIN, MIN * ratio)), maxWidth)
+    const nextHeight = nextWidth / ratio
+    return normalize({
+      x: west ? anchorX - nextWidth : anchorX,
+      y: north ? anchorY - nextHeight : anchorY,
+      w: nextWidth,
+      h: nextHeight,
+    })
   }
   function removeDragListeners(): void {
     disposeDragListeners()
@@ -150,7 +185,9 @@
     const current = normalize(rect)
     let next = current
     if (mode === 'move') next = normalize({ ...current, x: current.x + dx, y: current.y + dy })
-    else {
+    else if (aspectRatio && Number.isFinite(aspectRatio) && aspectRatio > 0) {
+      next = resizeLocked(current, mode, dx, dy, aspectRatio, dims().width, dims().height)
+    } else {
       const west = mode.includes('w')
       const north = mode.includes('n')
       const x1 = west ? current.x + dx : current.x

@@ -8,7 +8,6 @@
     type VideoClip,
     type VisualClip,
   } from '$lib/composition/types.js'
-  import { primaryCompositionVideoTrack } from '$lib/composition/validation.js'
   import {
     sampleBrowserVideoLumaFrames,
     type BrowserTrackingFrames,
@@ -45,11 +44,14 @@
   let abortController = $state<AbortController | null>(null)
   let previewCanvas = $state<HTMLCanvasElement>()
 
-  const primaryTrack = $derived(primaryCompositionVideoTrack(document))
-  const sourceClips = $derived((primaryTrack?.clips ?? []).filter(trackableCandidate))
+  const sourceClips = $derived(document.tracks.flatMap((track) =>
+    track.kind === 'video' && !track.hidden
+      ? track.clips.filter(trackableCandidate)
+      : [],
+  ))
   const targetClips = $derived.by(() => document.tracks.flatMap((track) => {
-    if (track.kind === 'audio' || track.id === primaryTrack?.id || track.locked) return []
-    return track.clips as readonly VisualClip[]
+    if (track.kind === 'audio' || track.hidden || track.locked) return []
+    return (track.clips as readonly VisualClip[]).filter((clip) => clip.id !== sourceClipId)
   }))
 
   $effect(() => {
@@ -76,11 +78,8 @@
   })
 
   function trackableCandidate(clip: VideoClip): boolean {
-    return (clip.playbackMode?.mode ?? 'forward') === 'forward' &&
-      (clip.stabilization?.mode ?? 'disabled') === 'disabled' &&
-      !(primaryTrack?.transitions ?? []).some(
-        (transition) => transition.fromClipId === clip.id || transition.toClipId === clip.id,
-      )
+    return clip.playbackMode?.mode !== 'freeze' &&
+      (clip.stabilization?.mode ?? 'disabled') === 'disabled'
   }
 
   function selectedSource(): VideoClip | undefined {
@@ -238,7 +237,7 @@
   <div class="composition-tool-body" aria-busy={busy}>
     <p>Локальный ZNCC tracker без моделей. Он читает до 300 уменьшенных кадров и записывает обычные X/Y keyframes overlay.</p>
     {#if !sourceClips.length || !targetClips.length}
-      <p>Нужны primary forward video без transition/deshake и отдельный незаблокированный visual overlay.</p>
+      <p>Нужны видимый forward video без speed-ramp/deshake и отдельный незаблокированный visual overlay.</p>
     {:else}
       <div class="tracker-grid">
         <label>

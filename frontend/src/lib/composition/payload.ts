@@ -67,6 +67,8 @@ export function buildCompositionRenderRequest(
       height: composition.canvas.height,
       fpsMilli: Math.round(composition.canvas.fps * 1_000),
       background: colorToRgba(composition.canvas.backgroundColor),
+      backgroundMode: composition.canvas.backgroundMode ?? 'color',
+      backgroundBlur: composition.canvas.backgroundBlur ?? 24,
     },
     sources: copySources(composition.sources),
     tracks: composition.tracks.map((track) => copyTrack(track, composition, track.id === primaryTrackId)),
@@ -77,6 +79,8 @@ export function buildCompositionRenderRequest(
     output: {
       profile: { ...output.profile },
       qualityTier: output.qualityTier,
+      ...(output.videoBitrateKbps !== undefined ? { videoBitrateKbps: output.videoBitrateKbps } : {}),
+      ...(output.range ? { range: { ...output.range } } : {}),
     },
   }
 }
@@ -117,10 +121,10 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
           id: clip.id,
           sourceId: clip.sourceId,
           placement: copyPlacement(clip),
-          transform: primary ? defaultTransform() : transformToWire(composition, clip),
-          opacity: primary ? constant(1) : visualValueToWire(composition, clip, 'opacity'),
+          transform: primary ? primaryTransformToWire(composition, clip) : transformToWire(composition, clip),
+          opacity: visualValueToWire(composition, clip, 'opacity'),
           blendMode: clip.blendMode ?? 'normal',
-          effects: [...chromaEffects(clip), ...maskEffects(clip)],
+          effects: [...chromaEffects(clip), ...styleEffects(clip), ...maskEffects(clip)],
           sourceAudioEnabled: clip.sourceAudioEnabled,
           audioGain: copyAnimatable(audioPropertyValue(clip, 'gain')),
           audioPan: copyAnimatable(audioPropertyValue(clip, 'pan')),
@@ -153,8 +157,14 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
           placement: copyPlacement(clip),
           gain: copyAnimatable(audioPropertyValue(clip, 'gain')),
           pan: copyAnimatable(audioPropertyValue(clip, 'pan')),
+          reversed: clip.reversed ?? false,
           fadeInTicks: clip.fadeInTicks ?? 0,
           fadeOutTicks: clip.fadeOutTicks ?? 0,
+          voiceEffect: clip.voiceEffect ?? 'none',
+          pitchSemitones: clip.pitchSemitones ?? 0,
+          toneDb: clip.toneDb ?? 0,
+          crossfadeInTicks: clip.crossfadeInTicks ?? 0,
+          ...(clip.ducking ? { ducking: { ...clip.ducking } } : {}),
           enabled: true,
         })),
       }
@@ -250,6 +260,30 @@ function transformToWire(composition: Composition, clip: VisualClip): WireTransf
   }
 }
 
+function primaryTransformToWire(composition: Composition, clip: VideoClip): WireTransform {
+  const source = composition.sources[clip.sourceId]
+  if (!source) return transformToWire(composition, clip)
+  return {
+    ...defaultTransform(),
+    x: visualValueToWire(composition, clip, 'x'),
+    y: visualValueToWire(composition, clip, 'y'),
+    scaleX: scaleAnimatable(visualValueToWire(composition, clip, 'scaleX'), source.width / composition.canvas.width),
+    scaleY: scaleAnimatable(visualValueToWire(composition, clip, 'scaleY'), source.height / composition.canvas.height),
+    rotationDegrees: visualValueToWire(composition, clip, 'rotationDegrees'),
+  }
+}
+
+function scaleAnimatable(value: WireAnimatableValue, factor: number): WireAnimatableValue {
+  if (value.mode === 'constant') return constant(value.value * factor)
+  return {
+    mode: 'keyframes',
+    track: {
+      ...value.track,
+      keyframes: value.track.keyframes.map((keyframe) => ({ ...keyframe, value: keyframe.value * factor })),
+    },
+  }
+}
+
 function visualValueToWire(
   composition: Composition,
   clip: VisualClip,
@@ -284,17 +318,25 @@ function chromaEffects(clip: VideoClip): WireVideoEffect[] {
     : []
 }
 
-function maskEffects(clip: VideoClip): WireVideoEffect[] {
-  return (clip.masks ?? []).map((mask) => ({
-    kind: 'mask',
-    shape: mask.shape,
-    x: copyAnimatable(mask.x),
-    y: copyAnimatable(mask.y),
-    width: copyAnimatable(mask.width),
-    height: copyAnimatable(mask.height),
-    feather: mask.feather,
-    inverted: mask.inverted,
+function styleEffects(clip: VideoClip): WireVideoEffect[] {
+  return (clip.videoEffects ?? []).map((effect) => ({
+    kind: 'style',
+    preset: effect.preset,
+    intensity: effect.intensity,
   }))
+}
+
+function maskEffects(clip: VideoClip): WireVideoEffect[] {
+  return (clip.masks ?? []).map((mask) => mask.shape === 'linear'
+    ? {
+        kind: 'linear_mask', x: copyAnimatable(mask.x), y: copyAnimatable(mask.y),
+        rotationDegrees: mask.rotationDegrees ? copyAnimatable(mask.rotationDegrees) : constant(0), feather: mask.feather, inverted: mask.inverted,
+      }
+    : {
+        kind: 'mask', shape: mask.shape, x: copyAnimatable(mask.x), y: copyAnimatable(mask.y),
+        width: copyAnimatable(mask.width), height: copyAnimatable(mask.height),
+        rotationDegrees: mask.rotationDegrees ? copyAnimatable(mask.rotationDegrees) : constant(0), feather: mask.feather, inverted: mask.inverted,
+      })
 }
 
 function colorToRgba(color: string): WireRgba {
@@ -309,14 +351,33 @@ function colorToRgba(color: string): WireRgba {
 }
 
 function validateOutput(output: CompositionRenderOutput): void {
+  const optionalKeys = [
+    ...(output.videoBitrateKbps === undefined ? [] : ['videoBitrateKbps']),
+    ...(output.range === undefined ? [] : ['range']),
+  ]
   if (
     !isRecord(output) ||
-    !hasExactKeys(output, ['profile', 'qualityTier']) ||
+    !hasExactKeys(output, ['profile', 'qualityTier', ...optionalKeys]) ||
     !isDeliveryProfile(output.profile) ||
-    !isQualityTier(output.qualityTier)
+    !isQualityTier(output.qualityTier) ||
+    !isVideoBitrate(output.videoBitrateKbps, output.profile) ||
+    !isDeliveryRange(output.range)
   ) {
     throw new CompositionPayloadError('Composition output must use a canonical delivery profile and known quality tier')
   }
+}
+
+function isVideoBitrate(value: unknown, profile: CompositionRenderOutput['profile']): boolean {
+  if (value === undefined) return true
+  return Number.isSafeInteger(value) && Number(value) >= 100 && Number(value) <= 200_000 &&
+    (profile.container === 'mp4' || profile.container === 'webm')
+}
+
+function isDeliveryRange(value: unknown): boolean {
+  if (value === undefined) return true
+  return isRecord(value) && hasExactKeys(value, ['startTicks', 'endTicks']) &&
+    Number.isSafeInteger(value.startTicks) && Number.isSafeInteger(value.endTicks) &&
+    Number(value.startTicks) >= 0 && Number(value.startTicks) < Number(value.endTicks)
 }
 
 function isQualityTier(value: unknown): value is CompositionQualityTier {
@@ -335,6 +396,10 @@ function isDeliveryProfile(value: unknown): value is CompositionRenderOutput['pr
     return hasExactKeys(value, ['container', 'profile']) &&
       (value.profile === 'proxy' || value.profile === 'lt' || value.profile === 'standard' || value.profile === 'hq')
   }
+  if (value.container === 'audio') {
+    return hasExactKeys(value, ['container', 'codec']) &&
+      (value.codec === 'mp3' || value.codec === 'wav' || value.codec === 'aac' || value.codec === 'flac')
+  }
   return false
 }
 
@@ -344,7 +409,14 @@ export function normalizeCompositionRenderOutput(value: unknown): CompositionRen
     ? value.qualityTier
     : DEFAULT_COMPOSITION_RENDER_OUTPUT.qualityTier
   if (isRecord(value) && isDeliveryProfile(value.profile)) {
-    return { profile: { ...value.profile }, qualityTier }
+    const videoBitrateKbps = isVideoBitrate(value.videoBitrateKbps, value.profile)
+      ? value.videoBitrateKbps as number | undefined
+      : undefined
+    return {
+      profile: { ...value.profile },
+      qualityTier,
+      ...(videoBitrateKbps !== undefined ? { videoBitrateKbps } : {}),
+    }
   }
   if (
     isRecord(value) &&

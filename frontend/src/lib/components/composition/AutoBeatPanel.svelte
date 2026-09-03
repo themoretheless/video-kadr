@@ -26,9 +26,10 @@
   const candidates = $derived.by(() => document.tracks.flatMap((track) => {
     if ((track.kind === 'audio' || track.kind === 'video') && track.muted) return []
     return track.clips.flatMap((clip): BeatSourceClip[] => {
-      if (clip.kind === 'audio') return document.sources[clip.sourceId]?.hasAudio && media[clip.sourceId]?.url ? [clip] : []
-      if (clip.kind === 'video' && clip.sourceAudioEnabled && (clip.playbackMode?.mode ?? 'forward') === 'forward' &&
-        document.sources[clip.sourceId]?.hasAudio && media[clip.sourceId]?.url) return [clip]
+      if (clip.kind === 'audio') return clip.speedRamp?.audioPolicy !== 'mute' &&
+        document.sources[clip.sourceId]?.hasAudio && media[clip.sourceId]?.url ? [clip] : []
+      if (clip.kind === 'video' && clip.sourceAudioEnabled && (clip.playbackMode?.mode ?? 'forward') !== 'freeze' &&
+        clip.speedRamp?.audioPolicy !== 'mute' && document.sources[clip.sourceId]?.hasAudio && media[clip.sourceId]?.url) return [clip]
       return []
     })
   }))
@@ -110,7 +111,7 @@
         <button class="btn primary sm" type="button" disabled={busy || !timelineBeats.length} onclick={() => void apply()}>Добавить markers</button>
       </div>
     {:else}
-      <p>Добавьте локальный audio clip или forward video clip с подтверждённой source audio.</p>
+      <p>Добавьте локальный audio clip или forward/reverse video clip с подтверждённой source audio.</p>
     {/if}
     {#if message}<p role="status">{message}</p>{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}

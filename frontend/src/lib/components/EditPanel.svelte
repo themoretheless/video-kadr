@@ -63,6 +63,11 @@
     : chromaSpillCapability.available ? '' : chromaSpillCapability.reason || 'Подавление chroma spill недоступно в текущей сборке сервера')
 
   const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+  function commitSpeed(event: Event): void {
+    const value = Number((event.currentTarget as HTMLInputElement).value)
+    if (Number.isFinite(value)) appState.edit.speed = Math.min(16, Math.max(0.05, value))
+  }
   const widthPresets = [
     { label: '1080p', w: 1920 }, { label: '720p', w: 1280 },
     { label: '480p', w: 854 }, { label: '360p', w: 640 },
@@ -146,6 +151,7 @@
     const video = appState.video
     if (!video) return
     appState.edit.cropEnabled = true
+    appState.edit.cropAspectLock = `${ratioWidth}:${ratioHeight}` as typeof appState.edit.cropAspectLock
     const ratio = ratioWidth / ratioHeight
     let width = video.width
     let height = Math.round(width / ratio)
@@ -154,11 +160,19 @@
     height -= height % 2
     appState.edit.crop = { x: Math.floor((video.width - width) / 2), y: Math.floor((video.height - height) / 2), w: width, h: height }
   }
-  function aspectActive(ratioWidth: number, ratioHeight: number): boolean {
-    return Boolean(appState.edit.crop.h) && Math.abs(appState.edit.crop.w / appState.edit.crop.h - ratioWidth / ratioHeight) < .02
-  }
   function resetCrop(): void {
+    appState.edit.cropAspectLock = ''
     if (appState.video) appState.edit.crop = { x: 0, y: 0, w: appState.video.width, h: appState.video.height }
+  }
+  function unlockCrop(): void { appState.edit.cropAspectLock = '' }
+  function normalizeCropDimension(driver: 'width' | 'height'): void {
+    const lock = appState.edit.cropAspectLock
+    if (!lock) return normalizeCrop()
+    const [width, height] = lock.split(':').map(Number)
+    const crop = appState.edit.crop
+    if (driver === 'width') crop.h = Math.round(crop.w * height! / width!)
+    else crop.w = Math.round(crop.h * width! / height!)
+    normalizeCrop()
   }
   const filterCapability = (id: string) => id ? appState.capabilities?.filters.find((option) => option.id === id) : undefined
   function filterUnavailableReason(id: string): string | undefined {
@@ -234,6 +248,7 @@
     <div class="field">
       <span class="field-label">Скорость</span>
       <div class="chips">{#each speeds as speed (speed)}<button class:active={appState.edit.speed === speed} class="chip" onclick={() => { appState.edit.speed = speed }}>{speed}×</button>{/each}</div>
+      <label class="tt"><span>Точная скорость</span><input aria-label="Точная скорость" type="number" min="0.05" max="16" step="0.05" value={appState.edit.speed} onchange={commitSpeed} /></label>
     </div>
     <div class="field inline"><label class="toggle"><input type="checkbox" bind:checked={appState.edit.reverse} /> Реверс</label>{#if appState.edit.reverse}<span class="hint">короткие отрезки: реверс грузит весь клип в память</span>{/if}</div>
     <div class="field"><div class="grid2">
@@ -251,10 +266,10 @@
     <div class="field">
       <label class="toggle"><input type="checkbox" bind:checked={appState.edit.cropEnabled} /> Кадрировать</label>
       {#if appState.edit.cropEnabled}
-        <div class="chips">{#each aspects as aspect (aspect.label)}<button class:active={aspectActive(aspect.rw, aspect.rh)} class="chip" onclick={() => setAspect(aspect.rw, aspect.rh)}>{aspect.label}</button>{/each}<button class="chip" onclick={resetCrop}>сброс</button></div>
+        <div class="chips">{#each aspects as aspect (aspect.label)}<button class:active={appState.edit.cropAspectLock === aspect.label} class="chip" onclick={() => appState.edit.cropAspectLock === aspect.label ? unlockCrop() : setAspect(aspect.rw, aspect.rh)}>{aspect.label}</button>{/each}<button class="chip" onclick={resetCrop}>сброс</button></div>
         <div class="grid2">
           <label>X <input type="number" min="0" bind:value={appState.edit.crop.x} onblur={normalizeCrop} /></label><label>Y <input type="number" min="0" bind:value={appState.edit.crop.y} onblur={normalizeCrop} /></label>
-          <label>Ширина <input type="number" min="2" bind:value={appState.edit.crop.w} onblur={normalizeCrop} /></label><label>Высота <input type="number" min="2" bind:value={appState.edit.crop.h} onblur={normalizeCrop} /></label>
+          <label>Ширина <input type="number" min="2" bind:value={appState.edit.crop.w} onblur={() => normalizeCropDimension('width')} /></label><label>Высота <input type="number" min="2" bind:value={appState.edit.crop.h} onblur={() => normalizeCropDimension('height')} /></label>
         </div>
       {/if}
     </div>

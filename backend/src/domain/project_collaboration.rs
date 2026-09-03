@@ -260,6 +260,192 @@ pub struct SharingPolicy {
     pub revocable: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProjectRole {
+    Owner,
+    Editor,
+    Commenter,
+    Viewer,
+}
+
+impl ProjectRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Editor => "editor",
+            Self::Commenter => "commenter",
+            Self::Viewer => "viewer",
+        }
+    }
+
+    pub fn can_comment(self) -> bool {
+        !matches!(self, Self::Viewer)
+    }
+
+    pub fn can_resolve(self) -> bool {
+        matches!(self, Self::Owner | Self::Editor)
+    }
+
+    pub fn can_manage_members(self) -> bool {
+        matches!(self, Self::Owner)
+    }
+}
+
+impl TryFrom<&str> for ProjectRole {
+    type Error = &'static str;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "owner" => Ok(Self::Owner),
+            "editor" => Ok(Self::Editor),
+            "commenter" => Ok(Self::Commenter),
+            "viewer" => Ok(Self::Viewer),
+            _ => Err("invalid project role"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectMember {
+    pub actor: String,
+    pub role: ProjectRole,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewAuditEvent {
+    pub id: String,
+    pub project_id: String,
+    pub actor: String,
+    pub action: String,
+    pub subject_id: String,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewShareGrant {
+    pub id: String,
+    pub project_id: String,
+    pub expires_at: u64,
+    pub revoked_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewShareCreated {
+    pub grant: ReviewShareGrant,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedReview {
+    pub project_id: String,
+    pub project_name: String,
+    pub expires_at: u64,
+    pub threads: Vec<ReviewThread>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewComment {
+    pub id: String,
+    pub author: String,
+    pub body: String,
+    pub timeline_tick: u64,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    pub created_at: u64,
+}
+
+impl ReviewComment {
+    pub fn validate(&self) -> bool {
+        plain_token(&self.id, 128)
+            && plain_token(&self.author, 64)
+            && self
+                .parent_id
+                .as_deref()
+                .is_none_or(|parent| plain_token(parent, 128) && parent != self.id)
+            && !self.body.trim().is_empty()
+            && self.body.len() <= 8 * 1024
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewThread {
+    pub id: String,
+    pub project_id: String,
+    pub comments: Vec<ReviewComment>,
+    #[serde(default)]
+    pub resolved_at: Option<u64>,
+    #[serde(default)]
+    pub resolved_by: Option<String>,
+}
+
+impl ReviewThread {
+    pub fn new(project_id: String, comment: ReviewComment) -> Result<Self, &'static str> {
+        if !plain_token(&project_id, 128) || !comment.validate() || comment.parent_id.is_some() {
+            return Err("invalid review thread");
+        }
+        Ok(Self {
+            id: comment.id.clone(),
+            project_id,
+            comments: vec![comment],
+            resolved_at: None,
+            resolved_by: None,
+        })
+    }
+
+    pub fn reply(
+        &mut self,
+        role: ProjectRole,
+        mut comment: ReviewComment,
+    ) -> Result<(), &'static str> {
+        if !role.can_comment() {
+            return Err("role cannot comment");
+        }
+        if self.resolved_at.is_some() {
+            return Err("review thread is resolved");
+        }
+        if !comment.validate()
+            || self.comments.iter().any(|item| item.id == comment.id)
+            || comment
+                .parent_id
+                .as_deref()
+                .is_some_and(|parent| parent != self.id)
+        {
+            return Err("invalid review reply");
+        }
+        comment.parent_id = Some(self.id.clone());
+        self.comments.push(comment);
+        Ok(())
+    }
+
+    pub fn set_resolved(
+        &mut self,
+        role: ProjectRole,
+        actor: &str,
+        resolved: bool,
+        now: u64,
+    ) -> Result<(), &'static str> {
+        if !role.can_resolve() || !plain_token(actor, 64) {
+            return Err("role cannot resolve review thread");
+        }
+        if resolved {
+            self.resolved_at = Some(now);
+            self.resolved_by = Some(actor.into());
+        } else {
+            self.resolved_at = None;
+            self.resolved_by = None;
+        }
+        Ok(())
+    }
+}
+
 impl SharingPolicy {
     pub fn validate(&self) -> bool {
         !self.enabled
@@ -362,5 +548,75 @@ mod tests {
             revocable: false
         }
         .validate());
+    }
+
+    #[test]
+    fn review_threads_enforce_roles_threading_and_resolution() {
+        let root = ReviewComment {
+            id: "review-1".into(),
+            author: "alice".into(),
+            body: "Move this cut two frames earlier".into(),
+            timeline_tick: 90_000,
+            parent_id: None,
+            created_at: 10,
+        };
+        let mut thread = ReviewThread::new("project-a".into(), root).unwrap();
+        let reply = ReviewComment {
+            id: "reply-1".into(),
+            author: "bob".into(),
+            body: "Updated".into(),
+            timeline_tick: 90_000,
+            parent_id: None,
+            created_at: 11,
+        };
+        assert_eq!(
+            thread.reply(ProjectRole::Viewer, reply.clone()),
+            Err("role cannot comment")
+        );
+        thread.reply(ProjectRole::Commenter, reply).unwrap();
+        assert_eq!(thread.comments[1].parent_id.as_deref(), Some("review-1"));
+        assert_eq!(
+            thread.set_resolved(ProjectRole::Commenter, "bob", true, 12),
+            Err("role cannot resolve review thread")
+        );
+        thread
+            .set_resolved(ProjectRole::Editor, "alice", true, 12)
+            .unwrap();
+        assert_eq!(thread.resolved_by.as_deref(), Some("alice"));
+        assert!(thread
+            .reply(
+                ProjectRole::Editor,
+                ReviewComment {
+                    id: "reply-2".into(),
+                    author: "alice".into(),
+                    body: "Late reply".into(),
+                    timeline_tick: 90_000,
+                    parent_id: None,
+                    created_at: 13,
+                }
+            )
+            .is_err());
+        thread
+            .set_resolved(ProjectRole::Owner, "alice", false, 14)
+            .unwrap();
+        assert!(thread.resolved_at.is_none());
+    }
+
+    #[test]
+    fn review_comments_reject_empty_oversized_and_recursive_payloads() {
+        let mut comment = ReviewComment {
+            id: "review-1".into(),
+            author: "alice".into(),
+            body: " ".into(),
+            timeline_tick: 0,
+            parent_id: None,
+            created_at: 1,
+        };
+        assert!(!comment.validate());
+        comment.body = "x".repeat(8 * 1024 + 1);
+        assert!(!comment.validate());
+        comment.body = "ok".into();
+        comment.parent_id = Some(comment.id.clone());
+        assert!(!comment.validate());
     }
 }

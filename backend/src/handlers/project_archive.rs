@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::{multipart::MultipartError, Multipart, Path as AxPath, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::Response;
 use axum::Json;
 use serde::Serialize;
@@ -114,13 +114,15 @@ struct PublishedSource {
 pub async fn composition_project_archive_export_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
 ) -> AppResult<Response> {
+    let actor = archive_actor(&state, &headers, true).await?;
     let _slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
     let project = state
         .db
-        .get_composition_project(&id)
+        .get_composition_project_for(&id, &actor)
         .await
         .map_err(|error| AppError::internal("load project for archive", error))?
         .ok_or_else(|| AppError::not_found("Композиционный проект не найден"))?;
@@ -245,8 +247,11 @@ pub async fn composition_project_archive_export_handler(
 /// validate and probe everything, then publish through a rollback-safe task.
 pub async fn composition_project_archive_import_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     ApiMultipart(multipart): ApiMultipart,
 ) -> AppResult<(StatusCode, Json<ProjectArchiveImportResponse>)> {
+    let owner = archive_actor(&state, &headers, false).await?;
+    let space_id = archive_space_id(&headers)?;
     let _slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
@@ -281,7 +286,10 @@ pub async fn composition_project_archive_import_handler(
     // The detached task owns every extracted staging guard. If the HTTP client
     // disconnects, publication still reaches success or compensating rollback.
     let task_state = state.clone();
-    let imported = tokio::spawn(async move { import_parsed_archive(task_state, parsed).await })
+    let imported =
+        tokio::spawn(
+            async move { import_parsed_archive(task_state, parsed, owner, space_id).await },
+        )
         .await
         .map_err(|error| AppError::internal("join project archive import", error))??;
     Ok((StatusCode::CREATED, Json(imported)))
@@ -290,6 +298,8 @@ pub async fn composition_project_archive_import_handler(
 async fn import_parsed_archive(
     state: AppState,
     parsed: ParsedProjectArchive,
+    owner: String,
+    space_id: Option<String>,
 ) -> AppResult<ProjectArchiveImportResponse> {
     let ParsedProjectArchive { manifest, media } = parsed;
     let ProjectArchiveManifest {
@@ -325,6 +335,7 @@ async fn import_parsed_archive(
             id: new_id.clone(),
             kind: "source".into(),
             filename: destination_filename.clone(),
+            storage_key: None,
             url: format!("/files/sources/{destination_filename}"),
             media_type: Some(probed_media_type.into()),
             title: archived.title.clone(),
@@ -355,8 +366,16 @@ async fn import_parsed_archive(
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    let project =
-        publish_with_rollback(&state, &prepared, &project.name, &document, &source_ids).await?;
+    let project = publish_with_rollback(
+        &state,
+        &prepared,
+        &project.name,
+        &document,
+        &source_ids,
+        &owner,
+        space_id.as_deref(),
+    )
+    .await?;
     for source in &prepared {
         state.index_media(&source.entry).await;
     }
@@ -372,14 +391,18 @@ async fn publish_with_rollback(
     project_name: &str,
     document: &Value,
     source_ids: &[String],
+    owner: &str,
+    space_id: Option<&str>,
 ) -> AppResult<CompositionProject> {
     let mut published = Vec::with_capacity(prepared.len());
+    let target = ImportTarget { owner, space_id };
     match publish_sources_and_project(
         state,
         prepared,
         project_name,
         document,
         source_ids,
+        target,
         &mut published,
     )
     .await
@@ -392,12 +415,19 @@ async fn publish_with_rollback(
     }
 }
 
+#[derive(Clone, Copy)]
+struct ImportTarget<'a> {
+    owner: &'a str,
+    space_id: Option<&'a str>,
+}
+
 async fn publish_sources_and_project(
     state: &AppState,
     prepared: &[PreparedSource],
     project_name: &str,
     document: &Value,
     source_ids: &[String],
+    target: ImportTarget<'_>,
     published: &mut Vec<PublishedSource>,
 ) -> AppResult<CompositionProject> {
     for source in prepared {
@@ -426,11 +456,94 @@ async fn publish_sources_and_project(
             .await
             .map_err(|error| AppError::internal("persist imported source metadata", error))?;
     }
+    let result = if let Some(space_id) = target.space_id {
+        state
+            .db
+            .create_space_composition_project(
+                project_name,
+                document,
+                source_ids,
+                target.owner,
+                space_id,
+            )
+            .await
+    } else {
+        state
+            .db
+            .create_owned_composition_project(project_name, document, source_ids, target.owner)
+            .await
+    };
+    let project = result.map_err(|error| {
+        if error.to_string().contains("space role cannot")
+            || error
+                .to_string()
+                .contains("belongs to another collaboration space")
+        {
+            AppError::forbidden("Недостаточно прав для импорта в пространство")
+        } else {
+            AppError::internal("persist imported composition project", error)
+        }
+    })?;
+    if let Some(space_id) = project.space_id.as_deref() {
+        for source_id in &project.source_ids {
+            state
+                .library
+                .relocate_source_to_space(source_id, space_id)
+                .await
+                .map_err(|error| AppError::internal("isolate imported Space source", error))?;
+        }
+    }
+    Ok(project)
+}
+
+fn archive_space_id(headers: &HeaderMap) -> AppResult<Option<String>> {
+    headers
+        .get("x-space-id")
+        .map(|value| {
+            let value = value
+                .to_str()
+                .map_err(|_| AppError::bad_request("Некорректный Space ID"))?;
+            if value.is_empty() || value.len() > 64 || uuid::Uuid::parse_str(value).is_err() {
+                return Err(AppError::bad_request("Некорректный Space ID"));
+            }
+            Ok(value.to_owned())
+        })
+        .transpose()
+}
+
+async fn archive_actor(
+    state: &AppState,
+    headers: &HeaderMap,
+    allow_cookie: bool,
+) -> AppResult<String> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .or_else(|| {
+            allow_cookie
+                .then(|| {
+                    headers
+                        .get(header::COOKIE)
+                        .and_then(|value| value.to_str().ok())
+                        .and_then(|cookies| {
+                            cookies
+                                .split(';')
+                                .map(str::trim)
+                                .find_map(|cookie| cookie.strip_prefix("video_kadr_session="))
+                        })
+                })
+                .flatten()
+        })
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::unauthorized("Требуется Bearer-сессия"))?;
     state
         .db
-        .create_composition_project(project_name, document, source_ids)
+        .resolve_auth_session(token)
         .await
-        .map_err(|error| AppError::internal("persist imported composition project", error))
+        .map_err(|error| AppError::internal("authenticate project archive request", error))?
+        .map(|user| user.username)
+        .ok_or_else(|| AppError::unauthorized("Сессия недействительна или истекла"))
 }
 
 async fn rollback_published_sources(state: &AppState, published: &[PublishedSource]) {
@@ -547,27 +660,11 @@ async fn validated_source_path(state: &AppState, entry: &MediaEntry) -> AppResul
     if !safe_archive_filename(&entry.filename) {
         return Err(AppError::conflict("Источник имеет небезопасное имя файла"));
     }
-    let path = state.sources_dir().join(&entry.filename);
-    let metadata = tokio::fs::symlink_metadata(&path)
+    state
+        .library
+        .resolve_media_path(entry)
         .await
-        .map_err(|_| AppError::conflict("Файл источника отсутствует"))?;
-    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-        return Err(AppError::conflict(
-            "Источник не является обычным локальным файлом",
-        ));
-    }
-    let sources = tokio::fs::canonicalize(state.sources_dir())
-        .await
-        .map_err(|error| AppError::internal("canonicalize sources directory", error))?;
-    let canonical = tokio::fs::canonicalize(&path)
-        .await
-        .map_err(|_| AppError::conflict("Файл источника отсутствует"))?;
-    if canonical.parent() != Some(sources.as_path()) {
-        return Err(AppError::conflict(
-            "Файл источника находится вне media storage",
-        ));
-    }
-    Ok(canonical)
+        .map_err(|_| AppError::conflict("Файл источника отсутствует"))
 }
 
 fn archive_library_metadata(
@@ -847,6 +944,7 @@ mod tests {
                 id: new_id.into(),
                 kind: "source".into(),
                 filename: destination_filename.clone(),
+                storage_key: None,
                 url: format!("/files/sources/{destination_filename}"),
                 media_type: Some("audio".into()),
                 title: Some("Rollback".into()),
@@ -871,6 +969,8 @@ mod tests {
             "Rollback project",
             &document,
             &[new_id.into()],
+            "owner",
+            None,
         )
         .await
         .is_err());

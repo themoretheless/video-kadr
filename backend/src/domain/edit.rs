@@ -522,6 +522,9 @@ pub struct TimingSpec {
     pub(crate) fade_out_seconds: f64,
 }
 
+pub const MIN_EDIT_SPEED: f64 = 0.05;
+pub const MAX_EDIT_SPEED: f64 = 16.0;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CensorSpec {
@@ -831,7 +834,9 @@ impl EditSpec {
         if self.schema_version != EDIT_SPEC_SCHEMA_VERSION {
             return Err(EditSpecError::UnsupportedSchema(self.schema_version));
         }
-        if !self.timing.speed.is_finite() || !(0.5..=2.0).contains(&self.timing.speed) {
+        if !self.timing.speed.is_finite()
+            || !(MIN_EDIT_SPEED..=MAX_EDIT_SPEED).contains(&self.timing.speed)
+        {
             return Err(EditSpecError::InvalidSpeed);
         }
         for fade in [self.timing.fade_in_seconds, self.timing.fade_out_seconds] {
@@ -1095,10 +1100,15 @@ mod tests {
             .push(TimeRange::new(0.0, 0.011).unwrap());
         assert_eq!(spec.validate(), Err(EditSpecError::TimelineTooLong));
 
-        for speed in [f64::NAN, 0.49, 2.01] {
+        for speed in [f64::NAN, 0.049, 16.01] {
             let mut invalid = valid_spec();
             invalid.timing.speed = speed;
             assert_eq!(invalid.validate(), Err(EditSpecError::InvalidSpeed));
+        }
+        for speed in [MIN_EDIT_SPEED, MAX_EDIT_SPEED] {
+            let mut valid = valid_spec();
+            valid.timing.speed = speed;
+            assert_eq!(valid.validate(), Ok(()));
         }
         for fade in [f64::NAN, -0.1] {
             let mut invalid = valid_spec();

@@ -241,6 +241,22 @@ describe('composition validation', () => {
     expect(issueCodes(invalidWithinTrack)).toContain('track-overlap')
   })
 
+  it('validates handle-backed audio crossfades at touching boundaries', () => {
+    const first = audioClip('audio-a', 0, seconds(1), seconds(3))
+    const second = { ...audioClip('audio-b', seconds(2), seconds(3), seconds(5)), crossfadeInTicks: seconds(1) }
+    const valid: Composition = { ...emptyComposition(), tracks: [audioTrack('audio-main', [first, second])] }
+    expect(validateComposition(valid)).toEqual([])
+
+    expect(issueCodes({
+      ...valid,
+      tracks: [audioTrack('audio-main', [first, { ...second, sourceInTicks: 0 }])],
+    })).toContain('audio-crossfade-handles')
+    expect(issueCodes({
+      ...valid,
+      tracks: [audioTrack('audio-main', [first, { ...second, timelineStartTicks: seconds(3) }])],
+    })).toContain('audio-crossfade-boundary')
+  })
+
   it('validates stable ids and source/clip compatibility', () => {
     const badAudio: AudioClip = {
       ...audioClip(),
@@ -318,6 +334,9 @@ describe('composition validation', () => {
     delete video.clips[0]!.playbackMode
     delete video.clips[0]!.stabilization
     delete raw.multicamGroups
+    const legacyCanvas = raw.canvas as Record<string, unknown>
+    delete legacyCanvas.backgroundMode
+    delete legacyCanvas.backgroundBlur
     delete audio.solo
     delete audio.clips[0]!.pan
     delete audio.clips[0]!.fadeInTicks
@@ -367,6 +386,7 @@ describe('composition validation', () => {
     const migratedVideo = migrated.tracks.find((track): track is VideoTrack => track.kind === 'video')!
     const migratedAudio = migrated.tracks.find((track): track is AudioTrack => track.kind === 'audio')!
 
+    expect(migrated.canvas).toMatchObject({ backgroundMode: 'color', backgroundBlur: 24 })
     expect(migratedVideo.transitions).toEqual([])
     expect(migratedVideo.clips[0]).toMatchObject({
       speed: 1,
@@ -378,7 +398,7 @@ describe('composition validation', () => {
       stabilization: { mode: 'disabled' },
     })
     expect(migratedAudio).toMatchObject({ solo: false })
-    expect(migratedAudio.clips[0]).toMatchObject({ speed: 1, pan: 0, fadeInTicks: 0, fadeOutTicks: 0 })
+    expect(migratedAudio.clips[0]).toMatchObject({ speed: 1, pan: 0, fadeInTicks: 0, fadeOutTicks: 0, voiceEffect: 'none', crossfadeInTicks: 0 })
     expect(migratedVideo.clips[0]!.audioAnimation).toEqual({
       gain: { mode: 'constant', value: 0.75 },
       futureAudioData: { keep: true },
@@ -502,10 +522,11 @@ describe('composition validation', () => {
     expect(issueCodes(invalidAudio)).toEqual(expect.arrayContaining(['animatable-value', 'keyframe-value', 'keyframe-duration']))
   })
 
-  it('gates Linear masks, primary animation, and the active visual keyframe budget exactly', () => {
+  it('exports Linear masks and primary animation while gating the active visual keyframe budget exactly', () => {
     const linearMask: CompositionVideoMask = {
       id: 'linear-mask',
       shape: 'linear',
+      rotationDegrees: { mode: 'constant', value: 35 },
       x: { mode: 'constant', value: 0.5 },
       y: { mode: 'constant', value: 0.5 },
       width: { mode: 'constant', value: 0.8 },
@@ -519,13 +540,39 @@ describe('composition validation', () => {
       tracks: [videoTrack('overlay', [{ ...videoClip('overlay-clip'), masks: [linearMask] }]), primary],
     }
     expect(validateComposition(linear)).toEqual([])
-    expect(compositionRenderUnavailableReason(linear)).toContain('Linear mask')
+    expect(compositionRenderUnavailableReason(linear)).toBeNull()
+    const wireTrack = buildCompositionRenderRequest(linear).composition.tracks[0]!
+    if (wireTrack.kind !== 'video') throw new Error('expected video track')
+    expect(wireTrack.clips[0]!.effects[0]).toMatchObject({
+      kind: 'linear_mask', rotationDegrees: { mode: 'constant', value: 35 },
+    })
 
     const primaryAnimated: Composition = {
       ...emptyComposition(),
       tracks: [{ ...primary, clips: [{ ...primary.clips[0]!, animation: { x: keyframedConstant(0, 1) } }] }],
     }
-    expect(compositionRenderUnavailableReason(primaryAnimated)).toContain('neutral constant')
+    expect(compositionRenderUnavailableReason(primaryAnimated)).toBeNull()
+    const primaryWire = buildCompositionRenderRequest(primaryAnimated).composition.tracks[0]!
+    if (primaryWire.kind !== 'video') throw new Error('expected primary video track')
+    expect(primaryWire.clips[0]!.transform.x).toEqual(keyframedConstant(0, 1))
+
+    const primaryOpacity: Composition = {
+      ...emptyComposition(),
+      tracks: [{ ...primary, clips: [{
+        ...primary.clips[0]!,
+        opacity: 0,
+        animation: { opacity: keyframedConstant(0, 1) },
+        chromaKey: { enabled: true, color: '#00ff00', similarity: 0.1, softness: 0.05, spill: 0 },
+        masks: [linearMask],
+        blendMode: 'multiply',
+      }] }],
+    }
+    expect(compositionRenderUnavailableReason(primaryOpacity)).toBeNull()
+    const primaryOpacityWire = buildCompositionRenderRequest(primaryOpacity).composition.tracks[0]!
+    if (primaryOpacityWire.kind !== 'video') throw new Error('expected primary video track')
+    expect(primaryOpacityWire.clips[0]!.opacity).toEqual(keyframedConstant(0, 1))
+    expect(primaryOpacityWire.clips[0]!.effects.map((effect) => effect.kind)).toEqual(['chroma_key', 'linear_mask'])
+    expect(primaryOpacityWire.clips[0]!.blendMode).toBe('multiply')
 
     const animatedMasks: CompositionVideoMask[] = Array.from({ length: 15 }, (_, index) => ({
       id: `budget-mask-${index}`,
@@ -1001,7 +1048,7 @@ describe('immutable composition commands', () => {
     })
   })
 
-  it('authors only exact-handle adjacent primary transitions and cleans references on delete', () => {
+  it('authors exact-handle adjacent transitions on primary and overlay tracks and cleans references on delete', () => {
     const transition: CompositionTransition = {
       id: 'transition-a-b',
       fromClipId: 'clip-a',
@@ -1030,6 +1077,20 @@ describe('immutable composition commands', () => {
     expect(() => upsertTransition(withoutHead, primary.id, transition)).toThrow(
       expect.objectContaining({ code: 'transition-conflict' }),
     )
+
+    const overlayTransition = { ...transition, id: 'overlay-transition', fromClipId: 'overlay-a', toClipId: 'overlay-b' }
+    const overlay = {
+      ...videoTrack('overlay', [
+        videoClip('overlay-a', 0, 0, seconds(4)),
+        videoClip('overlay-b', seconds(4), seconds(2), seconds(6)),
+      ]),
+      transitions: [],
+    }
+    const layered: Composition = { ...emptyComposition(), tracks: [overlay, primary] }
+    expect(compositionTransitionUnavailableReason(layered, overlay.id, overlayTransition)).toBeNull()
+    const overlayTransitioned = upsertTransition(layered, overlay.id, overlayTransition)
+    expect((overlayTransitioned.tracks[0] as VideoTrack).transitions).toEqual([overlayTransition])
+    expect(compositionRenderUnavailableReason(overlayTransitioned)).toBeNull()
   })
 
   it('honours locked tracks', () => {
@@ -1147,6 +1208,8 @@ describe('composition render payload', () => {
       height: 1080,
       fpsMilli: 30_000,
       background: { red: 0, green: 0, blue: 0, alpha: 1 },
+      backgroundMode: 'color',
+      backgroundBlur: 24,
     })
     expect(payload.output).toEqual({ profile: { container: 'mp4', codec: 'h264' }, qualityTier: 'high' })
     expect(payload.composition.sources[videoSource.id]).toEqual(videoSource)
@@ -1181,6 +1244,7 @@ describe('composition render payload', () => {
       pan: { mode: 'constant', value: 0 },
       fadeInTicks: 0,
       fadeOutTicks: 0,
+      crossfadeInTicks: 0,
     })
     expect(serialized).not.toContain('filesystemPath')
     expect(serialized).not.toContain('file:///')
@@ -1438,8 +1502,9 @@ describe('composition render payload', () => {
           },
           y: { mode: 'constant', value: 0.5 },
           width: { mode: 'constant', value: 0.8 },
-          height: { mode: 'constant', value: 0.6 },
-          feather: 0.2,
+        height: { mode: 'constant', value: 0.6 },
+        rotationDegrees: { mode: 'constant', value: 0 },
+        feather: 0.2,
           inverted: false,
         },
         {
@@ -1448,8 +1513,9 @@ describe('composition render payload', () => {
           x: { mode: 'constant', value: 0.5 },
           y: { mode: 'constant', value: 0.5 },
           width: { mode: 'constant', value: 0.4 },
-          height: { mode: 'constant', value: 0.4 },
-          feather: 0,
+        height: { mode: 'constant', value: 0.4 },
+        rotationDegrees: { mode: 'constant', value: 0 },
+        feather: 0,
           inverted: true,
         },
       ],
@@ -1503,6 +1569,7 @@ describe('composition render payload', () => {
         y: { mode: 'constant', value: 0.5 },
         width: { mode: 'constant', value: 0.8 },
         height: { mode: 'constant', value: 0.6 },
+        rotationDegrees: { mode: 'constant', value: 0 },
         feather: 0.2,
         inverted: false,
       },
@@ -1513,6 +1580,7 @@ describe('composition render payload', () => {
         y: { mode: 'constant', value: 0.5 },
         width: { mode: 'constant', value: 0.4 },
         height: { mode: 'constant', value: 0.4 },
+        rotationDegrees: { mode: 'constant', value: 0 },
         feather: 0,
         inverted: true,
       },
@@ -1545,7 +1613,7 @@ describe('composition render payload', () => {
         ? { ...track, clips: [{ ...track.clips[0]!, rotationDegrees: 1 }] }
         : track) as CompositionTrack[],
     }
-    expect(compositionRenderUnavailableReason(transformedPrimary)).toContain('neutral constant transform')
+    expect(compositionRenderUnavailableReason(transformedPrimary)).toBeNull()
 
     const keyframed = {
       ...clean,
@@ -1592,7 +1660,7 @@ describe('composition render payload', () => {
     expect(payload.composition.tracks.map((track) => track.id)).toEqual(reorderedTracks.map((track) => track.id))
   })
 
-  it('emits all eight canonical delivery profile wires without legacy output fields', () => {
+  it('emits all twelve canonical delivery profile wires without legacy output fields', () => {
     const composition = populatedComposition()
     expect(COMPOSITION_DELIVERY_PROFILE_OPTIONS.map(({ profile, capabilityId }) => ({ profile, capabilityId }))).toEqual([
       { profile: { container: 'mp4', codec: 'h264' }, capabilityId: null },
@@ -1603,6 +1671,10 @@ describe('composition render payload', () => {
       { profile: { container: 'mov', profile: 'lt' }, capabilityId: 'composition-mov-prores' },
       { profile: { container: 'mov', profile: 'standard' }, capabilityId: 'composition-mov-prores' },
       { profile: { container: 'mov', profile: 'hq' }, capabilityId: 'composition-mov-prores' },
+      { profile: { container: 'audio', codec: 'mp3' }, capabilityId: 'composition-audio-mp3' },
+      { profile: { container: 'audio', codec: 'wav' }, capabilityId: 'composition-audio-wav' },
+      { profile: { container: 'audio', codec: 'aac' }, capabilityId: 'composition-audio-aac' },
+      { profile: { container: 'audio', codec: 'flac' }, capabilityId: 'composition-audio-flac' },
     ])
     for (const option of COMPOSITION_DELIVERY_PROFILE_OPTIONS) {
       const output = buildCompositionRenderRequest(composition, {
@@ -1640,6 +1712,15 @@ describe('composition render payload', () => {
       profile: { container: 'mov', profile: 'hq' },
       qualityTier: 'high',
     })
+    expect(normalizeCompositionRenderOutput({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'high',
+      videoBitrateKbps: 18_000,
+    })).toEqual({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'high',
+      videoBitrateKbps: 18_000,
+    })
   })
 
   it('rejects an empty timeline and unsupported output at runtime', () => {
@@ -1650,12 +1731,29 @@ describe('composition render payload', () => {
         qualityTier: 'medium',
       } as unknown as Parameters<typeof buildCompositionRenderRequest>[1]),
     ).toThrow(CompositionPayloadError)
+    expect(buildCompositionRenderRequest(populatedComposition(), {
+      profile: { container: 'webm', codec: 'vp9' },
+      qualityTier: 'medium',
+      videoBitrateKbps: 12_000,
+    }).output).toMatchObject({ videoBitrateKbps: 12_000 })
+    expect(() => buildCompositionRenderRequest(populatedComposition(), {
+      profile: { container: 'audio', codec: 'mp3' },
+      qualityTier: 'medium',
+      videoBitrateKbps: 12_000,
+    })).toThrow(CompositionPayloadError)
     expect(() =>
       buildCompositionRenderRequest(populatedComposition(), {
         profile: { container: 'mp4', codec: 'h264' },
         qualityTier: 'medium',
         format: 'mp4',
       } as unknown as Parameters<typeof buildCompositionRenderRequest>[1]),
+    ).toThrow(CompositionPayloadError)
+    expect(() =>
+      buildCompositionRenderRequest(populatedComposition(), {
+        profile: { container: 'mp4', codec: 'h264' },
+        qualityTier: 'medium',
+        range: { startTicks: 800_000, endTicks: 200_000 },
+      }),
     ).toThrow(CompositionPayloadError)
   })
 })

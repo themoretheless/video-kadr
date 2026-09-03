@@ -3,6 +3,7 @@ import * as api from '../api'
 import { COMPOSITION_TIME_BASE, type Composition, type VideoTrack } from '../composition/types'
 import {
   addMediaInfoToComposition,
+  applyCompositionTextStyleToTrack,
   addVoiceoverMediaInfoToComposition,
   addCompositionTrack,
   addCompositionMarkerAtPlayhead,
@@ -24,6 +25,8 @@ import {
   importSrtToComposition,
   newComposition,
   openCompositionProject,
+  refreshOpenCompositionProject,
+  refreshCompositionProjects,
   reloadCompositionDraftForTests,
   resetCompositionForTests,
   saveCompositionProject,
@@ -35,6 +38,7 @@ import {
   relinkCompositionSource,
   replaceCompositionAutoBeatMarkers,
   replaceCompositionDocument,
+  removeSilenceFromSelectedCompositionClip,
   removeCompositionMarker,
   rippleDeleteSelectedCompositionClip,
   seekCompositionMarker,
@@ -43,6 +47,7 @@ import {
   setCompositionAutomationInterpolation,
   setCompositionAutomationKeyframe,
   setCompositionPlayhead,
+  setCompositionExportRangePoint,
   setCompositionProjectName,
   splitSelectedCompositionClip,
   syncCompositionLibrary,
@@ -60,9 +65,11 @@ import {
   updateCompositionSpeedRamp,
   updateCompositionExportSettings,
   updateCompositionStabilization,
+  updateCompositionTextStyle,
   updateCompositionVideoAudio,
 } from './composition.svelte.js'
 import type { Capabilities, Job, MediaEntry, MediaInfo } from '../types'
+import { setAuthSessionForTests } from './auth.svelte.js'
 
 vi.mock('../api', () => ({
   renderComposition: vi.fn(),
@@ -70,6 +77,8 @@ vi.mock('../api', () => ({
   cancelJob: vi.fn(),
   getCompositionProjects: vi.fn(() => Promise.resolve([])),
   getCompositionProject: vi.fn(),
+  getCompositionProjectIfChanged: vi.fn(),
+  getCompositionProjectsIfChanged: vi.fn(),
   createCompositionProject: vi.fn(),
   updateCompositionProject: vi.fn(),
   deleteCompositionProject: vi.fn(),
@@ -98,12 +107,20 @@ const video: MediaInfo = {
 }
 
 beforeEach(() => {
+  setAuthSessionForTests({
+    user: { id: 'user-1', username: 'alice', createdAt: 1 },
+    token: 'session-token',
+    expiresAt: 9999999999,
+  })
   vi.clearAllMocks()
   setCompositionStorageForTests(null)
   resetCompositionForTests()
 })
 
-afterEach(() => setCompositionStorageForTests(undefined))
+afterEach(() => {
+  setAuthSessionForTests(null)
+  setCompositionStorageForTests(undefined)
+})
 
 const DRAFTS_KEY = 'video-kadr:composition-drafts:v2'
 const LEGACY_DRAFT_KEY = 'video-kadr:composition-draft:v1'
@@ -227,6 +244,23 @@ describe('composition editor state', () => {
     expect(compositionState.document).toEqual(originalDocument)
     redoComposition()
     expect(compositionState.document.tracks[0]!.clips).toHaveLength(2)
+  })
+
+  it('removes selected clip silence as one undoable multitrack edit', () => {
+    const clipId = addMediaInfoToComposition(video)
+    const original = JSON.parse(JSON.stringify(compositionState.document)) as Composition
+
+    expect(removeSilenceFromSelectedCompositionClip([
+      { start: 0, end: 2 },
+      { start: 6, end: 10 },
+    ])).toBe(2)
+    expect(compositionState.document.tracks[0]!.clips).toHaveLength(2)
+    expect(compositionState.document.tracks[0]!.clips[0]).toMatchObject({ id: clipId, sourceInTicks: 0, sourceOutTicks: 2 * COMPOSITION_TIME_BASE })
+    expect(compositionState.document.tracks[0]!.clips[1]).toMatchObject({ timelineStartTicks: 2 * COMPOSITION_TIME_BASE, sourceInTicks: 6 * COMPOSITION_TIME_BASE })
+    expect(compositionState.ui.selectedClipId).toBe(clipId)
+
+    undoComposition()
+    expect(compositionState.document).toEqual(original)
   })
 
   it('keeps marker edits in document history and supports exact seek/delete', () => {
@@ -450,8 +484,10 @@ describe('composition editor state', () => {
       .map((track) => JSON.stringify(track))
     const maskTarget = { kind: 'mask', clipId: overlayId, maskId } as const
     setCompositionAutomationKeyframe(maskTarget, 'x', 0.25)
+    setCompositionAutomationKeyframe(maskTarget, 'rotationDegrees', -30)
     setCompositionPlayhead(3 * COMPOSITION_TIME_BASE)
     setCompositionAutomationKeyframe(maskTarget, 'x', 0.75)
+    setCompositionAutomationKeyframe(maskTarget, 'rotationDegrees', 30)
     setCompositionAutomationInterpolation(maskTarget, 'x', 'ease_in_out')
     const originalMaskTick = compositionState.document.tracks
       .flatMap((track) => track.kind === 'video' ? track.clips : [])
@@ -485,6 +521,9 @@ describe('composition editor state', () => {
           { tick: 3_000_000, value: 0.75 },
         ],
       },
+    })
+    expect(overlay?.masks?.[0]?.rotationDegrees).toMatchObject({
+      track: { keyframes: [{ tick: 1_000_000, value: -30 }, { tick: 3_000_000, value: 30 }] },
     })
     expect(compositionState.document.tracks
       .filter((track) => !track.clips.some((clip) => clip.id === overlayId))
@@ -593,7 +632,12 @@ describe('composition editor state', () => {
     expect(() => applyCompositionTrackedAnimation(overlayId, trackedAnimation)).toThrow('заблокирована')
     expect(JSON.stringify(compositionState.document)).toBe(lockedDocument)
     expect(compositionState.history.past).toHaveLength(lockedHistoryDepth)
-    expect(() => applyCompositionTrackedAnimation(primaryId, trackedAnimation)).toThrow('neutral')
+    applyCompositionTrackedAnimation(primaryId, trackedAnimation)
+    const primary = compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((clip) => clip.id === primaryId)
+    expect(primary?.animation?.x).toEqual(trackedAnimation.x)
+    expect(primary?.animation?.y).toEqual(trackedAnimation.y)
   })
 
   it('gates export on capability and polls a supported render job', async () => {
@@ -627,6 +671,56 @@ describe('composition editor state', () => {
     })
     expect(compositionState.export.result).toMatchObject({ filename: 'out.mp4' })
     expect(compositionState.export.running).toBe(false)
+  })
+
+  it('sends an exact In/Out range without mutating the composition', async () => {
+    addMediaInfoToComposition(video)
+    const documentBefore = JSON.stringify(compositionState.document)
+    setCompositionPlayhead(250_000)
+    setCompositionExportRangePoint('in')
+    expect(getCompositionExportUnavailableReason(capabilities)).toContain('обе границы')
+    setCompositionPlayhead(1_250_000)
+    setCompositionExportRangePoint('out')
+    expect(getCompositionExportUnavailableReason(capabilities)).toBeNull()
+
+    vi.mocked(api.renderComposition).mockResolvedValue({ jobId: 'range-job' })
+    vi.mocked(api.pollJob).mockResolvedValue({
+      id: 'range-job',
+      status: 'done',
+      result: { id: 'range-out', url: '/files/outputs/range.mp4', filename: 'range.mp4' },
+    } as Job)
+    await exportComposition(capabilities)
+
+    expect(vi.mocked(api.renderComposition).mock.calls.at(-1)?.[0].output).toEqual({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      range: { startTicks: 250_000, endTicks: 1_250_000 },
+    })
+    expect(JSON.stringify(compositionState.document)).toBe(documentBefore)
+  })
+
+  it('persists bounded custom bitrate and clears it for incompatible profiles', () => {
+    addMediaInfoToComposition(video)
+    updateCompositionExportSettings({ videoBitrateKbps: 18_000 })
+    expect(compositionRenderOutput()).toEqual({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      videoBitrateKbps: 18_000,
+    })
+    undoComposition()
+    expect(compositionState.export.videoBitrateKbps).toBeNull()
+    redoComposition()
+    expect(compositionState.export.videoBitrateKbps).toBe(18_000)
+    expect(() => updateCompositionExportSettings({ videoBitrateKbps: 99 })).toThrow('100..200000')
+
+    updateCompositionExportSettings({
+      profile: { container: 'mov', profile: 'hq' },
+      videoBitrateKbps: undefined,
+    })
+    expect(compositionRenderOutput()).toEqual({
+      profile: { container: 'mov', profile: 'hq' },
+      qualityTier: 'medium',
+    })
   })
 
   it('persists delivery settings through history, autosave, and exact capability gates', () => {
@@ -975,6 +1069,28 @@ describe('composition editor state', () => {
     expect(JSON.stringify(compositionState.document)).toBe(before)
   })
 
+  it('applies one caption style to its whole text track as one undo step', () => {
+    importSrtToComposition(
+      '1\n00:00:00,000 --> 00:00:01,000\nOne\n\n2\n00:00:01,000 --> 00:00:02,000\nTwo',
+    )
+    const track = compositionState.document.tracks.find((candidate) => candidate.kind === 'text')!
+    const [first, second] = track.clips
+    updateCompositionTextStyle(first!.id, { color: '#123456FF', fontSizePx: 72 })
+    applyCompositionTextStyleToTrack(first!.id)
+
+    expect(compositionState.document.tracks.find((candidate) => candidate.id === track.id)?.clips)
+      .toMatchObject([
+        { style: { color: '#123456FF', fontSizePx: 72 } },
+        { style: { color: '#123456FF', fontSizePx: 72 } },
+      ])
+    undoComposition()
+    expect(compositionState.document.tracks.find((candidate) => candidate.id === track.id)?.clips)
+      .toMatchObject([
+        { style: { color: '#123456FF', fontSizePx: 72 } },
+        { id: second!.id, style: { color: '#FFFFFFFF', fontSizePx: 48 } },
+      ])
+  })
+
   it('commits speed ramp authoring once with undo, redo, autosave and capability gating', () => {
     const values = new Map<string, string>()
     setCompositionStorageForTests({
@@ -1058,6 +1174,7 @@ describe('composition editor state', () => {
       mode: 'composition',
       document: serverDocument,
       sourceIds: [],
+      revision: 1,
       createdAt: 1,
       updatedAt: 1,
     }))
@@ -1107,6 +1224,7 @@ describe('composition editor state', () => {
       mode: 'composition',
       document,
       sourceIds: ['source-video'],
+      revision: 1,
       createdAt: 1,
       updatedAt: 2,
     })
@@ -1127,6 +1245,108 @@ describe('composition editor state', () => {
     expect(compositionState.projectId).toBeNull()
     expect(compositionState.document.tracks).toEqual([])
     expect(compositionState.history.past).toHaveLength(0)
+  })
+
+  it('saves against the opened server revision and persists the incremented revision', async () => {
+    const values = new Map<string, string>()
+    setCompositionStorageForTests(memoryStorage(values))
+    const document = JSON.parse(JSON.stringify(compositionState.document)) as Composition
+    const opened: api.CompositionProjectDto = {
+      id: 'shared-project',
+      name: 'Shared cut',
+      schemaVersion: 2,
+      mode: 'composition',
+      document,
+      sourceIds: [],
+      revision: 4,
+      createdAt: 1,
+      updatedAt: 2,
+    }
+    vi.mocked(api.getCompositionProject).mockResolvedValue(opened)
+    vi.mocked(api.updateCompositionProject).mockResolvedValue({
+      ...opened,
+      name: 'Shared cut v2',
+      revision: 5,
+      updatedAt: 3,
+    })
+
+    await openCompositionProject(opened.id)
+    setCompositionProjectName('Shared cut v2')
+    await saveCompositionProject()
+
+    expect(api.updateCompositionProject).toHaveBeenCalledWith(
+      opened.id,
+      expect.objectContaining({ baseRevision: 4, name: 'Shared cut v2' }),
+      'session-token',
+    )
+    expect(compositionState.projectRevision).toBe(5)
+    expect(activeStoredDraft<{ projectRevision: number }>(values).projectRevision).toBe(5)
+  })
+
+  it('auto-refreshes a clean project but preserves dirty edits on a remote revision', async () => {
+    const values = new Map<string, string>()
+    setCompositionStorageForTests(memoryStorage(values))
+    const opened: api.CompositionProjectDto = {
+      id: 'remote-project',
+      name: 'Revision one',
+      schemaVersion: 2,
+      mode: 'composition',
+      document: JSON.parse(JSON.stringify(compositionState.document)) as Composition,
+      sourceIds: [],
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    vi.mocked(api.getCompositionProject).mockResolvedValue(opened)
+    await openCompositionProject(opened.id)
+    vi.mocked(api.getCompositionProjectIfChanged).mockResolvedValueOnce({
+      ...opened,
+      name: 'Revision two',
+      revision: 2,
+      updatedAt: 2,
+    })
+
+    await expect(refreshOpenCompositionProject()).resolves.toBe('updated')
+    expect(compositionState.projectName).toBe('Revision two')
+    expect(compositionState.projectRevision).toBe(2)
+
+    setCompositionProjectName('Local unsaved name')
+    vi.mocked(api.getCompositionProjectIfChanged).mockResolvedValueOnce({
+      ...opened,
+      name: 'Revision three',
+      revision: 3,
+      updatedAt: 3,
+    })
+    await expect(refreshOpenCompositionProject()).resolves.toBe('conflict')
+    expect(compositionState.projectName).toBe('Local unsaved name')
+    expect(compositionState.projectRevision).toBe(2)
+    expect(compositionState.save.error).toContain('другом устройстве')
+  })
+
+  it('refreshes background project additions and deletions from the list snapshot', async () => {
+    const project: api.CompositionProjectDto = {
+      id: 'background-project',
+      name: 'Remote project',
+      schemaVersion: 2,
+      mode: 'composition',
+      document: JSON.parse(JSON.stringify(compositionState.document)) as Composition,
+      sourceIds: [],
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    vi.mocked(api.getCompositionProjectsIfChanged)
+      .mockResolvedValueOnce({ etag: '"projects-one"', projects: [project] })
+      .mockResolvedValueOnce({ etag: '"projects-empty"', projects: [] })
+
+    await expect(refreshCompositionProjects()).resolves.toBe('updated')
+    expect(compositionState.projects.map((item) => item.id)).toEqual([project.id])
+    await expect(refreshCompositionProjects()).resolves.toBe('updated')
+    expect(compositionState.projects).toEqual([])
+    expect(api.getCompositionProjectsIfChanged).toHaveBeenLastCalledWith(
+      'session-token',
+      '"projects-one"',
+    )
   })
 
   it('refuses New while a project save is in flight', async () => {
@@ -1152,6 +1372,7 @@ describe('composition editor state', () => {
       mode: 'composition',
       document,
       sourceIds: ['source-video'],
+      revision: 1,
       createdAt: 1,
       updatedAt: 2,
     })
@@ -1186,6 +1407,7 @@ describe('composition editor state', () => {
       mode: 'composition',
       document: JSON.parse(JSON.stringify(compositionState.document)) as Composition,
       sourceIds: ['source-video'],
+      revision: 1,
       createdAt: 1,
       updatedAt: 1,
     })

@@ -297,6 +297,10 @@
     if (typeof video.sizeBytes === 'number') parts.push(fmtSize(video.sizeBytes))
     return parts.filter(Boolean)
   })
+  function cropAspectRatio(value: string): number | undefined {
+    const [width, height] = value.split(':').map(Number)
+    return width && height ? width / height : undefined
+  }
 </script>
 
 <div class="card preview">
@@ -343,7 +347,7 @@
       onerror={onMediaError}
     ></video>
     {#if appState.video && !showOriginal && appState.edit.cropEnabled}
-      <RectOverlay rect={appState.edit.crop} onrectchange={(rect) => { appState.edit.crop = rect }} oninteractionstart={() => beginEditTransaction('crop-drag')} oninteractionend={endEditTransaction} />
+      <RectOverlay rect={appState.edit.crop} aspectRatio={cropAspectRatio(appState.edit.cropAspectLock)} onrectchange={(rect) => { appState.edit.crop = rect }} oninteractionstart={() => beginEditTransaction('crop-drag')} oninteractionend={endEditTransaction} />
     {/if}
     {#if appState.video && !showOriginal && appState.edit.censorEnabled}
       <RectOverlay rect={appState.edit.censor} color="var(--danger)" mode="mask" onrectchange={(rect) => { appState.edit.censor = rect }} oninteractionstart={() => beginEditTransaction('censor-drag')} oninteractionend={endEditTransaction} />

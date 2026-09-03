@@ -6,6 +6,12 @@
     type TemplateReplacement,
   } from '$lib/composition/templates.js'
   import type { CompositionSource } from '$lib/composition/types.js'
+  import {
+    createSpaceTemplate,
+    deleteSpaceTemplate,
+    getSpaceTemplates,
+    type SpaceTemplateDto,
+  } from '$lib/api.js'
   import { MAX_SRT_BYTES } from '$lib/subtitles/srt.js'
   import {
     compositionSourceFromLibraryEntry,
@@ -25,13 +31,18 @@
     findTemplateClip,
     importTemplateToCatalog,
     instantiateCatalogTemplate,
+    saveTemplateToCatalog,
     sourceCanReplaceTemplateSlot,
   } from '$lib/state/compositionTemplates.svelte.js'
   import { state as legacyState } from '$lib/state/store.svelte.js'
+  import { authState } from '$lib/state/auth.svelte.js'
+  import { spacesState } from '$lib/state/spaces.svelte.js'
   import MulticamPanel from './MulticamPanel.svelte'
   import CompositionRelinkPanel from './CompositionRelinkPanel.svelte'
   import CompositionTrackerPanel from './CompositionTrackerPanel.svelte'
   import AutoBeatPanel from './AutoBeatPanel.svelte'
+  import BrandKitPanel from '$lib/components/collaboration/BrandKitPanel.svelte'
+  import StockCatalogPanel from './StockCatalogPanel.svelte'
 
   let srtPicker = $state<HTMLInputElement>()
   let templatePicker = $state<HTMLInputElement>()
@@ -40,6 +51,8 @@
   let replacements = $state<Record<string, string>>({})
   let localMessage = $state('')
   let localError = $state('')
+  let teamTemplates = $state<SpaceTemplateDto[]>([])
+  let teamBusy = $state(false)
 
   const selectedTemplate = $derived(
     compositionTemplateState.templates.find((template) => template.id === compositionTemplateState.selectedTemplateId) ?? null,
@@ -62,6 +75,65 @@
     source,
     label: entry.title?.trim() || entry.filename,
   })))
+
+  $effect(() => {
+    const token = authState.token
+    const spaceId = spacesState.selectedId
+    if (token && spaceId) void loadTeamTemplates(spaceId, token)
+    else teamTemplates = []
+  })
+
+  async function loadTeamTemplates(spaceId: string, token: string): Promise<void> {
+    try {
+      teamTemplates = await getSpaceTemplates(spaceId, token)
+    } catch (error) {
+      showError(error)
+    }
+  }
+
+  async function publishSelectedTemplate(): Promise<void> {
+    const token = authState.token
+    const spaceId = spacesState.selectedId
+    const template = selectedTemplate
+    if (!token || !spaceId || !template || teamBusy) return
+    teamBusy = true
+    try {
+      const published = await createSpaceTemplate(spaceId, token, template)
+      teamTemplates = [published, ...teamTemplates]
+      showSuccess(`Шаблон «${template.name}» опубликован для команды`)
+    } catch (error) {
+      showError(error)
+    } finally {
+      teamBusy = false
+    }
+  }
+
+  function addTeamTemplateToCatalog(shared: SpaceTemplateDto): void {
+    try {
+      saveTemplateToCatalog(shared.template)
+      compositionTemplateState.selectedTemplateId = shared.template.id
+      showSuccess(`Командный шаблон «${shared.template.name}» добавлен локально`)
+    } catch (error) {
+      showError(error)
+    }
+  }
+
+  async function removeTeamTemplate(shared: SpaceTemplateDto): Promise<void> {
+    const token = authState.token
+    const spaceId = spacesState.selectedId
+    if (!token || !spaceId || teamBusy) return
+    if (typeof window !== 'undefined' && !window.confirm(`Удалить командный шаблон «${shared.template.name}»?`)) return
+    teamBusy = true
+    try {
+      await deleteSpaceTemplate(spaceId, shared.id, token)
+      teamTemplates = teamTemplates.filter((candidate) => candidate.id !== shared.id)
+      showSuccess('Командный шаблон удалён')
+    } catch (error) {
+      showError(error)
+    } finally {
+      teamBusy = false
+    }
+  }
 
   $effect(() => {
     const template = selectedTemplate
@@ -233,10 +305,12 @@
     onapply={(beats, bpm) => { replaceCompositionAutoBeatMarkers(beats, bpm) }}
   />
   <MulticamPanel />
+  <BrandKitPanel />
+  <StockCatalogPanel />
   <details class="composition-tool-section">
-    <summary>Субтитры SRT</summary>
+    <summary>Субтитры SRT / TXT</summary>
     <div class="composition-tool-body">
-      <p>Импорт и экспорт выполняются локально в UTF-8, без сервера и распознавания речи.</p>
+      <p>Импорт SRT и TXT с таймкодами выполняется локально в UTF-8, без сервера и распознавания речи.</p>
       <label>
         Дорожка для импорта
         <select bind:value={targetTextTrackId}>
@@ -247,8 +321,8 @@
         </select>
       </label>
       <div class="composition-tool-actions">
-        <button class="btn ghost sm" type="button" onclick={() => srtPicker?.click()}>Импорт SRT</button>
-        <input bind:this={srtPicker} class="hidden-file" type="file" accept=".srt,application/x-subrip,text/plain" onchange={(event) => void importSrtFile(event)} />
+        <button class="btn ghost sm" type="button" onclick={() => srtPicker?.click()}>Импорт SRT / TXT</button>
+        <input bind:this={srtPicker} class="hidden-file" type="file" accept=".srt,.txt,application/x-subrip,text/plain" onchange={(event) => void importSrtFile(event)} />
         <button class="btn ghost sm" type="button" onclick={exportSrt}>Экспорт выбранной text-дорожки</button>
       </div>
     </div>
@@ -308,6 +382,46 @@
         </div>
       {:else}
         <p>Создайте шаблон из текущей композиции или импортируйте JSON-пакет.</p>
+      {/if}
+    </div>
+  </details>
+
+  <details class="composition-tool-section">
+    <summary>Командные шаблоны · {teamTemplates.length}</summary>
+    <div class="composition-tool-body">
+      {#if authState.token && spacesState.selectedId}
+        <p>Шаблоны выбранного Space доступны всем участникам; публиковать и удалять могут owner/editor.</p>
+        <div class="composition-tool-actions">
+          <button
+            class="btn ghost sm"
+            type="button"
+            disabled={!selectedTemplate || teamBusy}
+            onclick={() => void publishSelectedTemplate()}
+          >Опубликовать выбранный локальный</button>
+          <button
+            class="btn ghost sm"
+            type="button"
+            disabled={teamBusy}
+            onclick={() => void loadTeamTemplates(spacesState.selectedId, authState.token ?? '')}
+          >Обновить</button>
+        </div>
+        {#if teamTemplates.length}
+          <ul class="composition-team-templates">
+            {#each teamTemplates as shared (shared.id)}
+              <li>
+                <span><strong>{shared.template.name}</strong><small>{shared.template.slots.length} слотов · {shared.createdBy} · r{shared.revision}</small></span>
+                <span class="composition-tool-actions">
+                  <button class="btn ghost sm" type="button" onclick={() => addTeamTemplateToCatalog(shared)}>Добавить локально</button>
+                  <button class="btn ghost sm danger" type="button" disabled={teamBusy} onclick={() => void removeTeamTemplate(shared)}>Удалить</button>
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p>В этом пространстве пока нет опубликованных шаблонов.</p>
+        {/if}
+      {:else}
+        <p>Войдите и выберите Space, чтобы использовать командный каталог.</p>
       {/if}
     </div>
   </details>

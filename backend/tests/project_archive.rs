@@ -55,6 +55,21 @@ fn multipart_archive(bytes: &[u8]) -> Request<Body> {
         .unwrap()
 }
 
+fn authenticated(mut request: Request<Body>, token: &str) -> Request<Body> {
+    request.headers_mut().insert(
+        header::AUTHORIZATION,
+        format!("Bearer {token}").parse().unwrap(),
+    );
+    request
+}
+
+fn in_space(mut request: Request<Body>, space_id: &str) -> Request<Body> {
+    request
+        .headers_mut()
+        .insert("x-space-id", space_id.parse().unwrap());
+    request
+}
+
 fn document(source_id: &str) -> Value {
     json!({
         "schemaVersion": 1,
@@ -113,6 +128,7 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
                 id: old_id.into(),
                 kind: "source".into(),
                 filename: old_filename.into(),
+                storage_key: None,
                 url: format!("/files/sources/{old_filename}"),
                 media_type: Some("audio".into()),
                 title: Some("Imported voice".into()),
@@ -137,21 +153,44 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
         )
         .await
         .unwrap();
+    let session = state
+        .db
+        .register_auth_user("archive-owner", "shared test password")
+        .await
+        .unwrap()
+        .unwrap();
     let saved = state
         .db
-        .create_composition_project("Portable edit", &document(old_id), &[old_id.into()])
+        .create_owned_composition_project(
+            "Portable edit",
+            &document(old_id),
+            &[old_id.into()],
+            &session.user.username,
+        )
         .await
+        .unwrap();
+    let target_space = state
+        .db
+        .create_space(&session.user.username, "Archive team")
+        .await
+        .unwrap();
+    let outsider = state
+        .db
+        .register_auth_user("archive-outsider", "shared test password")
+        .await
+        .unwrap()
         .unwrap();
     let app = router(state.clone());
 
     let export = app
         .clone()
-        .oneshot(
+        .oneshot(authenticated(
             Request::builder()
                 .uri(format!("/api/composition-projects/{}/archive", saved.id))
                 .body(Body::empty())
                 .unwrap(),
-        )
+            &session.token,
+        ))
         .await
         .unwrap();
     assert_eq!(export.status(), StatusCode::OK);
@@ -169,9 +208,23 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
     assert!(!archive_text.contains("/files/sources"));
     assert!(!archive_text.contains(&saved.id));
 
+    let rejected = app
+        .clone()
+        .oneshot(in_space(
+            authenticated(multipart_archive(&archive), &outsider.token),
+            &target_space.id,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
+    assert_eq!(state.library.list().await.len(), 1);
+
     let imported = app
         .clone()
-        .oneshot(multipart_archive(&archive))
+        .oneshot(in_space(
+            authenticated(multipart_archive(&archive), &session.token),
+            &target_space.id,
+        ))
         .await
         .unwrap();
     assert_eq!(imported.status(), StatusCode::CREATED);
@@ -184,6 +237,7 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
     let new_id = body["sourceMapping"][old_id].as_str().unwrap();
     assert_ne!(new_id, old_id);
     assert_eq!(body["project"]["name"], "Portable edit");
+    assert_eq!(body["project"]["spaceId"], target_space.id);
     assert_eq!(body["project"]["sourceIds"], json!([new_id]));
     assert!(body["project"]["document"]["sources"].get(new_id).is_some());
     assert_eq!(body["project"]["document"]["sources"][new_id]["id"], new_id);
@@ -195,9 +249,19 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
     let imported_entry = state.library.get(new_id).await.unwrap();
     assert_eq!(imported_entry.media_type.as_deref(), Some("audio"));
     assert_eq!(
-        tokio::fs::read(state.sources_dir().join(&imported_entry.filename))
-            .await
-            .unwrap(),
+        imported_entry.storage_key.as_deref(),
+        Some(format!("spaces/{}/{}", target_space.id, imported_entry.filename).as_str())
+    );
+    assert_eq!(
+        tokio::fs::read(
+            state
+                .library
+                .resolve_media_path(&imported_entry)
+                .await
+                .unwrap()
+        )
+        .await
+        .unwrap(),
         media
     );
     let metadata = state
@@ -221,9 +285,24 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
 #[tokio::test]
 async fn project_archive_import_rejects_invalid_magic_before_probe_or_publish() {
     let (state, _directory) = make_state(true, false).await;
+    let session = state
+        .db
+        .register_auth_user("invalid-archive-owner", "shared test password")
+        .await
+        .unwrap()
+        .unwrap();
     let app = router(state.clone());
-    let response = app
+    let unauthorized = app
+        .clone()
         .oneshot(multipart_archive(b"not-a-veproj"))
+        .await
+        .unwrap();
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+    let response = app
+        .oneshot(authenticated(
+            multipart_archive(b"not-a-veproj"),
+            &session.token,
+        ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);

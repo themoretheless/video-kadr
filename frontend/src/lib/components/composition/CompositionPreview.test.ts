@@ -15,6 +15,7 @@ import {
   compositionState,
   resetCompositionForTests,
   updateCompositionBlendMode,
+  updateCompositionCanvas,
   updateCompositionChromaKey,
   updateCompositionClipOpacity,
   updateCompositionClipSpeed,
@@ -26,6 +27,7 @@ import {
   splitSelectedCompositionClip,
   toggleCompositionPlayback,
   updateCompositionVideoMask,
+  updateCompositionVideoEffects,
   updateCompositionFrameInterpolation,
   updateCompositionPlaybackMode,
   updateCompositionStabilization,
@@ -72,6 +74,40 @@ afterEach(() => {
 })
 
 describe('CompositionPreview static approximations', () => {
+  it('previews checker and source-derived blur canvas backgrounds', async () => {
+    updateCompositionCanvas({ backgroundMode: 'checker', backgroundColor: '#123456' })
+    let component = mountPreview()
+    await tick()
+    const stage = target.querySelector<HTMLElement>('.composition-stage')!
+    expect(stage.style.backgroundColor).toBe('#123456')
+    expect(stage.style.backgroundImage).toContain('linear-gradient')
+    expect(target.querySelectorAll('.composition-canvas-blur')).toHaveLength(0)
+    await unmount(component)
+
+    updateCompositionCanvas({ backgroundMode: 'blur', backgroundBlur: 36 })
+    component = mountPreview()
+    await tick()
+    const videos = target.querySelectorAll<HTMLVideoElement>('video')
+    expect(videos).toHaveLength(2)
+    expect(target.querySelector<HTMLVideoElement>('.composition-canvas-blur')?.style.filter).toBe('blur(36px)')
+    expect(target.querySelector<HTMLVideoElement>('.composition-canvas-blur')?.muted).toBe(true)
+    await unmount(component)
+  })
+
+  it('previews clip blur and labels export-exact style effects', async () => {
+    const clipId = compositionState.ui.selectedClipId!
+    updateCompositionVideoEffects(clipId, [
+      { preset: 'blur', intensity: 0.5 },
+      { preset: 'edge', intensity: 0.75 },
+    ])
+    const component = mountPreview()
+    await tick()
+
+    expect(target.querySelector<HTMLVideoElement>('video')?.style.filter).toBe('blur(4.50px)')
+    expect(target.textContent).toContain('Pixelate/Vignette/Sharpen/Edge/RGB Split/Posterize точны только в экспорте')
+    await unmount(component)
+  })
+
   it('seeks exact incoming head and outgoing tail handles across a transition boundary', async () => {
     setCompositionPlayhead(4_000_000)
     const incomingId = splitSelectedCompositionClip()
@@ -104,6 +140,65 @@ describe('CompositionPreview static approximations', () => {
     expect(videos[1]!.currentTime).toBeCloseTo(4.5, 4)
 
     await unmount(component)
+  })
+
+  it('previews an authored overlay transition on its own video track', async () => {
+    addCompositionTrack('video')
+    const overlayId = addMediaInfoToComposition({
+      id: 'preview-transition-overlay',
+      url: '/files/sources/overlay-transition.mp4',
+      filename: 'overlay-transition.mp4',
+      mediaType: 'video',
+      duration: 8,
+      width: 640,
+      height: 360,
+      acodec: null,
+    })
+    setCompositionPlayhead(4_000_000)
+    const incomingId = splitSelectedCompositionClip()
+    const track = compositionState.document.tracks.find(
+      (candidate) => candidate.kind === 'video' && candidate.clips.some((clip) => clip.id === overlayId),
+    )!
+    expect(incomingId).toBeTruthy()
+    setCompositionTransition(track.id, overlayId, incomingId!, 'wipe_up', 2_000_000, 'overlay-preview-transition')
+    setCompositionPlayhead(3_500_000)
+
+    const component = mountPreview()
+    await tick()
+
+    const overlayVideos = [...target.querySelectorAll<HTMLVideoElement>('video')]
+      .filter((candidate) => candidate.getAttribute('src')?.includes('overlay-transition.mp4'))
+    expect(overlayVideos).toHaveLength(2)
+    expect(overlayVideos.some((video) => video.style.clipPath.includes('inset'))).toBe(true)
+
+    await unmount(component)
+
+    setCompositionTransition(track.id, overlayId, incomingId!, 'circle_open', 2_000_000, 'overlay-preview-transition')
+    const circleComponent = mountPreview()
+    await tick()
+    const circleVideos = [...target.querySelectorAll<HTMLVideoElement>('video')]
+      .filter((candidate) => candidate.getAttribute('src')?.includes('overlay-transition.mp4'))
+    expect(circleVideos.some((video) => video.style.clipPath.includes('circle'))).toBe(true)
+
+    await unmount(circleComponent)
+
+    setCompositionTransition(track.id, overlayId, incomingId!, 'wipe_bottom_right', 2_000_000, 'overlay-preview-transition')
+    const diagonalComponent = mountPreview()
+    await tick()
+    const diagonalVideos = [...target.querySelectorAll<HTMLVideoElement>('video')]
+      .filter((candidate) => candidate.getAttribute('src')?.includes('overlay-transition.mp4'))
+    expect(diagonalVideos.some((video) => video.style.clipPath.includes('polygon'))).toBe(true)
+
+    await unmount(diagonalComponent)
+
+    setCompositionTransition(track.id, overlayId, incomingId!, 'vertical_open', 2_000_000, 'overlay-preview-transition')
+    const splitComponent = mountPreview()
+    await tick()
+    const splitVideos = [...target.querySelectorAll<HTMLVideoElement>('video')]
+      .filter((candidate) => candidate.getAttribute('src')?.includes('overlay-transition.mp4'))
+    expect(splitVideos.some((video) => video.style.clipPath.includes('inset'))).toBe(true)
+
+    await unmount(splitComponent)
   })
 
   it('uses source-sized CSS transform, blend, rotation, opacity, speed, and an export-only chroma note', async () => {
@@ -186,6 +281,15 @@ describe('CompositionPreview static approximations', () => {
     expect(target.textContent).toContain('Mask preview — clip-path approximation')
     expect(target.textContent).toContain('feather только в экспорте')
     expect(target.textContent).toContain('Optical flow виден точно только в экспорте')
+
+    updateCompositionVideoMask(overlayId, maskId, { rotationDegrees: 45 })
+    await tick()
+    expect(overlay?.style.clipPath).toContain('polygon(')
+
+    updateCompositionVideoMask(overlayId, maskId, { shape: 'linear', rotationDegrees: 90 })
+    await tick()
+    expect(overlay?.style.clipPath).toContain('polygon(')
+    expect(overlay?.style.clipPath).not.toBe('polygon(0px 0px, 0px 0px, 0px 0px)')
 
     await unmount(component)
   })
@@ -300,6 +404,38 @@ describe('CompositionPreview static approximations', () => {
     await tick()
     audio = target.querySelector<HTMLAudioElement>('audio[src*="music.wav"]')!
     expect(audio).toBeNull()
+
+    await unmount(component)
+  })
+
+  it('previews both source handles at the midpoint of an audio crossfade', async () => {
+    for (const [id, url] of [['crossfade-a', '/files/sources/a.wav'], ['crossfade-b', '/files/sources/b.wav']] as const) {
+      addMediaInfoToComposition({ id, url, filename: `${id}.wav`, mediaType: 'audio', duration: 4, width: 0, height: 0, acodec: 'pcm_s16le' })
+    }
+    const audioTracks = compositionState.document.tracks.filter((candidate) => candidate.kind === 'audio')
+    const track = audioTracks[0]!
+    const sourceClips = audioTracks.flatMap((candidate) => candidate.clips)
+    compositionState.document = {
+      ...compositionState.document,
+      tracks: [
+        ...compositionState.document.tracks.filter((candidate) => candidate.kind !== 'audio'),
+        { ...track, clips: [
+          { ...sourceClips[0]!, timelineStartTicks: 0, sourceInTicks: 500_000, sourceOutTicks: 2_000_000 },
+          { ...sourceClips[1]!, timelineStartTicks: 1_500_000, sourceInTicks: 2_000_000, sourceOutTicks: 3_500_000, crossfadeInTicks: 1_000_000 },
+        ] },
+      ],
+    }
+    setCompositionPlayhead(1_500_000)
+    const component = mountPreview()
+    await tick()
+
+    const audio = [...target.querySelectorAll<HTMLAudioElement>('audio')]
+    expect(audio).toHaveLength(2)
+    expect(audio[0]!.currentTime).toBeCloseTo(2, 4)
+    expect(audio[1]!.currentTime).toBeCloseTo(2, 4)
+    expect(audio[0]!.volume).toBeCloseTo(0.5, 2)
+    expect(audio[1]!.volume).toBeCloseTo(0.5, 2)
+    expect(target.textContent).toContain('Audio crossfade')
 
     await unmount(component)
   })

@@ -75,6 +75,7 @@ export const EDIT_DEFAULTS = {
   cut: { start: 0, end: 0 },
   cropEnabled: false,
   crop: { x: 0, y: 0, w: 0, h: 0 },
+  cropAspectLock: '',
   scaleEnabled: false,
   scale: { w: 1280, h: -2 },
   mute: false,

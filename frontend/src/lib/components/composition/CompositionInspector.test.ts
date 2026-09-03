@@ -1,20 +1,24 @@
 // @ts-expect-error Vitest's SSR condition exposes server-only mount; this test needs Svelte's client entry.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COMPOSITION_TIME_BASE } from '$lib/composition/types.js'
 import { buildCompositionRenderRequest } from '$lib/composition/payload.js'
 import {
   addCompositionTrack,
+  addTextToComposition,
   addCompositionVideoMask,
   addMediaInfoToComposition,
   compositionState,
   resetCompositionForTests,
   setCompositionPlayhead,
   splitSelectedCompositionClip,
+  undoComposition,
   updateCompositionChromaKey,
 } from '$lib/state/composition.svelte.js'
 import { state as legacyState } from '$lib/state/store.svelte.js'
 import CompositionInspector from './CompositionInspector.svelte'
+import { clearSpaceBrandKit, spaceBrandState } from '$lib/state/spaceBrand.svelte.js'
+import { spacesState } from '$lib/state/spaces.svelte.js'
 
 let target: HTMLDivElement
 
@@ -24,15 +28,26 @@ beforeEach(() => {
     toolFingerprint: 'test',
     formats: [],
     codecs: [],
-    filters: [],
+    filters: [
+      { id: 'audio-ducking', label: 'Auto ducking', available: true },
+      { id: 'audio-voice-echo', label: 'Voice echo', available: true },
+      { id: 'audio-voice-robot', label: 'Robot voice', available: true },
+      { id: 'audio-tone', label: 'Bass/treble tone', available: true },
+    ],
     hardware: [],
     features: [
       { id: 'composition-v1', label: 'Composition v1', available: true },
       { id: 'stabilization', label: 'Stabilization', available: true },
       { id: 'speed-ramp', label: 'Speed ramp', available: true },
+      { id: 'composition-audio-mp3', label: 'Composition MP3', available: true },
+      { id: 'composition-audio-wav', label: 'Composition WAV', available: true },
+      { id: 'composition-audio-aac', label: 'Composition AAC', available: true },
+      { id: 'composition-audio-flac', label: 'Composition FLAC', available: true },
     ],
   }
   resetCompositionForTests()
+  clearSpaceBrandKit()
+  spacesState.selectedId = ''
   addMediaInfoToComposition({
     id: 'inspector-video',
     url: '/files/sources/inspector.mp4',
@@ -81,8 +96,223 @@ function fieldset(legend: string): HTMLFieldSetElement {
 }
 
 describe('CompositionInspector static authoring', () => {
+  it('materializes editable animation presets and clears them atomically', async () => {
+    const component = mount(CompositionInspector, { target })
+    await tick()
+    change(control('select[aria-label="Animation preset"]'), 'zoom_in')
+    change(control('input[aria-label="Animation preset duration"]'), '0.5')
+    await tick()
+    button('Применить анимацию').click()
+    await tick()
+
+    const clip = compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((candidate) => candidate.id === compositionState.ui.selectedClipId)!
+    expect(clip.animation?.scaleX).toMatchObject({
+      mode: 'keyframes',
+      track: { interpolation: 'ease_out', keyframes: [{ tick: 0, value: 0.25 }, { tick: 500_000, value: 1 }] },
+    })
+    expect(clip.animation?.opacity).toMatchObject({
+      mode: 'keyframes', track: { keyframes: [{ tick: 0, value: 0 }, { tick: 500_000, value: 1 }] },
+    })
+    const wire = buildCompositionRenderRequest(compositionState.document).composition.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((candidate) => candidate.id === clip.id)!
+    expect(wire.transform.scaleX).toEqual(clip.animation?.scaleX)
+    expect(wire.opacity).toEqual(clip.animation?.opacity)
+
+    button('Очистить анимацию').click()
+    await tick()
+    expect(compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((candidate) => candidate.id === clip.id)?.animation).toBeUndefined()
+    undoComposition()
+    expect(compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((candidate) => candidate.id === clip.id)?.animation?.scaleX).toBeDefined()
+    await unmount(component)
+  })
+
+  it('authors social canvas presets, custom background and undo', async () => {
+    const component = mount(CompositionInspector, { target })
+    await tick()
+
+    change(control('select[aria-label="Canvas preset"]'), '9:16')
+    change(control('select[aria-label="Canvas FPS"]'), '59.94')
+    change(control('input[aria-label="Canvas background color"]'), '#123456')
+    change(control('select[aria-label="Canvas background mode"]'), 'blur')
+    await tick()
+    change(control('input[aria-label="Canvas background blur"]'), '36')
+    await tick()
+
+    expect(compositionState.document.canvas).toMatchObject({
+      width: 1080,
+      height: 1920,
+      fps: 59.94,
+      backgroundColor: '#123456',
+      backgroundMode: 'blur',
+      backgroundBlur: 36,
+    })
+    expect(buildCompositionRenderRequest(compositionState.document).composition.canvas).toMatchObject({
+      width: 1080,
+      height: 1920,
+      fpsMilli: 59_940,
+      background: {
+        red: 0x12 / 255,
+        green: 0x34 / 255,
+        blue: 0x56 / 255,
+        alpha: 1,
+      },
+      backgroundMode: 'blur',
+      backgroundBlur: 36,
+    })
+
+    undoComposition()
+    expect(compositionState.document.canvas.backgroundBlur).toBe(24)
+    undoComposition()
+    expect(compositionState.document.canvas.backgroundMode).toBe('color')
+    undoComposition()
+    expect(compositionState.document.canvas.backgroundColor).toBe('#000000')
+    await unmount(component)
+  })
+
+  it('stacks bounded video effects into the strict render wire and removes them', async () => {
+    const component = mount(CompositionInspector, { target })
+    await tick()
+
+    change(control('select[aria-label="Новый video effect"]'), 'rgb_split')
+    await tick()
+    button('+ Эффект').click()
+    await tick()
+    change(control('select[aria-label="Новый video effect"]'), 'posterize')
+    await tick()
+    button('+ Эффект').click()
+    await tick()
+    change(control('input[aria-label="Video effect 2 intensity"]'), '0.8')
+    await tick()
+
+    const selected = compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((clip) => clip.id === compositionState.ui.selectedClipId)!
+    expect(selected.videoEffects).toEqual([
+      { preset: 'rgb_split', intensity: 0.5 },
+      { preset: 'posterize', intensity: 0.8 },
+    ])
+    const wire = buildCompositionRenderRequest(compositionState.document).composition.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((clip) => clip.id === selected.id)!
+    expect(wire.effects.slice(0, 2)).toEqual([
+      { kind: 'style', preset: 'rgb_split', intensity: 0.5 },
+      { kind: 'style', preset: 'posterize', intensity: 0.8 },
+    ])
+
+    target.querySelector<HTMLButtonElement>('button[aria-label="Video effect 2 вверх"]')!.click()
+    await tick()
+    expect(compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((clip) => clip.id === selected.id)?.videoEffects).toEqual([
+        { preset: 'posterize', intensity: 0.8 },
+        { preset: 'rgb_split', intensity: 0.5 },
+      ])
+
+    target.querySelector<HTMLButtonElement>('button[aria-label="Удалить video effect 1"]')!.click()
+    await tick()
+    expect(compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((clip) => clip.id === selected.id)?.videoEffects).toEqual([{ preset: 'rgb_split', intensity: 0.5 }])
+    await unmount(component)
+  })
+
+  it('detaches embedded video audio atomically with matching timing and undo', async () => {
+    const component = mount(CompositionInspector, { target })
+    await tick()
+    change(control('input[aria-label="Громкость source audio"]'), '1.25')
+    change(control('input[aria-label="Панорама source audio"]'), '-0.3')
+    change(control('select[aria-label="Режим воспроизведения"]'), 'reverse')
+    button('Отделить звук').click()
+    await tick()
+
+    const video = compositionState.document.tracks
+      .flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((clip) => clip.timelineStartTicks === 4 * COMPOSITION_TIME_BASE)!
+    const detached = compositionState.document.tracks
+      .flatMap((track) => track.kind === 'audio' ? track.clips : [])
+      .find((clip) => clip.id === compositionState.ui.selectedClipId)
+    expect(video.sourceAudioEnabled).toBe(false)
+    expect(detached).toMatchObject({
+      sourceId: video.sourceId,
+      timelineStartTicks: video.timelineStartTicks,
+      sourceInTicks: video.sourceInTicks,
+      sourceOutTicks: video.sourceOutTicks,
+      speed: video.speed,
+      gain: 1.25,
+      pan: -0.3,
+      reversed: true,
+    })
+    expect(control<HTMLInputElement>('input[aria-label="Reverse audio"]').checked).toBe(true)
+
+    undoComposition()
+    expect(compositionState.document.tracks.some((track) => track.kind === 'audio')).toBe(false)
+    expect(compositionState.document.tracks.flatMap((track) => track.kind === 'video' ? track.clips : [])
+      .find((clip) => clip.id === video.id)?.sourceAudioEnabled).toBe(true)
+    await unmount(component)
+  })
+
+  it('runs local silence removal for the selected multitrack clip', async () => {
+    const waveformCache = {
+      load: vi.fn().mockResolvedValue({
+        durationSeconds: 10,
+        sampleRate: 48_000,
+        buckets: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0, 0, 0.5, 0.5]
+          .map((rms) => ({ min: -rms, max: rms, rms })),
+      }),
+    }
+    const component = mount(CompositionInspector, { target, props: { waveformCache } })
+    await tick()
+
+    button('Убрать тишину').click()
+    await vi.waitFor(() => expect(compositionState.ui.message).toContain('2 audible фрагм.'))
+    expect(waveformCache.load).toHaveBeenCalledWith('/files/sources/inspector.mp4')
+    expect(compositionState.document.tracks[0]!.clips).toHaveLength(3)
+    expect(compositionState.ui.selectedClipId).toBe(compositionState.document.tracks[0]!.clips[1]!.id)
+    await unmount(component)
+  })
+
+  it('applies Space brand colors and fonts to an exportable text clip', async () => {
+    addTextToComposition('Brand title')
+    spacesState.selectedId = 'space-1'
+    Object.assign(spaceBrandState, {
+      spaceId: 'space-1',
+      kit: { colors: [{ name: 'Primary', value: '#3366ff' }], fonts: ['Arial'], logoSourceIds: [] },
+      revision: 1,
+    })
+    const component = mount(CompositionInspector, { target })
+    await tick()
+
+    button('Primary').click()
+    button('Arial').click()
+    await tick()
+    const track = compositionState.document.tracks.find((candidate) => candidate.kind === 'text')!
+    expect(track.clips[0]?.style).toMatchObject({ color: '#3366ff', fontFamily: 'Arial' })
+
+    await unmount(component)
+  })
+
   it('authors exact-handle transitions plus speed, transform, chroma, and source audio fields', async () => {
     const component = mount(CompositionInspector, { target })
+    await tick()
+
+    const opacityEditor = fieldset('Keyframes')
+    const opacityProperty = opacityEditor.querySelector<HTMLSelectElement>('select[aria-label="Параметр keyframes"]')!
+    expect([...opacityProperty.options].map((option) => option.value)).toContain('opacity')
+    change(opacityProperty, 'opacity')
+    await tick()
+    const addOpacityKey = [...fieldset('Keyframes').querySelectorAll('button')].find((candidate) => candidate.textContent?.includes('+ Ключ'))!
+    addOpacityKey.click()
+    await tick()
+    expect(compositionState.ui.message).toBe('')
+    expect(compositionState.document.tracks.find((candidate) => candidate.kind === 'video')?.clips[1]?.animation?.opacity).toBeTruthy()
+    change(fieldset('Keyframes').querySelector<HTMLInputElement>('input[aria-label="Значение keyframe Opacity"]')!, '0.4')
     await tick()
 
     change(control('select[aria-label="Тип перехода"]'), 'slide_left')
@@ -102,6 +332,7 @@ describe('CompositionInspector static authoring', () => {
     change(control('select[aria-label="Режим смешивания"]'), 'screen')
     change(control('input[aria-label="Панорама source audio"]'), '-0.35')
     control<HTMLInputElement>('input[type="checkbox"]:not(:disabled)').click()
+    button('+ Rectangle').click()
     await tick()
 
     const selected = track.clips.find((candidate) => candidate.id === compositionState.ui.selectedClipId)
@@ -117,6 +348,8 @@ describe('CompositionInspector static authoring', () => {
       blendMode: 'screen',
       audioPan: -0.35,
       chromaKey: { enabled: true },
+      masks: [expect.objectContaining({ shape: 'rectangle' })],
+      animation: { opacity: { mode: 'keyframes', track: { keyframes: [{ tick: 0, value: 0.4 }] } } },
     })
     expect(target.textContent).toContain('Chroma key и despill')
 
@@ -141,6 +374,17 @@ describe('CompositionInspector static authoring', () => {
     change(control('input[aria-label="Панорама аудиоклипа"]'), '0.45')
     change(control('input[aria-label="Fade in"]'), '0.4')
     change(control('input[aria-label="Fade out"]'), '0.75')
+    change(control('select[aria-label="Voice effect"]'), 'robot')
+    change(control('input[aria-label="Pitch semitones"]'), '7')
+    change(control('input[aria-label="Tone dB"]'), '9')
+    const ducking = control<HTMLInputElement>('input[aria-label="Auto ducking"]')
+    ducking.checked = true
+    ducking.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    change(control('input[aria-label="Ducking threshold"]'), '-30')
+    change(control('input[aria-label="Ducking ratio"]'), '10')
+    change(control('input[aria-label="Ducking attack"]'), '15')
+    change(control('input[aria-label="Ducking release"]'), '250')
     await tick()
 
     const audio = compositionState.document.tracks
@@ -151,6 +395,10 @@ describe('CompositionInspector static authoring', () => {
       pan: 0.45,
       fadeInTicks: 400_000,
       fadeOutTicks: 750_000,
+      voiceEffect: 'robot',
+      pitchSemitones: 7,
+      toneDb: 9,
+      ducking: { thresholdDb: -30, ratio: 10, attackMs: 15, releaseMs: 250 },
     })
     expect(target.textContent).toContain('stereo pan')
 
@@ -404,7 +652,7 @@ describe('CompositionInspector static authoring', () => {
     await tick()
 
     const profile = control<HTMLSelectElement>('select[aria-label="Delivery profile"]')
-    expect(profile.options).toHaveLength(8)
+    expect(profile.options).toHaveLength(12)
     expect(profile.value).toBe('mp4-h264')
     expect(target.textContent).toContain('Файл .mp4 · video H.264 · audio AAC')
 
@@ -442,10 +690,50 @@ describe('CompositionInspector static authoring', () => {
     expect(compositionState.export.profile).toEqual({ container: 'mov', profile: 'hq' })
     expect(target.textContent).toContain('Файл .mov · video ProRes HQ · audio PCM')
 
+    change(profile, 'audio-wav')
+    await tick()
+    expect(compositionState.export.profile).toEqual({ container: 'audio', codec: 'wav' })
+    expect(target.textContent).toContain('Файл .wav · video None · audio PCM s16le')
+    expect(button('Экспорт .wav').disabled).toBe(false)
+
+    change(profile, 'audio-aac')
+    await tick()
+    expect(compositionState.export.profile).toEqual({ container: 'audio', codec: 'aac' })
+    expect(target.textContent).toContain('Файл .aac · video None · audio AAC')
+    expect(button('Экспорт .aac').disabled).toBe(false)
+
+    change(profile, 'audio-flac')
+    await tick()
+    expect(compositionState.export.profile).toEqual({ container: 'audio', codec: 'flac' })
+    expect(target.textContent).toContain('Файл .flac · video None · audio FLAC')
+    expect(button('Экспорт .flac').disabled).toBe(false)
+
     await unmount(component)
   })
 
-  it('authors accessible visual keyframes and Rectangle/Ellipse masks for an overlay', async () => {
+  it('authors custom MP4/WebM bitrate and disables incompatible quality control', async () => {
+    const component = mount(CompositionInspector, { target })
+    await tick()
+
+    const toggle = control<HTMLInputElement>('input[aria-label="Custom video bitrate"]')
+    toggle.checked = true
+    toggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    const bitrate = control<HTMLInputElement>('input[aria-label="Video bitrate Kbps"]')
+    expect(bitrate.value).toBe('12000')
+    expect(control<HTMLSelectElement>('select[aria-label="Качество delivery"]').disabled).toBe(true)
+    change(bitrate, '18000')
+    await tick()
+    expect(compositionState.export.videoBitrateKbps).toBe(18_000)
+
+    change(control<HTMLSelectElement>('select[aria-label="Delivery profile"]'), 'mov-prores-hq')
+    await tick()
+    expect(compositionState.export.videoBitrateKbps).toBeNull()
+    expect(target.querySelector('input[aria-label="Custom video bitrate"]')).toBeNull()
+    await unmount(component)
+  })
+
+  it('authors accessible visual keyframes and Rectangle/Ellipse/Linear masks for an overlay', async () => {
     addCompositionTrack('video')
     const overlayId = addMediaInfoToComposition({
       id: 'inspector-overlay',
@@ -501,8 +789,21 @@ describe('CompositionInspector static authoring', () => {
       feather: 0.2,
       inverted: true,
     })
-    expect([...control<HTMLSelectElement>('select[aria-label="Форма mask 1"]').options].some((option) => option.value === 'linear')).toBe(false)
-    expect(target.textContent).toContain('Feather показывается точно только в экспорте')
+    change(control<HTMLInputElement>('input[aria-label="Mask 1 angle"]'), '30')
+    const rotatedRectangleWire = buildCompositionRenderRequest(compositionState.document).composition.tracks
+      .flatMap((candidate) => candidate.kind === 'video' ? candidate.clips : [])
+      .find((candidate) => candidate.id === overlayId)?.effects[0]
+    expect(rotatedRectangleWire).toMatchObject({ kind: 'mask', shape: 'rectangle', rotationDegrees: { mode: 'constant', value: 30 } })
+    expect([...control<HTMLSelectElement>('select[aria-label="Форма mask 1"]').options].some((option) => option.value === 'linear')).toBe(true)
+    change(control<HTMLSelectElement>('select[aria-label="Форма mask 1"]'), 'linear')
+    await tick()
+    expect([...control<HTMLSelectElement>('select[aria-label="Параметр mask keyframes"]').options].map((option) => option.value)).toEqual(['x', 'y', 'rotationDegrees'])
+    change(control<HTMLInputElement>('input[aria-label="Mask 1 angle"]'), '-45')
+    const linearWire = buildCompositionRenderRequest(compositionState.document).composition.tracks
+      .flatMap((candidate) => candidate.kind === 'video' ? candidate.clips : [])
+      .find((candidate) => candidate.id === overlayId)?.effects[0]
+    expect(linearWire).toMatchObject({ kind: 'linear_mask', rotationDegrees: { mode: 'constant', value: -45 }, feather: 0.2, inverted: true })
+    expect(target.textContent).toContain('Feather и inverted-контур показываются точно только в экспорте')
 
     await unmount(component)
   })

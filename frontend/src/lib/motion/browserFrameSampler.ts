@@ -61,8 +61,8 @@ export function trackingRasterSize(
 
 /**
  * Seek a private same-origin video to bounded timestamps and copy luma frames.
- * Frames are decoded sequentially and the detached video/canvas are always
- * released, including abort/error paths.
+ * Requests are decoded in ascending source order, then restored to presentation
+ * order for reverse playback. Detached video/canvas resources are always released.
  */
 export async function sampleBrowserVideoLumaFrames(
   mediaUrl: string,
@@ -90,7 +90,7 @@ export async function sampleBrowserVideoLumaFrames(
     if (!Number.isFinite(video.duration) || video.duration <= 0 || video.videoWidth <= 0 || video.videoHeight <= 0) {
       throw new Error('Tracking source не содержит декодируемого video metadata')
     }
-    if (sourceSeconds[sourceSeconds.length - 1]! >= video.duration) {
+    if (Math.max(...sourceSeconds) >= video.duration) {
       throw new Error('Tracking timestamp выходит за duration source video')
     }
     const size = trackingRasterSize(
@@ -108,12 +108,15 @@ export async function sampleBrowserVideoLumaFrames(
     const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true })
     if (!context) throw new Error('Canvas 2D недоступен для local tracking')
 
-    const frames: GrayFrame[] = []
-    for (const seconds of sourceSeconds) {
+    const frames: GrayFrame[] = Array(sourceSeconds.length)
+    const decodeOrder = sourceSeconds
+      .map((seconds, index) => ({ seconds, index }))
+      .sort((left, right) => left.seconds - right.seconds)
+    for (const { seconds, index } of decodeOrder) {
       await seekVideo(video, seconds, options.signal, deadline)
       context.drawImage(video, 0, 0, size.width, size.height)
       const pixels = context.getImageData(0, 0, size.width, size.height)
-      frames.push(rgbaToLuma(pixels.data, size.width, size.height))
+      frames[index] = rgbaToLuma(pixels.data, size.width, size.height)
     }
     return {
       frames,
@@ -132,12 +135,12 @@ export async function sampleBrowserVideoLumaFrames(
 
 function validateSampleTimes(values: readonly number[]): void {
   if (values.length < 2 || values.length > 300) throw new Error('Tracking требует 2..=300 timestamps')
-  let previous = -1
+  const unique = new Set<number>()
   for (const value of values) {
-    if (!Number.isFinite(value) || value < 0 || value <= previous) {
-      throw new Error('Tracking timestamps должны быть конечными и строго возрастать')
+    if (!Number.isFinite(value) || value < 0 || unique.has(value)) {
+      throw new Error('Tracking timestamps должны быть конечными, неотрицательными и уникальными')
     }
-    previous = value
+    unique.add(value)
   }
 }
 

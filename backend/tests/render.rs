@@ -248,6 +248,129 @@ async fn real_render_trim_scale_grayscale() {
 }
 
 #[tokio::test]
+async fn real_render_extended_speed_keeps_audio_and_video_duration() {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!("skipping real_render_extended_speed_keeps_audio_and_video_duration: ffmpeg/ffprobe not on PATH");
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("speed-source.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=160x90:rate=30:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1",
+            "-shortest",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&input)
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    let source = probe_video(&runtime, &input).await.unwrap();
+
+    for (speed, expected) in [(4.0, 0.25), (0.25, 4.0)] {
+        let output = dir.path().join(format!("speed-{speed}.mp4"));
+        let request: EditRequest = serde_json::from_value(serde_json::json!({
+            "videoId": "x", "speed": speed
+        }))
+        .unwrap();
+        let command = compile_export(&input, &output, request, &source);
+        let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
+        let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
+        let token = CancellationToken::new();
+        let done = run_compiled_ffmpeg(&runtime, &command, &tx, &token, Duration::from_secs(60))
+            .await
+            .unwrap();
+        drop(tx);
+        let _ = drain.await;
+        assert!(matches!(done, Done::Completed));
+        let rendered = probe_video(&runtime, &output).await.unwrap();
+        assert!(rendered.acodec.is_some(), "speed {speed} lost audio");
+        assert!(
+            (rendered.duration - expected).abs() <= 0.12,
+            "speed {speed}: expected {expected}s, got {}s",
+            rendered.duration,
+        );
+    }
+}
+
+#[tokio::test]
+async fn real_trim_selects_the_requested_sixty_fps_frame() {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!(
+            "skipping real_trim_selects_the_requested_sixty_fps_frame: ffmpeg/ffprobe not on PATH"
+        );
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("frame-source.mp4");
+    let output = dir.path().join("frame-trim.mp4");
+    let generated = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=red:size=160x90:rate=60:duration=0.016667",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=green:size=160x90:rate=60:duration=0.016667",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=blue:size=160x90:rate=60:duration=0.016667",
+            "-filter_complex",
+            "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]",
+            "-map",
+            "[v]",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&input)
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    let source = probe_video(&runtime, &input).await.unwrap();
+    let request: EditRequest = serde_json::from_value(serde_json::json!({
+        "videoId": "x", "trim": { "start": 0.016667, "end": 0.033334 }, "mute": true
+    }))
+    .unwrap();
+    let command = compile_export(&input, &output, request, &source);
+    let (tx, mut rx) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
+    let token = CancellationToken::new();
+    let done = run_compiled_ffmpeg(&runtime, &command, &tx, &token, Duration::from_secs(60))
+        .await
+        .unwrap();
+    drop(tx);
+    let _ = drain.await;
+    assert!(matches!(done, Done::Completed));
+    assert_dominant(sample_rgb(&output, 0.0).await, 1);
+}
+
+#[tokio::test]
 async fn real_render_denoise_sharpen_grain_look() {
     let runtime = ProcessRuntime::local_default();
     if !tools_available(&runtime).await {

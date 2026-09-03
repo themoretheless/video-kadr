@@ -285,7 +285,8 @@ fn verify_library_references(snapshot: &Path, declared: &BTreeSet<PathBuf>) -> R
         } else {
             "sources"
         };
-        if !declared.contains(&Path::new(directory).join(&entry.filename)) {
+        let relative = crate::library::Library::storage_relative_path(&entry)?;
+        if !declared.contains(&Path::new(directory).join(relative)) {
             return Err(anyhow!("library backup references a missing media file"));
         }
     }

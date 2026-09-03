@@ -23,7 +23,14 @@ export type SourceKind = 'video' | 'audio' | 'image'
 export type TrackKind = SourceKind | 'text'
 export type VisualFit = 'contain' | 'cover'
 export type CompositionBlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'difference' | 'addition'
-export type CompositionTransitionKind = 'dissolve' | 'fade_black' | 'wipe_left' | 'wipe_right' | 'slide_left' | 'slide_right'
+export type CompositionTransitionKind =
+  | 'dissolve' | 'fade_black'
+  | 'wipe_left' | 'wipe_right' | 'wipe_up' | 'wipe_down'
+  | 'smooth_left' | 'smooth_right' | 'smooth_up' | 'smooth_down'
+  | 'slide_left' | 'slide_right' | 'slide_up' | 'slide_down'
+  | 'circle_open' | 'circle_close'
+  | 'wipe_top_left' | 'wipe_top_right' | 'wipe_bottom_left' | 'wipe_bottom_right'
+  | 'vertical_open' | 'vertical_close' | 'horizontal_open' | 'horizontal_close'
 export type CompositionFrameInterpolation = 'duplicate' | 'optical_flow'
 export type CompositionStabilizationRadius = 16 | 32 | 48 | 64
 export type CompositionStabilization =
@@ -40,10 +47,17 @@ export type CompositionPlaybackMode =
 export type CompositionInterpolation = 'hold' | 'linear' | 'ease_in' | 'ease_out' | 'ease_in_out' | 'ease_in_out_cubic'
 export type CompositionVisualProperty = 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotationDegrees' | 'opacity'
 export type CompositionAudioProperty = 'gain' | 'pan'
-export type CompositionMaskProperty = 'x' | 'y' | 'width' | 'height'
+export type CompositionMaskProperty = 'x' | 'y' | 'width' | 'height' | 'rotationDegrees'
 export type CompositionMaskShape = 'rectangle' | 'ellipse' | 'linear'
 export type CompositionSpeedRampInterpolation = 'hold' | 'linear'
 export type CompositionSpeedRampAudioPolicy = 'preserve_pitch' | 'mute'
+export type CompositionVoiceEffect = 'none' | 'deep' | 'high' | 'chipmunk' | 'echo' | 'robot'
+export interface CompositionAudioDucking {
+  readonly thresholdDb: number
+  readonly ratio: number
+  readonly attackMs: number
+  readonly releaseMs: number
+}
 
 export interface CompositionSpeedRampPoint {
   readonly sourceProgressTick: Tick
@@ -60,7 +74,13 @@ export const COMPOSITION_BLEND_MODES: readonly CompositionBlendMode[] = [
   'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'addition',
 ]
 export const COMPOSITION_TRANSITION_KINDS: readonly CompositionTransitionKind[] = [
-  'dissolve', 'fade_black', 'wipe_left', 'wipe_right', 'slide_left', 'slide_right',
+  'dissolve', 'fade_black',
+  'wipe_left', 'wipe_right', 'wipe_up', 'wipe_down',
+  'smooth_left', 'smooth_right', 'smooth_up', 'smooth_down',
+  'slide_left', 'slide_right', 'slide_up', 'slide_down',
+  'circle_open', 'circle_close',
+  'wipe_top_left', 'wipe_top_right', 'wipe_bottom_left', 'wipe_bottom_right',
+  'vertical_open', 'vertical_close', 'horizontal_open', 'horizontal_close',
 ]
 export const COMPOSITION_INTERPOLATIONS: readonly Exclude<CompositionInterpolation, 'ease_in_out_cubic'>[] = [
   'hold', 'linear', 'ease_in', 'ease_out', 'ease_in_out',
@@ -69,7 +89,8 @@ export const COMPOSITION_VISUAL_PROPERTIES: readonly CompositionVisualProperty[]
   'x', 'y', 'scaleX', 'scaleY', 'rotationDegrees', 'opacity',
 ]
 export const COMPOSITION_AUDIO_PROPERTIES: readonly CompositionAudioProperty[] = ['gain', 'pan']
-export const COMPOSITION_MASK_PROPERTIES: readonly CompositionMaskProperty[] = ['x', 'y', 'width', 'height']
+export const COMPOSITION_VOICE_EFFECTS: readonly CompositionVoiceEffect[] = ['none', 'deep', 'high', 'chipmunk', 'echo', 'robot']
+export const COMPOSITION_MASK_PROPERTIES: readonly CompositionMaskProperty[] = ['x', 'y', 'width', 'height', 'rotationDegrees']
 export const COMPOSITION_STABILIZATION_RADII: readonly CompositionStabilizationRadius[] = [16, 32, 48, 64]
 
 export interface CompositionKeyframe {
@@ -116,6 +137,10 @@ export interface CompositionCanvas {
   readonly height: number
   readonly fps: number
   readonly backgroundColor: string
+  /** Missing in older projects means a solid color. */
+  readonly backgroundMode?: 'color' | 'blur' | 'checker'
+  /** Gaussian sigma used by the source-derived blur background. */
+  readonly backgroundBlur?: number
 }
 
 export interface VisualTransform {
@@ -145,9 +170,17 @@ export interface CompositionChromaKey {
   readonly spill: number
 }
 
+export type CompositionVideoEffectPreset = 'blur' | 'pixelate' | 'vignette' | 'sharpen' | 'edge' | 'rgb_split' | 'posterize'
+
+export interface CompositionVideoStyleEffect {
+  readonly preset: CompositionVideoEffectPreset
+  readonly intensity: number
+}
+
 export interface CompositionVideoMask {
   readonly id: StableId
   readonly shape: CompositionMaskShape
+  readonly rotationDegrees?: CompositionAnimatableValue
   readonly x: CompositionAnimatableValue
   readonly y: CompositionAnimatableValue
   readonly width: CompositionAnimatableValue
@@ -164,6 +197,7 @@ export interface VideoClip extends SourceClipTiming {
   readonly rotationDegrees?: number
   readonly blendMode?: CompositionBlendMode
   readonly chromaKey?: CompositionChromaKey
+  readonly videoEffects?: readonly CompositionVideoStyleEffect[]
   readonly masks?: readonly CompositionVideoMask[]
   readonly animation?: CompositionVisualAnimation
   readonly sourceAudioEnabled: boolean
@@ -185,10 +219,22 @@ export interface AudioClip extends SourceClipTiming {
   readonly kind: 'audio'
   readonly gain: number
   readonly pan?: number
+  /** Reverse the selected source interval without changing timeline duration. */
+  readonly reversed?: boolean
   /** Timeline-local automation; omission uses static gain/pan. */
   readonly audioAnimation?: CompositionAudioAnimation
   readonly fadeInTicks?: Tick
   readonly fadeOutTicks?: Tick
+  /** Deterministic export-time pitch preset; omission preserves legacy audio. */
+  readonly voiceEffect?: CompositionVoiceEffect
+  /** Additional duration-preserving pitch shift in semitones. */
+  readonly pitchSemitones?: number
+  /** Deterministic bass-to-treble tilt in dB. */
+  readonly toneDb?: number
+  /** Crossfade with the immediately preceding, touching clip on this audio track. */
+  readonly crossfadeInTicks?: Tick
+  /** Compress this clip from the primary video's embedded-audio sidechain. */
+  readonly ducking?: CompositionAudioDucking
 }
 
 export interface ImageClip {
@@ -289,6 +335,7 @@ export type CompositionDeliveryProfile =
   | { readonly container: 'mp4'; readonly codec: 'h264' | 'h265' }
   | { readonly container: 'webm'; readonly codec: 'vp9' | 'av1' }
   | { readonly container: 'mov'; readonly profile: 'proxy' | 'lt' | 'standard' | 'hq' }
+  | { readonly container: 'audio'; readonly codec: 'mp3' | 'wav' | 'aac' | 'flac' }
 
 export type CompositionDeliveryProfileId =
   | 'mp4-h264'
@@ -299,11 +346,15 @@ export type CompositionDeliveryProfileId =
   | 'mov-prores-lt'
   | 'mov-prores-standard'
   | 'mov-prores-hq'
+  | 'audio-mp3'
+  | 'audio-wav'
+  | 'audio-aac'
+  | 'audio-flac'
 
 export interface CompositionDeliveryProfileOption {
   readonly id: CompositionDeliveryProfileId
   readonly label: string
-  readonly extension: 'mp4' | 'webm' | 'mov'
+  readonly extension: 'mp4' | 'webm' | 'mov' | 'mp3' | 'wav' | 'aac' | 'flac'
   readonly videoCodec: string
   readonly audioCodec: string
   readonly capabilityId: string | null
@@ -383,11 +434,52 @@ export const COMPOSITION_DELIVERY_PROFILE_OPTIONS: readonly CompositionDeliveryP
     capabilityId: 'composition-mov-prores',
     profile: { container: 'mov', profile: 'hq' },
   },
+  {
+    id: 'audio-mp3',
+    label: 'Audio only · MP3 192k',
+    extension: 'mp3',
+    videoCodec: 'None',
+    audioCodec: 'MP3',
+    capabilityId: 'composition-audio-mp3',
+    profile: { container: 'audio', codec: 'mp3' },
+  },
+  {
+    id: 'audio-wav',
+    label: 'Audio only · WAV PCM',
+    extension: 'wav',
+    videoCodec: 'None',
+    audioCodec: 'PCM s16le',
+    capabilityId: 'composition-audio-wav',
+    profile: { container: 'audio', codec: 'wav' },
+  },
+  {
+    id: 'audio-aac',
+    label: 'Audio only · AAC 192k',
+    extension: 'aac',
+    videoCodec: 'None',
+    audioCodec: 'AAC',
+    capabilityId: 'composition-audio-aac',
+    profile: { container: 'audio', codec: 'aac' },
+  },
+  {
+    id: 'audio-flac',
+    label: 'Audio only · FLAC lossless',
+    extension: 'flac',
+    videoCodec: 'None',
+    audioCodec: 'FLAC',
+    capabilityId: 'composition-audio-flac',
+    profile: { container: 'audio', codec: 'flac' },
+  },
 ]
 
 export interface CompositionRenderOutput {
   readonly profile: CompositionDeliveryProfile
   readonly qualityTier: CompositionQualityTier
+  readonly videoBitrateKbps?: number
+  readonly range?: {
+    readonly startTicks: Tick
+    readonly endTicks: Tick
+  }
 }
 
 export function compositionDeliveryProfileOption(
@@ -435,6 +527,8 @@ export interface WireCanvas {
   readonly height: number
   readonly fpsMilli: number
   readonly background: WireRgba
+  readonly backgroundMode: 'color' | 'blur' | 'checker'
+  readonly backgroundBlur: number
 }
 
 export interface WireVideoClip {
@@ -460,8 +554,14 @@ export interface WireAudioClip {
   readonly placement: WireClipPlacement
   readonly gain: WireAnimatableValue
   readonly pan: WireAnimatableValue
+  readonly reversed: boolean
   readonly fadeInTicks: Tick
   readonly fadeOutTicks: Tick
+  readonly voiceEffect: CompositionVoiceEffect
+  readonly pitchSemitones: number
+  readonly toneDb: number
+  readonly crossfadeInTicks: Tick
+  readonly ducking?: CompositionAudioDucking
   readonly enabled: boolean
 }
 
@@ -508,12 +608,26 @@ export type WireVideoEffect =
       readonly spill: number
     }
   | {
+      readonly kind: 'style'
+      readonly preset: CompositionVideoEffectPreset
+      readonly intensity: number
+    }
+  | {
       readonly kind: 'mask'
       readonly shape: CompositionMaskShape
       readonly x: WireAnimatableValue
       readonly y: WireAnimatableValue
       readonly width: WireAnimatableValue
       readonly height: WireAnimatableValue
+      readonly rotationDegrees: WireAnimatableValue
+      readonly feather: number
+      readonly inverted: boolean
+    }
+  | {
+      readonly kind: 'linear_mask'
+      readonly x: WireAnimatableValue
+      readonly y: WireAnimatableValue
+      readonly rotationDegrees: WireAnimatableValue
       readonly feather: number
       readonly inverted: boolean
     }

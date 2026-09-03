@@ -168,7 +168,7 @@ impl EditPlan {
         let request = normalize_edit_request_for_source(request, source, timeline_semantics)?;
         let (edit, mut output) = map_request(request)?;
         if !source.has_audio {
-            if output.format == OutputFormat::Mp3 {
+            if matches!(output.format, OutputFormat::Mp3 | OutputFormat::Wav) {
                 anyhow::bail!("Источник не содержит аудиодорожку");
             }
             output.audio_codec = None;
@@ -200,6 +200,7 @@ impl EditPlan {
             OutputFormat::Mp4
                 | OutputFormat::Webm
                 | OutputFormat::Mp3
+                | OutputFormat::Wav
                 | OutputFormat::Av1
                 | OutputFormat::Prores
         );
@@ -271,7 +272,7 @@ fn normalize_request(
     timeline_semantics: TimelineSemantics,
 ) -> anyhow::Result<()> {
     let duration = source.duration_seconds();
-    edit.speed = finite_positive(edit.speed, "Недопустимая скорость")?.clamp(0.5, 2.0);
+    edit.speed = finite_positive(edit.speed, "Недопустимая скорость")?.clamp(0.05, 16.0);
     edit.volume = finite_non_negative(edit.volume, "Недопустимая громкость")?.clamp(0.0, 4.0);
     edit.fade_in = finite_non_negative(edit.fade_in, "Недопустимое появление")?.min(duration);
     edit.fade_out = finite_non_negative(edit.fade_out, "Недопустимое затухание")?.min(duration);
@@ -859,7 +860,7 @@ mod tests {
         }))
         .unwrap();
 
-        assert_eq!(plan.edit.timing().speed, 2.0);
+        assert_eq!(plan.edit.timing().speed, 3.5);
         assert_eq!(plan.edit.audio().volume, 4.0);
         assert_eq!(plan.edit.timing().fade_in_seconds, 10.0);
         assert_eq!(plan.edit.timing().fade_out_seconds, 10.0);

@@ -50,6 +50,46 @@ function change(control: HTMLInputElement, value: string): void {
 }
 
 describe('MultiTrackTimeline', () => {
+  it('sets and clears exact export In/Out points with buttons and CapCut keyboard shortcuts', async () => {
+    const component = mount(MultiTrackTimeline, { target })
+    await tick()
+
+    setCompositionPlayhead(1_250_000)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', bubbles: true }))
+    setCompositionPlayhead(4_500_000)
+    button('Out · O').click()
+    await tick()
+
+    expect(compositionState.export.rangeInTicks).toBe(1_250_000)
+    expect(compositionState.export.rangeOutTicks).toBe(4_500_000)
+    expect(target.querySelector<HTMLElement>('.composition-export-range')?.style.width).toBe('273px')
+
+    button('Очистить In/Out').click()
+    expect(compositionState.export.rangeInTicks).toBeNull()
+    expect(compositionState.export.rangeOutTicks).toBeNull()
+    await unmount(component)
+  })
+
+  it('renders review markers on the ruler and seeks their exact timeline tick', async () => {
+    const component = mount(MultiTrackTimeline, {
+      target,
+      props: {
+        reviewThreads: [{
+          id: 'review-1',
+          projectId: 'project-1',
+          comments: [{ id: 'comment-1', author: 'alice', body: 'Check cut', timelineTick: 2_500_000, createdAt: 1 }],
+        }],
+      },
+    })
+    await tick()
+
+    const marker = target.querySelector<HTMLButtonElement>('.composition-review-handle')!
+    expect(marker.getAttribute('aria-label')).toContain('2.5s')
+    marker.click()
+    expect(compositionState.transport.playheadTicks).toBe(2_500_000)
+    await unmount(component)
+  })
+
   it('renders authored tracks and invokes split plus track controls', async () => {
     const component = mount(MultiTrackTimeline, { target })
     await tick()

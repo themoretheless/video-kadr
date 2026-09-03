@@ -10,6 +10,7 @@ use crate::jobs::{ErrorKind, JobEvent, JobKind};
 use crate::model::Job;
 use crate::state::{AppState, CancelJobOutcome};
 
+use super::publish::{spawn_publish_job, PublishWork};
 use super::{
     apply_job_event, spawn_composition_job, spawn_edit_job, spawn_import_job, spawn_proxy_job,
     CompositionWork, EditWork, ImportWork, ProxyWork,
@@ -117,6 +118,20 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
                     lease,
                 );
             }
+            JobKind::Publish => {
+                let work = serde_json::from_value::<PublishWork>(envelope.payload)?;
+                anyhow::ensure!(work.schema_version == 1, "unsupported publish work version");
+                let lease =
+                    JobLeaseHeartbeat::start(state, job_id, envelope.attempt, lease_seconds);
+                spawn_publish_job(
+                    state.clone(),
+                    job_id.into(),
+                    work,
+                    envelope.attempt,
+                    token,
+                    lease,
+                );
+            }
         }
         Ok(())
     })();
@@ -140,7 +155,7 @@ pub(super) struct JobLeaseHeartbeat {
 }
 
 impl JobLeaseHeartbeat {
-    fn start(state: &AppState, job_id: &str, attempt: u32, lease_seconds: i64) -> Self {
+    pub(super) fn start(state: &AppState, job_id: &str, attempt: u32, lease_seconds: i64) -> Self {
         let stop = CancellationToken::new();
         let stop_waiter = stop.clone();
         let shutdown = state.shutdown_token();

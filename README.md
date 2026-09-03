@@ -17,7 +17,8 @@
   повторы и пересечения. В превью есть сравнение «Оригинал / С правками».
 - Изменение размера (1080p / 720p / 480p / 360p, высота по пропорции).
 - Кадрирование (crop) по прямоугольнику или по пресету пропорций (9:16, 1:1, 4:5, 4:3, 16:9).
-- Удаление звука, регулировка громкости, нормализация громкости (loudnorm) и highpass-фильтр против гула.
+- Удаление звука, регулировка громкости, нормализация громкости (loudnorm), highpass-фильтр против гула, ручные pitch −12…+12 полутонов и bass/treble tone −12…+12 dB, duration-preserving deep/high/chipmunk/echo/robot voice effects, handle-backed crossfade и настраиваемый auto-ducking музыки под primary voice для multitrack-аудио.
+- Атомарное отделение embedded audio из video clip в независимую дорожку с сохранением trim, forward/reverse direction, speed ramp, gain/pan automation и единым Undo; independent audio можно разворачивать отдельно.
 - Изменение скорости (0.5×–2×, со звуком через `atempo`).
 - Эффекты: поворот (90/180/270), отражение, реверс, fade in/out, частота кадров.
 - Chroma key по выбранному цвету с настройкой сходства, мягкости края и
@@ -29,7 +30,7 @@
   их не отображает и явно сообщает об этом.
 - Замазать область прямоугольником (выбор рамкой на видео), поля под пропорции (letterbox 9:16, 1:1, и т.д.).
 - Экспорт в MP4 (H.264/H.265 + AAC), WebM (VP9 + Opus), AV1, ProRes (.mov), GIF,
-  стоп-кадр PNG/JPG или аудио MP3; выбор качества и пресеты под платформы
+  стоп-кадр PNG/JPG или аудио MP3/WAV/AAC/FLAC; выбор качества и пресеты под платформы
   (Telegram/Shorts/Reels/YouTube).
 - Скачивание с осмысленным именем файла.
 - Медиатека: импортированные источники и результаты сохраняются между перезапусками
@@ -44,18 +45,45 @@
 - Очередь задач с ограничением параллелизма, таймауты, опциональная очистка старых файлов.
 - Горячие клавиши: `Space` (плей/пауза), `I`/`O` (точки входа/выхода), `←`/`→` (перемотка,
   с `Shift` крупнее), `,`/`.` (по кадру), `Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z` (отмена/повтор).
+- Single-clip speed принимает точное значение `0.05×..16×`; video/audio используют
+  одинаковый tempo factor, включая цепочки за пределами одного FFmpeg `atempo`.
+- Single-clip, audio-only и ordered-segment export нормализуют audio clock в
+  48 kHz с async drift compensation и сбрасывают PTS перед последующим DSP.
+- Trim и ordered-segment boundaries передаются FFmpeg с microsecond precision;
+  frame selection проверен реальным 60 fps color-frame corpus.
+- Crop поддерживает свободный resize и сохраняемые locks `9:16`, `1:1`, `4:5`,
+  `4:3`, `16:9`; пропорция удерживается pointer/keyboard handles и numeric input.
 - Отдельный multitrack-режим: несколько video/audio/image/text дорожек, markers,
   snapping/track magnet, ripple delete, lock/mute/solo/hide и настраиваемые shortcuts.
 - Composition layers: position/scale/rotation/opacity keyframes с graph editor,
-  Rectangle/Ellipse masks, chroma key, восемь blend modes и шесть transitions.
+  primary transforms/fades, animated Rectangle/Ellipse/Linear masks, chroma key,
+  восемь blend modes и двадцать четыре transitions: dissolve/fade-black,
+  жёсткие и smooth горизонтальные/вертикальные wipe, диагональные wipe, slide, circle-open/circle-close
+  и central horizontal/vertical open/close.
+- Clip-level video effects: Blur, Pixelate, Vignette, Sharpen, Edge, RGB Split
+  и deterministic Posterize; до пяти эффектов применяются в authored order.
+- Вся multitrack-композиция экспортируется как video delivery либо как итоговый
+  audio-only mix в MP3/AAC 192k, WAV PCM или lossless FLAC без видеопотока.
+- В multitrack timeline клавиши `I`/`O` и доступные кнопки задают независимый
+  export-only диапазон: итоговые video/audio потоки точно обрезаются после всех
+  переходов, эффектов и микширования, а исходная композиция не изменяется.
+- MP4/WebM composition delivery поддерживает сохраняемый Custom bitrate
+  `100…200000 Kbps`; он заменяет CRF на bounded `b:v/maxrate/bufsize`, входит в
+  render identity и автоматически сбрасывается для ProRes/audio-only профилей.
 - Motion: Hold/Linear speed curves с preserve-pitch/mute audio policy, reverse/freeze,
   optical-flow slow motion, deterministic deshake и локальный classical point
-  tracker, который записывает парные X/Y keyframes без моделей.
+  tracker с forward/reverse/speed-ramp sampling, который записывает парные X/Y
+  keyframes без моделей.
 - Multicam: 2–8 ракурсов, ручная или waveform-correlation синхронизация, angle viewer,
   live switching и отдельный непрерывный master audio.
 - Auto Beat: bounded локальный energy-flux detector оценивает BPM и атомарно
-  создаёт timeline markers, не затрагивая ручные маркеры.
-- Ручные UTF-8/SRT субтитры, text templates, разрешённые локальные шрифты и
+  создаёт timeline markers с точным trim/forward/reverse/speed-ramp mapping,
+  не затрагивая ручные маркеры.
+- Silence removal локально находит длинные RMS-паузы без ASR, сохраняет
+  настраиваемый запас вокруг речи и атомарно превращает текущую ordered timeline
+  в undoable keep-ranges, сохраняя перестановки и дубли; в Multitrack выбранный
+  video/audio clip режется с точным forward/reverse/speed-ramp mapping и ripple.
+- Ручные UTF-8 SRT/TXT-субтитры с применением стиля ко всей text-дорожке, text templates, разрешённые локальные шрифты и
   переносимые project templates без ASR или генеративных инструментов.
 - Screen/window/tab capture, webcam PiP, mic/system audio, countdown, pause/resume,
   annotations, teleprompter и отдельная voiceover-запись с локальным DSP.
@@ -73,7 +101,7 @@
 ```
 POST /api/import            { url, start?, end? }        -> { jobId }
 POST /api/edit              { videoId, trim?, crop?, ... } -> { jobId }
-POST /api/compositions/render { schemaVersion:1, composition, output } -> { jobId }
+POST /api/compositions/render { schemaVersion:1, composition, output } + optional Bearer -> { jobId }
 POST /api/upload            multipart file               -> VideoInfo
 POST /api/luts              multipart 3D .cube            -> LutAsset
 GET  /api/luts                                             -> [ LutAsset ]
@@ -84,8 +112,8 @@ GET  /api/jobs/failed       -> { jobs: [ FailedJob ] }
 GET  /api/jobs/registry     -> { counts: { queued, started, deferred, failed, finished } }
 POST /api/jobs/:id/retry    -> 200 pending | 404 | 409
 POST /api/jobs/:id/discard  -> 200 discarded | 404
-GET  /api/library           -> [ MediaEntry ]  (sources + outputs, newest first)
-GET  /api/library/search?q= -> [ SearchHit ]  (SQLite FTS5, prefix/ranking)
+GET  /api/library           -> [ MediaEntry ]  (Space-aware; optional Bearer + X-Space-Id)
+GET  /api/library/search?q= -> [ SearchHit ]  (Space-aware SQLite FTS5, prefix/ranking)
 PATCH /api/library/:id/metadata { title?, favorite?, tags? } -> MediaEntry
 PUT   /api/library/:id/metadata { title, favorite, tags } -> MediaEntry
 GET  /api/library/:id/thumbnail -> 307 на content-addressed PNG
@@ -99,19 +127,63 @@ GET  /api/projects          -> [ Project ]  (newest first)
 GET  /api/projects/by-video/:videoId -> Project | 404
 GET  /api/projects/:id      -> Project | 404
 DELETE /api/projects/:id    -> 204 | 404
-POST /api/composition-projects { name?, document } -> CompositionProject
-GET  /api/composition-projects -> [ CompositionProject ]
-GET  /api/composition-projects/:id -> CompositionProject | 404
-PUT  /api/composition-projects/:id { name?, document } -> CompositionProject
-DELETE /api/composition-projects/:id -> 204 | 404
-GET  /api/composition-projects/:id/archive -> переносимый .veproj
-POST /api/composition-projects/import multipart .veproj -> CompositionProject
+POST /api/composition-projects { name?, spaceId?, document } + Bearer -> CompositionProject
+GET  /api/composition-projects + Bearer + optional If-None-Match -> [ CompositionProject ] | 304
+GET  /api/composition-projects/events + session cookie -> membership-filtered SSE
+GET  /api/composition-projects/:id + Bearer + optional If-None-Match -> CompositionProject | 304 | 404
+PUT  /api/composition-projects/:id { name?, baseRevision, document } + Bearer -> CompositionProject | 409
+DELETE /api/composition-projects/:id + Bearer -> 204 | 404 (project owner или Space owner)
+GET  /api/composition-projects/:id/archive + Bearer/session cookie -> переносимый .veproj
+POST /api/composition-projects/import multipart .veproj + Bearer + optional X-Space-Id -> CompositionProject
+POST /api/composition-projects/:id/reviews { body, timelineTick } + Bearer -> ReviewThread
+GET  /api/composition-projects/:id/reviews + Bearer -> [ ReviewThread ]
+POST /api/review-threads/:id/replies { body } + Bearer -> ReviewThread
+PUT  /api/review-threads/:id/resolution { resolved } + Bearer -> ReviewThread
+GET  /api/composition-projects/:id/members + Bearer -> [ ProjectMember ]
+PUT  /api/composition-projects/:id/members/:actor { role } + Bearer -> ProjectMember
+POST /api/composition-projects/:id/ownership-transfer { targetActor } + Bearer -> ProjectMember
+GET  /api/composition-projects/:id/review-audit + Bearer -> [ ReviewAuditEvent ]
+POST /api/composition-projects/:id/review-shares { ttlSeconds } + Bearer -> ReviewShareCreated
+GET  /api/review-shares/:token -> SharedReview
+POST /api/composition-projects/:id/review-shares/:shareId/revoke + Bearer -> 204
+POST /api/auth/register { username, password } -> AuthSession
+POST /api/auth/login { username, password } -> AuthSession
+GET  /api/auth/session Authorization: Bearer <token> -> AuthUser
+POST /api/auth/logout Authorization: Bearer <token> -> 204
+POST /api/spaces { name } + Bearer -> Space
+GET  /api/spaces + Bearer -> [ Space ]
+PATCH /api/spaces/:id { name, baseUpdatedAt } + Bearer -> Space | 409
+DELETE /api/spaces/:id + Bearer -> 204 (только пустой Space)
+GET  /api/spaces/:id/members + Bearer -> [ SpaceMember ]
+PUT  /api/spaces/:id/members/:actor { role } + Bearer -> SpaceMember
+DELETE /api/spaces/:id/members/:actor + Bearer -> 204
+POST /api/spaces/:id/invites { role, ttlSeconds } + Bearer -> SpaceInviteCreated
+POST /api/space-invites/:token/accept + Bearer -> Space (consume-once)
+POST /api/spaces/:id/ownership-transfer { targetActor } + Bearer -> SpaceMember
+GET  /api/spaces/:id/templates + Bearer -> [ SpaceTemplate ]
+POST /api/spaces/:id/templates { template } + Bearer -> SpaceTemplate
+PUT  /api/spaces/:id/templates/:templateId { baseRevision, template } + Bearer -> SpaceTemplate | 409
+DELETE /api/spaces/:id/templates/:templateId + Bearer -> 204
+GET  /api/spaces/:id/brand-kit + Bearer -> SpaceBrandKit
+PUT  /api/spaces/:id/brand-kit { baseRevision, kit } + Bearer -> SpaceBrandKit | 409
+GET  /api/stock/search?q=&kind=photo|video + Bearer -> StockSearchResult
+GET  /api/publish/youtube/status + Bearer -> { configured, connected }
+POST /api/publish/youtube/connect + Bearer -> { authorizationUrl }
+GET  /api/publish/youtube/callback?state=&code= -> { configured, connected }
+DELETE /api/publish/youtube/connect + Bearer -> 204
+POST /api/publish/youtube { outputId, title, description, privacyStatus } + Bearer -> { jobId }
 GET  /api/health            -> { status, ffmpeg, ytdlp, ffmpegVersion, ytdlpVersion }
 GET  /api/capabilities      -> { schemaVersion, toolFingerprint, formats, codecs, filters, hardware }
-GET  /files/sources/...     -> исходники (с поддержкой Range)
+GET  /files/sources/:filename -> исходник с Range; Space-owned требует Bearer/session cookie
 GET  /files/outputs/...     -> результаты (с поддержкой Range)
-GET  /files/proxies/...     -> проверенные proxy-файлы (с поддержкой Range)
+GET  /api/library/:id/proxies/:key/content -> проверенный proxy с Range и Space membership
 ```
+
+Созданная ссылка ведёт на `/review/:token`: публичный SPA-интерфейс показывает только read-only комментарии и получает минимальный безопасный payload через API.
+
+Локальные аккаунты используют Argon2id; bearer-сессии живут 30 дней, отзываются logout-операцией, а в SQLite хранится только SHA-256 токена. Создание обычного или импортированного composition-проекта атомарно назначает ровно одного владельца. Список и чтение ограничены membership, менять проект могут owner/editor, удалять — только owner. Передача проекта атомарно повышает существующего участника до owner, понижает прежнего владельца до editor и записывается в audit; обычное изменение роли не может создать второго owner. Приватный Review API не принимает `actor/requester`: автор определяется исключительно валидной сессией. Для потоковой загрузки `.veproj` login/register также ставят HttpOnly SameSite cookie, не раскрывая токен JavaScript-навигации.
+
+Рабочие пространства хранятся в SQLite и видны только своим участникам. Owner создаёт пространство и назначает editor/viewer через UI, API или одноразовую invite-ссылку на 7 дней; в SQLite сохраняется только SHA-256 токена, принятие требует действующей сессии и атомарно распространяет роль на существующие проекты. Доступ к списку участников проверяется сервером. Новый или импортированный `.veproj` composition-проект можно создать в выбранном Space только с ролью owner/editor; он сохраняет `spaceId` и атомарно наследует текущий membership (создатель становится project owner, остальные owner/editor пространства — project editors, viewer — project viewer). Добавленный позднее участник получает доступ к уже существующим проектам Space без перезаписи project-specific ролей. Каждый используемый source атомарно закрепляется ровно за одним Space: проект другого Space и unscoped-проект не могут сослаться на этот ID; update проверяет тот же invariant. После привязки исходник перемещается из общего каталога в `sources/spaces/<space-id>/` с rollback при ошибке сохранения `library.json`; единый проверенный resolver обслуживает streaming, legacy edit, composition render, proxy, thumbnail/filmstrip, `.veproj` и backup, а авторизованный доступ лениво исправляет старую непромигрированную запись. При заданном `OBJECT_STORE_URL=s3://bucket/prefix` Space-owned оригиналы потоково копируются в S3-compatible storage и атомарно восстанавливаются в локальный кэш при промахе; credentials, region и custom endpoint читаются из поддерживаемых AWS-переменных окружения. Каталог и поиск скрывают Space-owned metadata от посторонних, `X-Space-Id` включает строгий фильтр выбранного пространства, а metadata mutations/delete и media endpoints проверяют Bearer или HttpOnly SameSite session cookie и membership. Каждый composition project имеет монотонную серверную `revision`: update обязан прислать `baseRevision`, атомарно увеличивает её и возвращает `409 conflict`, если другой клиент уже сохранил новую версию; UI хранит revision вместе с локальным draft. Membership-filtered SSE немедленно сообщает участникам create/update/delete и не раскрывает событие посторонним; UI обновляет активный проект и список по push-событию. Revision/aggregate ETag polling через 5/10 секунд остаётся fallback при разрыве SSE и подхватывает membership changes; чистый draft автоматически принимает удалённое изменение, dirty draft сохраняется локально и показывает конфликт. Proxy bytes больше не публикуются через статический `/files/proxies`; source и proxy content сохраняют Range streaming, legacy unscoped media — совместимость. Неавторизованный или cross-space импорт откатывает все уже подготовленные файлы.
 
 `output.profile` для composition принимает MP4/H.264 или H.265, WebM/VP9 или
 AV1 и MOV/ProRes Proxy/LT/Standard/HQ; `qualityTier` — `high`, `medium` или
@@ -124,6 +196,14 @@ AV1 и MOV/ProRes Proxy/LT/Standard/HQ; `qualityTier` — `high`, `medium` ил�
 используется только при сетевой ошибке, а не для настоящего HTTP `5xx`.
 Wire DTO строги к неизвестным полям и принимают опциональный `schemaVersion: 1`;
 вложенные JSON-документы сохранённых проектов остаются migration-tolerant.
+Review API сейчас является локальным persistence surface: роли хранятся в SQLite
+и проверяются сервером, owner назначается при создании проекта, а дальнейший
+membership меняет только owner. Перед LAN/cloud deployment всё ещё нужны
+полноценная multi-tenant эксплуатация object storage (lifecycle, replication, live provider E2E);
+append-only audit событий review/membership уже хранится вместе с проектом,
+режим `public` всё ещё fail-closed.
+В composition workspace панель Review создаёт ветку на текущем playhead, возвращает
+плейхед к её таймкоду, публикует ответы и закрывает/переоткрывает обсуждение.
 
 LUT API принимает только 3D `.cube` размером до 16 МиБ с `LUT_3D_SIZE` от 2 до
 65; одномерные LUT отклоняются. `/api/edit` ссылается на сохранённый LUT по
@@ -138,6 +218,12 @@ LUT API принимает только 3D `.cube` размером до 16 Ми
 пулов), `JOB_TIMEOUT_SECS` (1800),
 `JOB_DEDUPE_TTL_SECS` (300), `JOB_RATE_WINDOW_SECS` (60), `JOB_RATE_LIMIT` (60),
 `FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ),
+`OBJECT_STORE_URL` (optional `s3://bucket/prefix`; AWS credentials/region/endpoint
+берутся из стандартных `AWS_*` переменных),
+`PEXELS_API_KEY` (optional; включает authenticated stock photo/video catalog),
+`YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REDIRECT_URI`,
+`YOUTUBE_TOKEN_KEY` (optional, но задаются только вместе; redirect использует HTTPS
+либо loopback HTTP; token key — 64 hex-символа/256 бит и шифрует OAuth-токены AES-256-GCM),
 `RECOVER_JOBS_LIMIT` (200), `CORS_ALLOW_ORIGINS` (локальные dev-origin'ы через
 запятую), `RUST_LOG` (`info,tower_http=info`). External processes дополнительно
 управляются через `ISOLATION_TIER` (`local` по умолчанию) и
@@ -428,8 +514,9 @@ undo: field-level commands и explicit pointer transactions дают один un
 crop/censor drag. Branded coordinate spaces и общий Rust/TS fixture corpus
 закрепляют transform/clamp/NaN invariants. System/projects маршруты работают
 через ports и in-memory contract tests, route policy централизована. В policy
-auth обозначен как local-only deployment boundary; публичные auth/ownership и
-process resource limits остаются отдельными P0.
+auth был обозначен как local-only deployment boundary; локальные accounts,
+sessions и project ownership теперь реализованы, а полноценная multi-tenant
+изоляция и process resource limits остаются отдельными P0.
 
 **Волна 3/10 (18 июля 2026): durable jobs и persistence реализованы.**
 Закрыты №834-840, 842, 843 и 870. `backend/src/jobs/` теперь разделяет
@@ -544,17 +631,28 @@ terminal-состояние после исчерпания policy. Одинак
   файлов используется отдельный multitrack composition workspace с video/audio/
   image/text tracks, переходами и layer compositing; точные ограничения экспорта
   перечислены в [матрице паритета](docs/capcut-parity.md).
+- Composition canvas настраивается undoable: доступны social presets 16:9, 9:16,
+  1:1, 4:5 и 4:3, собственные чётные размеры до 3840×2160, дробный FPS, solid
+  color, checker pattern и source-derived blur 1…100. Те же параметры используются
+  browser preview, autosave и FFmpeg; blur fail-closed требует filter `gblur`.
 - Кадрирование можно задавать интерактивной рамкой прямо на видео (тянешь углы),
   а не только числами.
 - Живое превью в браузере: цвет (яркость/контраст/насыщенность/пресеты), отражение,
   скорость и громкость видны сразу; обрезка зациклена внутри отрезка. Финальные
   поворот и ресайз видны после экспорта.
+- Video clip поддерживает ordered stack до пяти bounded эффектов Blur, Pixelate,
+  Vignette, Sharpen и Edge. Backend принимает только типизированные presets,
+  проверяет нужный FFmpeg filter для конкретного render и не исполняет filter strings.
+- Для любого visual clip (video/image/text, включая импортированный custom sticker)
+  доступны Fade/Slide/Zoom In/Out, Pulse Loop и Spin Loop. Пресет создаёт обычные
+  редактируемые keyframes, поэтому preview, ручной graph editor и FFmpeg не расходятся.
 - Наложение текста (`drawtext`) и вшивание субтитров (`subtitles`) требуют сборки
   FFmpeg с `libfreetype`/`libass`; если фильтра нет, capability gate отклоняет такой
   экспорт заранее с явной причиной. Ручные text/SRT layers в composition workspace
   доступны на совместимой сборке FFmpeg.
-- Это MVP: нет аутентификации. Проекты, задачи и медиатека персистятся (SQLite +
-  файлы на диске) и переживают перезапуск. Не выставляй наружу как есть.
+- Локальная аутентификация и роли реализованы, но это всё ещё self-hosted MVP без
+  доказанной production tenancy/replication. Проекты, задачи и медиатека персистятся
+  (SQLite + файлы на диске) и переживают перезапуск; не выставляй наружу как есть.
 - Stored XSS через подменённое расширение локального upload закрыт: публикация
   происходит только после `ffprobe`, расширение выбирается из allow-list
   фактического контейнера, а статические ответы запрещают MIME-sniffing и

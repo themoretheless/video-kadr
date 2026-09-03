@@ -160,6 +160,72 @@ async function prepareAndSelectPoint(): Promise<void> {
 }
 
 describe('CompositionTrackerPanel', () => {
+  it('offers reverse and speed-ramp sources while excluding freeze playback', async () => {
+    const base = compositionFixture()
+    const primary = base.tracks[1]!
+    if (primary.kind !== 'video') throw new Error('fixture')
+    const clip = primary.clips[0]!
+    const rampPoints = [
+      { sourceProgressTick: 0, speed: 1 },
+      { sourceProgressTick: second, speed: 2 },
+      { sourceProgressTick: 2 * second, speed: 2 },
+    ]
+    const document: Composition = {
+      ...base,
+      tracks: [base.tracks[0]!, {
+        ...primary,
+        clips: [
+          { ...clip, id: 'reverse-source', playbackMode: { mode: 'reverse' } },
+          { ...clip, id: 'ramp-source', speedRamp: { interpolation: 'linear', points: rampPoints } },
+          { ...clip, id: 'freeze-source', playbackMode: { mode: 'freeze', sourceTick: second } },
+        ],
+      }],
+    }
+    const component = mount(CompositionTrackerPanel, {
+      target,
+      props: {
+        document,
+        media: { 'tracking-source': { url: '/files/sources/tracking-source.mp4' } },
+        onapply: vi.fn(),
+      },
+    })
+    await tick()
+
+    const options = [...target.querySelector<HTMLSelectElement>('select')!.options].map((option) => option.value)
+    expect(options).toContain('reverse-source')
+    expect(options).toContain('ramp-source')
+    expect(options).not.toContain('freeze-source')
+    await unmount(component)
+  })
+
+  it('offers a visible overlay video as a transformed tracking source', async () => {
+    const base = compositionFixture()
+    const primary = base.tracks[1]!
+    const overlaySource = {
+      id: 'camera-overlay-track', kind: 'video' as const, name: 'Camera overlay', locked: false, hidden: false, muted: true,
+      transitions: [],
+      clips: [{
+        id: 'camera-overlay-clip', kind: 'video' as const, sourceId: 'tracking-source', timelineStartTicks: 0,
+        sourceInTicks: 0, sourceOutTicks: 2 * second, speed: 1,
+        transform: { x: 120, y: -40, width: 640, height: 360, fit: 'contain' as const },
+        rotationDegrees: 15, opacity: 1, sourceAudioEnabled: false, audioGain: 1,
+      }],
+    }
+    const component = mount(CompositionTrackerPanel, {
+      target,
+      props: {
+        document: { ...base, tracks: [base.tracks[0]!, overlaySource, primary] },
+        media: { 'tracking-source': { url: '/files/sources/tracking-source.mp4' } },
+        onapply: vi.fn(),
+      },
+    })
+    await tick()
+
+    const sourceSelect = target.querySelector<HTMLSelectElement>('select')!
+    expect([...sourceSelect.options].map((option) => option.value)).toContain('camera-overlay-clip')
+    await unmount(component)
+  })
+
   it('samples same-origin media, selects a point, and applies exact paired X/Y keyframes', async () => {
     const onapply = vi.fn()
     const component = mount(CompositionTrackerPanel, {
@@ -191,7 +257,7 @@ describe('CompositionTrackerPanel', () => {
       track: {
         timeBase: second,
         interpolation: 'linear',
-        keyframes: [{ tick: 0, value: 100 }, { tick: 100_000, value: 101.33333333333333 }],
+        keyframes: [{ tick: 0, value: 100 }, { tick: 100_000, value: 101.33333333333337 }],
       },
     })
     expect(animation.y).toEqual({
@@ -199,7 +265,7 @@ describe('CompositionTrackerPanel', () => {
       track: {
         timeBase: second,
         interpolation: 'linear',
-        keyframes: [{ tick: 0, value: 50 }, { tick: 100_000, value: 50.666666666666664 }],
+        keyframes: [{ tick: 0, value: 50 }, { tick: 100_000, value: 50.666666666666686 }],
       },
     })
     expect(animation.x.track.keyframes.map((keyframe: { tick: number }) => keyframe.tick))

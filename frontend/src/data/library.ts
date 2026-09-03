@@ -2,8 +2,8 @@ import * as api from '$lib/api.js'
 import type { MediaEntry } from '$lib/types.js'
 import { queryClient, serverKeys } from './queryClient.js'
 
-export async function fetchLibrary(): Promise<MediaEntry[]> {
-  const entries = await api.getLibrary()
+export async function fetchLibrary(token?: string | null, spaceId?: string | null): Promise<MediaEntry[]> {
+  const entries = await api.getLibrary(token, spaceId)
   queryClient.setQueryData(serverKeys.library, entries)
   return entries
 }

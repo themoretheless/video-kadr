@@ -22,7 +22,7 @@ impl ResourceClass {
         match kind {
             JobKind::Import => Self::Ingest,
             JobKind::Proxy => Self::Analysis,
-            JobKind::Edit | JobKind::Composition => Self::Export,
+            JobKind::Edit | JobKind::Composition | JobKind::Publish => Self::Export,
         }
     }
 }

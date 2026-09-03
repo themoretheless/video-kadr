@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde::de::Error as _;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
 use super::keyframes::KeyframeTrack;
@@ -13,6 +13,7 @@ pub const MAX_TRACKS: usize = 16;
 pub const MAX_CLIPS: usize = 512;
 pub const MAX_SOURCES: usize = 32;
 pub const MAX_VISIBLE_LAYERS: usize = 8;
+pub const MAX_STYLE_EFFECTS_PER_CLIP: usize = 5;
 pub const MAX_OUTPUT_TICKS: u64 = 24 * 60 * 60 * DEFAULT_TIME_BASE as u64;
 pub const MAX_KEYFRAMES_PER_VALUE: usize = 32;
 pub const MAX_SPEED_RAMP_POINTS: usize = 32;
@@ -97,6 +98,23 @@ pub struct CanvasSpec {
     pub height: u32,
     pub fps_milli: u32,
     pub background: Rgba,
+    #[serde(default)]
+    pub background_mode: CanvasBackgroundMode,
+    #[serde(default = "default_canvas_blur")]
+    pub background_blur: f64,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasBackgroundMode {
+    #[default]
+    Color,
+    Blur,
+    Checker,
+}
+
+const fn default_canvas_blur() -> f64 {
+    24.0
 }
 
 impl Default for CanvasSpec {
@@ -106,6 +124,8 @@ impl Default for CanvasSpec {
             height: 1_080,
             fps_milli: 30_000,
             background: Rgba::BLACK,
+            background_mode: CanvasBackgroundMode::Color,
+            background_blur: default_canvas_blur(),
         }
     }
 }
@@ -122,7 +142,11 @@ impl CanvasSpec {
         if !(1_000..=60_000).contains(&self.fps_milli) {
             return Err(CompositionError::InvalidFrameRate);
         }
-        self.background.validate()
+        self.background.validate()?;
+        if !self.background_blur.is_finite() || !(1.0..=100.0).contains(&self.background_blur) {
+            return Err(CompositionError::InvalidCanvas);
+        }
+        Ok(())
     }
 }
 
@@ -548,13 +572,25 @@ impl StabilizationSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MaskShape {
-    /// Axis-aligned rectangle in the clip's pre-transform local raster.
+    /// Rectangle in the clip's pre-transform local raster.
     Rectangle,
-    /// Axis-aligned ellipse in the clip's pre-transform local raster.
+    /// Ellipse in the clip's pre-transform local raster.
     Ellipse,
     /// Reserved wire value; render remains fail-closed until direction and
     /// falloff semantics are added without changing the saved schema.
     Linear,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoEffectPreset {
+    Blur,
+    Pixelate,
+    Vignette,
+    Sharpen,
+    Edge,
+    RgbSplit,
+    Posterize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -565,6 +601,10 @@ pub enum VideoEffect {
         similarity: f64,
         softness: f64,
         spill: f64,
+    },
+    Style {
+        preset: VideoEffectPreset,
+        intensity: f64,
     },
     Mask {
         shape: MaskShape,
@@ -577,6 +617,14 @@ pub enum VideoEffect {
         /// Values may extend to `2` so a centred mask can cover beyond an edge.
         width: AnimatableValue,
         height: AnimatableValue,
+        /// Clockwise rotation around the mask centre. Defaults to zero
+        /// for projects saved before rotated shape masks were introduced.
+        #[serde(
+            default = "default_mask_rotation",
+            rename = "rotationDegrees",
+            deserialize_with = "deserialize_animatable_or_number"
+        )]
+        rotation_degrees: AnimatableValue,
         /// Inward soft edge as a fraction of the mask radius/half-extent. Zero
         /// is a hard inclusive edge. For Rectangle, each axis ramps linearly
         /// from zero at its edge and the lower ramp wins; for Ellipse, radial
@@ -584,6 +632,19 @@ pub enum VideoEffect {
         feather: f64,
         /// Swap selected/rejected alpha, then multiply the clip's incoming
         /// alpha. Multiple masks multiply in declaration order before opacity.
+        inverted: bool,
+    },
+    /// A half-plane mask whose boundary crosses `(x, y)`. Zero degrees keeps
+    /// pixels to the left; positive degrees rotate the normal clockwise.
+    LinearMask {
+        x: AnimatableValue,
+        y: AnimatableValue,
+        #[serde(
+            rename = "rotationDegrees",
+            deserialize_with = "deserialize_animatable_or_number"
+        )]
+        rotation_degrees: AnimatableValue,
+        feather: f64,
         inverted: bool,
     },
 }
@@ -607,11 +668,19 @@ impl VideoEffect {
                     Err(CompositionError::InvalidEffect)
                 }
             }
+            Self::Style { intensity, .. } => {
+                if intensity.is_finite() && (0.01..=1.0).contains(intensity) {
+                    Ok(())
+                } else {
+                    Err(CompositionError::InvalidEffect)
+                }
+            }
             Self::Mask {
                 x,
                 y,
                 width,
                 height,
+                rotation_degrees,
                 feather,
                 ..
             } => {
@@ -623,6 +692,27 @@ impl VideoEffect {
                     && animatable_values_in(y, 0.0, 1.0, true)
                     && animatable_values_in(width, 0.0, 2.0, false)
                     && animatable_values_in(height, 0.0, 2.0, false)
+                    && animatable_values_in(rotation_degrees, -180.0, 180.0, true)
+                    && feather.is_finite()
+                    && (0.0..=1.0).contains(feather)
+                {
+                    Ok(())
+                } else {
+                    Err(CompositionError::InvalidEffect)
+                }
+            }
+            Self::LinearMask {
+                x,
+                y,
+                rotation_degrees,
+                feather,
+                ..
+            } => {
+                x.validate()?;
+                y.validate()?;
+                if animatable_values_in(x, 0.0, 1.0, true)
+                    && animatable_values_in(y, 0.0, 1.0, true)
+                    && animatable_values_in(rotation_degrees, -180.0, 180.0, true)
                     && feather.is_finite()
                     && (0.0..=1.0).contains(feather)
                 {
@@ -677,7 +767,7 @@ pub struct VideoClip {
     pub opacity: AnimatableValue,
     pub blend_mode: BlendMode,
     /// Ordered visual effects. The composition exporter currently supports
-    /// ChromaKey effects followed by Rectangle/Ellipse masks; unsupported
+    /// ChromaKey effects followed by Rectangle/Ellipse/Linear masks; unsupported
     /// orderings remain saved but fail closed at render planning.
     #[serde(default)]
     pub effects: Vec<VideoEffect>,
@@ -705,10 +795,61 @@ pub struct AudioClip {
     pub placement: ClipPlacement,
     pub gain: AnimatableValue,
     pub pan: AnimatableValue,
+    #[serde(default)]
+    pub reversed: bool,
     pub fade_in_ticks: u64,
     pub fade_out_ticks: u64,
+    #[serde(default)]
+    pub voice_effect: AudioVoiceEffect,
+    #[serde(default)]
+    pub pitch_semitones: f64,
+    #[serde(default)]
+    pub tone_db: f64,
+    #[serde(default)]
+    pub crossfade_in_ticks: u64,
+    #[serde(default)]
+    pub ducking: Option<AudioDucking>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioDucking {
+    pub threshold_db: f64,
+    pub ratio: f64,
+    pub attack_ms: f64,
+    pub release_ms: f64,
+}
+
+impl AudioDucking {
+    fn validate(self) -> Result<(), CompositionError> {
+        if self.threshold_db.is_finite()
+            && (-60.0..=0.0).contains(&self.threshold_db)
+            && self.ratio.is_finite()
+            && (1.0..=20.0).contains(&self.ratio)
+            && self.attack_ms.is_finite()
+            && (0.1..=500.0).contains(&self.attack_ms)
+            && self.release_ms.is_finite()
+            && (1.0..=5_000.0).contains(&self.release_ms)
+        {
+            Ok(())
+        } else {
+            Err(CompositionError::InvalidAudioDucking)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioVoiceEffect {
+    #[default]
+    None,
+    Deep,
+    High,
+    Chipmunk,
+    Echo,
+    Robot,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -786,8 +927,26 @@ pub enum TransitionKind {
     FadeBlack,
     WipeLeft,
     WipeRight,
+    WipeUp,
+    WipeDown,
+    SmoothLeft,
+    SmoothRight,
+    SmoothUp,
+    SmoothDown,
     SlideLeft,
     SlideRight,
+    SlideUp,
+    SlideDown,
+    CircleOpen,
+    CircleClose,
+    WipeTopLeft,
+    WipeTopRight,
+    WipeBottomLeft,
+    WipeBottomRight,
+    VerticalOpen,
+    VerticalClose,
+    HorizontalOpen,
+    HorizontalClose,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -970,6 +1129,15 @@ impl Composition {
                         clip.opacity.validate()?;
                         clip.audio_gain.validate()?;
                         clip.audio_pan.validate()?;
+                        if clip
+                            .effects
+                            .iter()
+                            .filter(|effect| matches!(effect, VideoEffect::Style { .. }))
+                            .count()
+                            > MAX_STYLE_EFFECTS_PER_CLIP
+                        {
+                            return Err(CompositionError::InvalidEffect);
+                        }
                         for effect in &clip.effects {
                             effect.validate()?;
                         }
@@ -992,15 +1160,27 @@ impl Composition {
                         )?;
                         clip.gain.validate()?;
                         clip.pan.validate()?;
+                        if !clip.pitch_semitones.is_finite()
+                            || !(-12.0..=12.0).contains(&clip.pitch_semitones)
+                        {
+                            return Err(CompositionError::InvalidAudioPitch);
+                        }
+                        if !clip.tone_db.is_finite() || !(-12.0..=12.0).contains(&clip.tone_db) {
+                            return Err(CompositionError::InvalidAudioTone);
+                        }
                         let duration = clip.placement.timeline_duration_ticks()?;
                         if clip.fade_in_ticks > duration || clip.fade_out_ticks > duration {
                             return Err(CompositionError::InvalidAudioFade);
+                        }
+                        if let Some(ducking) = clip.ducking {
+                            ducking.validate()?;
                         }
                         if !clip_ids.insert(&clip.id) {
                             return Err(CompositionError::DuplicateClip(clip.id.clone()));
                         }
                         output_end = output_end.max(clip.placement.timeline_end_tick()?);
                     }
+                    validate_audio_crossfades(clips, &self.sources)?;
                 }
                 CompositionTrack::Image { clips, hidden, .. } => {
                     if !hidden {
@@ -1067,6 +1247,39 @@ impl Composition {
         Ok(())
     }
 
+    /// Whether this already-validated document needs a source-derived canvas.
+    pub fn requires_canvas_blur(&self) -> bool {
+        self.canvas.background_mode == CanvasBackgroundMode::Blur
+    }
+
+    pub fn required_style_effect_filters(&self) -> BTreeSet<&'static str> {
+        self.tracks
+            .iter()
+            .filter_map(|track| match track {
+                CompositionTrack::Video {
+                    hidden: false,
+                    clips,
+                    ..
+                } => Some(clips),
+                _ => None,
+            })
+            .flat_map(|clips| clips.iter().filter(|clip| clip.enabled))
+            .flat_map(|clip| clip.effects.iter())
+            .filter_map(|effect| match effect {
+                VideoEffect::Style { preset, .. } => Some(match preset {
+                    VideoEffectPreset::Blur => "gblur",
+                    VideoEffectPreset::Pixelate => "pixelize",
+                    VideoEffectPreset::Vignette => "vignette",
+                    VideoEffectPreset::Sharpen => "unsharp",
+                    VideoEffectPreset::Edge => "edgedetect",
+                    VideoEffectPreset::RgbSplit => "rgbashift",
+                    VideoEffectPreset::Posterize => "elbg",
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Whether this already-validated document needs the optional FFmpeg
     /// optical-flow pipeline for its active render graph.
     pub fn requires_optical_flow(&self) -> bool {
@@ -1101,9 +1314,25 @@ impl Composition {
         })
     }
 
-    /// Whether the primary embedded source-audio graph needs `areverse`.
-    /// Overlay video never contributes embedded audio.
+    /// Whether an audible independent or primary embedded source-audio graph needs `areverse`.
+    /// Overlay video never contributes embedded audio; muted/non-solo tracks are ignored.
     pub fn requires_reverse_audio(&self) -> bool {
+        let has_solo = self.tracks.iter().any(|track| {
+            matches!(
+                track,
+                CompositionTrack::Audio {
+                    muted: false,
+                    solo: true,
+                    ..
+                }
+            )
+        });
+        if self.tracks.iter().any(|track| {
+            matches!(track, CompositionTrack::Audio { muted: false, solo, clips, .. }
+                if (!has_solo || *solo) && clips.iter().any(|clip| clip.enabled && clip.reversed))
+        }) {
+            return true;
+        }
         let primary = self.tracks.iter().rev().find(|track| match track {
             CompositionTrack::Video {
                 hidden: false,
@@ -1221,6 +1450,85 @@ impl Composition {
             })
         );
         primary_audio || self.active_audio_speed_ramp()
+    }
+
+    pub fn requires_audio_ducking(&self) -> bool {
+        let has_solo = self.tracks.iter().any(|track| {
+            matches!(
+                track,
+                CompositionTrack::Audio {
+                    muted: false,
+                    solo: true,
+                    ..
+                }
+            )
+        });
+        self.tracks.iter().any(|track| {
+            matches!(track,
+            CompositionTrack::Audio { muted: false, solo, clips, .. }
+                if (!has_solo || *solo)
+                    && clips.iter().any(|clip| clip.enabled && clip.ducking.is_some()))
+        })
+    }
+
+    pub fn requires_audio_echo(&self) -> bool {
+        let has_solo = self.tracks.iter().any(|track| {
+            matches!(
+                track,
+                CompositionTrack::Audio {
+                    muted: false,
+                    solo: true,
+                    ..
+                }
+            )
+        });
+        self.tracks.iter().any(|track| {
+            matches!(track,
+            CompositionTrack::Audio { muted: false, solo, clips, .. }
+                if (!has_solo || *solo) && clips.iter().any(|clip| {
+                    clip.enabled && clip.voice_effect == AudioVoiceEffect::Echo
+                }))
+        })
+    }
+
+    pub fn requires_audio_robot(&self) -> bool {
+        let has_solo = self.tracks.iter().any(|track| {
+            matches!(
+                track,
+                CompositionTrack::Audio {
+                    muted: false,
+                    solo: true,
+                    ..
+                }
+            )
+        });
+        self.tracks.iter().any(|track| {
+            matches!(track,
+            CompositionTrack::Audio { muted: false, solo, clips, .. }
+                if (!has_solo || *solo) && clips.iter().any(|clip| {
+                    clip.enabled && clip.voice_effect == AudioVoiceEffect::Robot
+                }))
+        })
+    }
+
+    pub fn requires_audio_tone(&self) -> bool {
+        let has_solo = self.tracks.iter().any(|track| {
+            matches!(
+                track,
+                CompositionTrack::Audio {
+                    muted: false,
+                    solo: true,
+                    ..
+                }
+            )
+        });
+        self.tracks.iter().any(|track| {
+            matches!(track,
+            CompositionTrack::Audio { muted: false, solo, clips, .. }
+                if (!has_solo || *solo) && clips.iter().any(|clip| {
+                    clip.enabled && clip.tone_db != 0.0
+                }))
+        })
     }
 
     fn active_audio_speed_ramp(&self) -> bool {
@@ -1392,6 +1700,64 @@ fn validate_transitions(
     Ok(())
 }
 
+fn validate_audio_crossfades(
+    clips: &[AudioClip],
+    sources: &BTreeMap<SourceId, CompositionSource>,
+) -> Result<(), CompositionError> {
+    let mut ordered: Vec<_> = clips.iter().collect();
+    ordered.sort_by_key(|clip| (clip.placement.timeline_start_tick, clip.id.as_str()));
+    let mut head_occupancy = vec![0_u64; ordered.len()];
+    let mut tail_occupancy = vec![0_u64; ordered.len()];
+    for index in 0..ordered.len() {
+        let clip = ordered[index];
+        let duration = clip.crossfade_in_ticks;
+        if duration == 0 {
+            continue;
+        }
+        let Some(previous) = index.checked_sub(1).map(|position| ordered[position]) else {
+            return Err(CompositionError::InvalidAudioCrossfade(clip.id.clone()));
+        };
+        if previous.placement.timeline_end_tick()? != clip.placement.timeline_start_tick
+            || previous.placement.speed_ramp.is_some()
+            || clip.placement.speed_ramp.is_some()
+            || previous.reversed
+            || clip.reversed
+            || !matches!(previous.gain, AnimatableValue::Constant { .. })
+            || !matches!(previous.pan, AnimatableValue::Constant { .. })
+            || !matches!(clip.gain, AnimatableValue::Constant { .. })
+            || !matches!(clip.pan, AnimatableValue::Constant { .. })
+            || previous.fade_out_ticks > 0
+            || clip.fade_in_ticks > 0
+        {
+            return Err(CompositionError::InvalidAudioCrossfade(clip.id.clone()));
+        }
+        let before = duration / 2;
+        let after = duration - before;
+        let previous_tail = (after as f64 * previous.placement.speed).round() as u64;
+        let current_head = (before as f64 * clip.placement.speed).round() as u64;
+        if sources[&previous.source_id]
+            .duration_ticks
+            .saturating_sub(previous.placement.source_out_tick)
+            < previous_tail
+            || clip.placement.source_in_tick < current_head
+        {
+            return Err(CompositionError::InvalidAudioCrossfade(clip.id.clone()));
+        }
+        tail_occupancy[index - 1] = before;
+        head_occupancy[index] = after;
+    }
+    for (index, clip) in ordered.iter().enumerate() {
+        if head_occupancy[index]
+            .checked_add(tail_occupancy[index])
+            .ok_or_else(|| CompositionError::InvalidAudioCrossfade(clip.id.clone()))?
+            > clip.placement.timeline_duration_ticks()?
+        {
+            return Err(CompositionError::InvalidAudioCrossfade(clip.id.clone()));
+        }
+    }
+    Ok(())
+}
+
 fn default_true() -> bool {
     true
 }
@@ -1402,6 +1768,27 @@ fn default_audio_gain() -> AnimatableValue {
 
 fn default_audio_pan() -> AnimatableValue {
     AnimatableValue::constant(0.0)
+}
+
+fn default_mask_rotation() -> AnimatableValue {
+    AnimatableValue::constant(0.0)
+}
+
+fn deserialize_animatable_or_number<'de, D>(deserializer: D) -> Result<AnimatableValue, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum CompatibleValue {
+        Animatable(AnimatableValue),
+        Number(f64),
+    }
+
+    Ok(match CompatibleValue::deserialize(deserializer)? {
+        CompatibleValue::Animatable(value) => value,
+        CompatibleValue::Number(value) => AnimatableValue::constant(value),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1422,6 +1809,10 @@ pub enum CompositionError {
     InvalidEffect,
     InvalidText,
     InvalidAudioFade,
+    InvalidAudioCrossfade(CompositionClipId),
+    InvalidAudioDucking,
+    InvalidAudioPitch,
+    InvalidAudioTone,
     InvalidFrameInterpolation(CompositionClipId),
     InvalidPlaybackMode(CompositionClipId),
     InvalidStabilization,
@@ -1554,6 +1945,14 @@ mod tests {
             transitions: Vec::new(),
         }];
         let mut wire = serde_json::to_value(&composition).unwrap();
+        wire["canvas"]
+            .as_object_mut()
+            .unwrap()
+            .remove("backgroundMode");
+        wire["canvas"]
+            .as_object_mut()
+            .unwrap()
+            .remove("backgroundBlur");
         let track = wire["tracks"][0].as_object_mut().unwrap();
         track.remove("muted");
         let clip = track["clips"][0].as_object_mut().unwrap();
@@ -1575,6 +1974,8 @@ mod tests {
         assert_eq!(clips[0].frame_interpolation, FrameInterpolation::Duplicate);
         assert_eq!(clips[0].playback_mode, PlaybackMode::Forward);
         assert_eq!(clips[0].stabilization, StabilizationSpec::Disabled);
+        assert_eq!(decoded.canvas.background_mode, CanvasBackgroundMode::Color);
+        assert_eq!(decoded.canvas.background_blur, 24.0);
         decoded.validate().unwrap();
     }
 
@@ -1831,8 +2232,14 @@ mod tests {
                 },
                 gain: AnimatableValue::constant(1.0),
                 pan: AnimatableValue::constant(0.0),
+                reversed: false,
                 fade_in_ticks: 0,
                 fade_out_ticks: 0,
+                voice_effect: AudioVoiceEffect::None,
+                pitch_semitones: 0.0,
+                tone_db: 0.0,
+                crossfade_in_ticks: 0,
+                ducking: None,
                 enabled: true,
             }],
         }];
@@ -1886,6 +2293,7 @@ mod tests {
             y: AnimatableValue::constant(0.25),
             width: AnimatableValue::constant(1.5),
             height: AnimatableValue::constant(0.75),
+            rotation_degrees: AnimatableValue::constant(30.0),
             feather: 0.2,
             inverted: true,
         };
@@ -1895,10 +2303,33 @@ mod tests {
         assert_eq!(encoded["shape"], "ellipse");
         assert_eq!(encoded["x"]["mode"], "constant");
         assert_eq!(encoded["width"]["value"], 1.5);
+        assert_eq!(encoded["rotationDegrees"]["mode"], "constant");
+        assert_eq!(encoded["rotationDegrees"]["value"], 30.0);
         assert_eq!(
-            serde_json::from_value::<VideoEffect>(encoded).unwrap(),
+            serde_json::from_value::<VideoEffect>(encoded.clone()).unwrap(),
             effect
         );
+        let mut legacy = encoded;
+        legacy["rotationDegrees"] = serde_json::json!(30.0);
+        let VideoEffect::Mask {
+            rotation_degrees, ..
+        } = serde_json::from_value::<VideoEffect>(legacy).unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(rotation_degrees, AnimatableValue::constant(30.0));
+        let mut missing_rotation = serde_json::to_value(&effect).unwrap();
+        missing_rotation
+            .as_object_mut()
+            .unwrap()
+            .remove("rotationDegrees");
+        let VideoEffect::Mask {
+            rotation_degrees, ..
+        } = serde_json::from_value::<VideoEffect>(missing_rotation).unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(rotation_degrees, AnimatableValue::constant(0.0));
 
         for invalid in [
             VideoEffect::Mask {
@@ -1907,6 +2338,17 @@ mod tests {
                 y: AnimatableValue::constant(0.5),
                 width: AnimatableValue::constant(0.5),
                 height: AnimatableValue::constant(0.5),
+                rotation_degrees: AnimatableValue::constant(0.0),
+                feather: 0.0,
+                inverted: false,
+            },
+            VideoEffect::Mask {
+                shape: MaskShape::Ellipse,
+                x: AnimatableValue::constant(0.5),
+                y: AnimatableValue::constant(0.5),
+                width: AnimatableValue::constant(0.5),
+                height: AnimatableValue::constant(0.5),
+                rotation_degrees: AnimatableValue::constant(181.0),
                 feather: 0.0,
                 inverted: false,
             },
@@ -1916,12 +2358,54 @@ mod tests {
                 y: AnimatableValue::constant(0.5),
                 width: AnimatableValue::constant(0.0),
                 height: AnimatableValue::constant(0.5),
+                rotation_degrees: AnimatableValue::constant(0.0),
                 feather: 0.0,
                 inverted: false,
             },
         ] {
             assert_eq!(invalid.validate(), Err(CompositionError::InvalidEffect));
         }
+    }
+
+    #[test]
+    fn style_effect_wire_is_bounded_and_canonical() {
+        for preset in [
+            VideoEffectPreset::Blur,
+            VideoEffectPreset::Pixelate,
+            VideoEffectPreset::Vignette,
+            VideoEffectPreset::Sharpen,
+            VideoEffectPreset::Edge,
+            VideoEffectPreset::RgbSplit,
+            VideoEffectPreset::Posterize,
+        ] {
+            let effect = VideoEffect::Style {
+                preset,
+                intensity: 0.75,
+            };
+            effect.validate().unwrap();
+            let encoded = serde_json::to_value(&effect).unwrap();
+            assert_eq!(encoded["kind"], "style");
+            assert_eq!(
+                serde_json::from_value::<VideoEffect>(encoded).unwrap(),
+                effect
+            );
+        }
+        assert_eq!(
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Blur,
+                intensity: 0.0
+            }
+            .validate(),
+            Err(CompositionError::InvalidEffect)
+        );
+        assert_eq!(
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Edge,
+                intensity: f64::NAN
+            }
+            .validate(),
+            Err(CompositionError::InvalidEffect)
+        );
     }
 
     #[test]

@@ -2,11 +2,14 @@
 
 use axum::body::Body;
 use axum::extract::{Path as AxPath, Query, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Request, StatusCode};
 use axum::response::Response;
 use axum::Json;
 use serde::de::{Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 
 use crate::analysis::thumbnail::{
     infer_thumbnail_kind, ThumbnailKind, ThumbnailSource, FILMSTRIP_CELL_COUNT,
@@ -23,6 +26,178 @@ use crate::state::AppState;
 const IMMUTABLE_THUMBNAIL_CACHE: &str = "public, max-age=31536000, immutable";
 const MAX_THUMBNAIL_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_FILMSTRIP_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+
+pub async fn source_file_handler(
+    State(state): State<AppState>,
+    AxPath(filename): AxPath<String>,
+    request: Request<Body>,
+) -> AppResult<Response> {
+    let path = std::path::Path::new(&filename);
+    if filename.is_empty()
+        || path.components().count() != 1
+        || !matches!(
+            path.components().next(),
+            Some(std::path::Component::Normal(_))
+        )
+    {
+        return Err(AppError::not_found("Медиафайл не найден"));
+    }
+    let source_path = if let Some(entry) = state.library.get_by_filename(&filename).await {
+        authorize_source_access(&state, &entry.id, request.headers()).await?;
+        let current = state.library.get(&entry.id).await.unwrap_or(entry);
+        state
+            .library
+            .resolve_media_path(&current)
+            .await
+            .map_err(|_| AppError::not_found("Медиафайл не найден"))?
+    } else {
+        state.sources_dir().join(&filename)
+    };
+    ServeFile::new(source_path)
+        .oneshot(request)
+        .await
+        .map(|response| response.map(Body::new))
+        .map_err(|error| AppError::internal("serve source file", error))
+}
+
+pub(super) async fn authorize_source_access(
+    state: &AppState,
+    source_id: &str,
+    headers: &HeaderMap,
+) -> AppResult<()> {
+    let Some(space_id) = state
+        .db
+        .source_space_id(source_id)
+        .await
+        .map_err(|error| AppError::internal("resolve source space", error))?
+    else {
+        return Ok(());
+    };
+    let token = source_session_token(headers)
+        .ok_or_else(|| AppError::unauthorized("Требуется сессия для Space media"))?;
+    let user = state
+        .db
+        .resolve_auth_session(token)
+        .await
+        .map_err(|error| AppError::internal("authenticate source request", error))?
+        .ok_or_else(|| AppError::unauthorized("Сессия недействительна или истекла"))?;
+    if state
+        .db
+        .is_space_member(&space_id, &user.username)
+        .await
+        .map_err(|error| AppError::internal("authorize source request", error))?
+    {
+        state
+            .library
+            .relocate_source_to_space(source_id, &space_id)
+            .await
+            .map_err(|error| AppError::internal("isolate Space source", error))?;
+        Ok(())
+    } else {
+        Err(AppError::forbidden("Нет доступа к Space media"))
+    }
+}
+
+fn source_session_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .or_else(|| {
+            headers
+                .get(header::COOKIE)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|cookies| {
+                    cookies
+                        .split(';')
+                        .map(str::trim)
+                        .find_map(|cookie| cookie.strip_prefix("video_kadr_session="))
+                })
+        })
+}
+
+struct LibraryVisibility {
+    all_scoped_sources: HashSet<String>,
+    visible_scoped_sources: HashSet<String>,
+    selected_space: bool,
+}
+
+impl LibraryVisibility {
+    fn allows(&self, id: &str, kind: &str) -> bool {
+        if kind != "source" {
+            return !self.selected_space;
+        }
+        if self.selected_space {
+            self.visible_scoped_sources.contains(id)
+        } else {
+            !self.all_scoped_sources.contains(id) || self.visible_scoped_sources.contains(id)
+        }
+    }
+}
+
+async fn library_visibility(state: &AppState, headers: &HeaderMap) -> AppResult<LibraryVisibility> {
+    let selected_space = headers
+        .get("x-space-id")
+        .map(|value| {
+            value
+                .to_str()
+                .map(str::trim)
+                .map_err(|_| AppError::bad_request("Некорректный X-Space-Id"))
+        })
+        .transpose()?
+        .filter(|value| !value.is_empty());
+    let token = source_session_token(headers);
+    let actor = if let Some(token) = token {
+        Some(
+            state
+                .db
+                .resolve_auth_session(token)
+                .await
+                .map_err(|error| AppError::internal("authenticate library request", error))?
+                .ok_or_else(|| AppError::unauthorized("Сессия недействительна или истекла"))?
+                .username,
+        )
+    } else {
+        None
+    };
+
+    let all_scoped_sources = state
+        .db
+        .all_space_source_ids()
+        .await
+        .map_err(|error| AppError::internal("list scoped library sources", error))?;
+    let visible_scoped_sources = if let Some(space_id) = selected_space {
+        let actor = actor
+            .as_deref()
+            .ok_or_else(|| AppError::unauthorized("Требуется сессия для Space media"))?;
+        if !state
+            .db
+            .is_space_member(space_id, actor)
+            .await
+            .map_err(|error| AppError::internal("authorize library space", error))?
+        {
+            return Err(AppError::forbidden("Нет доступа к Space media"));
+        }
+        state
+            .db
+            .space_source_ids(space_id)
+            .await
+            .map_err(|error| AppError::internal("list space library sources", error))?
+    } else if let Some(actor) = actor {
+        state
+            .db
+            .accessible_space_source_ids(&actor)
+            .await
+            .map_err(|error| AppError::internal("list accessible library sources", error))?
+    } else {
+        HashSet::new()
+    };
+    Ok(LibraryVisibility {
+        all_scoped_sources,
+        visible_scoped_sources,
+        selected_space: selected_space.is_some(),
+    })
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,7 +229,9 @@ impl LibraryEntryResponse {
 /// `GET /api/library` — list persisted sources and outputs, newest first.
 pub async fn library_list_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> AppResult<Json<Vec<LibraryEntryResponse>>> {
+    let visibility = library_visibility(&state, &headers).await?;
     let entries = state.library.list().await;
     let mut metadata = state
         .db
@@ -64,6 +241,7 @@ pub async fn library_list_handler(
     Ok(Json(
         entries
             .into_iter()
+            .filter(|entry| visibility.allows(&entry.id, &entry.kind))
             .map(|entry| {
                 let item_metadata = metadata.remove(&entry.id);
                 LibraryEntryResponse::new(entry, item_metadata)
@@ -82,12 +260,20 @@ pub struct LibrarySearchQuery {
 pub async fn library_search_handler(
     State(state): State<AppState>,
     Query(query): Query<LibrarySearchQuery>,
+    headers: HeaderMap,
 ) -> AppResult<Json<Vec<crate::ports::SearchHit>>> {
-    let hits = state
+    let visibility = library_visibility(&state, &headers).await?;
+    if query.limit == 0 {
+        return Ok(Json(Vec::new()));
+    }
+    let requested_limit = query.limit.min(100) as usize;
+    let mut hits = state
         .media_search
-        .search(&query.q, query.limit)
+        .search(&query.q, 100)
         .await
         .map_err(|error| AppError::internal("search media library", error))?;
+    hits.retain(|hit| visibility.allows(&hit.id, &hit.kind));
+    hits.truncate(requested_limit);
     Ok(Json(hits))
 }
 
@@ -97,7 +283,9 @@ pub async fn library_search_handler(
 pub async fn library_thumbnail_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
 ) -> AppResult<Response> {
+    authorize_source_access(&state, &id, &headers).await?;
     let source = thumbnail_source(&state, &id).await?;
     ensure_thumbnail_support(&state, source.kind)?;
     let key = state
@@ -126,6 +314,7 @@ pub async fn library_thumbnail_version_handler(
     AxPath((id, key)): AxPath<(String, String)>,
     headers: HeaderMap,
 ) -> AppResult<Response> {
+    authorize_source_access(&state, &id, &headers).await?;
     if !is_sha256(&key) {
         return Err(AppError::bad_request("Некорректный ключ предпросмотра"));
     }
@@ -188,7 +377,9 @@ pub async fn library_thumbnail_version_handler(
 pub async fn library_filmstrip_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
 ) -> AppResult<Response> {
+    authorize_source_access(&state, &id, &headers).await?;
     let source = filmstrip_source(&state, &id).await?;
     ensure_filmstrip_support(&state)?;
     let key = state
@@ -215,6 +406,7 @@ pub async fn library_filmstrip_version_handler(
     AxPath((id, key)): AxPath<(String, String)>,
     headers: HeaderMap,
 ) -> AppResult<Response> {
+    authorize_source_access(&state, &id, &headers).await?;
     if !is_sha256(&key) {
         return Err(AppError::bad_request("Некорректный ключ раскадровки"));
     }
@@ -470,8 +662,10 @@ pub struct LibraryMetadataPatch {
 pub async fn library_metadata_put_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
     crate::error::ApiJson(payload): crate::error::ApiJson<LibraryMetadataPut>,
 ) -> AppResult<Json<LibraryEntryResponse>> {
+    authorize_source_access(&state, &id, &headers).await?;
     let entry = state
         .library
         .get(&id)
@@ -490,8 +684,10 @@ pub async fn library_metadata_put_handler(
 pub async fn library_metadata_patch_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
     crate::error::ApiJson(payload): crate::error::ApiJson<LibraryMetadataPatch>,
 ) -> AppResult<Json<LibraryEntryResponse>> {
+    authorize_source_access(&state, &id, &headers).await?;
     let entry = state
         .library
         .get(&id)
@@ -543,7 +739,9 @@ fn validate_tags(tags: Vec<String>) -> AppResult<Vec<String>> {
 pub async fn library_delete_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
 ) -> AppResult<StatusCode> {
+    authorize_source_access(&state, &id, &headers).await?;
     let entry = state.library.get(&id).await;
     if entry.as_ref().is_some_and(|entry| entry.kind == "source") {
         let references = state
@@ -559,6 +757,13 @@ pub async fn library_delete_handler(
         super::proxy::cleanup_source_proxies(&state, &id).await?;
     }
     if state.library.remove(&id).await {
+        if entry.as_ref().is_some_and(|entry| entry.kind == "source") {
+            state
+                .db
+                .release_space_source_claim(&id)
+                .await
+                .map_err(|error| AppError::internal("release source space claim", error))?;
+        }
         if let Err(error) = state.thumbnail_service.remove_source(&id).await {
             tracing::warn!(media.id = %id, %error, "remove thumbnail cache");
         }
@@ -572,6 +777,11 @@ pub async fn library_delete_handler(
         }
         if let Some(entry) = entry.filter(|e| e.kind == "output") {
             let _ = state.db.cache_delete_filename(&entry.filename).await;
+            state
+                .db
+                .revoke_output_access(&entry.id)
+                .await
+                .map_err(|error| AppError::internal("revoke output access", error))?;
         }
         Ok(StatusCode::NO_CONTENT)
     } else {

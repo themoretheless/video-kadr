@@ -10,6 +10,7 @@ use crate::jobs::QueueLimits;
 use crate::process_control::{
     IsolationTier, KernelLimits, OutputBudget, ProcessRuntime, ProcessRuntimeConfig, SandboxBackend,
 };
+use crate::youtube::{validate_redirect_uri, YouTubeOAuthConfig};
 use encode_budget::{EncodeBudget, EncodeProfile, RuntimeLimits};
 use resource_classes::ResourceClassLimits;
 
@@ -96,6 +97,10 @@ impl Default for WorkloadConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppConfig {
     pub storage: PathBuf,
+    pub object_store_url: Option<String>,
+    pub pexels_api_key: Option<String>,
+    pub youtube_oauth: Option<YouTubeOAuthConfig>,
+    pub youtube_token_key: Option<[u8; 32]>,
     pub max_concurrent_jobs: usize,
     pub resource_classes: ResourceClassLimits,
     pub max_upload_bytes: usize,
@@ -130,6 +135,39 @@ impl AppConfig {
             .filter(|value| !value.trim().is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("storage"));
+        let object_store_url = lookup("OBJECT_STORE_URL")
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        if let Some(raw_url) = object_store_url.as_deref() {
+            let url = url::Url::parse(raw_url).context("OBJECT_STORE_URL must be a valid URL")?;
+            if url.scheme() != "s3" || url.host_str().is_none() {
+                return Err(anyhow!("OBJECT_STORE_URL must use s3://bucket[/prefix]"));
+            }
+        }
+        let pexels_api_key = lookup("PEXELS_API_KEY")
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        let youtube_values = [
+            lookup("YOUTUBE_CLIENT_ID").filter(|value| !value.trim().is_empty()),
+            lookup("YOUTUBE_CLIENT_SECRET").filter(|value| !value.trim().is_empty()),
+            lookup("YOUTUBE_REDIRECT_URI").filter(|value| !value.trim().is_empty()),
+            lookup("YOUTUBE_TOKEN_KEY").filter(|value| !value.trim().is_empty()),
+        ];
+        let (youtube_oauth, youtube_token_key) = match youtube_values {
+            [None, None, None, None] => (None, None),
+            [Some(client_id), Some(client_secret), Some(redirect_uri), Some(token_key)] => {
+                validate_redirect_uri(redirect_uri.trim())?;
+                (
+                    Some(YouTubeOAuthConfig {
+                        client_id: client_id.trim().into(),
+                        client_secret: client_secret.trim().into(),
+                        redirect_uri: redirect_uri.trim().into(),
+                    }),
+                    Some(parse_hex_key("YOUTUBE_TOKEN_KEY", token_key.trim())?),
+                )
+            }
+            _ => return Err(anyhow!("YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REDIRECT_URI and YOUTUBE_TOKEN_KEY must be configured together")),
+        };
         let max_concurrent_jobs =
             positive_usize("MAX_CONCURRENT_JOBS", lookup("MAX_CONCURRENT_JOBS"), 2)?;
         let resource_classes = ResourceClassLimits {
@@ -298,6 +336,10 @@ impl AppConfig {
 
         Ok(Self {
             storage,
+            object_store_url,
+            pexels_api_key,
+            youtube_oauth,
+            youtube_token_key,
             max_concurrent_jobs,
             resource_classes,
             max_upload_bytes,
@@ -312,6 +354,20 @@ impl AppConfig {
             console,
         })
     }
+}
+
+fn parse_hex_key(name: &str, value: &str) -> Result<[u8; 32]> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(anyhow!(
+            "{name} must contain exactly 64 hexadecimal characters"
+        ));
+    }
+    let mut key = [0_u8; 32];
+    for (index, slot) in key.iter_mut().enumerate() {
+        *slot = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
+            .with_context(|| format!("parse {name}"))?;
+    }
+    Ok(key)
 }
 
 fn normalize_cors_origin(origin: &str) -> Result<String> {
@@ -403,6 +459,10 @@ mod tests {
     fn defaults_are_local_and_resource_bounded() {
         let value = config(&[]).unwrap();
         assert_eq!(value.storage, PathBuf::from("storage"));
+        assert_eq!(value.object_store_url, None);
+        assert_eq!(value.pexels_api_key, None);
+        assert_eq!(value.youtube_oauth, None);
+        assert_eq!(value.youtube_token_key, None);
         assert_eq!(value.bind_addr, IpAddr::from([127, 0, 0, 1]));
         assert_eq!(value.port, 8080);
         assert!(value.encode_budget.threads <= 8);
@@ -416,6 +476,54 @@ mod tests {
             value.cors_origins.iter().collect::<Vec<_>>(),
             LOCAL_CORS_ORIGINS
         );
+    }
+
+    #[test]
+    fn youtube_oauth_is_all_or_none_and_requires_safe_redirect() {
+        assert!(config(&[("YOUTUBE_CLIENT_ID", "id")]).is_err());
+        assert!(config(&[
+            ("YOUTUBE_CLIENT_ID", "id"),
+            ("YOUTUBE_CLIENT_SECRET", "secret"),
+            ("YOUTUBE_REDIRECT_URI", "http://example.test/callback"),
+            (
+                "YOUTUBE_TOKEN_KEY",
+                "0000000000000000000000000000000000000000000000000000000000000000"
+            ),
+        ])
+        .is_err());
+        let value = config(&[
+            ("YOUTUBE_CLIENT_ID", "id"),
+            ("YOUTUBE_CLIENT_SECRET", "secret"),
+            (
+                "YOUTUBE_REDIRECT_URI",
+                "http://127.0.0.1:8080/api/publish/youtube/callback",
+            ),
+            (
+                "YOUTUBE_TOKEN_KEY",
+                "0101010101010101010101010101010101010101010101010101010101010101",
+            ),
+        ])
+        .unwrap();
+        assert_eq!(value.youtube_oauth.unwrap().client_id, "id");
+        assert_eq!(value.youtube_token_key, Some([1; 32]));
+        assert!(config(&[
+            ("YOUTUBE_CLIENT_ID", "id"),
+            ("YOUTUBE_CLIENT_SECRET", "secret"),
+            ("YOUTUBE_REDIRECT_URI", "https://example.test/callback"),
+            ("YOUTUBE_TOKEN_KEY", "short"),
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn validates_optional_s3_object_store_url() {
+        let value = config(&[("OBJECT_STORE_URL", "s3://media-bucket/video-kadr")]).unwrap();
+        assert_eq!(
+            value.object_store_url.as_deref(),
+            Some("s3://media-bucket/video-kadr")
+        );
+        assert!(config(&[("OBJECT_STORE_URL", "https://media.example.test")]).is_err());
+        assert!(config(&[("OBJECT_STORE_URL", "s3:///missing-bucket")]).is_err());
     }
 
     #[test]

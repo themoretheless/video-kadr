@@ -18,6 +18,7 @@ pub enum CompositionExportProfile {
     Mp4 { codec: CompositionMp4Codec },
     Webm { codec: CompositionWebmCodec },
     Mov { profile: CompositionProResProfile },
+    Audio { codec: CompositionAudioCodec },
 }
 
 impl Default for CompositionExportProfile {
@@ -55,6 +56,18 @@ impl CompositionExportProfile {
             Self::Mov {
                 profile: CompositionProResProfile::Hq,
             } => "mov/prores-hq",
+            Self::Audio {
+                codec: CompositionAudioCodec::Mp3,
+            } => "audio/mp3",
+            Self::Audio {
+                codec: CompositionAudioCodec::Wav,
+            } => "audio/wav",
+            Self::Audio {
+                codec: CompositionAudioCodec::Aac,
+            } => "audio/aac",
+            Self::Audio {
+                codec: CompositionAudioCodec::Flac,
+            } => "audio/flac",
         }
     }
 
@@ -63,11 +76,28 @@ impl CompositionExportProfile {
             Self::Mp4 { .. } => "mp4",
             Self::Webm { .. } => "webm",
             Self::Mov { .. } => "mov",
+            Self::Audio {
+                codec: CompositionAudioCodec::Mp3,
+            } => "mp3",
+            Self::Audio {
+                codec: CompositionAudioCodec::Wav,
+            } => "wav",
+            Self::Audio {
+                codec: CompositionAudioCodec::Aac,
+            } => "aac",
+            Self::Audio {
+                codec: CompositionAudioCodec::Flac,
+            } => "flac",
         }
     }
 
     pub fn muxer(self) -> &'static str {
-        self.extension()
+        match self {
+            Self::Audio {
+                codec: CompositionAudioCodec::Aac,
+            } => "adts",
+            _ => self.extension(),
+        }
     }
 
     pub fn video_codec(self) -> &'static str {
@@ -85,6 +115,7 @@ impl CompositionExportProfile {
                 codec: CompositionWebmCodec::Av1,
             } => "av1",
             Self::Mov { .. } => "prores",
+            Self::Audio { .. } => "none",
         }
     }
 
@@ -93,8 +124,33 @@ impl CompositionExportProfile {
             Self::Mp4 { .. } => "aac",
             Self::Webm { .. } => "opus",
             Self::Mov { .. } => "pcm_s16le",
+            Self::Audio {
+                codec: CompositionAudioCodec::Mp3,
+            } => "mp3",
+            Self::Audio {
+                codec: CompositionAudioCodec::Wav,
+            } => "pcm_s16le",
+            Self::Audio {
+                codec: CompositionAudioCodec::Aac,
+            } => "aac",
+            Self::Audio {
+                codec: CompositionAudioCodec::Flac,
+            } => "flac",
         }
     }
+
+    pub fn is_audio_only(self) -> bool {
+        matches!(self, Self::Audio { .. })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompositionAudioCodec {
+    Mp3,
+    Wav,
+    Aac,
+    Flac,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -152,7 +208,16 @@ impl CompositionAv1Encoder {
 pub struct CompositionExportSpec {
     pub profile: CompositionExportProfile,
     pub video_quality: u32,
+    pub video_bitrate_kbps: Option<u32>,
     pub av1_encoder: Option<CompositionAv1Encoder>,
+    pub range: Option<CompositionExportRange>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CompositionExportRange {
+    pub start_ticks: u64,
+    pub end_ticks: u64,
 }
 
 pub struct CompositionExportCompileRequest<'a> {

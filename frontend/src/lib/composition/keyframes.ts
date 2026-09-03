@@ -44,6 +44,7 @@ const MASK_PROPERTY_BOUNDS: Record<CompositionMaskProperty, VisualPropertyBounds
   y: { minimum: 0, maximum: 1, step: 0.01 },
   width: { minimum: 0.000_001, maximum: 2, step: 0.01 },
   height: { minimum: 0.000_001, maximum: 2, step: 0.01 },
+  rotationDegrees: { minimum: -180, maximum: 180, step: 1 },
 }
 
 export function visualPropertyBounds(property: CompositionVisualProperty): VisualPropertyBounds {
@@ -114,7 +115,7 @@ export function maskPropertyValue(
   mask: CompositionVideoMask,
   property: CompositionMaskProperty,
 ): CompositionAnimatableValue {
-  return mask[property]
+  return mask[property] ?? constantAnimatable(0)
 }
 
 export function sampleMaskProperty(

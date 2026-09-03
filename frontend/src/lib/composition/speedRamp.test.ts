@@ -5,6 +5,7 @@ import {
   sliceCompositionSpeedRamp,
   speedAtSourceProgress,
   speedRampSourceProgressAtTimelineTick,
+  speedRampTimelineTickAtSourceProgress,
   speedRampTimelineDurationTicks,
 } from './speedRamp'
 
@@ -65,6 +66,9 @@ describe('composition speed ramp timing', () => {
     expect(speedRampSourceProgressAtTimelineTick(2 * second, 0.5, ramp, 0)).toBe(0)
     expect(speedRampSourceProgressAtTimelineTick(2 * second, 0.5, ramp, 1_386_294)).toBe(second)
     expect(speedRampSourceProgressAtTimelineTick(2 * second, 0.5, ramp, 2_079_442)).toBe(2 * second)
+    expect(speedRampTimelineTickAtSourceProgress(2 * second, 0.5, ramp, 0)).toBe(0)
+    expect(speedRampTimelineTickAtSourceProgress(2 * second, 0.5, ramp, second)).toBe(1_386_294)
+    expect(speedRampTimelineTickAtSourceProgress(2 * second, 0.5, ramp, 2 * second)).toBe(2_079_442)
   })
 
   it('interpolates trim boundaries and rebases a sliced curve', () => {

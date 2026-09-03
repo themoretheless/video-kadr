@@ -36,10 +36,12 @@ describe('browser tracking frame sampler', () => {
       paused = false
       removed = false
       loads = 0
+      seeks: number[] = []
       private time = 0
       get currentTime(): number { return this.time }
       set currentTime(value: number) {
         this.time = value
+        this.seeks.push(value)
         queueMicrotask(() => this.dispatchEvent(new Event('seeked')))
       }
       load(): void {
@@ -52,17 +54,23 @@ describe('browser tracking frame sampler', () => {
     const video = new FakeVideo()
     const context = {
       drawImage: () => undefined,
-      getImageData: () => ({ data: new Uint8ClampedArray([
-        255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
-        0, 0, 0, 255, 10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255,
-      ]) }),
+      getImageData: () => {
+        const data = new Uint8ClampedArray([
+          255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+          0, 0, 0, 255, 10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255,
+        ])
+        data[0] = Math.round(video.currentTime * 100)
+        data[1] = data[0]
+        data[2] = data[0]
+        return { data }
+      },
     }
     const canvas = {
       width: 0,
       height: 0,
       getContext: () => context,
     }
-    const result = await sampleBrowserVideoLumaFrames('/files/sources/source.mp4', [0, 0.5], {
+    const result = await sampleBrowserVideoLumaFrames('/files/sources/source.mp4', [1.5, 0.5], {
       origin: 'https://editor.test',
       maxWidth: 4,
       maxHeight: 2,
@@ -70,7 +78,8 @@ describe('browser tracking frame sampler', () => {
       createCanvas: () => canvas as unknown as HTMLCanvasElement,
     })
     expect(result.frames).toHaveLength(2)
-    expect([...result.frames[0]!.data.slice(0, 4)]).toEqual([76, 150, 29, 255])
+    expect(result.frames.map((frame) => frame.data[0])).toEqual([150, 50])
+    expect(video.seeks).toEqual([0.5, 1.5])
     expect(result.sampleToSourceScaleX).toBe(1)
     expect(video.paused).toBe(true)
     expect(video.removed).toBe(true)

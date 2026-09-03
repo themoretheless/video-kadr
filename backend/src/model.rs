@@ -247,7 +247,7 @@ pub struct EditRequest {
     #[serde(default)]
     pub pad: Option<String>,
     // --- round 3 export options ---
-    /// Output format: "mp4" (default) | "webm" | "gif" | "png" | "mp3".
+    /// Output format: "mp4" (default) | "webm" | "gif" | "png" | "mp3" | "wav".
     #[serde(default)]
     pub format: Option<String>,
     /// Video codec for mp4: "h264" (default) | "h265".

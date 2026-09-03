@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
   import {
     compositionProjectArchiveUrl,
     importCompositionProjectArchive,
     MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES,
+    subscribeCompositionProjectChanges,
   } from '$lib/api.js'
+  import type { ReviewThreadDto } from '$lib/api.js'
   import CapturePanel from '$lib/capture/CapturePanel.svelte'
   import type { CaptureRuntime } from '$lib/capture/types.js'
   import VoiceoverPanel from '$lib/audio/VoiceoverPanel.svelte'
@@ -19,15 +20,23 @@
     loadCompositionProjects,
     newComposition,
     openCompositionProject,
+    refreshOpenCompositionProject,
+    refreshCompositionProjects,
     saveCompositionProject,
     setCompositionProjectName,
     syncCompositionLibrary,
   } from '$lib/state/composition.svelte.js'
   import { doUpload, loadLibrary, state as legacyState } from '$lib/state/store.svelte.js'
+  import { authState, logout } from '$lib/state/auth.svelte.js'
+  import { spacesState } from '$lib/state/spaces.svelte.js'
+  import AuthPanel from '$lib/components/review/AuthPanel.svelte'
+  import SpacePanel from '$lib/components/collaboration/SpacePanel.svelte'
   import CompositionLocalTools from './CompositionLocalTools.svelte'
   import CompositionInspector from './CompositionInspector.svelte'
   import CompositionPreview from './CompositionPreview.svelte'
+  import CompositionReviewPanel from './CompositionReviewPanel.svelte'
   import MultiTrackTimeline from './MultiTrackTimeline.svelte'
+  import YouTubePublishPanel from './YouTubePublishPanel.svelte'
 
   interface Props {
     captureRuntime?: CaptureRuntime
@@ -62,9 +71,44 @@
   let archiveBusy = $state(false)
   let archiveMessage = $state('')
   let archiveError = $state('')
+  let reviewThreads = $state<ReviewThreadDto[]>([])
+
+  $effect(() => {
+    const projectId = compositionState.projectId
+    const token = authState.token
+    if (!projectId || !token) return
+    const timer = window.setInterval(() => void refreshOpenCompositionProject(), 5_000)
+    return () => window.clearInterval(timer)
+  })
+
+  $effect(() => {
+    const token = authState.token
+    if (!token) return
+    const timer = window.setInterval(() => void refreshCompositionProjects(), 10_000)
+    return () => window.clearInterval(timer)
+  })
+
+  $effect(() => {
+    const token = authState.token
+    if (!token || typeof EventSource === 'undefined') return
+    return subscribeCompositionProjectChanges(() => {
+      void refreshCompositionProjects()
+      void refreshOpenCompositionProject()
+    })
+  })
+  let loadedProjectsForToken = $state<string | null>(null)
 
   $effect(() => syncCompositionLibrary(legacyState.library, legacyState.librarySnapshotReady))
-  onMount(() => { void loadCompositionProjects() })
+  $effect(() => {
+    const token = authState.token
+    if (token && loadedProjectsForToken !== token) {
+      loadedProjectsForToken = token
+      void loadCompositionProjects()
+    } else if (!token) {
+      loadedProjectsForToken = null
+      compositionState.projects = []
+    }
+  })
 
   function openSelected(event: Event): void {
     const id = (event.currentTarget as HTMLSelectElement).value
@@ -138,7 +182,7 @@
 
   function downloadProjectArchive(): void {
     const projectId = compositionState.projectId
-    if (!projectId || archiveBusy) return
+    if (!projectId || !authState.token || archiveBusy) return
     archiveError = ''
     archiveMessage = ''
     try {
@@ -153,7 +197,7 @@
     const input = event.currentTarget as HTMLInputElement
     const file = input.files?.[0]
     input.value = ''
-    if (!file || archiveBusy) return
+    if (!file || !authState.token || archiveBusy) return
     archiveBusy = true
     archiveError = ''
     archiveMessage = ''
@@ -161,7 +205,7 @@
       if (file.size > MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES) {
         throw new Error('Архив проекта превышает лимит 2 ГиБ')
       }
-      const imported = await importCompositionProjectArchive(file)
+      const imported = await importCompositionProjectArchive(file, authState.token, spacesState.selectedId || undefined)
       const [libraryLoaded] = await Promise.all([loadLibrary(), loadCompositionProjects()])
       await openCompositionProject(imported.project.id)
       syncCompositionLibrary(legacyState.library, libraryLoaded)
@@ -185,6 +229,11 @@
 </script>
 
 <main class="composition-workspace">
+  {#if !authState.token}
+    <AuthPanel />
+  {:else}
+    <SpacePanel onselectionchange={() => void loadLibrary()} />
+  {/if}
   <section class="composition-projectbar card" aria-label="Проект композиции">
     <input
       class="composition-project-name"
@@ -193,20 +242,24 @@
       oninput={(event) => setCompositionProjectName(event.currentTarget.value)}
     />
     <button class="btn ghost sm" disabled={compositionState.save.busy} onclick={() => newComposition()}>Новый</button>
-    <button class="btn primary sm" disabled={compositionState.save.busy} onclick={() => void saveCompositionProject()}>
+    <button class="btn primary sm" disabled={compositionState.save.busy || !authState.token} onclick={() => void saveCompositionProject()}>
       {compositionState.save.busy ? 'Сохраняю…' : compositionState.projectId ? 'Сохранить' : 'Создать проект'}
     </button>
-    <select aria-label="Сохранённые композиции" disabled={compositionState.save.busy} value={compositionState.projectId ?? ''} onchange={openSelected}>
+    <select aria-label="Сохранённые композиции" disabled={compositionState.save.busy || !authState.token} value={compositionState.projectId ?? ''} onchange={openSelected}>
       <option value="">Открыть проект…</option>
       {#each compositionState.projects as project (project.id)}
         <option value={project.id}>{project.name}</option>
       {/each}
     </select>
     {#if compositionState.projectId}
-      <button class="btn ghost sm" disabled={archiveBusy} onclick={downloadProjectArchive}>Экспорт .veproj</button>
-      <button class="btn ghost sm danger" disabled={compositionState.save.busy} onclick={() => void deleteCompositionProject(compositionState.projectId!)}>Удалить проект</button>
+      <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={downloadProjectArchive}>Экспорт .veproj</button>
+      <button class="btn ghost sm danger" disabled={compositionState.save.busy || !authState.token} onclick={() => void deleteCompositionProject(compositionState.projectId!)}>Удалить проект</button>
     {/if}
-    <button class="btn ghost sm" disabled={archiveBusy} onclick={() => archivePicker?.click()}>Импорт .veproj</button>
+    <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={() => archivePicker?.click()}>Импорт .veproj</button>
+    {#if authState.user}
+      <span class="composition-project-user">{authState.user.username}</span>
+      <button class="btn ghost sm" onclick={() => void logout()}>Выйти</button>
+    {/if}
     <input
       bind:this={archivePicker}
       class="composition-archive-picker"
@@ -274,8 +327,10 @@
     <CompositionPreview />
     <CompositionInspector />
   </div>
-  <MultiTrackTimeline />
+  <MultiTrackTimeline {reviewThreads} />
+  <CompositionReviewPanel onthreadschange={(threads) => { reviewThreads = threads }} />
   <CompositionLocalTools />
+  <YouTubePublishPanel />
 </main>
 
 <style>

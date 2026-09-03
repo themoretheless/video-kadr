@@ -1,9 +1,12 @@
 <script lang="ts">
   import TrimSlider from './TrimSlider.svelte'
+  import { detectAudibleRanges, DEFAULT_SILENCE_REMOVAL } from '$lib/audio/silence.js'
+  import { localWaveformCache, type LocalWaveformCache } from '$lib/audio/waveformCache.js'
   import type { TimelineSegment } from '$lib/types.js'
   import { shortcutAria, shortcutLabel } from '$lib/state/shortcuts.svelte.js'
   import {
     activateTimeline,
+    applyAudibleTimelineRanges,
     beginEditTransaction,
     deleteTimelineSegment,
     duplicateTimelineSegment,
@@ -19,6 +22,9 @@
     updateTimelineSegmentRange,
   } from '$lib/state/store.svelte.js'
 
+  interface Props { waveformCache?: Pick<LocalWaveformCache, 'load'> }
+  let { waveformCache = localWaveformCache }: Props = $props()
+
   let duration = $derived(appState.video?.duration ?? 0)
   let segments = $derived(appState.edit.timelineSegments)
   let selectedId = $derived(appState.timelineSelectedSegmentId ?? '')
@@ -27,6 +33,12 @@
   let totalDuration = $derived(totalTimelineDuration(segments))
   let playbackDuration = $derived(appState.edit.speed > 0 ? totalDuration / appState.edit.speed : totalDuration)
   let formatSupported = $derived(supportsTimelineFormat(appState.edit.format))
+  let silenceThresholdDb = $state(DEFAULT_SILENCE_REMOVAL.thresholdDb)
+  let minimumSilenceSeconds = $state(DEFAULT_SILENCE_REMOVAL.minimumSilenceSeconds)
+  let silencePaddingSeconds = $state(DEFAULT_SILENCE_REMOVAL.paddingSeconds)
+  let detectingSilence = $state(false)
+  let silenceMessage = $state('')
+  let silenceResultSignature = $state('')
   let canSplit = $derived.by(() => {
     const segment = selected
     return Boolean(
@@ -42,6 +54,14 @@
     const ids = appState.edit.timelineSegments.map((segment) => segment.id).join('|')
     if (!appState.edit.timelineEnabled) appState.timelineSelectedSegmentId = null
     else if (!ids.split('|').includes(selectedId)) appState.timelineSelectedSegmentId = appState.edit.timelineSegments[0]?.id ?? null
+  })
+
+  $effect(() => {
+    const signature = appState.edit.timelineSegments.map(({ start, end }) => `${start}:${end}`).join('|')
+    if (silenceMessage && silenceResultSignature && signature !== silenceResultSignature) {
+      silenceMessage = ''
+      silenceResultSignature = ''
+    }
   })
 
   function fmt(value: number): string {
@@ -89,6 +109,31 @@
     appState.edit.timelineSegments = appState.edit.timelineSegments.map((segment) =>
       segment.id === id ? { ...segment, ...patch } : segment,
     )
+  }
+  async function removeSilence(): Promise<void> {
+    const video = appState.video
+    if (!video || detectingSilence) return
+    detectingSilence = true
+    silenceMessage = ''
+    try {
+      const summary = await waveformCache.load(video.url)
+      const audible = detectAudibleRanges(summary, {
+        thresholdDb: silenceThresholdDb,
+        minimumSilenceSeconds,
+        paddingSeconds: silencePaddingSeconds,
+      })
+      const before = totalTimelineDuration(appState.edit.timelineSegments)
+      const count = applyAudibleTimelineRanges(audible)
+      const removed = Math.max(0, before - totalTimelineDuration(appState.edit.timelineSegments))
+      silenceResultSignature = appState.edit.timelineSegments.map(({ start, end }) => `${start}:${end}`).join('|')
+      silenceMessage = removed >= TIMELINE_MIN_SEGMENT_DURATION
+        ? `Удалено ${fmt(removed)} тишины · ${count} фрагм.`
+        : 'Подходящая тишина не найдена'
+    } catch (error) {
+      silenceMessage = error instanceof Error ? error.message : 'Не удалось проанализировать тишину'
+    } finally {
+      detectingSilence = false
+    }
   }
 </script>
 
@@ -143,6 +188,15 @@
       >Дубль</button>
       <button class="btn ghost sm timeline-delete" type="button" disabled={segments.length <= 1} aria-keyshortcuts={shortcutAria('legacy.timelineDelete')} title={`Удалить выбранный фрагмент (${shortcutLabel('legacy.timelineDelete')})`} onclick={deleteSelected}>Удалить</button>
     </div>
+    <div class="timeline-silence-tools" aria-label="Локальное удаление тишины">
+      <label><span>Порог, dB</span><input type="number" min="-80" max="-6" step="1" bind:value={silenceThresholdDb} /></label>
+      <label><span>Мин. пауза, с</span><input type="number" min="0.1" max="10" step="0.05" bind:value={minimumSilenceSeconds} /></label>
+      <label><span>Запас, с</span><input type="number" min="0" max="2" step="0.01" bind:value={silencePaddingSeconds} /></label>
+      <button class="btn ghost sm" type="button" disabled={detectingSilence || appState.video?.acodec === null} onclick={removeSilence}>
+        {detectingSilence ? 'Анализ…' : 'Убрать тишину'}
+      </button>
+    </div>
+    {#if silenceMessage}<p class="timeline-hint" role="status">{silenceMessage}</p>{/if}
     {#if selected}
       <div class="timeline-range-editor">
         <TrimSlider

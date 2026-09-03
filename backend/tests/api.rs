@@ -10,6 +10,7 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
+use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -55,6 +56,48 @@ fn patch_json(uri: &str, body: Value) -> Request<Body> {
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap()
+}
+
+fn bearer(mut request: Request<Body>, token: &str) -> Request<Body> {
+    request
+        .headers_mut()
+        .insert("authorization", format!("Bearer {token}").parse().unwrap());
+    request
+}
+
+fn session_cookie(mut request: Request<Body>, token: &str) -> Request<Body> {
+    request.headers_mut().insert(
+        "cookie",
+        format!("video_kadr_session={token}").parse().unwrap(),
+    );
+    request
+}
+
+fn selected_space(mut request: Request<Body>, space_id: &str) -> Request<Body> {
+    request
+        .headers_mut()
+        .insert("x-space-id", space_id.parse().unwrap());
+    request
+}
+
+fn if_none_match(mut request: Request<Body>, etag: &str) -> Request<Body> {
+    request
+        .headers_mut()
+        .insert("if-none-match", etag.parse().unwrap());
+    request
+}
+
+async fn register_token(app: &Router, username: &str) -> String {
+    let (status, session, _) = send(
+        app,
+        post_json(
+            "/api/auth/register",
+            json!({"username": username, "password": "shared test password"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    session["token"].as_str().unwrap().to_owned()
 }
 
 fn composition_request(source_id: &str) -> Value {
@@ -183,7 +226,7 @@ async fn poll_terminal(app: &Router, id: &str) -> Value {
 #[tokio::test]
 async fn health_reflects_tool_availability() {
     let (state, _d) = make_state(true, true).await;
-    let app = router(state);
+    let app = router(state.clone());
     let (status, body, _) = send(&app, get("/api/health")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "ok");
@@ -323,6 +366,16 @@ async fn composition_render_is_durable_and_reports_a_missing_source() {
     let (state, _directory) = make_state(true, true).await;
     let app = router(state);
     let legacy = composition_request("missing-source");
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json("/api/compositions/render", legacy.clone()),
+            "invalid-session",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
     let (status, accepted, _) = send(&app, post_json("/api/compositions/render", legacy)).await;
     assert_eq!(status, StatusCode::ACCEPTED);
     let job_id = accepted["jobId"].as_str().unwrap();
@@ -778,39 +831,41 @@ async fn color_grade_zero_intensity_lut_bypasses_asset_resolution() {
 }
 
 #[tokio::test]
-async fn mp3_canonicalizes_video_grading_before_validation_and_dedupe() {
+async fn audio_only_exports_canonicalize_video_grading_before_validation_and_dedupe() {
     let (state, _storage) = make_state(true, true).await;
     let app = router(state);
-    let (first_status, first, _) = send(
-        &app,
-        post_json(
-            "/api/edit",
-            json!({
-                "videoId": "missing-audio-source",
-                "format": "mp3",
-                "lut": { "id": "../ignored.cube", "intensity": 2.0 },
-                "curves": {
-                    "master": (0..17).map(|index| {
-                        let value = index as f64 / 16.0;
-                        json!({ "x": value, "y": value })
-                    }).collect::<Vec<_>>()
-                }
-            }),
-        ),
-    )
-    .await;
-    assert_eq!(first_status, StatusCode::ACCEPTED);
+    for format in ["mp3", "wav"] {
+        let (first_status, first, _) = send(
+            &app,
+            post_json(
+                "/api/edit",
+                json!({
+                    "videoId": "missing-audio-source",
+                    "format": format,
+                    "lut": { "id": "../ignored.cube", "intensity": 2.0 },
+                    "curves": {
+                        "master": (0..17).map(|index| {
+                            let value = index as f64 / 16.0;
+                            json!({ "x": value, "y": value })
+                        }).collect::<Vec<_>>()
+                    }
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(first_status, StatusCode::ACCEPTED);
 
-    let (second_status, second, _) = send(
-        &app,
-        post_json(
-            "/api/edit",
-            json!({ "videoId": "missing-audio-source", "format": "mp3" }),
-        ),
-    )
-    .await;
-    assert_eq!(second_status, StatusCode::ACCEPTED);
-    assert_eq!(first["jobId"], second["jobId"]);
+        let (second_status, second, _) = send(
+            &app,
+            post_json(
+                "/api/edit",
+                json!({ "videoId": "missing-audio-source", "format": format }),
+            ),
+        )
+        .await;
+        assert_eq!(second_status, StatusCode::ACCEPTED);
+        assert_eq!(first["jobId"], second["jobId"], "{format}");
+    }
 }
 
 #[tokio::test]
@@ -1225,21 +1280,25 @@ async fn library_source_delete_is_blocked_while_a_composition_project_references
         .await
         .unwrap();
     let app = router(state.clone());
+    let token = register_token(&app, "source-owner").await;
     let (created_status, project, _) = send(
         &app,
-        post_json(
-            "/api/composition-projects",
-            json!({
-                "schemaVersion": 2,
-                "mode": "composition",
-                "name": "Uses source",
-                "document": {
-                    "schemaVersion": 1,
-                    "sources": {
-                        "referenced-source": {"id": "referenced-source"}
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "name": "Uses source",
+                    "document": {
+                        "schemaVersion": 1,
+                        "sources": {
+                            "referenced-source": {"id": "referenced-source"}
+                        }
                     }
-                }
-            }),
+                }),
+            ),
+            &token,
         ),
     )
     .await;
@@ -1261,7 +1320,10 @@ async fn library_source_delete_is_blocked_while_a_composition_project_references
     let project_id = project["id"].as_str().unwrap();
     let (deleted_project, _, _) = send(
         &app,
-        delete(&format!("/api/composition-projects/{project_id}")),
+        bearer(
+            delete(&format!("/api/composition-projects/{project_id}")),
+            &token,
+        ),
     )
     .await;
     assert_eq!(deleted_project, StatusCode::NO_CONTENT);
@@ -1392,28 +1454,37 @@ async fn project_upsert_list_get_delete_flow() {
 async fn composition_project_create_update_list_get_delete_flow() {
     let (state, _directory) = make_state(true, true).await;
     let app = router(state);
+    let token = register_token(&app, "project-owner").await;
+    let outsider_token = register_token(&app, "project-outsider").await;
 
-    let (status, empty, _) = send(&app, get("/api/composition-projects")).await;
+    let (status, body, _) = send(&app, get("/api/composition-projects")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
+
+    let (status, empty, _) = send(&app, bearer(get("/api/composition-projects"), &token)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(empty.as_array().unwrap().is_empty());
 
     let (status, first, _) = send(
         &app,
-        post_json(
-            "/api/composition-projects",
-            json!({
-                "schemaVersion": 2,
-                "mode": "composition",
-                "name": "Two sources",
-                "document": {
-                    "schemaVersion": 1,
-                    "sources": {
-                        "source-a": {"id": "source-a", "kind": "video"},
-                        "source-b": {"id": "source-b", "kind": "audio"}
-                    },
-                    "tracks": []
-                }
-            }),
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "name": "Two sources",
+                    "document": {
+                        "schemaVersion": 1,
+                        "sources": {
+                            "source-a": {"id": "source-a", "kind": "video"},
+                            "source-b": {"id": "source-b", "kind": "audio"}
+                        },
+                        "tracks": []
+                    }
+                }),
+            ),
+            &token,
         ),
     )
     .await;
@@ -1422,22 +1493,81 @@ async fn composition_project_create_update_list_get_delete_flow() {
     assert!(uuid::Uuid::parse_str(&first_id).is_ok());
     assert_eq!(first["schemaVersion"], 2);
     assert_eq!(first["mode"], "composition");
+    assert_eq!(first["revision"], 1);
     assert_eq!(first["sourceIds"], json!(["source-a", "source-b"]));
 
-    let (status, stored, _) =
-        send(&app, get(&format!("/api/composition-projects/{first_id}"))).await;
+    let (status, outsider_projects, _) = send(
+        &app,
+        bearer(get("/api/composition-projects"), &outsider_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(outsider_projects.as_array().unwrap().is_empty());
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{first_id}")),
+            &outsider_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
+
+    let (status, stored, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{first_id}")),
+            &token,
+        ),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(stored, first);
+    let unchanged = app
+        .clone()
+        .oneshot(if_none_match(
+            bearer(
+                get(&format!("/api/composition-projects/{first_id}")),
+                &token,
+            ),
+            "\"revision-1\"",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(unchanged.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(unchanged.headers()["etag"], "\"revision-1\"");
+
+    let (status, missing_revision, _) = send(
+        &app,
+        bearer(
+            put_json(
+                &format!("/api/composition-projects/{first_id}"),
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "document": first["document"].clone()
+                }),
+            ),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&missing_revision, "bad_request");
 
     let (status, second, _) = send(
         &app,
-        post_json(
-            "/api/composition-projects",
-            json!({
-                "schemaVersion": 2,
-                "mode": "composition",
-                "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
-            }),
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
+                }),
+            ),
+            &token,
         ),
     )
     .await;
@@ -1446,19 +1576,23 @@ async fn composition_project_create_update_list_get_delete_flow() {
 
     let (status, updated, _) = send(
         &app,
-        put_json(
-            &format!("/api/composition-projects/{first_id}"),
-            json!({
-                "schemaVersion": 2,
-                "mode": "composition",
-                "name": "Updated",
-                "document": {
-                    "schemaVersion": 1,
-                    "sources": {"source-c": {"id": "source-c", "kind": "image"}},
-                    "tracks": [],
-                    "revision": 2
-                }
-            }),
+        bearer(
+            put_json(
+                &format!("/api/composition-projects/{first_id}"),
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "baseRevision": 1,
+                    "name": "Updated",
+                    "document": {
+                        "schemaVersion": 1,
+                        "sources": {"source-c": {"id": "source-c", "kind": "image"}},
+                        "tracks": [],
+                        "revision": 2
+                    }
+                }),
+            ),
+            &token,
         ),
     )
     .await;
@@ -1466,12 +1600,58 @@ async fn composition_project_create_update_list_get_delete_flow() {
     assert_eq!(updated["id"], first_id);
     assert_eq!(updated["createdAt"], first["createdAt"]);
     assert_eq!(updated["sourceIds"], json!(["source-c"]));
+    assert_eq!(updated["revision"], 2);
     assert_eq!(updated["document"]["revision"], 2);
 
-    let (status, projects, _) = send(&app, get("/api/composition-projects")).await;
+    let (status, stale, _) = send(
+        &app,
+        bearer(
+            put_json(
+                &format!("/api/composition-projects/{first_id}"),
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "baseRevision": 1,
+                    "name": "Stale overwrite",
+                    "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
+                }),
+            ),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&stale, "conflict");
+    let (_, after_conflict, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{first_id}")),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(after_conflict["name"], "Updated");
+    assert_eq!(after_conflict["revision"], 2);
+
+    let (status, projects, _) = send(&app, bearer(get("/api/composition-projects"), &token)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(projects.as_array().unwrap().len(), 2);
     assert_eq!(projects[0]["id"], first_id, "last write sorts first");
+    let list_response = app
+        .clone()
+        .oneshot(bearer(get("/api/composition-projects"), &token))
+        .await
+        .unwrap();
+    let list_etag = list_response.headers()["etag"].clone();
+    let list_unchanged = app
+        .clone()
+        .oneshot(if_none_match(
+            bearer(get("/api/composition-projects"), &token),
+            list_etag.to_str().unwrap(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(list_unchanged.status(), StatusCode::NOT_MODIFIED);
 
     let (status, legacy, _) = send(&app, get("/api/projects")).await;
     assert_eq!(status, StatusCode::OK);
@@ -1479,32 +1659,1338 @@ async fn composition_project_create_update_list_get_delete_flow() {
 
     let (status, _, _) = send(
         &app,
-        delete(&format!("/api/composition-projects/{first_id}")),
+        bearer(
+            delete(&format!("/api/composition-projects/{first_id}")),
+            &token,
+        ),
     )
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, body, _) = send(&app, get(&format!("/api/composition-projects/{first_id}"))).await;
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{first_id}")),
+            &token,
+        ),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_api_error(&body, "not_found");
+}
+
+#[tokio::test]
+async fn composition_review_threads_persist_reply_resolve_and_follow_project_lifecycle() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let mut session_tokens = std::collections::HashMap::new();
+    for username in ["alice", "bob", "viewer"] {
+        session_tokens.insert(username, register_token(&app, username).await);
+    }
+    let alice_token = &session_tokens["alice"];
+    let bob_token = &session_tokens["bob"];
+    let viewer_token = &session_tokens["viewer"];
+    let (_, project, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "name": "Reviewable cut",
+                    "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
+                }),
+            ),
+            alice_token,
+        ),
+    )
+    .await;
+    let project_id = project["id"].as_str().unwrap();
+
+    let (status, missing_session, _) = send(
+        &app,
+        post_json(
+            &format!("/api/composition-projects/{project_id}/reviews"),
+            json!({"body": "No session", "timelineTick": 1}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&missing_session, "unauthorized");
+
+    let (status, spoofed, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/composition-projects/{project_id}/reviews"),
+                json!({"actor": "mallory", "body": "Spoof", "timelineTick": 1}),
+            ),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&spoofed, "invalid_json");
+
+    let (status, thread, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/composition-projects/{project_id}/reviews"),
+                json!({
+                    "body": "Move this cut earlier",
+                    "timelineTick": 90000
+                }),
+            ),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let thread_id = thread["id"].as_str().unwrap();
+    assert_eq!(thread["comments"][0]["timelineTick"], 90_000);
+
+    let (status, hidden, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{project_id}/reviews")),
+            bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&hidden, "forbidden");
+
+    let (status, owner, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{project_id}/members")),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(owner, json!([{"actor": "alice", "role": "owner"}]));
+    for (actor, role) in [("bob", "commenter"), ("viewer", "viewer")] {
+        let (status, member, _) = send(
+            &app,
+            bearer(
+                put_json(
+                    &format!("/api/composition-projects/{project_id}/members/{actor}"),
+                    json!({"role": role}),
+                ),
+                alice_token,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(member["role"], role);
+    }
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            put_json(
+                &format!("/api/composition-projects/{project_id}/members/mallory"),
+                json!({"role": "owner"}),
+            ),
+            bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/review-threads/{thread_id}/replies"),
+                json!({"body": "No access"}),
+            ),
+            viewer_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+
+    let (status, replied, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/review-threads/{thread_id}/replies"),
+                json!({"body": "Done"}),
+            ),
+            bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replied["comments"].as_array().unwrap().len(), 2);
+    assert_eq!(replied["comments"][1]["parentId"], thread_id);
+
+    let (status, resolved, _) = send(
+        &app,
+        bearer(
+            put_json(
+                &format!("/api/review-threads/{thread_id}/resolution"),
+                json!({"resolved": true}),
+            ),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(resolved["resolvedBy"], "alice");
+
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/review-threads/{thread_id}/replies"),
+                json!({"body": "Too late"}),
+            ),
+            bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&body, "conflict");
+
+    let (status, listed, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{project_id}/reviews")),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(listed[0]["comments"].as_array().unwrap().len(), 2);
+
+    let (status, share, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/composition-projects/{project_id}/review-shares"),
+                json!({"ttlSeconds": 3600}),
+            ),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let share_id = share["grant"]["id"].as_str().unwrap();
+    let token = share["token"].as_str().unwrap();
+    let (status, public_review, _) = send(&app, get(&format!("/api/review-shares/{token}"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(public_review["projectId"], project_id);
+    assert_eq!(public_review["threads"].as_array().unwrap().len(), 1);
+    assert!(public_review.get("document").is_none());
+    assert!(public_review.get("sourceIds").is_none());
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/composition-projects/{project_id}/review-shares/{share_id}/revoke"),
+                json!({}),
+            ),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, body, _) = send(&app, get(&format!("/api/review-shares/{token}"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
+
+    let (status, audit, _) = send(
+        &app,
+        bearer(
+            get(&format!(
+                "/api/composition-projects/{project_id}/review-audit"
+            )),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        audit
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|event| event["action"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [
+            "thread.created",
+            "member.role_set",
+            "member.role_set",
+            "comment.replied",
+            "thread.resolved",
+            "share.created",
+            "share.revoked",
+        ]
+    );
+
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            delete(&format!("/api/composition-projects/{project_id}")),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, listed, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{project_id}/reviews")),
+            alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&listed, "forbidden");
+}
+
+#[tokio::test]
+async fn composition_project_ownership_transfer_is_atomic_and_audited() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let alice_token = register_token(&app, "handoff-alice").await;
+    let bob_token = register_token(&app, "handoff-bob").await;
+    let (_, project, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
+                }),
+            ),
+            &alice_token,
+        ),
+    )
+    .await;
+    let project_id = project["id"].as_str().unwrap();
+    let member_uri = format!("/api/composition-projects/{project_id}/members/handoff-bob");
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            put_json(&member_uri, json!({"role": "editor"})),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            put_json(&member_uri, json!({"role": "owner"})),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+
+    let transfer_uri = format!("/api/composition-projects/{project_id}/ownership-transfer");
+    let (status, owner, _) = send(
+        &app,
+        bearer(
+            post_json(&transfer_uri, json!({"targetActor": "handoff-bob"})),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(owner, json!({"actor": "handoff-bob", "role": "owner"}));
+
+    let (status, members, _) = send(
+        &app,
+        bearer(
+            get(&format!("/api/composition-projects/{project_id}/members")),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        members,
+        json!([
+            {"actor": "handoff-alice", "role": "editor"},
+            {"actor": "handoff-bob", "role": "owner"}
+        ])
+    );
+
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            delete(&format!("/api/composition-projects/{project_id}")),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, audit, _) = send(
+        &app,
+        bearer(
+            get(&format!(
+                "/api/composition-projects/{project_id}/review-audit"
+            )),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        audit.as_array().unwrap().last().unwrap()["action"],
+        "ownership.transferred"
+    );
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            delete(&format!("/api/composition-projects/{project_id}")),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn collaboration_spaces_are_private_and_owner_manages_members() {
+    let (state, _directory) = make_state(true, true).await;
+    let filename = "space-source.mp4";
+    tokio::fs::write(state.sources_dir().join(filename), b"space-private-bytes")
+        .await
+        .unwrap();
+    let space_entry = MediaEntry::from_result(
+        "source",
+        &json!({
+            "id": "space-source",
+            "filename": filename,
+            "url": format!("/files/sources/{filename}"),
+            "mediaType": "video"
+        }),
+    );
+    state.library.add(space_entry.clone()).await;
+    state.index_media(&space_entry).await;
+    let app = router(state.clone());
+    let alice_token = register_token(&app, "space-alice").await;
+    let bob_token = register_token(&app, "space-bob").await;
+    let viewer_token = register_token(&app, "space-viewer").await;
+    let invitee_token = register_token(&app, "space-invitee").await;
+
+    let (status, body, _) = send(&app, get("/api/spaces")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
+    let (status, space, _) = send(
+        &app,
+        bearer(
+            post_json("/api/spaces", json!({"name": "Launch Team"})),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(space["name"], "Launch Team");
+    assert_eq!(space["role"], "owner");
+    let space_id = space["id"].as_str().unwrap();
+
+    let (status, spaces, _) = send(&app, bearer(get("/api/spaces"), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(spaces.as_array().unwrap().is_empty());
+    let members_uri = format!("/api/spaces/{space_id}/members");
+    let (status, body, _) = send(&app, bearer(get(&members_uri), &bob_token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+
+    let invites_uri = format!("/api/spaces/{space_id}/invites");
+    let (status, invite, _) = send(
+        &app,
+        bearer(
+            post_json(&invites_uri, json!({"role": "viewer", "ttlSeconds": 3600})),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(invite["role"], "viewer");
+    let accept_uri = format!(
+        "/api/space-invites/{}/accept",
+        invite["token"].as_str().unwrap()
+    );
+    let (status, accepted, _) = send(
+        &app,
+        bearer(post_json(&accept_uri, json!({})), &invitee_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(accepted["id"], space_id);
+    assert_eq!(accepted["role"], "viewer");
+    let (status, body, _) = send(
+        &app,
+        bearer(post_json(&accept_uri, json!({})), &invitee_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_api_error(&body, "not_found");
+
+    let bob_uri = format!("/api/spaces/{space_id}/members/space-bob");
+    let (status, member, _) = send(
+        &app,
+        bearer(put_json(&bob_uri, json!({"role": "editor"})), &alice_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(member, json!({"actor": "space-bob", "role": "editor"}));
+
+    let (status, bob_project, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "spaceId": space_id,
+                    "name": "Bob owned cut",
+                    "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
+                }),
+            ),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let rename_uri = format!("/api/spaces/{space_id}");
+    let base_updated_at = space["updatedAt"].as_u64().unwrap();
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            patch_json(
+                &rename_uri,
+                json!({"name": "Hijacked", "baseUpdatedAt": base_updated_at}),
+            ),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, renamed, _) = send(
+        &app,
+        bearer(
+            patch_json(
+                &rename_uri,
+                json!({"name": "Launch Studio", "baseUpdatedAt": base_updated_at}),
+            ),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(renamed["name"], "Launch Studio");
+    assert!(renamed["updatedAt"].as_u64().unwrap() > base_updated_at);
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            patch_json(
+                &rename_uri,
+                json!({"name": "Stale name", "baseUpdatedAt": base_updated_at}),
+            ),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&body, "conflict");
+
+    let (status, project, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "spaceId": space_id,
+                    "name": "Space cut",
+                    "document": {
+                        "schemaVersion": 1,
+                        "sources": {"space-source": {"id": "space-source"}},
+                        "tracks": []
+                    }
+                }),
+            ),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(project["spaceId"], space_id);
+    let unauthenticated_events = app
+        .clone()
+        .oneshot(get("/api/composition-projects/events"))
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated_events.status(), StatusCode::UNAUTHORIZED);
+    let mut project_events = app
+        .clone()
+        .oneshot(session_cookie(
+            get("/api/composition-projects/events"),
+            &bob_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(project_events.status(), StatusCode::OK);
+    assert_eq!(
+        project_events.headers()["content-type"],
+        "text/event-stream"
+    );
+    let mut outsider_events = app
+        .clone()
+        .oneshot(session_cookie(
+            get("/api/composition-projects/events"),
+            &viewer_token,
+        ))
+        .await
+        .unwrap();
+    let project_id = project["id"].as_str().unwrap();
+    let (status, pushed_update, _) = send(
+        &app,
+        bearer(
+            put_json(
+                &format!("/api/composition-projects/{project_id}"),
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "baseRevision": 1,
+                    "name": "Space cut pushed",
+                    "document": project["document"].clone()
+                }),
+            ),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pushed_update["revision"], 2);
+    let event_frame =
+        tokio::time::timeout(Duration::from_secs(1), project_events.body_mut().frame())
+            .await
+            .expect("project SSE event timed out")
+            .expect("project SSE stream ended")
+            .expect("project SSE frame failed")
+            .into_data()
+            .expect("project SSE frame was not data");
+    let event_text = String::from_utf8(event_frame.to_vec()).unwrap();
+    assert!(event_text.contains("event: project"));
+    assert!(event_text.contains(project_id));
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            outsider_events.body_mut().frame()
+        )
+        .await
+        .is_err(),
+        "outsider received a private project event"
+    );
+    assert!(tokio::fs::metadata(state.sources_dir().join(filename))
+        .await
+        .is_err());
+    let isolated_entry = state.library.get("space-source").await.unwrap();
+    assert_eq!(
+        isolated_entry.storage_key.as_deref(),
+        Some(format!("spaces/{space_id}/{filename}").as_str())
+    );
+    assert_eq!(
+        tokio::fs::read(
+            state
+                .library
+                .resolve_media_path(&isolated_entry)
+                .await
+                .unwrap()
+        )
+        .await
+        .unwrap(),
+        b"space-private-bytes"
+    );
+
+    let (status, library, _) = send(&app, get("/api/library")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(library.as_array().unwrap().is_empty());
+    let (status, library, _) = send(&app, bearer(get("/api/library"), &viewer_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(library.as_array().unwrap().is_empty());
+    let (status, body, _) = send(
+        &app,
+        selected_space(bearer(get("/api/library"), &viewer_token), space_id),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, library, _) = send(
+        &app,
+        selected_space(bearer(get("/api/library"), &bob_token), space_id),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(library.as_array().unwrap().len(), 1);
+    assert_eq!(library[0]["id"], "space-source");
+    let (status, search, _) = send(
+        &app,
+        selected_space(
+            bearer(get("/api/library/search?q=space"), &bob_token),
+            space_id,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(search.as_array().unwrap().len(), 1);
+    let (status, body, _) = send(
+        &app,
+        patch_json(
+            "/api/library/space-source/metadata",
+            json!({"favorite": true}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            patch_json(
+                "/api/library/space-source/metadata",
+                json!({"favorite": true}),
+            ),
+            &viewer_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            patch_json(
+                "/api/library/space-source/metadata",
+                json!({"favorite": true}),
+            ),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body, _) = send(&app, delete("/api/library/space-source")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
+    let (status, body, _) = send(
+        &app,
+        bearer(delete("/api/library/space-source"), &viewer_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, projects, _) =
+        send(&app, bearer(get("/api/composition-projects"), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(projects.as_array().unwrap().len(), 2);
+    assert!(projects
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|listed| listed["id"] == project["id"]));
+    let source_uri = format!("/files/sources/{filename}");
+    let (status, body, _) = send(&app, get(&source_uri)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
+    let (status, body, _) = send(&app, bearer(get(&source_uri), &viewer_token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    for protected_uri in [
+        "/api/library/space-source/thumbnail",
+        "/api/library/space-source/filmstrip",
+        "/api/library/space-source/proxies",
+        "/api/library/space-source/proxies/invalid/content",
+    ] {
+        let (status, body, _) = send(&app, get(protected_uri)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{protected_uri}");
+        assert_api_error(&body, "unauthorized");
+        let (status, body, _) = send(&app, bearer(get(protected_uri), &viewer_token)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{protected_uri}");
+        assert_api_error(&body, "forbidden");
+    }
+    let (status, _, raw) = send(&app, bearer(get(&source_uri), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(raw, "space-private-bytes");
+    let (status, _, raw) = send(&app, session_cookie(get(&source_uri), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(raw, "space-private-bytes");
+    let (_, other_space, _) = send(
+        &app,
+        bearer(
+            post_json("/api/spaces", json!({"name": "Other Team"})),
+            &alice_token,
+        ),
+    )
+    .await;
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "spaceId": other_space["id"],
+                    "document": {
+                        "schemaVersion": 1,
+                        "sources": {"space-source": {"id": "space-source"}},
+                        "tracks": []
+                    }
+                }),
+            ),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let viewer_uri = format!("/api/spaces/{space_id}/members/space-viewer");
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            put_json(&viewer_uri, json!({"role": "viewer"})),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, projects, _) = send(
+        &app,
+        bearer(get("/api/composition-projects"), &viewer_token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(projects.as_array().unwrap().len(), 2);
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "spaceId": space_id,
+                    "document": {"schemaVersion": 1, "sources": {}, "tracks": []}
+                }),
+            ),
+            &viewer_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+
+    let (status, spaces, _) = send(&app, bearer(get("/api/spaces"), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(spaces.as_array().unwrap().len(), 1);
+    assert_eq!(spaces[0]["role"], "editor");
+    let (status, members, _) = send(&app, bearer(get(&members_uri), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(members.as_array().unwrap().len(), 4);
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            put_json(
+                &format!("/api/spaces/{space_id}/members/mallory"),
+                json!({"role": "viewer"}),
+            ),
+            &bob_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+
+    let (status, body, _) = send(&app, bearer(delete(&bob_uri), &bob_token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let owner_uri = format!("/api/spaces/{space_id}/members/space-alice");
+    let (status, body, _) = send(&app, bearer(delete(&owner_uri), &alice_token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, _, _) = send(&app, bearer(delete(&bob_uri), &alice_token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, spaces, _) = send(&app, bearer(get("/api/spaces"), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(spaces.as_array().unwrap().is_empty());
+    let (status, projects, _) =
+        send(&app, bearer(get("/api/composition-projects"), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(projects.as_array().unwrap().is_empty());
+
+    let (status, body, _) = send(&app, bearer(delete(&rename_uri), &alice_token)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&body, "conflict");
+    let bob_project_id = bob_project["id"].as_str().unwrap();
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            delete(&format!("/api/composition-projects/{bob_project_id}")),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let project_id = project["id"].as_str().unwrap();
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            delete(&format!("/api/composition-projects/{project_id}")),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let mut source_delete = bearer(delete("/api/library/space-source"), &alice_token);
+    source_delete
+        .headers_mut()
+        .insert("x-space-id", space_id.parse().unwrap());
+    let (status, _, _) = send(&app, source_delete).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        state.db.source_space_id("space-source").await.unwrap(),
+        None
+    );
+    let (status, _, _) = send(&app, bearer(delete(&rename_uri), &alice_token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, spaces, _) = send(&app, bearer(get("/api/spaces"), &alice_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!spaces
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|space| space["id"] == space_id));
+
+    let other_space_id = other_space["id"].as_str().unwrap();
+    let (status, _, _) = send(
+        &app,
+        bearer(
+            put_json(
+                &format!("/api/spaces/{other_space_id}/members/space-bob"),
+                json!({"role": "editor"}),
+            ),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, owner, _) = send(
+        &app,
+        bearer(
+            post_json(
+                &format!("/api/spaces/{other_space_id}/ownership-transfer"),
+                json!({"targetActor": "space-bob"}),
+            ),
+            &alice_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(owner, json!({"actor": "space-bob", "role": "owner"}));
+    let (status, alice_spaces, _) = send(&app, bearer(get("/api/spaces"), &alice_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    let transferred = alice_spaces
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|space| space["id"] == other_space_id)
+        .unwrap();
+    assert_eq!(transferred["role"], "editor");
+    let (status, bob_spaces, _) = send(&app, bearer(get("/api/spaces"), &bob_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(bob_spaces[0]["role"], "owner");
+}
+
+#[tokio::test]
+async fn space_templates_are_shared_with_members_and_revision_protected() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let owner_token = register_token(&app, "template-owner").await;
+    let editor_token = register_token(&app, "template-editor").await;
+    let viewer_token = register_token(&app, "template-viewer").await;
+    let outsider_token = register_token(&app, "template-outsider").await;
+    let (status, space, _) = send(
+        &app,
+        bearer(
+            post_json("/api/spaces", json!({"name": "Brand Studio"})),
+            &owner_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let space_id = space["id"].as_str().unwrap();
+    for (actor, role) in [("template-editor", "editor"), ("template-viewer", "viewer")] {
+        let (status, _, _) = send(
+            &app,
+            bearer(
+                put_json(
+                    &format!("/api/spaces/{space_id}/members/{actor}"),
+                    json!({"role": role}),
+                ),
+                &owner_token,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let templates_uri = format!("/api/spaces/{space_id}/templates");
+    let template = json!({
+        "schemaVersion": 1,
+        "id": "team-promo",
+        "name": "Team Promo",
+        "composition": {"schemaVersion": 1, "sources": {}, "tracks": []},
+        "slots": []
+    });
+
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(&templates_uri, json!({"template": template})),
+            &viewer_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, created, _) = send(
+        &app,
+        bearer(
+            post_json(&templates_uri, json!({"template": template})),
+            &editor_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["createdBy"], "template-editor");
+    assert_eq!(created["revision"], 1);
+    let template_id = created["id"].as_str().unwrap();
+
+    let (status, listed, _) = send(&app, bearer(get(&templates_uri), &viewer_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(listed[0]["template"]["name"], "Team Promo");
+    let (status, body, _) = send(&app, bearer(get(&templates_uri), &outsider_token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+
+    let item_uri = format!("{templates_uri}/{template_id}");
+    let renamed = json!({"schemaVersion": 1, "id": "team-promo", "name": "Team Promo v2", "composition": {"schemaVersion": 1, "sources": {}, "tracks": []}, "slots": []});
+    let (status, updated, _) = send(
+        &app,
+        bearer(
+            put_json(&item_uri, json!({"baseRevision": 1, "template": renamed})),
+            &owner_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["revision"], 2);
+    assert_eq!(updated["template"]["name"], "Team Promo v2");
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            put_json(&item_uri, json!({"baseRevision": 1, "template": template})),
+            &editor_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&body, "conflict");
+
+    let brand_uri = format!("/api/spaces/{space_id}/brand-kit");
+    let (status, empty_brand, _) = send(&app, bearer(get(&brand_uri), &viewer_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(empty_brand["revision"], 0);
+    let brand_kit = json!({
+        "colors": [{"name": "Primary", "value": "#3366ff"}],
+        "fonts": ["Noto Sans"],
+        "logoSourceIds": []
+    });
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            put_json(&brand_uri, json!({"baseRevision": 0, "kit": brand_kit})),
+            &viewer_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
+    let (status, brand, _) = send(
+        &app,
+        bearer(
+            put_json(&brand_uri, json!({"baseRevision": 0, "kit": brand_kit})),
+            &editor_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(brand["revision"], 1);
+    assert_eq!(brand["kit"]["colors"][0]["value"], "#3366ff");
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            put_json(&brand_uri, json!({"baseRevision": 0, "kit": brand_kit})),
+            &owner_token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&body, "conflict");
+    let (status, _, _) = send(&app, bearer(delete(&item_uri), &owner_token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn stock_catalog_requires_authentication_and_provider_configuration() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let uri = "/api/stock/search?q=ocean&kind=video&page=1";
+    let (status, body, _) = send(&app, get(uri)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
+    let token = register_token(&app, "stock-user").await;
+    let (status, body, _) = send(&app, bearer(get(uri), &token)).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_api_error(&body, "service_unavailable");
+}
+
+#[tokio::test]
+async fn youtube_connect_is_authenticated_config_gated_and_uses_one_time_state() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let status_uri = "/api/publish/youtube/status";
+    let (status, body, _) = send(&app, get(status_uri)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&body, "unauthorized");
+    let token = register_token(&app, "youtube-disabled").await;
+    let (status, body, _) = send(&app, bearer(get(status_uri), &token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({"configured": false, "connected": false}));
+    let (status, body, _) = send(
+        &app,
+        bearer(post_json("/api/publish/youtube/connect", json!({})), &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_api_error(&body, "service_unavailable");
+
+    let (state, _directory) = make_state(true, true).await;
+    let cipher = video_kadr_backend::youtube::TokenCipher::new([4; 32]).unwrap();
+    let state = state.with_youtube_oauth(
+        video_kadr_backend::youtube::YouTubeOAuthClient::new(
+            video_kadr_backend::youtube::YouTubeOAuthConfig {
+                client_id: "client-id".into(),
+                client_secret: "server-secret".into(),
+                redirect_uri: "http://127.0.0.1:8080/api/publish/youtube/callback".into(),
+            },
+        )
+        .unwrap(),
+        cipher.clone(),
+    );
+    let db = state.db.clone();
+    let publish_output_id = uuid::Uuid::new_v4().to_string();
+    tokio::fs::write(
+        state.outputs_dir().join(format!("{publish_output_id}.mp4")),
+        b"rendered-video",
+    )
+    .await
+    .unwrap();
+    db.grant_output_access(&publish_output_id, "youtube-user")
+        .await
+        .unwrap();
+    let app = router(state);
+    let token = register_token(&app, "youtube-user").await;
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/publish/youtube",
+                json!({"outputId": publish_output_id, "title": "", "privacyStatus": "private"}),
+            ),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&body, "conflict");
+    let (status, body, _) = send(
+        &app,
+        bearer(post_json("/api/publish/youtube/connect", json!({})), &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let url = url::Url::parse(body["authorizationUrl"].as_str().unwrap()).unwrap();
+    assert_eq!(url.host_str(), Some("accounts.google.com"));
+    assert!(!url.as_str().contains("server-secret"));
+    let csrf_state = url
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    assert_eq!(
+        db.consume_publish_oauth_state("youtube", &csrf_state)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("youtube-user")
+    );
+    assert_eq!(
+        db.consume_publish_oauth_state("youtube", &csrf_state)
+            .await
+            .unwrap(),
+        None
+    );
+
+    db.create_publish_oauth_state("youtube", "youtube-user", "denied-state")
+        .await
+        .unwrap();
+    let (status, body, _) = send(
+        &app,
+        get("/api/publish/youtube/callback?state=denied-state&error=access_denied"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+    let (status, body, _) = send(
+        &app,
+        get("/api/publish/youtube/callback?state=denied-state&error=access_denied"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+
+    db.save_youtube_tokens(
+        &cipher,
+        "youtube-user",
+        video_kadr_backend::youtube::YouTubeTokens {
+            access_token: "access".into(),
+            refresh_token: Some("refresh".into()),
+            expires_at: 2_000_000_000,
+            scope: video_kadr_backend::youtube::YOUTUBE_UPLOAD_SCOPE.into(),
+            token_type: "Bearer".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/publish/youtube",
+                json!({"outputId": publish_output_id, "title": "", "privacyStatus": "private"}),
+            ),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_api_error(&body, "bad_request");
+    let (status, body, _) = send(&app, bearer(get(status_uri), &token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({"configured": true, "connected": true}));
+}
+
+#[tokio::test]
+async fn auth_accounts_issue_resolve_and_revoke_hashed_bearer_sessions() {
+    let (state, _directory) = make_state(true, true).await;
+    let app = router(state);
+    let credentials =
+        json!({"username": "Alice.Editor", "password": "correct horse battery staple"});
+
+    let (status, registered, _) =
+        send(&app, post_json("/api/auth/register", credentials.clone())).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(registered["user"]["username"], "Alice.Editor");
+    assert!(registered.get("password").is_none());
+    let token = registered["token"].as_str().unwrap();
+    assert!(token.len() > 64);
+
+    let (status, duplicate, _) = send(
+        &app,
+        post_json(
+            "/api/auth/register",
+            json!({"username": "alice.editor", "password": "another secure password"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_api_error(&duplicate, "conflict");
+
+    let (status, denied, _) = send(
+        &app,
+        post_json(
+            "/api/auth/login",
+            json!({"username": "Alice.Editor", "password": "incorrect password"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&denied, "unauthorized");
+
+    let authenticated = |method: &str, uri: &str, token: &str| {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+    let (status, session, _) = send(&app, authenticated("GET", "/api/auth/session", token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(session["username"], "Alice.Editor");
+
+    let (status, _, _) = send(&app, authenticated("POST", "/api/auth/logout", token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, revoked, _) = send(&app, authenticated("GET", "/api/auth/session", token)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_api_error(&revoked, "unauthorized");
 }
 
 #[tokio::test]
 async fn composition_project_rejects_invalid_envelopes_and_updates_without_partial_writes() {
     let (state, _directory) = make_state(true, true).await;
     let app = router(state);
+    let token = register_token(&app, "invalid-owner").await;
     let (_, created, _) = send(
         &app,
-        post_json(
-            "/api/composition-projects",
-            json!({
-                "schemaVersion": 2,
-                "mode": "composition",
-                "document": {
-                    "schemaVersion": 1,
-                    "sources": {"source-old": {"id": "source-old"}},
-                    "revision": 1
-                }
-            }),
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "document": {
+                        "schemaVersion": 1,
+                        "sources": {"source-old": {"id": "source-old"}},
+                        "revision": 1
+                    }
+                }),
+            ),
+            &token,
         ),
     )
     .await;
@@ -1539,59 +3025,74 @@ async fn composition_project_rejects_invalid_envelopes_and_updates_without_parti
     ] {
         let (status, body, _) = send(
             &app,
-            put_json(&format!("/api/composition-projects/{id}"), invalid),
+            bearer(
+                put_json(&format!("/api/composition-projects/{id}"), invalid),
+                &token,
+            ),
         )
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_api_error(&body, "bad_request");
     }
 
-    let (status, unchanged, _) = send(&app, get(&format!("/api/composition-projects/{id}"))).await;
+    let (status, unchanged, _) = send(
+        &app,
+        bearer(get(&format!("/api/composition-projects/{id}")), &token),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(unchanged["document"]["revision"], 1);
     assert_eq!(unchanged["sourceIds"], json!(["source-old"]));
 
     let (status, body, _) = send(
         &app,
-        put_json(
-            "/api/composition-projects/00000000-0000-4000-8000-000000000000",
-            json!({
-                "schemaVersion": 2,
-                "mode": "composition",
-                "document": {"schemaVersion": 1, "sources": {}}
-            }),
+        bearer(
+            put_json(
+                "/api/composition-projects/00000000-0000-4000-8000-000000000000",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "baseRevision": 1,
+                    "document": {"schemaVersion": 1, "sources": {}}
+                }),
+            ),
+            &token,
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_api_error(&body, "not_found");
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_api_error(&body, "forbidden");
 }
 
 #[tokio::test]
 async fn composition_project_document_has_an_independent_two_mib_limit() {
     let (state, _directory) = make_state(true, true).await;
     let app = router(state);
+    let token = register_token(&app, "size-owner").await;
     let oversized = "x".repeat(MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES + 1);
 
     let (status, body, _) = send(
         &app,
-        post_json(
-            "/api/composition-projects",
-            json!({
-                "schemaVersion": 2,
-                "mode": "composition",
-                "document": {
-                    "schemaVersion": 1,
-                    "sources": {},
-                    "blob": oversized
-                }
-            }),
+        bearer(
+            post_json(
+                "/api/composition-projects",
+                json!({
+                    "schemaVersion": 2,
+                    "mode": "composition",
+                    "document": {
+                        "schemaVersion": 1,
+                        "sources": {},
+                        "blob": oversized
+                    }
+                }),
+            ),
+            &token,
         ),
     )
     .await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_api_error(&body, "payload_too_large");
-    let (_, projects, _) = send(&app, get("/api/composition-projects")).await;
+    let (_, projects, _) = send(&app, bearer(get("/api/composition-projects"), &token)).await;
     assert!(projects.as_array().unwrap().is_empty());
 }
 

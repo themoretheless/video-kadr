@@ -98,6 +98,35 @@ export function speedRampTimelineDurationTicks(
   return compositionSpeedRampSegments(sourceSpanTicks, baselineSpeed, speedRamp).at(-1)!.timelineEndTick
 }
 
+/** Map presentation-order source progress through the cumulative reciprocal-speed integral. */
+export function speedRampTimelineTickAtSourceProgress(
+  sourceSpanTicks: number,
+  baselineSpeed: number,
+  speedRamp: CompositionSpeedRamp,
+  sourceProgressTick: number,
+): number {
+  const segments = compositionSpeedRampSegments(sourceSpanTicks, baselineSpeed, speedRamp)
+  if (!Number.isSafeInteger(sourceProgressTick)) throw new Error('Speed ramp source progress должен быть safe integer')
+  if (sourceProgressTick <= 0) return Math.round(sourceProgressTick / segments[0]!.startSpeed)
+  if (sourceProgressTick >= sourceSpanTicks) {
+    const duration = segments.at(-1)!.timelineEndTick
+    return duration + Math.round((sourceProgressTick - sourceSpanTicks) / segments.at(-1)!.endSpeed)
+  }
+
+  let cumulativeOutput = 0
+  for (const segment of segments) {
+    const sourceTicks = Math.min(sourceProgressTick, segment.sourceEndTick) - segment.sourceStartTick
+    cumulativeOutput += segmentIntegralTicks(
+      sourceTicks,
+      segment.startSpeed,
+      speedAtSegmentProgress(segment, sourceTicks),
+      segment.interpolation,
+    )
+    if (sourceProgressTick <= segment.sourceEndTick) break
+  }
+  return Math.round(cumulativeOutput)
+}
+
 export function minimumCompositionSpeed(
   baselineSpeed: number,
   speedRamp?: CompositionSpeedRamp,
@@ -215,6 +244,14 @@ function inverseTimelineFraction(
   if (interpolation === 'hold' || speedsEqual(startSpeed, endSpeed)) return timelineFraction
   const speed = startSpeed * Math.exp(timelineFraction * Math.log(endSpeed / startSpeed))
   return (speed - startSpeed) / (endSpeed - startSpeed)
+}
+
+function speedAtSegmentProgress(segment: CompositionSpeedRampSegment, sourceTicks: number): number {
+  if (segment.interpolation === 'hold' || speedsEqual(segment.startSpeed, segment.endSpeed)) {
+    return segment.startSpeed
+  }
+  const fraction = sourceTicks / (segment.sourceEndTick - segment.sourceStartTick)
+  return segment.startSpeed + (segment.endSpeed - segment.startSpeed) * fraction
 }
 
 function simplifyBoundaryPoints(

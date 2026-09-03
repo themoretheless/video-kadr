@@ -8,6 +8,7 @@ const project = (id: string) => ({
   mode: 'composition' as const,
   document: {} as never,
   sourceIds: [],
+  revision: 1,
   createdAt: 1,
   updatedAt: 1,
 })

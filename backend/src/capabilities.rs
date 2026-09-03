@@ -90,6 +90,12 @@ impl Capabilities {
                 has_muxer("mp3") && has_encoder("libmp3lame"),
                 "нужны muxer mp3 и encoder libmp3lame",
             ),
+            option(
+                "wav",
+                "Аудио WAV",
+                has_muxer("wav") && has_encoder("pcm_s16le"),
+                "нужны muxer wav и encoder pcm_s16le",
+            ),
         ];
         let codecs = vec![
             option(
@@ -189,6 +195,30 @@ impl Capabilities {
                 "Лимитер",
                 has_filter("alimiter"),
                 "нужен filter alimiter",
+            ),
+            option(
+                "audio-ducking",
+                "Auto ducking",
+                has_filter("sidechaincompress") && has_filter("asplit"),
+                "нужны filters sidechaincompress и asplit",
+            ),
+            option(
+                "audio-voice-echo",
+                "Voice echo",
+                has_filter("aecho") && has_filter("atrim") && has_filter("asetpts"),
+                "нужны filters aecho, atrim и asetpts",
+            ),
+            option(
+                "audio-voice-robot",
+                "Robot voice",
+                has_filter("tremolo") && has_filter("highpass") && has_filter("lowpass"),
+                "нужны filters tremolo, highpass и lowpass",
+            ),
+            option(
+                "audio-tone",
+                "Bass/treble tone",
+                has_filter("bass") && has_filter("treble"),
+                "нужны filters bass и treble",
             ),
         ]);
         let hardware = [
@@ -332,10 +362,18 @@ impl Capabilities {
             composition_av1_missing.push("encoder libsvtav1 or libaom-av1".to_owned());
         }
         let composition_prores_missing = delivery_missing("mov", &["prores_ks", "pcm_s16le"]);
+        let composition_mp3_missing = delivery_missing("mp3", &["libmp3lame"]);
+        let composition_wav_missing = delivery_missing("wav", &["pcm_s16le"]);
+        let composition_aac_missing = delivery_missing("adts", &["aac"]);
+        let composition_flac_missing = delivery_missing("flac", &["flac"]);
         let composition_h265_reason = delivery_reason(&composition_h265_missing);
         let composition_vp9_reason = delivery_reason(&composition_vp9_missing);
         let composition_av1_reason = delivery_reason(&composition_av1_missing);
         let composition_prores_reason = delivery_reason(&composition_prores_missing);
+        let composition_mp3_reason = delivery_reason(&composition_mp3_missing);
+        let composition_wav_reason = delivery_reason(&composition_wav_missing);
+        let composition_aac_reason = delivery_reason(&composition_aac_missing);
+        let composition_flac_reason = delivery_reason(&composition_flac_missing);
         let features = vec![
             option(
                 "composition-v1",
@@ -396,6 +434,30 @@ impl Capabilities {
                 "Composition MOV ProRes",
                 composition_prores_missing.is_empty(),
                 &composition_prores_reason,
+            ),
+            option(
+                "composition-audio-mp3",
+                "Composition audio-only MP3",
+                composition_mp3_missing.is_empty(),
+                &composition_mp3_reason,
+            ),
+            option(
+                "composition-audio-wav",
+                "Composition audio-only WAV",
+                composition_wav_missing.is_empty(),
+                &composition_wav_reason,
+            ),
+            option(
+                "composition-audio-aac",
+                "Composition audio-only AAC",
+                composition_aac_missing.is_empty(),
+                &composition_aac_reason,
+            ),
+            option(
+                "composition-audio-flac",
+                "Composition audio-only FLAC",
+                composition_flac_missing.is_empty(),
+                &composition_flac_reason,
             ),
         ];
 
@@ -574,11 +636,30 @@ mod tests {
                 "stereotools".into(),
                 "acompressor".into(),
                 "alimiter".into(),
+                "sidechaincompress".into(),
+                "asplit".into(),
+                "aecho".into(),
+                "atrim".into(),
+                "asetpts".into(),
+                "tremolo".into(),
+                "highpass".into(),
+                "lowpass".into(),
+                "bass".into(),
+                "treble".into(),
             ],
             ..ToolInfo::default()
         };
         let capabilities = Capabilities::from_tools(&tools);
-        for id in ["audio-eq", "audio-pan", "audio-compressor", "audio-limiter"] {
+        for id in [
+            "audio-eq",
+            "audio-pan",
+            "audio-compressor",
+            "audio-limiter",
+            "audio-ducking",
+            "audio-voice-echo",
+            "audio-voice-robot",
+            "audio-tone",
+        ] {
             assert!(
                 capabilities
                     .filters
@@ -682,8 +763,39 @@ mod tests {
                 .as_deref(),
             Some("нужны muxer mov, encoder prores_ks, encoder pcm_s16le")
         );
+        assert_eq!(
+            feature_option(&base_only, "composition-audio-mp3")
+                .reason
+                .as_deref(),
+            Some("нужны muxer mp3, encoder libmp3lame")
+        );
+        assert_eq!(
+            feature_option(&base_only, "composition-audio-wav")
+                .reason
+                .as_deref(),
+            Some("нужны muxer wav, encoder pcm_s16le")
+        );
+        assert_eq!(
+            feature_option(&base_only, "composition-audio-aac")
+                .reason
+                .as_deref(),
+            Some("нужны muxer adts")
+        );
+        assert_eq!(
+            feature_option(&base_only, "composition-audio-flac")
+                .reason
+                .as_deref(),
+            Some("нужны muxer flac, encoder flac")
+        );
 
-        tools.ffmpeg_muxers.extend(["webm".into(), "mov".into()]);
+        tools.ffmpeg_muxers.extend([
+            "webm".into(),
+            "mov".into(),
+            "mp3".into(),
+            "wav".into(),
+            "adts".into(),
+            "flac".into(),
+        ]);
         tools.ffmpeg_encoders.extend([
             "libx265".into(),
             "libvpx-vp9".into(),
@@ -691,6 +803,8 @@ mod tests {
             "libaom-av1".into(),
             "prores_ks".into(),
             "pcm_s16le".into(),
+            "libmp3lame".into(),
+            "flac".into(),
         ]);
         let complete = Capabilities::from_tools(&tools);
         for id in [
@@ -698,6 +812,10 @@ mod tests {
             "composition-webm-vp9",
             "composition-webm-av1",
             "composition-mov-prores",
+            "composition-audio-mp3",
+            "composition-audio-wav",
+            "composition-audio-aac",
+            "composition-audio-flac",
         ] {
             assert!(feature_option(&complete, id).available, "{id}");
         }
@@ -859,7 +977,7 @@ mod tests {
         let all_filters = all_look_filters();
         let capabilities = Capabilities::from_tools(&tools_with_look_filters(&all_filters));
 
-        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 11);
+        assert_eq!(capabilities.filters.len(), look_preset_catalog().len() + 15);
         for (option, definition) in capabilities.filters.iter().zip(look_preset_catalog()) {
             assert_eq!(option.id, definition.id());
             assert_eq!(option.label, definition.label);

@@ -4,6 +4,7 @@ import { pollJob } from '../../data/jobs.js'
 import * as api from '../api'
 import {
   activateTimeline,
+  applyAudibleTimelineRanges,
   beginEditTransaction,
   buildEditPayload,
   defaultEdit,
@@ -397,6 +398,13 @@ describe('edit API payload parity', () => {
     normalizeCrop()
     expect(state.edit.crop).toEqual({ x: 0, y: 0, w: 1280, h: 720 })
   })
+
+  it('persists crop aspect locks without sending them to the backend', () => {
+    const restored = sanitizeEditState({ cropAspectLock: '16:9' })
+    expect(restored.cropAspectLock).toBe('16:9')
+    state.edit.cropAspectLock = '16:9'
+    expect(buildEditPayload()).not.toHaveProperty('cropAspectLock')
+  })
 })
 
 describe('runtime capabilities', () => {
@@ -617,6 +625,29 @@ describe('Svelte app state timeline parity', () => {
 
     expect(deleteTimelineSegment(duplicate!)).toBe('segment-2')
     expect(state.edit.timelineSegments.map(({ id }) => id)).toEqual(['segment-1', 'segment-2'])
+  })
+
+  it('applies audible ranges atomically and restores them with undo', () => {
+    state.edit.timelineEnabled = true
+    state.edit.timelineSegments = [
+      { id: 'late', start: 6, end: 12 },
+      { id: 'repeat', start: 0, end: 8 },
+    ]
+    resetHistory()
+
+    expect(applyAudibleTimelineRanges([{ start: 1, end: 3 }, { start: 7, end: 9 }])).toBe(3)
+    expect(state.edit.timelineSegments).toEqual([
+      { id: 'segment-1', start: 7, end: 9 },
+      { id: 'segment-2', start: 1, end: 3 },
+      { id: 'segment-3', start: 7, end: 8 },
+    ])
+    expect(state.timelineSelectedSegmentId).toBe('segment-1')
+
+    undo()
+    expect(state.edit.timelineSegments).toEqual([
+      { id: 'late', start: 6, end: 12 },
+      { id: 'repeat', start: 0, end: 8 },
+    ])
   })
 
   it('clamps exact range updates to the source bounds and minimum duration', () => {

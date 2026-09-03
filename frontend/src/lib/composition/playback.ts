@@ -30,6 +30,7 @@ export function videoSourceTickAtTimelineTick(clip: VideoClip, timelineTick: num
 export function sourceClipTickAtTimelineTick(clip: VideoClip | AudioClip, timelineTick: number): number {
   if (clip.kind === 'video') return videoSourceTickAtTimelineTick(clip, timelineTick)
   const sourceOffset = clipSourceProgressAtTimelineTick(clip, timelineTick)
+  if (clip.reversed) return Math.max(clip.sourceInTicks, clip.sourceOutTicks - 1 - sourceOffset)
   return Math.min(clip.sourceOutTicks - 1, clip.sourceInTicks + sourceOffset)
 }
 

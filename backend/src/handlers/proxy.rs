@@ -3,20 +3,24 @@
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{anyhow, ensure, Context};
+use axum::body::Body;
 use axum::extract::{Path as AxPath, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, Request, StatusCode};
+use axum::response::Response;
 use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::analysis::proxy::{
-    proxy_key, proxy_key_for_fingerprint, proxy_media_filename, ProxyArtifact, ProxyProfile,
-    SourceIdentity, SourceMedia, MAX_PROXY_ARTIFACTS_PER_SOURCE,
+    proxy_key, proxy_key_for_fingerprint, ProxyArtifact, ProxyProfile, SourceIdentity, SourceMedia,
+    MAX_PROXY_ARTIFACTS_PER_SOURCE,
 };
 use crate::config::resource_classes::ResourceClass;
 use crate::db::valid_composition_source_id;
@@ -68,13 +72,16 @@ struct ReadyProxyResponse {
 }
 
 impl ReadyProxyResponse {
-    fn from_artifact(artifact: ProxyArtifact) -> Self {
-        let filename = proxy_media_filename(&artifact.key, &artifact.profile);
+    fn from_artifact(source_id: &str, artifact: ProxyArtifact) -> Self {
+        let url = format!(
+            "/api/library/{}/proxies/{}/content",
+            source_id, artifact.key
+        );
         Self {
             key: artifact.key,
             profile: artifact.profile,
             status: "ready",
-            url: format!("/files/proxies/{filename}"),
+            url,
             size_bytes: artifact.file.size,
             sha256: artifact.file.sha256,
         }
@@ -109,9 +116,11 @@ pub struct ProxyListResponse {
 pub async fn proxy_create_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
     trace: Option<Extension<crate::telemetry::context::TraceContext>>,
     ApiJson(profile): ApiJson<ProxyProfile>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    super::library::authorize_source_access(&state, &id, &headers).await?;
     validate_profile(&profile)?;
     ensure_video_library_entry(&state, &id).await?;
     if !state.tools.ffmpeg {
@@ -197,7 +206,9 @@ pub async fn proxy_create_handler(
 pub async fn proxy_list_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: HeaderMap,
 ) -> AppResult<Json<ProxyListResponse>> {
+    super::library::authorize_source_access(&state, &id, &headers).await?;
     ensure_video_library_entry(&state, &id).await?;
     if !state.tools.ffmpeg {
         return Err(AppError::service_unavailable(
@@ -213,7 +224,7 @@ pub async fn proxy_list_handler(
         .await
         .map_err(|error| AppError::internal("list source proxies", error))?
         .into_iter()
-        .map(ReadyProxyResponse::from_artifact)
+        .map(|artifact| ReadyProxyResponse::from_artifact(&id, artifact))
         .collect::<Vec<_>>();
     let mut jobs = Vec::new();
     for request in state
@@ -272,7 +283,9 @@ pub async fn proxy_list_handler(
 pub async fn proxy_delete_handler(
     State(state): State<AppState>,
     AxPath((id, key)): AxPath<(String, String)>,
+    headers: HeaderMap,
 ) -> AppResult<StatusCode> {
+    super::library::authorize_source_access(&state, &id, &headers).await?;
     ensure_video_library_entry(&state, &id).await?;
     let parsed_key = parse_proxy_key(&key)?;
     let cancelled = !cancel_proxy_jobs(&state, &id, Some(&parsed_key))
@@ -294,6 +307,32 @@ pub async fn proxy_delete_handler(
     } else {
         Err(AppError::not_found("Proxy не найден"))
     }
+}
+
+pub async fn proxy_content_handler(
+    State(state): State<AppState>,
+    AxPath((id, key)): AxPath<(String, String)>,
+    headers: HeaderMap,
+    request: Request<Body>,
+) -> AppResult<Response> {
+    super::library::authorize_source_access(&state, &id, &headers).await?;
+    let parsed_key = parse_proxy_key(&key)?;
+    let source = current_source_identity(&state, &id, CancellationToken::new())
+        .await
+        .map_err(map_source_inspection_error)?;
+    let artifact = state
+        .proxy_service
+        .list_ready(&source, CancellationToken::new())
+        .await
+        .map_err(|error| AppError::internal("list source proxies", error))?
+        .into_iter()
+        .find(|artifact| artifact.key == parsed_key)
+        .ok_or_else(|| AppError::not_found("Proxy не найден"))?;
+    ServeFile::new(state.storage.join(artifact.file.path))
+        .oneshot(request)
+        .await
+        .map(|response| response.map(Body::new))
+        .map_err(|error| AppError::internal("serve proxy media", error))
 }
 
 /// Called by source deletion before the authoritative original is removed.
@@ -409,8 +448,11 @@ async fn finish_proxy_job(
 ) {
     match outcome {
         Ok(Some(artifact)) => {
-            let result = serde_json::to_value(ReadyProxyResponse::from_artifact(artifact.clone()))
-                .expect("verified proxy response serialization cannot fail");
+            let result = serde_json::to_value(ReadyProxyResponse::from_artifact(
+                &artifact.source_id,
+                artifact.clone(),
+            ))
+            .expect("verified proxy response serialization cannot fail");
             if !apply_job_event(state, job_id, JobEvent::Succeeded { result }).await {
                 if let Err(error) = state
                     .proxy_service
@@ -548,25 +590,11 @@ async fn validated_original_path(state: &AppState, entry: &MediaEntry) -> anyhow
         safe_filename(&entry.filename),
         "unsafe proxy source filename"
     );
-    let sources = tokio::fs::canonicalize(state.sources_dir())
+    state
+        .library
+        .resolve_media_path(entry)
         .await
-        .context("canonicalize proxy source directory")?;
-    let candidate = state.sources_dir().join(&entry.filename);
-    let metadata = tokio::fs::symlink_metadata(&candidate)
-        .await
-        .context("inspect proxy source")?;
-    ensure!(
-        metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
-        "proxy source is not a regular file"
-    );
-    let canonical = tokio::fs::canonicalize(&candidate)
-        .await
-        .context("canonicalize proxy source")?;
-    ensure!(
-        canonical.parent() == Some(sources.as_path()),
-        "proxy source is outside media storage"
-    );
-    Ok(canonical)
+        .context("resolve proxy source")
 }
 
 fn safe_filename(filename: &str) -> bool {

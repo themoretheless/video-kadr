@@ -330,7 +330,10 @@ fn video_filter_program(
 fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
     let timing = edit.timing();
     let audio = edit.audio();
-    let mut af: Vec<String> = Vec::new();
+    let mut af = vec![
+        "aresample=48000:async=1:first_pts=0".to_owned(),
+        "asetpts=PTS-STARTPTS".to_owned(),
+    ];
     if timing.reverse {
         af.push("areverse".into());
     }
@@ -368,9 +371,8 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
         ));
     }
     let speed = timing.speed;
-    if (speed - 1.0).abs() > 1e-6 && speed > 0.0 {
-        // atempo only accepts 0.5..=2.0; EditPlan validates that range.
-        af.push(format!("atempo={:.6}", speed.clamp(0.5, 2.0)));
+    if (speed - 1.0).abs() > 1e-6 {
+        af.extend(atempo_filters(speed));
     }
     if timing.fade_in_seconds > 0.0 {
         af.push(format!("afade=t=in:st=0:d={:.3}", timing.fade_in_seconds));
@@ -394,6 +396,24 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
         ));
     }
     af
+}
+
+fn atempo_filters(speed: f64) -> Vec<String> {
+    debug_assert!(speed.is_finite() && (0.05..=16.0).contains(&speed));
+    let mut remaining = speed;
+    let mut filters = Vec::new();
+    while remaining > 2.0 {
+        filters.push("atempo=2.000000".to_owned());
+        remaining /= 2.0;
+    }
+    while remaining < 0.5 {
+        filters.push("atempo=0.500000".to_owned());
+        remaining *= 2.0;
+    }
+    if (remaining - 1.0).abs() > 1e-9 {
+        filters.push(format!("atempo={remaining:.6}"));
+    }
+    filters
 }
 
 fn db_to_linear(decibels: f64) -> f64 {
@@ -466,7 +486,7 @@ fn map_optional_audio_for_complex_video(
 ///
 /// Trim is applied as an *input* option (`-ss` + `-t`) so it happens before the
 /// filter graph; geometry/colour/speed/fade then operate on the trimmed stream.
-/// The output container/codecs depend on `edit.format` (mp4/webm/gif/png/mp3).
+/// The output container/codecs depend on `edit.format` (mp4/webm/gif/png/mp3/wav).
 pub fn build_ffmpeg_args(input: &Path, destination: &Path, plan: &EditPlan) -> Vec<String> {
     compile_ffmpeg_command(input, destination, plan, None)
         .expect("build_ffmpeg_args requires all selected render resources")
@@ -515,7 +535,7 @@ fn compile_ffmpeg_command(
     args.push(input.to_string_lossy().into_owned());
 
     match format {
-        OutputFormat::Mp3 => {
+        OutputFormat::Mp3 | OutputFormat::Wav => {
             // Audio-only extraction.
             let af = audio_filters(edit, out_dur);
             if !af.is_empty() {
@@ -524,9 +544,17 @@ fn compile_ffmpeg_command(
             }
             args.push("-vn".into());
             args.push("-c:a".into());
-            args.push("libmp3lame".into());
-            args.push("-q:a".into());
-            args.push("2".into());
+            if format == OutputFormat::Mp3 {
+                args.push("libmp3lame".into());
+                args.push("-q:a".into());
+                args.push("2".into());
+            } else {
+                args.push("pcm_s16le".into());
+                args.push("-ar".into());
+                args.push("48000".into());
+                args.push("-ac".into());
+                args.push("2".into());
+            }
         }
         OutputFormat::Png | OutputFormat::Jpg => {
             // Single still frame at the trim start (positioned by -ss above).
@@ -759,15 +787,15 @@ fn build_concat_args(
     let mut graph = String::new();
     for (i, s) in segments.iter().enumerate() {
         graph.push_str(&format!(
-            "[0:v]trim=start={:.3}:end={:.3},setpts=PTS-STARTPTS[v{i}];",
-            s.start_seconds(),
-            s.end_seconds()
+            "[0:v]trim=start={}:end={},setpts=PTS-STARTPTS[v{i}];",
+            format_secs(s.start_seconds()),
+            format_secs(s.end_seconds())
         ));
         if include_audio {
             graph.push_str(&format!(
-                "[0:a]atrim=start={:.3}:end={:.3},asetpts=PTS-STARTPTS[a{i}];",
-                s.start_seconds(),
-                s.end_seconds()
+                "[0:a]atrim=start={}:end={},asetpts=PTS-STARTPTS[a{i}];",
+                format_secs(s.start_seconds()),
+                format_secs(s.end_seconds())
             ));
         }
     }
@@ -870,7 +898,7 @@ pub fn expected_output_secs(edit: &EditSpec, source_duration: f64) -> f64 {
 
 /// Format seconds without scientific notation, trimming trailing noise.
 fn format_secs(s: f64) -> String {
-    format!("{s:.3}")
+    format!("{s:.6}")
 }
 
 #[cfg(test)]
@@ -1024,6 +1052,10 @@ mod tests {
         assert!(args.contains(&"aac".to_string()));
         assert!(!args.contains(&"-an".to_string()));
         assert!(!args.contains(&"-vf".to_string()));
+        assert_eq!(
+            af(&args).as_deref(),
+            Some("aresample=48000:async=1:first_pts=0,asetpts=PTS-STARTPTS")
+        );
     }
 
     #[test]
@@ -1037,7 +1069,37 @@ mod tests {
         assert!(ss < i, "-ss must precede -i");
         assert_eq!(
             args[args.iter().position(|a| a == "-t").unwrap() + 1],
-            "3.000"
+            "3.000000"
+        );
+    }
+
+    #[test]
+    fn trim_and_segment_boundaries_keep_microsecond_precision() {
+        let trimmed = args_for(
+            json!({ "videoId": "x", "trim": { "start": 0.016667, "end": 0.033333 } }),
+            1.0,
+        );
+        assert!(trimmed.contains(&"0.016667".to_owned()));
+        assert!(trimmed.contains(&"0.016666".to_owned()));
+
+        let segmented = args_for(
+            json!({
+                "videoId": "x",
+                "segments": [
+                    { "start": 0.016667, "end": 0.033333 },
+                    { "start": 0.050001, "end": 0.066668 }
+                ]
+            }),
+            1.0,
+        );
+        let graph = filter_complex(&segmented);
+        assert!(
+            graph.contains("trim=start=0.016667:end=0.033333"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("trim=start=0.050001:end=0.066668"),
+            "{graph}"
         );
     }
 
@@ -1472,6 +1534,28 @@ mod tests {
     }
 
     #[test]
+    fn extended_speed_uses_exact_bounded_atempo_chains() {
+        let fast = args_for(json!({ "videoId": "x", "speed": 16.0 }), 10.0);
+        let fast_audio = af(&fast).unwrap();
+        assert_eq!(
+            fast_audio.matches("atempo=2.000000").count(),
+            4,
+            "{fast_audio}"
+        );
+        assert!(vf(&fast).contains("setpts=0.062500*PTS"));
+
+        let slow = args_for(json!({ "videoId": "x", "speed": 0.05 }), 10.0);
+        let slow_audio = af(&slow).unwrap();
+        assert_eq!(
+            slow_audio.matches("atempo=0.500000").count(),
+            4,
+            "{slow_audio}"
+        );
+        assert!(slow_audio.contains("atempo=0.800000"), "{slow_audio}");
+        assert!(vf(&slow).contains("setpts=20.000000*PTS"));
+    }
+
+    #[test]
     fn fps_override_present() {
         let args = args_for(json!({ "videoId": "x", "fps": 30.0 }), 10.0);
         let i = args.iter().position(|a| a == "-r").expect("has -r");
@@ -1486,6 +1570,7 @@ mod tests {
         assert_eq!(output_ext(OutputFormat::Png), "png");
         assert_eq!(output_ext(OutputFormat::Jpg), "jpg");
         assert_eq!(output_ext(OutputFormat::Mp3), "mp3");
+        assert_eq!(output_ext(OutputFormat::Wav), "wav");
         assert_eq!(output_ext(OutputFormat::Prores), "mov");
         assert_eq!(output_ext(OutputFormat::Av1), "mp4");
         assert!(OutputFormat::parse(Some("weird")).is_err());
@@ -1622,7 +1707,7 @@ mod tests {
         // Trim still positions the grab.
         assert_eq!(
             args[args.iter().position(|a| a == "-ss").unwrap() + 1],
-            "3.000"
+            "3.000000"
         );
     }
 
@@ -1727,9 +1812,19 @@ mod tests {
             5.0,
         );
         let graph = filter_complex(&args);
-        assert!(graph.contains("trim=start=0.000:end=1.000"), "{graph}");
-        assert!(graph.contains("trim=start=3.000:end=4.000"), "{graph}");
+        assert!(
+            graph.contains("trim=start=0.000000:end=1.000000"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("trim=start=3.000000:end=4.000000"),
+            "{graph}"
+        );
         assert!(graph.contains("concat=n=2:v=1:a=1[cv][ca]"), "{graph}");
+        assert!(
+            graph.contains("[ca]aresample=48000:async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]"),
+            "{graph}"
+        );
         assert!(args.contains(&"libx264".to_string()));
         // The concat path replaces input-side trim.
         assert!(!args.contains(&"-ss".to_string()));
@@ -1751,10 +1846,10 @@ mod tests {
         let graph = filter_complex(&args);
 
         let ordered_video_segments = [
-            "[0:v]trim=start=6.000:end=8.000,setpts=PTS-STARTPTS[v0]",
-            "[0:v]trim=start=1.000:end=4.000,setpts=PTS-STARTPTS[v1]",
-            "[0:v]trim=start=1.000:end=4.000,setpts=PTS-STARTPTS[v2]",
-            "[0:v]trim=start=3.000:end=7.000,setpts=PTS-STARTPTS[v3]",
+            "[0:v]trim=start=6.000000:end=8.000000,setpts=PTS-STARTPTS[v0]",
+            "[0:v]trim=start=1.000000:end=4.000000,setpts=PTS-STARTPTS[v1]",
+            "[0:v]trim=start=1.000000:end=4.000000,setpts=PTS-STARTPTS[v2]",
+            "[0:v]trim=start=3.000000:end=7.000000,setpts=PTS-STARTPTS[v3]",
         ];
         let positions: Vec<_> = ordered_video_segments
             .iter()
@@ -1936,6 +2031,20 @@ mod tests {
         );
         assert!(args.contains(&"-vn".to_string()));
         assert!(args.contains(&"libmp3lame".to_string()));
+        assert!(!args.contains(&"-vf".to_string()));
+        assert!(af(&args).unwrap().contains("volume=0.500"));
+    }
+
+    #[test]
+    fn wav_is_uncompressed_audio_only_with_explicit_clock_and_layout() {
+        let args = args_for(
+            json!({ "videoId": "x", "format": "wav", "volume": 0.5 }),
+            10.0,
+        );
+        assert!(args.contains(&"-vn".to_string()));
+        assert!(args.windows(2).any(|pair| pair == ["-c:a", "pcm_s16le"]));
+        assert!(args.windows(2).any(|pair| pair == ["-ar", "48000"]));
+        assert!(args.windows(2).any(|pair| pair == ["-ac", "2"]));
         assert!(!args.contains(&"-vf".to_string()));
         assert!(af(&args).unwrap().contains("volume=0.500"));
     }

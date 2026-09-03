@@ -12,6 +12,7 @@ import {
   sanitizeRect,
 } from '../domain/edit'
 import { cloneValue, PatchCommand } from '../domain/history'
+import { retainAudibleTimelineSegments, type SourceRange } from '../audio/silence'
 import {
   activeTimelineSegments,
   MAX_TIMELINE_SEGMENTS,
@@ -23,6 +24,8 @@ import {
   totalTimelineDuration,
 } from '../domain/timeline'
 import { toast } from './toasts.svelte.js'
+import { authState } from './auth.svelte.js'
+import { spacesState } from './spaces.svelte.js'
 import type {
   Capabilities,
   EditState,
@@ -408,6 +411,20 @@ export function activateTimeline(): string | null {
   })
 }
 
+/** Apply locally detected audible source ranges to the canonical ordered timeline. */
+export function applyAudibleTimelineRanges(audibleRanges: readonly SourceRange[]): number {
+  const duration = state.video?.duration ?? 0
+  if (duration <= 0) return 0
+  const sourceSegments = activeTimelineSegments(state.edit, duration)
+  const next = retainAudibleTimelineSegments(sourceSegments, audibleRanges)
+  timelineTransaction('timeline-remove-silence', () => {
+    state.edit.timelineSegments = next
+    state.edit.timelineEnabled = true
+    state.timelineSelectedSegmentId = next[0]!.id
+  })
+  return next.length
+}
+
 /** Replace one range while preserving its id and the exact UI/playback order. */
 export function updateTimelineSegmentRange(
   id: string,
@@ -532,7 +549,7 @@ export async function loadLibrary(): Promise<boolean> {
   const revision = ++libraryLoadRevision
   state.librarySnapshotReady = false
   try {
-    const entries = await fetchLibrary()
+    const entries = await fetchLibrary(authState.token, spacesState.selectedId)
     if (revision !== libraryLoadRevision) return false
     state.library = entries
     state.librarySnapshotReady = true
@@ -550,7 +567,12 @@ export async function updateLibraryMetadata(
   id: string,
   metadata: api.LibraryMetadataPatch,
 ): Promise<MediaEntry> {
-  const updated = await api.patchLibraryMetadata(id, metadata)
+  const updated = await api.patchLibraryMetadata(
+    id,
+    metadata,
+    authState.token,
+    spacesState.selectedId,
+  )
   updateCachedLibrary(updated)
   state.library = state.library.map((entry) => (entry.id === id ? updated : entry))
   return updated
@@ -577,7 +599,7 @@ export function selectedExportUnavailableReason(): string | null {
     return 'Монтажная линия экспортируется только в MP4, WebM, AV1 или ProRes'
   }
 
-  if (state.edit.format === 'mp3') return null
+  if (state.edit.format === 'mp3' || state.edit.format === 'wav') return null
 
   if (state.edit.format === 'mp4') {
     const codec = state.capabilities?.codecs.find((option) => option.id === state.edit.codec)
@@ -664,7 +686,7 @@ export function openFromLibrary(entry: MediaEntry): void {
 
 export async function deleteFromLibrary(id: string): Promise<void> {
   try {
-    await api.deleteLibraryItem(id)
+    await api.deleteLibraryItem(id, authState.token, spacesState.selectedId)
     state.library = state.library.filter((e) => e.id !== id)
     if (state.video?.id === id) state.video = null
     toast('info', 'Удалено')

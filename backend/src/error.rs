@@ -63,6 +63,14 @@ impl AppError {
         Self::client(StatusCode::NOT_FOUND, "not_found", message)
     }
 
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::client(StatusCode::FORBIDDEN, "forbidden", message)
+    }
+
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::client(StatusCode::UNAUTHORIZED, "unauthorized", message)
+    }
+
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::client(StatusCode::CONFLICT, "conflict", message)
     }

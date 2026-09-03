@@ -24,8 +24,10 @@ use crate::process_control::ProcessRuntime;
 use crate::runtime::cpu_pool::{CpuPool, CpuPoolConfig};
 use crate::runtime::TaskSupervisor;
 use crate::services::media_indexer::MediaIndexer;
+use crate::stock_catalog::PexelsClient;
 use crate::tools::proxy::FfmpegProxyEncoder;
 use crate::tools::thumbnail::FfmpegThumbnailEncoder;
+use crate::youtube::{TokenCipher, YouTubeOAuthClient};
 
 /// Availability and versions of the external tools we shell out to. Probed once
 /// at startup and surfaced via `/api/health`.
@@ -82,6 +84,9 @@ pub struct AppState {
     pub media_indexer: MediaIndexer,
     pub telemetry: Arc<dyn TelemetryPort>,
     pub storage: PathBuf,
+    pub stock_catalog: Option<PexelsClient>,
+    pub youtube_oauth: Option<YouTubeOAuthClient>,
+    pub youtube_token_cipher: Option<TokenCipher>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +234,9 @@ impl AppState {
             media_indexer,
             telemetry: Arc::new(crate::telemetry::metrics::PrometheusTelemetry::default()),
             storage,
+            stock_catalog: None,
+            youtube_oauth: None,
+            youtube_token_cipher: None,
         })
     }
 
@@ -239,6 +247,17 @@ impl AppState {
 
     pub fn with_telemetry(mut self, telemetry: Arc<dyn TelemetryPort>) -> Self {
         self.telemetry = telemetry;
+        self
+    }
+
+    pub fn with_stock_catalog(mut self, stock_catalog: PexelsClient) -> Self {
+        self.stock_catalog = Some(stock_catalog);
+        self
+    }
+
+    pub fn with_youtube_oauth(mut self, client: YouTubeOAuthClient, cipher: TokenCipher) -> Self {
+        self.youtube_oauth = Some(client);
+        self.youtube_token_cipher = Some(cipher);
         self
     }
 

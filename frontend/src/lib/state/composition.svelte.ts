@@ -1,4 +1,6 @@
 import * as api from '../api'
+import { authState } from './auth.svelte'
+import { spacesState } from './spaces.svelte'
 import { pollJob } from '../../data/jobs.js'
 import {
   cacheCompositionProject,
@@ -8,6 +10,7 @@ import {
 } from '../../data/projects.js'
 import { editorFacade } from '../../stores/editorFacade.js'
 import type { TimelineBeat } from '../audio/beatMarkers'
+import type { SourceRange } from '../audio/silence'
 import { estimateWaveformOffset, MAX_SYNC_SAMPLES, waveformEnergy } from '../audio/sync'
 import { localWaveformCache } from '../audio/waveformCache'
 import type { WaveformSummary } from '../audio/waveform'
@@ -22,6 +25,7 @@ import {
   findClipLocation,
   moveClip,
   registerSource,
+  removeSilenceFromClip,
   reorderTrack,
   snapClipStart,
   snapTick,
@@ -83,6 +87,7 @@ import {
   type CompositionTransition,
   type CompositionTransitionKind,
   type CompositionVideoMask,
+  type CompositionVideoStyleEffect,
   type CompositionVisualAnimation,
   type CompositionVisualProperty,
   type ImageClip,
@@ -103,6 +108,7 @@ import {
   deleteKeyframe,
   keyframeTickAtLocalTime,
   maskPropertyBounds,
+  maskPropertyValue,
   sampleAnimatableValue,
   sliceAudioAnimation,
   sliceVisualAnimation,
@@ -130,7 +136,7 @@ import {
 import {
   cuesToTextClips,
   formatSrt,
-  parseSrt,
+  parseTimecodedText,
   textClipsToCues,
 } from '../subtitles/srt'
 import type { Capabilities, MediaEntry, MediaInfo, MediaType, ResultInfo } from '../types'
@@ -161,6 +167,7 @@ interface StoredDraft {
   document: Composition
   media?: Record<string, CompositionMedia>
   projectId?: string | null
+  projectRevision?: number | null
   projectName?: string
   exportSettings?: CompositionRenderOutput
   dirty?: boolean
@@ -183,6 +190,7 @@ const DEFAULT_CANVAS = {
 } as const
 
 let compositionStorageOverride: CompositionStorage | null | undefined
+let compositionProjectsEtag: string | null = null
 
 const restored = readActiveStoredDraft()
 const restoredOutput = normalizeCompositionRenderOutput(restored?.exportSettings)
@@ -193,6 +201,7 @@ export const compositionState = $state({
   document: cloneComposition(restored?.document ?? createComposition(DEFAULT_CANVAS)),
   media: { ...(restored?.media ?? {}) } as Record<string, CompositionMedia>,
   projectId: restored?.projectId ?? null as string | null,
+  projectRevision: restored?.projectRevision ?? null as number | null,
   projectName: restored?.projectName?.trim() || 'Новая композиция',
   projects: [] as api.CompositionProjectDto[],
   ui: {
@@ -229,6 +238,9 @@ export const compositionState = $state({
     result: null as ResultInfo | null,
     profile: { ...restoredOutput.profile } as CompositionDeliveryProfile,
     qualityTier: restoredOutput.qualityTier as CompositionQualityTier,
+    videoBitrateKbps: restoredOutput.videoBitrateKbps ?? null as number | null,
+    rangeInTicks: null as number | null,
+    rangeOutTicks: null as number | null,
   },
 })
 
@@ -269,6 +281,9 @@ export function compositionRenderOutput(): CompositionRenderOutput {
   return {
     profile: { ...compositionState.export.profile },
     qualityTier: compositionState.export.qualityTier,
+    ...(compositionState.export.videoBitrateKbps === null
+      ? {}
+      : { videoBitrateKbps: compositionState.export.videoBitrateKbps }),
   }
 }
 
@@ -277,20 +292,58 @@ export function updateCompositionExportSettings(
 ): void {
   const profile = patch.profile ?? compositionState.export.profile
   const qualityTier = patch.qualityTier ?? compositionState.export.qualityTier
+  const videoBitrateKbps = Object.hasOwn(patch, 'videoBitrateKbps')
+    ? patch.videoBitrateKbps
+    : compositionState.export.videoBitrateKbps ?? undefined
   compositionDeliveryProfileOption(profile)
   if (qualityTier !== 'high' && qualityTier !== 'medium' && qualityTier !== 'compact') {
     throw new Error('Неизвестный quality tier для composition export')
   }
+  if (videoBitrateKbps !== undefined && (
+    !Number.isSafeInteger(videoBitrateKbps) || videoBitrateKbps < 100 || videoBitrateKbps > 200_000 ||
+    (profile.container !== 'mp4' && profile.container !== 'webm')
+  )) {
+    throw new Error('Custom video bitrate доступен для MP4/WebM в диапазоне 100..200000 Kbps')
+  }
   commitDocument(compositionState.document, compositionState.media, {
     profile: { ...profile },
     qualityTier,
+    ...(videoBitrateKbps === undefined ? {} : { videoBitrateKbps }),
   })
 }
 
 export function setCompositionDeliveryProfile(profileId: CompositionDeliveryProfileId): void {
   const option = COMPOSITION_DELIVERY_PROFILE_OPTIONS.find((candidate) => candidate.id === profileId)
   if (!option) throw new Error(`Неизвестный delivery profile ${profileId}`)
-  updateCompositionExportSettings({ profile: option.profile })
+  updateCompositionExportSettings({
+    profile: option.profile,
+    ...(
+      option.profile.container === 'mp4' || option.profile.container === 'webm'
+        ? {}
+        : { videoBitrateKbps: undefined }
+    ),
+  })
+}
+
+export function setCompositionExportRangePoint(point: 'in' | 'out'): void {
+  const tick = compositionState.transport.playheadTicks
+  if (point === 'in') compositionState.export.rangeInTicks = tick
+  else compositionState.export.rangeOutTicks = tick
+  compositionState.export.result = null
+  compositionState.export.error = ''
+}
+
+export function clearCompositionExportRange(): void {
+  compositionState.export.rangeInTicks = null
+  compositionState.export.rangeOutTicks = null
+  compositionState.export.result = null
+  compositionState.export.error = ''
+}
+
+export function compositionExportRange(): { startTicks: number; endTicks: number } | null {
+  const startTicks = compositionState.export.rangeInTicks
+  const endTicks = compositionState.export.rangeOutTicks
+  return startTicks === null || endTicks === null ? null : { startTicks, endTicks }
 }
 
 export function setCompositionProjectName(name: string): void {
@@ -679,6 +732,7 @@ export function undoComposition(): void {
   compositionState.media = previousMedia
   compositionState.export.profile = { ...previousOutput.profile }
   compositionState.export.qualityTier = previousOutput.qualityTier
+  compositionState.export.videoBitrateKbps = previousOutput.videoBitrateKbps ?? null
   repairSelection()
   stopAtDuration()
   scheduleAutosave()
@@ -696,9 +750,17 @@ export function redoComposition(): void {
   compositionState.media = nextMedia
   compositionState.export.profile = { ...nextOutput.profile }
   compositionState.export.qualityTier = nextOutput.qualityTier
+  compositionState.export.videoBitrateKbps = nextOutput.videoBitrateKbps ?? null
   repairSelection()
   stopAtDuration()
   scheduleAutosave()
+}
+
+export function updateCompositionCanvas(patch: Partial<Composition['canvas']>): void {
+  const canvas = { ...compositionState.document.canvas, ...patch }
+  const document = { ...compositionState.document, canvas }
+  assertValidComposition(document)
+  commitDocument(document)
 }
 
 export function addMediaInfoToComposition(media: MediaInfo): string {
@@ -931,8 +993,8 @@ export function addCompositionTrack(kind: TrackKind): string {
 }
 
 export function importSrtToComposition(serialized: string, requestedTrackId?: string): number {
-  const cues = parseSrt(serialized)
-  if (!cues.length) throw new Error('SRT не содержит субтитров')
+  const cues = parseTimecodedText(serialized)
+  if (!cues.length) throw new Error('Файл не содержит субтитров')
   let document = compositionState.document
   const candidateTrack = requestedTrackId
     ? document.tracks.find((track) => track.id === requestedTrackId)
@@ -1043,6 +1105,33 @@ export function rippleDeleteSelectedCompositionClip(): void {
   selectCompositionClip(null, null)
 }
 
+export function removeSilenceFromSelectedCompositionClip(
+  audibleSourceRanges: readonly SourceRange[],
+): number {
+  const clipId = compositionState.ui.selectedClipId
+  if (!clipId) throw new Error('Сначала выберите video или audio clip')
+  const location = findClipLocation(compositionState.document, clipId)
+  if (location.clip.kind !== 'video' && location.clip.kind !== 'audio') {
+    throw new Error('Silence removal доступен для video и audio clips')
+  }
+  const clip = location.clip
+  const ranges = audibleSourceRanges
+    .map(({ start, end }) => ({
+      start: Math.round(start * COMPOSITION_TIME_BASE),
+      end: Math.round(end * COMPOSITION_TIME_BASE),
+    }))
+    .filter(({ start, end }) =>
+      Math.min(end, clip.sourceOutTicks) > Math.max(start, clip.sourceInTicks),
+    )
+  const replacementIds = Array.from(
+    { length: Math.max(0, ranges.length - 1) },
+    () => makeId(`${clip.kind}-clip`),
+  )
+  commitDocument(removeSilenceFromClip(compositionState.document, clipId, ranges, replacementIds))
+  selectCompositionClip(location.track.id, clipId)
+  return ranges.length
+}
+
 export function magnetizeCompositionTrack(trackId: string, anchorTicks = 0): void {
   commitDocument(magnetizeTrack(compositionState.document, trackId, anchorTicks))
   compositionState.ui.selectedTrackId = trackId
@@ -1122,6 +1211,58 @@ export function updateCompositionVideoAudio(
       audioPan: patch.audioPan === undefined ? clip.audioPan ?? 0 : clampNumber(patch.audioPan, -1, 1),
     }
   })
+}
+
+export function detachCompositionVideoAudio(clipId: string): string {
+  const location = findClipLocation(compositionState.document, clipId)
+  if (location.clip.kind !== 'video') throw new Error('Отделить звук можно только от video clip')
+  if (location.track.locked) throw new Error('Video-дорожка заблокирована')
+  const clip = location.clip
+  const source = compositionState.document.sources[clip.sourceId]
+  if (!source?.hasAudio) throw new Error('Исходник не содержит аудио')
+  if (!clip.sourceAudioEnabled) throw new Error('Встроенный звук уже выключен')
+  if (clip.playbackMode?.mode === 'freeze') throw new Error('Freeze frame не содержит непрерывного аудио')
+  if (clip.speedRamp?.audioPolicy === 'mute') {
+    throw new Error('Speed ramp настроен на mute audio')
+  }
+
+  let document: Composition = {
+    ...compositionState.document,
+    tracks: compositionState.document.tracks.map((track) => track.id !== location.track.id ? track : {
+      ...track,
+      clips: track.kind === 'video'
+        ? track.clips.map((candidate) => candidate.id === clipId ? { ...candidate, sourceAudioEnabled: false } : candidate)
+        : track.clips,
+    } as CompositionTrack),
+  }
+  const end = clipEndTicks(clip)
+  let audioTrack = findAvailableTrack(document, 'audio', clip.timelineStartTicks, end) as AudioTrack | undefined
+  if (!audioTrack) {
+    const trackId = makeId('detached-audio-track')
+    document = addTrack(document, makeTrack('audio', trackId, nextTrackName(document, 'Отделённый звук')))
+    audioTrack = document.tracks.find((track): track is AudioTrack => track.id === trackId)!
+  }
+  const audioId = makeId('detached-audio')
+  const audioClip: AudioClip = {
+    id: audioId,
+    kind: 'audio',
+    sourceId: clip.sourceId,
+    timelineStartTicks: clip.timelineStartTicks,
+    sourceInTicks: clip.sourceInTicks,
+    sourceOutTicks: clip.sourceOutTicks,
+    speed: clip.speed,
+    ...(clip.speedRamp ? { speedRamp: structuredClone(clip.speedRamp) } : {}),
+    gain: clip.audioGain,
+    pan: clip.audioPan ?? 0,
+    reversed: clip.playbackMode?.mode === 'reverse',
+    ...(clip.audioAnimation ? { audioAnimation: structuredClone(clip.audioAnimation) } : {}),
+    fadeInTicks: 0,
+    fadeOutTicks: 0,
+  }
+  document = addClip(document, audioTrack.id, audioClip)
+  commitDocument(document)
+  selectCompositionClip(audioTrack.id, audioId)
+  return audioId
 }
 
 export function updateCompositionPlaybackMode(
@@ -1345,6 +1486,12 @@ export function updateCompositionChromaKey(clipId: string, chromaKey: Compositio
   updateClip(clipId, (clip) => clip.kind === 'video' ? { ...clip, chromaKey: { ...chromaKey } } : clip)
 }
 
+export function updateCompositionVideoEffects(clipId: string, videoEffects: readonly CompositionVideoStyleEffect[]): void {
+  updateClip(clipId, (clip) => clip.kind === 'video'
+    ? { ...clip, videoEffects: videoEffects.map((effect) => ({ ...effect })) }
+    : clip)
+}
+
 export type CompositionAutomationTarget =
   | { readonly kind: 'visual'; readonly clipId: string }
   | { readonly kind: 'audio'; readonly clipId: string }
@@ -1444,12 +1591,28 @@ export function clearCompositionVisualAnimation(clipId: string, property: Compos
   clearCompositionAutomation({ kind: 'visual', clipId }, property)
 }
 
+export function applyCompositionVisualAnimation(
+  clipId: string,
+  animation: CompositionVisualAnimation,
+): void {
+  const location = findClipLocation(compositionState.document, clipId)
+  if (!location || location.clip.kind === 'audio') throw new Error('Animation требует visual clip')
+  updateClip(clipId, (candidate) => candidate.kind === 'audio' ? candidate : {
+    ...candidate,
+    animation: { ...(candidate.animation ?? {}), ...animation },
+  })
+}
+
+export function clearCompositionVisualAnimations(clipId: string): void {
+  updateClip(clipId, (clip) => clip.kind === 'audio' ? clip : { ...clip, animation: undefined })
+}
+
 /** Apply a completed point track as one undoable X/Y animation edit. */
 export function applyCompositionTrackedAnimation(
   clipId: string,
   animation: CompositionVisualAnimation,
 ): void {
-  requireVisualOverlay(clipId)
+  requireVisualAutomation(clipId)
   const x = animation.x
   const y = animation.y
   if (!x || !y || x.mode !== 'keyframes' || y.mode !== 'keyframes') {
@@ -1479,7 +1642,7 @@ export function applyCompositionTrackedAnimation(
 
 export function addCompositionVideoMask(
   clipId: string,
-  shape: Exclude<CompositionMaskShape, 'linear'>,
+  shape: CompositionMaskShape,
 ): string {
   const location = requireVisualOverlay(clipId)
   if (location.clip.kind !== 'video') throw new Error('Masks доступны только для video overlay')
@@ -1487,6 +1650,7 @@ export function addCompositionVideoMask(
   const mask: CompositionVideoMask = {
     id,
     shape,
+    rotationDegrees: constantAnimatable(0),
     x: constantAnimatable(0.5),
     y: constantAnimatable(0.5),
     width: constantAnimatable(0.8),
@@ -1502,7 +1666,8 @@ export function updateCompositionVideoMask(
   clipId: string,
   maskId: string,
   patch: Partial<{
-    shape: Exclude<CompositionMaskShape, 'linear'>
+    shape: CompositionMaskShape
+    rotationDegrees: number
     x: number
     y: number
     width: number
@@ -1540,6 +1705,7 @@ export function updateCompositionVideoMask(
       masks: (clip.masks ?? []).map((mask) => mask.id !== maskId ? mask : {
         ...mask,
         shape: patch.shape ?? mask.shape,
+        rotationDegrees: patchValue(mask.rotationDegrees ?? constantAnimatable(0), patch.rotationDegrees, -180, 180),
         x: patchValue(mask.x, patch.x, 0, 1),
         y: patchValue(mask.y, patch.y, 0, 1),
         width: patchValue(mask.width, patch.width, 0.000_001, 2),
@@ -1562,7 +1728,7 @@ export function deleteCompositionVideoMask(clipId: string, maskId: string): void
 
 export function updateCompositionAudioMix(
   clipId: string,
-  patch: Partial<{ pan: number; fadeInTicks: number; fadeOutTicks: number }>,
+  patch: Partial<{ pan: number; reversed: boolean; fadeInTicks: number; fadeOutTicks: number; voiceEffect: import('$lib/composition/types.js').CompositionVoiceEffect; pitchSemitones: number; toneDb: number; crossfadeInTicks: number; ducking: import('$lib/composition/types.js').CompositionAudioDucking | undefined }>,
 ): void {
   updateClip(clipId, (clip) => {
     if (clip.kind !== 'audio') return clip
@@ -1570,14 +1736,35 @@ export function updateCompositionAudioMix(
     return {
       ...clip,
       pan: patch.pan === undefined ? clip.pan ?? 0 : clampNumber(patch.pan, -1, 1),
+      reversed: patch.reversed ?? clip.reversed ?? false,
       fadeInTicks: patch.fadeInTicks === undefined ? clip.fadeInTicks ?? 0 : clampTick(patch.fadeInTicks, duration),
       fadeOutTicks: patch.fadeOutTicks === undefined ? clip.fadeOutTicks ?? 0 : clampTick(patch.fadeOutTicks, duration),
+      voiceEffect: patch.voiceEffect ?? clip.voiceEffect ?? 'none',
+      pitchSemitones: patch.pitchSemitones === undefined ? clip.pitchSemitones ?? 0 : clampNumber(patch.pitchSemitones, -12, 12),
+      toneDb: patch.toneDb === undefined ? clip.toneDb ?? 0 : clampNumber(patch.toneDb, -12, 12),
+      crossfadeInTicks: patch.crossfadeInTicks === undefined ? clip.crossfadeInTicks ?? 0 : clampTick(patch.crossfadeInTicks, duration),
+      ducking: Object.hasOwn(patch, 'ducking') ? patch.ducking : clip.ducking,
     }
   })
 }
 
 export function updateCompositionTextStyle(clipId: string, patch: Partial<TextClip['style']>): void {
   updateClip(clipId, (clip) => clip.kind === 'text' ? { ...clip, style: { ...clip.style, ...patch } } : clip)
+}
+
+export function applyCompositionTextStyleToTrack(clipId: string): void {
+  const location = findClipLocation(compositionState.document, clipId)
+  if (location.clip.kind !== 'text' || location.track.kind !== 'text') {
+    throw new Error('Для применения стиля нужна text-дорожка')
+  }
+  if (location.track.locked) throw new Error('Text-дорожка заблокирована')
+  const style = { ...location.clip.style }
+  commitDocument({
+    ...compositionState.document,
+    tracks: compositionState.document.tracks.map((track) => track.id === location.track.id && track.kind === 'text'
+      ? { ...track, clips: track.clips.map((clip) => ({ ...clip, style: { ...style } })) }
+      : track),
+  })
 }
 
 export function setCompositionTransition(
@@ -1610,6 +1797,13 @@ export function getCompositionExportUnavailableReason(capabilities: Capabilities
   if (!feature.available) return feature.reason?.trim() || 'Composition export недоступен на этом сервере.'
   const renderReason = compositionRenderUnavailableReason(compositionState.document)
   if (renderReason) return renderReason
+  const rangeIn = compositionState.export.rangeInTicks
+  const rangeOut = compositionState.export.rangeOutTicks
+  if ((rangeIn === null) !== (rangeOut === null)) return 'Задайте обе границы In и Out либо очистите диапазон.'
+  if (rangeIn !== null && rangeOut !== null) {
+    if (rangeIn >= rangeOut) return 'Граница In должна быть раньше Out.'
+    if (rangeOut > compositionDuration()) return 'Граница Out выходит за длительность композиции.'
+  }
   const delivery = compositionDeliveryProfileOption(compositionState.export.profile)
   if (delivery.capabilityId) {
     const deliveryCapability = capabilities.features?.find((candidate) => candidate.id === delivery.capabilityId)
@@ -1661,8 +1855,12 @@ export async function exportComposition(capabilities: Capabilities | null): Prom
   compositionState.export.progress = null
   compositionState.export.stage = 'queued'
   try {
-    const request = buildCompositionRenderRequest(compositionState.document, compositionRenderOutput())
-    const { jobId } = await api.renderComposition(request)
+    const range = compositionExportRange()
+    const request = buildCompositionRenderRequest(compositionState.document, {
+      ...compositionRenderOutput(),
+      ...(range ? { range } : {}),
+    })
+    const { jobId } = await api.renderComposition(request, authState.token)
     compositionState.export.jobId = jobId
     const job = await pollJob(jobId, { onTick: (current) => {
       compositionState.export.progress = typeof current.progress === 'number' ? current.progress : null
@@ -1690,12 +1888,29 @@ export async function cancelCompositionExport(): Promise<void> {
 
 export async function loadCompositionProjects(): Promise<void> {
   try {
+    compositionProjectsEtag = null
     const projects = await fetchCompositionProjects()
     editorFacade.replaceProjects(projects)
     compositionState.projects = [...editorFacade.projects]
-    compositionState.save.error = ''
   } catch (error) {
     compositionState.save.error = error instanceof Error ? error.message : String(error)
+  }
+}
+
+/** Refresh the complete visible project list so background changes and deletes appear. */
+export async function refreshCompositionProjects(): Promise<'unchanged' | 'updated'> {
+  const token = authState.token
+  if (!token || compositionState.save.busy) return 'unchanged'
+  try {
+    const snapshot = await api.getCompositionProjectsIfChanged(token, compositionProjectsEtag)
+    if (!snapshot) return 'unchanged'
+    compositionProjectsEtag = snapshot.etag
+    editorFacade.replaceProjects(snapshot.projects)
+    compositionState.projects = [...editorFacade.projects]
+    return 'updated'
+  } catch (error) {
+    compositionState.save.error = error instanceof Error ? error.message : String(error)
+    return 'unchanged'
   }
 }
 
@@ -1706,14 +1921,24 @@ export async function saveCompositionProject(): Promise<void> {
   compositionState.save.busy = true
   compositionState.save.error = ''
   try {
-    const body = { name: compositionState.projectName.trim() || undefined, document: cloneComposition(compositionState.document) }
+    const token = authState.token
+    if (!token) throw new Error('Войдите, чтобы сохранить проект')
+    const body = {
+      name: compositionState.projectName.trim() || undefined,
+      spaceId: compositionState.projectId ? undefined : spacesState.selectedId || undefined,
+      baseRevision: compositionState.projectId
+        ? compositionState.projectRevision ?? undefined
+        : undefined,
+      document: cloneComposition(compositionState.document),
+    }
     const project = compositionState.projectId
-      ? await api.updateCompositionProject(compositionState.projectId, body)
-      : await api.createCompositionProject(body)
+      ? await api.updateCompositionProject(compositionState.projectId, body, token)
+      : await api.createCompositionProject(body, token)
     cacheCompositionProject(project)
     editorFacade.projectSaved(project)
     const wasUnsaved = compositionState.projectId === null
     compositionState.projectId = project.id
+    compositionState.projectRevision = project.revision
     compositionState.projectName = project.name
     compositionState.projects = [project, ...compositionState.projects.filter((item) => item.id !== project.id)]
     activeDraftDirty = false
@@ -1746,6 +1971,7 @@ export async function openCompositionProject(id: string): Promise<void> {
       document: normalizeComposition(project.document),
       media: local?.media ?? {},
       projectId: project.id,
+      projectRevision: project.revision,
       projectName: project.name,
       exportSettings: local?.exportSettings ?? DEFAULT_COMPOSITION_RENDER_OUTPUT,
       dirty: false,
@@ -1756,6 +1982,54 @@ export async function openCompositionProject(id: string): Promise<void> {
     compositionState.save.error = error instanceof Error ? error.message : String(error)
   } finally {
     if (revision === openCompositionRevision) compositionState.save.busy = false
+  }
+}
+
+export type RemoteProjectRefresh = 'unchanged' | 'updated' | 'conflict' | 'deleted'
+
+/** Refresh the active project without ever overwriting local unsaved edits. */
+export async function refreshOpenCompositionProject(): Promise<RemoteProjectRefresh> {
+  const id = compositionState.projectId
+  const token = authState.token
+  const revision = compositionState.projectRevision
+  if (!id || !token || compositionState.save.busy) return 'unchanged'
+  try {
+    const project = await api.getCompositionProjectIfChanged(id, token, revision)
+    if (compositionState.projectId !== id || compositionState.projectRevision !== revision) {
+      return 'unchanged'
+    }
+    if (project === undefined) return 'unchanged'
+    if (project === null) {
+      compositionState.save.error = 'Проект удалён на другом устройстве'
+      return 'deleted'
+    }
+    cacheCompositionProject(project)
+    compositionState.projects = [
+      project,
+      ...compositionState.projects.filter((item) => item.id !== project.id),
+    ]
+    if (activeDraftDirty) {
+      compositionState.save.error =
+        'Проект изменён на другом устройстве. Локальные правки сохранены; обновите проект перед повторным сохранением.'
+      return 'conflict'
+    }
+    const local = readStoredDraftCollection()?.projects[id]
+    activateStoredDraft({
+      document: normalizeComposition(project.document),
+      media: local?.media ?? compositionState.media,
+      projectId: project.id,
+      projectRevision: project.revision,
+      projectName: project.name,
+      exportSettings: local?.exportSettings ?? compositionRenderOutput(),
+      dirty: false,
+    })
+    compositionState.ui.message = 'Проект обновлён с другого устройства'
+    compositionState.save.error = ''
+    persistCurrentDraftNow()
+    return 'updated'
+  } catch (error) {
+    compositionState.save.error = error instanceof Error ? error.message : String(error)
+    return 'unchanged'
   }
 }
 
@@ -1836,6 +2110,7 @@ function addAudio(document: Composition, source: CompositionSource): { document:
     speed: 1,
     gain: 1,
     pan: 0,
+    reversed: false,
     fadeInTicks: 0,
     fadeOutTicks: 0,
   }
@@ -1944,14 +2219,14 @@ function updateClip(clipId: string, update: (clip: CompositionClip) => Compositi
   commitDocument({ ...compositionState.document, tracks })
 }
 
-function requireVisualOverlay(clipId: string): { readonly clip: VisualClip; readonly track: CompositionTrack } {
+function requireVisualAutomation(clipId: string): { readonly clip: VisualClip; readonly track: CompositionTrack } {
   const location = findClipLocation(compositionState.document, clipId)
   if (location.clip.kind === 'audio') throw new Error('Keyframes доступны только для visual clips')
-  const primary = primaryCompositionVideoTrack(compositionState.document)
-  if (location.track.kind === 'video' && location.track.id === primary?.id) {
-    throw new Error('Основная видеодорожка должна оставаться neutral; используйте overlay')
-  }
   return { clip: location.clip, track: location.track }
+}
+
+function requireVisualOverlay(clipId: string): { readonly clip: VisualClip; readonly track: CompositionTrack } {
+  return requireVisualAutomation(clipId)
 }
 
 function requireAudioAutomationClip(
@@ -1998,7 +2273,6 @@ function requireVideoMask(
   if (location.clip.kind !== 'video') throw new Error('Masks доступны только для video overlay')
   const mask = location.clip.masks?.find((candidate) => candidate.id === maskId)
   if (!mask) throw new Error('Mask не найдена')
-  if (mask.shape === 'linear') throw new Error('Linear mask не поддерживает authoring keyframes')
   return { clip: location.clip, mask }
 }
 
@@ -2031,8 +2305,8 @@ function resolveAutomation(
   property: CompositionAutomationProperty,
 ): ResolvedAutomation {
   if (target.kind === 'visual') {
-    const { clip } = requireVisualOverlay(target.clipId)
     const visualProperty = property as CompositionVisualProperty
+    const { clip } = requireVisualAutomation(target.clipId)
     const bounds = visualPropertyBounds(visualProperty)
     return [
       clip,
@@ -2059,7 +2333,7 @@ function resolveAutomation(
   const { clip, mask } = requireVideoMask(target.clipId, target.maskId)
   const maskProperty = property as CompositionMaskProperty
   const bounds = maskPropertyBounds(maskProperty)
-  const current = mask[maskProperty]
+  const current = maskPropertyValue(mask, maskProperty)
   return [
     clip,
     current,
@@ -2130,6 +2404,7 @@ function commitDocument(
   const nextOutput: CompositionRenderOutput = {
     profile: { ...output.profile },
     qualityTier: output.qualityTier,
+    ...(output.videoBitrateKbps === undefined ? {} : { videoBitrateKbps: output.videoBitrateKbps }),
   }
   if (
     JSON.stringify(normalized) === JSON.stringify(compositionState.document) &&
@@ -2151,6 +2426,7 @@ function commitDocument(
   compositionState.media = nextMedia
   compositionState.export.profile = { ...nextOutput.profile }
   compositionState.export.qualityTier = nextOutput.qualityTier
+  compositionState.export.videoBitrateKbps = nextOutput.videoBitrateKbps ?? null
   compositionState.export.result = null
   compositionState.export.error = ''
   stopAtDuration()
@@ -2428,6 +2704,9 @@ function normalizeStoredDraft(value: unknown, projectId?: string | null): Stored
       document: normalizeComposition(draft.document),
       media: cloneValidCompositionMedia(draft.media),
       projectId: resolvedProjectId,
+      projectRevision: typeof draft.projectRevision === 'number' && draft.projectRevision > 0
+        ? Math.floor(draft.projectRevision)
+        : null,
       projectName: typeof draft.projectName === 'string' && draft.projectName.trim()
         ? draft.projectName.slice(0, 256)
         : 'Новая композиция',
@@ -2459,6 +2738,7 @@ function createBlankStoredDraft(): StoredDraft {
     document: createComposition(DEFAULT_CANVAS),
     media: {},
     projectId: null,
+    projectRevision: null,
     projectName: 'Новая композиция',
     exportSettings: DEFAULT_COMPOSITION_RENDER_OUTPUT,
     dirty: false,
@@ -2490,6 +2770,7 @@ function persistCompositionDraft(storage: CompositionStorage): void {
     document: cloneComposition(compositionState.document),
     media: cloneCompositionMedia(compositionState.media),
     projectId: compositionState.projectId,
+    projectRevision: compositionState.projectRevision,
     projectName: compositionState.projectName,
     exportSettings: compositionRenderOutput(),
     dirty: activeDraftDirty,
@@ -2520,6 +2801,7 @@ function persistCurrentDraftNow(clearUnsaved = false): void {
     document: cloneComposition(compositionState.document),
     media: cloneCompositionMedia(compositionState.media),
     projectId: compositionState.projectId,
+    projectRevision: compositionState.projectRevision,
     projectName: compositionState.projectName,
     exportSettings: compositionRenderOutput(),
     dirty: activeDraftDirty,
@@ -2533,12 +2815,15 @@ function persistCurrentDraftNow(clearUnsaved = false): void {
 function activateStoredDraft(draft: StoredDraft): void {
   const output = normalizeCompositionRenderOutput(draft.exportSettings)
   compositionState.projectId = draft.projectId ?? null
+  compositionState.projectRevision = draft.projectRevision ?? null
   compositionState.projectName = draft.projectName?.trim() || 'Новая композиция'
   compositionState.media = cloneValidCompositionMedia(draft.media)
   compositionState.export.profile = { ...output.profile }
   compositionState.export.qualityTier = output.qualityTier
+  compositionState.export.videoBitrateKbps = output.videoBitrateKbps ?? null
   compositionState.export.result = null
   compositionState.export.error = ''
+  clearCompositionExportRange()
   replaceDocument(draft.document, false, false)
   activeDraftDirty = draft.dirty ?? true
 }
@@ -2565,6 +2850,7 @@ export function resetCompositionForTests(): void {
   autosaveTimer = undefined
   openCompositionRevision += 1
   projectWriteBusy = false
+  compositionProjectsEtag = null
   activateStoredDraft(createBlankStoredDraft())
   activeDraftDirty = false
   compositionState.save.busy = false

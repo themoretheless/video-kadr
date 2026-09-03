@@ -2,7 +2,7 @@
 //!
 //! The supported shape has one bottom, gapless video track plus animated video,
 //! image, and text layers above it, exact handle-backed video transitions,
-//! Rectangle/Ellipse alpha masks, zero or more audio tracks, and MP4/H.264/AAC
+//! Rectangle/Ellipse/rotated Linear alpha masks, zero or more audio tracks, and MP4/H.264/AAC
 //! output. Active slow-motion video clips may select bounded deterministic
 //! optical flow; bounded classical source stabilization uses FFmpeg deshake.
 //! Richer domain features stay representable without being silently compiled
@@ -14,10 +14,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 
 use crate::domain::composition::{
-    AnimatableValue, AudioClip, BlendMode, CanvasSpec, ClipPlacement, ClipTransition, Composition,
-    CompositionClipId, CompositionTrack, FrameInterpolation, ImageClip, MaskShape, PlaybackMode,
-    SourceId, SourceKind, SpeedRampAudioPolicy, SpeedRampInterpolation, StabilizationSpec,
-    TextClip, TransformSpec, TransitionKind, VideoClip, VideoEffect, DEFAULT_TIME_BASE,
+    AnimatableValue, AudioClip, AudioVoiceEffect, BlendMode, CanvasBackgroundMode, CanvasSpec,
+    ClipPlacement, ClipTransition, Composition, CompositionClipId, CompositionTrack,
+    FrameInterpolation, ImageClip, MaskShape, PlaybackMode, SourceId, SourceKind,
+    SpeedRampAudioPolicy, SpeedRampInterpolation, StabilizationSpec, TextClip, TrackId,
+    TransformSpec, TransitionKind, VideoClip, VideoEffect, VideoEffectPreset, DEFAULT_TIME_BASE,
     MAX_ACTIVE_SPEED_RAMP_SEGMENTS, MAX_OPTICAL_FLOW_CLIP_TICKS, MAX_OPTICAL_FLOW_EDGE,
     MAX_OPTICAL_FLOW_PIXELS, MAX_OPTICAL_FLOW_PIXEL_FRAMES, MAX_REVERSE_CLIP_TICKS,
     MAX_REVERSE_EDGE, MAX_REVERSE_PIXELS, MAX_REVERSE_PIXEL_FRAMES, MAX_STABILIZATION_CLIP_TICKS,
@@ -108,7 +109,9 @@ pub fn build_composition_ffmpeg_command_with_text_resources(
         CompositionExportSpec {
             profile: CompositionExportProfile::default(),
             video_quality: quality,
+            video_bitrate_kbps: None,
             av1_encoder: None,
+            range: None,
         },
         parallel_jobs,
     )
@@ -159,14 +162,84 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
     composition.validate().context("invalid composition")?;
     let visual = visual_slice(composition)?;
     let video_duration_ticks = validate_gapless_video(&visual.primary)?;
-    let transition_plan = transition_plan(composition, &visual.primary, visual.transitions)?;
-    let compiled_overlays =
-        compile_visual_overlays(composition, &visual.overlays, video_duration_ticks)?;
-    validate_optical_flow_workload(composition, &visual, &transition_plan)?;
+    let primary_transition_plan = transition_plan(
+        composition,
+        &visual.primary,
+        visual.transitions,
+        "primary video track",
+    )?;
+    let mut overlay_handles = BTreeMap::new();
+    let mut overlay_transition_phases =
+        BTreeMap::<CompositionClipId, Vec<OverlayTransitionPhase>>::new();
+    for track in visual
+        .overlay_tracks
+        .iter()
+        .filter(|track| !track.transitions.is_empty())
+    {
+        let clips = track
+            .clips
+            .iter()
+            .map(|clip| match clip {
+                VisualClip::Video(video) => Ok(*video),
+                VisualClip::Image(_) | VisualClip::Text(_) => {
+                    bail!("non-video overlay track cannot own transitions")
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let plan = transition_plan(composition, &clips, track.transitions, track.id.as_str())?;
+        for (clip, handles) in clips.iter().zip(plan.handles.iter().copied()) {
+            overlay_handles.insert(clip.id.clone(), handles);
+        }
+        for (to_index, transition) in plan.boundaries.iter().enumerate() {
+            let Some(transition) = transition else {
+                continue;
+            };
+            let from_index = to_index - 1;
+            let before_edit = transition.duration_ticks / 2;
+            let start_tick = clips[to_index]
+                .placement
+                .timeline_start_tick
+                .checked_sub(before_edit)
+                .expect("transition plan checked the overlay window");
+            let phase = |role| OverlayTransitionPhase {
+                kind: transition.kind,
+                role,
+                start_tick,
+                duration_ticks: transition.duration_ticks,
+            };
+            overlay_transition_phases
+                .entry(clips[from_index].id.clone())
+                .or_default()
+                .push(phase(OverlayTransitionRole::Outgoing));
+            overlay_transition_phases
+                .entry(clips[to_index].id.clone())
+                .or_default()
+                .push(phase(OverlayTransitionRole::Incoming));
+        }
+    }
+    let compiled_overlays = compile_visual_overlays(
+        composition,
+        &visual.overlays,
+        video_duration_ticks,
+        &overlay_handles,
+        &overlay_transition_phases,
+    )?;
+    validate_optical_flow_workload(
+        composition,
+        &visual,
+        &primary_transition_plan,
+        &overlay_handles,
+    )?;
     validate_reverse_workload(composition, &visual)?;
-    validate_stabilization_workload(composition, &visual, &transition_plan)?;
+    validate_stabilization_workload(
+        composition,
+        &visual,
+        &primary_transition_plan,
+        &overlay_handles,
+    )?;
     validate_text_resources(&visual.overlays, text_resources)?;
     let audio_clips = active_audio_clips(composition);
+    let audio_crossfades = audio_crossfade_plan(composition)?;
     validate_speed_ramp_budget(&visual, &audio_clips)?;
     let mut audio_keyframe_points = 0_usize;
     let primary_audio = compile_primary_source_audio(
@@ -180,6 +253,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
         video_duration_ticks,
         composition.time_base,
         &mut audio_keyframe_points,
+        &audio_crossfades,
     )?;
     if audio_keyframe_points > MAX_ACTIVE_AUDIO_KEYFRAME_POINTS {
         bail!("composition has too many active audio keyframes");
@@ -251,9 +325,10 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
 
     let mut concat_inputs = String::new();
     let mut concat_audio_inputs = String::new();
+    let mut primary_visual_keyframe_points = 0_usize;
     for (clip_index, clip) in visual.primary.iter().enumerate() {
         let duration_ticks = clip.placement.timeline_duration_ticks()?;
-        let handles = transition_plan.handles[clip_index];
+        let handles = primary_transition_plan.handles[clip_index];
         let source_start_tick = clip.placement.source_in_tick as f64
             - handles.source_head_ticks as f64 * clip.placement.speed;
         let source_end_tick = clip.placement.source_out_tick as f64
@@ -262,8 +337,57 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
             .checked_add(handles.source_head_ticks)
             .and_then(|value| value.checked_add(handles.source_tail_ticks))
             .ok_or_else(|| anyhow!("primary video clip duration overflow"))?;
+        let handle_seconds = handles.source_head_ticks as f64 / time_base as f64;
+        let primary_masks = compile_video_masks(
+            clip,
+            duration_ticks,
+            time_base,
+            handle_seconds,
+            &mut primary_visual_keyframe_points,
+        )?;
         let video_pad = pads.take_video(&clip.source_id)?;
         let video_label = format!("video_clip_{clip_index}");
+        let foreground_pad = if canvas.background_mode == CanvasBackgroundMode::Blur {
+            let foreground_pad = format!("primary_foreground_input_{clip_index}");
+            let blur_pad = format!("primary_blur_input_{clip_index}");
+            graph.push(format!(
+                "[{video_pad}]split=2[{foreground_pad}][{blur_pad}]"
+            ));
+            let mut blur_filters = source_video_filters(
+                clip,
+                source_start_tick,
+                source_end_tick,
+                canvas.fps_milli,
+                time_base,
+            )?;
+            blur_filters.extend([
+                format!(
+                    "scale={}:{}:force_original_aspect_ratio=increase",
+                    canvas.width, canvas.height
+                ),
+                format!("crop={}:{}", canvas.width, canvas.height),
+                "setsar=1".to_owned(),
+            ]);
+            blur_filters.extend(playback_frame_filters(
+                clip,
+                canvas.fps_milli,
+                render_duration_ticks,
+                time_base,
+            ));
+            blur_filters.extend([
+                format!("gblur=sigma={}", decimal(canvas.background_blur)),
+                "format=pix_fmts=rgba".to_owned(),
+                "settb=AVTB".to_owned(),
+            ]);
+            let background_label = format!("primary_background_{clip_index}");
+            graph.push(format!(
+                "[{blur_pad}]{}[{background_label}]",
+                blur_filters.join(",")
+            ));
+            foreground_pad
+        } else {
+            video_pad
+        };
         let mut video_filters = source_video_filters(
             clip,
             source_start_tick,
@@ -271,31 +395,213 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
             canvas.fps_milli,
             time_base,
         )?;
-        video_filters.extend([
-            format!(
-                "scale={}:{}:force_original_aspect_ratio=decrease",
-                canvas.width, canvas.height
-            ),
-            format!(
-                "pad={}:{}:(ow-iw)/2:(oh-ih)/2:color={background}",
-                canvas.width, canvas.height
-            ),
-            "setsar=1".to_owned(),
-        ]);
+        let transformed = clip.transform != TransformSpec::default();
+        let needs_composite = transformed
+            || clip.opacity != AnimatableValue::constant(1.0)
+            || !clip.effects.is_empty()
+            || clip.blend_mode != BlendMode::Normal
+            || canvas.background_mode != CanvasBackgroundMode::Color;
+        video_filters.push(format!(
+            "scale={}:{}:force_original_aspect_ratio=decrease",
+            canvas.width, canvas.height
+        ));
+        if needs_composite {
+            video_filters.extend([
+                "format=pix_fmts=rgba".to_owned(),
+                format!(
+                    "pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=black@0",
+                    canvas.width, canvas.height
+                ),
+                "setsar=1".to_owned(),
+            ]);
+        } else {
+            video_filters.extend([
+                format!(
+                    "pad={}:{}:(ow-iw)/2:(oh-ih)/2:color={background}",
+                    canvas.width, canvas.height
+                ),
+                "setsar=1".to_owned(),
+            ]);
+        }
         video_filters.extend(playback_frame_filters(
             clip,
             canvas.fps_milli,
             render_duration_ticks,
             time_base,
         ));
-        video_filters.extend([
-            "format=pix_fmts=yuv420p".to_owned(),
-            "settb=AVTB".to_owned(),
-        ]);
-        graph.push(format!(
-            "[{video_pad}]{}[{video_label}]",
-            video_filters.join(",")
-        ));
+        for effect in &clip.effects {
+            match effect {
+                VideoEffect::ChromaKey {
+                    color,
+                    similarity,
+                    softness,
+                    spill,
+                } => {
+                    video_filters.push(format!(
+                        "chromakey=color={}:similarity={}:blend={}",
+                        ffmpeg_rgb(color.red, color.green, color.blue),
+                        decimal(*similarity),
+                        decimal(*softness)
+                    ));
+                    if *spill > 0.0 {
+                        let screen = if color.green >= color.blue {
+                            "green"
+                        } else {
+                            "blue"
+                        };
+                        video_filters
+                            .push(format!("despill=type={screen}:mix={}", decimal(*spill)));
+                    }
+                }
+                VideoEffect::Style { preset, intensity } => {
+                    video_filters.push(style_effect_filter(*preset, *intensity));
+                }
+                VideoEffect::Mask { .. } | VideoEffect::LinearMask { .. } => {}
+            }
+        }
+        if !needs_composite {
+            video_filters.extend([
+                "format=pix_fmts=yuv420p".to_owned(),
+                "settb=AVTB".to_owned(),
+            ]);
+            graph.push(format!(
+                "[{foreground_pad}]{}[{video_label}]",
+                video_filters.join(",")
+            ));
+        } else {
+            let transform = compile_transform(
+                &clip.transform,
+                clip.id.as_str(),
+                canvas.width,
+                canvas.height,
+                handle_seconds,
+                handle_seconds,
+                duration_ticks,
+                time_base,
+                true,
+                &mut primary_visual_keyframe_points,
+            )?;
+            let opacity = compile_animatable(
+                &clip.opacity,
+                "primary opacity",
+                "T",
+                handle_seconds,
+                duration_ticks,
+                time_base,
+                0.0,
+                1.0,
+                true,
+                &mut primary_visual_keyframe_points,
+            )?;
+            for mask in &primary_masks {
+                video_filters.push(mask_filter(mask)?);
+            }
+            append_visual_transform(&mut video_filters, &transform);
+            video_filters.push(opacity_filter(&opacity)?);
+            let faded_label = format!("primary_faded_{clip_index}");
+            graph.push(format!(
+                "[{foreground_pad}]{}[{faded_label}]",
+                video_filters.join(",")
+            ));
+            let background_label = format!("primary_background_{clip_index}");
+            match canvas.background_mode {
+                CanvasBackgroundMode::Blur => {}
+                CanvasBackgroundMode::Color => graph.push(format!(
+                    "color=c={background}:s={}x{}:r={}/1000:d={},format=pix_fmts=rgba,\
+                     settb=AVTB,setpts=PTS-STARTPTS[{background_label}]",
+                    canvas.width,
+                    canvas.height,
+                    canvas.fps_milli,
+                    seconds(render_duration_ticks, time_base),
+                )),
+                CanvasBackgroundMode::Checker => {
+                    let red = (canvas.background.red * 255.0).round();
+                    let green = (canvas.background.green * 255.0).round();
+                    let blue = (canvas.background.blue * 255.0).round();
+                    let light = |channel: f64| (channel + 28.0).min(255.0);
+                    graph.push(format!(
+                        "color=c=black:s={}x{}:r={}/1000:d={},geq=\
+                         r='if(mod(floor(X/64)+floor(Y/64)\\,2)\\,{red}\\,{})':\
+                         g='if(mod(floor(X/64)+floor(Y/64)\\,2)\\,{green}\\,{})':\
+                         b='if(mod(floor(X/64)+floor(Y/64)\\,2)\\,{blue}\\,{})',\
+                         format=pix_fmts=rgba,settb=AVTB,setpts=PTS-STARTPTS[{background_label}]",
+                        canvas.width,
+                        canvas.height,
+                        canvas.fps_milli,
+                        seconds(render_duration_ticks, time_base),
+                        light(red),
+                        light(green),
+                        light(blue),
+                    ));
+                }
+            }
+            let overlay_evaluation =
+                if transform.x.constant.is_some() && transform.y.constant.is_some() {
+                    "init"
+                } else {
+                    "frame"
+                };
+            let overlay_x = overlay_coordinate(
+                &transform.x.expression,
+                transform.overlay_anchor_x,
+                "main_w",
+                "overlay_w",
+            );
+            let overlay_y = overlay_coordinate(
+                &transform.y.expression,
+                transform.overlay_anchor_y,
+                "main_h",
+                "overlay_h",
+            );
+            if clip.blend_mode == BlendMode::Normal {
+                graph.push(format!(
+                    "[{background_label}][{faded_label}]overlay=x='{overlay_x}':y='{overlay_y}':\
+                     eval={overlay_evaluation}:eof_action=pass:repeatlast=0:shortest=1:format=auto,\
+                     format=pix_fmts=yuv420p,settb=AVTB[{video_label}]"
+                ));
+            } else {
+                let transparent = format!("primary_transparent_{clip_index}");
+                let full_layer = format!("primary_full_layer_{clip_index}");
+                graph.push(format!(
+                    "color=c=black@0:s={}x{}:r={}/1000:d={},format=pix_fmts=rgba,\
+                     settb=AVTB,setpts=PTS-STARTPTS[{transparent}]",
+                    canvas.width,
+                    canvas.height,
+                    canvas.fps_milli,
+                    seconds(render_duration_ticks, time_base),
+                ));
+                graph.push(format!(
+                    "[{transparent}][{faded_label}]overlay=x='{overlay_x}':y='{overlay_y}':\
+                     eval={overlay_evaluation}:eof_action=pass:repeatlast=0:shortest=1:\
+                     format=auto[{full_layer}]"
+                ));
+                let layer_color = format!("primary_layer_color_{clip_index}");
+                let layer_alpha = format!("primary_layer_alpha_{clip_index}");
+                let layer_mask = format!("primary_layer_mask_{clip_index}");
+                let layer_rgb = format!("primary_layer_rgb_{clip_index}");
+                graph.push(format!(
+                    "[{full_layer}]split=2[{layer_color}][{layer_alpha}]"
+                ));
+                graph.push(format!("[{layer_alpha}]alphaextract[{layer_mask}]"));
+                graph.push(format!("[{layer_color}]format=pix_fmts=gbrp[{layer_rgb}]"));
+                let background_keep = format!("primary_background_keep_{clip_index}");
+                let background_blend = format!("primary_background_blend_{clip_index}");
+                let blended = format!("primary_blended_{clip_index}");
+                graph.push(format!(
+                    "[{background_label}]format=pix_fmts=gbrp,split=2\
+                     [{background_keep}][{background_blend}]"
+                ));
+                graph.push(format!(
+                    "[{layer_rgb}][{background_blend}]blend=all_mode={}:eof_action=pass:\
+                     repeatlast=0:shortest=1[{blended}]",
+                    blend_mode_name(clip.blend_mode)
+                ));
+                graph.push(format!(
+                    "[{background_keep}][{blended}][{layer_mask}]maskedmerge,\
+                     format=pix_fmts=yuv420p,settb=AVTB[{video_label}]"
+                ));
+            }
+        }
 
         let audio_label = format!("source_audio_{clip_index}");
         if let Some(automation) = &primary_audio[clip_index] {
@@ -312,6 +618,9 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
                     timeline_start_tick: None,
                     fade_in_ticks: 0,
                     fade_out_ticks: 0,
+                    voice_effect: AudioVoiceEffect::None,
+                    pitch_semitones: 0.0,
+                    tone_db: 0.0,
                 }),
             )?);
         } else {
@@ -324,13 +633,16 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
         concat_inputs.push_str(&format!("[{video_label}][{audio_label}]"));
         concat_audio_inputs.push_str(&format!("[{audio_label}]"));
     }
+    if primary_visual_keyframe_points > MAX_ACTIVE_KEYFRAME_POINTS {
+        bail!("composition has too many active primary visual keyframes");
+    }
 
     let concat_video_label = if visual.overlays.is_empty() {
         "vout"
     } else {
         "base_video"
     };
-    if transition_plan.has_transitions() {
+    if primary_transition_plan.has_transitions() {
         graph.push(format!(
             "{concat_audio_inputs}concat=n={}:v=0:a=1[source_audio]",
             visual.primary.len()
@@ -342,7 +654,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
             } else {
                 format!("primary_video_{clip_index}")
             };
-            if let Some(transition) = transition_plan.boundaries[clip_index] {
+            if let Some(transition) = primary_transition_plan.boundaries[clip_index] {
                 let before_edit = transition.duration_ticks / 2;
                 let offset_tick = visual.primary[clip_index]
                     .placement
@@ -411,7 +723,15 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
             let full_layer = format!("full_layer_{layer_index}");
             let overlay_evaluation = if compiled.transform.x.constant.is_some()
                 && compiled.transform.y.constant.is_some()
-            {
+                && !compiled.transitions.iter().any(|transition| {
+                    matches!(
+                        transition.kind,
+                        TransitionKind::SlideLeft
+                            | TransitionKind::SlideRight
+                            | TransitionKind::SlideUp
+                            | TransitionKind::SlideDown
+                    )
+                }) {
                 "init"
             } else {
                 "frame"
@@ -420,20 +740,20 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
                 "[{transparent}][{clip_label}]overlay=x='{}':y='{}':eval={overlay_evaluation}:\
                  eof_action=pass:repeatlast=0:shortest=0:format=auto:\
                  enable='between(t,{},{})'[{full_layer}]",
-                overlay_coordinate(
-                    &compiled.transform.x.expression,
-                    compiled.transform.overlay_anchor_x,
-                    "main_w",
-                    "overlay_w"
+                overlay_transition_x_coordinate(compiled, time_base),
+                overlay_transition_y_coordinate(compiled, time_base),
+                seconds(
+                    clip.timeline_start_tick()
+                        .checked_sub(compiled.handles.source_head_ticks)
+                        .expect("overlay handle validation checked timeline start"),
+                    time_base
                 ),
-                overlay_coordinate(
-                    &compiled.transform.y.expression,
-                    compiled.transform.overlay_anchor_y,
-                    "main_h",
-                    "overlay_h"
+                seconds(
+                    clip.timeline_end_tick()?
+                        .checked_add(compiled.handles.source_tail_ticks)
+                        .expect("overlay handle validation checked timeline end"),
+                    time_base
                 ),
-                seconds(clip.timeline_start_tick(), time_base),
-                seconds(clip.timeline_end_tick()?, time_base),
             ));
 
             let layer_color = format!("layer_color_{layer_index}");
@@ -464,56 +784,146 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
         graph.push(format!("[{current}]format=pix_fmts=yuv420p[vout]"));
     }
 
-    let mut mix_labels = vec!["[source_audio]".to_owned()];
+    let ducking_indexes = compiled_audio_clips
+        .iter()
+        .enumerate()
+        .filter_map(|(index, compiled)| compiled.clip.ducking.map(|_| index))
+        .collect::<Vec<_>>();
+    let mut mix_labels = if ducking_indexes.is_empty() {
+        vec!["[source_audio]".to_owned()]
+    } else {
+        let keys = ducking_indexes
+            .iter()
+            .map(|index| format!("[duck_key_{index}]"))
+            .collect::<String>();
+        graph.push(format!(
+            "[source_audio]asplit={}[source_audio_mix]{keys}",
+            ducking_indexes.len() + 1
+        ));
+        vec!["[source_audio_mix]".to_owned()]
+    };
     for (clip_index, compiled) in compiled_audio_clips.iter().enumerate() {
         let clip = compiled.clip;
-        let duration_ticks = clip.placement.timeline_duration_ticks()?;
+        let duration_ticks = clip
+            .placement
+            .timeline_duration_ticks()?
+            .checked_add(compiled.crossfade.handles.source_head_ticks)
+            .and_then(|value| value.checked_add(compiled.crossfade.handles.source_tail_ticks))
+            .ok_or_else(|| anyhow!("audio crossfade duration overflow"))?;
+        let mut placement = clip.placement.clone();
+        placement.timeline_start_tick = placement
+            .timeline_start_tick
+            .checked_sub(compiled.crossfade.handles.source_head_ticks)
+            .ok_or_else(|| anyhow!("audio crossfade starts before timeline zero"))?;
+        placement.source_in_tick = placement
+            .source_in_tick
+            .checked_sub(
+                (compiled.crossfade.handles.source_head_ticks as f64 * placement.speed).round()
+                    as u64,
+            )
+            .ok_or_else(|| anyhow!("audio crossfade source head underflow"))?;
+        placement.source_out_tick = placement
+            .source_out_tick
+            .checked_add(
+                (compiled.crossfade.handles.source_tail_ticks as f64 * placement.speed).round()
+                    as u64,
+            )
+            .ok_or_else(|| anyhow!("audio crossfade source tail overflow"))?;
         let audio_pad = pads.take_audio(&clip.source_id)?;
-        let output_label = format!("audio_clip_{clip_index}");
+        let output_label = if clip.ducking.is_some() {
+            format!("audio_clip_{clip_index}_pre_duck")
+        } else {
+            format!("audio_clip_{clip_index}")
+        };
         graph.push(media_audio_filter(
             &audio_pad,
-            &clip.placement,
+            &placement,
             duration_ticks,
             time_base,
             &output_label,
-            false,
+            clip.reversed,
             Some(AudioFilterOptions {
                 automation: &compiled.automation,
-                timeline_start_tick: Some(clip.placement.timeline_start_tick),
-                fade_in_ticks: clip.fade_in_ticks,
-                fade_out_ticks: clip.fade_out_ticks,
+                timeline_start_tick: Some(placement.timeline_start_tick),
+                fade_in_ticks: compiled.crossfade.fade_in_ticks.max(clip.fade_in_ticks),
+                fade_out_ticks: compiled.crossfade.fade_out_ticks.max(clip.fade_out_ticks),
+                voice_effect: clip.voice_effect,
+                pitch_semitones: clip.pitch_semitones,
+                tone_db: clip.tone_db,
             }),
         )?);
-        mix_labels.push(format!("[{output_label}]"));
+        if let Some(ducking) = clip.ducking {
+            let final_label = format!("audio_clip_{clip_index}");
+            graph.push(format!(
+                "[{output_label}][duck_key_{clip_index}]sidechaincompress=threshold={}:ratio={}:attack={}:release={}:makeup=1:knee=2.828427:link=average:detection=rms:mix=1[{final_label}]",
+                decimal(10_f64.powf(ducking.threshold_db / 20.0)), decimal(ducking.ratio),
+                decimal(ducking.attack_ms), decimal(ducking.release_ms),
+            ));
+            mix_labels.push(format!("[{final_label}]"));
+        } else {
+            mix_labels.push(format!("[{output_label}]"));
+        }
     }
 
-    let output_duration = seconds(video_duration_ticks, time_base);
+    let full_output_duration = seconds(video_duration_ticks, time_base);
     if mix_labels.len() == 1 {
         graph.push(format!(
-            "[source_audio]atrim=duration={output_duration},asetpts=PTS-STARTPTS[aout]"
+            "[source_audio]atrim=duration={full_output_duration},asetpts=PTS-STARTPTS[aout]"
         ));
     } else {
         graph.push(format!(
             "{}amix=inputs={}:duration=first:dropout_transition=0:normalize=0,\
-             alimiter=limit=0.950000,atrim=duration={output_duration},\
+             alimiter=limit=0.950000,atrim=duration={full_output_duration},\
              asetpts=PTS-STARTPTS[aout]",
             mix_labels.join(""),
             mix_labels.len(),
         ));
     }
 
+    let (video_label, audio_label, output_duration_ticks) = if let Some(range) = output.range {
+        if range.start_ticks >= range.end_ticks || range.end_ticks > video_duration_ticks {
+            bail!("composition export range must be ordered and inside the timeline");
+        }
+        let start = seconds(range.start_ticks, time_base);
+        let end = seconds(range.end_ticks, time_base);
+        graph.push(format!(
+            "[aout]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[adelivery]"
+        ));
+        if output.profile.is_audio_only() {
+            graph.push("[vout]nullsink".to_owned());
+        } else {
+            graph.push(format!(
+                "[vout]trim=start={start}:end={end},setpts=PTS-STARTPTS[vdelivery]"
+            ));
+        }
+        (
+            "[vdelivery]",
+            "[adelivery]",
+            range.end_ticks - range.start_ticks,
+        )
+    } else {
+        if output.profile.is_audio_only() {
+            graph.push("[vout]nullsink".to_owned());
+        }
+        ("[vout]", "[aout]", video_duration_ticks)
+    };
+    let output_duration = seconds(output_duration_ticks, time_base);
     let graph = graph.join(";");
     if graph.len() > MAX_FILTER_GRAPH_BYTES {
         bail!("composition filter graph exceeds the bounded compiler budget");
     }
     arguments.push("-filter_complex".to_owned());
     arguments.push(graph);
-    arguments.extend([
-        "-map".to_owned(),
-        "[vout]".to_owned(),
-        "-map".to_owned(),
-        "[aout]".to_owned(),
-    ]);
+    if output.profile.is_audio_only() {
+        arguments.extend(["-map".to_owned(), audio_label.to_owned(), "-vn".to_owned()]);
+    } else {
+        arguments.extend([
+            "-map".to_owned(),
+            video_label.to_owned(),
+            "-map".to_owned(),
+            audio_label.to_owned(),
+        ]);
+    }
     append_delivery_arguments(
         &mut arguments,
         output,
@@ -530,12 +940,23 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
     read_only_files.dedup();
     Ok(CompiledExportCommand {
         arguments,
-        expected_duration_seconds: video_duration_ticks as f64 / time_base as f64,
+        expected_duration_seconds: output_duration_ticks as f64 / time_base as f64,
         read_only_files,
     })
 }
 
 fn validate_export_spec(output: CompositionExportSpec) -> Result<()> {
+    if let Some(bitrate) = output.video_bitrate_kbps {
+        if !matches!(
+            output.profile,
+            CompositionExportProfile::Mp4 { .. } | CompositionExportProfile::Webm { .. }
+        ) {
+            bail!("composition custom video bitrate requires MP4 or WebM");
+        }
+        if !(100..=200_000).contains(&bitrate) {
+            bail!("composition custom video bitrate must be in 100..=200000 Kbps");
+        }
+    }
     match output.profile {
         CompositionExportProfile::Mp4 {
             codec: CompositionMp4Codec::H264,
@@ -555,6 +976,11 @@ fn validate_export_spec(output: CompositionExportSpec) -> Result<()> {
         CompositionExportProfile::Mov { .. } => {
             if !(1..=31).contains(&output.video_quality) {
                 bail!("composition ProRes quality must be a qscale in 1..=31");
+            }
+        }
+        CompositionExportProfile::Audio { .. } => {
+            if output.video_quality != 0 {
+                bail!("composition audio-only output does not accept video quality");
             }
         }
     }
@@ -581,48 +1007,52 @@ fn append_delivery_arguments(
     match output.profile {
         CompositionExportProfile::Mp4 {
             codec: CompositionMp4Codec::H264,
-        } => arguments.extend([
-            "-c:v".to_owned(),
-            "libx264".to_owned(),
-            "-preset".to_owned(),
-            "veryfast".to_owned(),
-            "-crf".to_owned(),
-            output.video_quality.to_string(),
-            "-pix_fmt".to_owned(),
-            "yuv420p".to_owned(),
-        ]),
+        } => {
+            arguments.extend([
+                "-c:v".to_owned(),
+                "libx264".to_owned(),
+                "-preset".to_owned(),
+                "veryfast".to_owned(),
+            ]);
+            append_video_rate_control(arguments, output, false);
+            arguments.extend(["-pix_fmt".to_owned(), "yuv420p".to_owned()]);
+        }
         CompositionExportProfile::Mp4 {
             codec: CompositionMp4Codec::H265,
-        } => arguments.extend([
-            "-c:v".to_owned(),
-            "libx265".to_owned(),
-            "-preset".to_owned(),
-            "veryfast".to_owned(),
-            "-crf".to_owned(),
-            output.video_quality.to_string(),
-            "-tag:v".to_owned(),
-            "hvc1".to_owned(),
-            "-pix_fmt".to_owned(),
-            "yuv420p".to_owned(),
-        ]),
+        } => {
+            arguments.extend([
+                "-c:v".to_owned(),
+                "libx265".to_owned(),
+                "-preset".to_owned(),
+                "veryfast".to_owned(),
+            ]);
+            append_video_rate_control(arguments, output, false);
+            arguments.extend([
+                "-tag:v".to_owned(),
+                "hvc1".to_owned(),
+                "-pix_fmt".to_owned(),
+                "yuv420p".to_owned(),
+            ]);
+        }
         CompositionExportProfile::Webm {
             codec: CompositionWebmCodec::Vp9,
-        } => arguments.extend([
-            "-c:v".to_owned(),
-            "libvpx-vp9".to_owned(),
-            "-deadline".to_owned(),
-            "good".to_owned(),
-            "-cpu-used".to_owned(),
-            "2".to_owned(),
-            "-crf".to_owned(),
-            output.video_quality.to_string(),
-            "-b:v".to_owned(),
-            "0".to_owned(),
-            "-row-mt".to_owned(),
-            "1".to_owned(),
-            "-pix_fmt".to_owned(),
-            "yuv420p".to_owned(),
-        ]),
+        } => {
+            arguments.extend([
+                "-c:v".to_owned(),
+                "libvpx-vp9".to_owned(),
+                "-deadline".to_owned(),
+                "good".to_owned(),
+                "-cpu-used".to_owned(),
+                "2".to_owned(),
+            ]);
+            append_video_rate_control(arguments, output, true);
+            arguments.extend([
+                "-row-mt".to_owned(),
+                "1".to_owned(),
+                "-pix_fmt".to_owned(),
+                "yuv420p".to_owned(),
+            ]);
+        }
         CompositionExportProfile::Webm {
             codec: CompositionWebmCodec::Av1,
         } => {
@@ -631,25 +1061,15 @@ fn append_delivery_arguments(
                 .expect("validated AV1 output has a resolved encoder");
             arguments.extend(["-c:v".to_owned(), encoder.ffmpeg_name().to_owned()]);
             match encoder {
-                CompositionAv1Encoder::LibSvtAv1 => arguments.extend([
-                    "-preset".to_owned(),
-                    "8".to_owned(),
-                    "-crf".to_owned(),
-                    output.video_quality.to_string(),
-                ]),
-                CompositionAv1Encoder::LibAomAv1 => arguments.extend([
-                    "-cpu-used".to_owned(),
-                    "6".to_owned(),
-                    "-crf".to_owned(),
-                    output.video_quality.to_string(),
-                ]),
+                CompositionAv1Encoder::LibSvtAv1 => {
+                    arguments.extend(["-preset".to_owned(), "8".to_owned()])
+                }
+                CompositionAv1Encoder::LibAomAv1 => {
+                    arguments.extend(["-cpu-used".to_owned(), "6".to_owned()])
+                }
             }
-            arguments.extend([
-                "-b:v".to_owned(),
-                "0".to_owned(),
-                "-pix_fmt".to_owned(),
-                "yuv420p".to_owned(),
-            ]);
+            append_video_rate_control(arguments, output, true);
+            arguments.extend(["-pix_fmt".to_owned(), "yuv420p".to_owned()]);
         }
         CompositionExportProfile::Mov { profile } => arguments.extend([
             "-c:v".to_owned(),
@@ -661,6 +1081,7 @@ fn append_delivery_arguments(
             "-pix_fmt".to_owned(),
             "yuv422p10le".to_owned(),
         ]),
+        CompositionExportProfile::Audio { .. } => {}
     }
 
     arguments.extend(["-c:a".to_owned()]);
@@ -676,6 +1097,21 @@ fn append_delivery_arguments(
             DEFAULT_AUDIO_BITRATE.to_owned(),
         ]),
         CompositionExportProfile::Mov { .. } => arguments.push("pcm_s16le".to_owned()),
+        CompositionExportProfile::Audio { codec } => arguments.push(match codec {
+            crate::ports::CompositionAudioCodec::Mp3 => "libmp3lame".to_owned(),
+            crate::ports::CompositionAudioCodec::Wav => "pcm_s16le".to_owned(),
+            crate::ports::CompositionAudioCodec::Aac => "aac".to_owned(),
+            crate::ports::CompositionAudioCodec::Flac => "flac".to_owned(),
+        }),
+    }
+    if matches!(
+        output.profile,
+        CompositionExportProfile::Audio {
+            codec: crate::ports::CompositionAudioCodec::Mp3
+                | crate::ports::CompositionAudioCodec::Aac
+        }
+    ) {
+        arguments.extend(["-b:a".to_owned(), DEFAULT_AUDIO_BITRATE.to_owned()]);
     }
     arguments.extend([
         "-ar".to_owned(),
@@ -684,15 +1120,43 @@ fn append_delivery_arguments(
         "2".to_owned(),
         "-filter_complex_threads".to_owned(),
         parallel_jobs.to_string(),
-        "-threads:v".to_owned(),
-        parallel_jobs.to_string(),
         "-t".to_owned(),
         output_duration,
     ]);
+    if !output.profile.is_audio_only() {
+        let insert_at = arguments.len() - 2;
+        arguments.splice(
+            insert_at..insert_at,
+            ["-threads:v".to_owned(), parallel_jobs.to_string()],
+        );
+    }
     if matches!(output.profile, CompositionExportProfile::Mp4 { .. }) {
         arguments.extend(["-movflags".to_owned(), "+faststart".to_owned()]);
     }
     arguments.push(destination.to_string_lossy().into_owned());
+}
+
+fn append_video_rate_control(
+    arguments: &mut Vec<String>,
+    output: CompositionExportSpec,
+    constant_quality_needs_zero_bitrate: bool,
+) {
+    if let Some(bitrate) = output.video_bitrate_kbps {
+        let bitrate = format!("{bitrate}k");
+        arguments.extend([
+            "-b:v".to_owned(),
+            bitrate.clone(),
+            "-maxrate".to_owned(),
+            bitrate,
+            "-bufsize".to_owned(),
+            format!("{}k", output.video_bitrate_kbps.expect("checked") * 2),
+        ]);
+    } else {
+        arguments.extend(["-crf".to_owned(), output.video_quality.to_string()]);
+        if constant_quality_needs_zero_bitrate {
+            arguments.extend(["-b:v".to_owned(), "0".to_owned()]);
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -703,12 +1167,16 @@ enum VisualClip<'a> {
 }
 
 impl<'a> VisualClip<'a> {
-    fn id(self) -> &'a str {
+    fn clip_id(self) -> &'a CompositionClipId {
         match self {
-            Self::Video(clip) => clip.id.as_str(),
-            Self::Image(clip) => clip.id.as_str(),
-            Self::Text(clip) => clip.id.as_str(),
+            Self::Video(clip) => &clip.id,
+            Self::Image(clip) => &clip.id,
+            Self::Text(clip) => &clip.id,
         }
+    }
+
+    fn id(self) -> &'a str {
+        self.clip_id().as_str()
     }
 
     fn source_id(self) -> Option<&'a SourceId> {
@@ -770,6 +1238,16 @@ struct VisualSlice<'a> {
     /// Bottom-to-top render order. Composition track index zero is the topmost
     /// visual layer, so tracks above the primary are traversed in reverse.
     overlays: Vec<VisualClip<'a>>,
+    /// Bottom-to-top track groups. Keeping these boundaries is required for
+    /// overlay transitions, which are authored between clips on one track and
+    /// cannot be reconstructed from the flattened compositor input.
+    overlay_tracks: Vec<OverlayTrackSlice<'a>>,
+}
+
+struct OverlayTrackSlice<'a> {
+    id: &'a TrackId,
+    clips: Vec<VisualClip<'a>>,
+    transitions: &'a [ClipTransition],
 }
 
 fn visual_slice(composition: &Composition) -> Result<VisualSlice<'_>> {
@@ -819,40 +1297,32 @@ fn visual_slice(composition: &Composition) -> Result<VisualSlice<'_>> {
             .cmp(&right.placement.timeline_start_tick)
             .then_with(|| left.id.as_str().cmp(right.id.as_str()))
     });
-    for clip in &primary {
-        if clip.transform != TransformSpec::default()
-            || clip.opacity != AnimatableValue::constant(1.0)
-            || clip.blend_mode != BlendMode::Normal
-            || !clip.effects.is_empty()
-        {
-            bail!(
-                "primary video clip {} must use neutral visual properties",
-                clip.id.as_str()
-            );
-        }
-    }
-
     let mut overlays = Vec::new();
+    let mut overlay_tracks = Vec::new();
     for track in composition.tracks[..primary_index].iter().rev() {
         match track {
             CompositionTrack::Video {
+                id,
                 hidden: false,
                 clips,
                 transitions,
                 ..
             } => {
-                if !transitions.is_empty() {
-                    bail!("transitions on overlay video tracks are not supported");
-                }
                 let mut active: Vec<_> = clips
                     .iter()
                     .filter(|clip| clip.enabled)
                     .map(VisualClip::Video)
                     .collect();
                 sort_visual_clips(&mut active)?;
-                overlays.extend(active);
+                overlays.extend(active.iter().copied());
+                overlay_tracks.push(OverlayTrackSlice {
+                    id,
+                    clips: active,
+                    transitions,
+                });
             }
             CompositionTrack::Image {
+                id,
                 hidden: false,
                 clips,
                 ..
@@ -863,9 +1333,15 @@ fn visual_slice(composition: &Composition) -> Result<VisualSlice<'_>> {
                     .map(VisualClip::Image)
                     .collect();
                 sort_visual_clips(&mut active)?;
-                overlays.extend(active);
+                overlays.extend(active.iter().copied());
+                overlay_tracks.push(OverlayTrackSlice {
+                    id,
+                    clips: active,
+                    transitions: &[],
+                });
             }
             CompositionTrack::Text {
+                id,
                 hidden: false,
                 clips,
                 ..
@@ -876,16 +1352,29 @@ fn visual_slice(composition: &Composition) -> Result<VisualSlice<'_>> {
                     .map(VisualClip::Text)
                     .collect();
                 sort_visual_clips(&mut active)?;
-                overlays.extend(active);
+                overlays.extend(active.iter().copied());
+                overlay_tracks.push(OverlayTrackSlice {
+                    id,
+                    clips: active,
+                    transitions: &[],
+                });
             }
             _ => {}
         }
     }
+    debug_assert_eq!(
+        overlay_tracks
+            .iter()
+            .map(|track| track.clips.len())
+            .sum::<usize>(),
+        overlays.len()
+    );
     Ok(VisualSlice {
         primary,
         primary_muted: *muted,
         transitions,
         overlays,
+        overlay_tracks,
     })
 }
 
@@ -912,6 +1401,8 @@ fn compile_visual_overlays<'a>(
     composition: &Composition,
     clips: &[VisualClip<'a>],
     primary_duration: u64,
+    handles_by_clip: &BTreeMap<CompositionClipId, SourceHandles>,
+    transitions_by_clip: &BTreeMap<CompositionClipId, Vec<OverlayTransitionPhase>>,
 ) -> Result<Vec<CompiledVisual<'a>>> {
     let mut compiled = Vec::with_capacity(clips.len());
     let mut keyframe_points = 0_usize;
@@ -933,13 +1424,37 @@ fn compile_visual_overlays<'a>(
             .timeline_end_tick()?
             .checked_sub(clip.timeline_start_tick())
             .ok_or_else(|| anyhow!("visual clip {} has invalid timing", clip.id()))?;
+        let handles = handles_by_clip
+            .get(clip.clip_id())
+            .copied()
+            .unwrap_or_default();
+        let handle_seconds = handles.source_head_ticks as f64 / composition.time_base as f64;
+        let render_start_tick = clip
+            .timeline_start_tick()
+            .checked_sub(handles.source_head_ticks)
+            .ok_or_else(|| {
+                anyhow!(
+                    "visual clip {} transition head underflows timeline",
+                    clip.id()
+                )
+            })?;
+        clip.timeline_end_tick()?
+            .checked_add(handles.source_tail_ticks)
+            .filter(|end| *end <= primary_duration)
+            .ok_or_else(|| {
+                anyhow!(
+                    "visual clip {} transition tail exceeds primary video",
+                    clip.id()
+                )
+            })?;
         let media_anchor = !matches!(clip, VisualClip::Text(_));
         let transform = compile_transform(
             clip.transform(),
             clip.id(),
             source_width,
             source_height,
-            clip.timeline_start_tick(),
+            render_start_tick as f64 / composition.time_base as f64,
+            handle_seconds,
             duration_ticks,
             composition.time_base,
             media_anchor,
@@ -949,7 +1464,7 @@ fn compile_visual_overlays<'a>(
             clip.opacity(),
             "visual opacity",
             "T",
-            0.0,
+            handle_seconds,
             duration_ticks,
             composition.time_base,
             0.0,
@@ -957,96 +1472,26 @@ fn compile_visual_overlays<'a>(
             true,
             &mut keyframe_points,
         )?;
-        let mut masks = Vec::new();
-        if let VisualClip::Video(video) = clip {
-            let mut saw_mask = false;
-            for effect in &video.effects {
-                match effect {
-                    VideoEffect::ChromaKey { .. } if saw_mask => bail!(
-                        "video clip {} must place chroma key effects before shape masks",
-                        clip.id()
-                    ),
-                    VideoEffect::ChromaKey { similarity, .. } if *similarity >= 0.000_01 => {}
-                    VideoEffect::ChromaKey { .. } => bail!(
-                        "video clip {} has chroma similarity below FFmpeg's minimum",
-                        clip.id()
-                    ),
-                    VideoEffect::Mask {
-                        shape: MaskShape::Linear,
-                        ..
-                    } => bail!("Linear mask semantics are not supported by composition export"),
-                    VideoEffect::Mask {
-                        shape,
-                        x,
-                        y,
-                        width,
-                        height,
-                        feather,
-                        inverted,
-                    } => {
-                        saw_mask = true;
-                        masks.push(CompiledMask {
-                            shape: *shape,
-                            x: compile_animatable(
-                                x,
-                                "mask x",
-                                "T",
-                                0.0,
-                                duration_ticks,
-                                composition.time_base,
-                                0.0,
-                                1.0,
-                                true,
-                                &mut keyframe_points,
-                            )?,
-                            y: compile_animatable(
-                                y,
-                                "mask y",
-                                "T",
-                                0.0,
-                                duration_ticks,
-                                composition.time_base,
-                                0.0,
-                                1.0,
-                                true,
-                                &mut keyframe_points,
-                            )?,
-                            width: compile_animatable(
-                                width,
-                                "mask width",
-                                "T",
-                                0.0,
-                                duration_ticks,
-                                composition.time_base,
-                                0.0,
-                                2.0,
-                                false,
-                                &mut keyframe_points,
-                            )?,
-                            height: compile_animatable(
-                                height,
-                                "mask height",
-                                "T",
-                                0.0,
-                                duration_ticks,
-                                composition.time_base,
-                                0.0,
-                                2.0,
-                                false,
-                                &mut keyframe_points,
-                            )?,
-                            feather: *feather,
-                            inverted: *inverted,
-                        });
-                    }
-                }
-            }
-        }
+        let masks = match clip {
+            VisualClip::Video(video) => compile_video_masks(
+                video,
+                duration_ticks,
+                composition.time_base,
+                handle_seconds,
+                &mut keyframe_points,
+            )?,
+            VisualClip::Image(_) | VisualClip::Text(_) => Vec::new(),
+        };
         compiled.push(CompiledVisual {
             clip: *clip,
             transform,
             opacity,
             masks,
+            handles,
+            transitions: transitions_by_clip
+                .get(clip.clip_id())
+                .cloned()
+                .unwrap_or_default(),
         });
     }
     if keyframe_points > MAX_ACTIVE_KEYFRAME_POINTS {
@@ -1087,6 +1532,7 @@ struct CompiledTransform {
 #[derive(Debug, Clone)]
 struct CompiledMask {
     shape: MaskShape,
+    rotation_degrees: CompiledValue,
     x: CompiledValue,
     y: CompiledValue,
     width: CompiledValue,
@@ -1101,6 +1547,207 @@ struct CompiledVisual<'a> {
     transform: CompiledTransform,
     opacity: CompiledValue,
     masks: Vec<CompiledMask>,
+    handles: SourceHandles,
+    transitions: Vec<OverlayTransitionPhase>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OverlayTransitionRole {
+    Outgoing,
+    Incoming,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OverlayTransitionPhase {
+    kind: TransitionKind,
+    role: OverlayTransitionRole,
+    start_tick: u64,
+    duration_ticks: u64,
+}
+
+fn compile_video_masks(
+    video: &VideoClip,
+    duration_ticks: u64,
+    time_base: u32,
+    offset_seconds: f64,
+    keyframe_points: &mut usize,
+) -> Result<Vec<CompiledMask>> {
+    let mut masks = Vec::new();
+    let mut saw_mask = false;
+    for effect in &video.effects {
+        match effect {
+            VideoEffect::ChromaKey { .. } if saw_mask => bail!(
+                "video clip {} must place chroma key effects before shape masks",
+                video.id.as_str()
+            ),
+            VideoEffect::ChromaKey { similarity, .. } if *similarity >= 0.000_01 => {}
+            VideoEffect::ChromaKey { .. } => bail!(
+                "video clip {} has chroma similarity below FFmpeg's minimum",
+                video.id.as_str()
+            ),
+            VideoEffect::Style { .. } if saw_mask => bail!(
+                "video clip {} style effects must be declared before shape masks",
+                video.id.as_str()
+            ),
+            VideoEffect::Style { .. } => {}
+            VideoEffect::Mask {
+                shape: MaskShape::Linear,
+                ..
+            } => bail!("legacy Linear mask semantics are not supported by composition export"),
+            VideoEffect::Mask {
+                shape,
+                x,
+                y,
+                width,
+                height,
+                rotation_degrees,
+                feather,
+                inverted,
+            } => {
+                saw_mask = true;
+                masks.push(CompiledMask {
+                    shape: *shape,
+                    rotation_degrees: compile_animatable(
+                        rotation_degrees,
+                        "mask rotation",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        -180.0,
+                        180.0,
+                        true,
+                        keyframe_points,
+                    )?,
+                    x: compile_animatable(
+                        x,
+                        "mask x",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        1.0,
+                        true,
+                        keyframe_points,
+                    )?,
+                    y: compile_animatable(
+                        y,
+                        "mask y",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        1.0,
+                        true,
+                        keyframe_points,
+                    )?,
+                    width: compile_animatable(
+                        width,
+                        "mask width",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        2.0,
+                        false,
+                        keyframe_points,
+                    )?,
+                    height: compile_animatable(
+                        height,
+                        "mask height",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        2.0,
+                        false,
+                        keyframe_points,
+                    )?,
+                    feather: *feather,
+                    inverted: *inverted,
+                });
+            }
+            VideoEffect::LinearMask {
+                x,
+                y,
+                rotation_degrees,
+                feather,
+                inverted,
+            } => {
+                saw_mask = true;
+                masks.push(CompiledMask {
+                    shape: MaskShape::Linear,
+                    rotation_degrees: compile_animatable(
+                        rotation_degrees,
+                        "linear mask rotation",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        -180.0,
+                        180.0,
+                        true,
+                        keyframe_points,
+                    )?,
+                    x: compile_animatable(
+                        x,
+                        "linear mask x",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        1.0,
+                        true,
+                        keyframe_points,
+                    )?,
+                    y: compile_animatable(
+                        y,
+                        "linear mask y",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        1.0,
+                        true,
+                        keyframe_points,
+                    )?,
+                    width: compile_animatable(
+                        &AnimatableValue::constant(1.0),
+                        "linear mask width",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        2.0,
+                        false,
+                        keyframe_points,
+                    )?,
+                    height: compile_animatable(
+                        &AnimatableValue::constant(1.0),
+                        "linear mask height",
+                        "T",
+                        offset_seconds,
+                        duration_ticks,
+                        time_base,
+                        0.0,
+                        2.0,
+                        false,
+                        keyframe_points,
+                    )?,
+                    feather: *feather,
+                    inverted: *inverted,
+                });
+            }
+        }
+    }
+    Ok(masks)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1109,18 +1756,18 @@ fn compile_transform(
     clip_id: &str,
     source_width: u32,
     source_height: u32,
-    timeline_start_tick: u64,
+    position_time_offset_seconds: f64,
+    filter_time_offset_seconds: f64,
     duration_ticks: u64,
     composition_time_base: u32,
     media_anchor: bool,
     keyframe_points: &mut usize,
 ) -> Result<CompiledTransform> {
-    let start_seconds = timeline_start_tick as f64 / composition_time_base as f64;
     let x = compile_animatable(
         &transform.x,
         "transform x",
         "t",
-        start_seconds,
+        position_time_offset_seconds,
         duration_ticks,
         composition_time_base,
         -MAX_VISUAL_POSITION,
@@ -1132,7 +1779,7 @@ fn compile_transform(
         &transform.y,
         "transform y",
         "t",
-        start_seconds,
+        position_time_offset_seconds,
         duration_ticks,
         composition_time_base,
         -MAX_VISUAL_POSITION,
@@ -1144,7 +1791,7 @@ fn compile_transform(
         &transform.scale_x,
         "transform scale x",
         "t",
-        0.0,
+        filter_time_offset_seconds,
         duration_ticks,
         composition_time_base,
         0.01,
@@ -1156,7 +1803,7 @@ fn compile_transform(
         &transform.scale_y,
         "transform scale y",
         "t",
-        0.0,
+        filter_time_offset_seconds,
         duration_ticks,
         composition_time_base,
         0.01,
@@ -1168,7 +1815,7 @@ fn compile_transform(
         &transform.rotation_degrees,
         "transform rotation",
         "t",
-        0.0,
+        filter_time_offset_seconds,
         duration_ticks,
         composition_time_base,
         -3_600.0,
@@ -1350,10 +1997,14 @@ fn visual_clip_filter(
 ) -> Result<String> {
     let mut filters = match clip {
         VisualClip::Video(video) => {
+            let source_start_tick = video.placement.source_in_tick as f64
+                - compiled.handles.source_head_ticks as f64 * video.placement.speed;
+            let source_end_tick = video.placement.source_out_tick as f64
+                + compiled.handles.source_tail_ticks as f64 * video.placement.speed;
             let mut filters = source_video_filters(
                 video,
-                video.placement.source_in_tick as f64,
-                video.placement.source_out_tick as f64,
+                source_start_tick,
+                source_end_tick,
                 fps_milli,
                 time_base,
             )?;
@@ -1370,10 +2021,16 @@ fn visual_clip_filter(
     };
 
     if let VisualClip::Video(video) = clip {
+        let render_duration_ticks = video
+            .placement
+            .timeline_duration_ticks()?
+            .checked_add(compiled.handles.source_head_ticks)
+            .and_then(|duration| duration.checked_add(compiled.handles.source_tail_ticks))
+            .ok_or_else(|| anyhow!("overlay video clip duration overflow"))?;
         filters.extend(playback_frame_filters(
             video,
             fps_milli,
-            video.placement.timeline_duration_ticks()?,
+            render_duration_ticks,
             time_base,
         ));
     }
@@ -1402,7 +2059,10 @@ fn visual_clip_filter(
                         filters.push(format!("despill=type={screen}:mix={}", decimal(*spill)));
                     }
                 }
-                VideoEffect::Mask { .. } => {}
+                VideoEffect::Style { preset, intensity } => {
+                    filters.push(style_effect_filter(*preset, *intensity));
+                }
+                VideoEffect::Mask { .. } | VideoEffect::LinearMask { .. } => {}
             }
         }
     }
@@ -1413,14 +2073,254 @@ fn visual_clip_filter(
     }
     append_visual_transform(&mut filters, &compiled.transform);
     filters.push(opacity_filter(&compiled.opacity)?);
+    let render_start_tick = clip
+        .timeline_start_tick()
+        .checked_sub(compiled.handles.source_head_ticks)
+        .ok_or_else(|| anyhow!("visual transition head underflows timeline"))?;
+    append_overlay_transition_filters(&mut filters, compiled, render_start_tick, time_base)?;
     filters.push(format!(
         "setpts=PTS+{}/TB",
-        seconds(clip.timeline_start_tick(), time_base)
+        seconds(render_start_tick, time_base)
     ));
     Ok(format!(
         "[{input_label}]{}[{output_label}]",
         filters.join(",")
     ))
+}
+
+fn append_overlay_transition_filters(
+    filters: &mut Vec<String>,
+    compiled: &CompiledVisual<'_>,
+    render_start_tick: u64,
+    time_base: u32,
+) -> Result<()> {
+    for transition in &compiled.transitions {
+        let local_start_tick = transition
+            .start_tick
+            .checked_sub(render_start_tick)
+            .ok_or_else(|| anyhow!("overlay transition starts before its decoded handle"))?;
+        let start = seconds(local_start_tick, time_base);
+        let duration = seconds(transition.duration_ticks, time_base);
+        let progress = format!("max(0,min(1,(T-{start})/{duration}))");
+        match (transition.kind, transition.role) {
+            (TransitionKind::Dissolve, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&progress)?);
+            }
+            (TransitionKind::WipeLeft, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "gte((X+0.5)/W,1-({progress}))"
+                ))?);
+            }
+            (TransitionKind::WipeRight, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte((X+0.5)/W,{progress})"
+                ))?);
+            }
+            (TransitionKind::WipeUp, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "gte((Y+0.5)/H,1-({progress}))"
+                ))?);
+            }
+            (TransitionKind::WipeDown, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte((Y+0.5)/H,{progress})"
+                ))?);
+            }
+            (TransitionKind::SmoothLeft, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "max(0,min(1,0.5+10*((X+0.5)/W-(1-({progress})))))"
+                ))?);
+            }
+            (TransitionKind::SmoothRight, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "max(0,min(1,0.5+10*(({progress})-(X+0.5)/W)))"
+                ))?);
+            }
+            (TransitionKind::SmoothUp, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "max(0,min(1,0.5+10*((Y+0.5)/H-(1-({progress})))))"
+                ))?);
+            }
+            (TransitionKind::SmoothDown, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "max(0,min(1,0.5+10*(({progress})-(Y+0.5)/H)))"
+                ))?);
+            }
+            (TransitionKind::CircleOpen, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte(pow((X+0.5)/W-0.5,2)+pow((Y+0.5)/H-0.5,2),0.5*pow({progress},2))"
+                ))?);
+            }
+            (TransitionKind::CircleClose, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "gte(pow((X+0.5)/W-0.5,2)+pow((Y+0.5)/H-0.5,2),0.5*pow(1-({progress}),2))"
+                ))?);
+            }
+            (TransitionKind::WipeTopLeft, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte((X+0.5)/W+(Y+0.5)/H,2*({progress}))"
+                ))?);
+            }
+            (TransitionKind::WipeTopRight, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte(1-(X+0.5)/W+(Y+0.5)/H,2*({progress}))"
+                ))?);
+            }
+            (TransitionKind::WipeBottomLeft, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte((X+0.5)/W+1-(Y+0.5)/H,2*({progress}))"
+                ))?);
+            }
+            (TransitionKind::WipeBottomRight, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte(2-(X+0.5)/W-(Y+0.5)/H,2*({progress}))"
+                ))?);
+            }
+            (TransitionKind::VerticalOpen, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte(abs((X+0.5)/W-0.5),0.5*({progress}))"
+                ))?);
+            }
+            (TransitionKind::VerticalClose, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "gte(abs((X+0.5)/W-0.5),0.5*(1-({progress})))"
+                ))?);
+            }
+            (TransitionKind::HorizontalOpen, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "lte(abs((Y+0.5)/H-0.5),0.5*({progress}))"
+                ))?);
+            }
+            (TransitionKind::HorizontalClose, OverlayTransitionRole::Incoming) => {
+                filters.push(transition_alpha_filter(&format!(
+                    "gte(abs((Y+0.5)/H-0.5),0.5*(1-({progress})))"
+                ))?);
+            }
+            (TransitionKind::FadeBlack, role) => {
+                let half_ticks = transition.duration_ticks / 2;
+                let midpoint = seconds(local_start_tick + half_ticks, time_base);
+                let half = seconds(half_ticks.max(1), time_base);
+                let color = match role {
+                    OverlayTransitionRole::Outgoing => {
+                        format!("max(0,min(1,({midpoint}-T)/{half}))")
+                    }
+                    OverlayTransitionRole::Incoming => {
+                        format!("max(0,min(1,(T-{midpoint})/{half}))")
+                    }
+                };
+                let alpha = match role {
+                    OverlayTransitionRole::Outgoing => "alpha(X,Y)".to_owned(),
+                    OverlayTransitionRole::Incoming => {
+                        format!("alpha(X,Y)*gte(T,{midpoint})")
+                    }
+                };
+                let expression = format!(
+                    "geq=r='r(X,Y)*({color})':g='g(X,Y)*({color})':b='b(X,Y)*({color})':a='{alpha}'"
+                );
+                bounded_expression(&expression, "overlay fade-black")?;
+                filters.push(expression);
+            }
+            (TransitionKind::Dissolve, OverlayTransitionRole::Outgoing)
+            | (
+                TransitionKind::WipeLeft
+                | TransitionKind::WipeRight
+                | TransitionKind::WipeUp
+                | TransitionKind::WipeDown
+                | TransitionKind::SmoothLeft
+                | TransitionKind::SmoothRight
+                | TransitionKind::SmoothUp
+                | TransitionKind::SmoothDown,
+                OverlayTransitionRole::Outgoing,
+            )
+            | (
+                TransitionKind::SlideLeft
+                | TransitionKind::SlideRight
+                | TransitionKind::SlideUp
+                | TransitionKind::SlideDown,
+                _,
+            )
+            | (
+                TransitionKind::CircleOpen
+                | TransitionKind::CircleClose
+                | TransitionKind::WipeTopLeft
+                | TransitionKind::WipeTopRight
+                | TransitionKind::WipeBottomLeft
+                | TransitionKind::WipeBottomRight
+                | TransitionKind::VerticalOpen
+                | TransitionKind::VerticalClose
+                | TransitionKind::HorizontalOpen
+                | TransitionKind::HorizontalClose,
+                OverlayTransitionRole::Outgoing,
+            ) => {}
+        }
+    }
+    Ok(())
+}
+
+fn transition_alpha_filter(factor: &str) -> Result<String> {
+    let alpha = format!("alpha(X,Y)*({factor})");
+    bounded_expression(&alpha, "overlay transition alpha")?;
+    Ok(format!("geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{alpha}'"))
+}
+
+fn overlay_transition_x_coordinate(compiled: &CompiledVisual<'_>, time_base: u32) -> String {
+    let base = overlay_coordinate(
+        &compiled.transform.x.expression,
+        compiled.transform.overlay_anchor_x,
+        "main_w",
+        "overlay_w",
+    );
+    let offsets = compiled.transitions.iter().filter_map(|transition| {
+        let (direction, incoming) = match (transition.kind, transition.role) {
+            (TransitionKind::SlideLeft, OverlayTransitionRole::Outgoing) => (-1, false),
+            (TransitionKind::SlideLeft, OverlayTransitionRole::Incoming) => (1, true),
+            (TransitionKind::SlideRight, OverlayTransitionRole::Outgoing) => (1, false),
+            (TransitionKind::SlideRight, OverlayTransitionRole::Incoming) => (-1, true),
+            _ => return None,
+        };
+        let start = seconds(transition.start_tick, time_base);
+        let duration = seconds(transition.duration_ticks, time_base);
+        let progress = format!("max(0,min(1,(t-{start})/{duration}))");
+        let amount = if incoming {
+            format!("(1-({progress}))")
+        } else {
+            progress
+        };
+        Some(format!("{direction}*main_w*({amount})"))
+    });
+    offsets.fold(base, |coordinate, offset| {
+        format!("({coordinate})+({offset})")
+    })
+}
+
+fn overlay_transition_y_coordinate(compiled: &CompiledVisual<'_>, time_base: u32) -> String {
+    let base = overlay_coordinate(
+        &compiled.transform.y.expression,
+        compiled.transform.overlay_anchor_y,
+        "main_h",
+        "overlay_h",
+    );
+    let offsets = compiled.transitions.iter().filter_map(|transition| {
+        let (direction, incoming) = match (transition.kind, transition.role) {
+            (TransitionKind::SlideUp, OverlayTransitionRole::Outgoing) => (-1, false),
+            (TransitionKind::SlideUp, OverlayTransitionRole::Incoming) => (1, true),
+            (TransitionKind::SlideDown, OverlayTransitionRole::Outgoing) => (1, false),
+            (TransitionKind::SlideDown, OverlayTransitionRole::Incoming) => (-1, true),
+            _ => return None,
+        };
+        let start = seconds(transition.start_tick, time_base);
+        let duration = seconds(transition.duration_ticks, time_base);
+        let progress = format!("max(0,min(1,(t-{start})/{duration}))");
+        let amount = if incoming {
+            format!("(1-({progress}))")
+        } else {
+            progress
+        };
+        Some(format!("{direction}*main_h*({amount})"))
+    });
+    offsets.fold(base, |coordinate, offset| {
+        format!("({coordinate})+({offset})")
+    })
 }
 
 fn source_video_filters(
@@ -1710,23 +2610,25 @@ fn mask_filter(mask: &CompiledMask) -> Result<String> {
     let pixel_y = "((Y+0.5)/H)";
     let half_width = format!("(({})/2)", mask.width.expression);
     let half_height = format!("(({})/2)", mask.height.expression);
+    let cosine = format!("cos(({})*PI/180)", mask.rotation_degrees.expression);
+    let sine = format!("sin(({})*PI/180)", mask.rotation_degrees.expression);
+    let delta_x = format!("({pixel_x}-({}))", mask.x.expression);
+    let delta_y = format!("({pixel_y}-({}))", mask.y.expression);
+    let rotated_x = format!("(({delta_x})*{cosine}+({delta_y})*{sine})");
+    let rotated_y = format!("(-({delta_x})*{sine}+({delta_y})*{cosine})");
     let alpha = match mask.shape {
-        MaskShape::Rectangle if mask.feather == 0.0 => format!(
-            "lte(abs({pixel_x}-({})),{half_width})*lte(abs({pixel_y}-({})),{half_height})",
-            mask.x.expression, mask.y.expression
-        ),
+        MaskShape::Rectangle if mask.feather == 0.0 => {
+            format!("lte(abs({rotated_x}),{half_width})*lte(abs({rotated_y}),{half_height})")
+        }
         MaskShape::Rectangle => format!(
-            "clip(min(({half_width}-abs({pixel_x}-({})))/({half_width}*{}),\
-             ({half_height}-abs({pixel_y}-({})))/({half_height}*{})),0,1)",
-            mask.x.expression,
+            "clip(min(({half_width}-abs({rotated_x}))/({half_width}*{}),\
+             ({half_height}-abs({rotated_y}))/({half_height}*{})),0,1)",
             decimal(mask.feather),
-            mask.y.expression,
             decimal(mask.feather),
         ),
         MaskShape::Ellipse => {
             let distance = format!(
-                "sqrt(pow(({pixel_x}-({}))/{half_width},2)+pow(({pixel_y}-({}))/{half_height},2))",
-                mask.x.expression, mask.y.expression
+                "sqrt(pow(({rotated_x})/{half_width},2)+pow(({rotated_y})/{half_height},2))"
             );
             if mask.feather == 0.0 {
                 format!("lte({distance},1)")
@@ -1734,7 +2636,11 @@ fn mask_filter(mask: &CompiledMask) -> Result<String> {
                 format!("clip((1-({distance}))/{},0,1)", decimal(mask.feather))
             }
         }
-        MaskShape::Linear => bail!("Linear mask semantics are not supported by composition export"),
+        MaskShape::Linear if mask.feather == 0.0 => format!("lte({rotated_x},0)"),
+        MaskShape::Linear => format!(
+            "clip(0.5-({rotated_x})/({half_width}*{}),0,1)",
+            decimal(mask.feather)
+        ),
     };
     let alpha = if mask.inverted {
         format!("1-({alpha})")
@@ -1800,8 +2706,26 @@ fn transition_filter_name(kind: TransitionKind) -> &'static str {
         TransitionKind::FadeBlack => "fadeblack",
         TransitionKind::WipeLeft => "wipeleft",
         TransitionKind::WipeRight => "wiperight",
+        TransitionKind::WipeUp => "wipeup",
+        TransitionKind::WipeDown => "wipedown",
+        TransitionKind::SmoothLeft => "smoothleft",
+        TransitionKind::SmoothRight => "smoothright",
+        TransitionKind::SmoothUp => "smoothup",
+        TransitionKind::SmoothDown => "smoothdown",
         TransitionKind::SlideLeft => "slideleft",
         TransitionKind::SlideRight => "slideright",
+        TransitionKind::SlideUp => "slideup",
+        TransitionKind::SlideDown => "slidedown",
+        TransitionKind::CircleOpen => "circleopen",
+        TransitionKind::CircleClose => "circleclose",
+        TransitionKind::WipeTopLeft => "wipetl",
+        TransitionKind::WipeTopRight => "wipetr",
+        TransitionKind::WipeBottomLeft => "wipebl",
+        TransitionKind::WipeBottomRight => "wipebr",
+        TransitionKind::VerticalOpen => "vertopen",
+        TransitionKind::VerticalClose => "vertclose",
+        TransitionKind::HorizontalOpen => "horzopen",
+        TransitionKind::HorizontalClose => "horzclose",
     }
 }
 
@@ -1827,6 +2751,7 @@ fn transition_plan<'a>(
     composition: &Composition,
     clips: &[&VideoClip],
     transitions: &'a [ClipTransition],
+    track_label: &str,
 ) -> Result<TransitionPlan<'a>> {
     let indexes: BTreeMap<_, _> = clips
         .iter()
@@ -1848,8 +2773,9 @@ fn transition_plan<'a>(
         };
         if from_index.checked_add(1) != Some(to_index) || boundaries[to_index].is_some() {
             bail!(
-                "transition {} must connect one unique adjacent primary boundary",
-                transition.id.as_str()
+                "transition {} must connect one unique adjacent boundary on {}",
+                transition.id.as_str(),
+                track_label
             );
         }
         let before_edit = transition.duration_ticks / 2;
@@ -1891,8 +2817,9 @@ fn transition_plan<'a>(
             .ok_or_else(|| anyhow!("transition window overflow"))?;
         if clip.placement.timeline_duration_ticks()? < occupied {
             bail!(
-                "transition windows overlap inside primary clip {}",
-                clip.id.as_str()
+                "transition windows overlap inside clip {} on {}",
+                clip.id.as_str(),
+                track_label
             );
         }
     }
@@ -1906,6 +2833,7 @@ fn validate_optical_flow_workload(
     composition: &Composition,
     visual: &VisualSlice<'_>,
     transitions: &TransitionPlan<'_>,
+    overlay_handles: &BTreeMap<CompositionClipId, SourceHandles>,
 ) -> Result<()> {
     let mut total_pixel_frames = 0_u128;
     for (index, clip) in visual.primary.iter().enumerate() {
@@ -1935,11 +2863,18 @@ fn validate_optical_flow_workload(
         if clip.frame_interpolation != FrameInterpolation::OpticalFlow {
             continue;
         }
+        let handles = overlay_handles.get(&clip.id).copied().unwrap_or_default();
+        let duration_ticks = clip
+            .placement
+            .timeline_duration_ticks()?
+            .checked_add(handles.source_head_ticks)
+            .and_then(|duration| duration.checked_add(handles.source_tail_ticks))
+            .ok_or_else(|| anyhow!("optical-flow duration overflow"))?;
         let source = &composition.sources[&clip.source_id];
         validate_optical_flow_work(
             source.width,
             source.height,
-            clip.placement.timeline_duration_ticks()?,
+            duration_ticks,
             composition,
             clip.id.as_str(),
             &mut total_pixel_frames,
@@ -2056,6 +2991,7 @@ fn validate_stabilization_workload(
     composition: &Composition,
     visual: &VisualSlice<'_>,
     transitions: &TransitionPlan<'_>,
+    overlay_handles: &BTreeMap<CompositionClipId, SourceHandles>,
 ) -> Result<()> {
     let mut total_pixel_frames = 0_u128;
     for (index, clip) in visual.primary.iter().enumerate() {
@@ -2095,11 +3031,27 @@ fn validate_stabilization_workload(
         if !clip.stabilization.is_enabled() {
             continue;
         }
+        let handles = overlay_handles.get(&clip.id).copied().unwrap_or_default();
+        let timeline_handle_ticks = handles
+            .source_head_ticks
+            .checked_add(handles.source_tail_ticks)
+            .ok_or_else(|| anyhow!("stabilization duration overflow"))?;
+        let source_handle_ticks = if timeline_handle_ticks == 0 {
+            0
+        } else {
+            scaled_source_duration_ticks(
+                timeline_handle_ticks,
+                clip.placement.speed,
+                "stabilization",
+            )?
+        };
         let source = &composition.sources[&clip.source_id];
         validate_stabilization_work(
             source.width,
             source.height,
-            clip.placement.source_out_tick - clip.placement.source_in_tick,
+            (clip.placement.source_out_tick - clip.placement.source_in_tick)
+                .checked_add(source_handle_ticks)
+                .ok_or_else(|| anyhow!("stabilization duration overflow"))?,
             composition,
             clip.id.as_str(),
             &mut total_pixel_frames,
@@ -2243,6 +3195,53 @@ struct CompiledAudioAutomation {
 struct CompiledAudioClip<'a> {
     clip: &'a AudioClip,
     automation: CompiledAudioAutomation,
+    crossfade: AudioCrossfade,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct AudioCrossfade {
+    handles: SourceHandles,
+    fade_in_ticks: u64,
+    fade_out_ticks: u64,
+}
+
+fn audio_crossfade_plan(
+    composition: &Composition,
+) -> Result<BTreeMap<CompositionClipId, AudioCrossfade>> {
+    let mut plan = BTreeMap::new();
+    for track in &composition.tracks {
+        let CompositionTrack::Audio { clips, muted, .. } = track else {
+            continue;
+        };
+        if *muted {
+            continue;
+        }
+        let mut ordered: Vec<_> = clips.iter().filter(|clip| clip.enabled).collect();
+        ordered.sort_by_key(|clip| (clip.placement.timeline_start_tick, clip.id.as_str()));
+        for index in 1..ordered.len() {
+            let current = ordered[index];
+            if current.crossfade_in_ticks == 0 {
+                continue;
+            }
+            let previous = ordered[index - 1];
+            if previous.placement.timeline_end_tick()? != current.placement.timeline_start_tick {
+                continue;
+            }
+            let before = current.crossfade_in_ticks / 2;
+            let after = current.crossfade_in_ticks - before;
+            let previous_entry = plan
+                .entry(previous.id.clone())
+                .or_insert_with(AudioCrossfade::default);
+            previous_entry.handles.source_tail_ticks = after;
+            previous_entry.fade_out_ticks = current.crossfade_in_ticks;
+            let current_entry = plan
+                .entry(current.id.clone())
+                .or_insert_with(AudioCrossfade::default);
+            current_entry.handles.source_head_ticks = before;
+            current_entry.fade_in_ticks = current.crossfade_in_ticks;
+        }
+    }
+    Ok(plan)
 }
 
 fn compile_primary_source_audio(
@@ -2290,6 +3289,7 @@ fn compile_audio_slice<'a>(
     video_duration_ticks: u64,
     time_base: u32,
     keyframe_points: &mut usize,
+    crossfades: &BTreeMap<CompositionClipId, AudioCrossfade>,
 ) -> Result<Vec<CompiledAudioClip<'a>>> {
     let mut compiled = Vec::with_capacity(clips.len());
     for &clip in clips {
@@ -2311,6 +3311,7 @@ fn compile_audio_slice<'a>(
                 "audio",
                 keyframe_points,
             )?,
+            crossfade: crossfades.get(&clip.id).copied().unwrap_or_default(),
         });
     }
     Ok(compiled)
@@ -2360,6 +3361,9 @@ struct AudioFilterOptions<'a> {
     timeline_start_tick: Option<u64>,
     fade_in_ticks: u64,
     fade_out_ticks: u64,
+    voice_effect: AudioVoiceEffect,
+    pitch_semitones: f64,
+    tone_db: f64,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2508,6 +3512,48 @@ fn append_audio_post_filters(
         return Ok(());
     };
     append_audio_automation(filters, options.automation)?;
+    match options.voice_effect {
+        AudioVoiceEffect::None => {}
+        AudioVoiceEffect::Deep => filters.extend([
+            "asetrate=38400".to_owned(),
+            format!("aresample={AUDIO_SAMPLE_RATE}"),
+            "atempo=1.25".to_owned(),
+        ]),
+        AudioVoiceEffect::High => filters.extend([
+            "asetrate=60000".to_owned(),
+            format!("aresample={AUDIO_SAMPLE_RATE}"),
+            "atempo=0.8".to_owned(),
+        ]),
+        AudioVoiceEffect::Chipmunk => filters.extend([
+            "asetrate=72000".to_owned(),
+            format!("aresample={AUDIO_SAMPLE_RATE}"),
+            "atempo=0.666667".to_owned(),
+        ]),
+        AudioVoiceEffect::Echo => filters.extend([
+            "aecho=0.8:0.88:60|120:0.4|0.2".to_owned(),
+            format!("atrim=duration={}", seconds(duration_ticks, time_base)),
+            "asetpts=PTS-STARTPTS".to_owned(),
+        ]),
+        AudioVoiceEffect::Robot => filters.extend([
+            "highpass=f=180".to_owned(),
+            "lowpass=f=4200".to_owned(),
+            "tremolo=f=35:d=0.85".to_owned(),
+        ]),
+    }
+    if options.pitch_semitones != 0.0 {
+        let ratio = 2_f64.powf(options.pitch_semitones / 12.0);
+        filters.extend([
+            format!("asetrate={}", decimal(AUDIO_SAMPLE_RATE as f64 * ratio)),
+            format!("aresample={AUDIO_SAMPLE_RATE}"),
+            format!("atempo={}", decimal(1.0 / ratio)),
+        ]);
+    }
+    if options.tone_db != 0.0 {
+        filters.extend([
+            format!("bass=g={}:f=200:w=0.7", decimal(-options.tone_db)),
+            format!("treble=g={}:f=3000:w=0.7", decimal(options.tone_db)),
+        ]);
+    }
     if options.fade_in_ticks > 0 {
         filters.push(format!(
             "afade=t=in:st=0:d={}",
@@ -2697,6 +3743,41 @@ fn decimal(value: f64) -> String {
     format!("{value:.6}")
 }
 
+fn style_effect_filter(preset: VideoEffectPreset, intensity: f64) -> String {
+    match preset {
+        VideoEffectPreset::Blur => format!("gblur=sigma={}", decimal(1.0 + intensity * 29.0)),
+        VideoEffectPreset::Pixelate => {
+            let block = 2 + (intensity * 62.0).round() as u32;
+            format!("pixelize=width={block}:height={block}:mode=avg")
+        }
+        VideoEffectPreset::Vignette => {
+            format!(
+                "vignette=angle=PI/{}:dither=1",
+                decimal(2.0 + intensity * 3.0)
+            )
+        }
+        VideoEffectPreset::Sharpen => {
+            format!("unsharp=5:5:{}:5:5:0", decimal(0.1 + intensity * 1.4))
+        }
+        VideoEffectPreset::Edge => {
+            let high = 0.4 - intensity * 0.3;
+            format!(
+                "edgedetect=low={}:high={}:mode=colormix",
+                decimal(high / 2.0),
+                decimal(high)
+            )
+        }
+        VideoEffectPreset::RgbSplit => {
+            let shift = 1 + (intensity * 31.0).round() as i32;
+            format!("rgbashift=rh={shift}:bh=-{shift}:edge=wrap")
+        }
+        VideoEffectPreset::Posterize => {
+            let colors = 256 - (intensity * 240.0).round() as u32;
+            format!("elbg=codebook_length={colors}:nb_steps=1:seed=1")
+        }
+    }
+}
+
 fn ffmpeg_rgb(red: f64, green: f64, blue: f64) -> String {
     let byte = |value: f64| (value * 255.0).round().clamp(0.0, 255.0) as u8;
     format!("0x{:02X}{:02X}{:02X}", byte(red), byte(green), byte(blue))
@@ -2714,9 +3795,9 @@ fn ffmpeg_rgba(color: crate::domain::composition::Rgba) -> String {
 mod tests {
     use super::*;
     use crate::domain::composition::{
-        AudioClip, CanvasSpec, ClipPlacement, ClipTransition, CompositionClipId, CompositionSource,
-        ImageClip, MaskShape, Rgba, SourceKind, TextClip, TextStyle, TrackId, TransformSpec,
-        TransitionId,
+        AudioClip, AudioDucking, CanvasSpec, ClipPlacement, ClipTransition, CompositionClipId,
+        CompositionSource, ImageClip, MaskShape, Rgba, SourceKind, TextClip, TextStyle, TrackId,
+        TransformSpec, TransitionId,
     };
     use crate::domain::keyframes::{Interpolation, Keyframe, KeyframeTrack};
     use crate::ports::CompositionProResProfile;
@@ -2772,8 +3853,14 @@ mod tests {
             placement,
             gain: AnimatableValue::constant(0.5),
             pan: AnimatableValue::constant(0.0),
+            reversed: false,
             fade_in_ticks: 0,
             fade_out_ticks: 0,
+            voice_effect: AudioVoiceEffect::None,
+            pitch_semitones: 0.0,
+            tone_db: 0.0,
+            crossfade_in_ticks: 0,
+            ducking: None,
             enabled: true,
         }
     }
@@ -2920,6 +4007,246 @@ mod tests {
         resolved.insert(id("overlay"), PathBuf::from("/media/overlay.mp4"));
         resolved.insert(id("image"), PathBuf::from("/media/logo.png"));
         resolved
+    }
+
+    fn overlay_transition_composition(kind: TransitionKind) -> Composition {
+        let mut composition = layered_composition(BlendMode::Normal);
+        let CompositionTrack::Video {
+            clips, transitions, ..
+        } = &mut composition.tracks[1]
+        else {
+            unreachable!()
+        };
+        let second = video_clip(
+            "overlay-clip-b",
+            "overlay",
+            placement(1_500_000, 2_000_000, 2_500_000),
+        );
+        transitions.push(ClipTransition {
+            id: TransitionId::parse("overlay-transition").unwrap(),
+            from_clip_id: clips[0].id.clone(),
+            to_clip_id: second.id.clone(),
+            duration_ticks: 200_000,
+            kind,
+        });
+        clips.push(second);
+        composition
+    }
+
+    #[test]
+    fn compiles_all_overlay_transition_kinds_with_exact_handle_windows() {
+        for (kind, marker) in [
+            (
+                TransitionKind::Dissolve,
+                "alpha(X,Y)*(max(0,min(1,(T-0.000000)/0.200000)))",
+            ),
+            (TransitionKind::FadeBlack, "alpha(X,Y)*gte(T,0.100000)"),
+            (
+                TransitionKind::WipeLeft,
+                "gte((X+0.5)/W,1-(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::WipeRight,
+                "lte((X+0.5)/W,max(0,min(1,(T-0.000000)/0.200000)))",
+            ),
+            (
+                TransitionKind::WipeUp,
+                "gte((Y+0.5)/H,1-(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::WipeDown,
+                "lte((Y+0.5)/H,max(0,min(1,(T-0.000000)/0.200000)))",
+            ),
+            (
+                TransitionKind::SmoothLeft,
+                "max(0,min(1,0.5+10*((X+0.5)/W-(1-(max(0,min(1,(T-0.000000)/0.200000)))))))",
+            ),
+            (
+                TransitionKind::SmoothRight,
+                "max(0,min(1,0.5+10*((max(0,min(1,(T-0.000000)/0.200000)))-(X+0.5)/W)))",
+            ),
+            (
+                TransitionKind::SmoothUp,
+                "max(0,min(1,0.5+10*((Y+0.5)/H-(1-(max(0,min(1,(T-0.000000)/0.200000)))))))",
+            ),
+            (
+                TransitionKind::SmoothDown,
+                "max(0,min(1,0.5+10*((max(0,min(1,(T-0.000000)/0.200000)))-(Y+0.5)/H)))",
+            ),
+            (
+                TransitionKind::SlideLeft,
+                "-1*main_w*(max(0,min(1,(t-1.400000)/0.200000)))",
+            ),
+            (
+                TransitionKind::SlideRight,
+                "1*main_w*(max(0,min(1,(t-1.400000)/0.200000)))",
+            ),
+            (
+                TransitionKind::SlideUp,
+                "-1*main_h*(max(0,min(1,(t-1.400000)/0.200000)))",
+            ),
+            (
+                TransitionKind::SlideDown,
+                "1*main_h*(max(0,min(1,(t-1.400000)/0.200000)))",
+            ),
+            (
+                TransitionKind::CircleOpen,
+                "lte(pow((X+0.5)/W-0.5,2)+pow((Y+0.5)/H-0.5,2),0.5*pow(max(0,min(1,(T-0.000000)/0.200000)),2))",
+            ),
+            (
+                TransitionKind::CircleClose,
+                "gte(pow((X+0.5)/W-0.5,2)+pow((Y+0.5)/H-0.5,2),0.5*pow(1-(max(0,min(1,(T-0.000000)/0.200000))),2))",
+            ),
+            (
+                TransitionKind::WipeTopLeft,
+                "lte((X+0.5)/W+(Y+0.5)/H,2*(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::WipeTopRight,
+                "lte(1-(X+0.5)/W+(Y+0.5)/H,2*(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::WipeBottomLeft,
+                "lte((X+0.5)/W+1-(Y+0.5)/H,2*(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::WipeBottomRight,
+                "lte(2-(X+0.5)/W-(Y+0.5)/H,2*(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::VerticalOpen,
+                "lte(abs((X+0.5)/W-0.5),0.5*(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::VerticalClose,
+                "gte(abs((X+0.5)/W-0.5),0.5*(1-(max(0,min(1,(T-0.000000)/0.200000)))))",
+            ),
+            (
+                TransitionKind::HorizontalOpen,
+                "lte(abs((Y+0.5)/H-0.5),0.5*(max(0,min(1,(T-0.000000)/0.200000))))",
+            ),
+            (
+                TransitionKind::HorizontalClose,
+                "gte(abs((Y+0.5)/H-0.5),0.5*(1-(max(0,min(1,(T-0.000000)/0.200000)))))",
+            ),
+        ] {
+            let command = build_composition_ffmpeg_command(
+                &layered_inputs(),
+                Path::new("/renders/overlay-transition.mp4"),
+                &overlay_transition_composition(kind),
+                23,
+                1,
+            )
+            .unwrap();
+            let graph = &command.arguments[command
+                .arguments
+                .iter()
+                .position(|argument| argument == "-filter_complex")
+                .unwrap()
+                + 1];
+            assert!(graph.contains(marker), "missing {kind:?} marker in {graph}");
+            assert!(
+                graph.contains("trim=start=0.000000:end=1.100000"),
+                "{graph}"
+            );
+            assert!(
+                graph.contains("trim=start=1.900000:end=2.500000"),
+                "{graph}"
+            );
+            assert!(
+                graph.contains("enable='between(t,0.500000,1.600000)'"),
+                "{graph}"
+            );
+            assert!(
+                graph.contains("enable='between(t,1.400000,2.000000)'"),
+                "{graph}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_bottom_to_top_overlay_track_groups_and_transition_ownership() {
+        let mut composition = layered_composition(BlendMode::Screen);
+        let CompositionTrack::Video {
+            clips, transitions, ..
+        } = &mut composition.tracks[1]
+        else {
+            unreachable!()
+        };
+        let second = video_clip(
+            "overlay-clip-b",
+            "overlay",
+            placement(1_500_000, 2_000_000, 2_500_000),
+        );
+        let from_clip_id = clips[0].id.clone();
+        let to_clip_id = second.id.clone();
+        clips.push(second);
+        transitions.push(ClipTransition {
+            id: TransitionId::parse("overlay-transition").unwrap(),
+            from_clip_id,
+            to_clip_id,
+            duration_ticks: 200_000,
+            kind: TransitionKind::Dissolve,
+        });
+
+        let visual = visual_slice(&composition).unwrap();
+
+        assert_eq!(visual.overlay_tracks.len(), 2);
+        assert_eq!(visual.overlay_tracks[0].id.as_str(), "video-overlay");
+        assert_eq!(visual.overlay_tracks[1].id.as_str(), "image-layer");
+        assert_eq!(
+            visual.overlay_tracks[0]
+                .clips
+                .iter()
+                .map(|clip| clip.id())
+                .collect::<Vec<_>>(),
+            ["overlay-clip", "overlay-clip-b"]
+        );
+        assert_eq!(visual.overlay_tracks[0].transitions.len(), 1);
+        assert_eq!(
+            visual.overlay_tracks[0].transitions[0].id.as_str(),
+            "overlay-transition"
+        );
+        assert!(visual.overlay_tracks[1].transitions.is_empty());
+
+        let video_clips = visual.overlay_tracks[0]
+            .clips
+            .iter()
+            .map(|clip| match clip {
+                VisualClip::Video(video) => *video,
+                VisualClip::Image(_) | VisualClip::Text(_) => unreachable!(),
+            })
+            .collect::<Vec<_>>();
+        let plan = transition_plan(
+            &composition,
+            &video_clips,
+            visual.overlay_tracks[0].transitions,
+            "video-overlay",
+        )
+        .unwrap();
+        let handles = video_clips
+            .iter()
+            .zip(plan.handles)
+            .map(|(clip, handles)| (clip.id.clone(), handles))
+            .collect();
+        let compiled = compile_visual_overlays(
+            &composition,
+            &visual.overlays,
+            validate_gapless_video(&visual.primary).unwrap(),
+            &handles,
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        let overlay_a = compiled
+            .iter()
+            .find(|clip| clip.clip.id() == "overlay-clip")
+            .unwrap();
+        let overlay_b = compiled
+            .iter()
+            .find(|clip| clip.clip.id() == "overlay-clip-b")
+            .unwrap();
+        assert_eq!(overlay_a.handles.source_tail_ticks, 100_000);
+        assert_eq!(overlay_b.handles.source_head_ticks, 100_000);
     }
 
     fn text_transition_composition(kind: TransitionKind) -> Composition {
@@ -3125,6 +4452,235 @@ mod tests {
         );
     }
 
+    #[test]
+    fn compiles_blur_and_checker_canvas_backgrounds() {
+        let mut blur = first_slice_composition();
+        blur.canvas.background_mode = CanvasBackgroundMode::Blur;
+        blur.canvas.background_blur = 36.0;
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/blur.mp4"),
+            &blur,
+            21,
+            3,
+        )
+        .unwrap();
+        let graph = command
+            .arguments
+            .get(
+                command
+                    .arguments
+                    .iter()
+                    .position(|value| value == "-filter_complex")
+                    .unwrap()
+                    + 1,
+            )
+            .unwrap();
+        assert!(
+            graph.contains("split=2[primary_foreground_input_0][primary_blur_input_0]"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("force_original_aspect_ratio=increase,crop=1920:1080"),
+            "{graph}"
+        );
+        assert!(graph.contains("gblur=sigma=36.000000"), "{graph}");
+
+        let mut checker = first_slice_composition();
+        checker.canvas.background_mode = CanvasBackgroundMode::Checker;
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/checker.mp4"),
+            &checker,
+            21,
+            3,
+        )
+        .unwrap();
+        let graph = command
+            .arguments
+            .get(
+                command
+                    .arguments
+                    .iter()
+                    .position(|value| value == "-filter_complex")
+                    .unwrap()
+                    + 1,
+            )
+            .unwrap();
+        assert!(graph.contains("color=c=black:s=1920x1080"), "{graph}");
+        assert!(
+            graph.contains("geq=r='if(mod(floor(X/64)+floor(Y/64)\\,2)"),
+            "{graph}"
+        );
+    }
+
+    #[test]
+    fn compiles_bounded_style_effect_presets_in_authored_order() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        clips[0].effects = vec![
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Blur,
+                intensity: 0.5,
+            },
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Pixelate,
+                intensity: 0.5,
+            },
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Vignette,
+                intensity: 0.5,
+            },
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Sharpen,
+                intensity: 0.5,
+            },
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Edge,
+                intensity: 0.5,
+            },
+        ];
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/effects.mp4"),
+            &composition,
+            21,
+            3,
+        )
+        .unwrap();
+        let graph = command
+            .arguments
+            .get(
+                command
+                    .arguments
+                    .iter()
+                    .position(|value| value == "-filter_complex")
+                    .unwrap()
+                    + 1,
+            )
+            .unwrap();
+        let expected = [
+            "gblur=sigma=15.500000",
+            "pixelize=width=33:height=33:mode=avg",
+            "vignette=angle=PI/3.500000:dither=1",
+            "unsharp=5:5:0.800000:5:5:0",
+            "edgedetect=low=0.125000:high=0.250000:mode=colormix",
+        ];
+        let mut cursor = 0;
+        for filter in expected {
+            let index = graph[cursor..]
+                .find(filter)
+                .unwrap_or_else(|| panic!("missing {filter}: {graph}"))
+                + cursor;
+            assert!(index >= cursor);
+            cursor = index + filter.len();
+        }
+    }
+
+    #[test]
+    fn compiles_rgb_split_and_deterministic_posterize_controls() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        clips[0].effects = vec![
+            VideoEffect::Style {
+                preset: VideoEffectPreset::RgbSplit,
+                intensity: 0.5,
+            },
+            VideoEffect::Style {
+                preset: VideoEffectPreset::Posterize,
+                intensity: 0.5,
+            },
+        ];
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/effects.mp4"),
+            &composition,
+            21,
+            3,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|value| value == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains(
+                "rgbashift=rh=17:bh=-17:edge=wrap,elbg=codebook_length=136:nb_steps=1:seed=1"
+            ),
+            "{graph}"
+        );
+    }
+
+    #[test]
+    fn compiles_primary_transform_and_opacity_keyframes_over_the_canvas_background() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!()
+        };
+        clips[0].opacity = animated(Interpolation::EaseOut, 2_000_000, 0.0, 1.0);
+        clips[0].transform.x = animated(Interpolation::Linear, 2_000_000, -20.0, 20.0);
+        clips[0].transform.scale_x = AnimatableValue::constant(0.5);
+        clips[0].transform.scale_y = AnimatableValue::constant(0.75);
+        clips[0].transform.rotation_degrees = AnimatableValue::constant(15.0);
+        clips[0].blend_mode = BlendMode::Screen;
+        clips[0].effects.push(VideoEffect::ChromaKey {
+            color: Rgba {
+                red: 0.0,
+                green: 1.0,
+                blue: 0.0,
+                alpha: 1.0,
+            },
+            similarity: 0.1,
+            softness: 0.05,
+            spill: 0.0,
+        });
+        clips[0].effects.push(VideoEffect::LinearMask {
+            x: animated(Interpolation::Linear, 2_000_000, 0.25, 0.75),
+            y: AnimatableValue::constant(0.5),
+            rotation_degrees: AnimatableValue::constant(20.0),
+            feather: 0.1,
+            inverted: false,
+        });
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/result.mp4"),
+            &composition,
+            21,
+            3,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(graph.contains("[primary_background_0]"), "{graph}");
+        assert!(graph.contains("chromakey=color=0x00FF00"), "{graph}");
+        assert!(graph.contains("cos((20.000000)*PI/180)"), "{graph}");
+        assert!(graph.contains("blend=all_mode=screen"), "{graph}");
+        assert!(graph.contains("maskedmerge"), "{graph}");
+        assert!(
+            graph.contains("scale=iw*0.500000:ih*0.750000:eval=init"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("rotate=angle='(15.000000)*PI/180'"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("[primary_faded_0]overlay=x='(main_w/2+(if(lt(t,0),-20"),
+            "{graph}"
+        );
+        assert!(graph.contains("alpha(X,Y)*(if(lt(T,0),0"), "{graph}");
+    }
+
     fn delivery_tail(
         profile: CompositionExportProfile,
         video_quality: u32,
@@ -3138,7 +4694,9 @@ mod tests {
             CompositionExportSpec {
                 profile,
                 video_quality,
+                video_bitrate_kbps: None,
                 av1_encoder,
+                range: None,
             },
             3,
         )
@@ -3149,6 +4707,165 @@ mod tests {
             .position(|argument| argument == "-c:v")
             .unwrap();
         command.arguments[start..].to_vec()
+    }
+
+    #[test]
+    fn audio_only_delivery_maps_mix_without_a_video_stream() {
+        for (codec, extension, encoder) in [
+            (
+                crate::ports::CompositionAudioCodec::Mp3,
+                "mp3",
+                "libmp3lame",
+            ),
+            (crate::ports::CompositionAudioCodec::Wav, "wav", "pcm_s16le"),
+            (crate::ports::CompositionAudioCodec::Aac, "aac", "aac"),
+            (crate::ports::CompositionAudioCodec::Flac, "flac", "flac"),
+        ] {
+            let command = build_composition_ffmpeg_command_for_output(
+                &inputs(),
+                Path::new(&format!("/renders/result.{extension}")),
+                &first_slice_composition(),
+                CompositionExportSpec {
+                    profile: CompositionExportProfile::Audio { codec },
+                    video_quality: 0,
+                    video_bitrate_kbps: None,
+                    av1_encoder: None,
+                    range: None,
+                },
+                3,
+            )
+            .unwrap();
+            let graph = &command.arguments[command
+                .arguments
+                .iter()
+                .position(|argument| argument == "-filter_complex")
+                .unwrap()
+                + 1];
+            assert!(graph.ends_with("[vout]nullsink"), "{graph}");
+            assert!(command
+                .arguments
+                .windows(2)
+                .any(|pair| pair == ["-map", "[aout]"]));
+            assert!(!command
+                .arguments
+                .iter()
+                .any(|argument| argument == "[vout]"));
+            assert!(command
+                .arguments
+                .windows(2)
+                .any(|pair| pair == ["-c:a", encoder]));
+            assert!(command.arguments.iter().any(|argument| argument == "-vn"));
+            if matches!(
+                codec,
+                crate::ports::CompositionAudioCodec::Mp3 | crate::ports::CompositionAudioCodec::Aac
+            ) {
+                assert!(command
+                    .arguments
+                    .windows(2)
+                    .any(|pair| pair == ["-b:a", DEFAULT_AUDIO_BITRATE]));
+            }
+            assert!(!command.arguments.iter().any(|argument| argument == "-c:v"));
+        }
+    }
+
+    #[test]
+    fn delivery_range_trims_final_video_and_audio_and_resets_timestamps() {
+        let command = build_composition_ffmpeg_command_for_output(
+            &inputs(),
+            Path::new("/renders/range.mp4"),
+            &first_slice_composition(),
+            CompositionExportSpec {
+                profile: CompositionExportProfile::default(),
+                video_quality: 23,
+                video_bitrate_kbps: None,
+                av1_encoder: None,
+                range: Some(crate::ports::CompositionExportRange {
+                    start_ticks: 100_000,
+                    end_ticks: 600_000,
+                }),
+            },
+            2,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains("[vout]trim=start=0.100000:end=0.600000,setpts=PTS-STARTPTS[vdelivery]")
+        );
+        assert!(graph
+            .contains("[aout]atrim=start=0.100000:end=0.600000,asetpts=PTS-STARTPTS[adelivery]"));
+        assert!(command
+            .arguments
+            .windows(2)
+            .any(|pair| pair == ["-map", "[vdelivery]"]));
+        assert!(command
+            .arguments
+            .windows(2)
+            .any(|pair| pair == ["-map", "[adelivery]"]));
+        assert!((command.expected_duration_seconds - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn custom_video_bitrate_replaces_constant_quality_with_bounded_rate_control() {
+        for (profile, destination) in [
+            (CompositionExportProfile::default(), "/renders/custom.mp4"),
+            (
+                CompositionExportProfile::Webm {
+                    codec: CompositionWebmCodec::Vp9,
+                },
+                "/renders/custom.webm",
+            ),
+        ] {
+            let command = build_composition_ffmpeg_command_for_output(
+                &inputs(),
+                Path::new(destination),
+                &first_slice_composition(),
+                CompositionExportSpec {
+                    profile,
+                    video_quality: 23,
+                    video_bitrate_kbps: Some(12_000),
+                    av1_encoder: None,
+                    range: None,
+                },
+                2,
+            )
+            .unwrap();
+            assert!(command
+                .arguments
+                .windows(2)
+                .any(|pair| pair == ["-b:v", "12000k"]));
+            assert!(command
+                .arguments
+                .windows(2)
+                .any(|pair| pair == ["-maxrate", "12000k"]));
+            assert!(command
+                .arguments
+                .windows(2)
+                .any(|pair| pair == ["-bufsize", "24000k"]));
+            assert!(!command.arguments.iter().any(|argument| argument == "-crf"));
+        }
+
+        let error = build_composition_ffmpeg_command_for_output(
+            &inputs(),
+            Path::new("/renders/audio.mp3"),
+            &first_slice_composition(),
+            CompositionExportSpec {
+                profile: CompositionExportProfile::Audio {
+                    codec: crate::ports::CompositionAudioCodec::Mp3,
+                },
+                video_quality: 0,
+                video_bitrate_kbps: Some(12_000),
+                av1_encoder: None,
+                range: None,
+            },
+            2,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("requires MP4 or WebM"));
     }
 
     fn expected_delivery_tail(
@@ -3324,7 +5041,9 @@ mod tests {
             CompositionExportSpec {
                 profile: av1,
                 video_quality: 32,
+                video_bitrate_kbps: None,
                 av1_encoder: None,
+                range: None,
             },
             1,
         )
@@ -3337,7 +5056,9 @@ mod tests {
             CompositionExportSpec {
                 profile: vp9,
                 video_quality: 32,
+                video_bitrate_kbps: None,
                 av1_encoder: None,
+                range: None,
             },
             1,
         )
@@ -4116,6 +5837,280 @@ mod tests {
     }
 
     #[test]
+    fn compiles_duration_preserving_voice_pitch_presets() {
+        for (effect, expected) in [
+            (
+                AudioVoiceEffect::Deep,
+                "asetrate=38400,aresample=48000,atempo=1.25",
+            ),
+            (
+                AudioVoiceEffect::High,
+                "asetrate=60000,aresample=48000,atempo=0.8",
+            ),
+            (
+                AudioVoiceEffect::Chipmunk,
+                "asetrate=72000,aresample=48000,atempo=0.666667",
+            ),
+        ] {
+            let mut composition = first_slice_composition();
+            let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+                unreachable!();
+            };
+            clips[0].voice_effect = effect;
+            let command = build_composition_ffmpeg_command(
+                &inputs(),
+                Path::new("/renders/voice-effect.mp4"),
+                &composition,
+                23,
+                1,
+            )
+            .unwrap();
+            let graph = &command.arguments[command
+                .arguments
+                .iter()
+                .position(|argument| argument == "-filter_complex")
+                .unwrap()
+                + 1];
+            assert!(graph.contains(expected), "{graph}");
+        }
+    }
+
+    #[test]
+    fn compiles_duration_preserving_voice_echo() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        clips[0].voice_effect = AudioVoiceEffect::Echo;
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/voice-echo.mp4"),
+            &composition,
+            23,
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains(
+                "aecho=0.8:0.88:60|120:0.4|0.2,atrim=duration=4.000000,asetpts=PTS-STARTPTS"
+            ),
+            "{graph}"
+        );
+    }
+
+    #[test]
+    fn compiles_duration_preserving_robot_voice_modulation() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        clips[0].voice_effect = AudioVoiceEffect::Robot;
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/voice-robot.mp4"),
+            &composition,
+            23,
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains("highpass=f=180,lowpass=f=4200,tremolo=f=35:d=0.85"),
+            "{graph}"
+        );
+    }
+
+    #[test]
+    fn compiles_bounded_custom_pitch_without_changing_duration() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        clips[0].pitch_semitones = -12.0;
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/custom-pitch.mp4"),
+            &composition,
+            23,
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains("asetrate=24000.000000,aresample=48000,atempo=2.000000"),
+            "{graph}"
+        );
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        clips[0].pitch_semitones = 12.01;
+        assert!(composition.validate().is_err());
+    }
+
+    #[test]
+    fn compiles_bounded_bass_to_treble_tone_tilt() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        clips[0].tone_db = 9.0;
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/tone.mp4"),
+            &composition,
+            23,
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains("bass=g=-9.000000:f=200:w=0.7,treble=g=9.000000:f=3000:w=0.7"),
+            "{graph}"
+        );
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        clips[0].tone_db = -12.01;
+        assert!(composition.validate().is_err());
+    }
+
+    #[test]
+    fn compiles_independent_reversed_audio_and_requires_areverse() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        clips[0].reversed = true;
+        assert!(composition.requires_reverse_audio());
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/reverse-audio.mp4"),
+            &composition,
+            23,
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains("atrim=start=0.000000:end=4.000000,asetpts=PTS-STARTPTS,areverse"),
+            "{graph}"
+        );
+    }
+
+    #[test]
+    fn compiles_audio_crossfade_from_real_source_handles_without_changing_timeline() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!();
+        };
+        *clips = vec![
+            audio_clip("music-a", "music", placement(0, 1_000_000, 3_000_000)),
+            {
+                let mut clip = audio_clip(
+                    "music-b",
+                    "music",
+                    placement(2_000_000, 3_000_000, 5_000_000),
+                );
+                clip.crossfade_in_ticks = 1_000_000;
+                clip
+            },
+        ];
+        composition.validate().unwrap();
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/audio-crossfade.mp4"),
+            &composition,
+            23,
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains("atrim=start=1.000000:end=3.500000"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("afade=t=out:st=1.500000:d=1.000000"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("atrim=start=2.500000:end=5.000000"),
+            "{graph}"
+        );
+        assert!(graph.contains("afade=t=in:st=0:d=1.000000"), "{graph}");
+        assert!(
+            graph.contains("adelay=72000S:all=1[audio_clip_1]"),
+            "{graph}"
+        );
+        assert!(graph.contains("atrim=duration=5.000000"), "{graph}");
+    }
+
+    #[test]
+    fn compiles_primary_audio_sidechain_ducking_with_bounded_controls() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!()
+        };
+        clips[0].ducking = Some(AudioDucking {
+            threshold_db: -24.0,
+            ratio: 8.0,
+            attack_ms: 20.0,
+            release_ms: 300.0,
+        });
+        assert!(composition.requires_audio_ducking());
+        let command = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/ducking.mp4"),
+            &composition,
+            23,
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains("[source_audio]asplit=2[source_audio_mix][duck_key_0]"),
+            "{graph}"
+        );
+        assert!(graph.contains("[audio_clip_0_pre_duck][duck_key_0]sidechaincompress=threshold=0.063096:ratio=8.000000:attack=20.000000:release=300.000000"), "{graph}");
+    }
+
+    #[test]
     fn muted_or_disabled_primary_source_audio_compiles_silence_without_audio_pads() {
         for disable_clip in [false, true] {
             let mut composition = first_slice_composition();
@@ -4221,8 +6216,14 @@ mod tests {
                 placement: placement(index * 100_000, 0, 100_000),
                 gain: gain.clone(),
                 pan: pan.clone(),
+                reversed: false,
                 fade_in_ticks: 0,
                 fade_out_ticks: 0,
+                voice_effect: AudioVoiceEffect::None,
+                pitch_semitones: 0.0,
+                tone_db: 0.0,
+                crossfade_in_ticks: 0,
+                ducking: None,
                 enabled: true,
             })
             .collect();
@@ -4244,7 +6245,11 @@ mod tests {
 
     #[test]
     fn compiles_unicode_textfile_and_exact_handle_transition_golden() {
-        let composition = text_transition_composition(TransitionKind::Dissolve);
+        let mut composition = text_transition_composition(TransitionKind::Dissolve);
+        let CompositionTrack::Video { clips, .. } = &mut composition.tracks[1] else {
+            unreachable!()
+        };
+        clips[1].transform.x = animated(Interpolation::Linear, 3_000_000, -30.0, 30.0);
         let resources = text_resources();
         let command = build_composition_ffmpeg_command_with_text_resources(
             &inputs(),
@@ -4273,6 +6278,10 @@ mod tests {
         assert!(graph.contains(
             "[video_clip_0][video_clip_1]xfade=transition=fade:duration=0.500000:offset=1.750000[base_video]"
         ), "{graph}");
+        assert!(
+            graph.contains("[primary_faded_1]overlay=x='(main_w/2+(if(lt((t-0.25),0),-30"),
+            "primary transform keyframes did not retain the incoming transition handle offset: {graph}"
+        );
         assert!(
             graph.contains(
                 "drawtext=fontfile='/fonts/Noto Sans.ttf':textfile='/tmp/title\\:one.txt':reload=0:expansion=none"
@@ -4309,8 +6318,26 @@ mod tests {
             (TransitionKind::FadeBlack, "fadeblack"),
             (TransitionKind::WipeLeft, "wipeleft"),
             (TransitionKind::WipeRight, "wiperight"),
+            (TransitionKind::WipeUp, "wipeup"),
+            (TransitionKind::WipeDown, "wipedown"),
+            (TransitionKind::SmoothLeft, "smoothleft"),
+            (TransitionKind::SmoothRight, "smoothright"),
+            (TransitionKind::SmoothUp, "smoothup"),
+            (TransitionKind::SmoothDown, "smoothdown"),
             (TransitionKind::SlideLeft, "slideleft"),
             (TransitionKind::SlideRight, "slideright"),
+            (TransitionKind::SlideUp, "slideup"),
+            (TransitionKind::SlideDown, "slidedown"),
+            (TransitionKind::CircleOpen, "circleopen"),
+            (TransitionKind::CircleClose, "circleclose"),
+            (TransitionKind::WipeTopLeft, "wipetl"),
+            (TransitionKind::WipeTopRight, "wipetr"),
+            (TransitionKind::WipeBottomLeft, "wipebl"),
+            (TransitionKind::WipeBottomRight, "wipebr"),
+            (TransitionKind::VerticalOpen, "vertopen"),
+            (TransitionKind::VerticalClose, "vertclose"),
+            (TransitionKind::HorizontalOpen, "horzopen"),
+            (TransitionKind::HorizontalClose, "horzclose"),
         ] {
             let composition = text_transition_composition(kind);
             let command = build_composition_ffmpeg_command_with_text_resources(
@@ -4524,7 +6551,7 @@ mod tests {
     }
 
     #[test]
-    fn compiles_shape_masks_and_visual_keyframes_but_rejects_linear_masks() {
+    fn compiles_rotated_shape_and_linear_masks_with_visual_keyframes() {
         let mut masked = layered_composition(BlendMode::Normal);
         let CompositionTrack::Video { clips, .. } = &mut masked.tracks[1] else {
             unreachable!();
@@ -4535,6 +6562,7 @@ mod tests {
             y: AnimatableValue::constant(0.5),
             width: AnimatableValue::constant(0.5),
             height: AnimatableValue::constant(0.5),
+            rotation_degrees: animated(Interpolation::Linear, 1_000_000, -30.0, 30.0),
             feather: 0.1,
             inverted: false,
         });
@@ -4575,29 +6603,35 @@ mod tests {
         );
         assert!(graph.contains("eval=frame:eof_action=pass"), "{graph}");
         assert!(graph.contains("pow("), "{graph}");
+        assert!(graph.contains("cos((if(lt(T,0),-30"), "{graph}");
+        assert!(graph.contains("sin((if(lt(T,0),-30"), "{graph}");
 
         let mut animated = layered_composition(BlendMode::Normal);
         let CompositionTrack::Video { clips, .. } = &mut animated.tracks[1] else {
             unreachable!();
         };
-        clips[0].effects.push(VideoEffect::Mask {
-            shape: MaskShape::Linear,
+        clips[0].effects.push(VideoEffect::LinearMask {
             x: AnimatableValue::constant(0.5),
             y: AnimatableValue::constant(0.5),
-            width: AnimatableValue::constant(0.5),
-            height: AnimatableValue::constant(0.5),
-            feather: 0.0,
+            rotation_degrees: AnimatableValue::constant(90.0),
+            feather: 0.2,
             inverted: false,
         });
-        let error = build_composition_ffmpeg_command(
+        let command = build_composition_ffmpeg_command(
             &layered_inputs(),
             Path::new("/renders/result.mp4"),
             &animated,
             23,
             1,
         )
-        .unwrap_err();
-        assert!(error.to_string().contains("Linear mask"), "{error:#}");
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(graph.contains("clip(0.5-"), "{graph}");
 
         let mut reordered = layered_composition(BlendMode::Normal);
         let CompositionTrack::Video { clips, .. } = &mut reordered.tracks[1] else {
@@ -4611,6 +6645,7 @@ mod tests {
                 y: AnimatableValue::constant(0.5),
                 width: AnimatableValue::constant(0.5),
                 height: AnimatableValue::constant(0.5),
+                rotation_degrees: AnimatableValue::constant(0.0),
                 feather: 0.0,
                 inverted: false,
             },
@@ -4670,6 +6705,7 @@ mod tests {
             y: animated(Interpolation::Hold, 1_000_000, 0.5, 0.6),
             width: animated(Interpolation::EaseIn, 1_000_000, 0.2, 0.8),
             height: animated(Interpolation::EaseOut, 1_000_000, 0.3, 0.9),
+            rotation_degrees: AnimatableValue::constant(20.0),
             feather: 0.2,
             inverted: true,
         });

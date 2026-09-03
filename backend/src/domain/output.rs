@@ -18,6 +18,7 @@ pub enum OutputFormat {
     Png,
     Jpg,
     Mp3,
+    Wav,
     Av1,
     Prores,
 }
@@ -31,6 +32,7 @@ impl OutputFormat {
             "png" => Ok(Self::Png),
             "jpg" => Ok(Self::Jpg),
             "mp3" => Ok(Self::Mp3),
+            "wav" => Ok(Self::Wav),
             "av1" => Ok(Self::Av1),
             "prores" => Ok(Self::Prores),
             _ => Err(OutputSpecError::InvalidFormat),
@@ -45,6 +47,7 @@ impl OutputFormat {
             Self::Png => "png",
             Self::Jpg => "jpg",
             Self::Mp3 => "mp3",
+            Self::Wav => "wav",
             Self::Av1 => "av1",
             Self::Prores => "prores",
         }
@@ -57,6 +60,7 @@ impl OutputFormat {
             Self::Png => "png",
             Self::Jpg => "jpg",
             Self::Mp3 => "mp3",
+            Self::Wav => "wav",
             Self::Prores => "mov",
             Self::Mp4 | Self::Av1 => "mp4",
         }
@@ -167,7 +171,11 @@ impl OutputSpec {
             OutputFormat::Webm => Some(VideoCodec::Vp9),
             OutputFormat::Av1 => Some(VideoCodec::Av1),
             OutputFormat::Prores => Some(VideoCodec::Prores),
-            OutputFormat::Gif | OutputFormat::Png | OutputFormat::Jpg | OutputFormat::Mp3 => None,
+            OutputFormat::Gif
+            | OutputFormat::Png
+            | OutputFormat::Jpg
+            | OutputFormat::Mp3
+            | OutputFormat::Wav => None,
         };
         if format == OutputFormat::Mp4
             && !matches!(video_codec, Some(VideoCodec::H264 | VideoCodec::H265))
@@ -185,6 +193,7 @@ impl OutputSpec {
                 OutputFormat::Webm => Some(AudioCodec::Opus),
                 OutputFormat::Prores => Some(AudioCodec::PcmS16Le),
                 OutputFormat::Mp3 => Some(AudioCodec::Mp3),
+                OutputFormat::Wav => Some(AudioCodec::PcmS16Le),
                 _ => Some(AudioCodec::Aac),
             }
         };
@@ -234,9 +243,11 @@ impl OutputSpec {
             OutputFormat::Webm => self.video_codec == Some(VideoCodec::Vp9),
             OutputFormat::Av1 => self.video_codec == Some(VideoCodec::Av1),
             OutputFormat::Prores => self.video_codec == Some(VideoCodec::Prores),
-            OutputFormat::Gif | OutputFormat::Png | OutputFormat::Jpg | OutputFormat::Mp3 => {
-                self.video_codec.is_none()
-            }
+            OutputFormat::Gif
+            | OutputFormat::Png
+            | OutputFormat::Jpg
+            | OutputFormat::Mp3
+            | OutputFormat::Wav => self.video_codec.is_none(),
         };
         if !expected_video {
             return Err(OutputSpecError::InvalidCodec);
@@ -248,6 +259,7 @@ impl OutputSpec {
                 matches!(self.audio_codec, None | Some(AudioCodec::PcmS16Le))
             }
             OutputFormat::Mp3 => self.audio_codec == Some(AudioCodec::Mp3),
+            OutputFormat::Wav => self.audio_codec == Some(AudioCodec::PcmS16Le),
             OutputFormat::Mp4 | OutputFormat::Av1 => {
                 matches!(self.audio_codec, None | Some(AudioCodec::Aac))
             }

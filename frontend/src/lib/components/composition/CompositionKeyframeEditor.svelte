@@ -21,6 +21,7 @@
     audioPropertyBounds,
     audioPropertyValue,
     maskPropertyBounds,
+    maskPropertyValue,
     sampleAnimatableValue,
     visualPropertyBounds,
     visualPropertyValue,
@@ -35,7 +36,7 @@
     type CompositionAutomationTarget,
   } from '$lib/state/composition.svelte.js'
 
-  type EditorMode = 'visual' | 'audio' | 'mask'
+  type EditorMode = 'visual' | 'opacity' | 'audio' | 'mask'
   type AutomationProperty = CompositionVisualProperty | CompositionAudioProperty | CompositionMaskProperty
 
   let {
@@ -65,8 +66,12 @@
   const properties = $derived<readonly AutomationProperty[]>(
     mode === 'audio'
       ? COMPOSITION_AUDIO_PROPERTIES
+      : mode === 'opacity'
+        ? (['opacity'] as const)
       : mode === 'mask'
-        ? COMPOSITION_MASK_PROPERTIES
+        ? mask?.shape === 'linear'
+          ? (['x', 'y', 'rotationDegrees'] as const)
+          : COMPOSITION_MASK_PROPERTIES
         : COMPOSITION_VISUAL_PROPERTIES,
   )
   $effect(() => {
@@ -110,7 +115,7 @@
     if (mode === 'audio' && isAudioAutomationClip(clip)) {
       return audioPropertyValue(clip, property as CompositionAudioProperty)
     }
-    if (mode === 'mask' && mask) return mask[property as CompositionMaskProperty]
+    if (mode === 'mask' && mask) return maskPropertyValue(mask, property as CompositionMaskProperty)
     if (clip.kind !== 'audio') {
       return visualPropertyValue(compositionState.document, clip, property as CompositionVisualProperty)
     }
@@ -159,12 +164,12 @@
       if (!mask) throw new Error('Mask editor requires a mask')
       return { kind: 'mask', clipId: clip.id, maskId: mask.id }
     }
-    return { kind: mode, clipId: clip.id }
+    return { kind: mode === 'opacity' ? 'visual' : mode, clipId: clip.id }
   }
 </script>
 
 <fieldset class="composition-fieldset composition-keyframe-editor">
-  <legend>{mode === 'audio' ? 'Audio keyframes' : mode === 'mask' ? 'Mask keyframes' : 'Keyframes'}</legend>
+  <legend>{mode === 'audio' ? 'Audio keyframes' : mode === 'mask' ? 'Mask keyframes' : mode === 'opacity' ? 'Opacity keyframes' : 'Keyframes'}</legend>
   <div class="composition-form-grid">
     <label>
       Параметр

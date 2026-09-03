@@ -33,10 +33,20 @@ pub(crate) fn is_lut_quota_exceeded(error: &anyhow::Error) -> bool {
     error.downcast_ref::<LutQuotaExceeded>().is_some()
 }
 
+mod auth;
 mod composition_projects;
 mod library_metadata;
+mod output_access;
 mod project_migration;
+mod project_reviews;
+mod publish_connections;
+mod publish_oauth;
+mod publish_uploads;
+mod space_brand;
+mod space_templates;
+mod spaces;
 
+pub use auth::{AuthSession, AuthUser, AUTH_SESSION_TTL_SECS};
 pub(crate) use composition_projects::valid_source_id as valid_composition_source_id;
 // Public limits are part of the HTTP/integration-test contract as well as the
 // SQLite adapter, so clients never guess a different project envelope size.
@@ -50,6 +60,11 @@ pub use library_metadata::{
     MAX_LIBRARY_TAGS, MAX_LIBRARY_TAG_BYTES, MAX_LIBRARY_TAG_CHARS, MAX_LIBRARY_TITLE_BYTES,
     MAX_LIBRARY_TITLE_CHARS,
 };
+pub use space_brand::{
+    BrandColor, BrandKitPayload, SpaceBrandKit, MAX_BRAND_COLORS, MAX_BRAND_FONTS, MAX_BRAND_LOGOS,
+};
+pub use space_templates::{SpaceTemplate, MAX_SPACE_TEMPLATES, MAX_SPACE_TEMPLATE_BYTES};
+pub use spaces::{Space, SpaceInviteCreated, SpaceMember, SpaceRole};
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS projects (
@@ -128,7 +143,16 @@ impl Db {
         sqlx::query(SCHEMA).execute(&pool).await?;
         project_migration::migrate(&pool).await?;
         composition_projects::migrate(&pool).await?;
+        auth::migrate(&pool).await?;
+        project_reviews::migrate(&pool).await?;
+        spaces::migrate(&pool).await?;
+        space_brand::migrate(&pool).await?;
+        space_templates::migrate(&pool).await?;
         library_metadata::migrate(&pool).await?;
+        output_access::migrate(&pool).await?;
+        publish_oauth::migrate(&pool).await?;
+        publish_uploads::migrate(&pool).await?;
+        publish_connections::migrate(&pool).await?;
         let db = Db { pool };
         crate::jobs::SqliteJobStore::new(db.clone())
             .migrate()

@@ -5,9 +5,10 @@ pub mod still_encoder;
 pub mod telemetry;
 
 pub use composition_export::{
-    CompositionAv1Encoder, CompositionExportCommandCompiler, CompositionExportCompileRequest,
-    CompositionExportProfile, CompositionExportSpec, CompositionMp4Codec, CompositionProResProfile,
-    CompositionTextResource, CompositionWebmCodec,
+    CompositionAudioCodec, CompositionAv1Encoder, CompositionExportCommandCompiler,
+    CompositionExportCompileRequest, CompositionExportProfile, CompositionExportRange,
+    CompositionExportSpec, CompositionMp4Codec, CompositionProResProfile, CompositionTextResource,
+    CompositionWebmCodec,
 };
 pub use media_export::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
 pub use media_search::{

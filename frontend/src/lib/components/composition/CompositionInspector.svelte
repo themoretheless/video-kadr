@@ -1,5 +1,9 @@
 <script lang="ts">
   import ProgressBar from '$lib/components/ProgressBar.svelte'
+  import { DEFAULT_SILENCE_REMOVAL, detectAudibleRanges } from '$lib/audio/silence.js'
+  import { localWaveformCache, type LocalWaveformCache } from '$lib/audio/waveformCache.js'
+  import { spaceBrandState } from '$lib/state/spaceBrand.svelte.js'
+  import { spacesState } from '$lib/state/spaces.svelte.js'
   import {
     clipDurationTicks,
     clipEndTicks,
@@ -8,6 +12,7 @@
     COMPOSITION_STABILIZATION_RADII,
     COMPOSITION_TIME_BASE,
     COMPOSITION_TRANSITION_KINDS,
+    COMPOSITION_VOICE_EFFECTS,
     type CompositionChromaKey,
     type CompositionClip,
     type CompositionDeliveryProfileId,
@@ -16,12 +21,14 @@
     type CompositionTransition,
     type CompositionTransitionKind,
     type CompositionVideoMask,
+    type CompositionVideoEffectPreset,
     type TextClip,
     type VideoClip,
     type VideoTrack,
     compositionDeliveryProfileOption,
   } from '$lib/composition/types.js'
-  import { sampleAnimatableValue } from '$lib/composition/keyframes.js'
+  import { sampleAnimatableValue, visualPropertyFallback } from '$lib/composition/keyframes.js'
+  import { buildAnimationPreset, type CompositionAnimationPreset } from '$lib/composition/animationPresets.js'
   import { minimumCompositionSpeed } from '$lib/composition/speedRamp.js'
   import {
     compositionTransitionUnavailableReason,
@@ -29,20 +36,26 @@
   } from '$lib/composition/validation.js'
   import {
     addTextToComposition,
+    applyCompositionTextStyleToTrack,
+    applyCompositionVisualAnimation,
     addCompositionVideoMask,
     cancelCompositionExport,
+    clearCompositionVisualAnimations,
     compositionState,
     exportComposition,
     freezeCompositionClipAtPlayhead,
     getCompositionExportUnavailableReason,
     removeCompositionTransition,
+    removeSilenceFromSelectedCompositionClip,
     deleteCompositionVideoMask,
+    detachCompositionVideoAudio,
     selectedCompositionClip,
     selectedCompositionTrack,
     setCompositionTransition,
     setCompositionDeliveryProfile,
     trimCompositionClip,
     updateCompositionAudioMix,
+    updateCompositionCanvas,
     updateCompositionBlendMode,
     updateCompositionChromaKey,
     updateCompositionClipGain,
@@ -58,11 +71,15 @@
     updateCompositionTextStyle,
     updateCompositionVideoAudio,
     updateCompositionVideoMask,
+    updateCompositionVideoEffects,
     updateCompositionVisualTransform,
   } from '$lib/state/composition.svelte.js'
   import { state as legacyState } from '$lib/state/store.svelte.js'
   import CompositionKeyframeEditor from './CompositionKeyframeEditor.svelte'
   import CompositionSpeedRampEditor from './CompositionSpeedRampEditor.svelte'
+
+  interface Props { waveformCache?: Pick<LocalWaveformCache, 'load'> }
+  let { waveformCache = localWaveformCache }: Props = $props()
 
   interface TransitionContext {
     track: VideoTrack
@@ -72,6 +89,33 @@
   }
 
   const exportReason = $derived(getCompositionExportUnavailableReason(legacyState.capabilities))
+  function filterUnavailable(id: string, missing: string): string {
+    if (!legacyState.capabilities) return ''
+    const feature = legacyState.capabilities.filters?.find((option) => option.id === id)
+    return !feature ? missing : feature.available ? '' : feature.reason || missing
+  }
+
+  const canvasPresets = [
+    { id: '16:9', label: 'YouTube 16:9', width: 1920, height: 1080 },
+    { id: '9:16', label: 'TikTok / Reels 9:16', width: 1080, height: 1920 },
+    { id: '1:1', label: 'Square 1:1', width: 1080, height: 1080 },
+    { id: '4:5', label: 'Instagram 4:5', width: 1080, height: 1350 },
+    { id: '4:3', label: 'Classic 4:3', width: 1440, height: 1080 },
+  ] as const
+
+  function selectedCanvasPreset(): string {
+    const { width, height } = compositionState.document.canvas
+    return canvasPresets.find((preset) => preset.width === width && preset.height === height)?.id ?? 'custom'
+  }
+
+  function applyCanvasPreset(id: string): void {
+    const preset = canvasPresets.find((candidate) => candidate.id === id)
+    if (preset) updateCompositionCanvas({ width: preset.width, height: preset.height })
+  }
+  const duckingUnavailable = $derived(filterUnavailable('audio-ducking', 'Нужен sidechaincompress.'))
+  const echoUnavailable = $derived(filterUnavailable('audio-voice-echo', 'Нужен aecho.'))
+  const robotUnavailable = $derived(filterUnavailable('audio-voice-robot', 'Нужен tremolo.'))
+  const toneUnavailable = $derived(filterUnavailable('audio-tone', 'Нужны bass/treble.'))
   const deliveryOption = $derived(compositionDeliveryProfileOption(compositionState.export.profile))
   const clip = $derived(selectedCompositionClip())
   const track = $derived(selectedCompositionTrack())
@@ -80,6 +124,65 @@
   let transitionKind = $state<CompositionTransitionKind>('dissolve')
   let transitionSeconds = $state(0.5)
   let transitionBoundaryKey = $state('')
+  let silenceThresholdDb = $state(DEFAULT_SILENCE_REMOVAL.thresholdDb)
+  let minimumSilenceSeconds = $state(DEFAULT_SILENCE_REMOVAL.minimumSilenceSeconds)
+  let silencePaddingSeconds = $state(DEFAULT_SILENCE_REMOVAL.paddingSeconds)
+  let silenceBusy = $state(false)
+  let videoEffectPreset = $state<CompositionVideoEffectPreset>('blur')
+  let animationPreset = $state<CompositionAnimationPreset>('fade_in')
+  let animationPresetSeconds = $state(0.6)
+
+  const animationPresetLabels: Readonly<Record<CompositionAnimationPreset, string>> = {
+    fade_in: 'Fade In',
+    fade_out: 'Fade Out',
+    slide_left_in: 'Slide Left In',
+    slide_right_in: 'Slide Right In',
+    zoom_in: 'Zoom In',
+    zoom_out: 'Zoom Out',
+    pulse_loop: 'Pulse Loop',
+    spin_loop: 'Spin Loop',
+  }
+
+  const videoEffectLabels: Readonly<Record<CompositionVideoEffectPreset, string>> = {
+    blur: 'Blur', pixelate: 'Pixelate', vignette: 'Vignette', sharpen: 'Sharpen', edge: 'Edge',
+    rgb_split: 'RGB Split', posterize: 'Posterize',
+  }
+
+  function addVideoEffect(clip: VideoClip): void {
+    updateCompositionVideoEffects(clip.id, [...(clip.videoEffects ?? []), { preset: videoEffectPreset, intensity: 0.5 }])
+  }
+
+  function patchVideoEffect(clip: VideoClip, index: number, intensity: number): void {
+    updateCompositionVideoEffects(clip.id, (clip.videoEffects ?? []).map((effect, candidate) =>
+      candidate === index ? { ...effect, intensity } : effect))
+  }
+
+  function removeVideoEffect(clip: VideoClip, index: number): void {
+    updateCompositionVideoEffects(clip.id, (clip.videoEffects ?? []).filter((_, candidate) => candidate !== index))
+  }
+
+  function moveVideoEffect(clip: VideoClip, index: number, delta: -1 | 1): void {
+    const effects = [...(clip.videoEffects ?? [])]
+    const target = index + delta
+    if (target < 0 || target >= effects.length) return
+    ;[effects[index], effects[target]] = [effects[target]!, effects[index]!]
+    updateCompositionVideoEffects(clip.id, effects)
+  }
+
+  function applyAnimationPreset(clip: Exclude<CompositionClip, { kind: 'audio' }>): void {
+    const duration = clipDurationTicks(clip)
+    const properties = ['x', 'y', 'scaleX', 'scaleY', 'rotationDegrees', 'opacity'] as const
+    const values = Object.fromEntries(properties.map((property) => [
+      property,
+      visualPropertyFallback(compositionState.document, clip, property),
+    ])) as Record<(typeof properties)[number], number>
+    applyCompositionVisualAnimation(clip.id, buildAnimationPreset(animationPreset, {
+      clipDurationTicks: duration,
+      presetDurationTicks: Math.max(1, Math.min(duration, Math.round(animationPresetSeconds * COMPOSITION_TIME_BASE))),
+      canvasWidth: compositionState.document.canvas.width,
+      values,
+    }))
+  }
 
   $effect(() => {
     const context = transitionContext
@@ -114,6 +217,27 @@
     }
   }
 
+  async function removeSelectedSilence(candidate: VideoClip | Extract<CompositionClip, { kind: 'audio' }>): Promise<void> {
+    const media = compositionState.media[candidate.sourceId]
+    if (!media?.url || silenceBusy) return
+    silenceBusy = true
+    compositionState.ui.message = ''
+    try {
+      const summary = await waveformCache.load(media.url)
+      const audible = detectAudibleRanges(summary, {
+        thresholdDb: silenceThresholdDb,
+        minimumSilenceSeconds,
+        paddingSeconds: silencePaddingSeconds,
+      })
+      const count = removeSilenceFromSelectedCompositionClip(audible)
+      compositionState.ui.message = `Silence removal: ${count} audible фрагм.`
+    } catch (error) {
+      compositionState.ui.message = error instanceof Error ? error.message : String(error)
+    } finally {
+      silenceBusy = false
+    }
+  }
+
   function seconds(value: number): number {
     return Number((value / COMPOSITION_TIME_BASE).toFixed(3))
   }
@@ -121,6 +245,32 @@
   function ticksFromInput(event: Event): number {
     return Math.max(0, Math.round(Number((event.currentTarget as HTMLInputElement).value) * COMPOSITION_TIME_BASE))
   }
+
+  function audioCrossfadeMaxTicks(candidate: Extract<CompositionClip, { kind: 'audio' }>): number {
+    if (track?.kind !== 'audio' || candidate.reversed || candidate.speedRamp || candidate.audioAnimation || (candidate.fadeInTicks ?? 0) > 0) return 0
+    const ordered = [...track.clips].sort((left, right) => left.timelineStartTicks - right.timelineStartTicks)
+    const index = ordered.findIndex((item) => item.id === candidate.id)
+    const previous = ordered[index - 1]
+    if (!previous || previous.reversed || clipEndTicks(previous) !== candidate.timelineStartTicks || previous.speedRamp || previous.audioAnimation || (previous.fadeOutTicks ?? 0) > 0) return 0
+    const previousSource = compositionState.document.sources[previous.sourceId]
+    const currentSource = compositionState.document.sources[candidate.sourceId]
+    if (!previousSource || !currentSource) return 0
+    const tail = Math.floor((previousSource.durationTicks - previous.sourceOutTicks) / (previous.speed ?? 1))
+    const head = Math.floor(candidate.sourceInTicks / (candidate.speed ?? 1))
+    return Math.max(0, Math.min(clipDurationTicks(previous), clipDurationTicks(candidate), 2 * tail, 2 * head))
+  }
+
+  function audioClipHasCrossfade(candidate: Extract<CompositionClip, { kind: 'audio' }>): boolean {
+    if (track?.kind !== 'audio') return false
+    if ((candidate.crossfadeInTicks ?? 0) > 0) return true
+    return track.clips.some((next) =>
+      next.id !== candidate.id
+      && next.timelineStartTicks === clipEndTicks(candidate)
+      && (next.crossfadeInTicks ?? 0) > 0,
+    )
+  }
+
+  const DEFAULT_DUCKING = { thresholdDb: -24, ratio: 8, attackMs: 20, releaseMs: 300 } as const
 
   function setPlaybackMode(candidate: VideoClip, mode: 'forward' | 'reverse' | 'freeze'): void {
     if (mode === 'freeze') freezeCompositionClipAtPlayhead(candidate.id)
@@ -173,7 +323,7 @@
   }
 
   function findTransitionContext(): TransitionContext | null {
-    if (!clip || clip.kind !== 'video' || !track || track.kind !== 'video' || track.id !== primaryTrack?.id) return null
+    if (!clip || clip.kind !== 'video' || !track || track.kind !== 'video') return null
     const ordered = [...track.clips].sort(
       (left, right) => left.timelineStartTicks - right.timelineStartTicks || left.id.localeCompare(right.id),
     )
@@ -265,6 +415,52 @@
     <h2>Инспектор</h2>
     <button class="btn ghost sm" type="button" onclick={() => run(() => addTextToComposition())}>+ Текст</button>
   </div>
+
+  <fieldset class="composition-fieldset">
+    <legend>Canvas</legend>
+    <div class="composition-form-grid">
+      <label>
+        Соотношение сторон
+        <select aria-label="Canvas preset" value={selectedCanvasPreset()} onchange={(event) => run(() => applyCanvasPreset(event.currentTarget.value))}>
+          {#each canvasPresets as preset (preset.id)}<option value={preset.id}>{preset.label}</option>{/each}
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label>
+        Ширина
+        <input aria-label="Canvas width" type="number" min="2" max="3840" step="2" value={compositionState.document.canvas.width} onchange={(event) => run(() => updateCompositionCanvas({ width: inputNumber(event) }))} />
+      </label>
+      <label>
+        Высота
+        <input aria-label="Canvas height" type="number" min="2" max="2160" step="2" value={compositionState.document.canvas.height} onchange={(event) => run(() => updateCompositionCanvas({ height: inputNumber(event) }))} />
+      </label>
+      <label>
+        Частота кадров
+        <select aria-label="Canvas FPS" value={compositionState.document.canvas.fps} onchange={(event) => run(() => updateCompositionCanvas({ fps: Number(event.currentTarget.value) }))}>
+          {#each [23.976, 24, 25, 29.97, 30, 50, 59.94, 60] as fps (fps)}<option value={fps}>{fps} fps</option>{/each}
+        </select>
+      </label>
+      <label>
+        Тип фона
+        <select aria-label="Canvas background mode" value={compositionState.document.canvas.backgroundMode ?? 'color'} onchange={(event) => run(() => updateCompositionCanvas({ backgroundMode: event.currentTarget.value as 'color' | 'blur' | 'checker' }))}>
+          <option value="color">Цвет</option>
+          <option value="blur">Blur видео</option>
+          <option value="checker">Шахматный pattern</option>
+        </select>
+      </label>
+      <label>
+        {compositionState.document.canvas.backgroundMode === 'checker' ? 'Базовый цвет pattern' : 'Цвет фона'}
+        <input class="composition-color-field" aria-label="Canvas background color" type="color" value={compositionState.document.canvas.backgroundColor.slice(0, 7)} onchange={(event) => run(() => updateCompositionCanvas({ backgroundColor: event.currentTarget.value }))} />
+      </label>
+      {#if compositionState.document.canvas.backgroundMode === 'blur'}
+        <label class="composition-grid-wide">
+          Blur {compositionState.document.canvas.backgroundBlur ?? 24}
+          <input aria-label="Canvas background blur" type="range" min="1" max="100" step="1" value={compositionState.document.canvas.backgroundBlur ?? 24} oninput={(event) => run(() => updateCompositionCanvas({ backgroundBlur: inputNumber(event) }))} />
+        </label>
+      {/if}
+    </div>
+    <p class="composition-help">Color и pattern заполняют пустые области; Blur растягивает активный primary video под contain-клипом. Preview и финальный файл используют один режим. Размеры должны быть чётными.</p>
+  </fieldset>
 
   {#if clip && track}
     <div class="composition-inspector-section">
@@ -366,6 +562,16 @@
 
     {#if clip.kind === 'video' || clip.kind === 'audio'}
       <CompositionSpeedRampEditor {clip} />
+      <fieldset class="composition-fieldset">
+        <legend>Silence removal</legend>
+        <div class="composition-form-grid">
+          <label>Порог, dB<input aria-label="Multitrack silence threshold" type="number" min="-80" max="-6" step="1" bind:value={silenceThresholdDb} /></label>
+          <label>Мин. пауза, с<input aria-label="Multitrack minimum silence" type="number" min="0.1" max="10" step="0.05" bind:value={minimumSilenceSeconds} /></label>
+          <label>Запас, с<input aria-label="Multitrack silence padding" type="number" min="0" max="2" step="0.01" bind:value={silencePaddingSeconds} /></label>
+          <button class="btn ghost sm" type="button" disabled={silenceBusy || !compositionState.document.sources[clip.sourceId]?.hasAudio || clip.kind === 'video' && clip.playbackMode?.mode === 'freeze'} onclick={() => removeSelectedSilence(clip)}>{silenceBusy ? 'Анализ…' : 'Убрать тишину'}</button>
+        </div>
+        <p class="composition-help">Локальный RMS-анализ нарезает выбранный clip, уплотняет результат и ripple-сдвигает следующие clips этой дорожки. Transition сначала нужно удалить.</p>
+      </fieldset>
     {/if}
 
     {#if clip.kind === 'video' || clip.kind === 'image' || clip.kind === 'text'}
@@ -412,13 +618,32 @@
           <input aria-label="Прозрачность слоя" type="range" min="0" max="1" step="0.01" value={clip.opacity} oninput={(event) => run(() => updateCompositionClipOpacity(clip.id, Number(event.currentTarget.value)))} />
         </label>
         {#if track.id === primaryTrack?.id}
-          <p class="composition-help">Основной video обязан оставаться X/Y/rotation = 0, scale/opacity = 100%, blend = normal. Иначе экспорт будет закрыт с точной причиной.</p>
+          <p class="composition-help">Основной video поддерживает transform, opacity, chroma, masks и blend modes.</p>
         {/if}
       </fieldset>
 
-      {#if track.id !== primaryTrack?.id}
-        <CompositionKeyframeEditor {clip} />
-      {/if}
+      <fieldset class="composition-fieldset">
+        <legend>Animation presets</legend>
+        <div class="composition-form-grid">
+          <label>
+            Пресет
+            <select aria-label="Animation preset" value={animationPreset} onchange={(event) => { animationPreset = event.currentTarget.value as CompositionAnimationPreset }}>
+              {#each Object.entries(animationPresetLabels) as [preset, label] (preset)}<option value={preset}>{label}</option>{/each}
+            </select>
+          </label>
+          <label>
+            Длительность, с
+            <input aria-label="Animation preset duration" type="number" min="0.05" max={seconds(clipDurationTicks(clip))} step="0.05" value={animationPresetSeconds} disabled={animationPreset.endsWith('_loop')} onchange={(event) => { animationPresetSeconds = inputNumber(event) }} />
+          </label>
+        </div>
+        <div class="composition-inspector-actions">
+          <button class="btn primary sm" type="button" onclick={() => run(() => applyAnimationPreset(clip))}>Применить анимацию</button>
+          <button class="btn ghost sm" type="button" disabled={!clip.animation} onclick={() => run(() => clearCompositionVisualAnimations(clip.id))}>Очистить анимацию</button>
+        </div>
+        <p class="composition-help">In/Out меняют затронутые свойства на выбранном краю clip; Loop использует всю длительность. Результат остаётся обычными редактируемыми keyframes.</p>
+      </fieldset>
+
+      <CompositionKeyframeEditor {clip} />
     {/if}
 
     {#if clip.kind === 'text'}
@@ -448,7 +673,54 @@
           <label>Тень X<input type="number" step="1" value={clip.style.shadowX ?? 0} onchange={(event) => run(() => patchText(clip, { shadowX: inputNumber(event) }))} /></label>
           <label>Тень Y<input type="number" step="1" value={clip.style.shadowY ?? 0} onchange={(event) => run(() => patchText(clip, { shadowY: inputNumber(event) }))} /></label>
         </div>
+        {#if spaceBrandState.spaceId === spacesState.selectedId && (spaceBrandState.kit.colors.length || spaceBrandState.kit.fonts.length)}
+          <div class="composition-brand-presets" aria-label="Пресеты бренд-кита">
+            {#each spaceBrandState.kit.colors as color (color.name)}
+              <button type="button" class="btn ghost sm" title={color.value} onclick={() => run(() => patchText(clip, { color: color.value }))}>
+                <span class="composition-brand-swatch" style={`background:${color.value}`}></span>{color.name}
+              </button>
+            {/each}
+            {#each spaceBrandState.kit.fonts as font (font)}
+              <button type="button" class="btn ghost sm" style={`font-family:${JSON.stringify(font)},sans-serif`} onclick={() => run(() => patchText(clip, { fontFamily: font }))}>{font}</button>
+            {/each}
+          </div>
+        {/if}
+        <div class="composition-inspector-actions">
+          <button class="btn ghost sm" type="button" onclick={() => run(() => applyCompositionTextStyleToTrack(clip.id))}>Применить стиль ко всей дорожке</button>
+        </div>
       </fieldset>
+    {/if}
+
+    {#if clip.kind === 'video'}
+      <fieldset class="composition-fieldset">
+        <legend>Video effects</legend>
+        <div class="composition-inspector-actions">
+          <select aria-label="Новый video effect" value={videoEffectPreset} onchange={(event) => { videoEffectPreset = event.currentTarget.value as CompositionVideoEffectPreset }}>
+            {#each Object.entries(videoEffectLabels) as [preset, label] (preset)}
+              <option value={preset}>{label}</option>
+            {/each}
+          </select>
+          <button class="btn ghost sm" type="button" disabled={(clip.videoEffects?.length ?? 0) >= 5} onclick={() => run(() => addVideoEffect(clip))}>+ Эффект</button>
+        </div>
+        {#each clip.videoEffects ?? [] as effect, index (`${effect.preset}-${index}`)}
+          <section class="composition-mask-card" aria-label={`Video effect ${index + 1}`}>
+            <div class="composition-mask-head">
+              <strong>{videoEffectLabels[effect.preset]}</strong>
+              <span class="composition-inspector-actions">
+                <button class="btn ghost sm" type="button" aria-label={`Video effect ${index + 1} вверх`} disabled={index === 0} onclick={() => run(() => moveVideoEffect(clip, index, -1))}>↑</button>
+                <button class="btn ghost sm" type="button" aria-label={`Video effect ${index + 1} вниз`} disabled={index === (clip.videoEffects?.length ?? 0) - 1} onclick={() => run(() => moveVideoEffect(clip, index, 1))}>↓</button>
+                <button class="btn ghost sm danger" type="button" aria-label={`Удалить video effect ${index + 1}`} onclick={() => run(() => removeVideoEffect(clip, index))}>Удалить</button>
+              </span>
+            </div>
+            <label class="composition-range-field">
+              <span>Intensity <output>{Math.round(effect.intensity * 100)}%</output></span>
+              <input aria-label={`Video effect ${index + 1} intensity`} type="range" min="0.01" max="1" step="0.01" value={effect.intensity} oninput={(event) => run(() => patchVideoEffect(clip, index, Number(event.currentTarget.value)))} />
+            </label>
+          </section>
+        {/each}
+        <p class="composition-help">До пяти эффектов применяются сверху вниз после chroma key и перед masks. Blur preview приблизительный; остальные гарантируются финальным FFmpeg export.</p>
+      </fieldset>
+
     {/if}
 
     {#if clip.kind === 'video'}
@@ -465,42 +737,43 @@
       </fieldset>
     {/if}
 
-    {#if clip.kind === 'video' && track.id !== primaryTrack?.id}
+    {#if clip.kind === 'video'}
       <fieldset class="composition-fieldset composition-mask-editor">
         <legend>Masks</legend>
         <div class="composition-inspector-actions">
           <button class="btn ghost sm" type="button" onclick={() => run(() => addCompositionVideoMask(clip.id, 'rectangle'))}>+ Rectangle</button>
           <button class="btn ghost sm" type="button" onclick={() => run(() => addCompositionVideoMask(clip.id, 'ellipse'))}>+ Ellipse</button>
+          <button class="btn ghost sm" type="button" onclick={() => run(() => addCompositionVideoMask(clip.id, 'linear'))}>+ Linear</button>
         </div>
-        <p class="composition-help">Порядок экспорта фиксирован: chroma key, затем masks. Feather показывается точно только в экспорте.</p>
+        <p class="composition-help">Порядок экспорта фиксирован: chroma key, затем masks. Feather и inverted-контур показываются точно только в экспорте.</p>
         {#each clip.masks ?? [] as mask, index (mask.id)}
           <section class="composition-mask-card" aria-label={`Mask ${index + 1}`}>
             <div class="composition-mask-head">
               <strong>Mask {index + 1}</strong>
               <button class="btn ghost sm danger" type="button" aria-label={`Удалить mask ${index + 1}`} onclick={() => run(() => deleteCompositionVideoMask(clip.id, mask.id))}>Удалить</button>
             </div>
-            {#if mask.shape === 'linear'}
-              <p class="composition-inline-error" role="status">Linear mask сохранена, но export fail-closed: выберите Rectangle/Ellipse или удалите её.</p>
-            {:else}
               <div class="composition-form-grid">
                 <label>Форма
-                  <select aria-label={`Форма mask ${index + 1}`} value={mask.shape} onchange={(event) => run(() => patchMask(clip, mask, { shape: event.currentTarget.value as 'rectangle' | 'ellipse' }))}>
+                  <select aria-label={`Форма mask ${index + 1}`} value={mask.shape} onchange={(event) => run(() => patchMask(clip, mask, { shape: event.currentTarget.value as CompositionVideoMask['shape'] }))}>
                     <option value="rectangle">Rectangle</option>
                     <option value="ellipse">Ellipse</option>
+                    <option value="linear">Linear</option>
                   </select>
                 </label>
                 <label>Center X<input aria-label={`Mask ${index + 1} X`} type="number" min="0" max="1" step="0.01" value={maskValue(mask.x, clip)} onchange={(event) => run(() => patchMask(clip, mask, { x: inputNumber(event) }))} /></label>
                 <label>Center Y<input aria-label={`Mask ${index + 1} Y`} type="number" min="0" max="1" step="0.01" value={maskValue(mask.y, clip)} onchange={(event) => run(() => patchMask(clip, mask, { y: inputNumber(event) }))} /></label>
-                <label>Width<input aria-label={`Mask ${index + 1} width`} type="number" min="0.01" max="2" step="0.01" value={maskValue(mask.width, clip)} onchange={(event) => run(() => patchMask(clip, mask, { width: inputNumber(event) }))} /></label>
-                <label>Height<input aria-label={`Mask ${index + 1} height`} type="number" min="0.01" max="2" step="0.01" value={maskValue(mask.height, clip)} onchange={(event) => run(() => patchMask(clip, mask, { height: inputNumber(event) }))} /></label>
+                <label>Angle<input aria-label={`Mask ${index + 1} angle`} type="number" min="-180" max="180" step="1" value={maskValue(mask.rotationDegrees ?? { mode: 'constant', value: 0 }, clip)} onchange={(event) => run(() => patchMask(clip, mask, { rotationDegrees: inputNumber(event) }))} /></label>
+                {#if mask.shape !== 'linear'}
+                  <label>Width<input aria-label={`Mask ${index + 1} width`} type="number" min="0.01" max="2" step="0.01" value={maskValue(mask.width, clip)} onchange={(event) => run(() => patchMask(clip, mask, { width: inputNumber(event) }))} /></label>
+                  <label>Height<input aria-label={`Mask ${index + 1} height`} type="number" min="0.01" max="2" step="0.01" value={maskValue(mask.height, clip)} onchange={(event) => run(() => patchMask(clip, mask, { height: inputNumber(event) }))} /></label>
+                {/if}
                 <label>Feather (export-only)<input aria-label={`Mask ${index + 1} feather`} type="number" min="0" max="1" step="0.01" value={mask.feather} onchange={(event) => run(() => patchMask(clip, mask, { feather: inputNumber(event) }))} /></label>
               </div>
               <label class="composition-check"><input aria-label={`Инвертировать mask ${index + 1}`} type="checkbox" checked={mask.inverted} onchange={(event) => run(() => patchMask(clip, mask, { inverted: event.currentTarget.checked }))} /> инвертировать</label>
               <CompositionKeyframeEditor {clip} mode="mask" {mask} />
-            {/if}
           </section>
         {/each}
-        {#if !(clip.masks?.length)}<p class="composition-help">Rectangle и Ellipse используют normalized clip-local координаты 0…1.</p>{/if}
+        {#if !(clip.masks?.length)}<p class="composition-help">Rectangle, Ellipse и Linear используют normalized clip-local координаты 0…1.</p>{/if}
       </fieldset>
     {/if}
 
@@ -510,11 +783,26 @@
         <div class="composition-form-grid">
           <label>Gain<input aria-label="Громкость аудиоклипа" type="number" min="0" max="16" step="0.05" value={clip.gain} onchange={(event) => run(() => updateCompositionClipGain(clip.id, inputNumber(event)))} /></label>
           <label>Pan<input aria-label="Панорама аудиоклипа" type="number" min="-1" max="1" step="0.05" value={clip.pan ?? 0} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { pan: inputNumber(event) }))} /></label>
+          <label class="composition-check"><input aria-label="Reverse audio" type="checkbox" checked={clip.reversed ?? false} disabled={audioClipHasCrossfade(clip)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { reversed: event.currentTarget.checked }))} /> reverse</label>
           <label>Fade in, с<input aria-label="Fade in" type="number" min="0" max={seconds(clipDurationTicks(clip))} step="0.01" value={seconds(clip.fadeInTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { fadeInTicks: ticksFromInput(event) }))} /></label>
           <label>Fade out, с<input aria-label="Fade out" type="number" min="0" max={seconds(clipDurationTicks(clip))} step="0.01" value={seconds(clip.fadeOutTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { fadeOutTicks: ticksFromInput(event) }))} /></label>
+          <label>Voice effect<select aria-label="Voice effect" value={clip.voiceEffect ?? 'none'} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { voiceEffect: event.currentTarget.value as typeof COMPOSITION_VOICE_EFFECTS[number] }))}>{#each COMPOSITION_VOICE_EFFECTS as effect (effect)}<option value={effect} disabled={(effect === 'echo' && Boolean(echoUnavailable)) || (effect === 'robot' && Boolean(robotUnavailable))}>{effect}</option>{/each}</select></label>
+          <label>Pitch, semitones<input aria-label="Pitch semitones" type="number" min="-12" max="12" step="1" value={clip.pitchSemitones ?? 0} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { pitchSemitones: inputNumber(event) }))} /></label>
+          <label title={toneUnavailable}>Tone, dB<input aria-label="Tone dB" type="number" min="-12" max="12" step="1" disabled={Boolean(toneUnavailable)} value={clip.toneDb ?? 0} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { toneDb: inputNumber(event) }))} /></label>
+          <label>Crossfade с предыдущим, с<input aria-label="Audio crossfade" type="number" min="0" max={seconds(audioCrossfadeMaxTicks(clip))} step="0.01" disabled={audioCrossfadeMaxTicks(clip) === 0} value={seconds(clip.crossfadeInTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { crossfadeInTicks: ticksFromInput(event) }))} /></label>
         </div>
+        <label class="composition-check"><input aria-label="Auto ducking" type="checkbox" disabled={Boolean(duckingUnavailable)} checked={Boolean(clip.ducking)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { ducking: event.currentTarget.checked ? DEFAULT_DUCKING : undefined }))} /> приглушать под primary voice</label>
+        {#if duckingUnavailable}<p class="composition-help" role="status">{duckingUnavailable}</p>{/if}
+        {#if clip.ducking}
+          <div class="composition-form-grid">
+            <label>Ducking threshold, dB<input aria-label="Ducking threshold" type="number" min="-60" max="0" step="1" value={clip.ducking.thresholdDb} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { ducking: { ...clip.ducking!, thresholdDb: inputNumber(event) } }))} /></label>
+            <label>Ducking ratio<input aria-label="Ducking ratio" type="number" min="1" max="20" step="0.5" value={clip.ducking.ratio} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { ducking: { ...clip.ducking!, ratio: inputNumber(event) } }))} /></label>
+            <label>Ducking attack, ms<input aria-label="Ducking attack" type="number" min="0.1" max="500" step="1" value={clip.ducking.attackMs} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { ducking: { ...clip.ducking!, attackMs: inputNumber(event) } }))} /></label>
+            <label>Ducking release, ms<input aria-label="Ducking release" type="number" min="1" max="5000" step="10" value={clip.ducking.releaseMs} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { ducking: { ...clip.ducking!, releaseMs: inputNumber(event) } }))} /></label>
+          </div>
+        {/if}
         <CompositionKeyframeEditor {clip} mode="audio" />
-        <p class="composition-help">Fade и animated gain слышны в preview; stereo pan применяется точно при экспорте.</p>
+        <p class="composition-help">Fade и animated gain слышны в preview; stereo pan, voice effect и auto ducking применяются точно при экспорте.</p>
       </fieldset>
     {:else if clip.kind === 'video'}
       <fieldset class="composition-fieldset" disabled={track.id !== primaryTrack?.id || !compositionState.document.sources[clip.sourceId]?.hasAudio || clip.playbackMode?.mode === 'freeze'}>
@@ -524,12 +812,13 @@
           <label>Gain<input aria-label="Громкость source audio" type="number" min="0" max="16" step="0.05" value={clip.audioGain} onchange={(event) => run(() => updateCompositionClipGain(clip.id, inputNumber(event)))} /></label>
           <label>Pan<input aria-label="Панорама source audio" type="number" min="-1" max="1" step="0.05" value={clip.audioPan ?? 0} onchange={(event) => run(() => updateCompositionVideoAudio(clip.id, { audioPan: inputNumber(event) }))} /></label>
         </div>
+        <button class="btn ghost sm" type="button" disabled={!clip.sourceAudioEnabled || clip.playbackMode?.mode === 'freeze' || clip.speedRamp?.audioPolicy === 'mute'} onclick={() => run(() => detachCompositionVideoAudio(clip.id))}>Отделить звук</button>
         {#if track.id === primaryTrack?.id}<CompositionKeyframeEditor {clip} mode="audio" />{/if}
         <p class="composition-help">{clip.playbackMode?.mode === 'freeze' ? 'Freeze frame всегда экспортируется без embedded source audio.' : track.id === primaryTrack?.id ? 'Mute, enable и animated gain слышны в preview; stereo pan применяется точно при экспорте.' : 'Backend использует embedded audio только у primary video. Параметры сохранятся, но для overlay вынесите звук на audio track.'}</p>
       </fieldset>
     {/if}
 
-    {#if clip.kind === 'video' && track.id === primaryTrack?.id}
+    {#if clip.kind === 'video'}
       <fieldset class="composition-fieldset composition-transition-editor">
         <legend>Переход с предыдущего клипа</legend>
         {#if transitionContext}
@@ -548,7 +837,7 @@
             {#if transitionContext.transition}<button class="btn ghost sm danger" type="button" onclick={() => run(() => removeCompositionTransition(transitionContext!.track.id, transitionContext!.transition!.id))}>Удалить переход</button>{/if}
           </div>
         {:else}
-          <p class="composition-help">Выберите второй или следующий primary clip на точной общей границе с предыдущим.</p>
+          <p class="composition-help">Выберите второй или следующий video clip на точной общей границе с предыдущим.</p>
         {/if}
       </fieldset>
     {/if}
@@ -576,7 +865,7 @@
       <select
         aria-label="Качество delivery"
         value={compositionState.export.qualityTier}
-        disabled={compositionState.export.running}
+        disabled={compositionState.export.running || deliveryOption.profile.container === 'audio' || compositionState.export.videoBitrateKbps !== null}
         onchange={(event) => run(() => updateCompositionExportSettings({ qualityTier: event.currentTarget.value as 'high' | 'medium' | 'compact' }))}
       >
         <option value="high">Высокое</option>
@@ -584,9 +873,47 @@
         <option value="compact">Компактное</option>
       </select>
     </label>
+    {#if deliveryOption.profile.container === 'mp4' || deliveryOption.profile.container === 'webm'}
+      <label class="composition-check composition-grid-wide">
+        <input
+          type="checkbox"
+          aria-label="Custom video bitrate"
+          checked={compositionState.export.videoBitrateKbps !== null}
+          disabled={compositionState.export.running}
+          onchange={(event) => run(() => updateCompositionExportSettings({
+            videoBitrateKbps: event.currentTarget.checked ? 12_000 : undefined,
+          }))}
+        />
+        Custom bitrate
+      </label>
+      {#if compositionState.export.videoBitrateKbps !== null}
+        <label class="composition-grid-wide">
+          Video bitrate, Kbps
+          <input
+            type="number"
+            aria-label="Video bitrate Kbps"
+            min="100"
+            max="200000"
+            step="100"
+            value={compositionState.export.videoBitrateKbps}
+            disabled={compositionState.export.running}
+            onchange={(event) => run(() => updateCompositionExportSettings({
+              videoBitrateKbps: Number(event.currentTarget.value),
+            }))}
+          />
+        </label>
+      {/if}
+    {/if}
     <p class="composition-help" aria-live="polite">
       Файл .{deliveryOption.extension} · video {deliveryOption.videoCodec} · audio {deliveryOption.audioCodec}
+      {deliveryOption.profile.container === 'audio' ? ' · итоговый multitrack mix' : ''}
     </p>
+    {#if compositionState.export.rangeInTicks !== null || compositionState.export.rangeOutTicks !== null}
+      <p class="composition-help" role="status">
+        Диапазон: In {compositionState.export.rangeInTicks === null ? '—' : `${(compositionState.export.rangeInTicks / COMPOSITION_TIME_BASE).toFixed(3)}s`}
+        · Out {compositionState.export.rangeOutTicks === null ? '—' : `${(compositionState.export.rangeOutTicks / COMPOSITION_TIME_BASE).toFixed(3)}s`}
+      </p>
+    {/if}
     {#if exportReason}<p class="composition-limit-note" role="status">{exportReason}</p>{/if}
     <button
       class="btn primary composition-export-button"

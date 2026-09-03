@@ -1,4 +1,5 @@
 import { COMPOSITION_TIME_BASE, clipEndTicks, type Composition, type CompositionClip } from '../composition/types'
+import { speedRampTimelineTickAtSourceProgress } from '../composition/speedRamp'
 import type { BeatDetectionResult } from './beats'
 
 export interface TimelineBeat {
@@ -19,14 +20,14 @@ export function mapDetectedBeatsToTimeline(
   if (muted) throw new Error('Auto Beat source track выключена')
   if (clip.kind === 'video') {
     if (!clip.sourceAudioEnabled) throw new Error('Source audio выключен для выбранного video clip')
-    if ((clip.playbackMode?.mode ?? 'forward') !== 'forward') {
-      throw new Error('Auto Beat пока поддерживает только forward video playback')
+    if ((clip.playbackMode?.mode ?? 'forward') === 'freeze') {
+      throw new Error('Freeze clip не содержит source audio для Auto Beat')
     }
   }
   const source = composition.sources[clip.sourceId]
   if (!source?.hasAudio) throw new Error('Выбранный source не содержит подтверждённого audio stream')
-  if ('speedRamp' in clip && clip.speedRamp != null) {
-    throw new Error('Speed-ramp clip требует nonlinear beat-time mapper')
+  if ('speedRamp' in clip && clip.speedRamp?.audioPolicy === 'mute') {
+    throw new Error('Speed-ramp audio выключен для выбранного clip')
   }
   const speed = clip.speed ?? 1
   if (!Number.isFinite(speed) || speed <= 0) throw new Error('Clip speed is invalid')
@@ -36,7 +37,18 @@ export function mapDetectedBeatsToTimeline(
     if (!Number.isFinite(beat.timeSeconds) || !Number.isFinite(beat.strength)) continue
     const sourceTick = Math.round(beat.timeSeconds * COMPOSITION_TIME_BASE)
     if (sourceTick < clip.sourceInTicks || sourceTick >= clip.sourceOutTicks) continue
-    const tick = clip.timelineStartTicks + Math.round((sourceTick - clip.sourceInTicks) / speed)
+    const sourceProgress = clip.kind === 'video' && clip.playbackMode?.mode === 'reverse'
+      ? clip.sourceOutTicks - sourceTick
+      : sourceTick - clip.sourceInTicks
+    const localTimelineTick = 'speedRamp' in clip && clip.speedRamp
+      ? speedRampTimelineTickAtSourceProgress(
+          clip.sourceOutTicks - clip.sourceInTicks,
+          speed,
+          clip.speedRamp,
+          sourceProgress,
+        )
+      : Math.round(sourceProgress / speed)
+    const tick = clip.timelineStartTicks + localTimelineTick
     if (tick < clip.timelineStartTicks || tick >= clipEndTicks(clip)) continue
     const previous = result[result.length - 1]
     if (previous?.tick === tick) {

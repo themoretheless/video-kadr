@@ -226,6 +226,7 @@ mod tests {
             id: id.into(),
             kind: kind.into(),
             filename: format!("{id}.mp4"),
+            storage_key: None,
             url: String::new(),
             media_type: None,
             title: Some(id.into()),

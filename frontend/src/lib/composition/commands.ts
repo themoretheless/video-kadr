@@ -33,6 +33,7 @@ import {
   cloneCompositionSpeedRamp,
   sliceCompositionSpeedRamp,
   speedRampSourceProgressAtTimelineTick,
+  speedRampTimelineTickAtSourceProgress,
   speedRampTimelineDurationTicks,
 } from './speedRamp'
 import {
@@ -379,6 +380,109 @@ export function splitClip(
     }
   }
   return finalize(replaceTrack(composition, location.trackIndex, replacement))
+}
+
+export interface SourceTickRange {
+  readonly start: number
+  readonly end: number
+}
+
+/**
+ * Replace one audio-bearing source clip with its audible source ranges. The
+ * existing trim command owns reverse/ramp/keyframe slicing; this command only
+ * orders the slices, closes removed gaps, and ripples later clips on the track.
+ */
+export function removeSilenceFromClip(
+  composition: Composition,
+  clipId: string,
+  audibleSourceRanges: readonly SourceTickRange[],
+  replacementIds: readonly string[],
+): Composition {
+  assertValidComposition(composition)
+  const location = findClipLocation(composition, clipId)
+  ensureUnlocked(location.track)
+  if (location.clip.kind !== 'video' && location.clip.kind !== 'audio') {
+    throw commandError('track-kind', 'Silence removal requires a video or audio clip')
+  }
+  if (location.clip.kind === 'video' && location.clip.playbackMode?.mode === 'freeze') {
+    throw commandError('invalid-range', 'Freeze clip has no source audio timeline')
+  }
+  if (
+    location.track.kind === 'video' &&
+    (location.track.transitions ?? []).some(
+      (transition) => transition.fromClipId === clipId || transition.toClipId === clipId,
+    )
+  ) {
+    throw commandError('transition-conflict', 'Remove the clip transition before silence removal')
+  }
+
+  const clip = location.clip
+  const ranges = audibleSourceRanges
+    .map(({ start, end }) => ({
+      start: Math.max(clip.sourceInTicks, Math.round(start)),
+      end: Math.min(clip.sourceOutTicks, Math.round(end)),
+    }))
+    .filter(({ start, end }) => end > start)
+    .sort((left, right) => left.start - right.start || left.end - right.end)
+  const ordered = clip.kind === 'video' && clip.playbackMode?.mode === 'reverse'
+    ? ranges.reverse()
+    : ranges
+  if (!ordered.length) throw commandError('invalid-range', 'Silence removal would remove the complete clip')
+  if (replacementIds.length !== ordered.length - 1) {
+    throw commandError('invalid-id', 'Silence removal replacement ids do not match the slices')
+  }
+  for (const id of replacementIds) ensureUniqueClipId(composition, id)
+  if (new Set(replacementIds).size !== replacementIds.length) {
+    throw commandError('duplicate-id', 'Silence removal replacement ids must be unique')
+  }
+
+  const sourceSpan = clip.sourceOutTicks - clip.sourceInTicks
+  const reverse = clip.kind === 'video' && clip.playbackMode?.mode === 'reverse'
+  const speed = clip.speed ?? 1
+  const sourceProgress = (sourceTick: number): number => {
+    if (!reverse) return sourceTick - clip.sourceInTicks
+    return clip.sourceOutTicks - sourceTick
+  }
+  const timelineProgress = (progress: number): number => clip.speedRamp
+    ? speedRampTimelineTickAtSourceProgress(sourceSpan, speed, clip.speedRamp, progress)
+    : Math.round(progress / speed)
+
+  let cursor = clip.timelineStartTicks
+  const slices: CompositionClip[] = []
+  for (const [index, range] of ordered.entries()) {
+    const startProgress = reverse
+      ? sourceProgress(range.end)
+      : sourceProgress(range.start)
+    const endProgress = reverse
+      ? sourceProgress(range.start)
+      : sourceProgress(range.end)
+    const localStart = timelineProgress(startProgress)
+    const localEnd = timelineProgress(endProgress)
+    const trimmedDocument = trimClip(
+      composition,
+      clipId,
+      clip.timelineStartTicks + localStart,
+      clip.timelineStartTicks + localEnd,
+    )
+    const trimmed = findClipLocation(trimmedDocument, clipId).clip
+    const id = index === 0 ? clipId : replacementIds[index - 1]!
+    const slice = { ...trimmed, id, timelineStartTicks: cursor } as CompositionClip
+    slices.push(slice)
+    cursor += clipDurationTicks(slice)
+  }
+
+  const removedDuration = clipEndTicks(clip) - cursor
+  const clips = location.track.clips
+    .filter((candidate) => candidate.id !== clipId)
+    .map((candidate) => candidate.timelineStartTicks >= clipEndTicks(clip)
+      ? { ...candidate, timelineStartTicks: candidate.timelineStartTicks - removedDuration } as CompositionClip
+      : candidate)
+  clips.push(...slices)
+  return finalize(replaceTrack(
+    composition,
+    location.trackIndex,
+    withClips(location.track, sortClips(clips)),
+  ))
 }
 
 export function deleteClip(composition: Composition, clipId: string): Composition {

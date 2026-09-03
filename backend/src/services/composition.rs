@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::domain::arithmetic::frame_count_ceil;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::composition::{
-    AnimatableValue, BlendMode, ClipPlacement, Composition, CompositionSource, CompositionTrack,
+    AnimatableValue, ClipPlacement, Composition, CompositionSource, CompositionTrack,
     FrameInterpolation, MaskShape, PlaybackMode, SourceId, SourceKind, SpeedRampAudioPolicy,
     TransformSpec, VideoEffect, COMPOSITION_SCHEMA_VERSION, DEFAULT_TIME_BASE,
     MAX_ACTIVE_SPEED_RAMP_SEGMENTS, MAX_OPTICAL_FLOW_CLIP_TICKS, MAX_OPTICAL_FLOW_EDGE,
@@ -22,8 +22,8 @@ use crate::domain::composition::{
     MAX_STABILIZATION_EDGE, MAX_STABILIZATION_PIXELS, MAX_STABILIZATION_PIXEL_FRAMES,
 };
 pub use crate::ports::{
-    CompositionAv1Encoder, CompositionExportProfile, CompositionExportSpec, CompositionMp4Codec,
-    CompositionProResProfile, CompositionWebmCodec,
+    CompositionAudioCodec, CompositionAv1Encoder, CompositionExportProfile, CompositionExportRange,
+    CompositionExportSpec, CompositionMp4Codec, CompositionProResProfile, CompositionWebmCodec,
 };
 
 pub const COMPOSITION_RENDER_SCHEMA_VERSION: u32 = 1;
@@ -92,6 +92,7 @@ impl CompositionQualityTier {
                 Self::Medium => 9,
                 Self::Compact => 13,
             },
+            CompositionExportProfile::Audio { .. } => 0,
         }
     }
 }
@@ -102,6 +103,10 @@ pub struct CompositionOutputRequest {
     pub profile: CompositionExportProfile,
     #[serde(default)]
     pub quality_tier: CompositionQualityTier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_bitrate_kbps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<CompositionExportRange>,
 }
 
 impl Default for CompositionOutputRequest {
@@ -109,6 +114,8 @@ impl Default for CompositionOutputRequest {
         Self {
             profile: CompositionExportProfile::default(),
             quality_tier: CompositionQualityTier::Medium,
+            video_bitrate_kbps: None,
+            range: None,
         }
     }
 }
@@ -118,7 +125,9 @@ impl CompositionOutputRequest {
         CompositionExportSpec {
             profile: self.profile,
             video_quality: self.quality_tier.video_quality(self.profile),
+            video_bitrate_kbps: self.video_bitrate_kbps,
             av1_encoder,
+            range: self.range,
         }
     }
 }
@@ -131,9 +140,13 @@ struct CompositionOutputRequestWire {
     #[serde(default)]
     quality_tier: CompositionQualityTier,
     #[serde(default)]
+    video_bitrate_kbps: Option<u32>,
+    #[serde(default)]
     format: Option<CompositionOutputFormat>,
     #[serde(default)]
     codec: Option<CompositionVideoCodec>,
+    #[serde(default)]
+    range: Option<CompositionExportRange>,
 }
 
 impl<'de> Deserialize<'de> for CompositionOutputRequest {
@@ -154,6 +167,8 @@ impl<'de> Deserialize<'de> for CompositionOutputRequest {
         Ok(Self {
             profile,
             quality_tier: wire.quality_tier,
+            video_bitrate_kbps: wire.video_bitrate_kbps,
+            range: wire.range,
         })
     }
 }
@@ -196,6 +211,29 @@ impl CompositionPlan {
         );
 
         request.composition.validate()?;
+        if let Some(bitrate) = request.output.video_bitrate_kbps {
+            ensure!(
+                matches!(
+                    request.output.profile,
+                    CompositionExportProfile::Mp4 { .. } | CompositionExportProfile::Webm { .. }
+                ),
+                "custom video bitrate доступен только для MP4/WebM"
+            );
+            ensure!(
+                (100..=200_000).contains(&bitrate),
+                "custom video bitrate должен быть в диапазоне 100..=200000 Kbps"
+            );
+        }
+        if let Some(range) = request.output.range {
+            ensure!(
+                range.start_ticks < range.end_ticks,
+                "граница In должна быть раньше Out"
+            );
+            ensure!(
+                range.end_ticks <= request.composition.duration_ticks()?,
+                "граница Out выходит за длительность композиции"
+            );
+        }
         let required = source_requirements(&request.composition)?;
         let actual: BTreeSet<_> = trusted.keys().cloned().collect();
         let expected: BTreeSet<_> = required.keys().cloned().collect();
@@ -359,11 +397,11 @@ fn merge_requirement(
     Ok(())
 }
 
-/// Composition v1 supports a gapless neutral bottom video track and animated
+/// Composition v1 supports a gapless bottom video track with animated transforms and
 /// visual layers above it. Array index zero is the topmost visual track. Text,
-/// exact handle-backed primary transitions, and clip-local Rectangle/Ellipse
-/// masks are supported. Bounded optical flow, reverse/freeze playback, and
-/// classical deshake stabilization are request-specific; Linear masks and
+/// exact handle-backed primary transitions, and clip-local Rectangle/Ellipse/
+/// rotated Linear masks are supported. Bounded optical flow, reverse/freeze playback, and
+/// classical deshake stabilization are request-specific; legacy ambiguous Linear masks and
 /// stabilization of a freeze frame remain explicitly fail-closed.
 fn validate_renderable_v1(composition: &Composition) -> Result<()> {
     let mut keyframe_points = 0_usize;
@@ -436,13 +474,18 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
             clip.placement.timeline_start_tick == cursor,
             "видеодорожка должна начинаться с нуля и не содержать gaps/overlaps"
         );
-        ensure!(
-            clip.transform == TransformSpec::default()
-                && clip.opacity == AnimatableValue::constant(1.0)
-                && clip.blend_mode == BlendMode::Normal
-                && clip.effects.is_empty(),
-            "слои, анимация и clip effects ещё не поддерживаются render v1"
-        );
+        validate_visual(
+            &clip.transform,
+            &clip.opacity,
+            &clip.effects,
+            clip.id.as_str(),
+            composition.canvas.width,
+            composition.canvas.height,
+            clip.placement.timeline_duration_ticks()?,
+            composition.time_base,
+            true,
+            &mut keyframe_points,
+        )?;
         if clip.frame_interpolation == FrameInterpolation::OpticalFlow {
             let render_duration_ticks = clip
                 .placement
@@ -537,19 +580,35 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
                 transitions,
                 ..
             } => {
-                ensure!(
-                    transitions.is_empty(),
-                    "переходы на overlay video-дорожках ещё не поддерживаются"
-                );
+                let mut transition_handles = BTreeMap::<&str, u64>::new();
+                for transition in transitions {
+                    let before_edit = transition.duration_ticks / 2;
+                    let after_edit = transition.duration_ticks - before_edit;
+                    *transition_handles
+                        .entry(transition.from_clip_id.as_str())
+                        .or_default() += after_edit;
+                    *transition_handles
+                        .entry(transition.to_clip_id.as_str())
+                        .or_default() += before_edit;
+                }
                 let mut intervals = Vec::new();
                 for clip in clips.iter().filter(|clip| clip.enabled) {
                     count_speed_ramp_segments(&clip.placement, &mut speed_ramp_segments)?;
                     let source = &composition.sources[&clip.source_id];
+                    let handle_ticks = transition_handles
+                        .get(clip.id.as_str())
+                        .copied()
+                        .unwrap_or_default();
+                    let render_duration_ticks = clip
+                        .placement
+                        .timeline_duration_ticks()?
+                        .checked_add(handle_ticks)
+                        .ok_or_else(|| anyhow::anyhow!("overlay transition duration overflow"))?;
                     if clip.frame_interpolation == FrameInterpolation::OpticalFlow {
                         validate_optical_flow_work(
                             source.width,
                             source.height,
-                            clip.placement.timeline_duration_ticks()?,
+                            render_duration_ticks,
                             composition,
                             clip.id.as_str(),
                             &mut optical_flow_pixel_frames,
@@ -566,10 +625,21 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
                         )?;
                     }
                     if clip.stabilization.is_enabled() {
+                        let handle_source_ticks =
+                            (handle_ticks as f64 * clip.placement.speed).ceil();
+                        ensure!(
+                            handle_source_ticks.is_finite()
+                                && handle_source_ticks <= u64::MAX as f64,
+                            "overlay transition source duration overflow"
+                        );
                         validate_stabilization_work(
                             source.width,
                             source.height,
-                            clip.placement.source_out_tick - clip.placement.source_in_tick,
+                            (clip.placement.source_out_tick - clip.placement.source_in_tick)
+                                .checked_add(handle_source_ticks as u64)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("overlay transition source duration overflow")
+                                })?,
                             composition,
                             clip.id.as_str(),
                             &mut stabilization_pixel_frames,
@@ -987,18 +1057,33 @@ fn validate_visual(
                 *similarity >= 0.000_01,
                 "clip {clip_id} содержит chroma similarity ниже минимума FFmpeg"
             ),
+            VideoEffect::Style { .. } if saw_mask => {
+                bail!("clip {clip_id} должен размещать style effects перед shape masks")
+            }
+            VideoEffect::Style { .. } => {}
             VideoEffect::Mask {
                 shape: MaskShape::Linear,
                 ..
-            } => bail!("Linear mask semantics ещё не поддерживаются render v1"),
+            } => bail!("legacy Linear mask semantics are not supported by composition export"),
             VideoEffect::Mask {
                 x,
                 y,
                 width,
                 height,
+                rotation_degrees,
                 ..
             } => {
                 saw_mask = true;
+                validate_animatable(
+                    rotation_degrees,
+                    "shape mask rotation",
+                    clip_duration_ticks,
+                    composition_time_base,
+                    -180.0,
+                    180.0,
+                    true,
+                    keyframe_points,
+                )?;
                 for (value, label, minimum, maximum, inclusive_minimum) in [
                     (x, "mask x", 0.0, 1.0, true),
                     (y, "mask y", 0.0, 1.0, true),
@@ -1013,6 +1098,36 @@ fn validate_visual(
                         minimum,
                         maximum,
                         inclusive_minimum,
+                        keyframe_points,
+                    )?;
+                }
+            }
+            VideoEffect::LinearMask {
+                x,
+                y,
+                rotation_degrees,
+                ..
+            } => {
+                saw_mask = true;
+                validate_animatable(
+                    rotation_degrees,
+                    "linear mask rotation",
+                    clip_duration_ticks,
+                    composition_time_base,
+                    -180.0,
+                    180.0,
+                    true,
+                    keyframe_points,
+                )?;
+                for (value, label) in [(x, "linear mask x"), (y, "linear mask y")] {
+                    validate_animatable(
+                        value,
+                        label,
+                        clip_duration_ticks,
+                        composition_time_base,
+                        0.0,
+                        1.0,
+                        true,
                         keyframe_points,
                     )?;
                 }
@@ -1096,9 +1211,9 @@ fn validate_visual_intervals(
 mod tests {
     use super::*;
     use crate::domain::composition::{
-        AudioClip, CanvasSpec, ClipPlacement, ClipTransition, CompositionClipId, ImageClip, Rgba,
-        SpeedRampInterpolation, SpeedRampPoint, SpeedRampSpec, StabilizationSpec, TextClip,
-        TextStyle, TrackId, TransitionId, TransitionKind, VideoClip, VideoEffect,
+        AudioClip, BlendMode, CanvasSpec, ClipPlacement, ClipTransition, CompositionClipId,
+        ImageClip, Rgba, SpeedRampInterpolation, SpeedRampPoint, SpeedRampSpec, StabilizationSpec,
+        TextClip, TextStyle, TrackId, TransitionId, TransitionKind, VideoClip, VideoEffect,
     };
     use crate::domain::keyframes::{Interpolation, Keyframe, KeyframeTrack};
 
@@ -1265,12 +1380,26 @@ mod tests {
             CompositionExportProfile::Mov {
                 profile: CompositionProResProfile::Hq,
             },
+            CompositionExportProfile::Audio {
+                codec: CompositionAudioCodec::Mp3,
+            },
+            CompositionExportProfile::Audio {
+                codec: CompositionAudioCodec::Wav,
+            },
+            CompositionExportProfile::Audio {
+                codec: CompositionAudioCodec::Aac,
+            },
+            CompositionExportProfile::Audio {
+                codec: CompositionAudioCodec::Flac,
+            },
         ];
         let mut fingerprints = BTreeSet::new();
         for profile in profiles {
             let output = CompositionOutputRequest {
                 profile,
                 quality_tier: CompositionQualityTier::Compact,
+                video_bitrate_kbps: None,
+                range: None,
             };
             let round_trip: CompositionOutputRequest =
                 serde_json::from_value(serde_json::to_value(output).unwrap()).unwrap();
@@ -1282,6 +1411,71 @@ mod tests {
             assert!(fingerprints.insert(plan.fingerprint().to_string()));
         }
         assert_eq!(fingerprints.len(), profiles.len());
+    }
+
+    #[test]
+    fn export_range_is_validated_and_changes_plan_identity() {
+        let full_request = request(2_000_000);
+        let full = CompositionPlan::compile(full_request.clone(), trusted(&full_request)).unwrap();
+        let mut ranged_request = full_request.clone();
+        ranged_request.output.range = Some(CompositionExportRange {
+            start_ticks: 250_000,
+            end_ticks: 1_250_000,
+        });
+        let ranged =
+            CompositionPlan::compile(ranged_request.clone(), trusted(&ranged_request)).unwrap();
+        assert_ne!(full.fingerprint(), ranged.fingerprint());
+
+        ranged_request.output.range = Some(CompositionExportRange {
+            start_ticks: 1_250_000,
+            end_ticks: 250_000,
+        });
+        assert!(
+            CompositionPlan::compile(ranged_request.clone(), trusted(&ranged_request))
+                .unwrap_err()
+                .to_string()
+                .contains("In")
+        );
+        ranged_request.output.range = Some(CompositionExportRange {
+            start_ticks: 0,
+            end_ticks: 4_000_001,
+        });
+        assert!(
+            CompositionPlan::compile(ranged_request.clone(), trusted(&ranged_request))
+                .unwrap_err()
+                .to_string()
+                .contains("Out")
+        );
+    }
+
+    #[test]
+    fn custom_video_bitrate_is_bounded_profile_specific_and_changes_identity() {
+        let default_request = request(2_000_000);
+        let default =
+            CompositionPlan::compile(default_request.clone(), trusted(&default_request)).unwrap();
+        let mut custom_request = default_request.clone();
+        custom_request.output.video_bitrate_kbps = Some(12_000);
+        let custom =
+            CompositionPlan::compile(custom_request.clone(), trusted(&custom_request)).unwrap();
+        assert_ne!(default.fingerprint(), custom.fingerprint());
+
+        custom_request.output.video_bitrate_kbps = Some(99);
+        assert!(
+            CompositionPlan::compile(custom_request.clone(), trusted(&custom_request))
+                .unwrap_err()
+                .to_string()
+                .contains("100..=200000")
+        );
+        custom_request.output.video_bitrate_kbps = Some(12_000);
+        custom_request.output.profile = CompositionExportProfile::Audio {
+            codec: CompositionAudioCodec::Mp3,
+        };
+        assert!(
+            CompositionPlan::compile(custom_request.clone(), trusted(&custom_request))
+                .unwrap_err()
+                .to_string()
+                .contains("MP4/WebM")
+        );
     }
 
     #[test]
@@ -1392,8 +1586,14 @@ mod tests {
                 },
                 gain: AnimatableValue::constant(1.0),
                 pan: AnimatableValue::constant(0.0),
+                reversed: false,
                 fade_in_ticks: 0,
                 fade_out_ticks: 0,
+                voice_effect: Default::default(),
+                pitch_semitones: 0.0,
+                tone_db: 0.0,
+                crossfade_in_ticks: 0,
+                ducking: None,
                 enabled: true,
             }],
         });
@@ -1408,7 +1608,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_accepts_static_video_and_image_layers_above_primary() {
+    fn plan_accepts_video_image_and_transition_layers_above_primary() {
         let mut request = request(2_000_000);
         let overlay_id = SourceId::parse("overlay-source").unwrap();
         let image_id = SourceId::parse("image-source").unwrap();
@@ -1468,6 +1668,15 @@ mod tests {
             softness: 0.02,
             spill: 0.0,
         });
+        let mut overlay_b = overlay.clone();
+        overlay_b.id = CompositionClipId::parse("overlay-clip-b").unwrap();
+        overlay_b.placement = ClipPlacement {
+            timeline_start_tick: 1_500_000,
+            source_in_tick: 500_000,
+            source_out_tick: 1_500_000,
+            speed: 1.0,
+            speed_ramp: None,
+        };
         request.composition.tracks.insert(
             0,
             CompositionTrack::Image {
@@ -1495,8 +1704,14 @@ mod tests {
                 hidden: false,
                 muted: false,
                 locked: false,
-                clips: vec![overlay],
-                transitions: Vec::new(),
+                clips: vec![overlay, overlay_b],
+                transitions: vec![ClipTransition {
+                    id: TransitionId::parse("overlay-transition").unwrap(),
+                    from_clip_id: CompositionClipId::parse("overlay-clip").unwrap(),
+                    to_clip_id: CompositionClipId::parse("overlay-clip-b").unwrap(),
+                    duration_ticks: 200_000,
+                    kind: TransitionKind::SlideLeft,
+                }],
             },
         );
 
@@ -1504,7 +1719,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_accepts_visual_keyframes_and_shape_masks_fail_closed_on_linear() {
+    fn plan_accepts_visual_keyframes_and_linear_mask_contract() {
         let mut request = request(2_000_000);
         let overlay_id = SourceId::parse("animated-overlay-source").unwrap();
         request.composition.sources.insert(
@@ -1548,6 +1763,7 @@ mod tests {
                 y: AnimatableValue::constant(0.5),
                 width: animated(Interpolation::EaseIn, 1_000_000, 0.25, 0.75),
                 height: AnimatableValue::constant(0.75),
+                rotation_degrees: AnimatableValue::constant(25.0),
                 feather: 0.15,
                 inverted: true,
             }],
@@ -1570,23 +1786,45 @@ mod tests {
         );
         CompositionPlan::compile(request.clone(), trusted(&request)).unwrap();
 
-        let CompositionTrack::Video { clips, .. } = &mut request.composition.tracks[0] else {
-            unreachable!();
-        };
-        let VideoEffect::Mask { shape, .. } = &mut clips[0].effects[0] else {
-            unreachable!();
-        };
-        *shape = MaskShape::Linear;
+        {
+            let CompositionTrack::Video { clips, .. } = &mut request.composition.tracks[0] else {
+                unreachable!();
+            };
+            let VideoEffect::Mask { shape, .. } = &mut clips[0].effects[0] else {
+                unreachable!();
+            };
+            *shape = MaskShape::Linear;
+        }
         let error = CompositionPlan::compile(request.clone(), trusted(&request)).unwrap_err();
         assert!(error.to_string().contains("Linear mask"), "{error:#}");
+
+        {
+            let CompositionTrack::Video { clips, .. } = &mut request.composition.tracks[0] else {
+                unreachable!();
+            };
+            clips[0].effects[0] = VideoEffect::LinearMask {
+                x: animated(Interpolation::Linear, 1_000_000, 0.25, 0.75),
+                y: AnimatableValue::constant(0.5),
+                rotation_degrees: AnimatableValue::constant(45.0),
+                feather: 0.2,
+                inverted: false,
+            };
+        }
+        CompositionPlan::compile(request.clone(), trusted(&request)).unwrap();
 
         let CompositionTrack::Video { clips, .. } = &mut request.composition.tracks[0] else {
             unreachable!();
         };
-        let VideoEffect::Mask { shape, .. } = &mut clips[0].effects[0] else {
-            unreachable!();
+        clips[0].effects[0] = VideoEffect::Mask {
+            shape: MaskShape::Rectangle,
+            x: AnimatableValue::constant(0.5),
+            y: AnimatableValue::constant(0.5),
+            width: AnimatableValue::constant(0.5),
+            height: AnimatableValue::constant(0.5),
+            rotation_degrees: AnimatableValue::constant(0.0),
+            feather: 0.0,
+            inverted: false,
         };
-        *shape = MaskShape::Rectangle;
         clips[0].effects.push(VideoEffect::ChromaKey {
             color: Rgba {
                 red: 0.0,
@@ -1669,8 +1907,14 @@ mod tests {
                 },
                 gain: animated(Interpolation::EaseInOut, 1_000_000, 0.1, 0.9),
                 pan: animated(Interpolation::Hold, 1_000_000, -0.5, 0.5),
+                reversed: false,
                 fade_in_ticks: 100_000,
                 fade_out_ticks: 100_000,
+                voice_effect: Default::default(),
+                pitch_semitones: 0.0,
+                tone_db: 0.0,
+                crossfade_in_ticks: 0,
+                ducking: None,
                 enabled: true,
             }],
         });
@@ -1935,8 +2179,14 @@ mod tests {
                 },
                 gain: AnimatableValue::constant(1.0),
                 pan: AnimatableValue::constant(0.0),
+                reversed: false,
                 fade_in_ticks: 0,
                 fade_out_ticks: 0,
+                voice_effect: Default::default(),
+                pitch_semitones: 0.0,
+                tone_db: 0.0,
+                crossfade_in_ticks: 0,
+                ducking: None,
                 enabled: true,
             }],
         };

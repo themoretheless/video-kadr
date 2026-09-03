@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 
+use crate::object_storage::SourceObjectStore;
+
 /// One persisted media item: an imported/uploaded source or a rendered output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +16,10 @@ pub struct MediaEntry {
     /// "source" or "output".
     pub kind: String,
     pub filename: String,
+    /// Relative physical key below `sources/` or `outputs/`. Legacy entries
+    /// omit it and continue to resolve directly by filename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_key: Option<String>,
     pub url: String,
     /// Probed source category (`video`, `audio`, or `image`). Legacy library
     /// rows omit it and remain readable; outputs intentionally leave it empty.
@@ -48,6 +54,7 @@ impl MediaEntry {
             id: v["id"].as_str().unwrap_or_default().to_string(),
             kind: kind.to_string(),
             filename: v["filename"].as_str().unwrap_or_default().to_string(),
+            storage_key: v["storageKey"].as_str().map(str::to_owned),
             url: v["url"].as_str().unwrap_or_default().to_string(),
             media_type: v["mediaType"].as_str().map(str::to_owned),
             title: v["title"].as_str().map(|s| s.to_string()),
@@ -77,6 +84,14 @@ pub struct Library {
     entries: Arc<Mutex<Vec<MediaEntry>>>,
     path: PathBuf,
     storage: PathBuf,
+    object_storage: Option<SourceObjectStore>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct SourceBackupSyncReport {
+    pub uploaded: usize,
+    pub unchanged: usize,
+    pub failed: usize,
 }
 
 impl Library {
@@ -91,7 +106,54 @@ impl Library {
             entries: Arc::new(Mutex::new(entries)),
             path,
             storage,
+            object_storage: None,
         }
+    }
+
+    pub fn with_object_storage(mut self, object_storage: SourceObjectStore) -> Self {
+        self.object_storage = Some(object_storage);
+        self
+    }
+
+    pub fn has_object_storage(&self) -> bool {
+        self.object_storage.is_some()
+    }
+
+    /// Reconcile every Space-owned immutable original with external storage.
+    /// Failures are isolated per source so a transient provider error never
+    /// prevents the remaining library from being backed up.
+    pub async fn sync_source_backups(&self) -> SourceBackupSyncReport {
+        let Some(object_storage) = &self.object_storage else {
+            return SourceBackupSyncReport::default();
+        };
+        let entries = self.entries.lock().await.clone();
+        let mut report = SourceBackupSyncReport::default();
+        for entry in entries.into_iter().filter(|entry| {
+            entry.kind == "source"
+                && entry
+                    .storage_key
+                    .as_deref()
+                    .is_some_and(|key| key.starts_with("spaces/"))
+        }) {
+            let result = async {
+                let path = self.resolve_media_path(&entry).await?;
+                let key = Self::storage_relative_path(&entry)?;
+                object_storage
+                    .sync(&path, &key)
+                    .await
+                    .map_err(std::io::Error::other)
+            }
+            .await;
+            match result {
+                Ok(true) => report.uploaded += 1,
+                Ok(false) => report.unchanged += 1,
+                Err(error) => {
+                    report.failed += 1;
+                    tracing::warn!(source_id = %entry.id, %error, "library: source backup reconciliation failed");
+                }
+            }
+        }
+        report
     }
 
     /// Persist the whole list atomically (temp file + rename). Returns an error
@@ -156,6 +218,89 @@ impl Library {
             .cloned()
     }
 
+    pub async fn get_by_filename(&self, filename: &str) -> Option<MediaEntry> {
+        self.entries
+            .lock()
+            .await
+            .iter()
+            .find(|entry| entry.filename == filename)
+            .cloned()
+    }
+
+    /// Move a legacy flat source into its Space-owned directory and persist
+    /// the new key as one recoverable operation. A failed library save moves
+    /// the file back before returning the error.
+    pub async fn relocate_source_to_space(
+        &self,
+        id: &str,
+        space_id: &str,
+    ) -> std::io::Result<bool> {
+        let space_path = Path::new(space_id);
+        if !matches!(
+            space_path.components().collect::<Vec<_>>().as_slice(),
+            [Component::Normal(_)]
+        ) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid collaboration space id",
+            ));
+        }
+        let mut guard = self.entries.lock().await;
+        let Some(index) = guard.iter().position(|entry| entry.id == id) else {
+            return Ok(false);
+        };
+        let entry = &guard[index];
+        if entry.kind != "source" {
+            return Ok(false);
+        }
+        let storage_key = Path::new("spaces")
+            .join(space_id)
+            .join(&entry.filename)
+            .to_string_lossy()
+            .into_owned();
+        if entry.storage_key.as_deref() == Some(&storage_key) {
+            let entry = entry.clone();
+            drop(guard);
+            self.upload_source_if_configured(&entry).await?;
+            return Ok(false);
+        }
+        if entry.storage_key.is_some() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "source is already stored in another collaboration space",
+            ));
+        }
+        let source = self.resolve_media_path(entry).await?;
+        let destination = self.storage.join("sources").join(&storage_key);
+        let destination_dir = destination.parent().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid source destination",
+            )
+        })?;
+        tokio::fs::create_dir_all(destination_dir).await?;
+        if tokio::fs::try_exists(&destination).await? {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "space source destination already exists",
+            ));
+        }
+        tokio::fs::rename(&source, &destination).await?;
+        let mut next = guard.clone();
+        next[index].storage_key = Some(storage_key);
+        if let Err(error) = self.save(&next).await {
+            if let Err(rollback_error) = tokio::fs::rename(&destination, &source).await {
+                tracing::error!(%rollback_error, "library: source relocation rollback failed");
+            }
+            return Err(error);
+        }
+        *guard = next;
+        let entry = guard[index].clone();
+        drop(guard);
+        self.upload_source_if_configured(&entry).await?;
+        Ok(true)
+    }
+
     /// Remove an entry and delete its file. Returns true if it existed and the
     /// removal was persisted. The file is deleted only after a successful save,
     /// so a persist failure never deletes a file the stored library still lists.
@@ -177,6 +322,15 @@ impl Library {
         if let Some(path) = file_path {
             let _ = tokio::fs::remove_file(path).await;
         }
+        if entry.kind == "source" {
+            if let (Some(object_storage), Ok(key)) =
+                (&self.object_storage, Self::storage_relative_path(&entry))
+            {
+                if let Err(error) = object_storage.delete(&key).await {
+                    tracing::warn!(id, %error, "library: failed to delete source backup");
+                }
+            }
+        }
         true
     }
 
@@ -185,6 +339,15 @@ impl Library {
     /// corrupted library file cannot escape storage.
     pub async fn resolve_media_path(&self, entry: &MediaEntry) -> std::io::Result<PathBuf> {
         let candidate = self.unresolved_file_path(entry)?;
+        if entry.kind == "source" && !tokio::fs::try_exists(&candidate).await? {
+            if let Some(object_storage) = &self.object_storage {
+                let key = Self::storage_relative_path(entry)?;
+                object_storage
+                    .hydrate(&candidate, &key)
+                    .await
+                    .map_err(std::io::Error::other)?;
+            }
+        }
         let metadata = tokio::fs::symlink_metadata(&candidate).await?;
         if metadata.file_type().is_symlink() || !metadata.is_file() {
             return Err(std::io::Error::new(
@@ -203,19 +366,62 @@ impl Library {
         Ok(resolved)
     }
 
-    fn unresolved_file_path(&self, entry: &MediaEntry) -> std::io::Result<PathBuf> {
-        let path = Path::new(&entry.filename);
-        let mut components = path.components();
-        if !matches!(components.next(), Some(Component::Normal(_)))
-            || components.next().is_some()
-            || !matches!(entry.kind.as_str(), "source" | "output")
-        {
+    async fn upload_source_if_configured(&self, entry: &MediaEntry) -> std::io::Result<()> {
+        let Some(object_storage) = &self.object_storage else {
+            return Ok(());
+        };
+        let path = self.resolve_media_path(entry).await?;
+        let key = Self::storage_relative_path(entry)?;
+        object_storage
+            .sync(&path, &key)
+            .await
+            .map(|_| ())
+            .map_err(std::io::Error::other)
+    }
+
+    pub fn storage_relative_path(entry: &MediaEntry) -> std::io::Result<PathBuf> {
+        if !matches!(entry.kind.as_str(), "source" | "output") {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "invalid library filename or kind",
             ));
         }
-        Ok(self.storage.join(entry.storage_subdir()).join(path))
+        let filename = Path::new(&entry.filename);
+        if !matches!(
+            filename.components().collect::<Vec<_>>().as_slice(),
+            [Component::Normal(_)]
+        ) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid library filename or kind",
+            ));
+        }
+        let relative = entry.storage_key.as_deref().unwrap_or(&entry.filename);
+        let components = Path::new(relative).components().collect::<Vec<_>>();
+        let valid = if entry.storage_key.is_none() {
+            matches!(components.as_slice(), [Component::Normal(_)])
+        } else {
+            entry.kind == "source"
+                && matches!(
+                    components.as_slice(),
+                    [Component::Normal(prefix), Component::Normal(space), Component::Normal(file)]
+                        if *prefix == "spaces" && !space.is_empty() && *file == std::ffi::OsStr::new(&entry.filename)
+                )
+        };
+        if !valid {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid library storage key",
+            ));
+        }
+        Ok(PathBuf::from(relative))
+    }
+
+    fn unresolved_file_path(&self, entry: &MediaEntry) -> std::io::Result<PathBuf> {
+        Ok(self
+            .storage
+            .join(entry.storage_subdir())
+            .join(Self::storage_relative_path(entry)?))
     }
 }
 
@@ -256,6 +462,7 @@ mod tests {
             id: id.into(),
             kind: kind.into(),
             filename: filename.into(),
+            storage_key: None,
             url: format!("/files/{sub}/{filename}"),
             media_type: (kind == "source").then(|| "video".into()),
             title: None,
@@ -341,6 +548,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn space_source_is_restored_from_object_storage_when_local_copy_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let object_storage = SourceObjectStore::in_memory("tenant").unwrap();
+        let lib = Library::load(storage.clone()).await;
+        touch(&storage, "source", "cloud.mp4").await;
+        let original = storage.join("sources/cloud.mp4");
+        tokio::fs::write(&original, b"cloud source").await.unwrap();
+        assert!(lib.add(entry("cloud", "source", "cloud.mp4", 1)).await);
+        assert!(lib
+            .relocate_source_to_space("cloud", "11111111-1111-4111-8111-111111111111")
+            .await
+            .unwrap());
+        let lib = lib.with_object_storage(object_storage);
+        assert_eq!(
+            lib.sync_source_backups().await,
+            SourceBackupSyncReport {
+                uploaded: 1,
+                unchanged: 0,
+                failed: 0,
+            }
+        );
+        assert_eq!(lib.sync_source_backups().await.unchanged, 1);
+        let entry = lib.get("cloud").await.unwrap();
+        let local = lib.resolve_media_path(&entry).await.unwrap();
+        tokio::fs::remove_file(&local).await.unwrap();
+
+        let restored = lib.resolve_media_path(&entry).await.unwrap();
+        assert_eq!(tokio::fs::read(restored).await.unwrap(), b"cloud source");
+    }
+
+    #[tokio::test]
     async fn path_traversal_and_symlinks_are_never_resolved_or_deleted() {
         let dir = tempfile::tempdir().unwrap();
         let storage = dir.path().to_path_buf();
@@ -379,6 +618,56 @@ mod tests {
         let list = lib2.list().await;
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, "k");
+    }
+
+    #[tokio::test]
+    async fn relocates_space_source_and_persists_safe_storage_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let lib = Library::load(storage.clone()).await;
+        touch(&storage, "source", "private.mp4").await;
+        assert!(lib.add(entry("private", "source", "private.mp4", 1)).await);
+
+        assert!(lib
+            .relocate_source_to_space("private", "11111111-1111-4111-8111-111111111111")
+            .await
+            .unwrap());
+        assert!(tokio::fs::metadata(storage.join("sources/private.mp4"))
+            .await
+            .is_err());
+        let moved = lib.get("private").await.unwrap();
+        assert_eq!(
+            moved.storage_key.as_deref(),
+            Some("spaces/11111111-1111-4111-8111-111111111111/private.mp4")
+        );
+        assert_eq!(
+            tokio::fs::read(lib.resolve_media_path(&moved).await.unwrap())
+                .await
+                .unwrap(),
+            b"x"
+        );
+
+        let reloaded = Library::load(storage).await;
+        assert_eq!(reloaded.list().await[0].storage_key, moved.storage_key);
+    }
+
+    #[tokio::test]
+    async fn rejects_unsafe_nested_storage_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        tokio::fs::create_dir_all(storage.join("sources"))
+            .await
+            .unwrap();
+        let lib = Library::load(storage).await;
+        for key in [
+            "../outside.mp4",
+            "spaces/../private.mp4",
+            "other/space/private.mp4",
+        ] {
+            let mut unsafe_entry = entry("unsafe", "source", "private.mp4", 1);
+            unsafe_entry.storage_key = Some(key.into());
+            assert!(!lib.add(unsafe_entry).await, "{key}");
+        }
     }
 
     #[tokio::test]

@@ -4,6 +4,7 @@ import {
   cuesToTextClips,
   formatSrt,
   parseSrt,
+  parseTimecodedText,
   SubtitleFormatError,
   textClipsToCues,
 } from './srt'
@@ -58,5 +59,14 @@ describe('local SRT import/export', () => {
     expect(() =>
       parseSrt(`1\n00:00:00,000 --> 00:00:01,000\n${'x'.repeat(513)}`),
     ).toThrow(SubtitleFormatError)
+  })
+
+  it('parses timecoded TXT lines with brackets, dots and Unicode', () => {
+    expect(parseTimecodedText(
+      '[00:00:00.000 --> 00:00:01.250] Привет 👋\n00:00:02,000 --> 00:00:03,000 Мир',
+    )).toMatchObject([
+      { startTicks: 0, endTicks: 1_250_000, text: 'Привет 👋' },
+      { startTicks: 2_000_000, endTicks: 3_000_000, text: 'Мир' },
+    ])
   })
 })

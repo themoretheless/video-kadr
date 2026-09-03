@@ -17,6 +17,7 @@
     { value: 'av1', label: 'AV1' }, { value: 'prores', label: 'ProRes' },
     { value: 'gif', label: 'GIF' }, { value: 'png', label: 'Кадр PNG' },
     { value: 'jpg', label: 'Кадр JPG' }, { value: 'mp3', label: 'Аудио MP3' },
+    { value: 'wav', label: 'Аудио WAV' },
   ]
   const qualityTiers = [
     { value: '', label: 'Авто' }, { value: 'high', label: 'Высокое' },
@@ -27,6 +28,7 @@
     png: 'Один кадр на позиции начала обрезки, без звука.',
     jpg: 'Один кадр JPG на позиции начала обрезки, без звука.',
     mp3: 'Только звук, видеоэффекты игнорируются.',
+    wav: 'Только несжатый PCM-звук 48 кГц stereo; видеоэффекты игнорируются.',
     webm: 'VP9 + Opus: меньше размер, дольше кодируется.',
     av1: 'AV1 даёт компактный файл, но кодируется медленно.',
     prores: 'ProRes 422 HQ для монтажа: крупный MOV-файл со звуком PCM.',

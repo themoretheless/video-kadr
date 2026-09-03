@@ -24,7 +24,6 @@ import {
   type CompositionSource,
   type CompositionSpeedRamp,
   type CompositionTransition,
-  type CompositionVisualProperty,
   type CompositionTrack,
   type VideoTrack,
 } from './types'
@@ -239,6 +238,8 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
     }
     if (candidate.kind === 'video') {
       validateTransitions(candidate.transitions, candidate.clips, `${path}.transitions`, add)
+    } else if (candidate.kind === 'audio') {
+      validateAudioCrossfades(candidate.clips, path, sources, add)
     }
     intervals.sort((left, right) => left.start - right.start || left.end - right.end || left.id.localeCompare(right.id))
     for (let index = 1; index < intervals.length; index += 1) {
@@ -288,6 +289,10 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
 export function normalizeComposition(value: unknown): Composition {
   const cloned = cloneUnknown(value)
   if (isRecord(cloned) && cloned.multicamGroups === undefined) cloned.multicamGroups = []
+  if (isRecord(cloned) && isRecord(cloned.canvas)) {
+    cloned.canvas.backgroundMode ??= 'color'
+    cloned.canvas.backgroundBlur ??= 24
+  }
   if (isRecord(cloned) && Array.isArray(cloned.tracks)) {
     cloned.tracks = cloned.tracks.map((candidate) => {
       if (!isRecord(candidate)) return candidate
@@ -484,9 +489,8 @@ export function compositionRenderUnavailableReason(composition: Composition): st
     if (clip.timelineStartTicks !== primaryEnd) {
       return 'Основная видеодорожка должна начинаться с 0 и не содержать gaps или overlaps.'
     }
-    if (!primaryVisualIsNeutral(clip, composition)) {
-      return 'Основные видеоклипы должны использовать neutral constant transform/opacity/blend без chroma, masks и keyframes; эффекты применяйте на overlay-дорожках.'
-    }
+    const visualReason = visualClipReason(composition, clip)
+    if (visualReason) return visualReason
     primaryEnd = clipEndTicks(clip)
   }
   if (!primaryEnd) return 'Основная видеодорожка пуста.'
@@ -497,9 +501,6 @@ export function compositionRenderUnavailableReason(composition: Composition): st
   const primaryIndex = composition.tracks.findIndex((track) => track.id === primary.id)
   for (const track of composition.tracks.slice(0, primaryIndex)) {
     if (track.kind === 'audio' || track.hidden) continue
-    if (track.kind === 'video' && (track.transitions?.length ?? 0) > 0) {
-      return `Переходы поддерживаются только на основной видеодорожке; удалите переходы с «${track.name}».`
-    }
     for (const clip of track.clips) {
       if (
         clip.kind === 'video' &&
@@ -619,9 +620,6 @@ export function compositionTransitionUnavailableReason(
 ): string | null {
   const track = composition.tracks.find((candidate): candidate is VideoTrack => candidate.id === trackId && candidate.kind === 'video')
   if (!track) return 'Переход можно добавить только на видеодорожку.'
-  if (primaryCompositionVideoTrack(composition)?.id !== trackId) {
-    return 'Переходы поддерживаются только на нижней основной видеодорожке.'
-  }
   const transitions = [...(track.transitions ?? []).filter((candidate) => candidate.id !== transition.id), transition]
   return primaryTransitionReason(composition, { ...track, transitions }, [...track.clips].sort(compareClips))
 }
@@ -641,7 +639,7 @@ function primaryTransitionReason(
     const fromIndex = indexes.get(transition.fromClipId)
     const toIndex = indexes.get(transition.toClipId)
     if (fromIndex === undefined || toIndex !== fromIndex + 1 || fromIds.has(transition.fromClipId) || toIds.has(transition.toClipId)) {
-      return `Переход «${transition.id}» должен соединять одну уникальную пару соседних primary clips.`
+      return `Переход «${transition.id}» должен соединять одну уникальную пару соседних video clips.`
     }
     const from = clips[fromIndex]!
     const to = clips[toIndex]!
@@ -677,25 +675,6 @@ function primaryTransitionReason(
   return null
 }
 
-function primaryVisualIsNeutral(clip: VideoTrack['clips'][number], composition: Composition): boolean {
-  const defaults: Record<CompositionVisualProperty, number> = {
-    x: 0,
-    y: 0,
-    scaleX: 1,
-    scaleY: 1,
-    rotationDegrees: 0,
-    opacity: 1,
-  }
-  const animationIsNeutral = COMPOSITION_VISUAL_PROPERTIES.every((property) => {
-    const value = clip.animation?.[property]
-    return value === undefined || (value.mode === 'constant' && value.value === defaults[property])
-  })
-  return animationIsNeutral && clip.transform.x === 0 && clip.transform.y === 0 &&
-    clip.transform.width === composition.canvas.width && clip.transform.height === composition.canvas.height &&
-    (clip.rotationDegrees ?? 0) === 0 && clip.opacity === 1 && (clip.blendMode ?? 'normal') === 'normal' &&
-    !clip.chromaKey?.enabled && !(clip.masks?.length)
-}
-
 function visualClipReason(composition: Composition, clip: Exclude<CompositionClip, AudioClip>): string | null {
   const x = animatableExtents(visualPropertyValue(composition, clip, 'x'))
   const y = animatableExtents(visualPropertyValue(composition, clip, 'y'))
@@ -727,9 +706,6 @@ function visualClipReason(composition: Composition, clip: Exclude<CompositionCli
   if (clip.kind === 'video' && clip.chromaKey?.enabled && clip.chromaKey.similarity < 0.000_01) {
     return `Chroma similarity clip «${clip.id}» должна быть не меньше 0.00001 для FFmpeg.`
   }
-  if (clip.kind === 'video' && clip.masks?.some((mask) => mask.shape === 'linear')) {
-    return `Linear mask clip «${clip.id}» сохранена для совместимости, но backend поддерживает только Rectangle и Ellipse.`
-  }
   return null
 }
 
@@ -740,7 +716,8 @@ function visualKeyframeCount(clip: Exclude<CompositionClip, AudioClip>): number 
   )
   if (clip.kind === 'video') {
     for (const mask of clip.masks ?? []) {
-      count += keyframeCount(mask.x) + keyframeCount(mask.y) + keyframeCount(mask.width) + keyframeCount(mask.height)
+      count += keyframeCount(mask.x) + keyframeCount(mask.y) + keyframeCount(mask.width) +
+        keyframeCount(mask.height) + keyframeCount(mask.rotationDegrees)
     }
   }
   return count
@@ -783,7 +760,7 @@ function unsupportedAuthoredFeature(composition: Composition): string | null {
     for (const clip of track.clips) {
       const candidate = clip as unknown as Record<string, unknown>
       if (Array.isArray(candidate.effects) && candidate.effects.length) {
-        return 'Неподдерживаемые clip effects сохранены в проекте; используйте authoring chroma key и Rectangle/Ellipse masks.'
+        return 'Неподдерживаемые clip effects сохранены в проекте; используйте authoring chroma key и Rectangle/Ellipse/Linear masks.'
       }
       for (const [key, value] of Object.entries(candidate)) {
         if (key === 'animation' && clip.kind !== 'audio') {
@@ -832,7 +809,7 @@ function unsupportedAnimationField(value: unknown): string | null {
 
 function unsupportedMaskField(value: unknown): string | null {
   if (!Array.isArray(value)) return null
-  const known = new Set(['id', 'shape', 'x', 'y', 'width', 'height', 'feather', 'inverted'])
+  const known = new Set(['id', 'shape', 'rotationDegrees', 'x', 'y', 'width', 'height', 'feather', 'inverted'])
   for (const candidate of value) {
     if (!isRecord(candidate)) continue
     for (const key of Object.keys(candidate)) {
@@ -927,6 +904,12 @@ function validateCanvas(
     add('canvas-fps', 'canvas.fps', `Canvas fps must be greater than 0 and at most ${MAX_CANVAS_FPS}`)
   }
   validateColor(value.backgroundColor, 'canvas.backgroundColor', add)
+  if (value.backgroundMode !== undefined && !['color', 'blur', 'checker'].includes(String(value.backgroundMode))) {
+    add('canvas-background-mode', 'canvas.backgroundMode', 'Canvas background mode must be color, blur, or checker')
+  }
+  if (value.backgroundBlur !== undefined && (!isFiniteNumber(value.backgroundBlur) || value.backgroundBlur < 1 || value.backgroundBlur > 100)) {
+    add('canvas-background-blur', 'canvas.backgroundBlur', 'Canvas background blur must be from 1 to 100')
+  }
 }
 
 function validateAuthoringMarkers(
@@ -1067,6 +1050,7 @@ function validateClip(
     validateRotation(clip.rotationDegrees, `${path}.rotationDegrees`, add)
     validateBlendMode(clip.blendMode, `${path}.blendMode`, add)
     validateChromaKey(clip.chromaKey, `${path}.chromaKey`, add)
+    validateVideoEffects(clip.videoEffects, `${path}.videoEffects`, add)
     const duration = runtimeClipDuration(clip)
     validateVisualAnimation(clip.animation, `${path}.animation`, duration, add)
     validateMasks(clip.masks, `${path}.masks`, duration, add)
@@ -1099,10 +1083,51 @@ function validateClip(
     }
     const duration = runtimeClipDuration(clip)
     validateAudioAnimation(clip.audioAnimation, `${path}.audioAnimation`, duration, add)
+    if (clip.reversed !== undefined && typeof clip.reversed !== 'boolean') {
+      add('audio-reversed', `${path}.reversed`, 'Audio reversed must be a boolean')
+    }
+    if (clip.voiceEffect !== undefined && clip.voiceEffect !== 'none' && clip.voiceEffect !== 'deep' && clip.voiceEffect !== 'high' && clip.voiceEffect !== 'chipmunk' && clip.voiceEffect !== 'echo' && clip.voiceEffect !== 'robot') {
+      add('audio-voice-effect', `${path}.voiceEffect`, 'Audio voice effect must be none, deep, high, chipmunk, echo, or robot')
+    }
+    if (clip.pitchSemitones !== undefined && (!isFiniteNumber(clip.pitchSemitones) || clip.pitchSemitones < -12 || clip.pitchSemitones > 12)) {
+      add('audio-pitch', `${path}.pitchSemitones`, 'Audio pitch must be from -12 to 12 semitones')
+    }
+    if (clip.toneDb !== undefined && (!isFiniteNumber(clip.toneDb) || clip.toneDb < -12 || clip.toneDb > 12)) {
+      add('audio-tone', `${path}.toneDb`, 'Audio tone must be from -12 to 12 dB')
+    }
+    if (clip.crossfadeInTicks !== undefined && (!isSafeTick(clip.crossfadeInTicks) || (duration !== null && clip.crossfadeInTicks > duration))) {
+      add('audio-crossfade', `${path}.crossfadeInTicks`, 'Audio crossfade must be a safe tick within the clip duration')
+    }
+    if (clip.ducking !== undefined) {
+      if (!isRecord(clip.ducking) || !isFiniteNumber(clip.ducking.thresholdDb) || clip.ducking.thresholdDb < -60 || clip.ducking.thresholdDb > 0 ||
+          !isFiniteNumber(clip.ducking.ratio) || clip.ducking.ratio < 1 || clip.ducking.ratio > 20 ||
+          !isFiniteNumber(clip.ducking.attackMs) || clip.ducking.attackMs < 0.1 || clip.ducking.attackMs > 500 ||
+          !isFiniteNumber(clip.ducking.releaseMs) || clip.ducking.releaseMs < 1 || clip.ducking.releaseMs > 5_000) {
+        add('audio-ducking', `${path}.ducking`, 'Audio ducking controls are outside supported bounds')
+      }
+    }
     for (const [field, value] of [['fadeInTicks', clip.fadeInTicks], ['fadeOutTicks', clip.fadeOutTicks]] as const) {
       if (value !== undefined && (!isSafeTick(value) || (duration !== null && value > duration))) {
         add('audio-fade', `${path}.${field}`, 'Audio fade must be a safe tick within the clip duration')
       }
+    }
+  }
+}
+
+function validateVideoEffects(
+  value: unknown,
+  path: string,
+  add: (code: string, path: string, message: string) => void,
+): void {
+  if (value === undefined) return
+  if (!Array.isArray(value) || value.length > 5) {
+    add('video-effects', path, 'Video effects must be an array with at most 5 entries')
+    return
+  }
+  for (const [index, effect] of value.entries()) {
+    if (!isRecord(effect) || !['blur', 'pixelate', 'vignette', 'sharpen', 'edge', 'rgb_split', 'posterize'].includes(String(effect.preset)) ||
+        !isFiniteNumber(effect.intensity) || effect.intensity < 0.01 || effect.intensity > 1) {
+      add('video-effect', `${path}[${index}]`, 'Video effect preset or intensity is invalid')
     }
   }
 }
@@ -1339,6 +1364,60 @@ function validateTransitions(
   }
 }
 
+function validateAudioCrossfades(
+  clips: readonly unknown[],
+  trackPath: string,
+  sources: ReadonlyMap<string, CompositionSource>,
+  add: (code: string, path: string, message: string) => void,
+): void {
+  const ordered = [...clips.filter(isRecord)].sort((left, right) =>
+    Number(left.timelineStartTicks) - Number(right.timelineStartTicks) || String(left.id).localeCompare(String(right.id)))
+  const headOccupancy = new Map<string, number>()
+  const tailOccupancy = new Map<string, number>()
+  for (let index = 0; index < ordered.length; index += 1) {
+    const clip = ordered[index]!
+    const duration = clip.crossfadeInTicks
+    if (duration === undefined || duration === 0 || !isSafeTick(duration)) continue
+    const path = `${trackPath}.clips[${clips.indexOf(clip)}].crossfadeInTicks`
+    const previous = ordered[index - 1]
+    const previousDuration = previous ? runtimeClipDuration(previous) : null
+    const currentDuration = runtimeClipDuration(clip)
+    if (!previous || previousDuration === null || currentDuration === null ||
+        Number(previous.timelineStartTicks) + previousDuration !== Number(clip.timelineStartTicks)) {
+      add('audio-crossfade-boundary', path, 'Crossfade requires an immediately preceding clip on a touching boundary')
+      continue
+    }
+    if (previous.speedRamp !== undefined || clip.speedRamp !== undefined) {
+      add('audio-crossfade-speed-ramp', path, 'Crossfade does not support speed-ramped endpoint clips')
+    }
+    if (previous.reversed === true || clip.reversed === true) {
+      add('audio-crossfade-reverse', path, 'Crossfade does not support reversed endpoint clips')
+    }
+    if (previous.audioAnimation !== undefined || clip.audioAnimation !== undefined) {
+      add('audio-crossfade-automation', path, 'Crossfade endpoints must use constant gain and pan')
+    }
+    if (Number(previous.fadeOutTicks ?? 0) > 0 || Number(clip.fadeInTicks ?? 0) > 0) {
+      add('audio-crossfade-fade', path, 'Crossfade replaces fade out/in at this boundary')
+    }
+    const before = Math.floor(duration / 2)
+    const after = duration - before
+    const previousSource = sources.get(String(previous.sourceId))
+    const previousTail = Math.round(after * Number(previous.speed ?? 1))
+    const currentHead = Math.round(before * Number(clip.speed ?? 1))
+    if (!previousSource || previousSource.durationTicks - Number(previous.sourceOutTicks) < previousTail || Number(clip.sourceInTicks) < currentHead) {
+      add('audio-crossfade-handles', path, 'Crossfade requires enough source audio before and after the edit')
+    }
+    tailOccupancy.set(String(previous.id), before)
+    headOccupancy.set(String(clip.id), after)
+  }
+  for (const clip of ordered) {
+    const duration = runtimeClipDuration(clip)
+    if (duration !== null && (headOccupancy.get(String(clip.id)) ?? 0) + (tailOccupancy.get(String(clip.id)) ?? 0) > duration) {
+      add('audio-crossfade-overlap', trackPath, `Crossfade windows overlap inside clip ${String(clip.id)}`)
+    }
+  }
+}
+
 function validateRotation(
   value: unknown,
   path: string,
@@ -1453,7 +1532,10 @@ function validateMasks(
     if (isStableId(candidate.id) && ids.has(candidate.id)) add('duplicate-mask-id', `${maskPath}.id`, 'Mask id must be unique within a clip')
     else if (isStableId(candidate.id)) ids.add(candidate.id)
     if (candidate.shape !== 'rectangle' && candidate.shape !== 'ellipse' && candidate.shape !== 'linear') {
-      add('mask-shape', `${maskPath}.shape`, 'Mask shape must be rectangle, ellipse, or reserved linear')
+      add('mask-shape', `${maskPath}.shape`, 'Mask shape must be rectangle, ellipse, or linear')
+    }
+    if (candidate.rotationDegrees !== undefined) {
+      validateAnimatableValue(candidate.rotationDegrees, `${maskPath}.rotationDegrees`, durationTicks, -180, 180, true, add)
     }
     validateAnimatableValue(candidate.x, `${maskPath}.x`, durationTicks, 0, 1, true, add)
     validateAnimatableValue(candidate.y, `${maskPath}.y`, durationTicks, 0, 1, true, add)
@@ -1650,8 +1732,14 @@ function normalizeClip(value: unknown): unknown {
       speed: value.speed === undefined ? 1 : value.speed,
       ...(value.speedRamp === undefined ? {} : { speedRamp: normalizeSpeedRamp(value.speedRamp) }),
       pan: value.pan === undefined ? 0 : value.pan,
+      reversed: value.reversed === true,
       fadeInTicks: value.fadeInTicks === undefined ? 0 : value.fadeInTicks,
       fadeOutTicks: value.fadeOutTicks === undefined ? 0 : value.fadeOutTicks,
+      voiceEffect: value.voiceEffect === undefined ? 'none' : value.voiceEffect,
+      pitchSemitones: value.pitchSemitones === undefined ? 0 : value.pitchSemitones,
+      toneDb: value.toneDb === undefined ? 0 : value.toneDb,
+      crossfadeInTicks: value.crossfadeInTicks === undefined ? 0 : value.crossfadeInTicks,
+      ...(value.ducking === undefined ? {} : { ducking: value.ducking }),
       ...(value.audioAnimation === undefined ? {} : { audioAnimation: normalizeAnimation(value.audioAnimation, COMPOSITION_AUDIO_PROPERTIES) }),
     }
   }
@@ -1700,6 +1788,7 @@ function normalizeMasks(value: unknown): unknown {
     return {
       ...normalized,
       id: candidate.id ?? `mask-${index + 1}`,
+      rotationDegrees: normalizeAnimatableValue(candidate.rotationDegrees ?? 0),
     }
   })
 }

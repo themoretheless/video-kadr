@@ -57,6 +57,7 @@ impl AudioOutputSpec {
             OutputFormat::Webm => self.codec == AudioCodec::Opus,
             OutputFormat::Prores => self.codec == AudioCodec::PcmS16Le,
             OutputFormat::Mp3 => self.codec == AudioCodec::Mp3,
+            OutputFormat::Wav => self.codec == AudioCodec::PcmS16Le,
             OutputFormat::Gif | OutputFormat::Png | OutputFormat::Jpg => false,
         };
         if !compatible {
@@ -112,6 +113,7 @@ mod tests {
             (OutputFormat::Webm, AudioCodec::Opus),
             (OutputFormat::Prores, AudioCodec::PcmS16Le),
             (OutputFormat::Mp3, AudioCodec::Mp3),
+            (OutputFormat::Wav, AudioCodec::PcmS16Le),
         ] {
             AudioOutputSpec::default_for(format, codec).unwrap();
         }

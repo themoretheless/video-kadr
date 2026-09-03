@@ -133,6 +133,8 @@ export interface EditState {
   cut: { start: number; end: number }
   cropEnabled: boolean
   crop: { x: number; y: number; w: number; h: number }
+  /** Empty string means free resize; otherwise keep this source-pixel aspect. */
+  cropAspectLock: '' | '9:16' | '1:1' | '4:5' | '4:3' | '16:9'
   scaleEnabled: boolean
   scale: { w: number; h: number }
   mute: boolean
@@ -190,6 +192,8 @@ export interface MediaEntry {
   id: string
   kind: 'source' | 'output'
   filename: string
+  /** Server-managed physical location; clients must keep using `url`. */
+  storageKey?: string
   url: string
   mediaType?: MediaType | null
   title?: string | null

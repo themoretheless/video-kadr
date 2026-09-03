@@ -1,14 +1,20 @@
 import * as api from '$lib/api.js'
+import { authState } from '$lib/state/auth.svelte.js'
 import { queryClient, serverKeys } from './queryClient.js'
 
+function authToken(): string {
+  if (!authState.token) throw new Error('Войдите, чтобы работать с проектами')
+  return authState.token
+}
+
 export async function fetchCompositionProjects(): Promise<api.CompositionProjectDto[]> {
-  const projects = await api.getCompositionProjects()
+  const projects = await api.getCompositionProjects(authToken())
   queryClient.setQueryData(serverKeys.compositionProjects, projects)
   return projects
 }
 
 export async function fetchCompositionProject(id: string): Promise<api.CompositionProjectDto | null> {
-  const project = await api.getCompositionProject(id)
+  const project = await api.getCompositionProject(id, authToken())
   queryClient.setQueryData(serverKeys.compositionProject(id), project)
   return project
 }
@@ -22,7 +28,7 @@ export function cacheCompositionProject(project: api.CompositionProjectDto): voi
 }
 
 export async function removeCompositionProject(id: string): Promise<void> {
-  await api.deleteCompositionProject(id)
+  await api.deleteCompositionProject(id, authToken())
   queryClient.removeQueries({ queryKey: serverKeys.compositionProject(id) })
   queryClient.setQueryData<api.CompositionProjectDto[]>(
     serverKeys.compositionProjects,

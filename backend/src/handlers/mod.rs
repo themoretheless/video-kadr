@@ -41,6 +41,8 @@ mod library;
 mod luts;
 mod project_archive;
 mod proxy;
+mod publish;
+mod stock;
 mod upload;
 
 pub use composition::composition_render_handler;
@@ -54,13 +56,21 @@ pub use library::{
     library_delete_handler, library_filmstrip_handler, library_filmstrip_version_handler,
     library_list_handler, library_metadata_patch_handler, library_metadata_put_handler,
     library_search_handler, library_thumbnail_handler, library_thumbnail_version_handler,
+    source_file_handler,
 };
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
 pub use project_archive::{
     composition_project_archive_export_handler, composition_project_archive_import_handler,
 };
-pub use proxy::{proxy_create_handler, proxy_delete_handler, proxy_list_handler};
+pub use proxy::{
+    proxy_content_handler, proxy_create_handler, proxy_delete_handler, proxy_list_handler,
+};
 use proxy::{spawn_proxy_job, ProxyWork};
+pub use publish::{
+    youtube_callback_handler, youtube_connect_handler, youtube_disconnect_handler,
+    youtube_publish_handler, youtube_status_handler,
+};
+pub use stock::stock_search_handler;
 pub use upload::upload_handler;
 
 pub async fn metrics_handler(State(state): State<AppState>) -> Response {
@@ -374,7 +384,7 @@ pub async fn edit_handler(
 ) -> AppResult<(StatusCode, Json<Value>)> {
     // Audio-only exports have no video filter graph. Canonicalise video-only
     // colour fields before validation, durable dedupe, and cache identity.
-    if req.format.as_deref() == Some("mp3") {
+    if matches!(req.format.as_deref(), Some("mp3" | "wav")) {
         req.lut = None;
         req.curves = None;
         req.chroma_key = None;
@@ -547,7 +557,7 @@ fn spawn_edit_job(
                 Some(g) => g,
                 None => return,
             };
-        if finish_from_render_cache(&st, &jid, &cache_key).await {
+        if finish_from_render_cache(&st, &jid, &cache_key, None).await {
             return;
         }
 
@@ -573,7 +583,6 @@ fn spawn_edit_job(
         let (tx, rx) = mpsc::unbounded_channel::<f64>();
         let drain = spawn_progress_drain(st.clone(), jid.clone(), rx);
 
-        let sources = st.sources_dir();
         let outputs = st.outputs_dir();
         let req = req;
         let requested_format =
@@ -584,7 +593,13 @@ fn spawn_edit_job(
         let staging_output = st.staging_dir().join(format!("{out_id}.render.{ext}"));
 
         let outcome = async {
-            let input = tools::find_source(&sources, &req.video_id).await?;
+            let entry = st
+                .library
+                .get(&req.video_id)
+                .await
+                .filter(|entry| entry.kind == "source")
+                .ok_or_else(|| anyhow::anyhow!("source {} not found", req.video_id))?;
+            let input = st.library.resolve_media_path(&entry).await?;
             let probe = tools::probe_video(&st.process_runtime, &input).await?;
             let source_fingerprint = Fingerprint::digest(req.video_id.as_bytes());
             let source = SourceMediaMetadata::new_with_audio(
@@ -682,6 +697,7 @@ fn render_conformance_spec(
         OutputFormat::Gif => ["gif"].as_slice(),
         OutputFormat::Png | OutputFormat::Jpg => ["image2"].as_slice(),
         OutputFormat::Mp3 => ["mp3"].as_slice(),
+        OutputFormat::Wav => ["wav"].as_slice(),
     };
     let still = matches!(format, OutputFormat::Png | OutputFormat::Jpg);
     let duration = if still {
@@ -695,11 +711,13 @@ fn render_conformance_spec(
     };
     ConformanceSpec {
         formats: formats.iter().map(|value| (*value).to_owned()).collect(),
-        required_streams: BTreeSet::from([if format == OutputFormat::Mp3 {
-            StreamKind::Audio
-        } else {
-            StreamKind::Video
-        }]),
+        required_streams: BTreeSet::from([
+            if matches!(format, OutputFormat::Mp3 | OutputFormat::Wav) {
+                StreamKind::Audio
+            } else {
+                StreamKind::Video
+            },
+        ]),
         expected_duration: MediaTime::new((duration * 1_000.0).round() as i64, time_base)
             .expect("fixed millisecond time base is valid"),
         duration_tolerance: MediaTime::new(if still { 1_000 } else { 1_100 }, time_base)
@@ -715,8 +733,8 @@ async fn resolve_render_resources(
     request: &EditRequest,
 ) -> anyhow::Result<RenderResources> {
     // Audio-only exports do not compile a video filter graph. Do not require or
-    // grant read access to a LUT that the MP3 command cannot consume.
-    if request.format.as_deref() == Some("mp3") {
+    // grant read access to a LUT that an audio-only command cannot consume.
+    if matches!(request.format.as_deref(), Some("mp3" | "wav")) {
         return Ok(RenderResources::default());
     }
     let Some(selection) = request.lut.as_ref() else {
@@ -837,7 +855,12 @@ async fn apply_job_event(st: &AppState, jid: &str, event: JobEvent) -> bool {
     }
 }
 
-async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> bool {
+async fn finish_from_render_cache(
+    st: &AppState,
+    jid: &str,
+    cache_key: &str,
+    actor: Option<&str>,
+) -> bool {
     let Ok(Some((output, filename))) = st.db.cache_get(cache_key).await else {
         st.telemetry
             .record(TelemetryEvent::CacheLookup { result: "miss" });
@@ -854,7 +877,15 @@ async fn finish_from_render_cache(st: &AppState, jid: &str, cache_key: &str) -> 
         let _ = st.db.cache_delete(cache_key).await;
         return false;
     }
+    let output_id = output["id"].as_str().map(str::to_owned);
     let updated = apply_job_event(st, jid, JobEvent::Succeeded { result: output }).await;
+    if updated {
+        if let (Some(actor), Some(output_id)) = (actor, output_id.as_deref()) {
+            if let Err(error) = st.db.grant_output_access(output_id, actor).await {
+                tracing::error!(%error, %output_id, "grant cached output access");
+            }
+        }
+    }
     st.telemetry
         .record(TelemetryEvent::CacheLookup { result: "hit" });
     st.clear_cancel(jid).await;
@@ -1388,7 +1419,8 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(finish_from_render_cache(&st, "valid", "valid-key").await);
+        assert!(finish_from_render_cache(&st, "valid", "valid-key", Some("publisher")).await);
+        assert!(st.db.can_access_output("out", "publisher").await.unwrap());
         let job = st.get_job("valid").await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Done);
         assert_eq!(job.progress, Some(100.0));
@@ -1403,7 +1435,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(!finish_from_render_cache(&st, "unsafe", "unsafe-key").await);
+        assert!(!finish_from_render_cache(&st, "unsafe", "unsafe-key", None).await);
         assert!(st.db.cache_get("unsafe-key").await.unwrap().is_none());
         assert_eq!(
             st.get_job("unsafe").await.unwrap().unwrap().status,
@@ -1419,7 +1451,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(!finish_from_render_cache(&st, "missing", "missing-key").await);
+        assert!(!finish_from_render_cache(&st, "missing", "missing-key", None).await);
         assert!(st.db.cache_get("missing-key").await.unwrap().is_none());
         assert_eq!(
             st.get_job("missing").await.unwrap().unwrap().status,

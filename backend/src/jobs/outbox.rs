@@ -8,6 +8,7 @@ pub enum JobKind {
     Edit,
     Composition,
     Proxy,
+    Publish,
 }
 
 impl JobKind {
@@ -17,6 +18,7 @@ impl JobKind {
             Self::Edit => "edit",
             Self::Composition => "composition",
             Self::Proxy => "proxy",
+            Self::Publish => "publish",
         }
     }
 
@@ -26,6 +28,7 @@ impl JobKind {
             "edit" => Ok(Self::Edit),
             "composition" => Ok(Self::Composition),
             "proxy" => Ok(Self::Proxy),
+            "publish" => Ok(Self::Publish),
             _ => anyhow::bail!("unknown job kind {token}"),
         }
     }

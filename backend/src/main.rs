@@ -65,9 +65,14 @@ async fn main() -> anyhow::Result<()> {
         ffmpeg_filters,
     };
 
-    let lib = Library::load(storage.clone()).await;
+    let mut lib = Library::load(storage.clone()).await;
+    if let Some(url) = config.object_store_url.as_deref() {
+        let object_storage = video_kadr_backend::object_storage::SourceObjectStore::from_url(url)?;
+        lib = lib.with_object_storage(object_storage);
+        tracing::info!("S3-compatible source backup enabled");
+    }
     let db = Db::open(&storage).await?;
-    let state = AppState::new_with_resource_limits(
+    let mut state = AppState::new_with_resource_limits(
         storage.clone(),
         config.max_concurrent_jobs,
         tool_info,
@@ -79,11 +84,46 @@ async fn main() -> anyhow::Result<()> {
         config.resource_classes,
     )?
     .with_workload_config(config.workload);
+    if let Some(api_key) = config.pexels_api_key {
+        state = state.with_stock_catalog(video_kadr_backend::stock_catalog::PexelsClient::new(
+            api_key,
+        )?);
+        tracing::info!("Pexels stock catalog enabled");
+    }
+    if let (Some(config), Some(token_key)) = (config.youtube_oauth, config.youtube_token_key) {
+        state = state.with_youtube_oauth(
+            video_kadr_backend::youtube::YouTubeOAuthClient::new(config)?,
+            video_kadr_backend::youtube::TokenCipher::new(token_key)?,
+        );
+        tracing::info!("YouTube OAuth publishing enabled");
+    }
     // Reconcile durable jobs and rebuild derived state before workers can add
     // new media; incremental indexing owns every change after this boundary.
     state.recover_jobs().await;
     state.sync_media_search().await;
     state.cleanup_thumbnail_cache().await;
+    if state.library.has_object_storage() {
+        let backup_library = state.library.clone();
+        let backup_shutdown = state.shutdown_token();
+        state.spawn_task(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5 * 60));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = backup_shutdown.cancelled() => break,
+                    _ = interval.tick() => {
+                        let report = backup_library.sync_source_backups().await;
+                        tracing::info!(
+                            uploaded = report.uploaded,
+                            unchanged = report.unchanged,
+                            failed = report.failed,
+                            "source backup reconciliation finished"
+                        );
+                    }
+                }
+            }
+        });
+    }
     video_kadr_backend::handlers::start_job_dispatcher(&state);
     state.spawn_task(video_kadr_backend::jobs::run_quarantine_cleanup(
         state.job_store.clone(),

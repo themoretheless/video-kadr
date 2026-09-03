@@ -32,6 +32,81 @@ beforeEach(() => {
 afterEach(() => target.remove())
 
 describe('AutoBeatPanel', () => {
+  it('offers reverse video source audio and excludes freeze clips', async () => {
+    const base = fixture()
+    const document: Composition = {
+      ...base,
+      sources: {
+        ...base.sources,
+        video: { id: 'video', kind: 'video', durationTicks: 4 * second, width: 640, height: 360, hasAudio: true },
+      },
+      tracks: [
+        {
+          id: 'video-track', kind: 'video', name: 'Video', locked: false, hidden: false, muted: false,
+          transitions: [],
+          clips: [
+            {
+              id: 'reverse-video', kind: 'video', sourceId: 'video', timelineStartTicks: 0,
+              sourceInTicks: 0, sourceOutTicks: 2 * second, speed: 1,
+              playbackMode: { mode: 'reverse' },
+              transform: { x: 0, y: 0, width: 640, height: 360, fit: 'contain' }, opacity: 1,
+              sourceAudioEnabled: true, audioGain: 1,
+            },
+            {
+              id: 'freeze-video', kind: 'video', sourceId: 'video', timelineStartTicks: 2 * second,
+              sourceInTicks: 2 * second, sourceOutTicks: 4 * second, speed: 1,
+              playbackMode: { mode: 'freeze', sourceTick: 3 * second },
+              transform: { x: 0, y: 0, width: 640, height: 360, fit: 'contain' }, opacity: 1,
+              sourceAudioEnabled: true, audioGain: 1,
+            },
+          ],
+        },
+        ...base.tracks,
+      ],
+    }
+    const component = mount(AutoBeatPanel, {
+      target,
+      props: { document, media: { video: { url: '/files/sources/video.mp4' } }, onapply: vi.fn() },
+    })
+    await tick()
+
+    const options = [...target.querySelectorAll('option')].map((option) => option.value)
+    expect(options).toContain('reverse-video')
+    expect(options).not.toContain('freeze-video')
+    await unmount(component)
+  })
+
+  it('offers preserved speed-ramp audio and excludes muted speed-ramp audio', async () => {
+    const base = fixture()
+    const track = base.tracks[0]!
+    if (track.kind !== 'audio') throw new Error('fixture')
+    const rampPoints = [
+      { sourceProgressTick: 0, speed: 1 },
+      { sourceProgressTick: 5 * second, speed: 2 },
+      { sourceProgressTick: 10 * second, speed: 2 },
+    ]
+    const document: Composition = {
+      ...base,
+      tracks: [{
+        ...track,
+        clips: [
+          { ...track.clips[0]!, id: 'ramp-audio', speedRamp: { interpolation: 'linear', points: rampPoints, audioPolicy: 'preserve_pitch' } },
+          { ...track.clips[0]!, id: 'muted-ramp-audio', timelineStartTicks: 10 * second, speedRamp: { interpolation: 'linear', points: rampPoints, audioPolicy: 'mute' } },
+        ],
+      }],
+    }
+    const component = mount(AutoBeatPanel, {
+      target,
+      props: { document, media: { music: { url: '/files/sources/music.wav' } }, onapply: vi.fn() },
+    })
+    await tick()
+
+    const options = [...target.querySelectorAll('option')].map((option) => option.value)
+    expect(options).toContain('ramp-audio')
+    expect(options).not.toContain('muted-ramp-audio')
+    await unmount(component)
+  })
+
   it('analyzes a local waveform and applies timeline markers', async () => {
     const buckets = Array.from({ length: 200 }, (_, index) => ({ min: -0.1, max: 0.1, rms: index % 10 === 0 ? 0.95 : 0.02 }))
     const waveformCache = { load: vi.fn().mockResolvedValue({ durationSeconds: 10, sampleRate: 48_000, buckets }) }

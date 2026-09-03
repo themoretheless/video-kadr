@@ -21,11 +21,13 @@ const COMPOSITION_DOCUMENT_SCHEMA_VERSION: u64 = 1;
 #[serde(rename_all = "camelCase")]
 pub struct CompositionProject {
     pub id: String,
+    pub space_id: Option<String>,
     pub name: String,
     pub schema_version: u32,
     pub mode: String,
     pub document: Value,
     pub source_ids: Vec<String>,
+    pub revision: u64,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -33,10 +35,12 @@ pub struct CompositionProject {
 #[derive(Debug)]
 struct ProjectRow {
     id: String,
+    space_id: Option<String>,
     name: String,
     schema_version: u32,
     mode: String,
     document: Value,
+    revision: u64,
     created_at: i64,
     updated_at: i64,
 }
@@ -51,8 +55,33 @@ pub(super) async fn migrate(pool: &sqlx::SqlitePool) -> Result<()> {
            mode TEXT NOT NULL CHECK (mode = 'composition'), \
            created_at INTEGER NOT NULL, \
            updated_at INTEGER NOT NULL, \
+           revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0), \
            updated_order INTEGER NOT NULL \
          )",
+    )
+    .execute(pool)
+    .await?;
+    let columns = sqlx::query("PRAGMA table_info(composition_projects)")
+        .fetch_all(pool)
+        .await?;
+    if !columns
+        .iter()
+        .any(|row| row.get::<String, _>("name") == "space_id")
+    {
+        sqlx::query("ALTER TABLE composition_projects ADD COLUMN space_id TEXT REFERENCES collaboration_spaces(id) ON DELETE RESTRICT")
+            .execute(pool)
+            .await?;
+    }
+    if !columns
+        .iter()
+        .any(|row| row.get::<String, _>("name") == "revision")
+    {
+        sqlx::query("ALTER TABLE composition_projects ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0)")
+            .execute(pool)
+            .await?;
+    }
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_composition_projects_space ON composition_projects(space_id, updated_order DESC)",
     )
     .execute(pool)
     .await?;
@@ -90,16 +119,64 @@ impl Db {
         document: &Value,
         source_ids: &[String],
     ) -> Result<CompositionProject> {
+        self.create_composition_project_with_owner(name, document, source_ids, None)
+            .await
+    }
+
+    pub async fn create_owned_composition_project(
+        &self,
+        name: &str,
+        document: &Value,
+        source_ids: &[String],
+        owner: &str,
+    ) -> Result<CompositionProject> {
+        self.create_composition_project_with_owner(name, document, source_ids, Some(owner))
+            .await
+    }
+
+    pub async fn create_space_composition_project(
+        &self,
+        name: &str,
+        document: &Value,
+        source_ids: &[String],
+        owner: &str,
+        space_id: &str,
+    ) -> Result<CompositionProject> {
+        let role: Option<String> = sqlx::query_scalar(
+            "SELECT role FROM collaboration_space_members WHERE space_id = ? AND actor = ?",
+        )
+        .bind(space_id)
+        .bind(owner)
+        .fetch_optional(&self.pool)
+        .await?;
+        ensure!(
+            matches!(role.as_deref(), Some("owner" | "editor")),
+            "space role cannot create project"
+        );
+        self.create_composition_project_with_space(name, document, source_ids, owner, space_id)
+            .await
+    }
+
+    async fn create_composition_project_with_owner(
+        &self,
+        name: &str,
+        document: &Value,
+        source_ids: &[String],
+        owner: Option<&str>,
+    ) -> Result<CompositionProject> {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let id = Uuid::new_v4().to_string();
         let now = now_secs() as i64;
         let mut transaction = self.pool.begin().await?;
+        if owner.is_some() {
+            claim_project_sources(&mut transaction, None, source_ids, owner.unwrap()).await?;
+        }
         let row = sqlx::query(
             "INSERT INTO composition_projects \
                (id, name, document_json, schema_version, mode, created_at, updated_at, updated_order) \
              VALUES (?, ?, ?, ?, ?, ?, ?, \
                COALESCE((SELECT MAX(updated_order) + 1 FROM composition_projects), 1)) \
-             RETURNING id, name, document_json, schema_version, mode, created_at, updated_at",
+             RETURNING id, space_id, name, document_json, schema_version, mode, revision, created_at, updated_at",
         )
         .bind(id)
         .bind(name)
@@ -112,8 +189,145 @@ impl Db {
         .await?;
         replace_sources(&mut transaction, row.try_get("id")?, source_ids).await?;
         let project = row_to_composition_project(row, source_ids.to_vec())?;
+        if let Some(owner) = owner {
+            sqlx::query(
+                "INSERT INTO composition_project_members \
+                 (project_id, actor, role, created_at, updated_at) VALUES (?, ?, 'owner', ?, ?)",
+            )
+            .bind(&project.id)
+            .bind(owner)
+            .bind(now)
+            .bind(now)
+            .execute(&mut *transaction)
+            .await?;
+        }
         transaction.commit().await?;
         Ok(project)
+    }
+
+    async fn create_composition_project_with_space(
+        &self,
+        name: &str,
+        document: &Value,
+        source_ids: &[String],
+        owner: &str,
+        space_id: &str,
+    ) -> Result<CompositionProject> {
+        let document_json = validate_storage_input(name, document, source_ids)?;
+        let id = Uuid::new_v4().to_string();
+        let now = now_secs() as i64;
+        let mut transaction = self.pool.begin().await?;
+        claim_project_sources(&mut transaction, Some(space_id), source_ids, owner).await?;
+        let row = sqlx::query(
+            "INSERT INTO composition_projects (id, space_id, name, document_json, schema_version, mode, created_at, updated_at, updated_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(updated_order) + 1 FROM composition_projects), 1)) RETURNING id, space_id, name, document_json, schema_version, mode, revision, created_at, updated_at",
+        )
+        .bind(id).bind(space_id).bind(name).bind(document_json)
+        .bind(i64::from(COMPOSITION_PROJECT_SCHEMA_VERSION)).bind(COMPOSITION_PROJECT_MODE)
+        .bind(now).bind(now).fetch_one(&mut *transaction).await?;
+        let project_id: String = row.try_get("id")?;
+        replace_sources(&mut transaction, &project_id, source_ids).await?;
+        sqlx::query(
+            "INSERT INTO composition_project_members (project_id, actor, role, created_at, updated_at) SELECT ?, actor, CASE WHEN actor = ? THEN 'owner' WHEN role IN ('owner','editor') THEN 'editor' ELSE 'viewer' END, ?, ? FROM collaboration_space_members WHERE space_id = ?",
+        )
+        .bind(&project_id).bind(owner).bind(now).bind(now).bind(space_id)
+        .execute(&mut *transaction).await?;
+        let project = row_to_composition_project(row, source_ids.to_vec())?;
+        transaction.commit().await?;
+        Ok(project)
+    }
+
+    pub async fn list_composition_projects_for(
+        &self,
+        actor: &str,
+    ) -> Result<Vec<CompositionProject>> {
+        let mut transaction = self.pool.begin().await?;
+        let rows = sqlx::query(
+            "SELECT p.id, p.space_id, p.name, p.document_json, p.schema_version, p.mode, p.revision, p.created_at, p.updated_at \
+             FROM composition_projects p JOIN composition_project_members m ON m.project_id = p.id \
+             WHERE m.actor = ? ORDER BY p.updated_order DESC",
+        )
+        .bind(actor)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let mut projects = Vec::with_capacity(rows.len());
+        for row in rows {
+            let parsed = row_to_project_row(row)?;
+            let source_ids = composition_project_sources(&mut transaction, &parsed.id).await?;
+            projects.push(parsed.with_sources(source_ids)?);
+        }
+        transaction.commit().await?;
+        Ok(projects)
+    }
+
+    pub async fn get_composition_project_for(
+        &self,
+        id: &str,
+        actor: &str,
+    ) -> Result<Option<CompositionProject>> {
+        let mut transaction = self.pool.begin().await?;
+        let row = sqlx::query(
+            "SELECT p.id, p.space_id, p.name, p.document_json, p.schema_version, p.mode, p.revision, p.created_at, p.updated_at \
+             FROM composition_projects p JOIN composition_project_members m ON m.project_id = p.id \
+             WHERE p.id = ? AND m.actor = ?",
+        )
+        .bind(id)
+        .bind(actor)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let Some(row) = row else {
+            transaction.commit().await?;
+            return Ok(None);
+        };
+        let parsed = row_to_project_row(row)?;
+        let source_ids = composition_project_sources(&mut transaction, &parsed.id).await?;
+        transaction.commit().await?;
+        Ok(Some(parsed.with_sources(source_ids)?))
+    }
+
+    pub async fn update_composition_project_for(
+        &self,
+        id: &str,
+        actor: &str,
+        name: &str,
+        document: &Value,
+        source_ids: &[String],
+        expected_revision: u64,
+    ) -> Result<Option<CompositionProject>> {
+        let role: Option<String> = sqlx::query_scalar(
+            "SELECT role FROM composition_project_members WHERE project_id = ? AND actor = ?",
+        )
+        .bind(id)
+        .bind(actor)
+        .fetch_optional(&self.pool)
+        .await?;
+        ensure!(
+            matches!(role.as_deref(), Some("owner" | "editor")),
+            "role cannot edit composition project"
+        );
+        self.update_composition_project_at_revision(
+            id,
+            name,
+            document,
+            source_ids,
+            Some(expected_revision),
+        )
+        .await
+    }
+
+    pub async fn delete_composition_project_for(&self, id: &str, actor: &str) -> Result<bool> {
+        let allowed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM composition_projects project \
+             LEFT JOIN composition_project_members member ON member.project_id = project.id AND member.actor = ? \
+             LEFT JOIN collaboration_space_members space_member ON space_member.space_id = project.space_id AND space_member.actor = ? \
+             WHERE project.id = ? AND (member.role = 'owner' OR space_member.role = 'owner'))",
+        )
+        .bind(actor)
+        .bind(actor)
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await?;
+        ensure!(allowed, "role cannot delete composition project");
+        self.delete_composition_project(id).await
     }
 
     pub async fn update_composition_project(
@@ -123,15 +337,41 @@ impl Db {
         document: &Value,
         source_ids: &[String],
     ) -> Result<Option<CompositionProject>> {
+        self.update_composition_project_at_revision(id, name, document, source_ids, None)
+            .await
+    }
+
+    async fn update_composition_project_at_revision(
+        &self,
+        id: &str,
+        name: &str,
+        document: &Value,
+        source_ids: &[String],
+        expected_revision: Option<u64>,
+    ) -> Result<Option<CompositionProject>> {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let now = now_secs() as i64;
         let mut transaction = self.pool.begin().await?;
+        let project_space: Option<Option<String>> =
+            sqlx::query_scalar("SELECT space_id FROM composition_projects WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *transaction)
+                .await?;
+        if let Some(space_id) = project_space {
+            claim_project_sources(
+                &mut transaction,
+                space_id.as_deref(),
+                source_ids,
+                "project-update",
+            )
+            .await?;
+        }
         let row = sqlx::query(
             "UPDATE composition_projects SET \
-               name = ?, document_json = ?, schema_version = ?, mode = ?, updated_at = ?, \
+               name = ?, document_json = ?, schema_version = ?, mode = ?, updated_at = ?, revision = revision + 1, \
                updated_order = COALESCE((SELECT MAX(updated_order) + 1 FROM composition_projects), 1) \
-             WHERE id = ? \
-             RETURNING id, name, document_json, schema_version, mode, created_at, updated_at",
+             WHERE id = ? AND (? IS NULL OR revision = ?) \
+             RETURNING id, space_id, name, document_json, schema_version, mode, revision, created_at, updated_at",
         )
         .bind(name)
         .bind(document_json)
@@ -139,10 +379,19 @@ impl Db {
         .bind(COMPOSITION_PROJECT_MODE)
         .bind(now)
         .bind(id)
+        .bind(expected_revision.map(i64::try_from).transpose()?)
+        .bind(expected_revision.map(i64::try_from).transpose()?)
         .fetch_optional(&mut *transaction)
         .await?;
         let Some(row) = row else {
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM composition_projects WHERE id = ?)",
+            )
+            .bind(id)
+            .fetch_one(&mut *transaction)
+            .await?;
             transaction.rollback().await?;
+            ensure!(!exists, "stale composition project revision");
             return Ok(None);
         };
         replace_sources(&mut transaction, id, source_ids).await?;
@@ -154,7 +403,7 @@ impl Db {
     pub async fn list_composition_projects(&self) -> Result<Vec<CompositionProject>> {
         let mut transaction = self.pool.begin().await?;
         let rows = sqlx::query(
-            "SELECT id, name, document_json, schema_version, mode, created_at, updated_at \
+            "SELECT id, space_id, name, document_json, schema_version, mode, revision, created_at, updated_at \
              FROM composition_projects ORDER BY updated_order DESC",
         )
         .fetch_all(&mut *transaction)
@@ -172,7 +421,7 @@ impl Db {
     pub async fn get_composition_project(&self, id: &str) -> Result<Option<CompositionProject>> {
         let mut transaction = self.pool.begin().await?;
         let row = sqlx::query(
-            "SELECT id, name, document_json, schema_version, mode, created_at, updated_at \
+            "SELECT id, space_id, name, document_json, schema_version, mode, revision, created_at, updated_at \
              FROM composition_projects WHERE id = ?",
         )
         .bind(id)
@@ -212,6 +461,52 @@ impl Db {
             .await
             .map_err(Into::into)
     }
+
+    pub async fn composition_project_member_actors(&self, id: &str) -> Result<Vec<String>> {
+        sqlx::query_scalar(
+            "SELECT actor FROM composition_project_members WHERE project_id = ? ORDER BY actor",
+        )
+        .bind(id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+}
+
+async fn claim_project_sources(
+    transaction: &mut Transaction<'_, Sqlite>,
+    space_id: Option<&str>,
+    source_ids: &[String],
+    actor: &str,
+) -> Result<()> {
+    for source_id in source_ids {
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT space_id FROM collaboration_space_media WHERE source_id = ?",
+        )
+        .bind(source_id)
+        .fetch_optional(&mut **transaction)
+        .await?;
+        match (space_id, existing.as_deref()) {
+            (Some(expected), Some(actual)) => ensure!(
+                expected == actual,
+                "source belongs to another collaboration space"
+            ),
+            (None, Some(_)) => {
+                anyhow::bail!("scoped source cannot be used by an unscoped project")
+            }
+            (Some(space_id), None) => {
+                sqlx::query("INSERT INTO collaboration_space_media (space_id, source_id, created_by, created_at) VALUES (?, ?, ?, ?)")
+                    .bind(space_id)
+                    .bind(source_id)
+                    .bind(actor)
+                    .bind(i64::try_from(now_secs())?)
+                    .execute(&mut **transaction)
+                    .await?;
+            }
+            (None, None) => {}
+        }
+    }
+    Ok(())
 }
 
 impl ProjectRow {
@@ -222,11 +517,13 @@ impl ProjectRow {
         );
         Ok(CompositionProject {
             id: self.id,
+            space_id: self.space_id,
             name: self.name,
             schema_version: self.schema_version,
             mode: self.mode,
             document: self.document,
             source_ids,
+            revision: self.revision,
             created_at: self.created_at,
             updated_at: self.updated_at,
         })
@@ -346,10 +643,13 @@ fn row_to_project_row(row: SqliteRow) -> Result<ProjectRow> {
     );
     Ok(ProjectRow {
         id: row.try_get("id")?,
+        space_id: row.try_get("space_id")?,
         name: row.try_get("name")?,
         schema_version,
         mode,
         document: serde_json::from_str(&row.try_get::<String, _>("document_json")?)?,
+        revision: u64::try_from(row.try_get::<i64, _>("revision")?)
+            .context("invalid composition project revision")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })

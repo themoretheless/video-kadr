@@ -83,6 +83,30 @@ const HEALTH: [(Control, Enforcement); 6] = controls(
     Enforcement::NotApplicable,
     Enforcement::ServiceDeadline,
 );
+const PUBLIC_JSON: [(Control, Enforcement); 6] = controls(
+    Enforcement::Extractor,
+    Enforcement::NotApplicable,
+    Enforcement::ServiceConcurrency,
+    Enforcement::ServiceDeadline,
+);
+const AUTH_JSON: [(Control, Enforcement); 6] = controls(
+    Enforcement::Extractor,
+    Enforcement::Extractor,
+    Enforcement::ServiceConcurrency,
+    Enforcement::ServiceDeadline,
+);
+const AUTH_QUERY: [(Control, Enforcement); 6] = controls(
+    Enforcement::NotApplicable,
+    Enforcement::Extractor,
+    Enforcement::ServiceConcurrency,
+    Enforcement::ServiceDeadline,
+);
+const PUBLIC_QUERY: [(Control, Enforcement); 6] = controls(
+    Enforcement::NotApplicable,
+    Enforcement::NotApplicable,
+    Enforcement::ServiceConcurrency,
+    Enforcement::ServiceDeadline,
+);
 const MEDIA: [(Control, Enforcement); 6] = controls(
     Enforcement::NotApplicable,
     LOCAL,
@@ -91,6 +115,174 @@ const MEDIA: [(Control, Enforcement); 6] = controls(
 );
 
 pub const ROUTE_POLICIES: &[RoutePolicy] = &[
+    RoutePolicy {
+        method: "POST",
+        path: "/api/auth/register",
+        class: RouteClass::JsonCommand,
+        controls: PUBLIC_JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/auth/login",
+        class: RouteClass::JsonCommand,
+        controls: PUBLIC_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/auth/session",
+        class: RouteClass::Query,
+        controls: AUTH_QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/auth/logout",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/spaces",
+        class: RouteClass::Query,
+        controls: AUTH_QUERY,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/publish/youtube/status",
+        class: RouteClass::Query,
+        controls: AUTH_QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/publish/youtube/connect",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "DELETE",
+        path: "/api/publish/youtube/connect",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/publish/youtube/callback",
+        class: RouteClass::Query,
+        controls: PUBLIC_QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/publish/youtube",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/spaces",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "PATCH",
+        path: "/api/spaces/:id",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "DELETE",
+        path: "/api/spaces/:id",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/spaces/:id/members",
+        class: RouteClass::Query,
+        controls: AUTH_QUERY,
+    },
+    RoutePolicy {
+        method: "PUT",
+        path: "/api/spaces/:id/members/:actor",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "DELETE",
+        path: "/api/spaces/:id/members/:actor",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/spaces/:id/ownership-transfer",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/composition-projects/:id/reviews",
+        class: RouteClass::Query,
+        controls: AUTH_QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/composition-projects/:id/reviews",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/review-threads/:id/replies",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "PUT",
+        path: "/api/review-threads/:id/resolution",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/composition-projects/:id/members",
+        class: RouteClass::Query,
+        controls: AUTH_QUERY,
+    },
+    RoutePolicy {
+        method: "PUT",
+        path: "/api/composition-projects/:id/members/:actor",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/composition-projects/:id/ownership-transfer",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/composition-projects/:id/review-audit",
+        class: RouteClass::Query,
+        controls: AUTH_QUERY,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/composition-projects/:id/review-shares",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/composition-projects/:id/review-shares/:shareId/revoke",
+        class: RouteClass::JsonCommand,
+        controls: AUTH_JSON,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/review-shares/:token",
+        class: RouteClass::Query,
+        controls: PUBLIC_QUERY,
+    },
     RoutePolicy {
         method: "GET",
         path: "/metrics",
@@ -231,6 +423,12 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "GET",
+        path: "/api/library/:id/proxies/:key/content",
+        class: RouteClass::Query,
+        controls: QUERY,
+    },
+    RoutePolicy {
+        method: "GET",
         path: "/api/projects",
         class: RouteClass::Query,
         controls: QUERY,
@@ -263,43 +461,43 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
         method: "GET",
         path: "/api/composition-projects",
         class: RouteClass::Query,
-        controls: QUERY,
+        controls: AUTH_QUERY,
     },
     RoutePolicy {
         method: "POST",
         path: "/api/composition-projects",
         class: RouteClass::JsonCommand,
-        controls: JSON,
+        controls: AUTH_JSON,
     },
     RoutePolicy {
         method: "GET",
         path: "/api/composition-projects/:id",
         class: RouteClass::Query,
-        controls: QUERY,
+        controls: AUTH_QUERY,
     },
     RoutePolicy {
         method: "PUT",
         path: "/api/composition-projects/:id",
         class: RouteClass::JsonCommand,
-        controls: JSON,
+        controls: AUTH_JSON,
     },
     RoutePolicy {
         method: "DELETE",
         path: "/api/composition-projects/:id",
         class: RouteClass::JsonCommand,
-        controls: JSON,
+        controls: AUTH_JSON,
     },
     RoutePolicy {
         method: "GET",
         path: "/api/composition-projects/:id/archive",
         class: RouteClass::Query,
-        controls: QUERY,
+        controls: AUTH_QUERY,
     },
     RoutePolicy {
         method: "POST",
         path: "/api/composition-projects/import",
         class: RouteClass::Upload,
-        controls: JSON,
+        controls: AUTH_JSON,
     },
     RoutePolicy {
         method: "GET",
@@ -373,6 +571,7 @@ mod tests {
             ("GET", "/api/library/:id/proxies"),
             ("POST", "/api/library/:id/proxies"),
             ("DELETE", "/api/library/:id/proxies/:key"),
+            ("GET", "/api/library/:id/proxies/:key/content"),
             ("GET", "/api/composition-projects"),
             ("POST", "/api/composition-projects"),
             ("GET", "/api/composition-projects/:id"),
