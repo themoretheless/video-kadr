@@ -1,7 +1,7 @@
-homepage: "https://github.com/themoretheless/video-editor"
+homepage: "https://github.com/themoretheless/video-kadr"
 language: rust
 primary_contact: "d.o.mezhov@gmail.com"
-main_repo: "https://github.com/themoretheless/video-editor.git"
+main_repo: "https://github.com/themoretheless/video-kadr.git"
 fuzzing_engines:
   - libfuzzer
 sanitizers:

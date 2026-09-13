@@ -12,7 +12,7 @@ permissions:
   attestations: write
 
 env:
-  IMAGE: ghcr.io/themoretheless/video-editor/backend
+  IMAGE: ghcr.io/themoretheless/video-kadr/backend
 
 jobs:
   build-sign-attest:
