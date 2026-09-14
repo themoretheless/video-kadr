@@ -105,14 +105,17 @@ const manifest = JSON.parse(await readFile(new URL('.vite/manifest.json', distDi
 // measured ~4.3 KiB to the lazy CompositionWorkspace chunk and ~1.1 KiB
 // aggregate JS (module boundaries + import graphs). Startup unchanged. Round
 // the affected lazy/aggregate ceilings by 5 / 2 / 2 KiB respectively.
+// Preview wipe dual-layer compare (2026-09-15) adds ~1.1 KiB aggregate JS and
+// ~1.2 KiB to the all-assets total with no startup change. Round only the
+// crossed aggregate JS and total ceilings by 2 KiB.
 const budgets = {
   initialJs: envBytes('BUNDLE_BUDGET_INITIAL_JS_GZIP', 'BUNDLE_BUDGET_JS_GZIP', 115 * 1024),
   initialCss: envBytes('BUNDLE_BUDGET_INITIAL_CSS_GZIP', 'BUNDLE_BUDGET_CSS_GZIP', 12 * 1024),
   initialTotal: envBytes('BUNDLE_BUDGET_INITIAL_TOTAL_GZIP', undefined, 125 * 1024),
   // Includes the delivery catalog and lazy In/Out range authoring workflow.
-  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 209.75 * 1024),
+  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 211.75 * 1024),
   allCss: envBytes('BUNDLE_BUDGET_ALL_CSS_GZIP', undefined, 17 * 1024),
-  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 226 * 1024),
+  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 228 * 1024),
   routeJsChunk: envBytes('BUNDLE_BUDGET_ROUTE_JS_CHUNK_GZIP', undefined, 84 * 1024),
   asyncJsChunk: envBytes('BUNDLE_BUDGET_ASYNC_JS_CHUNK_GZIP', undefined, 79.25 * 1024),
 }
