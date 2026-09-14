@@ -12,9 +12,11 @@
 
 **Важно про то, что именно рецензировалось.** Ревизия сделана от последнего
 стабильного закоммиченного состояния (`c1400e2` в `main`/`claude/awesome-blackburn-e85742`).
-В соседнем ворктри (`~/.codex/worktrees/c86c/video-editor`, тоже `main`) на
-момент ревизии шли **живые незакоммиченные правки** другой сессии (вынос
-`domain/edit.rs`/`ports/media_export.rs` из `handlers/mod.rs`/`tools/args.rs`) -
+В соседнем ворктри (исторический путь `~/.codex/worktrees/c86c/video-editor`,
+тоже `main`; каноническое дерево сейчас —
+`/Users/themoretheless/Documents/Sources/video-kadr`) на момент ревизии шли
+**живые незакоммиченные правки** другой сессии (вынос
+`domain/edit.rs`/`ports/media_export.rs` из `handlers/mod.rs`/`tools/args.rs`) —
 туда я не заходил и оценке это не подвергалось, потому что незавершённое
 состояние не является надёжной точкой отсчёта.
 

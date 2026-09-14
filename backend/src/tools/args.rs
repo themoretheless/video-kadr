@@ -400,20 +400,7 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
 
 fn atempo_filters(speed: f64) -> Vec<String> {
     debug_assert!(speed.is_finite() && (0.05..=16.0).contains(&speed));
-    let mut remaining = speed;
-    let mut filters = Vec::new();
-    while remaining > 2.0 {
-        filters.push("atempo=2.000000".to_owned());
-        remaining /= 2.0;
-    }
-    while remaining < 0.5 {
-        filters.push("atempo=0.500000".to_owned());
-        remaining *= 2.0;
-    }
-    if (remaining - 1.0).abs() > 1e-9 {
-        filters.push(format!("atempo={remaining:.6}"));
-    }
-    filters
+    crate::tools::ffmpeg_filters::atempo_filter_chain(speed)
 }
 
 fn db_to_linear(decibels: f64) -> f64 {

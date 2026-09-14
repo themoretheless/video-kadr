@@ -3627,20 +3627,7 @@ fn atempo_filters_with_rounding_tolerance(speed: f64) -> Result<Vec<String>> {
 }
 
 fn build_atempo_filters(speed: f64) -> Vec<String> {
-    let mut filters = Vec::new();
-    let mut remaining = speed;
-    while remaining > 2.0 + f64::EPSILON {
-        filters.push("atempo=2.000000".to_owned());
-        remaining /= 2.0;
-    }
-    while remaining < 0.5 - f64::EPSILON {
-        filters.push("atempo=0.500000".to_owned());
-        remaining /= 0.5;
-    }
-    if (remaining - 1.0).abs() > f64::EPSILON {
-        filters.push(format!("atempo={}", decimal(remaining)));
-    }
-    filters
+    crate::tools::ffmpeg_filters::atempo_filter_chain(speed)
 }
 
 #[derive(Debug, Default)]

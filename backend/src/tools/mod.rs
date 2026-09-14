@@ -6,6 +6,7 @@
 mod args;
 mod composition_args;
 mod egress_proxy;
+pub(crate) mod ffmpeg_filters;
 pub(crate) mod looks;
 mod net;
 pub mod proxy;

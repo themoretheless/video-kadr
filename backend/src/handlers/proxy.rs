@@ -35,15 +35,16 @@ use crate::tools;
 use super::jobs::{dispatch_job, JobLeaseHeartbeat};
 use super::{
     acquire_job_permit_or_cancelled, acquire_render_permit_or_cancelled, apply_job_event,
-    classify_job_error, mark_cancelled, mark_queued, mark_running, spawn_progress_drain,
+    mark_cancelled, mark_queued, mark_running, spawn_progress_drain,
 };
+use crate::jobs::classify_job_error;
 
 const PROXY_WORK_SCHEMA_VERSION: u32 = 1;
 const MAX_ACTIVE_PROXY_JOBS: u32 = 128;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ProxyWork {
+pub(crate) struct ProxyWork {
     schema_version: u32,
     source_id: String,
     source_fingerprint: Fingerprint,
@@ -352,7 +353,7 @@ pub(super) async fn cleanup_source_proxies(state: &AppState, source_id: &str) ->
     Ok(())
 }
 
-pub(super) fn spawn_proxy_job(
+pub(crate) fn spawn_proxy_job(
     state: AppState,
     job_id: String,
     work: ProxyWork,

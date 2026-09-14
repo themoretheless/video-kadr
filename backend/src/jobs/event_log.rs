@@ -95,6 +95,7 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             job.stage = Some(stage.clone());
             job.progress = Some(0.0);
             job.error = None;
+            job.error_kind = None;
         }
         JobEvent::Succeeded { result } => {
             if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
@@ -103,15 +104,17 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             job.status = JobStatus::Done;
             job.result = Some(result.clone());
             job.error = None;
+            job.error_kind = None;
             job.stage = None;
             job.progress = Some(100.0);
         }
-        JobEvent::Failed { message, .. } => {
+        JobEvent::Failed { kind, message } => {
             if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
                 return Err(TransitionError("only an open job can fail"));
             }
             job.status = JobStatus::Error;
             job.error = Some(message.clone());
+            job.error_kind = Some(kind.as_str().to_owned());
             job.stage = None;
             job.progress = None;
         }
@@ -129,6 +132,7 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             }
             job.status = JobStatus::Cancelled;
             job.error = None;
+            job.error_kind = None;
             job.stage = None;
             job.progress = None;
         }
@@ -138,6 +142,7 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             }
             job.status = JobStatus::Interrupted;
             job.error = Some(reason.clone());
+            job.error_kind = Some(ErrorKind::Interrupted.as_str().to_owned());
             job.stage = None;
             job.progress = None;
         }
@@ -148,6 +153,7 @@ pub fn apply(job: &mut Job, event: &JobEvent) -> Result<(), TransitionError> {
             job.status = JobStatus::Pending;
             job.result = None;
             job.error = None;
+            job.error_kind = None;
             job.stage = Some("deferred".into());
             job.progress = None;
         }
@@ -314,5 +320,21 @@ mod tests {
         .unwrap();
         assert_eq!(validation_failure.status, JobStatus::Pending);
         assert_eq!(validation_failure.stage.as_deref(), Some("deferred"));
+    }
+
+    #[test]
+    fn failed_event_sets_typed_error_kind_on_job() {
+        let mut job = Job::pending("job-1".into());
+        apply(
+            &mut job,
+            &JobEvent::Failed {
+                kind: ErrorKind::Security,
+                message: crate::messages::INVALID_URL.into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(job.status, JobStatus::Error);
+        assert_eq!(job.error.as_deref(), Some(crate::messages::INVALID_URL));
+        assert_eq!(job.error_kind.as_deref(), Some("security"));
     }
 }

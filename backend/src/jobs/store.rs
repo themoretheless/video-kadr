@@ -116,7 +116,7 @@ impl SqliteJobStore {
         let now = now_secs() as i64;
         let mut tx = self.db.pool().begin().await?;
         let rows = sqlx::query(
-            "SELECT j.id, j.status, j.result_json, j.error, j.stage, j.progress \
+            "SELECT j.id, j.status, j.result_json, j.error, j.error_kind, j.stage, j.progress \
              FROM jobs j WHERE NOT EXISTS \
                (SELECT 1 FROM job_events e WHERE e.job_id = j.id)",
         )
@@ -391,7 +391,7 @@ impl SqliteJobStore {
     ) -> Result<Vec<ActiveJobRequest>> {
         let limit = limit.clamp(1, 256);
         let rows = sqlx::query(
-            "SELECT j.id, j.status, j.result_json, j.error, j.stage, j.progress, \
+            "SELECT j.id, j.status, j.result_json, j.error, j.error_kind, j.stage, j.progress, \
                     r.payload_json \
              FROM jobs j JOIN job_requests r ON r.job_id = j.id \
              WHERE r.kind = ? AND r.payload_json <> 'null' \
@@ -580,7 +580,7 @@ impl SqliteJobStore {
         let now = now_secs() as i64;
         let mut tx = self.db.pool().begin().await?;
         let row = sqlx::query(
-            "SELECT j.id, j.status, j.result_json, j.error, j.stage, j.progress, \
+            "SELECT j.id, j.status, j.result_json, j.error, j.error_kind AS job_error_kind, j.stage, j.progress, \
                     a.attempt, a.error_kind \
              FROM jobs j JOIN job_attempts a ON a.job_id = j.id \
              JOIN job_requests r ON r.job_id = j.id AND r.payload_json <> 'null' \
@@ -635,7 +635,7 @@ impl SqliteJobStore {
         let now = now_secs() as i64;
         let mut tx = self.db.pool().begin().await?;
         let Some(row) = sqlx::query(
-            "SELECT j.id, j.status, j.result_json, j.error, j.stage, j.progress, \
+            "SELECT j.id, j.status, j.result_json, j.error, j.error_kind AS job_error_kind, j.stage, j.progress, \
                     a.attempt, a.error_kind \
              FROM jobs j JOIN job_attempts a ON a.job_id = j.id \
              JOIN job_requests r ON r.job_id = j.id AND r.payload_json <> 'null' \
@@ -698,7 +698,7 @@ impl SqliteJobStore {
     async fn schedule_due_retries_at(&self, now: i64) -> Result<Vec<Job>> {
         let mut tx = self.db.pool().begin().await?;
         let rows = sqlx::query(
-            "SELECT j.id, j.status, j.result_json, j.error, j.stage, j.progress, \
+            "SELECT j.id, j.status, j.result_json, j.error, j.error_kind AS job_error_kind, j.stage, j.progress, \
                     a.attempt, a.error_kind \
              FROM jobs j JOIN job_attempts a ON a.job_id = j.id \
              JOIN job_requests r ON r.job_id = j.id AND r.payload_json <> 'null' \
@@ -762,7 +762,7 @@ impl SqliteJobStore {
         let now = now_secs() as i64;
         let mut tx = self.db.pool().begin().await?;
         let Some(row) = sqlx::query(
-            "SELECT id, status, result_json, error, stage, progress FROM jobs \
+            "SELECT id, status, result_json, error, error_kind, stage, progress FROM jobs \
              WHERE id = ? AND status IN ('error', 'interrupted')",
         )
         .bind(job_id)
@@ -846,7 +846,7 @@ impl SqliteJobStore {
         let now = now_secs() as i64;
         let mut tx = self.db.pool().begin().await?;
         let rows = sqlx::query(
-            "SELECT j.id, j.status, j.result_json, j.error, j.stage, j.progress, \
+            "SELECT j.id, j.status, j.result_json, j.error, j.error_kind, j.stage, j.progress, \
                     o.delivery_count, o.job_id AS outbox_job_id, \
                     CASE WHEN r.payload_json <> 'null' THEN r.job_id END AS request_job_id \
              FROM jobs j LEFT JOIN job_outbox o ON o.job_id = j.id \
@@ -1012,16 +1012,17 @@ async fn append_event(
 async fn persist_snapshot(tx: &mut Transaction<'_, Sqlite>, job: &Job, now: i64) -> Result<()> {
     sqlx::query(
         "INSERT INTO jobs \
-         (id, status, result_json, error, stage, progress, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+         (id, status, result_json, error, error_kind, stage, progress, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
          ON CONFLICT(id) DO UPDATE SET status = excluded.status, result_json = excluded.result_json, \
-           error = excluded.error, stage = excluded.stage, progress = excluded.progress, \
-           updated_at = excluded.updated_at",
+           error = excluded.error, error_kind = excluded.error_kind, stage = excluded.stage, \
+           progress = excluded.progress, updated_at = excluded.updated_at",
     )
     .bind(&job.id)
     .bind(job.status.as_str())
     .bind(job.result.as_ref().map(serde_json::to_string).transpose()?)
     .bind(&job.error)
+    .bind(&job.error_kind)
     .bind(&job.stage)
     .bind(job.progress)
     .bind(now)
@@ -1118,6 +1119,10 @@ async fn insert_operator_action(
 }
 
 fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Result<Job> {
+    let error_kind = match row.try_get::<Option<String>, _>("job_error_kind") {
+        Ok(value) => value,
+        Err(_) => row.try_get("error_kind")?,
+    };
     Ok(Job {
         id: row.try_get("id")?,
         status: JobStatus::from_token(&row.try_get::<String, _>("status")?)?,
@@ -1126,6 +1131,7 @@ fn row_to_job(row: &sqlx::sqlite::SqliteRow) -> Result<Job> {
             .map(|json| serde_json::from_str(&json))
             .transpose()?,
         error: row.try_get("error")?,
+        error_kind,
         stage: row.try_get("stage")?,
         progress: row.try_get("progress")?,
     })

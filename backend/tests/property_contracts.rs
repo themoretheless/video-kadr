@@ -15,6 +15,7 @@ use video_kadr_backend::jobs::{
     replay, EnqueueOutcome, ErrorKind, JobEvent, JobKind, QueueLimits, SqliteJobStore,
 };
 use video_kadr_backend::model::EditRequest;
+#[cfg(feature = "spec-contracts")]
 use video_kadr_backend::render::chunks::{ChunkManifest, MediaParameters, SceneBoundary};
 use video_kadr_backend::runtime::cpu_pool::{CpuPool, CpuPoolConfig};
 use video_kadr_backend::services::render::{normalize_edit_request, EditPlan, SourceMediaMetadata};
@@ -77,6 +78,7 @@ fn generated_request(seed: u64) -> (EditRequest, SourceMediaMetadata) {
     )
 }
 
+#[cfg(feature = "spec-contracts")]
 fn chunk_parameters() -> MediaParameters {
     MediaParameters {
         container: "mp4".into(),
@@ -92,6 +94,7 @@ fn chunk_parameters() -> MediaParameters {
     }
 }
 
+#[cfg(feature = "spec-contracts")]
 #[test]
 fn generated_chunk_plans_are_exact_partitions_and_scene_order_invariant() {
     for seed in 1..=512_u64 {

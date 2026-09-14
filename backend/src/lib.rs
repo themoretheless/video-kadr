@@ -18,14 +18,17 @@ pub mod ingest;
 pub mod jobs;
 pub mod library;
 pub mod luts;
+pub mod messages;
 pub mod model;
 pub mod object_storage;
+#[cfg(feature = "spec-contracts")]
 pub mod packaging;
 pub mod ports;
 pub mod privacy;
 pub mod process_control;
 pub mod project_archive;
 pub mod reliability;
+#[cfg(feature = "spec-contracts")]
 pub mod render;
 pub mod runtime;
 pub mod services;

@@ -31,4 +31,6 @@
 # OS / editor
 .DS_Store
 .idea/
-/video-kadr
+.claude/memory/
+.claude/settings.local.json
+.claude/worktrees/

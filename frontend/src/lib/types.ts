@@ -218,6 +218,8 @@ export interface Job {
   status: JobStatus
   result?: unknown
   error?: string
+  /** Typed async failure class (`validation`, `security`, …). */
+  errorKind?: string
   /** 0..100, omitted by the backend when unknown. */
   progress?: number
   /** One of "queued" | "downloading" | "processing". */

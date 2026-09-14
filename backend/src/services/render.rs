@@ -221,6 +221,24 @@ impl EditPlan {
     }
 }
 
+/// Strip video-only colour fields for audio exports and drop zero-intensity LUTs
+/// before validation, dedupe, and plan compile (HTTP no longer owns this policy).
+pub fn canonicalize_export_request(req: &mut EditRequest) {
+    if matches!(req.format.as_deref(), Some("mp3" | "wav")) {
+        req.lut = None;
+        req.curves = None;
+        req.chroma_key = None;
+        req.hsl = None;
+        req.color_wheels = None;
+    } else if req
+        .lut
+        .as_ref()
+        .is_some_and(|lut| (0.0..=1e-9).contains(&lut.intensity))
+    {
+        req.lut = None;
+    }
+}
+
 /// Canonicalize a wire request at the same source-aware boundary used by the
 /// plan compiler. Exposed for deterministic property and adapter contract
 /// tests; callers still need `EditPlan::compile` before execution.
@@ -271,6 +289,7 @@ fn normalize_request(
     source: SourceMediaSpec,
     timeline_semantics: TimelineSemantics,
 ) -> anyhow::Result<()> {
+    canonicalize_export_request(edit);
     let duration = source.duration_seconds();
     edit.speed = finite_positive(edit.speed, "Недопустимая скорость")?.clamp(0.05, 16.0);
     edit.volume = finite_non_negative(edit.volume, "Недопустимая громкость")?.clamp(0.0, 4.0);
@@ -643,6 +662,63 @@ fn map_curve(points: Vec<crate::model::CurvePoint>) -> anyhow::Result<ToneCurve>
 /// Validate the wire-level colour payload before it is persisted as durable
 /// work. Source-dependent geometry is still validated when the full edit plan
 /// is compiled, but LUT/curve bounds do not need media metadata.
+/// Fail closed when the local FFmpeg build lacks filters required by the wire
+/// request. Call after `validate_color_grade_request` / canonicalize.
+pub fn validate_color_grade_capabilities(
+    ffmpeg_available: bool,
+    ffmpeg_filters: &[String],
+    request: &EditRequest,
+) -> anyhow::Result<()> {
+    let has_filter =
+        |name: &str| ffmpeg_available && ffmpeg_filters.iter().any(|candidate| candidate == name);
+    if request.curves.is_some() && !has_filter("curves") {
+        anyhow::bail!(crate::messages::FILTER_CURVES_UNAVAILABLE);
+    }
+    if request.hsl.is_some() && !has_filter("huesaturation") {
+        anyhow::bail!(crate::messages::FILTER_HSL_UNAVAILABLE);
+    }
+    if request.color_wheels.is_some() && !has_filter("colorbalance") {
+        anyhow::bail!(crate::messages::FILTER_COLOR_WHEELS_UNAVAILABLE);
+    }
+    if request.audio_eq.is_some() && !has_filter("equalizer") {
+        anyhow::bail!(crate::messages::FILTER_AUDIO_EQ_UNAVAILABLE);
+    }
+    if request.pan.abs() > 1e-9 && (!has_filter("aformat") || !has_filter("stereotools")) {
+        anyhow::bail!(crate::messages::FILTER_PAN_UNAVAILABLE);
+    }
+    if request.compressor.is_some() && !has_filter("acompressor") {
+        anyhow::bail!(crate::messages::FILTER_COMPRESSOR_UNAVAILABLE);
+    }
+    if request.limiter.is_some() && !has_filter("alimiter") {
+        anyhow::bail!(crate::messages::FILTER_LIMITER_UNAVAILABLE);
+    }
+    if let Some(chroma_key) = &request.chroma_key {
+        if !has_filter("chromakey") {
+            anyhow::bail!(crate::messages::FILTER_CHROMA_KEY_UNAVAILABLE);
+        }
+        if chroma_key.spill_suppression > 1e-9 && !has_filter("despill") {
+            anyhow::bail!(crate::messages::FILTER_DESPILL_UNAVAILABLE);
+        }
+    }
+    if let Some(lut) = request.lut.as_ref().filter(|lut| lut.intensity > 1e-9) {
+        if !has_filter("lut3d") {
+            anyhow::bail!(crate::messages::FILTER_LUT3D_UNAVAILABLE);
+        }
+        if lut.intensity < 1.0 - 1e-9 && !has_filter("blend") {
+            anyhow::bail!(crate::messages::FILTER_LUT_BLEND_UNAVAILABLE);
+        }
+    }
+    Ok(())
+}
+
+/// Convenience wrapper used by HTTP handlers that hold `ToolInfo`.
+pub fn validate_color_grade_capabilities_for_tools(
+    tools: &crate::state::ToolInfo,
+    request: &EditRequest,
+) -> anyhow::Result<()> {
+    validate_color_grade_capabilities(tools.ffmpeg, &tools.ffmpeg_filters, request)
+}
+
 pub fn validate_color_grade_request(request: &EditRequest) -> anyhow::Result<()> {
     anyhow::ensure!(
         request.pan.is_finite() && (-1.0..=1.0).contains(&request.pan),

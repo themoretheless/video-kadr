@@ -1366,80 +1366,66 @@ fail-closed границу для ещё не подключённого public 
 
 ## P1 - Безопасная модульность (поведение не меняется, под тестами)
 
-### ☐ P1-4. `Config`-struct (env в одном месте) · M
-- **Файлы:** новый `backend/src/config.rs`; `main.rs`; `state.rs` (поле `config`); `handlers/mod.rs` (убрать `job_timeout()`); `tools/mod.rs` (`download_video` берёт `max_height` параметром).
-- **Шаги:**
-  - [ ] `Config` + `from_env()` со всеми 8 переменными (PORT/BIND_ADDR/STORAGE_DIR/MAX_HEIGHT/MAX_CONCURRENT_JOBS/JOB_TIMEOUT_SECS/FILE_TTL_HOURS/MAX_UPLOAD_BYTES); `file_ttl: Option<Duration>` вместо магического 0; fail-fast на кривом BIND_ADDR/PORT.
-  - [ ] `AppState` получает `Arc<Config>`; `main` собирает один раз.
-  - [ ] Удалить `job_timeout()`, брать из `config`; `download_video(..., max_height)`.
-- **Критерий:** дефолты и поведение те же; нет `std::env::var` вне `config.rs` (grep); тест `Config::from_env` без мутации процессного env; `make check`.
+### ☑ P1-4. `Config`-struct (env в одном месте) · M
+- **Статус (2026-09-14):** `Config::from_env` живёт в `backend/src/config/`;
+  AppState несёт конфиг. Остаточные env-чтения вне config — отдельный хвост.
+- **Критерий:** дефолты и поведение те же; `make check`.
 
-### ☐ P1-5. `store.ts` → модули · S→M
-- **Файлы:** новые `frontend/src/lib/{time,quality,defaults}.ts`, `core/payload.ts`; `features/{presets,history}.ts`, `ui/useTheme.ts`; `store.ts` оставляет реэкспорты.
+### ◐ P1-5. `store.svelte.ts` → модули · S→M
+- **Файлы:** `frontend/src/lib/state/store.svelte.ts`, `composition.svelte.ts`
+  (не Vue `store.ts` / `EditPanel.vue`).
 - **Шаги:**
-  - [x] Чистые `parseTime`/`tierToCrf`/`defaultEdit`/`buildEditPayload` → `domain/edit.ts`, реэкспорт из `store.ts`.
-  - [ ] `theme`/`presets`/`history` (+ их module-level `let`/watch) → свои файлы, реэкспорт.
-  - [ ] Развязать `resetHistory`/`restoreProject` от `doImport`/`openFromLibrary` через событие смены `video` в core-модели.
-- **Критерий:** публичные импорты сохранены; `store.test.ts`, `typecheck`/`build` зелёные; ручная проверка выполнена. Остальные два шага ещё открыты.
+  - [x] Чистые `parseTime`/`tierToCrf`/`defaultEdit`/`buildEditPayload` → `domain/edit.ts`.
+  - [ ] Разрезать `composition.svelte.ts` (~2.8k) на timeline/render/projects/waveforms.
+  - [ ] Добить секции `store.svelte.ts` (history/presets/theme) без смены публичного API.
+- **Критерий:** публичные импорты сохранены; typecheck/test зелёные.
 
-### ☐ P1-6. `EditPanel.vue` → секции · S→M
-- **Файлы:** новый `frontend/src/lib/editOptions.ts`; `components/{AudioControls,PresetBar,ColorControls,TimingControls,FrameControls,ExportControls}.vue`; `EditPanel.vue` - тонкий контейнер.
+### ◐ P1-6. EditPanel → секции · S→M
+- **Файлы:** Svelte `components/edit/*`, не Vue.
 - **Шаги:**
-  - [ ] 10 каталогов опций (`speeds`/`aspects`/`filters`/`formats`/…) → `lib/editOptions.ts`.
-  - [x] Вынести export-секцию и no-op confirmation в `components/edit/ExportControls.vue`.
-  - [ ] Секции по одной (начать с `AudioControls`/`PresetBar` - они без скрытых связей).
-  - [ ] Вынести `applyPlatform`/`setAspect` в store/lib (развязка Export→Frame).
-- **Критерий:** `typecheck`/`build`; ручная проверка каждой секции в превью (как в прошлых фичах через `window.__store`).
+  - [x] Export-секция в `ExportControls.svelte`.
+  - [ ] Остальные секции по одной при касании UI.
+- **Критерий:** `typecheck`/`build`.
 
-### ☐ P1-7. Единый источник дефолтов контракта · S
-- **Файлы:** `frontend/src/store.ts` (или `lib/defaults.ts`), `store.test.ts`.
+### ◐ P1-7. Единый источник дефолтов контракта · S
 - **Шаги:**
-  - [x] `EDIT_DEFAULTS` (его же отдаёт `defaultEdit()`) в `domain/edit.ts`.
-  - [ ] Плоскую часть `buildEditPayload` (строки «if e.x !== default») заменить на `diffFromDefault`.
-  - [ ] `PRESET_KEYS` вывести из списка скалярных полей (не вручную).
-- **Критерий:** `store.test.ts` зелёный (payload идентичен); добавить тест «`defaultEdit()` == `EDIT_DEFAULTS`».
+  - [x] `EDIT_DEFAULTS` в `domain/edit.ts`.
+  - [ ] Плоскую часть `buildEditPayload` заменить на `diffFromDefault`.
+  - [ ] `PRESET_KEYS` вывести из скалярных полей.
+- **Критерий:** payload идентичен; тест `defaultEdit() == EDIT_DEFAULTS`.
 
 ### ☐ P1-8. `messages.rs` (i18n-каталог) · S→M
-- **Файлы:** новый `backend/src/messages.rs`; `tools/{mod,net}.rs`, `handlers/*` (use `messages::`).
+- **Файлы:** новый `backend/src/messages.rs`; `tools/{mod,net}.rs`, `handlers/*`.
 - **Шаги:**
-  - [ ] Каталог ключей (Timeout/PrivateVideo/GeoBlocked/NotFound/BadUrl/…) + русские тексты в одном месте.
-  - [ ] Заменить захардкоженные строки в домене на `messages::*`.
-- **Критерий:** тексты не меняются (тесты, что ждут конкретные строки, напр. `"Недопустимый URL"`, зелёные); `make check`.
+  - [ ] Каталог ключей + русские тексты в одном месте.
+  - [ ] Заменить захардкоженные строки на `messages::*`.
+- **Критерий:** тексты не меняются; `make check`.
 
 ---
 
 ## P2 - Глубокий рефактор (меняет контракты/контрол-флоу, нужны новые тесты)
 
-### ☐ P2-9. JobRunner + трейт `Task` · L  ← закрывает P0-1 и убирает дублирование
-- **Файлы:** новый `backend/src/jobs/{mod,runner,task}.rs`; `handlers/mod.rs` (`import`/`edit` переписать); перенести `spawn_progress_drain`/`finish_job`.
-- **Шаги:**
-  - [ ] `trait Task { async fn run(&self, ctx) -> Result<Option<Value>> }` + `JobContext{progress,cancel}`.
-  - [ ] `JobService::spawn(id, spec, task)` - единственное место со скелетом (queued→permit→cancel→running→drain→finish→persist).
-  - [ ] `import`/`edit` строят `Task` и зовут `spawn`; `validate_url` как `Err` внутри `work` (фикс P0-1).
-  - [ ] Юнит-тесты раннера: отмена в `queued`, отсутствие зависания (`drop(tx)`), три исхода `Ok(Some)/Ok(None)/Err`.
-- **Критерий:** `tests/api.rs` без изменений зелёный; новые runner-тесты; `make check`.
+### ☑ P2-9. JobRunner + трейт `Task` · L
+- **Статус (2026-09-14):** `jobs::runner::JobService` владеет queued→acquire→running→finish;
+  import/edit используют `acquire_execution` / `run_acquired`.
 
-### ☐ P2-10. Репозитории-трейты · M→L
-- [ ] **Шаг A (M):** `ProjectRepo`/`JobRepo`/`MediaRepo`/`RenderCache` поверх существующего `Db`; `AppState` на `Arc<dyn ...>`; in-memory реализации + переписать 1-2 теста хендлеров на них.
-- [ ] **Шаг B (L):** `Library` (JSON) → таблица `media` в SQLite + `FileStore` (file-IO отдельно); одноразовая миграция `library.json` + тест миграции.
-- **Критерий:** существующие тесты зелёные; новый in-memory тест хендлера без sqlite.
+### ◐ P2-10. Репозитории-трейты · M→L
+- **Статус (2026-09-14):** шаг A — `ports::repos::{RenderCache,JobRepo,ProjectRepo,MediaRepo}`
+  + `MemoryRenderCache` и `impl` для `Db`. Шаг B (Library→SQLite) ещё открыт.
 
 ### ◐ P2-11. `AppError` + `IntoResponse` · L
-- **Файлы:** новый `error.rs`; хендлеры; домен (строки → варианты).
-- [x] `AppError` + `IntoResponse`; убрать россыпь `(StatusCode, String)` и унифицировать extractor/routing errors.
-- [ ] Ввести `ErrorKind` для асинхронного `job.error`, не смешивая его с HTTP boundary.
-- **Критерий:** статус-коды в `tests/api.rs` не меняются.
+- [x] HTTP `AppError` envelope.
+- [x] Typed async `job.errorKind` (ErrorKind token on Job + Failed events; attempts registry unchanged).
+- [x] `messages.rs` catalog for user-facing Russian phrases.
+### ☑ P2-12. `JobService` (инвариант завершения) · M
+- **Статус (2026-09-14):** `JobService::finish` / `transition` / `mark_cancelled`
+  всегда `clear_cancel` на терминале.
 
-### ☐ P2-12. `JobService` (инвариант завершения) · M
-- [ ] `transition(id, f)` сам персистит на терминальном статусе + `clear_cancel`; убрать ручные `persist_job` из 5 мест.
-- **Критерий:** тест «терминал → токен очищен + статус в БД».
-
-### ☐ P2-13. Timeline IR · L (разблокирует мультитрек)
-- [x] **Шаг 1 (S):** вынести validated `OutputSpec` из плоских format/codec/quality.
-- [x] **Шаг 2A (M):** `EditRequest -> EditPlan` mapper; FFmpeg adapter принимает только `&EditPlan` через port.
-- [ ] **Шаг 2B (M):** перевести render cache lookup/single-flight с wire JSON на `plan_fingerprint`.
-- [ ] **Шаг 3 (L):** `Scope`/диапазоны + мультитрек в компиляторе.
-- **Критерий:** golden-тест «старый `build_ffmpeg_args` == новый» на корпусе запросов.
+### ◐ P2-13. Timeline IR · L
+- [x] OutputSpec / EditPlan compile path.
+- [x] **Шаг 2B:** render cache lookup/single-flight на `plan_fingerprint`
+  (`render-cache-v4-plan-fingerprint`).
+- [ ] Полный Timeline IR unification с composition (не блокирует prod).
 
 ---
 

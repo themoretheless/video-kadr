@@ -101,16 +101,20 @@ const manifest = JSON.parse(await readFile(new URL('.vite/manifest.json', distDi
 // RGB Split and deterministic Posterize add 0.05 KiB aggregate JS to the lazy
 // effect catalog and shared validator. Startup is unchanged; round only the
 // crossed aggregate-total ceiling by one KiB.
+// SOLID wave-5 split of composition/store god-state into façade modules adds a
+// measured ~4.3 KiB to the lazy CompositionWorkspace chunk and ~1.1 KiB
+// aggregate JS (module boundaries + import graphs). Startup unchanged. Round
+// the affected lazy/aggregate ceilings by 5 / 2 / 2 KiB respectively.
 const budgets = {
   initialJs: envBytes('BUNDLE_BUDGET_INITIAL_JS_GZIP', 'BUNDLE_BUDGET_JS_GZIP', 115 * 1024),
   initialCss: envBytes('BUNDLE_BUDGET_INITIAL_CSS_GZIP', 'BUNDLE_BUDGET_CSS_GZIP', 12 * 1024),
   initialTotal: envBytes('BUNDLE_BUDGET_INITIAL_TOTAL_GZIP', undefined, 125 * 1024),
   // Includes the delivery catalog and lazy In/Out range authoring workflow.
-  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 207.75 * 1024),
+  allJs: envBytes('BUNDLE_BUDGET_ALL_JS_GZIP', undefined, 209.75 * 1024),
   allCss: envBytes('BUNDLE_BUDGET_ALL_CSS_GZIP', undefined, 17 * 1024),
-  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 224 * 1024),
+  allTotal: envBytes('BUNDLE_BUDGET_ALL_TOTAL_GZIP', 'BUNDLE_BUDGET_TOTAL_GZIP', 226 * 1024),
   routeJsChunk: envBytes('BUNDLE_BUDGET_ROUTE_JS_CHUNK_GZIP', undefined, 84 * 1024),
-  asyncJsChunk: envBytes('BUNDLE_BUDGET_ASYNC_JS_CHUNK_GZIP', undefined, 74.25 * 1024),
+  asyncJsChunk: envBytes('BUNDLE_BUDGET_ASYNC_JS_CHUNK_GZIP', undefined, 79.25 * 1024),
 }
 
 const files = await readdir(assetDirectory)

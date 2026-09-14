@@ -44,7 +44,7 @@ use super::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct CompositionWork {
+pub(crate) struct CompositionWork {
     pub schema_version: u32,
     pub request: CompositionRenderRequest,
     pub output_id: String,
@@ -282,7 +282,7 @@ fn resolve_composition_output(
     }
 }
 
-pub(super) fn spawn_composition_job(
+pub(crate) fn spawn_composition_job(
     state: AppState,
     job_id: String,
     work: CompositionWork,

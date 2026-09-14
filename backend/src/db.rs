@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status TEXT NOT NULL,
     result_json TEXT,
     error TEXT,
+    error_kind TEXT,
     stage TEXT,
     progress REAL,
     created_at INTEGER NOT NULL,
@@ -141,6 +142,10 @@ impl Db {
             .connect_with(opts)
             .await?;
         sqlx::query(SCHEMA).execute(&pool).await?;
+        // Existing DBs created before error_kind still need the column.
+        let _ = sqlx::query("ALTER TABLE jobs ADD COLUMN error_kind TEXT")
+            .execute(&pool)
+            .await;
         project_migration::migrate(&pool).await?;
         composition_projects::migrate(&pool).await?;
         auth::migrate(&pool).await?;
@@ -269,17 +274,18 @@ impl Db {
             None => None,
         };
         sqlx::query(
-            "INSERT INTO jobs (id, status, result_json, error, stage, progress, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+            "INSERT INTO jobs (id, status, result_json, error, error_kind, stage, progress, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
              ON CONFLICT(id) DO UPDATE SET \
                status = excluded.status, result_json = excluded.result_json, \
-               error = excluded.error, stage = excluded.stage, \
+               error = excluded.error, error_kind = excluded.error_kind, stage = excluded.stage, \
                progress = excluded.progress, updated_at = excluded.updated_at",
         )
         .bind(&job.id)
         .bind(job.status.as_str())
         .bind(&result_str)
         .bind(&job.error)
+        .bind(&job.error_kind)
         .bind(&job.stage)
         .bind(job.progress)
         .bind(now)
@@ -292,7 +298,7 @@ impl Db {
     /// Load every persisted job (used once at startup to recover state).
     pub async fn load_jobs(&self) -> Result<Vec<Job>> {
         let rows = sqlx::query(
-            "SELECT id, status, result_json, error, stage, progress FROM jobs ORDER BY updated_at",
+            "SELECT id, status, result_json, error, error_kind, stage, progress FROM jobs ORDER BY updated_at",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -303,7 +309,7 @@ impl Db {
     /// so status requests and outbox dispatch must be able to hydrate a miss.
     pub async fn load_job(&self, id: &str) -> Result<Option<Job>> {
         let row = sqlx::query(
-            "SELECT id, status, result_json, error, stage, progress FROM jobs WHERE id = ?",
+            "SELECT id, status, result_json, error, error_kind, stage, progress FROM jobs WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -315,7 +321,7 @@ impl Db {
     /// install does not rebuild an unbounded in-memory job map.
     pub async fn load_recent_jobs(&self, limit: i64) -> Result<Vec<Job>> {
         let rows = sqlx::query(
-            "SELECT id, status, result_json, error, stage, progress \
+            "SELECT id, status, result_json, error, error_kind, stage, progress \
              FROM jobs ORDER BY updated_at DESC LIMIT ?",
         )
         .bind(limit.max(0))
@@ -473,6 +479,7 @@ fn row_to_job(row: SqliteRow) -> Result<Job> {
         status: JobStatus::from_token(&row.try_get::<String, _>("status")?)?,
         result,
         error: row.try_get("error")?,
+        error_kind: row.try_get("error_kind")?,
         progress: row.try_get("progress")?,
         stage: row.try_get("stage")?,
     })

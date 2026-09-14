@@ -10,11 +10,12 @@ use crate::jobs::{ErrorKind, JobEvent, JobKind};
 use crate::model::Job;
 use crate::state::{AppState, CancelJobOutcome};
 
+use super::apply_job_event;
+use super::composition::{spawn_composition_job, CompositionWork};
+use super::edit::{spawn_edit_job, EditWork};
+use super::import::{spawn_import_job, ImportWork};
+use super::proxy::{spawn_proxy_job, ProxyWork};
 use super::publish::{spawn_publish_job, PublishWork};
-use super::{
-    apply_job_event, spawn_composition_job, spawn_edit_job, spawn_import_job, spawn_proxy_job,
-    CompositionWork, EditWork, ImportWork, ProxyWork,
-};
 
 pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
     // The hot job map is bounded at startup. Hydrate older durable work before
@@ -75,7 +76,7 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
             }
             JobKind::Edit => {
                 let work = serde_json::from_value::<EditWork>(envelope.payload)?;
-                work.timeline_semantics()?;
+                work.validate_schema()?;
                 let lease =
                     JobLeaseHeartbeat::start(state, job_id, envelope.attempt, lease_seconds);
                 spawn_edit_job(
@@ -141,7 +142,7 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
             job_id,
             JobEvent::Failed {
                 kind: ErrorKind::Internal,
-                message: "Сохранённая задача имеет несовместимый формат".into(),
+                message: crate::messages::JOB_PAYLOAD_INCOMPATIBLE.into(),
             },
         )
         .await;
@@ -236,7 +237,7 @@ pub async fn job_status_handler(
         .map_err(|error| AppError::internal("load job", error))?
     {
         Some(job) => Ok(Json(job)),
-        None => Err(AppError::not_found("Задача не найдена")),
+        None => Err(AppError::not_found(crate::messages::JOB_NOT_FOUND)),
     }
 }
 
@@ -250,8 +251,10 @@ pub async fn cancel_handler(
         .await
         .map_err(|error| AppError::internal("load job before cancellation", error))?
     {
-        CancelJobOutcome::NotFound => Err(AppError::not_found("Задача не найдена")),
-        CancelJobOutcome::AlreadyFinished => Err(AppError::conflict("Задача уже завершена")),
+        CancelJobOutcome::NotFound => Err(AppError::not_found(crate::messages::JOB_NOT_FOUND)),
+        CancelJobOutcome::AlreadyFinished => {
+            Err(AppError::conflict(crate::messages::JOB_ALREADY_FINISHED))
+        }
         CancelJobOutcome::Cancelled => Ok(Json(json!({ "status": "cancelled" }))),
     }
 }
@@ -284,7 +287,7 @@ pub async fn retry_job_handler(
         .map_err(|error| AppError::internal("load job before retry", error))?
         .is_none()
     {
-        return Err(AppError::not_found("Задача не найдена"));
+        return Err(AppError::not_found(crate::messages::JOB_NOT_FOUND));
     }
     let job = state
         .job_store
@@ -306,7 +309,7 @@ pub async fn discard_job_handler(
         .await
         .map_err(|error| AppError::internal("discard failed job", error))?;
     let Some(job) = discarded else {
-        return Err(AppError::not_found("Неудачная задача не найдена"));
+        return Err(AppError::not_found(crate::messages::FAILED_JOB_NOT_FOUND));
     };
     state.replace_job(job).await;
     Ok(Json(json!({ "jobId": id, "status": "discarded" })))

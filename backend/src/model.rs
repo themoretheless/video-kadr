@@ -100,6 +100,10 @@ pub struct Job {
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Typed async failure class token (`validation`, `security`, …).
+    /// Distinct from HTTP `AppError`; only set for failed/interrupted jobs.
+    #[serde(rename = "errorKind", skip_serializing_if = "Option::is_none")]
+    pub error_kind: Option<String>,
     /// 0..100. Omitted while unknown (e.g. before the child reports anything).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<f64>,
@@ -115,6 +119,7 @@ impl Job {
             status: JobStatus::Pending,
             result: None,
             error: None,
+            error_kind: None,
             progress: None,
             stage: None,
         }

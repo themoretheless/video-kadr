@@ -9,6 +9,7 @@ mod maintenance;
 pub mod outbox;
 pub mod persistence_profile;
 pub mod registry;
+pub mod runner;
 mod store;
 
 pub use attempt::{ErrorKind, JobAttempt, RetryPolicy};
@@ -19,4 +20,7 @@ pub use job_cell::{JobCell, JobPermit};
 pub use maintenance::run_quarantine_cleanup;
 pub use outbox::{JobEnvelope, JobKind};
 pub use registry::{JobLifecycle, LifecycleCounts, ReconciliationReport};
+pub use runner::{
+    classify_job_error, is_plain_filename, AcquirePlan, ExecutionGuards, JobContext, JobService,
+};
 pub use store::{ActiveJobRequest, EnqueueOutcome, SqliteJobStore};

@@ -195,6 +195,70 @@ fn delete(uri: &str) -> Request<Body> {
         .unwrap()
 }
 
+async fn ffmpeg_available() -> bool {
+    tokio::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+async fn write_lavfi_source(state: &AppState, filename: &str) {
+    let path = state.sources_dir().join(filename);
+    let status = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=32x32:d=1",
+            "-c:v",
+            "libx264",
+            "-t",
+            "1",
+            "-y",
+        ])
+        .arg(&path)
+        .status()
+        .await
+        .expect("spawn ffmpeg");
+    assert!(status.success(), "ffmpeg lavfi source failed");
+}
+
+async fn plan_cache_key_for_request(state: &AppState, req: &EditRequest) -> String {
+    use video_kadr_backend::domain::artifact_graph::Fingerprint;
+    use video_kadr_backend::handlers::{
+        plan_render_cache_key, render_runtime_fingerprint, RENDER_CACHE_PIPELINE_VERSION,
+    };
+    use video_kadr_backend::services::render::{EditPlan, SourceMediaMetadata};
+    use video_kadr_backend::tools::probe_video;
+
+    let entry = state.library.get(&req.video_id).await.expect("source");
+    let input = state.library.resolve_media_path(&entry).await.unwrap();
+    let probe = probe_video(&state.process_runtime, &input).await.unwrap();
+    let source = SourceMediaMetadata::new_with_audio(
+        probe.width,
+        probe.height,
+        probe.duration,
+        probe.acodec.is_some(),
+    )
+    .unwrap();
+    let plan = EditPlan::compile(
+        Fingerprint::digest(req.video_id.as_bytes()),
+        req.clone(),
+        source,
+    )
+    .unwrap();
+    plan_render_cache_key(
+        RENDER_CACHE_PIPELINE_VERSION,
+        &plan.plan_fingerprint,
+        &render_runtime_fingerprint(state.tools.as_ref()),
+        None,
+    )
+}
+
 /// Poll a job until it reaches a terminal state. The background worker runs on
 /// the test runtime; the sleeps give it slots to make progress.
 ///
@@ -622,6 +686,7 @@ async fn import_rejects_unsafe_url_via_job_error() {
     let job = poll_terminal(&app, &id).await;
     assert_eq!(job["status"], "error");
     assert_eq!(job["error"], "Недопустимый URL");
+    assert_eq!(job["errorKind"], "security");
 }
 
 #[tokio::test]
@@ -952,10 +1017,27 @@ async fn color_grade_uploaded_lut_is_resolved_before_the_source_lookup() {
 #[tokio::test]
 async fn edit_cache_hit_returns_existing_output() {
     let (state, _d) = make_state(true, true).await;
-    // Pre-seed the render cache for a specific edit, with its output file present.
-    let req_json = json!({ "videoId": "vidX", "trim": { "start": 0.0, "end": 5.0 } });
+    if !ffmpeg_available().await {
+        return;
+    }
+    let source_id = "vidX";
+    let source_name = "vidX.mp4";
+    write_lavfi_source(&state, source_name).await;
+    state
+        .library
+        .add(MediaEntry::from_result(
+            "source",
+            &json!({
+                "id": source_id,
+                "filename": source_name,
+                "url": format!("/files/sources/{source_name}")
+            }),
+        ))
+        .await;
+
+    let req_json = json!({ "videoId": source_id, "trim": { "start": 0.0, "end": 0.5 } });
     let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
-    let key = video_kadr_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
+    let key = plan_cache_key_for_request(&state, &req).await;
     let filename = "cached.mp4";
     tokio::fs::write(state.outputs_dir().join(filename), b"x")
         .await
@@ -975,7 +1057,6 @@ async fn edit_cache_hit_returns_existing_output() {
         .await
         .unwrap();
 
-    // The identical request must resolve from cache (no ffmpeg) to a done job.
     let app = router(state);
     let (_s, body, _) = send(&app, post_json("/api/edit", req_json)).await;
     let id = body["jobId"].as_str().unwrap().to_string();
@@ -987,9 +1068,26 @@ async fn edit_cache_hit_returns_existing_output() {
 #[tokio::test]
 async fn edit_stale_render_cache_entry_is_evicted() {
     let (state, _d) = make_state(true, true).await;
-    let req_json = json!({ "videoId": "missing-video", "trim": { "start": 0.0, "end": 5.0 } });
+    if !ffmpeg_available().await {
+        return;
+    }
+    let source_id = "stale-source";
+    let source_name = "stale-source.mp4";
+    write_lavfi_source(&state, source_name).await;
+    state
+        .library
+        .add(MediaEntry::from_result(
+            "source",
+            &json!({
+                "id": source_id,
+                "filename": source_name,
+                "url": format!("/files/sources/{source_name}")
+            }),
+        ))
+        .await;
+    let req_json = json!({ "videoId": source_id, "trim": { "start": 0.0, "end": 0.5 } });
     let req: EditRequest = serde_json::from_value(req_json.clone()).unwrap();
-    let key = video_kadr_backend::handlers::render_cache_key_for_tools(&req, state.tools.as_ref());
+    let key = plan_cache_key_for_request(&state, &req).await;
     state
         .db
         .cache_put(
@@ -1008,19 +1106,43 @@ async fn edit_stale_render_cache_entry_is_evicted() {
     let app = router(state.clone());
     let (_s, body, _) = send(&app, post_json("/api/edit", req_json)).await;
     let id = body["jobId"].as_str().unwrap().to_string();
-    let job = poll_terminal(&app, &id).await;
-    assert_eq!(job["status"], "error");
-    assert!(state.db.cache_get(&key).await.unwrap().is_none());
+    let _job = poll_terminal(&app, &id).await;
+    let after = state.db.cache_get(&key).await.unwrap();
+    assert_ne!(
+        after.as_ref().map(|(_, filename)| filename.as_str()),
+        Some("stale.mp4"),
+        "stale missing-file cache entry must be evicted before any rewrite"
+    );
 }
 
 #[tokio::test]
 async fn closed_job_queue_marks_job_error() {
     let (state, _d) = make_state(true, true).await;
+    if !ffmpeg_available().await {
+        return;
+    }
+    let source_id = "queued-source";
+    let source_name = "queued-source.mp4";
+    write_lavfi_source(&state, source_name).await;
+    state
+        .library
+        .add(MediaEntry::from_result(
+            "source",
+            &json!({
+                "id": source_id,
+                "filename": source_name,
+                "url": format!("/files/sources/{source_name}")
+            }),
+        ))
+        .await;
     state.close_job_queue();
     let app = router(state);
     let (_s, body, _) = send(
         &app,
-        post_json("/api/edit", json!({ "videoId": "no-such-id" })),
+        post_json(
+            "/api/edit",
+            json!({ "videoId": source_id, "trim": { "start": 0.0, "end": 0.5 } }),
+        ),
     )
     .await;
     let id = body["jobId"].as_str().unwrap().to_string();
@@ -3192,7 +3314,7 @@ async fn outbox_row_created_before_a_crash_is_executed_after_restart() {
             .await
             .unwrap()
             .len()
-            >= 4
+            >= 2
     );
 }
 

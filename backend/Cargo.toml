@@ -15,6 +15,9 @@ output-format = "terse"
 [features]
 default = []
 tokio-console = ["dep:console-subscriber"]
+# Contract-only / research ports not wired into HTTP handlers.
+# Enable for property_contracts chunk tests and self-tests of ghost modules.
+spec-contracts = []
 
 [dependencies]
 axum = { version = "0.7", features = ["multipart"] }

@@ -33,29 +33,31 @@ where
     }
     let ips = resolve(host, port)
         .await
-        .map_err(|_| anyhow!("Недопустимый URL"))?;
+        .map_err(|_| anyhow!(crate::messages::INVALID_URL))?;
     if !resolved_ips_are_public(&ips) {
-        return Err(anyhow!("Недопустимый URL"));
+        return Err(anyhow!(crate::messages::INVALID_URL));
     }
     Ok(())
 }
 
 /// Pure, DNS-free URL policy used before resolution and by fuzz/security tests.
 pub fn validate_url_structure(raw: &str) -> Result<(String, u16)> {
-    let u = Url::parse(raw).map_err(|_| anyhow!("Недопустимый URL"))?;
+    let u = Url::parse(raw).map_err(|_| anyhow!(crate::messages::INVALID_URL))?;
     if !matches!(u.scheme(), "http" | "https") {
-        return Err(anyhow!("Недопустимый URL"));
+        return Err(anyhow!(crate::messages::INVALID_URL));
     }
     if !u.username().is_empty() || u.password().is_some() {
-        return Err(anyhow!("Недопустимый URL"));
+        return Err(anyhow!(crate::messages::INVALID_URL));
     }
-    let host = u.host_str().ok_or_else(|| anyhow!("Недопустимый URL"))?;
+    let host = u
+        .host_str()
+        .ok_or_else(|| anyhow!(crate::messages::INVALID_URL))?;
     let host = normalize_host(host);
     let port = u
         .port_or_known_default()
-        .ok_or_else(|| anyhow!("Недопустимый URL"))?;
+        .ok_or_else(|| anyhow!(crate::messages::INVALID_URL))?;
     if !is_allowed_port(port) || !is_allowed_host(&host) {
-        return Err(anyhow!("Недопустимый URL"));
+        return Err(anyhow!(crate::messages::INVALID_URL));
     }
     Ok((host, port))
 }
