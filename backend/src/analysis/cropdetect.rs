@@ -117,6 +117,8 @@ pub async fn detect_letterbox_crop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::process_control::ProcessRuntime;
+    use crate::tools::check_tool;
 
     #[test]
     fn parses_last_cropdetect_suggestion() {
@@ -169,5 +171,61 @@ mod tests {
             720
         )
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn lavfi_letterbox_fixture_detects_even_crop_rect() {
+        let runtime = ProcessRuntime::local_default();
+        if !check_tool(&runtime, "ffmpeg", "-version").await.0 {
+            eprintln!("skipping lavfi cropdetect: ffmpeg not on PATH");
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("letterbox.mp4");
+        // 640×360 content padded into 640×480 → 60px black bars top and bottom.
+        let generated = Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=white:s=640x360:r=24:d=2,pad=640:480:0:60:black",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-an",
+            ])
+            .arg(&path)
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "failed to generate letterbox fixture: {}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+
+        let crop = detect_letterbox_crop(&runtime, &path, 2.0, 640, 480)
+            .await
+            .expect("cropdetect should find letterbox bars");
+        assert_eq!(crop.w % 2, 0);
+        assert_eq!(crop.h % 2, 0);
+        assert_eq!(crop.x % 2, 0);
+        assert_eq!(crop.y % 2, 0);
+        assert!(crop.w <= 640 && crop.h < 480, "{crop:?}");
+        assert!(
+            crop.y >= 40 && crop.y <= 80,
+            "expected top bar ~60px: {crop:?}"
+        );
+        assert!(
+            crop.h >= 340 && crop.h <= 400,
+            "expected content height ~360: {crop:?}"
+        );
+        assert!(crop.x + crop.w <= 640);
+        assert!(crop.y + crop.h <= 480);
     }
 }

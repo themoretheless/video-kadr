@@ -357,7 +357,7 @@
         aria-controls="preview-wipe"
         aria-describedby="preview-compare-status"
         aria-pressed={wipeActive}
-        onclick={() => { wipeActive ? disableWipe() : enableWipe() }}
+        onclick={() => { if (wipeActive) disableWipe(); else enableWipe() }}
       >
         <span class:active={wipeActive} class="preview-compare-option">Wipe</span>
       </button>

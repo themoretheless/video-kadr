@@ -25,7 +25,8 @@ render path, а не через orphaned `domain/timeline`.
 - **Frontend god-state split:** `composition.svelte.ts` / `store.svelte.ts` —
   тонкие façades над `composition/*` и `store/*` (2026-09-14).
 - **CapCut coverage SoT:** [capcut-parity.md](capcut-parity.md) — локальный
-  non-AI editor `готово`; cloud/social `в работе`; AI excluded.
+  non-AI editor и Cloud/Templates `готово` (acceptance = mock provider E2E);
+  AI excluded.
 
 ## Дальше - безопасно сейчас (S, прикрыто тестами)
 

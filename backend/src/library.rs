@@ -561,7 +561,7 @@ mod tests {
             .relocate_source_to_space("cloud", "11111111-1111-4111-8111-111111111111")
             .await
             .unwrap());
-        let lib = lib.with_object_storage(object_storage);
+        let lib = lib.with_object_storage(object_storage.clone());
         assert_eq!(
             lib.sync_source_backups().await,
             SourceBackupSyncReport {
@@ -577,6 +577,35 @@ mod tests {
 
         let restored = lib.resolve_media_path(&entry).await.unwrap();
         assert_eq!(tokio::fs::read(restored).await.unwrap(), b"cloud source");
+
+        // A second storage root sharing the same remote store hydrates without
+        // needing the first node's local files.
+        let second_dir = tempfile::tempdir().unwrap();
+        let second_storage = second_dir.path().to_path_buf();
+        tokio::fs::create_dir_all(second_storage.join("sources"))
+            .await
+            .unwrap();
+        let second = Library::load(second_storage.clone())
+            .await
+            .with_object_storage(object_storage.clone());
+        let mut remote_entry = entry.clone();
+        remote_entry.url = format!("/files/sources/{}", remote_entry.filename);
+        assert!(second.add(remote_entry.clone()).await);
+        let second_path = second.resolve_media_path(&remote_entry).await.unwrap();
+        assert_eq!(
+            tokio::fs::read(&second_path).await.unwrap(),
+            b"cloud source"
+        );
+
+        assert!(lib.remove("cloud").await);
+        let missing = second_dir.path().join("missing-after-delete.mp4");
+        assert!(object_storage
+            .hydrate(
+                &missing,
+                std::path::Path::new(entry.storage_key.as_deref().unwrap())
+            )
+            .await
+            .is_err());
     }
 
     #[tokio::test]

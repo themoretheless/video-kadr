@@ -26,8 +26,8 @@ use video_kadr_backend::ports::{
 };
 use video_kadr_backend::process_control::ProcessRuntime;
 use video_kadr_backend::tools::{
-    check_tool, inspect_ffmpeg_support, probe_video, run_compiled_ffmpeg, Done,
-    FfmpegCompositionExportCompiler,
+    build_vidstab_detect_command, check_tool, inspect_ffmpeg_support, probe_video,
+    run_compiled_ffmpeg, Done, FfmpegCompositionExportCompiler,
 };
 
 async fn tools_available(runtime: &ProcessRuntime) -> bool {
@@ -2705,6 +2705,173 @@ async fn real_deshake_lowers_central_temporal_jitter_with_reverse_optical_and_ke
             "stabilization A/V drift: video={video_duration}, audio={audio_duration}"
         );
     }
+}
+
+#[tokio::test]
+async fn real_vidstab_two_pass_writes_trf_and_renders_when_filters_present() {
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!("skipping real vidstab composition: ffmpeg/ffprobe not on PATH");
+        return;
+    }
+    let filters = tokio::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-filters"])
+        .output()
+        .await
+        .unwrap();
+    let filters = String::from_utf8_lossy(&filters.stdout);
+    let has_filter = |name: &str| {
+        filters.lines().any(|line| {
+            line.split_whitespace()
+                .nth(1)
+                .is_some_and(|candidate| candidate == name)
+        })
+    };
+    if ["vidstabdetect", "vidstabtransform", "fps", "trim"]
+        .into_iter()
+        .any(|filter| !has_filter(filter))
+    {
+        eprintln!("skipping real vidstab composition: required filters unavailable");
+        return;
+    }
+
+    let directory = tempfile::tempdir().unwrap();
+    let source_path = directory.path().join("vidstab-jitter.mp4");
+    let transform_path = directory.path().join("vidstab.trf");
+    let output = directory.path().join("vidstab-out.mp4");
+    generate(
+        &[
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=96x72:r=20:d=2,drawgrid=w=12:h=12:t=2:c=white,drawbox=x=30:y=20:w=20:h=16:c=red:t=fill,crop=64:48:x='16+if(mod(n,2),3,-3)':y='12+if(mod(n,3),2,-2)'",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-t",
+            "2",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+        ],
+        &source_path,
+    )
+    .await;
+
+    let source = source_id("vidstab-source");
+    let mut composition = Composition::new(CanvasSpec {
+        width: 64,
+        height: 48,
+        fps_milli: 20_000,
+        ..CanvasSpec::default()
+    });
+    composition.sources.insert(
+        source.clone(),
+        CompositionSource {
+            id: source.clone(),
+            kind: SourceKind::Video,
+            duration_ticks: 2_000_000,
+            width: 64,
+            height: 48,
+            has_audio: true,
+        },
+    );
+    let mut clip = video_clip("vidstab-clip", "vidstab-source", placement(0, 2_000_000));
+    clip.stabilization = StabilizationSpec::Vidstab {
+        shakiness: 5,
+        accuracy: 15,
+        smoothing: 10,
+    };
+    composition.tracks = vec![CompositionTrack::Video {
+        id: TrackId::parse("vidstab-track").unwrap(),
+        name: "Vidstab".to_owned(),
+        hidden: false,
+        muted: false,
+        locked: false,
+        clips: vec![clip.clone()],
+        transitions: Vec::new(),
+    }];
+    let inputs = BTreeMap::from([(source, source_path.clone())]);
+
+    let detect = build_vidstab_detect_command(
+        &source_path,
+        &transform_path,
+        &clip,
+        composition.canvas.fps_milli,
+        composition.time_base,
+    )
+    .unwrap();
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_compiled_ffmpeg(
+        &runtime,
+        &detect,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    drop(progress);
+    let _ = drain.await;
+    assert!(matches!(done, Done::Completed));
+    assert!(
+        transform_path.is_file(),
+        "vidstabdetect should write {}",
+        transform_path.display()
+    );
+
+    let transforms = BTreeMap::from([(clip.id.clone(), transform_path.clone())]);
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &transforms,
+            destination: &output,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: mp4_h264_output(18),
+        })
+        .unwrap();
+    let graph = &command.arguments[command
+        .arguments
+        .iter()
+        .position(|argument| argument == "-filter_complex")
+        .unwrap()
+        + 1];
+    assert!(
+        graph.contains("vidstabtransform=input=") && graph.contains("smoothing=10"),
+        "{graph}"
+    );
+    assert!(!graph.contains("deshake="), "{graph}");
+
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_compiled_ffmpeg(
+        &runtime,
+        &command,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    drop(progress);
+    let _ = drain.await;
+    assert!(matches!(done, Done::Completed));
+    assert!(output.is_file());
+    let video_duration = stream_duration(&output, "v:0").await;
+    let audio_duration = stream_duration(&output, "a:0").await;
+    assert!((video_duration - 2.0).abs() < 0.08, "{video_duration}");
+    assert!((audio_duration - 2.0).abs() < 0.08, "{audio_duration}");
 }
 
 #[tokio::test]
