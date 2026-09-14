@@ -221,6 +221,9 @@ pub struct EditRequest {
     /// Reverse the clip (buffers all frames; intended for short segments).
     #[serde(default)]
     pub reverse: bool,
+    /// Forward then reverse (ping-pong). Mutually exclusive with `reverse`.
+    #[serde(default)]
+    pub boomerang: bool,
     /// Output frame rate override.
     #[serde(default)]
     pub fps: Option<f64>,

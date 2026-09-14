@@ -112,6 +112,7 @@ export const EDIT_DEFAULTS = {
   lutIntensity: 1,
   curves: identityCurves(),
   reverse: false,
+  boomerang: false,
   fps: null,
   censorEnabled: false,
   censor: { x: 0, y: 0, w: 0, h: 0 },
@@ -271,7 +272,8 @@ export function buildEditPayload(
   if (lutId && lutIntensity > 0) payload.lut = { id: lutId, intensity: lutIntensity }
   const curves = sanitizeCurves(edit.curves)
   if (!isIdentityCurves(curves)) payload.curves = serializeCurves(curves)
-  if (edit.reverse) payload.reverse = true
+  if (edit.boomerang) payload.boomerang = true
+  else if (edit.reverse) payload.reverse = true
   if (edit.fps) payload.fps = edit.fps
   if (edit.censorEnabled && edit.censor.w > 1 && edit.censor.h > 1) {
     payload.censor = { ...edit.censor }

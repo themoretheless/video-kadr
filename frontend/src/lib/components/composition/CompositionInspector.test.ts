@@ -630,7 +630,7 @@ describe('CompositionInspector static authoring', () => {
       .find((candidate) => candidate.id === compositionState.ui.selectedClipId)
     expect(selected).toMatchObject({ stabilization: { mode: 'deshake', radiusX: 16, radiusY: 64 } })
     expect(button('Freeze at playhead').disabled).toBe(true)
-    expect(target.textContent).toContain('canvas-preview его не симулирует')
+    expect(target.textContent).toContain('canvas-preview их не симулирует')
 
     change(mode, 'disabled')
     legacyState.capabilities = {

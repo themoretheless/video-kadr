@@ -336,7 +336,7 @@ describe('CompositionPreview static approximations', () => {
 
     const video = target.querySelector<HTMLVideoElement>('video[src*="primary.mp4"]')!
     expect(video.style.transform).toBe('none')
-    expect(target.textContent).toContain('Deshake stabilization применяется точно только в экспорте')
+    expect(target.textContent).toContain('Stabilization применяется точно только в экспорте')
 
     await unmount(component)
   })

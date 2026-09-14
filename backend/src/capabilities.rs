@@ -325,6 +325,12 @@ impl Capabilities {
         } else {
             "нужен FFmpeg filter deshake".to_owned()
         };
+        let vidstab_available = has_filter("vidstabdetect") && has_filter("vidstabtransform");
+        let vidstab_reason = if vidstab_available {
+            String::new()
+        } else {
+            "нужны FFmpeg filters vidstabdetect и vidstabtransform".to_owned()
+        };
         let speed_ramp_missing = [
             "trim", "setpts", "tpad", "fps", "atrim", "asetpts", "asplit", "atempo", "concat",
         ]
@@ -404,6 +410,12 @@ impl Capabilities {
                 "Стабилизация",
                 stabilization_available,
                 &stabilization_reason,
+            ),
+            option(
+                "vidstab-stabilization",
+                "Vidstab стабилизация",
+                vidstab_available,
+                &vidstab_reason,
             ),
             option(
                 "speed-ramp",

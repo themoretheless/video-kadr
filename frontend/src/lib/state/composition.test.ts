@@ -874,9 +874,9 @@ describe('composition editor state', () => {
     })).toBeNull()
 
     setCompositionPlayhead(2 * COMPOSITION_TIME_BASE)
-    expect(() => freezeCompositionClipAtPlayhead(clipId)).toThrow('deshake stabilization')
+    expect(() => freezeCompositionClipAtPlayhead(clipId)).toThrow('stabilization')
     const track = compositionState.document.tracks.find((candidate) => candidate.kind === 'video')!
-    expect(() => toggleCompositionTrackFlag(track.id, 'hidden')).toThrow('Deshake')
+    expect(() => toggleCompositionTrackFlag(track.id, 'hidden')).toThrow(/Deshake|Stabilization/)
     undoComposition()
     expect(compositionState.document.tracks[0]!.clips[0]).toMatchObject({ stabilization: { mode: 'disabled' } })
     redoComposition()

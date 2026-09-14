@@ -225,6 +225,8 @@ pub struct CompositionExportCompileRequest<'a> {
     /// Pre-materialized immutable UTF-8 text and a fail-closed resolved font
     /// for every active text clip. Text never enters an FFmpeg expression.
     pub text_resources: &'a BTreeMap<CompositionClipId, CompositionTextResource>,
+    /// Per-clip `.trf` files produced by the vidstab detect pass.
+    pub vidstab_transforms: &'a BTreeMap<CompositionClipId, PathBuf>,
     pub destination: &'a Path,
     pub parallel_jobs: usize,
     pub composition: &'a Composition,

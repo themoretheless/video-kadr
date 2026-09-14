@@ -1431,28 +1431,33 @@ fail-closed границу для ещё не подключённого public 
 
 ## P3 - Фичи (параллельно, из round-13)
 
-### ☐ Тир-1 (ложатся на текущий `build_ffmpeg_args`, S-M каждая)
-- [ ] Хромакей (зелёный экран) + despill · M
-- [ ] LUT-импорт `.cube` + интенсивность · M
-- [ ] Стабилизация `vidstab` (двухпроходная) · M
-- [ ] Scopes: гистограмма/waveform/vectorscope (бэк рендерит PNG по кадру) · M
-- [ ] Режим «до/после» слайдером · M
-- [ ] Авто-обрезка чёрных полос (`cropdetect`) · S
-- [ ] Boomerang-экспорт · S
+> **CapCut coverage SoT:** [docs/capcut-parity.md](docs/capcut-parity.md).
+> Non-AI хвосты (cropdetect, boomerang, wipe, vidstab) и Cloud/Templates mock E2E
+> закрыты. Hosted licensed catalog и AI CapCut — вне текущего scope.
 
-### ☐ Тир-0 (разблокировщик) - только после P2-13
-- [ ] Мультитрек-таймлайн · L `[нужен Timeline IR]`
+### ☑ Закрыто в этом проходе
+- [x] Хромакей + despill, LUT, browser scopes, мультитрек
+- [x] Preview compare toggle **и** wipe-slider до/после
+- [x] Авто-обрезка чёрных полос (`cropdetect`)
+- [x] Boomerang-экспорт
+- [x] Стабилизация `vidstab` (двухпроходная) + classical `deshake`
+- [x] Cloud/team + Templates/social → parity `готово` (acceptance = mock provider E2E)
+
+### ☐ Остаётся вне скоупа / отдельно
+- Hosted licensed catalog
+- AI CapCut (`исключено (AI)` в parity)
+- Production SaaS tenancy / live Google·Pexels smoke (не блокирует parity `готово`)
 
 ---
 
 ## Рекомендуемая последовательность
 
 ```
-P0 (часы)  →  P1 #4-#8 (модульность, безопасно)  →  P2 #9 JobRunner
-           →  #10 репозитории  →  #11 AppError  →  #12 JobService  →  #13 Timeline IR
-Тир-1 фичи (P3) — в любой момент;  мультитрек — после #13.
+P0–P2 каркас — сделан.
+CapCut non-AI local + Cloud/Templates mock E2E — сделан (parity готово).
+Дальше: hosted catalog и/или AI только после смены scope.
 ```
 
-Самый высокий ROI прямо сейчас: **P0 целиком** + **P1 #4/#5/#6**. Самый ценный
-крупный шаг: **#9 JobRunner** (дедуп + фикс бага), затем **#13 Timeline IR**
-(мультитрек + половина фич-бэклога).
+Самый высокий ROI дальше — **hosted licensed catalog** или осознанное
+расширение scope на AI; CapCut non-AI матрица закрыта по
+[docs/capcut-parity.md](docs/capcut-parity.md).

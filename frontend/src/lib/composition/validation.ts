@@ -15,6 +15,9 @@ import {
   COMPOSITION_AUDIO_PROPERTIES,
   COMPOSITION_MASK_PROPERTIES,
   COMPOSITION_STABILIZATION_RADII,
+  COMPOSITION_VIDSTAB_ACCURACY,
+  COMPOSITION_VIDSTAB_SHAKINESS,
+  COMPOSITION_VIDSTAB_SMOOTHING,
   COMPOSITION_TRANSITION_KINDS,
   COMPOSITION_VISUAL_PROPERTIES,
   clipEndTicks,
@@ -213,10 +216,10 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
       if (
         clipCandidate.kind === 'video' &&
         isRecord(clipCandidate.stabilization) &&
-        clipCandidate.stabilization.mode === 'deshake' &&
+        (clipCandidate.stabilization.mode === 'deshake' || clipCandidate.stabilization.mode === 'vidstab') &&
         (candidate.kind !== 'video' || candidate.hidden !== false)
       ) {
-        add('stabilization-active', `${clipPath}.stabilization`, 'Deshake requires an active clip on a visible video track')
+        add('stabilization-active', `${clipPath}.stabilization`, 'Stabilization requires an active clip on a visible video track')
       }
 
       if (isSafeTick(clipCandidate.timelineStartTicks)) {
@@ -562,7 +565,21 @@ export function compositionUsesFreezeFrame(composition: Composition): boolean {
 export function compositionUsesStabilization(composition: Composition): boolean {
   return composition.tracks.some(
     (track) => track.kind === 'video' && !track.hidden &&
+      track.clips.some((clip) => clip.stabilization?.mode === 'deshake' || clip.stabilization?.mode === 'vidstab'),
+  )
+}
+
+export function compositionUsesDeshakeStabilization(composition: Composition): boolean {
+  return composition.tracks.some(
+    (track) => track.kind === 'video' && !track.hidden &&
       track.clips.some((clip) => clip.stabilization?.mode === 'deshake'),
+  )
+}
+
+export function compositionUsesVidstabStabilization(composition: Composition): boolean {
+  return composition.tracks.some(
+    (track) => track.kind === 'video' && !track.hidden &&
+      track.clips.some((clip) => clip.stabilization?.mode === 'vidstab'),
   )
 }
 
@@ -585,9 +602,9 @@ export function compositionStabilizationUnavailableReason(composition: Compositi
   for (const track of composition.tracks) {
     if (track.kind !== 'video') continue
     for (const clip of track.clips) {
-      if (clip.stabilization?.mode !== 'deshake') continue
-      if (track.hidden) return `Deshake clip «${clip.id}» должен находиться на видимой video-дорожке.`
-      if (clip.playbackMode?.mode === 'freeze') return `Deshake clip «${clip.id}» нельзя совмещать с freeze frame.`
+      if (clip.stabilization?.mode !== 'deshake' && clip.stabilization?.mode !== 'vidstab') continue
+      if (track.hidden) return `Stabilization clip «${clip.id}» должен находиться на видимой video-дорожке.`
+      if (clip.playbackMode?.mode === 'freeze') return `Stabilization clip «${clip.id}» нельзя совмещать с freeze frame.`
     }
   }
   return null
@@ -1204,28 +1221,45 @@ function validateStabilization(
 ): void {
   const value = clip.stabilization
   if (value === undefined) return
-  if (!isRecord(value) || (value.mode !== 'disabled' && value.mode !== 'deshake')) {
-    add('stabilization', `${path}.stabilization`, 'Stabilization must be disabled or deshake')
+  if (!isRecord(value) || (value.mode !== 'disabled' && value.mode !== 'deshake' && value.mode !== 'vidstab')) {
+    add('stabilization', `${path}.stabilization`, 'Stabilization must be disabled, deshake, or vidstab')
     return
   }
   const allowedFields = value.mode === 'disabled'
     ? new Set(['mode'])
-    : new Set(['mode', 'radiusX', 'radiusY'])
+    : value.mode === 'deshake'
+      ? new Set(['mode', 'radiusX', 'radiusY'])
+      : new Set(['mode', 'shakiness', 'accuracy', 'smoothing'])
   for (const field of Object.keys(value)) {
     if (!allowedFields.has(field)) {
       add('stabilization-field', `${path}.stabilization.${field}`, `Unsupported stabilization field ${field}`)
     }
   }
   if (value.mode === 'disabled') return
-  const radii = new Set<number>(COMPOSITION_STABILIZATION_RADII)
-  if (typeof value.radiusX !== 'number' || !radii.has(value.radiusX)) {
-    add('stabilization-radius', `${path}.stabilization.radiusX`, 'Deshake radiusX must be 16, 32, 48, or 64')
-  }
-  if (typeof value.radiusY !== 'number' || !radii.has(value.radiusY)) {
-    add('stabilization-radius', `${path}.stabilization.radiusY`, 'Deshake radiusY must be 16, 32, 48, or 64')
+  if (value.mode === 'deshake') {
+    const radii = new Set<number>(COMPOSITION_STABILIZATION_RADII)
+    if (typeof value.radiusX !== 'number' || !radii.has(value.radiusX)) {
+      add('stabilization-radius', `${path}.stabilization.radiusX`, 'Deshake radiusX must be 16, 32, 48, or 64')
+    }
+    if (typeof value.radiusY !== 'number' || !radii.has(value.radiusY)) {
+      add('stabilization-radius', `${path}.stabilization.radiusY`, 'Deshake radiusY must be 16, 32, 48, or 64')
+    }
+  } else {
+    const shakiness = new Set<number>(COMPOSITION_VIDSTAB_SHAKINESS)
+    const accuracy = new Set<number>(COMPOSITION_VIDSTAB_ACCURACY)
+    const smoothing = new Set<number>(COMPOSITION_VIDSTAB_SMOOTHING)
+    if (typeof value.shakiness !== 'number' || !shakiness.has(value.shakiness)) {
+      add('stabilization-vidstab', `${path}.stabilization.shakiness`, 'Vidstab shakiness must be 1..=10')
+    }
+    if (typeof value.accuracy !== 'number' || !accuracy.has(value.accuracy)) {
+      add('stabilization-vidstab', `${path}.stabilization.accuracy`, 'Vidstab accuracy must be 1, 5, 10, or 15')
+    }
+    if (typeof value.smoothing !== 'number' || !smoothing.has(value.smoothing)) {
+      add('stabilization-vidstab', `${path}.stabilization.smoothing`, 'Vidstab smoothing must be 1, 5, 10, 15, 20, or 30')
+    }
   }
   if (isRecord(clip.playbackMode) && clip.playbackMode.mode === 'freeze') {
-    add('freeze-stabilization', `${path}.stabilization`, 'Freeze-frame clips cannot use deshake stabilization')
+    add('freeze-stabilization', `${path}.stabilization`, 'Freeze-frame clips cannot use stabilization')
   }
 }
 

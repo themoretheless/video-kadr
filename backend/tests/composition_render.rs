@@ -620,6 +620,7 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
             .compile(CompositionExportCompileRequest {
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
                 destination: &output,
                 parallel_jobs: 1,
                 composition: &composition,
@@ -786,6 +787,7 @@ async fn real_blur_and_checker_canvas_backgrounds_fill_primary_letterbox() {
             .compile(CompositionExportCompileRequest {
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
                 destination: &destination,
                 parallel_jobs: 1,
                 composition: &composition,
@@ -916,6 +918,7 @@ async fn real_style_effect_presets_change_pixels_and_preserve_contract() {
             .compile(CompositionExportCompileRequest {
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
                 destination: &destination,
                 parallel_jobs: 1,
                 composition: &composition,
@@ -1150,6 +1153,7 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -1370,6 +1374,7 @@ async fn real_source_and_independent_audio_gain_pan_automation_is_clip_local() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -1584,6 +1589,7 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -1736,6 +1742,7 @@ async fn real_auto_ducking_reduces_background_band_only_while_primary_voice_is_a
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -1936,6 +1943,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -1974,6 +1982,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &robot_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2010,6 +2019,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &chipmunk_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2047,6 +2057,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &custom_pitch_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2085,6 +2096,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &tone_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2123,6 +2135,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &reverse_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2244,6 +2257,7 @@ async fn real_optical_flow_slow_motion_has_exact_frames_motion_and_av_duration()
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2395,6 +2409,7 @@ async fn real_reverse_optical_and_freeze_preserve_order_duration_and_av_sync() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &reverse_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2453,6 +2468,7 @@ async fn real_reverse_optical_and_freeze_preserve_order_duration_and_av_sync() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &freeze_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2598,6 +2614,7 @@ async fn real_deshake_lowers_central_temporal_jitter_with_reverse_optical_and_ke
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &baseline_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2630,6 +2647,7 @@ async fn real_deshake_lowers_central_temporal_jitter_with_reverse_optical_and_ke
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &stabilized_output,
             parallel_jobs: 1,
             composition: &composition,
@@ -2907,6 +2925,7 @@ async fn real_linear_speed_ramp_preserves_reverse_order_exact_frames_and_av_sync
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -3146,6 +3165,7 @@ async fn real_visual_layers_preserve_z_order_opacity_chroma_and_image_timing() {
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -3433,6 +3453,7 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -3622,6 +3643,7 @@ async fn real_dissolve_preserves_timeline_with_exact_handles_and_no_black_frames
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -3832,6 +3854,7 @@ async fn real_unicode_textfile_and_dissolve_use_exact_handles_without_black_fram
         .compile(CompositionExportCompileRequest {
             inputs: &inputs,
             text_resources: &text_resources,
+            vidstab_transforms: &BTreeMap::new(),
             destination: &output,
             parallel_jobs: 1,
             composition: &composition,
@@ -4062,6 +4085,7 @@ async fn real_delivery_profiles_probe_truthful_container_codecs_timing_and_dimen
             .compile(CompositionExportCompileRequest {
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
                 destination: &output,
                 parallel_jobs: 1,
                 composition: &composition,
@@ -4268,6 +4292,7 @@ async fn real_composition_audio_only_profiles_have_no_video_stream_and_exact_clo
             .compile(CompositionExportCompileRequest {
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
                 destination: &output,
                 parallel_jobs: 1,
                 composition: &composition,

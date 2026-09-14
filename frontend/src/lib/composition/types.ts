@@ -33,12 +33,21 @@ export type CompositionTransitionKind =
   | 'vertical_open' | 'vertical_close' | 'horizontal_open' | 'horizontal_close'
 export type CompositionFrameInterpolation = 'duplicate' | 'optical_flow'
 export type CompositionStabilizationRadius = 16 | 32 | 48 | 64
+export type CompositionVidstabShakiness = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+export type CompositionVidstabAccuracy = 1 | 5 | 10 | 15
+export type CompositionVidstabSmoothing = 1 | 5 | 10 | 15 | 20 | 30
 export type CompositionStabilization =
   | { readonly mode: 'disabled' }
   | {
       readonly mode: 'deshake'
       readonly radiusX: CompositionStabilizationRadius
       readonly radiusY: CompositionStabilizationRadius
+    }
+  | {
+      readonly mode: 'vidstab'
+      readonly shakiness: CompositionVidstabShakiness
+      readonly accuracy: CompositionVidstabAccuracy
+      readonly smoothing: CompositionVidstabSmoothing
     }
 export type CompositionPlaybackMode =
   | { readonly mode: 'forward' }
@@ -92,6 +101,9 @@ export const COMPOSITION_AUDIO_PROPERTIES: readonly CompositionAudioProperty[] =
 export const COMPOSITION_VOICE_EFFECTS: readonly CompositionVoiceEffect[] = ['none', 'deep', 'high', 'chipmunk', 'echo', 'robot']
 export const COMPOSITION_MASK_PROPERTIES: readonly CompositionMaskProperty[] = ['x', 'y', 'width', 'height', 'rotationDegrees']
 export const COMPOSITION_STABILIZATION_RADII: readonly CompositionStabilizationRadius[] = [16, 32, 48, 64]
+export const COMPOSITION_VIDSTAB_SHAKINESS: readonly CompositionVidstabShakiness[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+export const COMPOSITION_VIDSTAB_ACCURACY: readonly CompositionVidstabAccuracy[] = [1, 5, 10, 15]
+export const COMPOSITION_VIDSTAB_SMOOTHING: readonly CompositionVidstabSmoothing[] = [1, 5, 10, 15, 20, 30]
 
 export interface CompositionKeyframe {
   readonly tick: Tick

@@ -481,20 +481,20 @@ impl YouTubeOAuthClient {
         bail!("YouTube upload ended without a video id")
     }
 
-    #[cfg(test)]
-    fn with_token_endpoint(mut self, endpoint: Url) -> Self {
+    /// Override the OAuth token endpoint (production Google or a local mock).
+    pub fn with_token_endpoint(mut self, endpoint: Url) -> Self {
         self.token_endpoint = endpoint;
         self
     }
 
-    #[cfg(test)]
-    fn with_upload_endpoint(mut self, endpoint: Url) -> Self {
+    /// Override the resumable upload init endpoint.
+    pub fn with_upload_endpoint(mut self, endpoint: Url) -> Self {
         self.upload_endpoint = endpoint;
         self
     }
 
-    #[cfg(test)]
-    fn with_revoke_endpoint(mut self, endpoint: Url) -> Self {
+    /// Override the OAuth revocation endpoint.
+    pub fn with_revoke_endpoint(mut self, endpoint: Url) -> Self {
         self.revoke_endpoint = endpoint;
         self
     }

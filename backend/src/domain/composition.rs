@@ -546,6 +546,16 @@ pub enum StabilizationSpec {
         #[serde(rename = "radiusY")]
         radius_y: u32,
     },
+    /// Two-pass libvidstab. Detect writes a `.trf`; transform consumes it in the
+    /// export graph. Bounds match FFmpeg's documented filter ranges.
+    Vidstab {
+        /// 1..=10 — how aggressive motion detection is (default 5).
+        shakiness: u32,
+        /// 1..=15 — detection accuracy (default 15).
+        accuracy: u32,
+        /// 1..=30 — low-pass smoothing for the transform pass (default 10).
+        smoothing: u32,
+    },
 }
 
 impl StabilizationSpec {
@@ -561,11 +571,30 @@ impl StabilizationSpec {
                 Ok(())
             }
             Self::Deshake { .. } => Err(CompositionError::InvalidStabilization),
+            Self::Vidstab {
+                shakiness,
+                accuracy,
+                smoothing,
+            } if (1..=10).contains(&shakiness)
+                && (1..=15).contains(&accuracy)
+                && (1..=30).contains(&smoothing) =>
+            {
+                Ok(())
+            }
+            Self::Vidstab { .. } => Err(CompositionError::InvalidStabilization),
         }
     }
 
     pub fn is_enabled(self) -> bool {
+        matches!(self, Self::Deshake { .. } | Self::Vidstab { .. })
+    }
+
+    pub fn is_deshake(self) -> bool {
         matches!(self, Self::Deshake { .. })
+    }
+
+    pub fn is_vidstab(self) -> bool {
+        matches!(self, Self::Vidstab { .. })
     }
 }
 
@@ -1396,6 +1425,34 @@ impl Composition {
         })
     }
 
+    /// Whether any active clip uses classical `deshake`.
+    pub fn requires_deshake_stabilization(&self) -> bool {
+        self.tracks.iter().any(|track| {
+            matches!(
+                track,
+                CompositionTrack::Video {
+                    hidden: false,
+                    clips,
+                    ..
+                } if clips.iter().any(|clip| clip.enabled && clip.stabilization.is_deshake())
+            )
+        })
+    }
+
+    /// Whether any active clip uses two-pass `vidstabdetect`/`vidstabtransform`.
+    pub fn requires_vidstab_stabilization(&self) -> bool {
+        self.tracks.iter().any(|track| {
+            matches!(
+                track,
+                CompositionTrack::Video {
+                    hidden: false,
+                    clips,
+                    ..
+                } if clips.iter().any(|clip| clip.enabled && clip.stabilization.is_vidstab())
+            )
+        })
+    }
+
     /// Whether the active render graph needs variable video timing or
     /// pitch-preserving segmented audio timing.
     pub fn requires_speed_ramp(&self) -> bool {
@@ -2193,6 +2250,58 @@ mod tests {
             composition.validate(),
             Err(CompositionError::InvalidStabilization)
         );
+    }
+
+    #[test]
+    fn vidstab_wire_is_bounded_and_requires_vidstab_filters() {
+        let source = source("vidstab-source");
+        let mut composition = Composition::new(CanvasSpec::default());
+        composition.sources.insert(source.id.clone(), source);
+        let mut clip = video_clip("vidstab-clip", "vidstab-source", 0);
+        clip.stabilization = StabilizationSpec::Vidstab {
+            shakiness: 5,
+            accuracy: 15,
+            smoothing: 10,
+        };
+        composition.tracks = vec![CompositionTrack::Video {
+            id: TrackId::parse("vidstab-track").unwrap(),
+            name: "Vidstab".into(),
+            hidden: false,
+            muted: false,
+            locked: false,
+            clips: vec![clip],
+            transitions: Vec::new(),
+        }];
+        composition.validate().unwrap();
+        assert!(composition.requires_stabilization());
+        assert!(!composition.requires_deshake_stabilization());
+        assert!(composition.requires_vidstab_stabilization());
+        let wire = serde_json::to_value(&composition).unwrap();
+        assert_eq!(
+            wire["tracks"][0]["clips"][0]["stabilization"]["mode"],
+            "vidstab"
+        );
+        assert_eq!(
+            wire["tracks"][0]["clips"][0]["stabilization"]["shakiness"],
+            5
+        );
+
+        for (shakiness, accuracy, smoothing) in [(0, 15, 10), (5, 0, 10), (5, 15, 0), (11, 15, 10)]
+        {
+            let mut invalid = composition.clone();
+            let CompositionTrack::Video { clips, .. } = &mut invalid.tracks[0] else {
+                unreachable!();
+            };
+            clips[0].stabilization = StabilizationSpec::Vidstab {
+                shakiness,
+                accuracy,
+                smoothing,
+            };
+            assert_eq!(
+                invalid.validate(),
+                Err(CompositionError::InvalidStabilization)
+            );
+        }
     }
 
     #[test]

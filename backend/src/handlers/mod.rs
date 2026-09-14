@@ -37,10 +37,10 @@ pub use jobs::{
 };
 
 pub use library::{
-    library_delete_handler, library_filmstrip_handler, library_filmstrip_version_handler,
-    library_list_handler, library_metadata_patch_handler, library_metadata_put_handler,
-    library_search_handler, library_thumbnail_handler, library_thumbnail_version_handler,
-    source_file_handler,
+    library_cropdetect_handler, library_delete_handler, library_filmstrip_handler,
+    library_filmstrip_version_handler, library_list_handler, library_metadata_patch_handler,
+    library_metadata_put_handler, library_search_handler, library_thumbnail_handler,
+    library_thumbnail_version_handler, source_file_handler,
 };
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
 pub use project_archive::{

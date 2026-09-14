@@ -148,6 +148,10 @@ pub fn build_router_with_cors(
         )
         .route("/library/:id", delete(handlers::library_delete_handler))
         .route(
+            "/library/:id/cropdetect",
+            post(handlers::library_cropdetect_handler),
+        )
+        .route(
             "/library/:id/proxies",
             get(handlers::proxy_list_handler).post(handlers::proxy_create_handler),
         )

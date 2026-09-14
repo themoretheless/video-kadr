@@ -392,6 +392,12 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
         controls: JSON,
     },
     RoutePolicy {
+        method: "POST",
+        path: "/api/library/:id/cropdetect",
+        class: RouteClass::JsonCommand,
+        controls: JSON,
+    },
+    RoutePolicy {
         method: "PATCH",
         path: "/api/library/:id/metadata",
         class: RouteClass::JsonCommand,
@@ -572,6 +578,7 @@ mod tests {
             ("POST", "/api/library/:id/proxies"),
             ("DELETE", "/api/library/:id/proxies/:key"),
             ("GET", "/api/library/:id/proxies/:key/content"),
+            ("POST", "/api/library/:id/cropdetect"),
             ("GET", "/api/composition-projects"),
             ("POST", "/api/composition-projects"),
             ("GET", "/api/composition-projects/:id"),

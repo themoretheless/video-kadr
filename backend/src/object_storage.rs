@@ -30,7 +30,8 @@ impl SourceObjectStore {
         })
     }
 
-    #[cfg(test)]
+    /// In-process object store for tests and local dry-runs. Cloning the
+    /// returned handle shares the same remote keyspace (second-node hydrate).
     pub fn in_memory(prefix: &str) -> Result<Self> {
         Ok(Self {
             store: Arc::new(object_store::memory::InMemory::new()),

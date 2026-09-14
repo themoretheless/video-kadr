@@ -93,8 +93,10 @@
 - Composition projects сохраняются отдельно и переносятся как детерминированные
   `.veproj`-пакеты с checksums, bounded parser и вложенными media assets.
 
-Нормализованная карта текущего паритета, следующих локальных слоёв и функций,
-которым нужен внешний AI/cloud, — в [docs/capcut-parity.md](docs/capcut-parity.md).
+Нормализованная карта текущего паритета — **источник истины по покрытию CapCut**
+в этом репо: [docs/capcut-parity.md](docs/capcut-parity.md). Non-AI редактор и
+Cloud/Templates (acceptance = mock provider E2E) там `готово`; AI CapCut —
+`исключено (AI)`. Это не обещание полного клона.
 
 ## API
 

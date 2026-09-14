@@ -40,10 +40,14 @@
   let timelineSegmentIndex = $state(0)
   let timelineSegmentId = $state('')
   let showOriginal = $state(false)
+  /** Split-view wipe: 0 = all original (left), 100 = all edited (right). Off when null. */
+  let wipePercent = $state<number | null>(null)
+  let originalEl = $state<HTMLVideoElement>()
   let previousVideoId: string | undefined
   let previousPlaybackUrl: string | undefined
   let ensuredProxySourceId: string | undefined
   let previousPlayToggle = appState.playToggle
+  let wipeActive = $derived(wipePercent != null && !showOriginal)
 
   let proxyPlayback = $derived.by(() => {
     const video = appState.video
@@ -101,6 +105,7 @@
     const snapshot = player.snapshot()
     appState.playerTime = snapshot.currentTime
     applyPlayback(player)
+    syncWipeOriginal(snapshot.currentTime, snapshot.paused)
     if (showOriginal || snapshot.paused) return
     if (appState.edit.timelineEnabled) {
       const segments = activeTimelineSegments(appState.edit, previewDuration(player))
@@ -112,6 +117,24 @@
       }
     }
     if (snapshot.currentTime > appState.edit.trimEnd) seekPreview(player, appState.edit.trimStart)
+  }
+  function syncWipeOriginal(time: number, paused: boolean): void {
+    if (!wipeActive || !originalEl) return
+    if (Math.abs(originalEl.currentTime - time) > 0.08) originalEl.currentTime = time
+    if (paused && !originalEl.paused) originalEl.pause()
+    if (!paused && originalEl.paused) void originalEl.play().catch(() => {})
+  }
+  function enableWipe(): void {
+    showOriginal = false
+    wipePercent = wipePercent ?? 50
+  }
+  function disableWipe(): void {
+    wipePercent = null
+    originalEl?.pause()
+  }
+  function toggleCompare(): void {
+    showOriginal = !showOriginal
+    if (showOriginal) disableWipe()
   }
   function onPlay(): void {
     if (!player) return
@@ -193,6 +216,7 @@
       previousVideoId = sourceId
       setTimelineCursor([], 0)
       showOriginal = false
+      wipePercent = null
       updateSession(previewSession.reset().state)
     }
   })
@@ -239,7 +263,7 @@
     vintage: 'sepia(0.3) contrast(0.95) saturate(1.1)',
   }
   let videoFilter = $derived.by(() => {
-    if (showOriginal) return ''
+    if (showOriginal && !wipeActive) return ''
     const filters: string[] = []
     if (appState.edit.brightness) filters.push(`brightness(${(1 + appState.edit.brightness).toFixed(3)})`)
     if (appState.edit.contrast !== 1) filters.push(`contrast(${appState.edit.contrast})`)
@@ -247,7 +271,7 @@
     if (appState.edit.filter && presets[appState.edit.filter]) filters.push(presets[appState.edit.filter]!)
     return filters.join(' ')
   })
-  let videoTransform = $derived(showOriginal || (!appState.edit.flipH && !appState.edit.flipV)
+  let videoTransform = $derived((showOriginal && !wipeActive) || (!appState.edit.flipH && !appState.edit.flipV)
     ? '' : `scaleX(${appState.edit.flipH ? -1 : 1}) scaleY(${appState.edit.flipV ? -1 : 1})`)
   let advancedColorNotice = $derived.by(() => {
     const lut = Boolean(appState.edit.lutId) && appState.edit.lutIntensity > 0
@@ -257,15 +281,21 @@
     const enabled = [lut && 'LUT', curves && 'кривые', hsl && 'HSL', wheels && 'цветовые колёса'].filter(Boolean)
     return enabled.length ? `Активно: ${enabled.join(', ')}.` : ''
   })
-  let compareStatus = $derived(showOriginal
-    ? 'Оригинал: монтаж, скорость, громкость, mute, CSS-эффекты и области редактирования отключены.'
-    : 'С правками: монтаж, звук, эффекты и области редактирования включены.')
+  let compareStatus = $derived.by(() => {
+    if (wipeActive) return `Сравнение до/после: разделитель на ${Math.round(wipePercent ?? 50)}%. Левая часть — оригинал, правая — с правками.`
+    if (showOriginal) return 'Оригинал: монтаж, скорость, громкость, mute, CSS-эффекты и области редактирования отключены.'
+    return 'С правками: монтаж, звук, эффекты и области редактирования включены.'
+  })
   let playbackHint = $derived.by(() => {
     if (!appState.video) return ''
+    if (wipeActive) return 'Wipe сравнивает оригинал и правки в одном кадре; звук идёт только с слоя правок.'
     if (showOriginal) return 'Оригинал воспроизводится непрерывно с исходной скоростью и громкостью.'
     if (appState.edit.timelineEnabled) return `Таймлайн воспроизводится в заданном порядке и зацикливается. Сегментов: ${activeTimelineSegments(appState.edit, appState.video.duration).length}.`
     return 'Обрезка зациклена внутри выбранного отрезка.'
   })
+  let wipeClipPath = $derived(wipeActive
+    ? `inset(0 0 0 ${Math.max(0, Math.min(100, wipePercent ?? 50))}%)`
+    : undefined)
   const fmtDuration = (time: number) => `${Math.floor(time / 60)}:${Math.floor(time % 60).toString().padStart(2, '0')}`
   function fmtSize(bytes: number): string {
     if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} ГБ`
@@ -314,11 +344,22 @@
         aria-controls="preview-media"
         aria-describedby="preview-compare-status"
         aria-pressed={showOriginal}
-        onclick={() => { showOriginal = !showOriginal }}
+        onclick={toggleCompare}
       >
         <span class:active={showOriginal} class="preview-compare-option">Оригинал</span>
         <span class="preview-compare-separator" aria-hidden="true">/</span>
         <span class:active={!showOriginal} class="preview-compare-option">С правками</span>
+      </button>
+      <button
+        type="button"
+        class="preview-compare-toggle"
+        aria-label="Сравнение до/после"
+        aria-controls="preview-wipe"
+        aria-describedby="preview-compare-status"
+        aria-pressed={wipeActive}
+        onclick={() => { wipeActive ? disableWipe() : enableWipe() }}
+      >
+        <span class:active={wipeActive} class="preview-compare-option">Wipe</span>
       </button>
       <p id="preview-compare-status" class="preview-compare-status" role="status" aria-live="polite">{compareStatus}</p>
       <div class="preview-source-status" data-preview-source={proxyPlayback?.kind ?? 'original'} role="status" aria-live="polite">
@@ -327,15 +368,28 @@
       </div>
     </div>
   {/if}
-  <div class="player-wrap">
+  <div class="player-wrap" class:player-wrap-wipe={wipeActive}>
+    {#if wipeActive}
+      <video
+        class="player player-wipe-original"
+        src={previewUrl}
+        muted
+        playsinline
+        preload="metadata"
+        bind:this={originalEl}
+        aria-hidden="true"
+      ></video>
+    {/if}
     <video
       {...mediaLayerAttributes}
       id="preview-media"
       bind:this={videoEl}
       class="player"
+      class:player-wipe-edited={wipeActive}
       src={previewUrl}
       style:filter={videoFilter || undefined}
       style:transform={videoTransform || undefined}
+      style:clip-path={wipeClipPath}
       muted={showOriginal ? false : appState.edit.mute}
       playsinline
       preload="metadata"
@@ -346,10 +400,28 @@
       onended={onEnded}
       onerror={onMediaError}
     ></video>
-    {#if appState.video && !showOriginal && appState.edit.cropEnabled}
+    {#if wipeActive}
+      <div class="preview-wipe-divider" style:left={`${wipePercent ?? 50}%`} aria-hidden="true"></div>
+      <input
+        id="preview-wipe"
+        class="preview-wipe-slider"
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value={wipePercent ?? 50}
+        aria-label="Разделитель до/после"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={wipePercent ?? 50}
+        aria-valuetext={`${Math.round(wipePercent ?? 50)} процентов правок`}
+        oninput={(event) => { wipePercent = Number(event.currentTarget.value) }}
+      />
+    {/if}
+    {#if appState.video && !showOriginal && !wipeActive && appState.edit.cropEnabled}
       <RectOverlay rect={appState.edit.crop} aspectRatio={cropAspectRatio(appState.edit.cropAspectLock)} onrectchange={(rect) => { appState.edit.crop = rect }} oninteractionstart={() => beginEditTransaction('crop-drag')} oninteractionend={endEditTransaction} />
     {/if}
-    {#if appState.video && !showOriginal && appState.edit.censorEnabled}
+    {#if appState.video && !showOriginal && !wipeActive && appState.edit.censorEnabled}
       <RectOverlay rect={appState.edit.censor} color="var(--danger)" mode="mask" onrectchange={(rect) => { appState.edit.censor = rect }} oninteractionstart={() => beginEditTransaction('censor-drag')} oninteractionend={endEditTransaction} />
     {/if}
   </div>

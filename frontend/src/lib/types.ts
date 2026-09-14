@@ -173,6 +173,8 @@ export interface EditState {
   lutIntensity: number
   curves: ColorCurves
   reverse: boolean
+  /** Forward then reverse (ping-pong). Mutually exclusive with reverse. */
+  boomerang: boolean
   fps: number | null
   censorEnabled: boolean
   censor: { x: number; y: number; w: number; h: number }

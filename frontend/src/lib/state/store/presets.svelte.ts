@@ -52,6 +52,7 @@ const PRESET_KEYS: (keyof EditState)[] = [
   'lutIntensity',
   'curves',
   'reverse',
+  'boomerang',
   'fps',
   'vignette',
   'denoise',

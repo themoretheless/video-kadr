@@ -20,7 +20,8 @@ import {
   compositionUsesOpticalFlow,
   compositionUsesReversePlayback,
   compositionUsesSpeedRamp,
-  compositionUsesStabilization
+  compositionUsesDeshakeStabilization,
+  compositionUsesVidstabStabilization
 } from '../../composition/validation.js'
 import type {
   Capabilities,
@@ -128,10 +129,15 @@ export function getCompositionExportUnavailableReason(capabilities: Capabilities
     if (!freezeFrame) return 'Сервер не объявил поддержку freeze-frame для этого composition request.'
     if (!freezeFrame.available) return freezeFrame.reason?.trim() || 'Freeze frame недоступен на этом сервере.'
   }
-  if (compositionUsesStabilization(compositionState.document)) {
+  if (compositionUsesDeshakeStabilization(compositionState.document)) {
     const stabilization = capabilities.features?.find((candidate) => candidate.id === 'stabilization')
     if (!stabilization) return 'Сервер не объявил поддержку stabilization для этого composition request.'
     if (!stabilization.available) return stabilization.reason?.trim() || 'Stabilization недоступна на этом сервере.'
+  }
+  if (compositionUsesVidstabStabilization(compositionState.document)) {
+    const vidstab = capabilities.features?.find((candidate) => candidate.id === 'vidstab-stabilization')
+    if (!vidstab) return 'Сервер не объявил поддержку vidstab-stabilization для этого composition request.'
+    if (!vidstab.available) return vidstab.reason?.trim() || 'Vidstab стабилизация недоступна на этом сервере.'
   }
   if (compositionUsesSpeedRamp(compositionState.document)) {
     const speedRamp = capabilities.features?.find((candidate) => candidate.id === 'speed-ramp')

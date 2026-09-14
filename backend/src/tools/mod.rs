@@ -18,7 +18,8 @@ pub use args::{
 };
 pub use composition_args::{
     build_composition_ffmpeg_args, build_composition_ffmpeg_command,
-    build_composition_ffmpeg_command_for_output, FfmpegCompositionExportCompiler,
+    build_composition_ffmpeg_command_for_output, build_vidstab_detect_command,
+    FfmpegCompositionExportCompiler,
 };
 pub use net::{validate_url, validate_url_structure};
 
@@ -41,7 +42,7 @@ pub use crate::domain::media_probe::ProbeResult as ProbeInfo;
 
 const TOOL_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
-const OFFLINE_PROTOCOLS: &str = "file,pipe,fd,crypto,data";
+pub(crate) const OFFLINE_PROTOCOLS: &str = "file,pipe,fd,crypto,data";
 
 pub(crate) fn is_tool_timeout(error: &anyhow::Error) -> bool {
     is_process_timeout(error)

@@ -155,8 +155,8 @@
     if (activeVisuals.some((active) => active.clip.kind === 'video' && active.clip.playbackMode?.mode === 'freeze')) {
       notes.push('Freeze держит source frame; embedded audio выключен')
     }
-    if (activeVisuals.some((active) => active.clip.kind === 'video' && active.clip.stabilization?.mode === 'deshake')) {
-      notes.push('Deshake stabilization применяется точно только в экспорте')
+    if (activeVisuals.some((active) => active.clip.kind === 'video' && (active.clip.stabilization?.mode === 'deshake' || active.clip.stabilization?.mode === 'vidstab'))) {
+      notes.push('Stabilization применяется точно только в экспорте')
     }
     if (compositionState.document.tracks.some((track) => track.clips.some((clip) =>
       (clip.kind === 'video' || clip.kind === 'audio') &&

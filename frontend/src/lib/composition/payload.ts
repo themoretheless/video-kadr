@@ -138,6 +138,13 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
                 radiusX: clip.stabilization.radiusX,
                 radiusY: clip.stabilization.radiusY,
               }
+            : clip.stabilization?.mode === 'vidstab'
+              ? {
+                  mode: 'vidstab',
+                  shakiness: clip.stabilization.shakiness,
+                  accuracy: clip.stabilization.accuracy,
+                  smoothing: clip.stabilization.smoothing,
+                }
             : { mode: 'disabled' },
           enabled: true,
         })),

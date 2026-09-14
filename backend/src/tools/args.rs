@@ -256,7 +256,9 @@ fn video_filter_parts(edit: &EditSpec, out_dur: f64, temporal: bool) -> VideoFil
             "pad=w='ceil(max(iw,ih*{tw}/{th})/2)*2':h='ceil(max(ih,iw*{th}/{tw})/2)*2':x='(ow-iw)/2':y='(oh-ih)/2':color=black"
         ));
     }
-    if timing.reverse {
+    if timing.boomerang {
+        // Applied later as split/reverse/concat; leave the forward chain intact.
+    } else if timing.reverse {
         after_lut.push("reverse".into());
     }
     if temporal {
@@ -334,7 +336,9 @@ fn audio_filters(edit: &EditSpec, out_dur: f64) -> Vec<String> {
         "aresample=48000:async=1:first_pts=0".to_owned(),
         "asetpts=PTS-STARTPTS".to_owned(),
     ];
-    if timing.reverse {
+    if timing.boomerang {
+        // Applied later as asplit/areverse/concat.
+    } else if timing.reverse {
         af.push("areverse".into());
     }
     if audio.highpass {
@@ -458,6 +462,42 @@ fn push_video_program(args: &mut Vec<String>, program: VideoFilterProgram) -> bo
     }
 }
 
+fn wrap_boomerang_video(program: VideoFilterProgram) -> VideoFilterProgram {
+    match program {
+        VideoFilterProgram::Linear(filters) => {
+            let graded = if filters.is_empty() {
+                "[0:v]null[fwd]".to_owned()
+            } else {
+                format!(
+                    "[0:v]{}[fwd]",
+                    serialize_filter_chain(MediaKind::Video, &filters)
+                )
+            };
+            VideoFilterProgram::Complex(format!(
+                "{graded};[fwd]split[ba][bb];[bb]reverse[br];[ba][br]concat=n=2:v=1:a=0[vout]"
+            ))
+        }
+        VideoFilterProgram::Complex(graph) => {
+            let rewritten = graph.replace("[vout]", "[fwd]");
+            VideoFilterProgram::Complex(format!(
+                "{rewritten};[fwd]split[ba][bb];[bb]reverse[br];[ba][br]concat=n=2:v=1:a=0[vout]"
+            ))
+        }
+    }
+}
+
+fn wrap_boomerang_audio(filters: Vec<String>) -> String {
+    let graded = if filters.is_empty() {
+        "[0:a]anull[afwd]".to_owned()
+    } else {
+        format!(
+            "[0:a]{}[afwd]",
+            serialize_filter_chain(MediaKind::Audio, &filters)
+        )
+    };
+    format!("{graded};[afwd]asplit[aa][ab];[ab]areverse[ar];[aa][ar]concat=n=2:v=0:a=1[aout]")
+}
+
 fn map_optional_audio_for_complex_video(
     args: &mut Vec<String>,
     include_audio: bool,
@@ -492,9 +532,19 @@ fn compile_ffmpeg_command(
     let source_duration = plan.source.duration_seconds();
     let out_dur = expected_output_secs(edit, source_duration);
 
-    // Multi-segment edits (cut from the middle / stitch ranges) need a concat
-    // filter graph; only meaningful for the video containers.
     let segs = valid_segments(edit);
+    anyhow::ensure!(
+        !edit.timing().boomerang || segs.is_empty(),
+        "boomerang несовместим с сегментами"
+    );
+    anyhow::ensure!(
+        !edit.timing().boomerang
+            || !matches!(
+                format,
+                OutputFormat::Gif | OutputFormat::Png | OutputFormat::Jpg
+            ),
+        "boomerang поддерживается только для видео/аудио контейнеров"
+    );
     if !segs.is_empty()
         && matches!(
             format,
@@ -524,8 +574,17 @@ fn compile_ffmpeg_command(
     match format {
         OutputFormat::Mp3 | OutputFormat::Wav => {
             // Audio-only extraction.
-            let af = audio_filters(edit, out_dur);
-            if !af.is_empty() {
+            let af = audio_filters(
+                edit,
+                out_dur / if edit.timing().boomerang { 2.0 } else { 1.0 },
+            );
+            if edit.timing().boomerang {
+                let graph = wrap_boomerang_audio(af);
+                args.push("-filter_complex".into());
+                args.push(graph);
+                args.push("-map".into());
+                args.push("[aout]".into());
+            } else if !af.is_empty() {
                 args.push("-af".into());
                 args.push(serialize_filter_chain(MediaKind::Audio, &af));
             }
@@ -579,20 +638,28 @@ fn compile_ffmpeg_command(
             args.push("-an".into());
         }
         OutputFormat::Webm => {
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let half = out_dur / if edit.timing().boomerang { 2.0 } else { 1.0 };
+            let mut program = video_filter_program(edit, half, true, lut_path, "0:v", "vout")?;
+            if edit.timing().boomerang {
+                program = wrap_boomerang_video(program);
+            }
             let complex = push_video_program(&mut args, program);
-            let include_audio = output.audio_codec.is_some();
+            // Boomerang doubles video; mute to keep A/V duration honest.
+            let include_audio = output.audio_codec.is_some() && !edit.timing().boomerang;
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
-            push_audio(&mut args, edit, out_dur, "libopus", include_audio);
+            push_audio(&mut args, edit, half, "libopus", include_audio);
             push_video_codec(&mut args, output);
         }
         OutputFormat::Av1 => {
-            // Modern, compact codec in an mp4 container (needs libsvtav1).
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let half = out_dur / if edit.timing().boomerang { 2.0 } else { 1.0 };
+            let mut program = video_filter_program(edit, half, true, lut_path, "0:v", "vout")?;
+            if edit.timing().boomerang {
+                program = wrap_boomerang_video(program);
+            }
             let complex = push_video_program(&mut args, program);
-            let include_audio = output.audio_codec.is_some();
+            let include_audio = output.audio_codec.is_some() && !edit.timing().boomerang;
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
-            push_audio(&mut args, edit, out_dur, "aac", include_audio);
+            push_audio(&mut args, edit, half, "aac", include_audio);
             args.push("-c:v".into());
             args.push("libsvtav1".into());
             args.push("-crf".into());
@@ -606,15 +673,18 @@ fn compile_ffmpeg_command(
             args.push("+faststart".into());
         }
         OutputFormat::Prores => {
-            // Intra-only edit codec in a .mov; audio as PCM. prores_ks is built in.
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let half = out_dur / if edit.timing().boomerang { 2.0 } else { 1.0 };
+            let mut program = video_filter_program(edit, half, true, lut_path, "0:v", "vout")?;
+            if edit.timing().boomerang {
+                program = wrap_boomerang_video(program);
+            }
             let complex = push_video_program(&mut args, program);
-            let include_audio = output.audio_codec.is_some();
+            let include_audio = output.audio_codec.is_some() && !edit.timing().boomerang;
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
             if !include_audio {
                 args.push("-an".into());
             } else {
-                let af = audio_filters(edit, out_dur);
+                let af = audio_filters(edit, half);
                 if !af.is_empty() {
                     args.push("-af".into());
                     args.push(serialize_filter_chain(MediaKind::Audio, &af));
@@ -631,12 +701,15 @@ fn compile_ffmpeg_command(
             push_fps(&mut args, output);
         }
         OutputFormat::Mp4 => {
-            // mp4 (default): H.264 or H.265.
-            let program = video_filter_program(edit, out_dur, true, lut_path, "0:v", "vout")?;
+            let half = out_dur / if edit.timing().boomerang { 2.0 } else { 1.0 };
+            let mut program = video_filter_program(edit, half, true, lut_path, "0:v", "vout")?;
+            if edit.timing().boomerang {
+                program = wrap_boomerang_video(program);
+            }
             let complex = push_video_program(&mut args, program);
-            let include_audio = output.audio_codec.is_some();
+            let include_audio = output.audio_codec.is_some() && !edit.timing().boomerang;
             map_optional_audio_for_complex_video(&mut args, include_audio, complex);
-            push_audio(&mut args, edit, out_dur, "aac", include_audio);
+            push_audio(&mut args, edit, half, "aac", include_audio);
             push_video_codec(&mut args, output);
         }
     }
@@ -880,7 +953,7 @@ pub fn expected_output_secs(edit: &EditSpec, source_duration: f64) -> f64 {
             None => source_duration,
         }
     };
-    base / edit.timing().speed
+    base / edit.timing().speed * if edit.timing().boomerang { 2.0 } else { 1.0 }
 }
 
 /// Format seconds without scientific notation, trimming trailing noise.
@@ -2034,5 +2107,41 @@ mod tests {
         assert!(args.windows(2).any(|pair| pair == ["-ac", "2"]));
         assert!(!args.contains(&"-vf".to_string()));
         assert!(af(&args).unwrap().contains("volume=0.500"));
+    }
+
+    #[test]
+    fn boomerang_wraps_video_as_split_reverse_concat_and_mutes_audio() {
+        let plan = plan_for_duration(json!({ "videoId": "x", "boomerang": true }), 4.0);
+        assert!((expected_output_secs(&plan.edit, 4.0) - 8.0).abs() < 1e-9);
+        let args = build_ffmpeg_args(Path::new("/in.mp4"), Path::new("/out.mp4"), &plan);
+        let graph = filter_complex(&args);
+        assert!(
+            graph.contains("[fwd]split[ba][bb];[bb]reverse[br];[ba][br]concat=n=2:v=1:a=0[vout]"),
+            "{graph}"
+        );
+        assert!(!graph.contains(",reverse"), "{graph}");
+        assert!(args.contains(&"-an".to_string()));
+        assert!(!args.windows(2).any(|pair| pair == ["-c:a", "aac"]));
+    }
+
+    #[test]
+    fn boomerang_overrides_plain_reverse_and_rejects_gif() {
+        let plan = plan_for_duration(
+            json!({ "videoId": "x", "boomerang": true, "reverse": true }),
+            2.0,
+        );
+        assert!(!plan.edit.timing().reverse);
+        assert!(plan.edit.timing().boomerang);
+        let err = compile_ffmpeg_command(
+            Path::new("/in.mp4"),
+            Path::new("/out.gif"),
+            &plan_for_duration(
+                json!({ "videoId": "x", "boomerang": true, "format": "gif" }),
+                2.0,
+            ),
+            None,
+        )
+        .expect_err("gif boomerang");
+        assert!(err.to_string().contains("boomerang"));
     }
 }

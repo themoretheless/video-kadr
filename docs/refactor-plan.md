@@ -20,12 +20,15 @@ render path, а не через orphaned `domain/timeline`.
 - **`OutputSpec`**, HTTP **`AppError`/`IntoResponse`**, **`Config::from_env`**.
 - **Frontend:** `domain/edit.ts`, `ExportControls.svelte`, EditPanel ужат.
 - **Ghost quarantine:** `spec-contracts` feature (2026-09-14).
+- **JobRunner / plan_fingerprint cache / thin handlers / repo traits A /
+  ffmpeg_filters / messages** (SOLID/DRY waves, 2026-09-14).
+- **Frontend god-state split:** `composition.svelte.ts` / `store.svelte.ts` —
+  тонкие façades над `composition/*` и `store/*` (2026-09-14).
+- **CapCut coverage SoT:** [capcut-parity.md](capcut-parity.md) — локальный
+  non-AI editor `готово`; cloud/social `в работе`; AI excluded.
 
 ## Дальше - безопасно сейчас (S, прикрыто тестами)
 
-- **Frontend `store.svelte.ts` / `composition.svelte.ts` → модули.** God-state
-  переехал с Vue store; резать composition (~2.8k) на timeline/render/projects/
-  waveforms за façade. **S→M.**
 - **Единый источник дефолтов:** добить `diffFromDefault` / `PRESET_KEYS` из
   `EDIT_DEFAULTS` в `domain/edit.ts`. **S.**
 - **`messages.rs` (i18n-каталог).** Русские строки-ошибки ещё в tools/handlers.

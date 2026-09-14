@@ -277,6 +277,44 @@ pub async fn library_search_handler(
     Ok(Json(hits))
 }
 
+/// `POST /api/library/:id/cropdetect` — suggest a crop that removes letterbox bars.
+pub async fn library_cropdetect_handler(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+) -> AppResult<Json<crate::model::Crop>> {
+    if !state.tools.ffmpeg {
+        return Err(AppError::service_unavailable(
+            "cropdetect требует локальный ffmpeg",
+        ));
+    }
+    authorize_source_access(&state, &id, &headers).await?;
+    let entry = state
+        .library
+        .get(&id)
+        .await
+        .filter(|entry| entry.kind == "source")
+        .ok_or_else(|| AppError::not_found("Источник не найден"))?;
+    let path = state
+        .library
+        .resolve_media_path(&entry)
+        .await
+        .map_err(|_| AppError::not_found("Медиафайл не найден"))?;
+    let probe = crate::tools::probe_video(&state.process_runtime, &path)
+        .await
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    let crop = crate::analysis::cropdetect::detect_letterbox_crop(
+        &state.process_runtime,
+        &path,
+        probe.duration,
+        probe.width,
+        probe.height,
+    )
+    .await
+    .map_err(|error| AppError::bad_request(error.to_string()))?;
+    Ok(Json(crop))
+}
+
 /// Resolve the current media identity to a fingerprinted thumbnail URL. The
 /// stable URL itself is never cached as immutable, so source replacement
 /// cannot leave a stale preview pinned in the browser.

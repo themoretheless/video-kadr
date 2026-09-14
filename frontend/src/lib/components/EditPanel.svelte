@@ -24,6 +24,10 @@
     state as appState,
     undo,
   } from '$lib/state/store.svelte.js'
+  import * as api from '$lib/api'
+  import { toast } from '$lib/state/toasts.svelte.js'
+  import { authState } from '$lib/state/auth.svelte.js'
+  import { spacesState } from '$lib/state/spaces.svelte.js'
 
   let presetName = $state('')
   let startStr = $state('')
@@ -32,6 +36,7 @@
   let endInvalid = $state(false)
   let editingStart = false
   let editingEnd = false
+  let detectingCrop = $state(false)
 
   let canUndo = $derived(history.past.length > 0)
   let canRedo = $derived(history.future.length > 0)
@@ -164,6 +169,25 @@
     appState.edit.cropAspectLock = ''
     if (appState.video) appState.edit.crop = { x: 0, y: 0, w: appState.video.width, h: appState.video.height }
   }
+  async function detectBlackBars(): Promise<void> {
+    const video = appState.video
+    if (!video || detectingCrop) return
+    detectingCrop = true
+    try {
+      const crop = await api.detectLibraryCrop(video.id, authState.token, spacesState.selectedId)
+      beginEditTransaction('cropdetect')
+      appState.edit.cropEnabled = true
+      appState.edit.cropAspectLock = ''
+      appState.edit.crop = { x: crop.x, y: crop.y, w: crop.w, h: crop.h }
+      normalizeCrop()
+      endEditTransaction()
+      toast('success', 'Чёрные поля обрезаны')
+    } catch (error) {
+      toast('error', error instanceof Error ? error.message : 'Не удалось найти чёрные поля')
+    } finally {
+      detectingCrop = false
+    }
+  }
   function unlockCrop(): void { appState.edit.cropAspectLock = '' }
   function normalizeCropDimension(driver: 'width' | 'height'): void {
     const lock = appState.edit.cropAspectLock
@@ -250,7 +274,12 @@
       <div class="chips">{#each speeds as speed (speed)}<button class:active={appState.edit.speed === speed} class="chip" onclick={() => { appState.edit.speed = speed }}>{speed}×</button>{/each}</div>
       <label class="tt"><span>Точная скорость</span><input aria-label="Точная скорость" type="number" min="0.05" max="16" step="0.05" value={appState.edit.speed} onchange={commitSpeed} /></label>
     </div>
-    <div class="field inline"><label class="toggle"><input type="checkbox" bind:checked={appState.edit.reverse} /> Реверс</label>{#if appState.edit.reverse}<span class="hint">короткие отрезки: реверс грузит весь клип в память</span>{/if}</div>
+    <div class="field inline">
+      <label class="toggle"><input type="checkbox" checked={appState.edit.reverse && !appState.edit.boomerang} onchange={(event) => { appState.edit.reverse = event.currentTarget.checked; if (event.currentTarget.checked) appState.edit.boomerang = false }} /> Реверс</label>
+      <label class="toggle"><input type="checkbox" checked={appState.edit.boomerang} onchange={(event) => { appState.edit.boomerang = event.currentTarget.checked; if (event.currentTarget.checked) appState.edit.reverse = false }} /> Boomerang</label>
+      {#if appState.edit.reverse && !appState.edit.boomerang}<span class="hint">короткие отрезки: реверс грузит весь клип в память</span>{/if}
+      {#if appState.edit.boomerang}<span class="hint">туда-обратно; аудио при экспорте видео отключается</span>{/if}
+    </div>
     <div class="field"><div class="grid2">
       <label>Появление: {appState.edit.fadeIn.toFixed(1)} c <input type="range" min="0" max="5" step="0.1" bind:value={appState.edit.fadeIn} /></label>
       <label>Затухание: {appState.edit.fadeOut.toFixed(1)} c <input type="range" min="0" max="5" step="0.1" bind:value={appState.edit.fadeOut} /></label>
@@ -266,11 +295,13 @@
     <div class="field">
       <label class="toggle"><input type="checkbox" bind:checked={appState.edit.cropEnabled} /> Кадрировать</label>
       {#if appState.edit.cropEnabled}
-        <div class="chips">{#each aspects as aspect (aspect.label)}<button class:active={appState.edit.cropAspectLock === aspect.label} class="chip" onclick={() => appState.edit.cropAspectLock === aspect.label ? unlockCrop() : setAspect(aspect.rw, aspect.rh)}>{aspect.label}</button>{/each}<button class="chip" onclick={resetCrop}>сброс</button></div>
+        <div class="chips">{#each aspects as aspect (aspect.label)}<button class:active={appState.edit.cropAspectLock === aspect.label} class="chip" onclick={() => appState.edit.cropAspectLock === aspect.label ? unlockCrop() : setAspect(aspect.rw, aspect.rh)}>{aspect.label}</button>{/each}<button class="chip" onclick={resetCrop}>сброс</button><button class="chip" disabled={detectingCrop || !appState.video} onclick={() => void detectBlackBars()}>{detectingCrop ? 'ищу…' : 'убрать поля'}</button></div>
         <div class="grid2">
           <label>X <input type="number" min="0" bind:value={appState.edit.crop.x} onblur={normalizeCrop} /></label><label>Y <input type="number" min="0" bind:value={appState.edit.crop.y} onblur={normalizeCrop} /></label>
           <label>Ширина <input type="number" min="2" bind:value={appState.edit.crop.w} onblur={() => normalizeCropDimension('width')} /></label><label>Высота <input type="number" min="2" bind:value={appState.edit.crop.h} onblur={() => normalizeCropDimension('height')} /></label>
         </div>
+      {:else}
+        <button class="btn ghost sm" disabled={detectingCrop || !appState.video} onclick={() => void detectBlackBars()}>{detectingCrop ? 'Ищу чёрные поля…' : 'Убрать чёрные поля'}</button>
       {/if}
     </div>
     <div class="field"><span class="field-label">Поворот</span><div class="chips">{#each rotations as rotation (rotation)}<button class:active={appState.edit.rotate === rotation} class="chip" onclick={() => { appState.edit.rotate = rotation }}>{rotation}°</button>{/each}</div></div>

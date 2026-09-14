@@ -518,6 +518,7 @@ pub struct TimingSpec {
     pub(crate) segments: Vec<TimeRange>,
     pub(crate) speed: f64,
     pub(crate) reverse: bool,
+    pub(crate) boomerang: bool,
     pub(crate) fade_in_seconds: f64,
     pub(crate) fade_out_seconds: f64,
 }
@@ -970,6 +971,7 @@ mod tests {
                 segments: Vec::new(),
                 speed: 1.0,
                 reverse: false,
+                boomerang: false,
                 fade_in_seconds: 0.0,
                 fade_out_seconds: 0.0,
             },

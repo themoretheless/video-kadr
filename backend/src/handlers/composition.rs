@@ -145,8 +145,11 @@ fn validate_composition_capabilities(
     if composition.requires_freeze_frame() {
         required.push("tpad");
     }
-    if composition.requires_stabilization() {
+    if composition.requires_deshake_stabilization() {
         required.push("deshake");
+    }
+    if composition.requires_vidstab_stabilization() {
+        required.extend(["vidstabdetect", "vidstabtransform"]);
     }
     if composition.requires_speed_ramp() {
         required.extend(["setpts", "tpad", "fps", "trim"]);
@@ -367,10 +370,24 @@ pub(crate) fn spawn_composition_job(
         let outcome = async {
             let text_resources =
                 PreparedTextResources::create(&st.staging_dir(), plan.composition()).await?;
+            let vidstab = PreparedVidstabTransforms::create(
+                &st,
+                &st.staging_dir(),
+                plan.composition(),
+                &inputs,
+                &tx,
+                &token,
+            )
+            .await?;
+            if token.is_cancelled() {
+                let _ = tokio::fs::remove_file(&output_path).await;
+                return Ok::<Option<Value>, anyhow::Error>(None);
+            }
             let command =
                 FfmpegCompositionExportCompiler.compile(CompositionExportCompileRequest {
                     inputs: &inputs,
                     text_resources: text_resources.resources(),
+                    vidstab_transforms: vidstab.transforms(),
                     destination: &output_path,
                     parallel_jobs: st.render_parallelism(),
                     composition: plan.composition(),
@@ -596,6 +613,91 @@ impl PreparedTextResources {
 impl Drop for PreparedTextResources {
     fn drop(&mut self) {
         for path in self.temporary_files.drain(..) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+struct PreparedVidstabTransforms {
+    transforms: BTreeMap<CompositionClipId, PathBuf>,
+}
+
+impl PreparedVidstabTransforms {
+    async fn create(
+        state: &AppState,
+        staging: &Path,
+        composition: &Composition,
+        inputs: &BTreeMap<SourceId, PathBuf>,
+        progress: &mpsc::UnboundedSender<f64>,
+        token: &CancellationToken,
+    ) -> anyhow::Result<Self> {
+        let mut prepared = Self {
+            transforms: BTreeMap::new(),
+        };
+        for track in &composition.tracks {
+            let CompositionTrack::Video {
+                hidden: false,
+                clips,
+                ..
+            } = track
+            else {
+                continue;
+            };
+            for clip in clips
+                .iter()
+                .filter(|clip| clip.enabled && clip.stabilization.is_vidstab())
+            {
+                let input = inputs.get(&clip.source_id).ok_or_else(|| {
+                    anyhow::anyhow!("vidstab source missing for clip {}", clip.id.as_str())
+                })?;
+                let transform_path = staging.join(format!(
+                    "composition-vidstab-{}-{}.trf",
+                    clip.id.as_str(),
+                    Uuid::new_v4()
+                ));
+                let command = tools::build_vidstab_detect_command(
+                    input,
+                    &transform_path,
+                    clip,
+                    composition.canvas.fps_milli,
+                    composition.time_base,
+                )?;
+                let done = tools::run_compiled_ffmpeg(
+                    &state.process_runtime,
+                    &command,
+                    progress,
+                    token,
+                    state.job_timeout(),
+                )
+                .instrument(tracing::info_span!(
+                    "process",
+                    process.tool = "ffmpeg",
+                    process.stage = "vidstabdetect"
+                ))
+                .await?;
+                if matches!(done, Done::Cancelled) {
+                    let _ = tokio::fs::remove_file(&transform_path).await;
+                    return Ok(prepared);
+                }
+                ensure!(
+                    transform_path.is_file(),
+                    "vidstab detect did not write {}",
+                    transform_path.display()
+                );
+                prepared.transforms.insert(clip.id.clone(), transform_path);
+            }
+        }
+        Ok(prepared)
+    }
+
+    fn transforms(&self) -> &BTreeMap<CompositionClipId, PathBuf> {
+        &self.transforms
+    }
+}
+
+impl Drop for PreparedVidstabTransforms {
+    fn drop(&mut self) {
+        for path in self.transforms.values() {
             let _ = std::fs::remove_file(path);
         }
     }
@@ -986,6 +1088,22 @@ mod tests {
             ..crate::state::ToolInfo::default()
         };
         validate_composition_capabilities(&stabilization_tools, &composition).unwrap();
+
+        let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        clips[0].stabilization = StabilizationSpec::Vidstab {
+            shakiness: 5,
+            accuracy: 15,
+            smoothing: 10,
+        };
+        assert!(validate_composition_capabilities(&stabilization_tools, &composition).is_err());
+        let vidstab_tools = crate::state::ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: vec!["vidstabdetect".into(), "vidstabtransform".into()],
+            ..crate::state::ToolInfo::default()
+        };
+        validate_composition_capabilities(&vidstab_tools, &composition).unwrap();
 
         let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
             unreachable!();

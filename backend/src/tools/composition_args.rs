@@ -52,6 +52,7 @@ impl CompositionExportCommandCompiler for FfmpegCompositionExportCompiler {
         build_composition_ffmpeg_command_with_text_resources_for_output(
             request.inputs,
             request.text_resources,
+            request.vidstab_transforms,
             request.destination,
             request.composition,
             request.output,
@@ -104,6 +105,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources(
     build_composition_ffmpeg_command_with_text_resources_for_output(
         inputs,
         text_resources,
+        &BTreeMap::new(),
         destination,
         composition,
         CompositionExportSpec {
@@ -128,6 +130,7 @@ pub fn build_composition_ffmpeg_command_for_output(
     build_composition_ffmpeg_command_with_text_resources_for_output(
         inputs,
         &BTreeMap::new(),
+        &BTreeMap::new(),
         destination,
         composition,
         output,
@@ -138,6 +141,7 @@ pub fn build_composition_ffmpeg_command_for_output(
 pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
     inputs: &BTreeMap<SourceId, PathBuf>,
     text_resources: &BTreeMap<CompositionClipId, CompositionTextResource>,
+    vidstab_transforms: &BTreeMap<CompositionClipId, PathBuf>,
     destination: &Path,
     composition: &Composition,
     output: CompositionExportSpec,
@@ -238,6 +242,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
         &overlay_handles,
     )?;
     validate_text_resources(&visual.overlays, text_resources)?;
+    validate_vidstab_transforms(composition, &visual, vidstab_transforms)?;
     let audio_clips = active_audio_clips(composition);
     let audio_crossfades = audio_crossfade_plan(composition)?;
     validate_speed_ramp_budget(&visual, &audio_clips)?;
@@ -359,6 +364,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
                 source_end_tick,
                 canvas.fps_milli,
                 time_base,
+                vidstab_transforms,
             )?;
             blur_filters.extend([
                 format!(
@@ -394,6 +400,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
             source_end_tick,
             canvas.fps_milli,
             time_base,
+            vidstab_transforms,
         )?;
         let transformed = clip.transform != TransformSpec::default();
         let needs_composite = transformed
@@ -710,6 +717,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
                         time_base,
                         canvas.fps_milli,
                         compiled,
+                        vidstab_transforms,
                     )?);
                 }
             }
@@ -935,6 +943,7 @@ pub fn build_composition_ffmpeg_command_with_text_resources_for_output(
     let mut read_only_files: Vec<_> = text_resources
         .values()
         .flat_map(|resource| [resource.text_file.clone(), resource.font_file.clone()])
+        .chain(vidstab_transforms.values().cloned())
         .collect();
     read_only_files.sort();
     read_only_files.dedup();
@@ -1994,6 +2003,7 @@ fn visual_clip_filter(
     time_base: u32,
     fps_milli: u32,
     compiled: &CompiledVisual<'_>,
+    vidstab_transforms: &BTreeMap<CompositionClipId, PathBuf>,
 ) -> Result<String> {
     let mut filters = match clip {
         VisualClip::Video(video) => {
@@ -2007,6 +2017,7 @@ fn visual_clip_filter(
                 source_end_tick,
                 fps_milli,
                 time_base,
+                vidstab_transforms,
             )?;
             filters.insert(1, "settb=AVTB".to_owned());
             filters
@@ -2329,7 +2340,9 @@ fn source_video_filters(
     source_end_tick: f64,
     fps_milli: u32,
     time_base: u32,
+    vidstab_transforms: &BTreeMap<CompositionClipId, PathBuf>,
 ) -> Result<Vec<String>> {
+    let transform = vidstab_transforms.get(&clip.id).map(PathBuf::as_path);
     let filters = match clip.playback_mode {
         PlaybackMode::Forward => {
             let mut filters = vec![format!(
@@ -2337,7 +2350,7 @@ fn source_video_filters(
                 fractional_seconds(source_start_tick, time_base),
                 fractional_seconds(source_end_tick, time_base)
             )];
-            append_stabilization(&mut filters, clip.stabilization, fps_milli);
+            append_stabilization(&mut filters, clip.stabilization, fps_milli, transform)?;
             filters.push(video_timing_filter(&clip.placement, time_base)?);
             filters
         }
@@ -2352,7 +2365,7 @@ fn source_video_filters(
                 // reverse independently of an untrusted source frame rate.
                 format!("fps=fps={fps_milli}/1000"),
             ];
-            append_deshake(&mut filters, clip.stabilization);
+            append_deshake_or_vidstab(&mut filters, clip.stabilization, transform)?;
             filters.extend([
                 "reverse".to_owned(),
                 video_timing_filter(&clip.placement, time_base)?,
@@ -2436,20 +2449,119 @@ fn append_stabilization(
     filters: &mut Vec<String>,
     stabilization: StabilizationSpec,
     fps_milli: u32,
-) {
+    transform: Option<&Path>,
+) -> Result<()> {
     if stabilization.is_enabled() {
+        // Stabilize the decoded source at the composition canvas fps so the
+        // search radii and frame cadence stay deterministic across sources.
         filters.push(format!("fps=fps={fps_milli}/1000"));
-        append_deshake(filters, stabilization);
+        append_deshake_or_vidstab(filters, stabilization, transform)?;
+    }
+    Ok(())
+}
+
+fn append_deshake_or_vidstab(
+    filters: &mut Vec<String>,
+    stabilization: StabilizationSpec,
+    transform: Option<&Path>,
+) -> Result<()> {
+    match stabilization {
+        StabilizationSpec::Disabled => Ok(()),
+        StabilizationSpec::Deshake { radius_x, radius_y } => {
+            filters.push(format!(
+                "deshake=rx={radius_x}:ry={radius_y}:edge=mirror:blocksize=8:\
+                 contrast=20:search=exhaustive"
+            ));
+            Ok(())
+        }
+        StabilizationSpec::Vidstab { smoothing, .. } => {
+            let path = transform
+                .ok_or_else(|| anyhow!("vidstab transform file missing for clip stabilization"))?;
+            let input = escape_filter_value(path, "vidstab transform")?;
+            filters.push(format!(
+                "vidstabtransform=input={input}:smoothing={smoothing}:optzoom=1:\
+                 interpol=linear:crop=black"
+            ));
+            Ok(())
+        }
     }
 }
 
-fn append_deshake(filters: &mut Vec<String>, stabilization: StabilizationSpec) {
-    if let StabilizationSpec::Deshake { radius_x, radius_y } = stabilization {
-        filters.push(format!(
-            "deshake=rx={radius_x}:ry={radius_y}:edge=mirror:blocksize=8:\
-             contrast=20:search=exhaustive"
-        ));
+/// Analyze-only ffmpeg command that writes a `.trf` for one Vidstab clip.
+pub fn build_vidstab_detect_command(
+    input: &Path,
+    transform_path: &Path,
+    clip: &VideoClip,
+    fps_milli: u32,
+    time_base: u32,
+) -> Result<CompiledExportCommand> {
+    let StabilizationSpec::Vidstab {
+        shakiness,
+        accuracy,
+        ..
+    } = clip.stabilization
+    else {
+        bail!("vidstab detect requires StabilizationSpec::Vidstab");
+    };
+    let result = escape_filter_value(transform_path, "vidstab result")?;
+    let start = fractional_seconds(clip.placement.source_in_tick as f64, time_base);
+    let end = fractional_seconds(clip.placement.source_out_tick as f64, time_base);
+    let vf = format!(
+        "trim=start={start}:end={end},fps=fps={fps_milli}/1000,\
+         vidstabdetect=shakiness={shakiness}:accuracy={accuracy}:result={result}"
+    );
+    Ok(CompiledExportCommand {
+        arguments: vec![
+            "-y".into(),
+            "-i".into(),
+            input.to_string_lossy().into_owned(),
+            "-an".into(),
+            "-vf".into(),
+            vf,
+            "-f".into(),
+            "null".into(),
+            "-".into(),
+        ],
+        expected_duration_seconds: (clip
+            .placement
+            .source_out_tick
+            .saturating_sub(clip.placement.source_in_tick))
+            as f64
+            / time_base as f64,
+        read_only_files: vec![input.to_path_buf()],
+    })
+}
+
+fn validate_vidstab_transforms(
+    _composition: &Composition,
+    visual: &VisualSlice<'_>,
+    transforms: &BTreeMap<CompositionClipId, PathBuf>,
+) -> Result<()> {
+    let mut expected = BTreeSet::new();
+    for clip in visual
+        .primary
+        .iter()
+        .copied()
+        .chain(visual.overlays.iter().filter_map(|clip| match clip {
+            VisualClip::Video(video) => Some(*video),
+            _ => None,
+        }))
+    {
+        if clip.enabled && clip.stabilization.is_vidstab() {
+            expected.insert(clip.id.clone());
+        }
     }
+    for id in &expected {
+        if !transforms.contains_key(id) {
+            bail!("vidstab transform missing for clip {}", id.as_str());
+        }
+    }
+    for id in transforms.keys() {
+        if !expected.contains(id) {
+            bail!("unexpected vidstab transform for clip {}", id.as_str());
+        }
+    }
+    Ok(())
 }
 
 fn playback_frame_filters(
@@ -5625,6 +5737,91 @@ mod tests {
             "{graph}"
         );
         assert!(graph.contains("xfade=transition=fade:duration=0.500000"));
+    }
+
+    #[test]
+    fn compiles_vidstab_transform_from_prepared_trf_paths() {
+        let mut composition = first_slice_composition();
+        let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        let clip_id = clips[0].id.clone();
+        clips[0].stabilization = StabilizationSpec::Vidstab {
+            shakiness: 5,
+            accuracy: 15,
+            smoothing: 10,
+        };
+        let missing = build_composition_ffmpeg_command(
+            &inputs(),
+            Path::new("/renders/vidstab.mp4"),
+            &composition,
+            23,
+            1,
+        );
+        assert!(
+            missing
+                .unwrap_err()
+                .to_string()
+                .contains("vidstab transform missing"),
+            "expected missing transform"
+        );
+
+        let transform = PathBuf::from("/tmp/clip.trf");
+        let mut transforms = BTreeMap::new();
+        transforms.insert(clip_id.clone(), transform.clone());
+        let command = build_composition_ffmpeg_command_with_text_resources_for_output(
+            &inputs(),
+            &BTreeMap::new(),
+            &transforms,
+            Path::new("/renders/vidstab.mp4"),
+            &composition,
+            CompositionExportSpec {
+                profile: CompositionExportProfile::default(),
+                video_quality: 23,
+                video_bitrate_kbps: None,
+                av1_encoder: None,
+                range: None,
+            },
+            1,
+        )
+        .unwrap();
+        let graph = &command.arguments[command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        assert!(
+            graph.contains(
+                "vidstabtransform=input='/tmp/clip.trf':smoothing=10:optzoom=1:\
+                 interpol=linear:crop=black"
+            ),
+            "{graph}"
+        );
+        assert!(!graph.contains("deshake"), "{graph}");
+        assert!(command.read_only_files.contains(&transform));
+
+        let CompositionTrack::Video { clips, .. } = &composition.tracks[0] else {
+            unreachable!();
+        };
+        let detect = build_vidstab_detect_command(
+            Path::new("/media/a.mp4"),
+            &transform,
+            &clips[0],
+            30_000,
+            DEFAULT_TIME_BASE,
+        )
+        .unwrap();
+        let vf = detect
+            .arguments
+            .windows(2)
+            .find(|pair| pair[0] == "-vf")
+            .map(|pair| pair[1].as_str())
+            .unwrap();
+        assert!(
+            vf.contains("vidstabdetect=shakiness=5:accuracy=15:result='/tmp/clip.trf'"),
+            "{vf}"
+        );
     }
 
     #[test]

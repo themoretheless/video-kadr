@@ -3361,3 +3361,448 @@ async fn project_upsert_rejects_oversized_json_fields() {
     let (_status, body, _) = send(&app, get("/api/projects")).await;
     assert!(body.as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn stock_search_queries_injectable_pexels_mock() {
+    use axum::extract::Query;
+    use axum::routing::get as axum_get;
+    use std::collections::HashMap;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mock = axum::Router::new().route(
+        "/search",
+        axum_get(|headers: axum::http::HeaderMap, Query(params): Query<HashMap<String, String>>| async move {
+            assert_eq!(headers.get("authorization").and_then(|v| v.to_str().ok()), Some("mock-pexels-key"));
+            assert_eq!(params.get("query").map(String::as_str), Some("ocean"));
+            assert_eq!(params.get("page").map(String::as_str), Some("1"));
+            axum::Json(json!({
+                "page": 1,
+                "total_results": 1,
+                "photos": [{
+                    "id": 42,
+                    "width": 1280,
+                    "height": 720,
+                    "url": "https://www.pexels.com/photo/42",
+                    "photographer": "Ada",
+                    "photographer_url": "https://www.pexels.com/@ada",
+                    "alt": "Ocean",
+                    "src": {
+                        "original": "https://images.pexels.com/42.jpg",
+                        "large2x": "https://images.pexels.com/42-large.jpg"
+                    }
+                }]
+            }))
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+
+    let (state, _directory) = make_state(true, true).await;
+    let catalog = video_kadr_backend::stock_catalog::PexelsClient::with_base_url(
+        "mock-pexels-key".into(),
+        format!("http://{address}"),
+    )
+    .unwrap();
+    let app = router(state.with_stock_catalog(catalog));
+    let token = register_token(&app, "stock-mock-user").await;
+    let (status, body, _) = send(
+        &app,
+        bearer(get("/api/stock/search?q=ocean&kind=photo&page=1"), &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["provider"], "Pexels");
+    assert_eq!(body["page"], 1);
+    assert_eq!(body["totalResults"], 1);
+    assert_eq!(body["assets"].as_array().unwrap().len(), 1);
+    assert_eq!(body["assets"][0]["providerId"], 42);
+    assert_eq!(body["assets"][0]["author"], "Ada");
+    assert_eq!(
+        body["assets"][0]["importUrl"],
+        "https://images.pexels.com/42-large.jpg"
+    );
+}
+
+#[tokio::test]
+async fn youtube_publish_job_refreshes_chunks_and_revokes() {
+    use axum::body::Bytes;
+    use axum::extract::State as AxumState;
+    use axum::http::{header, HeaderMap};
+    use axum::response::IntoResponse;
+    use axum::routing::{post as axum_post, put as axum_put};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[derive(Clone)]
+    struct MockYt {
+        location: String,
+        session_puts: Arc<AtomicUsize>,
+        refreshed: Arc<AtomicBool>,
+        revoked: Arc<AtomicBool>,
+    }
+
+    async fn token(AxumState(state): AxumState<MockYt>, body: String) -> impl IntoResponse {
+        assert!(body.contains("grant_type=refresh_token"));
+        assert!(body.contains("refresh_token=kept-refresh"));
+        state.refreshed.store(true, Ordering::SeqCst);
+        axum::Json(json!({
+            "access_token": "fresh-access",
+            "expires_in": 3600,
+            "scope": video_kadr_backend::youtube::YOUTUBE_UPLOAD_SCOPE,
+            "token_type": "Bearer"
+        }))
+    }
+
+    async fn revoke(AxumState(state): AxumState<MockYt>, body: String) -> impl IntoResponse {
+        assert_eq!(body, "token=kept-refresh");
+        state.revoked.store(true, Ordering::SeqCst);
+        StatusCode::OK
+    }
+
+    async fn start_upload(AxumState(state): AxumState<MockYt>) -> impl IntoResponse {
+        (StatusCode::OK, [(header::LOCATION, state.location.clone())])
+    }
+
+    async fn session_put(
+        AxumState(state): AxumState<MockYt>,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> impl IntoResponse {
+        let range = headers
+            .get(header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        let call = state.session_puts.fetch_add(1, Ordering::SeqCst);
+        if call == 0 {
+            assert_eq!(range, "bytes 0-9/10");
+            assert_eq!(&body[..], b"0123456789");
+            return (
+                StatusCode::PERMANENT_REDIRECT,
+                [(header::RANGE, "bytes=0-3")],
+                String::new(),
+            )
+                .into_response();
+        }
+        assert_eq!(range, "bytes 4-9/10");
+        assert_eq!(&body[..], b"456789");
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json")],
+            r#"{"id":"yt-mock-video"}"#.to_string(),
+        )
+            .into_response()
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mock_state = MockYt {
+        location: format!("http://{address}/session"),
+        session_puts: Arc::new(AtomicUsize::new(0)),
+        refreshed: Arc::new(AtomicBool::new(false)),
+        revoked: Arc::new(AtomicBool::new(false)),
+    };
+    let refreshed = mock_state.refreshed.clone();
+    let revoked = mock_state.revoked.clone();
+    let puts = mock_state.session_puts.clone();
+    let mock = axum::Router::new()
+        .route("/token", axum_post(token))
+        .route("/revoke", axum_post(revoke))
+        .route("/upload", axum_post(start_upload))
+        .route("/session", axum_put(session_put))
+        .with_state(mock_state);
+    tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+
+    let (state, _directory) = make_state(true, true).await;
+    let cipher = video_kadr_backend::youtube::TokenCipher::new([9; 32]).unwrap();
+    let oauth = video_kadr_backend::youtube::YouTubeOAuthClient::new(
+        video_kadr_backend::youtube::YouTubeOAuthConfig {
+            client_id: "client-id".into(),
+            client_secret: "server-secret".into(),
+            redirect_uri: "http://127.0.0.1:8080/api/publish/youtube/callback".into(),
+        },
+    )
+    .unwrap()
+    .with_token_endpoint(url::Url::parse(&format!("http://{address}/token")).unwrap())
+    .with_upload_endpoint(url::Url::parse(&format!("http://{address}/upload")).unwrap())
+    .with_revoke_endpoint(url::Url::parse(&format!("http://{address}/revoke")).unwrap());
+    let state = state.with_youtube_oauth(oauth, cipher.clone());
+    let db = state.db.clone();
+    let output_id = uuid::Uuid::new_v4().to_string();
+    tokio::fs::write(
+        state.outputs_dir().join(format!("{output_id}.mp4")),
+        b"0123456789",
+    )
+    .await
+    .unwrap();
+    db.grant_output_access(&output_id, "yt-mock-publisher")
+        .await
+        .unwrap();
+    db.save_youtube_tokens(
+        &cipher,
+        "yt-mock-publisher",
+        video_kadr_backend::youtube::YouTubeTokens {
+            access_token: "stale-access".into(),
+            refresh_token: Some("kept-refresh".into()),
+            expires_at: 1,
+            scope: video_kadr_backend::youtube::YOUTUBE_UPLOAD_SCOPE.into(),
+            token_type: "Bearer".into(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let app = router(state);
+    let token = register_token(&app, "yt-mock-publisher").await;
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/publish/youtube",
+                json!({
+                    "outputId": output_id,
+                    "title": "Mock publish",
+                    "description": "wave-b",
+                    "privacyStatus": "private"
+                }),
+            ),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let job_id = body["jobId"].as_str().unwrap().to_owned();
+    let job = poll_terminal(&app, &job_id).await;
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["result"]["provider"], "youtube");
+    assert_eq!(job["result"]["videoId"], "yt-mock-video");
+    assert!(job["result"]["url"]
+        .as_str()
+        .unwrap()
+        .contains("yt-mock-video"));
+    assert!(refreshed.load(Ordering::SeqCst));
+    assert!(puts.load(Ordering::SeqCst) >= 2);
+
+    let (status, _, _) = send(&app, bearer(delete("/api/publish/youtube/connect"), &token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(revoked.load(Ordering::SeqCst));
+    let (status, body, _) = send(&app, bearer(get("/api/publish/youtube/status"), &token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({"configured": true, "connected": false}));
+}
+
+#[tokio::test]
+async fn youtube_publish_job_resumes_checkpoint_and_cancels_in_flight() {
+    use axum::body::Bytes;
+    use axum::extract::State as AxumState;
+    use axum::http::{header, HeaderMap};
+    use axum::response::IntoResponse;
+    use axum::routing::{post as axum_post, put as axum_put};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+
+    #[derive(Clone)]
+    struct MockYt {
+        location: String,
+        gate: Arc<Notify>,
+        puts: Arc<AtomicUsize>,
+        mode: Arc<AtomicUsize>,
+    }
+
+    async fn start_upload(AxumState(state): AxumState<MockYt>) -> impl IntoResponse {
+        (StatusCode::OK, [(header::LOCATION, state.location.clone())])
+    }
+
+    async fn session_put(
+        AxumState(state): AxumState<MockYt>,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> impl IntoResponse {
+        let range = headers
+            .get(header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        if range.starts_with("bytes */") {
+            return (
+                StatusCode::PERMANENT_REDIRECT,
+                [(header::RANGE, "bytes=0-3")],
+                String::new(),
+            )
+                .into_response();
+        }
+        let _ = state.puts.fetch_add(1, Ordering::SeqCst);
+        if state.mode.load(Ordering::SeqCst) == 1 {
+            state.gate.notified().await;
+            return StatusCode::REQUEST_TIMEOUT.into_response();
+        }
+        assert_eq!(range, "bytes 4-9/10");
+        assert_eq!(&body[..], b"456789");
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json")],
+            r#"{"id":"yt-resumed"}"#.to_string(),
+        )
+            .into_response()
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mock_state = MockYt {
+        location: format!("http://{address}/session"),
+        gate: Arc::new(Notify::new()),
+        puts: Arc::new(AtomicUsize::new(0)),
+        mode: Arc::new(AtomicUsize::new(0)),
+    };
+    let gate = mock_state.gate.clone();
+    let mode = mock_state.mode.clone();
+    let puts = mock_state.puts.clone();
+    let mock = axum::Router::new()
+        .route("/upload", axum_post(start_upload))
+        .route("/session", axum_put(session_put))
+        .route(
+            "/token",
+            axum_post(|| async {
+                axum::Json(json!({
+                    "access_token": "access",
+                    "expires_in": 3600,
+                    "scope": video_kadr_backend::youtube::YOUTUBE_UPLOAD_SCOPE,
+                    "token_type": "Bearer"
+                }))
+            }),
+        )
+        .route("/revoke", axum_post(|| async { StatusCode::OK }))
+        .with_state(mock_state);
+    tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+
+    let (state, _directory) = make_state(true, true).await;
+    let cipher = video_kadr_backend::youtube::TokenCipher::new([3; 32]).unwrap();
+    let oauth = video_kadr_backend::youtube::YouTubeOAuthClient::new(
+        video_kadr_backend::youtube::YouTubeOAuthConfig {
+            client_id: "client-id".into(),
+            client_secret: "server-secret".into(),
+            redirect_uri: "http://127.0.0.1:8080/api/publish/youtube/callback".into(),
+        },
+    )
+    .unwrap()
+    .with_token_endpoint(url::Url::parse(&format!("http://{address}/token")).unwrap())
+    .with_upload_endpoint(url::Url::parse(&format!("http://{address}/upload")).unwrap())
+    .with_revoke_endpoint(url::Url::parse(&format!("http://{address}/revoke")).unwrap());
+    let state = state.with_youtube_oauth(oauth, cipher.clone());
+    let db = state.db.clone();
+    let output_id = uuid::Uuid::new_v4().to_string();
+    tokio::fs::write(
+        state.outputs_dir().join(format!("{output_id}.mp4")),
+        b"0123456789",
+    )
+    .await
+    .unwrap();
+    db.grant_output_access(&output_id, "yt-resume-user")
+        .await
+        .unwrap();
+    db.save_youtube_tokens(
+        &cipher,
+        "yt-resume-user",
+        video_kadr_backend::youtube::YouTubeTokens {
+            access_token: "access".into(),
+            refresh_token: Some("refresh".into()),
+            expires_at: 2_000_000_000,
+            scope: video_kadr_backend::youtube::YOUTUBE_UPLOAD_SCOPE.into(),
+            token_type: "Bearer".into(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let resume_job = uuid::Uuid::new_v4().to_string();
+    let work = json!({
+        "schema_version": 1,
+        "output_id": output_id,
+        "actor": "yt-resume-user",
+        "metadata": {
+            "title": "Resume",
+            "description": "",
+            "privacyStatus": "private"
+        }
+    });
+    match state
+        .enqueue_job(
+            resume_job.clone(),
+            JobKind::Publish,
+            &work,
+            "yt-resume-checkpoint-e2e",
+        )
+        .await
+        .unwrap()
+    {
+        EnqueueOutcome::Created(_) => {}
+        other => panic!("expected created publish job, got {other:?}"),
+    }
+    db.save_youtube_upload_checkpoint(
+        &cipher,
+        &resume_job,
+        "yt-resume-user",
+        &output_id,
+        &video_kadr_backend::youtube::YouTubeUploadCheckpoint {
+            session_url: format!("http://{address}/session"),
+            total_bytes: 10,
+            confirmed_offset: 4,
+        },
+    )
+    .await
+    .unwrap();
+    let app = router(state.clone());
+    let token = register_token(&app, "yt-resume-user").await;
+    resume_pending_jobs(&state).await;
+    let job = poll_terminal(&app, &resume_job).await;
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["result"]["videoId"], "yt-resumed");
+    assert!(puts.load(Ordering::SeqCst) >= 1);
+
+    mode.store(1, Ordering::SeqCst);
+    let cancel_output = uuid::Uuid::new_v4().to_string();
+    tokio::fs::write(
+        state.outputs_dir().join(format!("{cancel_output}.mp4")),
+        b"0123456789",
+    )
+    .await
+    .unwrap();
+    db.grant_output_access(&cancel_output, "yt-resume-user")
+        .await
+        .unwrap();
+    let (status, body, _) = send(
+        &app,
+        bearer(
+            post_json(
+                "/api/publish/youtube",
+                json!({
+                    "outputId": cancel_output,
+                    "title": "Cancel me",
+                    "privacyStatus": "unlisted"
+                }),
+            ),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let cancel_job = body["jobId"].as_str().unwrap().to_owned();
+    for _ in 0..1_000 {
+        if puts.load(Ordering::SeqCst) >= 2 {
+            break;
+        }
+        let (_, snap, _) = send(&app, get(&format!("/api/jobs/{cancel_job}"))).await;
+        if snap["status"] == "running" {
+            // Give the blocked chunk PUT a moment to start.
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let (status, cancel, _) =
+        send(&app, post_empty(&format!("/api/jobs/{cancel_job}/cancel"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(cancel["status"], "cancelled");
+    gate.notify_waiters();
+    let job = poll_terminal(&app, &cancel_job).await;
+    assert_eq!(job["status"], "cancelled", "{job}");
+}

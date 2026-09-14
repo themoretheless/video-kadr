@@ -253,6 +253,18 @@ export async function deleteLibraryItem(
   }
 }
 
+/** Suggest a crop rect that removes letterbox / pillarbox bars. */
+export async function detectLibraryCrop(
+  id: string,
+  token?: string | null,
+  spaceId?: string | null,
+): Promise<{ x: number; y: number; w: number; h: number }> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/cropdetect`, {
+    method: 'POST',
+    headers: libraryAccessHeaders(token, spaceId, true),
+  })
+}
+
 /** A saved editing project: a clip plus its persisted edit recipe. */
 export interface ProjectDto {
   id: string

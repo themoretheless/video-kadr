@@ -462,8 +462,8 @@ export function updateCompositionPlaybackMode(
     if ((location.clip.frameInterpolation ?? 'duplicate') === 'optical_flow') {
       throw new Error('Freeze frame нельзя совмещать с optical flow')
     }
-    if (location.clip.stabilization?.mode === 'deshake') {
-      throw new Error('Freeze frame нельзя совмещать с deshake stabilization')
+    if (location.clip.stabilization?.mode === 'deshake' || location.clip.stabilization?.mode === 'vidstab') {
+      throw new Error('Freeze frame нельзя совмещать со stabilization')
     }
     if (location.clip.speedRamp) throw new Error('Freeze frame нельзя совмещать со speed ramp')
   }
@@ -517,10 +517,10 @@ export function updateCompositionStabilization(
   if (location.clip.kind !== 'video' || location.track.kind !== 'video') {
     throw new Error('Stabilization доступна только для video clips')
   }
-  if (stabilization.mode === 'deshake') {
-    if (location.track.hidden) throw new Error('Deshake доступен только на видимой video-дорожке')
+  if (stabilization.mode === 'deshake' || stabilization.mode === 'vidstab') {
+    if (location.track.hidden) throw new Error('Stabilization доступна только на видимой video-дорожке')
     if (location.clip.playbackMode?.mode === 'freeze') {
-      throw new Error('Deshake stabilization нельзя совмещать с freeze frame')
+      throw new Error('Stabilization нельзя совмещать с freeze frame')
     }
   }
   updateClip(clipId, (clip) => clip.kind === 'video'

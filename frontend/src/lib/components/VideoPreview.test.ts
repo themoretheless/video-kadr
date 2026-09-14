@@ -101,4 +101,33 @@ describe('VideoPreview proxy playback', () => {
     await tick()
     expect(video.currentTime).toBe(9)
   })
+
+  it('exposes an aria wipe slider that stacks original under edited', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      sourceId: 'source-one', sourceFingerprint: 'b'.repeat(64), status: 'ready', proxies: [], jobs: [],
+    }), { status: 200 })))
+    component = mount(VideoPreview, { target })
+    await tick()
+
+    const wipeToggle = target.querySelector<HTMLButtonElement>('button[aria-label="Сравнение до/после"]')
+    expect(wipeToggle).not.toBeNull()
+    wipeToggle?.click()
+    await tick()
+
+    const slider = target.querySelector<HTMLInputElement>('input[aria-label="Разделитель до/после"]')
+    const videos = target.querySelectorAll('video')
+    expect(wipeToggle?.getAttribute('aria-pressed')).toBe('true')
+    expect(slider).not.toBeNull()
+    expect(slider?.getAttribute('aria-valuenow')).toBe('50')
+    expect(videos).toHaveLength(2)
+    expect(videos[0]?.hasAttribute('muted') || videos[0]?.muted).toBeTruthy()
+    expect(videos[1]?.style.clipPath).toContain('inset(0 0 0 50%)')
+
+    if (!slider) throw new Error('Wipe slider missing')
+    slider.value = '25'
+    slider.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+    expect(slider.getAttribute('aria-valuenow')).toBe('25')
+    expect(videos[1]?.style.clipPath).toContain('inset(0 0 0 25%)')
+  })
 })

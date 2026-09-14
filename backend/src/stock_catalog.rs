@@ -56,6 +56,7 @@ pub struct StockSearchResult {
 pub struct PexelsClient {
     client: Client,
     api_key: String,
+    base_url: String,
     cache: Arc<Mutex<HashMap<SearchCacheKey, CachedSearch>>>,
 }
 
@@ -74,16 +75,24 @@ struct CachedSearch {
 
 impl PexelsClient {
     pub fn new(api_key: String) -> Result<Self> {
+        Self::with_base_url(api_key, PEXELS_API)
+    }
+
+    /// Point the client at a custom API root (production Pexels or a local mock).
+    pub fn with_base_url(api_key: String, base_url: impl Into<String>) -> Result<Self> {
         ensure!(
             !api_key.trim().is_empty(),
             "PEXELS_API_KEY must not be empty"
         );
+        let base_url = base_url.into().trim_end_matches('/').to_string();
+        ensure!(!base_url.is_empty(), "Pexels base URL must not be empty");
         Ok(Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(15))
                 .user_agent("video-kadr/0.1 stock-catalog")
                 .build()?,
             api_key,
+            base_url,
             cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -116,7 +125,7 @@ impl PexelsClient {
         };
         let mut request = self
             .client
-            .get(format!("{PEXELS_API}/{endpoint}"))
+            .get(format!("{}/{endpoint}", self.base_url))
             .header("Authorization", &self.api_key)
             .query(&[
                 ("query", query),

@@ -10,6 +10,9 @@
     COMPOSITION_BLEND_MODES,
     COMPOSITION_DELIVERY_PROFILE_OPTIONS,
     COMPOSITION_STABILIZATION_RADII,
+    COMPOSITION_VIDSTAB_ACCURACY,
+    COMPOSITION_VIDSTAB_SHAKINESS,
+    COMPOSITION_VIDSTAB_SMOOTHING,
     COMPOSITION_TIME_BASE,
     COMPOSITION_TRANSITION_KINDS,
     COMPOSITION_VOICE_EFFECTS,
@@ -281,26 +284,45 @@
     return candidate.stabilization ?? { mode: 'disabled' }
   }
 
-  function stabilizationReason(candidate: VideoClip): string | null {
-    if (track?.kind !== 'video' || track.hidden) return 'Deshake доступен только на видимой video-дорожке.'
-    if (candidate.playbackMode?.mode === 'freeze') return 'Freeze frame нельзя совмещать с deshake stabilization.'
+  function stabilizationReason(candidate: VideoClip, mode: CompositionStabilization['mode'] = stabilization(candidate).mode): string | null {
+    if (track?.kind !== 'video' || track.hidden) return 'Stabilization доступна только на видимой video-дорожке.'
+    if (candidate.playbackMode?.mode === 'freeze') return 'Freeze frame нельзя совмещать со stabilization.'
     const capabilities = legacyState.capabilities
     if (!capabilities) return 'Проверяем поддержку stabilization на сервере…'
-    const feature = capabilities.features?.find((option) => option.id === 'stabilization')
-    if (!feature) return 'Сервер не объявил поддержку stabilization.'
-    if (!feature.available) return feature.reason?.trim() || 'Stabilization недоступна на этом сервере.'
+    if (mode === 'vidstab') {
+      const feature = capabilities.features?.find((option) => option.id === 'vidstab-stabilization')
+      if (!feature) return 'Сервер не объявил поддержку vidstab-stabilization.'
+      if (!feature.available) return feature.reason?.trim() || 'Vidstab стабилизация недоступна на этом сервере.'
+      return null
+    }
+    if (mode === 'deshake') {
+      const feature = capabilities.features?.find((option) => option.id === 'stabilization')
+      if (!feature) return 'Сервер не объявил поддержку stabilization.'
+      if (!feature.available) return feature.reason?.trim() || 'Stabilization недоступна на этом сервере.'
+    }
     return null
   }
 
   function setStabilizationMode(candidate: VideoClip, mode: CompositionStabilization['mode']): void {
     const current = stabilization(candidate)
-    updateCompositionStabilization(candidate.id, mode === 'deshake'
-      ? {
-          mode,
-          radiusX: current.mode === 'deshake' ? current.radiusX : 32,
-          radiusY: current.mode === 'deshake' ? current.radiusY : 32,
-        }
-      : { mode: 'disabled' })
+    if (mode === 'deshake') {
+      updateCompositionStabilization(candidate.id, {
+        mode,
+        radiusX: current.mode === 'deshake' ? current.radiusX : 32,
+        radiusY: current.mode === 'deshake' ? current.radiusY : 32,
+      })
+      return
+    }
+    if (mode === 'vidstab') {
+      updateCompositionStabilization(candidate.id, {
+        mode,
+        shakiness: current.mode === 'vidstab' ? current.shakiness : 5,
+        accuracy: current.mode === 'vidstab' ? current.accuracy : 15,
+        smoothing: current.mode === 'vidstab' ? current.smoothing : 10,
+      })
+      return
+    }
+    updateCompositionStabilization(candidate.id, { mode: 'disabled' })
   }
 
   function setStabilizationRadius(
@@ -310,6 +332,16 @@
   ): void {
     const current = stabilization(candidate)
     if (current.mode !== 'deshake') return
+    updateCompositionStabilization(candidate.id, { ...current, [field]: value } as CompositionStabilization)
+  }
+
+  function setVidstabParam(
+    candidate: VideoClip,
+    field: 'shakiness' | 'accuracy' | 'smoothing',
+    value: number,
+  ): void {
+    const current = stabilization(candidate)
+    if (current.mode !== 'vidstab') return
     updateCompositionStabilization(candidate.id, { ...current, [field]: value } as CompositionStabilization)
   }
 
@@ -511,7 +543,7 @@
             <select aria-label="Режим воспроизведения" value={clip.playbackMode?.mode ?? 'forward'} onchange={(event) => run(() => setPlaybackMode(clip, event.currentTarget.value as 'forward' | 'reverse' | 'freeze'))}>
               <option value="forward">Forward</option>
               <option value="reverse">Reverse</option>
-              <option value="freeze" disabled={(clip.playbackMode?.mode ?? 'forward') !== 'freeze' && (!playheadInside(clip) || (clip.frameInterpolation ?? 'duplicate') === 'optical_flow' || clip.stabilization?.mode === 'deshake' || clip.speedRamp !== undefined)}>Freeze</option>
+              <option value="freeze" disabled={(clip.playbackMode?.mode ?? 'forward') !== 'freeze' && (!playheadInside(clip) || (clip.frameInterpolation ?? 'duplicate') === 'optical_flow' || (clip.stabilization?.mode ?? 'disabled') !== 'disabled' || clip.speedRamp !== undefined)}>Freeze</option>
             </select>
           </label>
           <label>
@@ -522,7 +554,7 @@
             </select>
           </label>
           <div class="composition-inspector-actions composition-grid-wide">
-            <button class="btn ghost sm" type="button" disabled={!playheadInside(clip) || (clip.frameInterpolation ?? 'duplicate') === 'optical_flow' || clip.stabilization?.mode === 'deshake' || clip.speedRamp !== undefined} onclick={() => run(() => freezeCompositionClipAtPlayhead(clip.id))}>Freeze at playhead</button>
+            <button class="btn ghost sm" type="button" disabled={!playheadInside(clip) || (clip.frameInterpolation ?? 'duplicate') === 'optical_flow' || (clip.stabilization?.mode ?? 'disabled') !== 'disabled' || clip.speedRamp !== undefined} onclick={() => run(() => freezeCompositionClipAtPlayhead(clip.id))}>Freeze at playhead</button>
             {#if clip.playbackMode?.mode === 'freeze'}<output>Source: {seconds(clip.playbackMode.sourceTick)} с</output>{/if}
           </div>
           <p class="composition-help composition-grid-wide">Reverse и Freeze требуют отдельных server capabilities. Freeze фиксирует clip-local source tick, выключает встроенный звук и несовместим с optical flow, stabilization и speed ramp. Reverse/Freeze preview использует seek approximation; экспорт точный.</p>
@@ -531,7 +563,8 @@
             Стабилизация
             <select aria-label="Стабилизация" value={stabilization(clip).mode} onchange={(event) => run(() => setStabilizationMode(clip, event.currentTarget.value as CompositionStabilization['mode']))}>
               <option value="disabled">Disabled</option>
-              <option value="deshake" disabled={stabilization(clip).mode !== 'deshake' && Boolean(stabilizationReason(clip))}>Deshake</option>
+              <option value="deshake" disabled={stabilization(clip).mode !== 'deshake' && Boolean(stabilizationReason(clip, 'deshake'))}>Deshake</option>
+              <option value="vidstab" disabled={stabilization(clip).mode !== 'vidstab' && Boolean(stabilizationReason(clip, 'vidstab'))}>Vidstab</option>
             </select>
           </label>
           {#if stabilization(clip).mode === 'deshake'}
@@ -539,22 +572,44 @@
             {#if stabilized.mode === 'deshake'}
               <label>
                 Radius X
-                <select aria-label="Радиус стабилизации X" value={stabilized.radiusX} disabled={Boolean(stabilizationReason(clip))} onchange={(event) => run(() => setStabilizationRadius(clip, 'radiusX', Number(event.currentTarget.value)))}>
+                <select aria-label="Радиус стабилизации X" value={stabilized.radiusX} disabled={Boolean(stabilizationReason(clip, 'deshake'))} onchange={(event) => run(() => setStabilizationRadius(clip, 'radiusX', Number(event.currentTarget.value)))}>
                   {#each COMPOSITION_STABILIZATION_RADII as radius (radius)}<option value={radius}>{radius}</option>{/each}
                 </select>
               </label>
               <label>
                 Radius Y
-                <select aria-label="Радиус стабилизации Y" value={stabilized.radiusY} disabled={Boolean(stabilizationReason(clip))} onchange={(event) => run(() => setStabilizationRadius(clip, 'radiusY', Number(event.currentTarget.value)))}>
+                <select aria-label="Радиус стабилизации Y" value={stabilized.radiusY} disabled={Boolean(stabilizationReason(clip, 'deshake'))} onchange={(event) => run(() => setStabilizationRadius(clip, 'radiusY', Number(event.currentTarget.value)))}>
                   {#each COMPOSITION_STABILIZATION_RADII as radius (radius)}<option value={radius}>{radius}</option>{/each}
                 </select>
               </label>
             {/if}
+          {:else if stabilization(clip).mode === 'vidstab'}
+            {@const stabilized = stabilization(clip)}
+            {#if stabilized.mode === 'vidstab'}
+              <label>
+                Shakiness
+                <select aria-label="Vidstab shakiness" value={stabilized.shakiness} disabled={Boolean(stabilizationReason(clip, 'vidstab'))} onchange={(event) => run(() => setVidstabParam(clip, 'shakiness', Number(event.currentTarget.value)))}>
+                  {#each COMPOSITION_VIDSTAB_SHAKINESS as value (value)}<option value={value}>{value}</option>{/each}
+                </select>
+              </label>
+              <label>
+                Accuracy
+                <select aria-label="Vidstab accuracy" value={stabilized.accuracy} disabled={Boolean(stabilizationReason(clip, 'vidstab'))} onchange={(event) => run(() => setVidstabParam(clip, 'accuracy', Number(event.currentTarget.value)))}>
+                  {#each COMPOSITION_VIDSTAB_ACCURACY as value (value)}<option value={value}>{value}</option>{/each}
+                </select>
+              </label>
+              <label>
+                Smoothing
+                <select aria-label="Vidstab smoothing" value={stabilized.smoothing} disabled={Boolean(stabilizationReason(clip, 'vidstab'))} onchange={(event) => run(() => setVidstabParam(clip, 'smoothing', Number(event.currentTarget.value)))}>
+                  {#each COMPOSITION_VIDSTAB_SMOOTHING as value (value)}<option value={value}>{value}</option>{/each}
+                </select>
+              </label>
+            {/if}
           {/if}
-          {#if stabilizationReason(clip)}
-            <p class="composition-inline-error composition-grid-wide" role="status">{stabilizationReason(clip)}</p>
+          {#if stabilizationReason(clip) || (stabilization(clip).mode === 'disabled' && (stabilizationReason(clip, 'deshake') || stabilizationReason(clip, 'vidstab')))}
+            <p class="composition-inline-error composition-grid-wide" role="status">{stabilizationReason(clip) || stabilizationReason(clip, 'deshake') || stabilizationReason(clip, 'vidstab')}</p>
           {:else}
-            <p class="composition-help composition-grid-wide">Deshake требует отдельной server capability и применяется точно только в экспорте; canvas-preview его не симулирует.</p>
+            <p class="composition-help composition-grid-wide">Deshake/Vidstab требуют server capabilities и применяются точно только в экспорте; canvas-preview их не симулирует.</p>
           {/if}
         {/if}
       </div>
