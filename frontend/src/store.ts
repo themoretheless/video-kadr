@@ -26,7 +26,7 @@ import { primaryCorrectionsActive } from './domain/primary-color'
 import { hslSelectiveActive } from './domain/hsl-selective'
 import { StructuralHistory, type TimelineCommand } from './domain/timeline'
 import { compileFlattenedMulticamIntervals } from './domain/multicam'
-import { projectFrameDurationTicks } from './domain/timeline'
+import { clipTransitionXfadeType, getClipTransition, projectFrameDurationTicks, projectTrackGaps, rippleDeleteClip, splitClipAt, type ClipTransition, type TimelineGap } from './domain/timeline'
 import {
   createProjectDocumentFromLegacy,
   ensureCreatorTrackLayout,
@@ -34,6 +34,7 @@ import {
   validateProjectDocument,
   updateLegacyProjectValues,
 } from './project-schema'
+import type { ProjectMarker, TextLayerMetadata } from './project-schema'
 import { toast } from './toasts'
 import { fingerprintBlob } from './browser-asset-store'
 import { planBrowserExport, type ExportResourcePlan } from './browser-resource-plan'
@@ -442,9 +443,18 @@ export function buildExportSizingSnapshot(
   const payload = { ...buildEditPayload(), ...structuredClone(overrides) }
   if (rateControl) { delete payload.quality; payload.rateControl = structuredClone(rateControl) }
   const multicamFlatten = buildActiveMulticamFlattenPayload()
+  let renderContract: Record<string, unknown> | null = multicamFlatten
   if (multicamFlatten) {
     payload.multicamFlatten = multicamFlatten
-    const duration = Number(multicamFlatten.durationTicks) / Number(multicamFlatten.timeBase)
+  } else {
+    const timelineRender = buildActiveTimelineRenderPayload()
+    if (timelineRender) {
+      payload.timelineRender = timelineRender
+      renderContract = timelineRender
+    }
+  }
+  if (renderContract) {
+    const duration = Number(renderContract.durationTicks) / Number(renderContract.timeBase)
     const trim = payload.trim as { start?: number; end?: number } | undefined
     payload.trim = { start: Math.max(0, Math.min(duration, Number(trim?.start ?? 0))), end: Math.max(0, Math.min(duration, Number(trim?.end ?? duration))) }
     if ((payload.trim as { end: number }).end <= (payload.trim as { start: number }).start) payload.trim = { start: 0, end: duration }
@@ -553,6 +563,16 @@ async function exportDependencies(payload: Record<string, unknown>): Promise<imp
       }
     }
   }
+  const timeline = payload.timelineRender
+  if (timeline && typeof timeline === 'object' && Array.isArray((timeline as { clips?: unknown }).clips)) {
+    for (const raw of (timeline as { clips: unknown[] }).clips) {
+      if (!raw || typeof raw !== 'object') continue
+      const clip = raw as Record<string, unknown>
+      if (typeof clip.assetRef === 'string' && typeof clip.fingerprint === 'string') {
+        dependencies.push({ kind: 'source', assetRef: clip.assetRef, fingerprint: clip.fingerprint })
+      }
+    }
+  }
   const lut = payload.lut
   if (lut && typeof lut === 'object' && typeof (lut as Record<string, unknown>).id === 'string') {
     const assetRef = (lut as Record<string, unknown>).id as string
@@ -575,6 +595,10 @@ export async function enqueueExportVariants(variants: readonly ExportVariantDraf
   delete basePayload.quality
   const multicamFlatten = buildActiveMulticamFlattenPayload()
   if (multicamFlatten) basePayload.multicamFlatten = multicamFlatten
+  else {
+    const timelineRender = buildActiveTimelineRenderPayload()
+    if (timelineRender) basePayload.timelineRender = timelineRender
+  }
   const preparedVariants = variants.map((variant, index) => {
     const edit = sanitizeEditState({ ...state.edit, format: variant.format, codec: variant.codec, qualityTier: variant.qualityTier })
     const payload = buildPayload(edit, state.video)
@@ -757,7 +781,10 @@ function exportUnavailableReasonFor(edit: EditState, resourcePlan: ExportResourc
     )
     const clips = activeSequence?.tracks.flatMap((track) => track.clips) ?? []
     if (clips.length !== 1 || clips[0]?.mediaId !== document.primaryMediaId) {
-      return 'Экспорт изменённой topology timeline появится после подключения render graph'
+      if (!clientOnlyMode) {
+        return 'Экспорт изменённой topology timeline пока доступен в статической версии через браузерный render graph; серверный render path ещё не подключён'
+      }
+      if (edit.format === 'mp3') return 'Timeline export требует видеоформат'
     }
   }
   const format = state.capabilities?.formats.find((option) => option.id === edit.format)
@@ -876,6 +903,226 @@ export function buildActiveMulticamFlattenPayload(): Record<string, unknown> | n
     }),
     intervals,
   }
+}
+
+export function activeTimelineNeedsRenderGraph(): boolean {
+  const document = timelineState.document
+  if (!document) return false
+  const sequence = document.sequences.find(item => item.id === document.activeSequenceId)
+  const clips = sequence?.tracks.flatMap(track => track.clips) ?? []
+  return clips.length !== 1 || clips[0]?.mediaId !== document.primaryMediaId
+}
+
+/** Compile the active sequence into the browser timeline-render contract.
+ * Returns null when the legacy single-primary path already covers the
+ * document or when the multicam flatten path owns the export. */
+export function buildActiveTimelineRenderPayload(): Record<string, unknown> | null {
+  const document = timelineState.document
+  if (!document || !activeTimelineNeedsRenderGraph()) return null
+  if (activeAttachedMulticamContext()) return null
+  const sequence = document.sequences.find(item => item.id === document.activeSequenceId)
+  if (!sequence) return null
+  const timeBase = sequence.settings.timeBase
+  const anySolo = sequence.tracks.some(track => track.solo)
+  const clips: Array<Record<string, unknown>> = []
+  let endTick = 0
+  sequence.tracks.forEach((track, trackIndex) => {
+    const audioEnabled = anySolo ? Boolean(track.solo) : !track.muted
+    const videoVisible = track.kind === 'video' && !track.hidden && (anySolo ? Boolean(track.solo) : true)
+    const ordered = [...track.clips].sort((left, right) =>
+      left.timelineStartTick - right.timelineStartTick || (left.id < right.id ? -1 : 1))
+    let outgoing: {
+      fades: RenderClipFades
+      endTick: number
+      durationTicks: number
+      mediaKind: string
+      audioEnabled: boolean
+    } | null = null
+    for (const clip of ordered) {
+      const media = document.media.find(item => item.id === clip.mediaId)
+      if (!media) throw new Error(`Нет медиа для клипа ${clip.id}`)
+      const mediaKind =
+        media.kind === 'audio' ? 'audio'
+          : media.kind === 'image' ? 'image'
+            : media.kind === 'text' ? 'text'
+              : 'video'
+      if (!(videoVisible && mediaKind !== 'audio') && !audioEnabled) continue
+      const timelineEndTick = clip.timelineStartTick + clip.durationTicks
+      if (timelineEndTick > endTick) endTick = timelineEndTick
+      if (mediaKind === 'text') {
+        const metadata = media.metadata as unknown as TextLayerMetadata
+        clips.push({
+          id: clip.id,
+          mediaKind,
+          style: {
+            text: metadata.text,
+            fontSizeRatio: metadata.fontSizeRatio,
+            color: metadata.color,
+            xRatio: metadata.xRatio,
+            yRatio: metadata.yRatio,
+            opacity: metadata.opacity,
+          },
+          trackKind: 'video',
+          trackIndex,
+          audioEnabled: false,
+          timelineStartTick: clip.timelineStartTick,
+          durationTicks: clip.durationTicks,
+          sourceInTick: clip.sourceInTick,
+          sourceOutTick: Math.max(1, clip.sourceOutTick),
+          opacity: clip.opacity ?? null,
+        })
+        continue
+      }
+      if (!media.contentFingerprint) throw new Error(`Нет fingerprint для клипа ${clip.id}`)
+      const fades: RenderClipFades = { videoInTicks: 0, videoInMode: 'none', videoInXfade: null, videoOutTicks: 0, audioInTicks: 0, audioOutTicks: 0 }
+      let timelineStartTick = clip.timelineStartTick
+      let durationTicks = clip.durationTicks
+      let sourceInTick = clip.sourceInTick
+      if (mediaKind === 'video' && track.kind === 'video') {
+        const transition = getClipTransition(clip)
+        if (transition && outgoing
+          && outgoing.endTick === clip.timelineStartTick
+          && (outgoing.mediaKind === 'video' || outgoing.mediaKind === 'image')) {
+          const overlap = Math.min(transition.durationTicks, clip.sourceInTick, outgoing.durationTicks, clip.durationTicks)
+          if (overlap >= 1) {
+            timelineStartTick -= overlap
+            durationTicks += overlap
+            sourceInTick -= overlap
+            fades.videoInTicks = overlap
+            const xfadeName = clipTransitionXfadeType(transition.type)
+            if (xfadeName) {
+              fades.videoInMode = 'xfade'
+              fades.videoInXfade = xfadeName
+            } else {
+              fades.videoInMode = transition.type === 'crossfade' ? 'alpha' : 'black'
+              if (transition.type === 'fade-black') outgoing.fades.videoOutTicks = overlap
+            }
+            fades.audioInTicks = audioEnabled ? overlap : 0
+            if (outgoing.audioEnabled) outgoing.fades.audioOutTicks = overlap
+          }
+        }
+      }
+      clips.push({
+        id: clip.id,
+        assetRef: media.assetRef ?? media.id,
+        fingerprint: media.contentFingerprint,
+        mediaKind,
+        trackKind: track.kind === 'audio' ? 'audio' : 'video',
+        trackIndex,
+        audioEnabled,
+        timelineStartTick,
+        durationTicks,
+        sourceInTick,
+        sourceOutTick: mediaKind === 'image' ? Math.max(1, clip.sourceOutTick) : clip.sourceOutTick,
+        opacity: clip.opacity ?? null,
+        fades,
+      })
+      outgoing = track.kind === 'video'
+        ? { fades, endTick: timelineEndTick, durationTicks: clip.durationTicks, mediaKind, audioEnabled }
+        : null
+    }
+  })
+  if (!clips.length || endTick < 1) return null
+  return {
+    contract: 'timeline-render-v1',
+    timeBase,
+    durationTicks: endTick,
+    target: {
+      width: sequence.settings.width ?? state.video?.width ?? 1920,
+      height: sequence.settings.height ?? state.video?.height ?? 1080,
+      fps: state.edit.fps ?? sequence.settings.frameRate ?? state.video?.fps ?? 30,
+    },
+    clips,
+  }
+}
+
+interface RenderClipFades {
+  videoInTicks: number
+  videoInMode: 'none' | 'alpha' | 'black' | 'xfade'
+  videoInXfade: string | null
+  videoOutTicks: number
+  audioInTicks: number
+  audioOutTicks: number
+}
+
+export interface ClipTransitionContext {
+  trackId: string
+  clipId: string
+  previousClipId: string
+  maxDurationTicks: number
+  timeBase: number
+}
+
+export function selectedClipTransitionContext(): ClipTransitionContext | null {
+  const document = timelineState.document
+  const located = locateSelectedTimelineClip()
+  if (!document || !located) return null
+  const sequence = document.sequences.find(item => item.id === document.activeSequenceId)
+  const track = sequence?.tracks.find(item => item.id === located.trackId)
+  const clip = track?.clips.find(item => item.id === located.clipId)
+  if (!sequence || !track || track.kind !== 'video' || track.locked || !clip) return null
+  const media = document.media.find(item => item.id === clip.mediaId)
+  if (media?.kind !== 'video') return null
+  const previous = track.clips.find(item =>
+    item.id !== clip.id && item.timelineStartTick + item.durationTicks === clip.timelineStartTick)
+  if (!previous) return null
+  const previousMedia = document.media.find(item => item.id === previous.mediaId)
+  if (!previousMedia || (previousMedia.kind !== 'video' && previousMedia.kind !== 'image')) return null
+  const maxDurationTicks = Math.min(clip.sourceInTick, previous.durationTicks)
+  if (maxDurationTicks < 1) return null
+  return {
+    trackId: track.id,
+    clipId: clip.id,
+    previousClipId: previous.id,
+    maxDurationTicks,
+    timeBase: sequence.settings.timeBase,
+  }
+}
+
+export function selectedClipTransition(): ClipTransition | null {
+  const document = timelineState.document
+  const located = locateSelectedTimelineClip()
+  if (!document || !located) return null
+  const clip = document.sequences
+    .find(item => item.id === document.activeSequenceId)
+    ?.tracks.flatMap(track => track.clips)
+    .find(item => item.id === located.clipId)
+  return clip ? getClipTransition(clip) : null
+}
+
+export function setTransitionOnSelectedClip(transition: ClipTransition | null): boolean {
+  const document = timelineState.document
+  const located = locateSelectedTimelineClip()
+  if (!document || !located) return false
+  if (transition) {
+    const context = selectedClipTransitionContext()
+    if (!context || transition.durationTicks > context.maxDurationTicks) {
+      timelineState.error = 'Переход длиннее доступного исходного материала'
+      return false
+    }
+  }
+  return executeTimelineCommand({
+    kind: 'set_clip_transition',
+    sequenceId: document.activeSequenceId,
+    trackId: located.trackId,
+    clipId: located.clipId,
+    transition: transition ? { ...transition } : null,
+  }, `transition:${located.clipId}`)
+}
+
+/** Set clip-level opacity (0..1); null or 1 removes the property. */
+export function setOpacityOnSelectedClip(opacity: number | null): boolean {
+  const located = locateSelectedTimelineClip()
+  const document = timelineState.document
+  if (!document || !located) return false
+  const normalized = opacity !== null && opacity >= 1 ? null : opacity
+  return executeTimelineCommand({
+    kind: 'set_clip_opacity',
+    sequenceId: document.activeSequenceId,
+    trackId: located.trackId,
+    clipId: located.clipId,
+    opacity: normalized,
+  }, `opacity:${located.clipId}`)
 }
 
 export function currentBrowserExportPlan(): ExportResourcePlan | null {
@@ -1507,6 +1754,9 @@ export const projectRecovery = reactive({
 export const timelineState = reactive({
   document: null as ProjectDocument | null,
   selectedClipId: null as string | null,
+  selectedGap: null as { trackId: string; startTick: number } | null,
+  selectedMarkerId: null as string | null,
+  playheadTick: 0,
   error: '',
   revision: 0,
   canUndo: false,
@@ -1534,6 +1784,8 @@ function initializeTimelineDocument(video: VideoInfo): void {
   ))
   timelineState.document = document
   timelineState.selectedClipId = document.sequences[0]?.tracks[0]?.clips[0]?.id ?? null
+  timelineState.selectedGap = null
+  timelineState.selectedMarkerId = null
   timelineState.error = ''
   timelineState.revision++
   syncStructuralHistoryState()
@@ -1588,6 +1840,8 @@ export function openInstantiatedProject(document: ProjectDocument): void {
   timelineState.selectedClipId = next.sequences
     .find(sequence => sequence.id === next.activeSequenceId)?.tracks
     .flatMap(track => track.clips)[0]?.id ?? null
+  timelineState.selectedGap = null
+  timelineState.selectedMarkerId = null
   timelineState.revision++
   syncStructuralHistoryState()
   scheduleProjectSave()
@@ -1646,6 +1900,337 @@ export function redoTimeline(): boolean {
   }
 }
 
+export function setTimelinePlayheadTick(tick: number): void {
+  const next = Number.isFinite(tick) ? Math.max(0, Math.round(tick)) : 0
+  if (next === timelineState.playheadTick) return
+  timelineState.playheadTick = next
+}
+
+function locateSelectedTimelineClip():
+  | { sequenceId: string; trackId: string; clipId: string }
+  | null {
+  const document = timelineState.document
+  const clipId = timelineState.selectedClipId
+  if (!document || !clipId) return null
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  const track = sequence?.tracks.find((item) => item.clips.some((clip) => clip.id === clipId))
+  return sequence && track ? { sequenceId: sequence.id, trackId: track.id, clipId } : null
+}
+
+function failTimelineAction(error: unknown): boolean {
+  timelineState.error = error instanceof Error ? error.message : String(error)
+  return false
+}
+
+export function timelineTrackGaps(trackId: string): TimelineGap[] {
+  const document = timelineState.document
+  const sequence = document?.sequences.find((item) => item.id === document.activeSequenceId)
+  const track = sequence?.tracks.find((item) => item.id === trackId)
+  return track ? projectTrackGaps(track) : []
+}
+
+export function selectTimelineGap(trackId: string, startTick: number): void {
+  timelineState.selectedGap = { trackId, startTick }
+  timelineState.selectedClipId = null
+  timelineState.selectedMarkerId = null
+}
+
+export function clearTimelineGapSelection(): void {
+  timelineState.selectedGap = null
+}
+
+/** The selected gap re-validated against the current document, or null when it no longer exists. */
+export function selectedTimelineGap(): { sequenceId: string; trackId: string; gap: TimelineGap } | null {
+  const selection = timelineState.selectedGap
+  const document = timelineState.document
+  if (!selection || !document) return null
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  if (!sequence) return null
+  const gap = timelineTrackGaps(selection.trackId).find((item) => item.startTick === selection.startTick)
+  return gap ? { sequenceId: sequence.id, trackId: selection.trackId, gap } : null
+}
+
+export function closeSelectedTimelineGap(): boolean {
+  const located = selectedTimelineGap()
+  if (!located) return false
+  const applied = executeTimelineCommand({
+    kind: 'close_track_gap',
+    sequenceId: located.sequenceId,
+    trackId: located.trackId,
+    gapStartTick: located.gap.startTick,
+  }, `gap:${located.trackId}:${String(located.gap.startTick)}`)
+  if (applied) timelineState.selectedGap = null
+  return applied
+}
+
+/** Close every gap on the track of the selected gap, largest-left-first so tick anchors stay valid. */
+export function closeAllTimelineGaps(): boolean {
+  const selection = timelineState.selectedGap
+  const document = timelineState.document
+  if (!selection || !document) return false
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  if (!sequence) return false
+  const track = sequence.tracks.find((item) => item.id === selection.trackId)
+  if (!track) return false
+  const gaps = projectTrackGaps(track)
+  if (gaps.length === 0) return false
+  try {
+    // Closing shifts every later gap left by the closed sizes, so each
+    // command must target the gap's tick in the intermediate document.
+    let closedTicks = 0
+    const commands: TimelineCommand[] = gaps.map((gap) => {
+      const command: TimelineCommand = {
+        kind: 'close_track_gap',
+        sequenceId: sequence.id,
+        trackId: track.id,
+        gapStartTick: gap.startTick - closedTicks,
+      }
+      closedTicks += gap.endTick - gap.startTick
+      return command
+    })
+    const applied = executeTimelineCommand({ kind: 'batch', commands }, `gap-all:${track.id}`)
+    if (applied) timelineState.selectedGap = null
+    return applied
+  } catch (error) {
+    return failTimelineAction(error)
+  }
+}
+
+/** The active sequence's markers sorted by tick (stable by id for ties). */
+export function timelineMarkers(): ProjectMarker[] {
+  const document = timelineState.document
+  const sequence = document?.sequences.find((item) => item.id === document.activeSequenceId)
+  return sequence?.markers
+    ? [...sequence.markers].sort((left, right) =>
+      left.timelineTick - right.timelineTick || (left.id < right.id ? -1 : 1))
+    : []
+}
+
+/** The selected marker re-validated against the current document, or null. */
+export function selectedTimelineMarker(): ProjectMarker | null {
+  const markerId = timelineState.selectedMarkerId
+  if (!markerId) return null
+  return timelineMarkers().find((item) => item.id === markerId) ?? null
+}
+
+export function selectTimelineMarker(markerId: string | null): void {
+  timelineState.selectedMarkerId = markerId
+  if (markerId !== null) {
+    timelineState.selectedClipId = null
+    timelineState.selectedGap = null
+  }
+}
+
+export function clearTimelineMarkerSelection(): void {
+  timelineState.selectedMarkerId = null
+}
+
+export function addTimelineMarkerAtPlayhead(): boolean {
+  const document = timelineState.document
+  if (!document) return false
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  if (!sequence) return false
+  const frameTicks = projectFrameDurationTicks(sequence.settings)
+  const tick = Math.max(0, Math.round(timelineState.playheadTick / frameTicks) * frameTicks)
+  const used = new Set((sequence.markers ?? []).map((item) => item.id))
+  let suffix = 1
+  let markerId = `marker-${String(suffix)}`
+  while (used.has(markerId)) {
+    suffix += 1
+    markerId = `marker-${String(suffix)}`
+  }
+  const applied = executeTimelineCommand({
+    kind: 'add_marker', sequenceId: sequence.id, marker: { id: markerId, timelineTick: tick },
+  })
+  if (applied) selectTimelineMarker(markerId)
+  return applied
+}
+
+export function updateSelectedTimelineMarker(patch: {
+  timelineTick?: number
+  color?: string | null
+  label?: string | null
+}): boolean {
+  const document = timelineState.document
+  const marker = selectedTimelineMarker()
+  if (!document || !marker) return false
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  if (!sequence) return false
+  return executeTimelineCommand(
+    { kind: 'update_marker', sequenceId: sequence.id, markerId: marker.id, patch },
+    `marker:${marker.id}`,
+  )
+}
+
+export function removeSelectedTimelineMarker(): boolean {
+  const document = timelineState.document
+  const marker = selectedTimelineMarker()
+  if (!document || !marker) return false
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  if (!sequence) return false
+  const applied = executeTimelineCommand({
+    kind: 'remove_marker', sequenceId: sequence.id, markerId: marker.id,
+  })
+  if (applied) timelineState.selectedMarkerId = null
+  return applied
+}
+
+/** Move the playhead to the next (1) or previous (-1) marker and select it. */
+export function jumpTimelineMarker(direction: -1 | 1): boolean {
+  const markers = timelineMarkers()
+  if (markers.length === 0) return false
+  const current = timelineState.playheadTick
+  const target = direction === 1
+    ? markers.find((item) => item.timelineTick > current)
+    : [...markers].reverse().find((item) => item.timelineTick < current)
+  if (!target) return false
+  setTimelinePlayheadTick(target.timelineTick)
+  selectTimelineMarker(target.id)
+  return true
+}
+
+export function splitSelectedClipAtPlayhead(): boolean {
+  const document = timelineState.document
+  const located = locateSelectedTimelineClip()
+  if (!document || !located) return false
+  try {
+    return executeTimelineCommand(
+      splitClipAt(document, located.sequenceId, located.clipId, timelineState.playheadTick),
+      `split:${located.clipId}`,
+    )
+  } catch (error) {
+    return failTimelineAction(error)
+  }
+}
+
+export function rippleDeleteSelectedClip(): boolean {
+  const document = timelineState.document
+  const located = locateSelectedTimelineClip()
+  if (!document || !located) return false
+  try {
+    const applied = executeTimelineCommand(
+      rippleDeleteClip(document, located.sequenceId, located.trackId, located.clipId),
+    )
+    if (applied) dropSelectionIfMissing(located.clipId)
+    return applied
+  } catch (error) {
+    return failTimelineAction(error)
+  }
+}
+
+export function removeSelectedClip(): boolean {
+  const located = locateSelectedTimelineClip()
+  if (!located) return false
+  const applied = executeTimelineCommand({
+    kind: 'remove_clip',
+    sequenceId: located.sequenceId,
+    trackId: located.trackId,
+    clipId: located.clipId,
+  })
+  if (applied) dropSelectionIfMissing(located.clipId)
+  return applied
+}
+
+export interface TextLayerStylePatch {
+  text?: string
+  fontSizeRatio?: number
+  color?: string
+  xRatio?: number
+  yRatio?: number
+  opacity?: number
+}
+
+export function selectedTextLayer(): { mediaId: string; metadata: TextLayerMetadata } | null {
+  const document = timelineState.document
+  const located = locateSelectedTimelineClip()
+  if (!document || !located) return null
+  const clip = document.sequences
+    .find((item) => item.id === located.sequenceId)
+    ?.tracks.find((item) => item.id === located.trackId)
+    ?.clips.find((item) => item.id === located.clipId)
+  const media = clip ? document.media.find((item) => item.id === clip.mediaId) : null
+  if (!media || media.kind !== 'text') return null
+  return { mediaId: media.id, metadata: media.metadata as unknown as TextLayerMetadata }
+}
+
+export function createTextLayerAtPlayhead(): boolean {
+  const document = timelineState.document
+  if (!document) return false
+  try {
+    const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+    if (!sequence) return false
+    const frameTicks = projectFrameDurationTicks(sequence.settings)
+    const startTick = Math.max(0, Math.round(timelineState.playheadTick / frameTicks) * frameTicks)
+    const durationTicks = Math.max(frameTicks, 5 * sequence.settings.timeBase)
+    const videoTracks = sequence.tracks.filter((track) => track.kind === 'video' && !track.locked)
+    const freeTrack = videoTracks.find((track) => !track.clips.some((clip) =>
+      clip.timelineStartTick < startTick + durationTicks
+      && startTick < clip.timelineStartTick + clip.durationTicks,
+    ))
+    if (!freeTrack) throw new Error('Нет свободной video-дорожки для текстового слоя')
+    const usedMedia = new Set(document.media.map((item) => item.id))
+    const usedClips = new Set(sequence.tracks.flatMap((track) => track.clips.map((clip) => clip.id)))
+    let suffix = 1
+    let mediaId = 'text-1'
+    let clipId = 'clip-text-1'
+    while (usedMedia.has(mediaId) || usedClips.has(clipId)) {
+      suffix += 1
+      mediaId = `text-${String(suffix)}`
+      clipId = `clip-text-${String(suffix)}`
+    }
+    const metadata: TextLayerMetadata = {
+      contract: 'text-layer-v1',
+      text: 'Текст',
+      fontSizeRatio: 0.08,
+      color: '#ffffff',
+      xRatio: 0.5,
+      yRatio: 0.85,
+      opacity: 1,
+    }
+    const applied = executeTimelineCommand({
+      kind: 'insert_media_clip',
+      sequenceId: sequence.id,
+      trackId: freeTrack.id,
+      index: freeTrack.clips.length,
+      media: { id: mediaId, kind: 'text', metadata: { ...metadata } },
+      clip: {
+        id: clipId,
+        mediaId,
+        timelineStartTick: startTick,
+        durationTicks,
+        sourceInTick: 0,
+        sourceOutTick: durationTicks,
+        effects: [],
+      },
+    }, `text:${clipId}`)
+    if (applied) timelineState.selectedClipId = clipId
+    return applied
+  } catch (error) {
+    return failTimelineAction(error)
+  }
+}
+
+export function updateTextLayerStyle(mediaId: string, patch: TextLayerStylePatch): boolean {
+  const document = timelineState.document
+  if (!document) return false
+  const media = document.media.find((item) => item.id === mediaId)
+  if (!media || media.kind !== 'text') return false
+  return executeTimelineCommand({
+    kind: 'set_media_metadata',
+    sequenceId: document.activeSequenceId,
+    mediaId,
+    patch: { ...patch },
+  }, `text-style:${mediaId}`)
+}
+
+function dropSelectionIfMissing(clipId: string): void {
+  if (timelineState.selectedClipId !== clipId) return
+  const stillExists = timelineState.document?.sequences
+    .flatMap((sequence) => sequence.tracks)
+    .some((track) => track.clips.some((clip) => clip.id === clipId))
+  if (!stillExists) timelineState.selectedClipId = null
+}
+
 function resetProjectPersistenceContext(): void {
   projectSessionId++
   activeProjectId = null
@@ -1656,6 +2241,8 @@ function resetProjectPersistenceContext(): void {
   projectRecovery.restoring = false
   timelineState.document = null
   timelineState.selectedClipId = null
+  timelineState.selectedGap = null
+  timelineState.selectedMarkerId = null
   timelineState.error = ''
   structuralHistory.clear()
   syncStructuralHistoryState()
@@ -1709,6 +2296,7 @@ async function restoreProject(videoId: string, selectedProject?: ProjectDto): Pr
       timelineState.document = ensureCreatorTrackLayout(document)
       timelineState.selectedClipId =
         document.sequences[0]?.tracks.flatMap((track) => track.clips)[0]?.id ?? null
+      timelineState.playheadTick = 0
       timelineState.revision++
       structuralHistory.clear()
       syncStructuralHistoryState()

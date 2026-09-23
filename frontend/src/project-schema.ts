@@ -45,6 +45,14 @@ export interface ProjectSequence extends JsonObject {
   name: string
   settings: SequenceSettings
   tracks: ProjectTrack[]
+  markers?: ProjectMarker[]
+}
+
+export interface ProjectMarker extends JsonObject {
+  id: string
+  timelineTick: number
+  color?: string
+  label?: string
 }
 
 export interface SequenceSettings extends JsonObject {
@@ -76,6 +84,7 @@ export interface ProjectClip extends JsonObject {
   sourceOutTick: number
   effects: ProjectEffect[]
   multicamGroupId?: string
+  opacity?: number
 }
 
 export interface ProjectEffect extends JsonObject {
@@ -83,6 +92,16 @@ export interface ProjectEffect extends JsonObject {
   kind: string
   enabled: boolean
   parameters: JsonObject
+}
+
+export interface TextLayerMetadata extends JsonObject {
+  contract: 'text-layer-v1'
+  text: string
+  fontSizeRatio: number
+  color?: string
+  xRatio?: number
+  yRatio?: number
+  opacity?: number
 }
 
 export interface ProjectEnvelope extends JsonObject {
@@ -138,6 +157,36 @@ export function createProjectDocumentFromLegacy(
   return migrateProjectDocument({ schemaVersion: 1, videoId, name, video, edit })
 }
 
+const TEXT_LAYER_KEYS = ['contract', 'text', 'fontSizeRatio', 'color', 'xRatio', 'yRatio', 'opacity'] as const
+
+/** Canonical metadata shape for timeline text layers (media.kind === 'text'). */
+export function validateTextLayerMetadata(metadata: JsonObject): void {
+  if (Object.keys(metadata).some(key => !TEXT_LAYER_KEYS.includes(key as typeof TEXT_LAYER_KEYS[number]))) {
+    throw new Error('invalid text metadata keys')
+  }
+  if (metadata.contract !== 'text-layer-v1') throw new Error('invalid text metadata contract')
+  if (typeof metadata.text !== 'string' || !metadata.text.trim() || metadata.text.length > 2000) {
+    throw new Error('invalid text metadata content')
+  }
+  const fontSizeRatio = metadata.fontSizeRatio
+  if (typeof fontSizeRatio !== 'number' || !Number.isFinite(fontSizeRatio) || fontSizeRatio <= 0 || fontSizeRatio > 1) {
+    throw new Error('invalid text fontSizeRatio')
+  }
+  if (metadata.color !== undefined && !/^#[0-9a-f]{6}$/i.test(String(metadata.color))) {
+    throw new Error('invalid text color')
+  }
+  for (const key of ['xRatio', 'yRatio'] as const) {
+    const value = metadata[key]
+    if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)) {
+      throw new Error(`invalid text ${key}`)
+    }
+  }
+  if (metadata.opacity !== undefined
+    && (typeof metadata.opacity !== 'number' || !Number.isFinite(metadata.opacity) || metadata.opacity < 0 || metadata.opacity > 1)) {
+    throw new Error('invalid text opacity')
+  }
+}
+
 export function validateProjectDocument(document: ProjectDocument): void {
   if (document.schemaVersion !== PROJECT_DOCUMENT_SCHEMA_VERSION) {
     throw new Error(`unsupported project schemaVersion ${String(document.schemaVersion)}`)
@@ -163,6 +212,7 @@ export function validateProjectDocument(document: ProjectDocument): void {
       !/^[a-f0-9]{64}$/.test(media.contentFingerprint)
     ) throw new Error('invalid media.contentFingerprint')
     asObject(media.metadata, 'media.metadata')
+    if (media.kind === 'text') validateTextLayerMetadata(media.metadata)
     addUnique(mediaIds, media.id)
     mediaById.set(media.id, media)
   }
@@ -196,6 +246,21 @@ export function validateProjectDocument(document: ProjectDocument): void {
       throw new Error('invalid sequence dimensions')
     }
     if (!Array.isArray(sequence.tracks)) throw new Error('invalid project tracks')
+    if (sequence.markers !== undefined) {
+      if (!Array.isArray(sequence.markers)) throw new Error('invalid project markers')
+      const markerIds = new Set<string>()
+      for (const marker of sequence.markers) {
+        validateId(marker.id, 'marker.id')
+        addUnique(markerIds, marker.id)
+        if (!isNonNegativeInteger(marker.timelineTick)) throw new Error('invalid marker timelineTick')
+        if (marker.color !== undefined && !/^#[0-9a-f]{6}$/i.test(String(marker.color))) {
+          throw new Error('invalid marker color')
+        }
+        if (marker.label !== undefined && (typeof marker.label !== 'string' || marker.label.length > 200)) {
+          throw new Error('invalid marker label')
+        }
+      }
+    }
     for (const track of sequence.tracks) {
       validateId(track.id, 'track.id')
       validateToken(track.kind, 'track.kind')
@@ -213,7 +278,7 @@ export function validateProjectDocument(document: ProjectDocument): void {
         const media = mediaById.get(clip.mediaId)
         if (!media) throw new Error(`missing project reference ${clip.mediaId}`)
         const compatible =
-          (track.kind === 'video' && (media.kind === 'video' || media.kind === 'image')) ||
+          (track.kind === 'video' && (media.kind === 'video' || media.kind === 'image' || media.kind === 'text')) ||
           (track.kind === 'audio' && media.kind === 'audio')
         if (!compatible) throw new Error('incompatible project media and track')
         if (
@@ -230,6 +295,10 @@ export function validateProjectDocument(document: ProjectDocument): void {
         const sourceDuration = sourceDurationTicks(media.metadata, sequence.settings.timeBase)
         if (sourceDuration !== undefined && clip.sourceOutTick > sourceDuration) {
           throw new Error('invalid project clip source range')
+        }
+        if (clip.opacity !== undefined
+          && (typeof clip.opacity !== 'number' || !Number.isFinite(clip.opacity) || clip.opacity < 0 || clip.opacity > 1)) {
+          throw new Error('invalid project clip opacity')
         }
         if (!Array.isArray(clip.effects)) throw new Error('invalid project effects')
         if (clip.multicamGroupId !== undefined) validateId(clip.multicamGroupId, 'clip.multicamGroupId')

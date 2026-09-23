@@ -8,6 +8,7 @@ describe('size-v1 export estimator', () => {
     expect(finalOutputDuration(100, { trim: { start: 10, end: 50 }, segments: [{ start: 10, end: 20 }, { start: 30, end: 50 }], speed: 2 })).toEqual({ selectedSeconds: 30, outputSeconds: 15 })
     expect(finalOutputDuration(100, { trim: { start: 10, end: 50 }, segments: [{ start: 0, end: 20 }, { start: 30, end: 100 }] })).toEqual({ selectedSeconds: 30, outputSeconds: 30 })
     expect(finalOutputDuration(999, { multicamFlatten: { durationTicks: 900, timeBase: 90 }, speed: .5 }).outputSeconds).toBe(20)
+    expect(finalOutputDuration(1, { timelineRender: { durationTicks: 6_000_000, timeBase: 1_000_000 }, trim: { start: 1, end: 5 } }).selectedSeconds).toBe(4)
   })
 
   it('resolves transformed and multicam output geometry canonically', () => {
@@ -17,6 +18,9 @@ describe('size-v1 export estimator', () => {
     expect(resolveExportSizing({ duration: 99, width: 1, height: 1 }, {
       multicamFlatten: { durationTicks: 500, timeBase: 100, target: { width: 1280, height: 720, fps: 25 } },
     })).toMatchObject({ width: 1280, height: 720, fps: 25, durationSeconds: 5 })
+    expect(resolveExportSizing({ duration: 99, width: 1, height: 1 }, {
+      timelineRender: { durationTicks: 5_000_000, timeBase: 1_000_000, target: { width: 854, height: 480, fps: 30 } },
+    })).toMatchObject({ width: 854, height: 480, fps: 30, durationSeconds: 5 })
   })
 
   it('is monotonic by CRF and gives newer codecs a lower center at equal geometry', () => {

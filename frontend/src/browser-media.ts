@@ -40,6 +40,7 @@ import { browserColorFilterPlan, browserSdrExportBoundary, browserVideoFilterArg
 import { BROWSER_DECODED_SRGB_STATUS } from './domain/color-management'
 import { bakeEditCube33 } from './domain/lut-baker'
 import { browserMulticamTiming, buildBrowserMulticamFfmpegArgv, parseBrowserMulticamFlatten, type MaterializedMulticamInput } from './browser-multicam-export'
+import { browserTimelineTiming, buildBrowserTimelineFfmpegArgv, parseBrowserTimelineRender, timelineClipInputKey, type BrowserTimelineTextLayerStyle, type MaterializedTimelineInput } from './browser-timeline-export'
 import {
   getBrowserLut,
   listBrowserLuts,
@@ -874,6 +875,178 @@ async function buildMulticamArgs(
   return { ffmpegArgs: plan.argv, inputName: inputs.values().next().value?.path ?? '', filename: output.filename, mime: output.mime, mountPoint, temporaryFiles: resources.temporaryFiles }
 }
 
+async function rasterizeTimelineTextLayer(
+  style: BrowserTimelineTextLayerStyle,
+  target: { width: number; height: number },
+): Promise<Uint8Array> {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(target.width))
+  canvas.height = Math.max(1, Math.round(target.height))
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Текстовый слой требует canvas 2D')
+  const fontSize = Math.max(1, style.fontSizeRatio * canvas.height)
+  context.font = `${fontSize}px system-ui, sans-serif`
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillStyle = style.color
+  context.globalAlpha = style.opacity
+  const lines = style.text.split('\n')
+  const lineHeight = fontSize * 1.25
+  const x = style.xRatio * canvas.width
+  const centerY = style.yRatio * canvas.height
+  lines.forEach((line, index) => {
+    context.fillText(line, x, centerY + (index - (lines.length - 1) / 2) * lineHeight)
+  })
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('Не удалось растеризовать текстовый слой')
+  return new Uint8Array(await blob.arrayBuffer())
+}
+
+async function buildTimelineArgs(
+  ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg,
+  payload: EditPayload,
+  resources: FfmpegJobResources,
+): Promise<FfmpegJobSpec> {
+  const contract = parseBrowserTimelineRender(payload.timelineRender)
+  const records = new Map<string, SourceRecord>()
+  for (const clip of contract.clips) {
+    if (clip.assetRef === null) continue
+    if (!records.has(clip.assetRef)) records.set(clip.assetRef, await resolveSourceRecord(clip.assetRef, clip.fingerprint ?? undefined))
+  }
+  const runtime = runtimeResourceCapabilities()
+  const inputs = new Map<string, MaterializedTimelineInput>()
+  const orderedRefs = [...records.keys()].sort()
+  let mountPoint: string | undefined
+  if (runtime.workerFs && typeof ffmpeg.mount === 'function') {
+    const { FFFSType } = await import('@ffmpeg/ffmpeg')
+    mountPoint = `/timeline-${id()}`
+    resources.mountPoint = mountPoint
+    await ffmpeg.createDir(mountPoint)
+    const files = orderedRefs.map((ref, index) => {
+      const source = records.get(ref)!
+      const extension = source.file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'mp4'
+      return new File([source.file], `layer-${index}.${extension}`, { type: source.file.type })
+    })
+    const mounted = await boundedEnginePhase(ffmpeg.mount(FFFSType.WORKERFS, { files }, mountPoint), 'WORKERFS timeline mount', 10_000, () => ffmpeg.terminate())
+    if (mounted === false) throw new Error('WORKERFS timeline mount отклонён движком')
+    orderedRefs.forEach((ref, index) => {
+      const source = records.get(ref)!
+      inputs.set(ref, { path: `${mountPoint}/${files[index]!.name}`, sizeBytes: source.file.size, hasAudio: Boolean(source.info.acodec) })
+    })
+  } else {
+    for (const [index, ref] of orderedRefs.entries()) {
+      const source = records.get(ref)!
+      const extension = source.file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'mp4'
+      const path = `timeline-${index}.${extension}`
+      inputs.set(ref, { path, sizeBytes: source.file.size, hasAudio: Boolean(source.info.acodec) })
+    }
+  }
+  for (const clip of contract.clips) {
+    if (clip.mediaKind !== 'text' || !clip.style) continue
+    const png = await rasterizeTimelineTextLayer(clip.style, contract.target)
+    const path = `timeline-text-${clip.id.replace(/[^a-z0-9]+/gi, '-')}.png`
+    await ffmpeg.writeFile(path, png)
+    resources.temporaryFiles.push(path)
+    inputs.set(timelineClipInputKey(clip), { path, sizeBytes: png.byteLength, hasAudio: false })
+  }
+
+  const format = String(payload.format || 'mp4')
+  const boundary = browserSdrExportBoundary(format, format === 'mp3' || await probeBrowserSdrV1())
+  if (boundary.bypassVideo) throw new Error('Timeline export требует видеоформат')
+  let lutName: string | undefined
+  const lut = record(payload.lut)
+  if (lut && number(lut.intensity, 1) > 1e-9) {
+    let lutRecord = luts.get(String(lut.id))
+    if (!lutRecord) {
+      const { asset, blob } = await getBrowserLut(String(lut.id))
+      lutRecord = { file: blob, asset: { ...asset, favorite: false } }
+      luts.set(asset.id, lutRecord)
+    }
+    lutName = `timeline-lut-${id()}.cube`
+    await ffmpeg.writeFile(lutName, new Uint8Array(await lutRecord.file.arrayBuffer()))
+    resources.temporaryFiles.push(lutName)
+  }
+  const color = browserColorFilterPlan(payload, lutName)
+  const geometry: string[] = []
+  const crop = record(payload.crop)
+  if (crop && payload.cropEnabled) geometry.push(`crop=${number(crop.w)}:${number(crop.h)}:${number(crop.x)}:${number(crop.y)}`)
+  const scale = record(payload.scale)
+  if (scale && payload.scaleEnabled) geometry.push(`scale=${number(scale.w)}:${number(scale.h, -2)}`)
+  switch (number(payload.rotate)) {
+    case 90: geometry.push('transpose=1'); break
+    case 180: geometry.push('hflip', 'vflip'); break
+    case 270: geometry.push('transpose=2'); break
+  }
+  if (payload.flipH) geometry.push('hflip')
+  if (payload.flipV) geometry.push('vflip')
+  const postEffects: string[] = []
+  const timing = browserTimelineTiming(contract, payload)
+  const timelineSeconds = contract.durationTicks / contract.timeBase
+  if (timing.trimStartSeconds > 0 || timing.trimEndSeconds < timelineSeconds) {
+    postEffects.push(`trim=start=${timing.trimStartSeconds}:end=${timing.trimEndSeconds}`, 'setpts=PTS-STARTPTS')
+  }
+  if (timing.cutStartSeconds !== null && timing.cutEndSeconds !== null) {
+    postEffects.push(`select=not(between(t\\,${timing.cutStartSeconds}\\,${timing.cutEndSeconds}))`, 'setpts=N/FRAME_RATE/TB')
+  }
+  const speed = Math.max(0.5, Math.min(2, number(payload.speed, 1)))
+  if (speed !== 1) postEffects.push(`setpts=PTS/${speed}`)
+  if (payload.reverse) postEffects.push('reverse')
+  const censor = record(payload.censor)
+  if (censor && payload.censorEnabled) postEffects.push(`drawbox=x=${number(censor.x)}:y=${number(censor.y)}:w=${number(censor.w)}:h=${number(censor.h)}:color=${String(payload.censorColor || 'black')}:t=fill`)
+  if (payload.vignette) postEffects.push('vignette')
+  if (payload.denoise) postEffects.push('hqdn3d')
+  if (number(payload.sharpen) > 0) postEffects.push(`unsharp=5:5:${number(payload.sharpen)}`)
+  if (number(payload.grain) > 0) postEffects.push(`noise=alls=${Math.round(number(payload.grain) * 30)}:allf=t`)
+  const postVideoFilters = [...geometry, boundary.inputFilter!, ...color.beforeLut]
+  const postVideoAfterLutFilters = [...color.afterLut, ...postEffects, boundary.outputFilter!]
+  const postAudioFilters: string[] = []
+  if (timing.trimStartSeconds > 0 || timing.trimEndSeconds < timelineSeconds) {
+    postAudioFilters.push(`atrim=start=${timing.trimStartSeconds}:end=${timing.trimEndSeconds}`, 'asetpts=PTS-STARTPTS')
+  }
+  if (timing.cutStartSeconds !== null && timing.cutEndSeconds !== null) {
+    postAudioFilters.push(`aselect=not(between(t\\,${timing.cutStartSeconds}\\,${timing.cutEndSeconds}))`, 'asetpts=N/SR/TB')
+  }
+  if (speed !== 1) postAudioFilters.push(`atempo=${speed}`)
+  if (payload.reverse) postAudioFilters.push('areverse')
+  if (number(payload.volume, 1) !== 1) postAudioFilters.push(`volume=${number(payload.volume, 1)}`)
+  if (payload.normalizeAudio) postAudioFilters.push('loudnorm')
+  if (payload.highpass) postAudioFilters.push('highpass=f=100')
+  if (number(payload.fadeIn) > 0) postAudioFilters.push(`afade=t=in:st=0:d=${number(payload.fadeIn)}`)
+  if (number(payload.fadeOut) > 0) {
+    const duration = timing.outputSeconds
+    const fade = Math.min(number(payload.fadeOut), duration)
+    postAudioFilters.push(`afade=t=out:st=${Math.max(0, duration - fade)}:d=${fade}`)
+  }
+  const output = browserOutputSpec(payload)
+  if (payload.reverse) {
+    const reverseBytes = contract.target.width * contract.target.height * contract.target.fps * timelineSeconds * 4
+    if (reverseBytes > browserMemoryBudget(runtime) * .7) throw new Error('Reverse timeline превышает bounded memory budget; сократите длительность или разрешение')
+  }
+  const plan = buildBrowserTimelineFfmpegArgv(contract, {
+    inputs,
+    workerFs: Boolean(mountPoint),
+    memoryBudgetBytes: browserMemoryBudget(runtime),
+    postVideoFilters,
+    lutFilter: color.lutFilter,
+    lutIntensity: color.lutIntensity,
+    postVideoAfterLutFilters,
+    postAudioFilters,
+    output: { filename: output.filename, args: [...boundary.outputArgs, ...output.args] },
+    muteAudio: Boolean(payload.mute),
+  })
+  if (!mountPoint) {
+    for (const ref of plan.inputAssetRefs) {
+      const source = records.get(ref)
+      if (!source) continue
+      const input = inputs.get(ref)!
+      resources.temporaryFiles.push(input.path)
+      await ffmpeg.writeFile(input.path, new Uint8Array(await source.file.arrayBuffer()))
+    }
+  }
+  resources.temporaryFiles.push(output.filename)
+  return { ffmpegArgs: plan.argv, inputName: inputs.values().next().value?.path ?? '', filename: output.filename, mime: output.mime, mountPoint, temporaryFiles: resources.temporaryFiles }
+}
+
 async function runJobUnlocked(jobId: string, payload: EditPayload): Promise<void> {
   const job = jobs.get(jobId)
   if (!job) return
@@ -902,7 +1075,9 @@ async function runJobUnlocked(jobId: string, payload: EditPayload): Promise<void
     job.stage = `Подготавливаю исходник ${Math.ceil(source.file.size / (1024 * 1024))} МБ…`
     spec = await boundedEnginePhase(payload.multicamFlatten
       ? buildMulticamArgs(ffmpeg, payload, resources)
-      : buildArgs(ffmpeg, source, payload, resources), 'подготовка файлов движка', 60_000, () => ffmpeg?.terminate())
+      : payload.timelineRender
+        ? buildTimelineArgs(ffmpeg, payload, resources)
+        : buildArgs(ffmpeg, source, payload, resources), 'подготовка файлов движка', 60_000, () => ffmpeg?.terminate())
     job.stage = 'Кодирую на этом устройстве…'
     const exitCode = await boundedEnginePhase(ffmpeg.exec(spec.ffmpegArgs), 'кодирование', 30 * 60_000, () => ffmpeg?.terminate())
     ffmpeg.off('progress', onProgress)
@@ -921,7 +1096,12 @@ async function runJobUnlocked(jobId: string, payload: EditPayload): Promise<void
       const outTime = [...validationText.matchAll(/^out_time_us=(\d+)$/gm)].at(-1)?.[1]
       const duration = outTime ? Number(outTime) / 1_000_000 : Number.NaN
       const multicam = payload.multicamFlatten ? parseBrowserMulticamFlatten(payload.multicamFlatten) : null
-      const expected = multicam ? { estimatedOutputSeconds: browserMulticamTiming(multicam, payload).outputSeconds } : planBrowserExport(source.info, payload)
+      const timeline = !multicam && payload.timelineRender ? parseBrowserTimelineRender(payload.timelineRender) : null
+      const expected = multicam
+        ? { estimatedOutputSeconds: browserMulticamTiming(multicam, payload).outputSeconds }
+        : timeline
+          ? { estimatedOutputSeconds: browserTimelineTiming(timeline, payload).outputSeconds }
+          : planBrowserExport(source.info, payload)
       const tolerance = String(payload.format || 'mp4') === 'mp3'
         ? 0.1
         : 1 / Math.max(1, number(payload.fps, source.info.fps ?? 30))
@@ -979,6 +1159,7 @@ export function edit(payload: EditPayload): { jobId: string } {
   const source = sources.get(String(payload.videoId))
   if (!source) throw new Error('Исходный файл больше недоступен — выберите его повторно')
   if (payload.multicamFlatten) parseBrowserMulticamFlatten(payload.multicamFlatten)
+  if (payload.timelineRender) parseBrowserTimelineRender(payload.timelineRender)
   const plan = planBrowserExport(source.info, payload)
   if (plan.risk === 'blocked') throw new Error(`${plan.reason} ${plan.suggestions.join(' · ')}`)
   const jobId = id()

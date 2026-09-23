@@ -86,6 +86,21 @@ pub struct ProjectSequence {
     pub name: String,
     pub settings: SequenceSettings,
     pub tracks: Vec<ProjectTrack>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markers: Option<Vec<ProjectMarker>>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMarker {
+    pub id: String,
+    pub timeline_tick: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -129,6 +144,8 @@ pub struct ProjectClip {
     pub effects: Vec<ProjectEffect>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multicam_group_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f64>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -299,6 +316,66 @@ impl ProjectEnvelope {
     }
 }
 
+fn validate_text_layer_metadata(metadata: &Value) -> Result<(), ProjectDocumentError> {
+    const TEXT_LAYER_KEYS: [&str; 7] = [
+        "contract",
+        "text",
+        "fontSizeRatio",
+        "color",
+        "xRatio",
+        "yRatio",
+        "opacity",
+    ];
+    if metadata.as_object().is_some_and(|object| {
+        object
+            .keys()
+            .any(|key| !TEXT_LAYER_KEYS.contains(&key.as_str()))
+    }) {
+        return Err(ProjectDocumentError::InvalidField("text.metadata"));
+    }
+    if metadata.get("contract").and_then(Value::as_str) != Some("text-layer-v1") {
+        return Err(ProjectDocumentError::InvalidField("text.contract"));
+    }
+    let text = metadata.get("text").and_then(Value::as_str);
+    if !text.is_some_and(|value| !value.trim().is_empty() && value.chars().count() <= 2000) {
+        return Err(ProjectDocumentError::InvalidField("text.text"));
+    }
+    let ratio = |value: &Value| {
+        value
+            .as_f64()
+            .is_some_and(|n| n.is_finite() && 0.0 < n && n <= 1.0)
+    };
+    if !metadata.get("fontSizeRatio").is_some_and(ratio) {
+        return Err(ProjectDocumentError::InvalidField("text.fontSizeRatio"));
+    }
+    if metadata.get("color").is_some_and(|value| {
+        value.as_str().is_none_or(|color| {
+            color.len() != 7
+                || !color.starts_with('#')
+                || !color[1..].chars().all(|c| c.is_ascii_hexdigit())
+        })
+    }) {
+        return Err(ProjectDocumentError::InvalidField("text.color"));
+    }
+    for key in ["xRatio", "yRatio"] {
+        if metadata.get(key).is_some_and(|value| {
+            !value
+                .as_f64()
+                .is_some_and(|n| n.is_finite() && (0.0..=1.0).contains(&n))
+        }) {
+            return Err(ProjectDocumentError::InvalidField("text.position"));
+        }
+    }
+    if metadata.get("opacity").is_some_and(|value| {
+        !value
+            .as_f64()
+            .is_some_and(|n| n.is_finite() && (0.0..=1.0).contains(&n))
+    }) {
+        return Err(ProjectDocumentError::InvalidField("text.opacity"));
+    }
+    Ok(())
+}
+
 impl ProjectDocument {
     /// Decode either the current document or the legacy v1 autosave payload.
     /// Newer schema versions fail explicitly instead of being partially read.
@@ -454,6 +531,7 @@ impl ProjectDocument {
             source_in_tick: 0,
             source_out_tick: duration_ticks,
             multicam_group_id: None,
+            opacity: None,
             effects: vec![ProjectEffect {
                 id: "effect-legacy-edit".to_owned(),
                 kind: "legacy_edit".to_owned(),
@@ -502,6 +580,7 @@ impl ProjectDocument {
                 id: "sequence-main".to_owned(),
                 name: "Основная".to_owned(),
                 settings,
+                markers: None,
                 tracks: vec![
                     ProjectTrack {
                         id: "track-video-main".to_owned(),
@@ -565,6 +644,9 @@ impl ProjectDocument {
             if !media.metadata.is_object() {
                 return Err(ProjectDocumentError::InvalidField("media.metadata"));
             }
+            if media.kind == "text" {
+                validate_text_layer_metadata(&media.metadata)?;
+            }
             if !media_ids.insert(media.id.as_str()) {
                 return Err(ProjectDocumentError::DuplicateId(media.id.clone()));
             }
@@ -612,6 +694,30 @@ impl ProjectDocument {
                     "sequence.settings.dimensions",
                 ));
             }
+            if let Some(markers) = &sequence.markers {
+                let mut marker_ids = BTreeSet::new();
+                for marker in markers {
+                    validate_id("marker.id", &marker.id)?;
+                    if !marker_ids.insert(marker.id.as_str()) {
+                        return Err(ProjectDocumentError::DuplicateId(marker.id.clone()));
+                    }
+                    if let Some(color) = &marker.color {
+                        if color.len() != 7
+                            || !color.starts_with('#')
+                            || !color[1..].chars().all(|c| c.is_ascii_hexdigit())
+                        {
+                            return Err(ProjectDocumentError::InvalidField("marker.color"));
+                        }
+                    }
+                    if marker
+                        .label
+                        .as_ref()
+                        .is_some_and(|label| label.chars().count() > 200)
+                    {
+                        return Err(ProjectDocumentError::InvalidField("marker.label"));
+                    }
+                }
+            }
             for track in &sequence.tracks {
                 validate_id("track.id", &track.id)?;
                 validate_token("track.kind", &track.kind)?;
@@ -649,7 +755,7 @@ impl ProjectDocument {
                         .find(|media| media.id == clip.media_id)
                         .expect("media reference was checked");
                     let compatible = match track.kind.as_str() {
-                        "video" => matches!(media.kind.as_str(), "video" | "image"),
+                        "video" => matches!(media.kind.as_str(), "video" | "image" | "text"),
                         "audio" => media.kind == "audio",
                         _ => false,
                     };
@@ -684,6 +790,11 @@ impl ProjectDocument {
                         .ok_or(ProjectDocumentError::InvalidField("clip.timelineRange"))?;
                     if timeline_end > PROJECT_MAX_SAFE_INTEGER {
                         return Err(ProjectDocumentError::InvalidField("clip.timelineRange"));
+                    }
+                    if let Some(opacity) = clip.opacity {
+                        if !(0.0..=1.0).contains(&opacity) {
+                            return Err(ProjectDocumentError::InvalidField("clip.opacity"));
+                        }
                     }
                     for effect in &clip.effects {
                         validate_id("effect.id", &effect.id)?;
@@ -1255,6 +1366,172 @@ mod tests {
                 .clips[0]
                 .media_id,
             "audio-1"
+        );
+    }
+
+    #[test]
+    fn clip_opacity_round_trips_and_enforces_bounds() {
+        let mut document = ProjectDocument::from_legacy(
+            "Opacity",
+            "video-1",
+            json!({"id": "video-1", "duration": 10}),
+            json!({}),
+        )
+        .unwrap();
+        let video_index = document.sequences[0]
+            .tracks
+            .iter()
+            .position(|track| track.kind == "video" && !track.clips.is_empty())
+            .unwrap();
+        document.sequences[0].tracks[video_index].clips[0].opacity = Some(0.4);
+        document.validate().expect("opacity within bounds is valid");
+        let serialized = serde_json::to_value(&document).unwrap();
+        assert_eq!(
+            serialized["sequences"][0]["tracks"][video_index]["clips"][0]["opacity"],
+            json!(0.4)
+        );
+        let decoded: ProjectDocument = serde_json::from_value(serialized).unwrap();
+        assert_eq!(decoded, document);
+        document.sequences[0].tracks[video_index].clips[0].opacity = Some(1.5);
+        assert_eq!(
+            document.validate().unwrap_err(),
+            ProjectDocumentError::InvalidField("clip.opacity")
+        );
+    }
+
+    #[test]
+    fn sequence_markers_round_trip_and_enforce_bounds() {
+        let mut document = ProjectDocument::from_legacy(
+            "Markers",
+            "video-1",
+            json!({"id": "video-1", "duration": 10}),
+            json!({}),
+        )
+        .unwrap();
+        assert!(document.sequences[0].markers.is_none());
+        document.sequences[0].markers = Some(vec![ProjectMarker {
+            id: "marker-1".to_owned(),
+            timeline_tick: 2_500_000,
+            color: Some("#ff8800".to_owned()),
+            label: Some("Хук".to_owned()),
+            extra: BTreeMap::new(),
+        }]);
+        document
+            .validate()
+            .expect("marker within contract is valid");
+        let serialized = serde_json::to_value(&document).unwrap();
+        assert_eq!(
+            serialized["sequences"][0]["markers"][0]["timelineTick"],
+            json!(2_500_000)
+        );
+        let decoded: ProjectDocument = serde_json::from_value(serialized).unwrap();
+        assert_eq!(decoded, document);
+        document.sequences[0].markers.as_mut().unwrap()[0].color = Some("red".to_owned());
+        assert_eq!(
+            document.validate().unwrap_err(),
+            ProjectDocumentError::InvalidField("marker.color")
+        );
+        let markers = document.sequences[0].markers.as_mut().unwrap();
+        markers[0].color = None;
+        markers[0].label = Some("x".repeat(201));
+        assert_eq!(
+            document.validate().unwrap_err(),
+            ProjectDocumentError::InvalidField("marker.label")
+        );
+        let markers = document.sequences[0].markers.as_mut().unwrap();
+        markers[0].label = None;
+        markers.push(ProjectMarker {
+            id: "marker-1".to_owned(),
+            timeline_tick: 5_000_000,
+            color: None,
+            label: None,
+            extra: BTreeMap::new(),
+        });
+        assert_eq!(
+            document.validate().unwrap_err(),
+            ProjectDocumentError::DuplicateId("marker-1".to_owned())
+        );
+    }
+
+    #[test]
+    fn text_layer_media_validates_on_video_tracks_and_against_metadata_contract() {
+        let mut document = ProjectDocument::from_legacy(
+            "Text",
+            "video-1",
+            json!({"id": "video-1", "duration": 10}),
+            json!({}),
+        )
+        .unwrap();
+        document.media.push(ProjectMedia {
+            id: "text-1".into(),
+            kind: "text".into(),
+            asset_ref: None,
+            content_fingerprint: None,
+            metadata: json!({
+                "contract": "text-layer-v1",
+                "text": "Привет",
+                "fontSizeRatio": 0.08,
+                "color": "#FFFFFF",
+                "xRatio": 0.5,
+                "yRatio": 0.85
+            }),
+            extra: BTreeMap::new(),
+        });
+        let clip = ProjectClip {
+            id: "clip-text".into(),
+            media_id: "text-1".into(),
+            timeline_start_tick: 0,
+            duration_ticks: 2_000_000,
+            source_in_tick: 0,
+            source_out_tick: 2_000_000,
+            effects: Vec::new(),
+            multicam_group_id: None,
+            opacity: None,
+            extra: BTreeMap::new(),
+        };
+        let audio_index = document.sequences[0]
+            .tracks
+            .iter()
+            .position(|track| track.kind == "audio")
+            .unwrap();
+        document.sequences[0].tracks.insert(
+            0,
+            ProjectTrack {
+                id: "track-text".into(),
+                kind: "video".into(),
+                name: "Text".into(),
+                clips: vec![clip.clone()],
+                extra: BTreeMap::new(),
+            },
+        );
+        document
+            .validate()
+            .expect("text media is valid on a video track");
+        document.sequences[0].tracks.remove(0);
+
+        document.sequences[0].tracks[audio_index].clips.push(clip);
+        assert!(
+            document.validate().is_err(),
+            "text must not enter an audio track"
+        );
+        document.sequences[0].tracks[audio_index].clips.pop();
+
+        let mut broken = json!({
+            "contract": "text-layer-v1",
+            "text": "Привет",
+            "fontSizeRatio": 0,
+        });
+        document.media.last_mut().unwrap().metadata = broken.clone();
+        assert!(
+            document.validate().is_err(),
+            "fontSizeRatio must be positive"
+        );
+        broken["fontSizeRatio"] = json!(0.08);
+        broken["contract"] = json!("text-layer-v2");
+        document.media.last_mut().unwrap().metadata = broken;
+        assert!(
+            document.validate().is_err(),
+            "unknown contracts are rejected"
         );
     }
 

@@ -40,10 +40,18 @@ const finite = (value: unknown, fallback: number) => typeof value === 'number' &
 const bytes = (bps: number, seconds: number, overhead = 1.02) => Math.max(1, Math.ceil(bps * seconds / 8 * overhead))
 const safeBytes = (value: number) => Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.ceil(value)))
 
+function renderContract(payload: Record<string, unknown>): Record<string, unknown> | null {
+  for (const key of ['multicamFlatten', 'timelineRender']) {
+    const value = payload[key]
+    if (value && typeof value === 'object') return value as Record<string, unknown>
+  }
+  return null
+}
+
 export function finalOutputDuration(sourceDuration: number, payload: Record<string, unknown>): { selectedSeconds: number; outputSeconds: number } {
-  const multicam = payload.multicamFlatten && typeof payload.multicamFlatten === 'object' ? payload.multicamFlatten as Record<string, unknown> : null
-  const timeBase = finite(multicam?.timeBase, 0)
-  const durationTicks = finite(multicam?.durationTicks, 0)
+  const render = renderContract(payload)
+  const timeBase = finite(render?.timeBase, 0)
+  const durationTicks = finite(render?.durationTicks, 0)
   const baseDuration = timeBase > 0 && durationTicks > 0 ? durationTicks / timeBase : Math.max(0, finite(sourceDuration, 0))
   const trim = payload.trim && typeof payload.trim === 'object' ? payload.trim as Record<string, unknown> : null
   const start = Math.max(0, Math.min(baseDuration, finite(trim?.start, 0)))
@@ -101,8 +109,8 @@ export interface ExportSizingGeometry { width: number; height: number; fps: numb
 /** Resolve the exact output canvas and duration inputs shared by UI estimates and resource planning. */
 export function resolveExportSizing(source: { duration: number; width: number; height: number; fps?: number | null }, payload: Record<string, unknown>): ExportSizingGeometry {
   const duration = finalOutputDuration(source.duration, payload)
-  const multicam = payload.multicamFlatten && typeof payload.multicamFlatten === 'object' ? payload.multicamFlatten as Record<string, unknown> : null
-  const target = multicam?.target && typeof multicam.target === 'object' ? multicam.target as Record<string, unknown> : null
+  const render = renderContract(payload)
+  const target = render?.target && typeof render.target === 'object' ? render.target as Record<string, unknown> : null
   const crop = payload.crop && typeof payload.crop === 'object' ? payload.crop as Record<string, unknown> : null
   const scale = payload.scale && typeof payload.scale === 'object' ? payload.scale as Record<string, unknown> : null
   const baseWidth = Math.max(1, finite(target?.width, finite(crop?.w, finite(source.width, 1920))))

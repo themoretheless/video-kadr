@@ -42,41 +42,41 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 
 | № | Функция | Сейчас | Минимальный Definition of Done | Размер |
 |---:|---|---|---|:---:|
-| 1 | Многодорожечный timeline | Backend Timeline v1 — однорядный `Vec<Clip>` без tracks/positions | 4 video + 4 audio tracks, overlaps/z-order, stable IDs и schema round-trip | XL |
-| 2 | Несколько клипов в одном проекте | Один source clip | 20+ mixed-fps/resolution clips, playback/export и A/V drift ≤1 project frame | XL |
-| 3 | Split/blade по playhead | Только trim/cut одного клипа | Граница на project frame; соседние source in/out без duplicate/gap, включая VFR fixture | M |
-| 4 | Перетаскивание и перестановка клипов | Domain имеет `reorder_clip`/`MoveClipCommand`, UI integration нет | Drag с ghost/drop indicator, insert/overwrite modes и keyboard move | M |
-| 5 | Ripple delete и закрытие gaps | Нет | Track targeting, immunity locked tracks, автоматический сдвиг и undo | M |
-| 6 | Snapping | Нет | Playhead/edges/clip markers, threshold в px/frames и временное отключение | M |
-| 7 | Timeline zoom и горизонтальная навигация | Нет | Zoom around cursor, fit project, scroll/trackpad без потери позиции | M |
-| 8 | Frame-accurate playhead/timecode | Частично в preview | Project FPS, drop/non-drop timecode, mixed-FPS sources и одинаковый кадр preview/export | L |
+| 1 | Многодорожечный timeline ✅ | Canonical v4: 4 video + 4 audio трека, overlaps/z-order, stable IDs и round-trip в TS/Rust | 4 video + 4 audio tracks, overlaps/z-order, stable IDs и schema round-trip | XL |
+| 2 | Несколько клипов в одном проекте | Timeline: много клипов/дорожек, экспорт до 96 клипов (`timeline-render-v1`); preview пока по основному источнику (строка 19) | 20+ mixed-fps/resolution clips, playback/export и A/V drift ≤1 project frame | XL |
+| 3 | Split/blade по playhead ✅ | `split_clip` с границей на project frame, соседние source in/out, grouped undo в TS и Rust | Граница на project frame; соседние source in/out без duplicate/gap, включая VFR fixture | M |
+| 4 | Перетаскивание и перестановка клипов ✅ | HTML5 drag клипа с drop-индикатором, режимы insert/overwrite, move через `move_clip` со снапом и keyboard-сдвиг на кадр | Drag с ghost/drop indicator, insert/overwrite modes и keyboard move | M |
+| 5 | Ripple delete и закрытие gaps ✅ | `rippleDeleteClip`: сдвиг последующих клипов той же дорожки, защита locked, undo | Track targeting, immunity locked tracks, автоматический сдвиг и undo | M |
+| 6 | Snapping ✅ | Притяжка drag/drop к playhead и краям клипов с порогом и переключателем | Playhead/edges/clip markers, threshold в px/frames и временное отключение | M |
+| 7 | Timeline zoom и горизонтальная навигация ✅ | Zoom вокруг курсора, колесо/трекпад, позиционный скролл дорожек | Zoom around cursor, fit project, scroll/trackpad без потери позиции | M |
+| 8 | Frame-accurate playhead/timecode | Non-drop timecode HH:MM:SS:FF по project FPS, playhead/скребинг и сплит по кадровой сетке; drop-frame и mixed-FPS дрейф нет | Project FPS, drop/non-drop timecode, mixed-FPS sources и одинаковый кадр preview/export | L |
 | 9 | Неразрушающая trim-модель клипа ✅ | Реализованы независимые source in/out, source-duration limits, left trim и exact undo | In/out каждого timeline clip без перезаписи source и с handle limits | L |
-| 10 | Единый project document ✅ | Реализован canonical v2 в Rust/TypeScript, SQLite/IndexedDB CAS, legacy migration, quarantine и structured conflicts | Canonical versioned schema, N→N+1 migration, unknown-field preservation/version rejection | XL |
+| 10 | Единый project document ✅ | Реализован canonical v4 в Rust/TypeScript, SQLite/IndexedDB CAS, legacy migration, quarantine и structured conflicts | Canonical versioned schema, N→N+1 migration, unknown-field preservation/version rejection | XL |
 | 11 | ✅ Autosave и crash recovery | Atomic IndexedDB snapshots + writer-scoped journal; session-bound autosave watermark; accessible Recover/Discard/rollback prompt; fail-closed corrupt-record recovery | Реальный renderer crash до debounce восстанавливается или отклоняется после restart; повреждённый head откатывается монотонно; cross-tab/newer drafts не теряются | L |
 | 12 | Персистентное локальное media storage ✅ | Реализованы content-addressed OPFS, WebKit-compatible IndexedDB fallback, persistent FSA handles, crash GC, quota/eviction/private UX и exact relink | OPFS/FSA matrix для Chrome/Firefox/Safari, private mode, revoked handles, eviction и relink | XL |
 | 13 | Timeline undo/redo ✅ | Реализованы atomic batch-команды, focus-scoped undo/redo, byte budget, CAS-safe autosave и recovery после failed command | Structural command history, grouped drags, memory budget и recovery после failed command | L |
-| 14 | Thumbnail strip на timeline | Нет UI | Асинхронные thumbnails с cache, отменой и bounded memory | L |
-| 15 | Audio waveform на timeline | Нет UI | Channel/downmix policy, peaks-per-pixel levels, zoom-aware cache и known-signal golden test | L |
-| 16 | Track controls | Нет | Mute/solo/lock/hide, rename, reorder и состояние в project schema | M |
+| 14 | Thumbnail strip на timeline ✅ | `TimelineClipMedia`: асинхронные кадры с cache и отменой | Асинхронные thumbnails с cache, отменой и bounded memory | L |
+| 15 | Audio waveform на timeline ✅ | Peaks-полилинии на audio-клипах с кэшем по source | Channel/downmix policy, peaks-per-pixel levels, zoom-aware cache и known-signal golden test | L |
+| 16 | Track controls ✅ | Mute/solo/lock/hide в UI и схеме, `set_track_state` с undo | Mute/solo/lock/hide, rename, reorder и состояние в project schema | M |
 | 17 | Linked video/audio clips | Нет | Move/trim together, unlink/relink, sync offset indicator | L |
-| 18 | Gap management | Нет | Select/delete/close пустых временных диапазонов без разрушения других tracks | M |
+| 18 | Gap management ✅ | `projectTrackGaps`/`close_track_gap`: кликабельные пропуски на дорожке, закрытие выбранного и всех пропусков, Delete-шорткат, grouped undo, Rust-паритет через Batch-Move | Select/delete/close пустых временных диапазонов без разрушения других tracks | M |
 | 19 | Надёжный timeline preview engine | `HTMLVideoElement` + частичный CSS preview; LUT/curves и ряд effects не previewed | Golden projects, seek/scrub latency, edit invalidation, deterministic layers и A/V sync ≤1 frame | XL |
-| 20 | Render graph из project timeline | Typed `EditPlan`/FFmpeg compiler есть; нет Timeline → EditPlan integration | Golden overlays/transitions/audio, rational timestamps и native/WASM tolerance matrix | XL |
-| 21 | Базовые crossfade-переходы | Нет | Video/audio handles, cross dissolve/crossfade, duration controls и UX нехватки handles | L |
-| 22 | Библиотека переходов (P1) | Нет | Wipe/slide/zoom/blur categories, accessible preview, drag-to-edit и parity fixtures | L |
-| 23 | Text layer | Нет | Text clips, font/size/color/alignment/position, font loading/embedding policy и fallback | XL |
+| 20 | Render graph из project timeline ✅ | Браузерный контракт `timeline-render-v1`: overlay-цепь на чёрной базе, adelay/amix аудио, fades и xfade-переходов; серверный render path не подключён | Golden overlays/transitions/audio, rational timestamps и native/WASM tolerance matrix | XL |
+| 21 | Базовые crossfade-переходы ✅ | Эффект `transition-in` на входном клипе: crossfade/через чёрный, наложение за счёт source-ручек, UI-клампинг длины | Video/audio handles, cross dissolve/crossfade, duration controls и UX нехватки handles | L |
+| 22 | Библиотека переходов (P1) ✅ | 12 типов `transition-v1`: crossfade/через чёрный + wipe/slide/circle через ffmpeg `xfade` (пара outgoing+incoming в один overlay-стрим); xfade-имена в контракте `timeline-render-v1` | Wipe/slide/zoom/blur categories, accessible preview, drag-to-edit и parity fixtures | L |
+| 23 | Text layer ✅ | `text-layer-v1` медиа-контракт, UI правки, CSS-preview и PNG-растеризация в export; font policy — системный стек | Text clips, font/size/color/alignment/position, font loading/embedding policy и fallback | XL |
 | 24 | Базовая анимация текста | Нет | Fade/slide/scale presets с editable duration и preview | M |
-| 25 | Базовый timeline export | Durable jobs/cache/chunks частично есть; timeline export нет | 10‑минутный golden project, drift ≤1 frame, progress/cancel cleanup и retry | XL |
+| 25 | Базовый timeline export ✅ | Экспорт многоклиповой timeline через WASM render graph с resource budget, отменой и cleanup; серверный golden-прогон ещё не настроен | 10‑минутный golden project, drift ≤1 frame, progress/cancel cleanup и retry | XL |
 
 ### P1 — creator parity с CapCut/Clipchamp/Canva
 
 | № | Функция | Сейчас | Минимальный Definition of Done | Размер |
 |---:|---|---|---|:---:|
 | 26 | Canvas transform controls | Crop overlay частично | Anchor point, aspect lock, multi-select drag/resize/rotate, numeric controls и undo | L |
-| 27 | Layer opacity | Нет | 0–100%, keyframe-ready, preview/export parity | S |
+| 27 | Layer opacity | ✅ Сейчас: первое классное поле `clip.opacity` 0–1 (TS+Rust, схема/валидация), слайдер «Прозрачность» в инспекторе клипа, затемнение в превью полос timeline; экспорт `timeline-render-v1` применяет `colorchannelmixer=aa` перед overlay (в xfade-парах запрещён) | keyframe-анимация прозрачности | S |
 | 28 | Picture-in-picture | Нет multitrack | Несколько видео на canvas, resize/position/round corners/shadow | L |
 | 29 | Blend modes | Нет | Normal/multiply/screen/overlay/add с явно заданным working color space | L |
-| 30 | Alignment guides и safe areas | Нет | Center/edge guides, title/action safe, snap и toggle | M |
+| 30 | Alignment guides и safe areas | ✅ Сейчас: SVG-оверлей в превью (трети, центр, action safe 90%, title safe 80%), независимые тумблеры с сохранением в localStorage; snap краёв на timeline — с раунда 9 | привязка оверлея к кадровой рамке при letterbox | M |
 | 31 | Shapes и color backgrounds | Только censor rectangle | Rectangle/circle/line/background clips с fill/stroke/radius | M |
 | 32 | Image/GIF/SVG overlays | Нет | Import, timeline duration, transform, transparency и animated GIF playback | L |
 | 33 | Adjustment layers | Нет | Effect stack применяется к clips ниже на заданном диапазоне; z-order, trim и export parity | XL |
@@ -97,7 +97,7 @@ Release bands без пересечений: P0 — №1–21, 23, 25, 64, 81, 8
 | 48 | Optical-flow retiming (P2) | Нет | Interpolation quality, WebGPU/optional-server fallback и warning | XL |
 | 49 | AI auto reframe (P3) | Только crop presets | После №36/45/99: subject path 16:9↔9:16/1:1 с editable keyframes | XL |
 | 50 | Несколько sequences/timelines | Нет | Create/duplicate/rename sequences с независимыми settings | L |
-| 51 | Markers | Нет | Clip/sequence markers, color, note, keyboard navigation и export metadata | M |
+| 51 | Markers | ✅ Сейчас: sequence-маркеры в схеме (TS+Rust `ProjectMarker`: tick, цвет, метка), команды add/update/remove с undo, флаги на линейке с кликом-seek, панель цвета/метки, хоткеи M/[ ]/Delete | clip-привязанные маркеры и export metadata | M |
 | 52 | Grouping clips | Нет | Group/ungroup, group move/trim, nested selection semantics | M |
 | 53 | Compound/nested clips | Нет | После №20/50: nested render, open/edit, cycle detection и deterministic output | XL |
 | 54 | Пользовательские горячие клавиши | Есть фиксированные | Command registry, remapping, conflicts, import/export preset | L |

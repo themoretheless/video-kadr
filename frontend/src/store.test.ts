@@ -45,8 +45,29 @@ import {
   setProjectProxyPolicy,
   publishPlayerState,
   buildActiveMulticamFlattenPayload,
+  buildActiveTimelineRenderPayload,
+  createTextLayerAtPlayhead,
+  selectTimelineGap,
+  selectedTimelineGap,
+  closeSelectedTimelineGap,
+  closeAllTimelineGaps,
+  timelineTrackGaps,
+  selectedClipTransition,
+  selectedClipTransitionContext,
+  selectedTextLayer,
+  addTimelineMarkerAtPlayhead,
+  jumpTimelineMarker,
+  removeSelectedTimelineMarker,
+  selectTimelineMarker,
+  selectedTimelineMarker,
+  setOpacityOnSelectedClip,
+  timelineMarkers,
+  updateSelectedTimelineMarker,
+  setTransitionOnSelectedClip,
+  updateTextLayerStyle,
 } from './store'
 import { parseBrowserMulticamFlatten } from './browser-multicam-export'
+import { parseBrowserTimelineRender } from './browser-timeline-export'
 import type { EditState, VideoInfo } from './types'
 
 const TEST_LUT_ID = '11111111-1111-4111-8111-111111111111'
@@ -237,6 +258,239 @@ describe('buildEditPayload', () => {
     expect(parsed.timelineStartTick).toBe(2_000_000)
     expect(parsed.durationTicks).toBe(7_000_000)
     expect(parsed.intervals.map(interval => [interval.outputStartTick, interval.durationTicks])).toEqual([[0, 2_000_000], [2_000_000, 5_000_000]])
+    timelineState.document = null
+  })
+
+  it('compiles a multi-clip sequence into the timeline render contract', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    const document = timelineState.document
+    document.sequences[0]!.settings.frameRate = 25
+    document.media[0]!.contentFingerprint = 'a'.repeat(64)
+    document.media.push({ id: 'sec', kind: 'video', assetRef: 'sec-asset', contentFingerprint: 'b'.repeat(64), metadata: { duration: 4 } })
+    const videoTrack = document.sequences[0]!.tracks.find(track => track.kind === 'video')!
+    const primaryClip = videoTrack.clips[0]!
+    videoTrack.clips.push({
+      id: 'clip-2', mediaId: 'sec',
+      timelineStartTick: primaryClip.timelineStartTick + primaryClip.durationTicks,
+      durationTicks: 2_000_000, sourceInTick: 500_000, sourceOutTick: 2_500_000, effects: [],
+    })
+    const parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    expect(parsed.durationTicks).toBe(primaryClip.timelineStartTick + primaryClip.durationTicks + 2_000_000)
+    expect(parsed.target.fps).toBe(25)
+    expect(parsed.clips.map(clip => [clip.id, clip.assetRef, clip.audioEnabled])).toEqual([
+      [primaryClip.id, 'vid', true],
+      ['clip-2', 'sec-asset', true],
+    ])
+    videoTrack.muted = true
+    expect(parseBrowserTimelineRender(buildActiveTimelineRenderPayload()).clips.map(clip => clip.audioEnabled)).toEqual([false, false])
+    timelineState.document = null
+  })
+
+  it('blends a crossfade transition into the timeline render contract', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    const document = timelineState.document
+    document.media[0]!.contentFingerprint = 'a'.repeat(64)
+    document.media.push({ id: 'sec', kind: 'video', assetRef: 'sec-asset', contentFingerprint: 'b'.repeat(64), metadata: { duration: 4 } })
+    const videoTrack = document.sequences[0]!.tracks.find(track => track.kind === 'video')!
+    const primaryClip = videoTrack.clips[0]!
+    const seam = primaryClip.timelineStartTick + primaryClip.durationTicks
+    videoTrack.clips.push({
+      id: 'clip-2', mediaId: 'sec', timelineStartTick: seam,
+      durationTicks: 2_000_000, sourceInTick: 500_000, sourceOutTick: 2_500_000, effects: [],
+    })
+    timelineState.selectedClipId = 'clip-2'
+    expect(selectedClipTransitionContext()?.maxDurationTicks).toBe(500_000)
+    expect(setTransitionOnSelectedClip({ type: 'crossfade', durationTicks: 900_000 })).toBe(false)
+    expect(setTransitionOnSelectedClip({ type: 'crossfade', durationTicks: 400_000 })).toBe(true)
+    expect(selectedClipTransition()).toEqual({ type: 'crossfade', durationTicks: 400_000 })
+    const parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    const outgoing = parsed.clips.find(clip => clip.id === primaryClip.id)!
+    const incoming = parsed.clips.find(clip => clip.id === 'clip-2')!
+    expect(incoming.timelineStartTick).toBe(seam - 400_000)
+    expect(incoming.durationTicks).toBe(2_400_000)
+    expect(incoming.sourceInTick).toBe(100_000)
+    expect(incoming.sourceOutTick).toBe(2_500_000)
+    expect(incoming.fades).toEqual({ videoInTicks: 400_000, videoInMode: 'alpha', videoInXfade: null, videoOutTicks: 0, audioInTicks: 400_000, audioOutTicks: 0 })
+    expect(outgoing.fades.videoOutTicks).toBe(0)
+    expect(outgoing.fades.audioOutTicks).toBe(400_000)
+    expect(parsed.durationTicks).toBe(seam + 2_000_000)
+    expect(setTransitionOnSelectedClip(null)).toBe(true)
+    expect(parseBrowserTimelineRender(buildActiveTimelineRenderPayload()).clips
+      .find(clip => clip.id === 'clip-2')!.fades.videoInTicks).toBe(0)
+    timelineState.selectedClipId = null
+    timelineState.document = null
+  })
+
+  it('emits xfade transition names in the timeline render contract', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    const document = timelineState.document
+    document.media[0]!.contentFingerprint = 'a'.repeat(64)
+    document.media.push({ id: 'sec', kind: 'video', assetRef: 'sec-asset', contentFingerprint: 'b'.repeat(64), metadata: { duration: 4 } })
+    const videoTrack = document.sequences[0]!.tracks.find(track => track.kind === 'video')!
+    const primaryClip = videoTrack.clips[0]!
+    const seam = primaryClip.timelineStartTick + primaryClip.durationTicks
+    videoTrack.clips.push({
+      id: 'clip-2', mediaId: 'sec', timelineStartTick: seam,
+      durationTicks: 2_000_000, sourceInTick: 500_000, sourceOutTick: 2_500_000, effects: [],
+    })
+    timelineState.selectedClipId = 'clip-2'
+    expect(setTransitionOnSelectedClip({ type: 'slide-right', durationTicks: 400_000 })).toBe(true)
+    const parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    const incoming = parsed.clips.find(clip => clip.id === 'clip-2')!
+    expect(incoming.fades.videoInMode).toBe('xfade')
+    expect(incoming.fades.videoInXfade).toBe('slideright')
+    expect(incoming.fades.videoInTicks).toBe(400_000)
+    const outgoing = parsed.clips.find(clip => clip.id === primaryClip.id)!
+    expect(outgoing.fades.videoOutTicks).toBe(0)
+    expect(outgoing.fades.audioOutTicks).toBe(400_000)
+    timelineState.selectedClipId = null
+    timelineState.document = null
+  })
+
+  it('adds, decorates, jumps and removes timeline markers with undo', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    timelineState.playheadTick = 2_000_000
+    expect(addTimelineMarkerAtPlayhead()).toBe(true)
+    expect(timelineState.selectedMarkerId).toBe('marker-1')
+    expect(timelineState.selectedClipId).toBeNull()
+    const firstTick = timelineMarkers()[0]!.timelineTick
+    expect(Math.abs(firstTick - 2_000_000)).toBeLessThan(40_000)
+    timelineState.playheadTick = 5_000_000
+    expect(addTimelineMarkerAtPlayhead()).toBe(true)
+    const secondTick = timelineMarkers()[1]!.timelineTick
+    expect(timelineMarkers().map((item) => item.timelineTick)).toEqual([firstTick, secondTick])
+    timelineState.playheadTick = secondTick + 1_000_000
+    expect(jumpTimelineMarker(-1)).toBe(true)
+    expect(timelineState.playheadTick).toBe(secondTick)
+    expect(timelineState.selectedMarkerId).toBe('marker-2')
+    expect(jumpTimelineMarker(1)).toBe(false)
+    selectTimelineMarker('marker-1')
+    expect(updateSelectedTimelineMarker({ label: 'Хук', color: '#ff8800' })).toBe(true)
+    expect(selectedTimelineMarker()?.label).toBe('Хук')
+    expect(updateSelectedTimelineMarker({ timelineTick: 3_000_000 })).toBe(true)
+    expect(timelineMarkers().map((item) => item.timelineTick)).toEqual([3_000_000, secondTick])
+    expect(removeSelectedTimelineMarker()).toBe(true)
+    expect(timelineState.selectedMarkerId).toBeNull()
+    expect(timelineMarkers().map((item) => item.id)).toEqual(['marker-2'])
+    expect(undoTimeline()).toBe(true)
+    expect(timelineMarkers().map((item) => item.timelineTick)).toEqual([3_000_000, secondTick])
+    expect(undoTimeline()).toBe(true)
+    expect(timelineMarkers().map((item) => item.timelineTick)).toEqual([firstTick, secondTick])
+    expect(selectedTimelineMarker()?.label ?? null).toBeNull()
+    timelineState.document = null
+    timelineState.playheadTick = 0
+  })
+
+  it('paints clip opacity into the render payload, normalizes full opacity and undoes', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    const document = timelineState.document
+    document.media[0]!.contentFingerprint = 'a'.repeat(64)
+    document.media.push({ id: 'sec', kind: 'video', assetRef: 'sec-asset', contentFingerprint: 'b'.repeat(64), metadata: { duration: 4 } })
+    const videoTrack = document.sequences[0]!.tracks.find(track => track.kind === 'video')!
+    const primaryClip = videoTrack.clips[0]!
+    videoTrack.clips.push({
+      id: 'clip-2', mediaId: 'sec', timelineStartTick: primaryClip.timelineStartTick + primaryClip.durationTicks,
+      durationTicks: 2_000_000, sourceInTick: 0, sourceOutTick: 2_000_000, effects: [], opacity: 0.4,
+    })
+    timelineState.selectedClipId = 'clip-2'
+    let parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    expect(parsed.clips.find(clip => clip.id === 'clip-2')!.opacity).toBe(0.4)
+    expect(setOpacityOnSelectedClip(0.6)).toBe(true)
+    parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    expect(parsed.clips.find(clip => clip.id === 'clip-2')!.opacity).toBe(0.6)
+    expect(undoTimeline()).toBe(true)
+    parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    expect(parsed.clips.find(clip => clip.id === 'clip-2')!.opacity).toBe(0.4)
+    expect(setOpacityOnSelectedClip(1)).toBe(true)
+    parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    expect(parsed.clips.find(clip => clip.id === 'clip-2')!.opacity).toBeNull()
+    expect(setOpacityOnSelectedClip(-0.5)).toBe(false)
+    expect(timelineState.error).toContain('opacity')
+    timelineState.selectedClipId = null
+    timelineState.document = null
+    timelineState.error = ''
+  })
+
+  it('selects, closes and batch-closes timeline gaps with undo restoring positions', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    const document = timelineState.document
+    const videoTrack = document.sequences[0]!.tracks.find(track => track.kind === 'video')!
+    const primary = videoTrack.clips[0]!
+    const seam = primary.timelineStartTick + primary.durationTicks
+    videoTrack.clips.push({
+      id: 'gap-clip-a', mediaId: primary.mediaId, timelineStartTick: seam + 1_000_000,
+      durationTicks: 1_000_000, sourceInTick: 0, sourceOutTick: 1_000_000, effects: [],
+    }, {
+      id: 'gap-clip-b', mediaId: primary.mediaId, timelineStartTick: seam + 3_000_000,
+      durationTicks: 1_000_000, sourceInTick: 0, sourceOutTick: 1_000_000, effects: [],
+    })
+    expect(timelineTrackGaps(videoTrack.id)).toEqual([
+      { startTick: seam, endTick: seam + 1_000_000 },
+      { startTick: seam + 2_000_000, endTick: seam + 3_000_000 },
+    ])
+    selectTimelineGap(videoTrack.id, seam)
+    expect(timelineState.selectedClipId).toBeNull()
+    expect(selectedTimelineGap()?.gap).toEqual({ startTick: seam, endTick: seam + 1_000_000 })
+    expect(closeSelectedTimelineGap()).toBe(true)
+    expect(timelineState.selectedGap).toBeNull()
+    const afterClose = () => timelineState.document!.sequences[0]!.tracks
+      .find(track => track.id === videoTrack.id)!.clips
+      .map(clip => [clip.id, clip.timelineStartTick] as const)
+    expect(afterClose()).toEqual([
+      [primary.id, primary.timelineStartTick],
+      ['gap-clip-a', seam],
+      ['gap-clip-b', seam + 2_000_000],
+    ])
+    expect(timelineTrackGaps(videoTrack.id)).toEqual([{ startTick: seam + 1_000_000, endTick: seam + 2_000_000 }])
+    expect(undoTimeline()).toBe(true)
+    expect(afterClose()).toEqual([
+      [primary.id, primary.timelineStartTick],
+      ['gap-clip-a', seam + 1_000_000],
+      ['gap-clip-b', seam + 3_000_000],
+    ])
+    selectTimelineGap(videoTrack.id, seam)
+    expect(closeAllTimelineGaps()).toBe(true)
+    expect(afterClose()).toEqual([
+      [primary.id, primary.timelineStartTick],
+      ['gap-clip-a', seam],
+      ['gap-clip-b', seam + 1_000_000],
+    ])
+    expect(timelineTrackGaps(videoTrack.id)).toEqual([])
+    expect(undoTimeline()).toBe(true)
+    expect(afterClose()).toEqual([
+      [primary.id, primary.timelineStartTick],
+      ['gap-clip-a', seam + 1_000_000],
+      ['gap-clip-b', seam + 3_000_000],
+    ])
+    timelineState.selectedGap = null
+    timelineState.document = null
+  })
+
+  it('emits text layers in the timeline render contract with styled undo', () => {
+    timelineState.document = createProjectDocumentFromLegacy('vid', 'Video', state.video as unknown as Record<string, unknown>, state.edit as unknown as Record<string, unknown>)
+    timelineState.document.media[0]!.contentFingerprint = 'a'.repeat(64)
+    const videoTrack = timelineState.document.sequences[0]!.tracks.find(track => track.kind === 'video')!
+    const primaryEnd = videoTrack.clips.reduce((end, clip) => Math.max(end, clip.timelineStartTick + clip.durationTicks), 0)
+    timelineState.playheadTick = primaryEnd + 500_000
+    expect(createTextLayerAtPlayhead()).toBe(true)
+    const parsed = parseBrowserTimelineRender(buildActiveTimelineRenderPayload())
+    const text = parsed.clips.find(clip => clip.mediaKind === 'text')
+    expect(text?.style).toEqual({ text: 'Текст', fontSizeRatio: 0.08, color: '#ffffff', xRatio: 0.5, yRatio: 0.85, opacity: 1 })
+    expect(text?.assetRef).toBeNull()
+    expect(text?.audioEnabled).toBe(false)
+    expect(parsed.durationTicks).toBeGreaterThanOrEqual(text!.timelineStartTick + text!.durationTicks)
+
+    const mediaId = timelineState.document.media.find(item => item.kind === 'text')!.id
+    expect(selectedTextLayer()?.metadata.text).toBe('Текст')
+    expect(updateTextLayerStyle(mediaId, { text: 'Привет', fontSizeRatio: 0.2 })).toBe(true)
+    expect(selectedTextLayer()?.metadata).toMatchObject({ text: 'Привет', fontSizeRatio: 0.2 })
+    expect(parseBrowserTimelineRender(buildActiveTimelineRenderPayload()).clips
+      .find(clip => clip.mediaKind === 'text')?.style)
+      .toMatchObject({ text: 'Привет', fontSizeRatio: 0.2 })
+    expect(undoTimeline()).toBe(true)
+    expect(selectedTextLayer()?.metadata).toMatchObject({ text: 'Текст', fontSizeRatio: 0.08 })
+    timelineState.playheadTick = 0
+    timelineState.selectedClipId = null
     timelineState.document = null
   })
 

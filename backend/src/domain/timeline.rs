@@ -276,6 +276,14 @@ pub enum StructuralCommand {
         before: ClipTrim,
         after: ClipTrim,
     },
+    Split {
+        clip: ProjectClip,
+        left: Box<ProjectClip>,
+        right: Box<ProjectClip>,
+    },
+    Batch {
+        commands: Vec<StructuralCommand>,
+    },
 }
 
 impl StructuralCommand {
@@ -374,6 +382,180 @@ impl StructuralCommand {
         Ok(command)
     }
 
+    /// Split a clip at `split_tick` into two source-continuous halves. The
+    /// left half keeps the original clip id; the right half receives a
+    /// document-unique clip id and effect ids and drops the multicam
+    /// attachment (at most one attached clip per sequence is allowed).
+    pub fn split_clip(
+        document: &ProjectDocument,
+        clip_id: &str,
+        split_tick: u64,
+    ) -> Result<Self, TimelineError> {
+        validate_project(document)?;
+        let (_, clip) = locate_project_clip(document, clip_id)?;
+        let offset = split_tick
+            .checked_sub(clip.timeline_start_tick)
+            .filter(|offset| *offset > 0 && *offset < clip.duration_ticks)
+            .ok_or(TimelineError::InvalidSplit)?;
+        let mut used_clip_ids = project_clip_ids(document);
+        let mut used_effect_ids = project_effect_ids(document);
+        let mut left = clip.clone();
+        left.duration_ticks = offset;
+        left.source_out_tick = clip.source_in_tick + offset;
+        let mut right = clip.clone();
+        right.id = unique_split_id(&format!("{}-right", clip.id), &mut used_clip_ids);
+        right.timeline_start_tick = split_tick;
+        right.duration_ticks = clip.duration_ticks - offset;
+        right.source_in_tick = left.source_out_tick;
+        let effect_id_bases = right
+            .effects
+            .iter()
+            .map(|effect| effect.id.clone())
+            .collect::<Vec<_>>();
+        for (effect, base) in right.effects.iter_mut().zip(effect_id_bases) {
+            effect.id = unique_split_id(&format!("{base}-right"), &mut used_effect_ids);
+        }
+        right.multicam_group_id = None;
+        let command = Self::Split {
+            clip,
+            left: Box::new(left),
+            right: Box::new(right),
+        };
+        command.apply(document)?;
+        Ok(command)
+    }
+
+    /// Remove a clip and shift every later same-track clip left by its
+    /// duration, preserving the gaps between the remaining clips.
+    pub fn ripple_delete_clip(
+        document: &ProjectDocument,
+        clip_id: &str,
+    ) -> Result<Self, TimelineError> {
+        validate_project(document)?;
+        let (placement, removed) = locate_project_clip(document, clip_id)?;
+        let track = document
+            .sequences
+            .iter()
+            .find(|sequence| sequence.id == placement.sequence_id)
+            .and_then(|sequence| {
+                sequence
+                    .tracks
+                    .iter()
+                    .find(|track| track.id == placement.track_id)
+            })
+            .ok_or_else(|| TimelineError::MissingTrack(placement.track_id.clone()))?;
+        let removed_end = removed
+            .timeline_start_tick
+            .checked_add(removed.duration_ticks)
+            .ok_or_else(|| TimelineError::ProjectInvariant("timeline overflow".into()))?;
+        let mut commands = vec![Self::Remove {
+            placement: placement.clone(),
+            clip: removed.clone(),
+        }];
+        let mut downstream = track
+            .clips
+            .iter()
+            .enumerate()
+            .filter(|(_, clip)| clip.id != clip_id && clip.timeline_start_tick >= removed_end)
+            .collect::<Vec<_>>();
+        downstream.sort_by_key(|(_, clip)| clip.timeline_start_tick);
+        for (index, clip) in downstream {
+            // Moves apply after the remove, so array indices above the removed
+            // clip shift down by one; each move is index-neutral for the rest.
+            let post_remove_index = if index > placement.index {
+                index - 1
+            } else {
+                index
+            };
+            commands.push(Self::Move {
+                clip: clip.clone(),
+                from: ClipPlacement {
+                    sequence_id: placement.sequence_id.clone(),
+                    track_id: placement.track_id.clone(),
+                    index: post_remove_index,
+                    timeline_start_tick: clip.timeline_start_tick,
+                },
+                to: ClipPlacement {
+                    sequence_id: placement.sequence_id.clone(),
+                    track_id: placement.track_id.clone(),
+                    index: post_remove_index,
+                    timeline_start_tick: clip
+                        .timeline_start_tick
+                        .checked_sub(removed.duration_ticks)
+                        .ok_or(TimelineError::CommandPrecondition)?,
+                },
+            });
+        }
+        let command = Self::Batch { commands };
+        command.apply(document)?;
+        Ok(command)
+    }
+
+    /// Close the gap that starts at `gap_start_tick` on a track by shifting
+    /// every clip that begins at or after the gap's end left by the gap size.
+    /// Only bounded gaps count: the trailing space after the last clip, or a
+    /// region overlapping a clip, is a precondition failure.
+    pub fn close_gap(
+        document: &ProjectDocument,
+        sequence_id: &str,
+        track_id: &str,
+        gap_start_tick: u64,
+    ) -> Result<Self, TimelineError> {
+        validate_project(document)?;
+        let track = document
+            .sequences
+            .iter()
+            .find(|sequence| sequence.id == sequence_id)
+            .ok_or_else(|| TimelineError::MissingSequence(sequence_id.to_owned()))?
+            .tracks
+            .iter()
+            .find(|candidate| candidate.id == track_id)
+            .ok_or_else(|| TimelineError::MissingTrack(track_id.to_owned()))?;
+        let mut ordered: Vec<&ProjectClip> = track.clips.iter().collect();
+        ordered.sort_by_key(|clip| (clip.timeline_start_tick, clip.id.clone()));
+        let mut cursor = 0u64;
+        let mut gap_end = None;
+        for clip in &ordered {
+            if clip.timeline_start_tick > cursor && cursor == gap_start_tick {
+                gap_end = Some(clip.timeline_start_tick);
+                break;
+            }
+            let end = clip
+                .timeline_start_tick
+                .checked_add(clip.duration_ticks)
+                .ok_or_else(|| TimelineError::ProjectInvariant("timeline overflow".into()))?;
+            cursor = cursor.max(end);
+        }
+        let gap_end = gap_end.ok_or(TimelineError::CommandPrecondition)?;
+        let size = gap_end - gap_start_tick;
+        let mut commands = Vec::new();
+        for (index, clip) in track.clips.iter().enumerate() {
+            if clip.timeline_start_tick >= gap_end {
+                commands.push(Self::Move {
+                    clip: clip.clone(),
+                    from: ClipPlacement {
+                        sequence_id: sequence_id.to_owned(),
+                        track_id: track_id.to_owned(),
+                        index,
+                        timeline_start_tick: clip.timeline_start_tick,
+                    },
+                    to: ClipPlacement {
+                        sequence_id: sequence_id.to_owned(),
+                        track_id: track_id.to_owned(),
+                        index,
+                        timeline_start_tick: clip
+                            .timeline_start_tick
+                            .checked_sub(size)
+                            .ok_or(TimelineError::CommandPrecondition)?,
+                    },
+                });
+            }
+        }
+        let command = Self::Batch { commands };
+        command.apply(document)?;
+        Ok(command)
+    }
+
     pub fn apply(&self, document: &ProjectDocument) -> Result<ProjectDocument, TimelineError> {
         match self {
             Self::Insert { placement, clip } => insert_project_clip(document, placement, clip),
@@ -384,6 +566,8 @@ impl StructuralCommand {
                 before,
                 after,
             } => trim_project_clip(document, clip_id, *before, *after),
+            Self::Split { clip, left, right } => split_project_clip(document, clip, left, right),
+            Self::Batch { commands } => batch_apply(document, commands),
         }
     }
 
@@ -397,6 +581,8 @@ impl StructuralCommand {
                 before,
                 after,
             } => trim_project_clip(document, clip_id, *after, *before),
+            Self::Split { clip, left, right } => unsplit_project_clip(document, clip, left, right),
+            Self::Batch { commands } => batch_undo(document, commands),
         }
     }
 }
@@ -678,6 +864,136 @@ fn trim_project_clip(
     Ok(next)
 }
 
+fn split_project_clip(
+    document: &ProjectDocument,
+    clip: &ProjectClip,
+    left: &ProjectClip,
+    right: &ProjectClip,
+) -> Result<ProjectDocument, TimelineError> {
+    validate_project(document)?;
+    let (placement, actual) = locate_project_clip(document, &clip.id)?;
+    if !structurally_same_clip(&actual, clip) {
+        return Err(TimelineError::CommandPrecondition);
+    }
+    let collides =
+        |candidate: &str| candidate != clip.id && project_contains_clip_id(document, candidate);
+    if left.id == right.id || collides(&left.id) || collides(&right.id) {
+        return Err(TimelineError::DuplicateProjectClip(left.id.clone()));
+    }
+    let left_end = left
+        .timeline_start_tick
+        .checked_add(left.duration_ticks)
+        .ok_or(TimelineError::InvalidSplit)?;
+    let right_end = right
+        .timeline_start_tick
+        .checked_add(right.duration_ticks)
+        .ok_or(TimelineError::InvalidSplit)?;
+    let original_end = clip
+        .timeline_start_tick
+        .checked_add(clip.duration_ticks)
+        .ok_or(TimelineError::InvalidSplit)?;
+    if left.timeline_start_tick != clip.timeline_start_tick
+        || left_end != right.timeline_start_tick
+        || right_end != original_end
+        || left.source_in_tick != clip.source_in_tick
+        || right.source_out_tick != clip.source_out_tick
+        || left.source_out_tick != right.source_in_tick
+        || left.media_id != clip.media_id
+        || right.media_id != clip.media_id
+    {
+        return Err(TimelineError::InvalidSplit);
+    }
+    let without_original = remove_project_clip(document, &placement, clip)?;
+    let with_left = insert_project_clip(&without_original, &placement, left)?;
+    let mut right_placement = placement.clone();
+    right_placement.index = placement.index + 1;
+    right_placement.timeline_start_tick = right.timeline_start_tick;
+    insert_project_clip(&with_left, &right_placement, right)
+}
+
+fn unsplit_project_clip(
+    document: &ProjectDocument,
+    clip: &ProjectClip,
+    left: &ProjectClip,
+    right: &ProjectClip,
+) -> Result<ProjectDocument, TimelineError> {
+    validate_project(document)?;
+    let (right_placement, actual_right) = locate_project_clip(document, &right.id)?;
+    if !structurally_same_clip(&actual_right, right) {
+        return Err(TimelineError::CommandPrecondition);
+    }
+    let without_right = remove_project_clip(document, &right_placement, right)?;
+    let (left_placement, actual_left) = locate_project_clip(&without_right, &left.id)?;
+    if !structurally_same_clip(&actual_left, left) {
+        return Err(TimelineError::CommandPrecondition);
+    }
+    let without_left = remove_project_clip(&without_right, &left_placement, left)?;
+    insert_project_clip(&without_left, &left_placement, clip)
+}
+
+fn batch_apply(
+    document: &ProjectDocument,
+    commands: &[StructuralCommand],
+) -> Result<ProjectDocument, TimelineError> {
+    let mut current = document.clone();
+    for command in commands {
+        current = command.apply(&current)?;
+    }
+    Ok(current)
+}
+
+fn batch_undo(
+    document: &ProjectDocument,
+    commands: &[StructuralCommand],
+) -> Result<ProjectDocument, TimelineError> {
+    let mut current = document.clone();
+    for command in commands.iter().rev() {
+        current = command.undo(&current)?;
+    }
+    Ok(current)
+}
+
+fn project_contains_clip_id(document: &ProjectDocument, clip_id: &str) -> bool {
+    document
+        .sequences
+        .iter()
+        .flat_map(|sequence| &sequence.tracks)
+        .flat_map(|track| &track.clips)
+        .any(|clip| clip.id == clip_id)
+}
+
+fn project_clip_ids(document: &ProjectDocument) -> BTreeSet<String> {
+    document
+        .sequences
+        .iter()
+        .flat_map(|sequence| &sequence.tracks)
+        .flat_map(|track| &track.clips)
+        .map(|clip| clip.id.clone())
+        .collect()
+}
+
+fn project_effect_ids(document: &ProjectDocument) -> BTreeSet<String> {
+    document
+        .sequences
+        .iter()
+        .flat_map(|sequence| &sequence.tracks)
+        .flat_map(|track| &track.clips)
+        .flat_map(|clip| &clip.effects)
+        .map(|effect| effect.id.clone())
+        .collect()
+}
+
+fn unique_split_id(base: &str, used: &mut BTreeSet<String>) -> String {
+    let mut id = base.to_owned();
+    let mut suffix = 1;
+    while used.contains(&id) {
+        suffix += 1;
+        id = format!("{base}-{suffix}");
+    }
+    used.insert(id.clone());
+    id
+}
+
 fn ensure_track_editable(
     track: &crate::domain::project::ProjectTrack,
 ) -> Result<(), TimelineError> {
@@ -741,6 +1057,7 @@ pub enum TimelineError {
     InvalidTimeBase,
     InvalidIndex(usize),
     InvalidTrim,
+    InvalidSplit,
     DuplicateClip(ClipId),
     MissingClip(ClipId),
     DuplicateOperation(OperationId),
@@ -1152,5 +1469,217 @@ mod tests {
         assert_eq!(clip.source_in_tick, 100_000);
         assert_eq!(clip.duration_ticks, 800_000);
         assert_eq!(command.undo(&trimmed).unwrap(), document);
+    }
+
+    #[test]
+    fn split_clip_creates_source_continuous_halves_with_unique_ids() {
+        let document = canonical_project();
+        let command = StructuralCommand::split_clip(&document, "clip-main", 400_000).unwrap();
+        let split = command.apply(&document).unwrap();
+        let left = project_clip(&split, "clip-main");
+        assert_eq!(left.timeline_start_tick, 0);
+        assert_eq!(left.duration_ticks, 400_000);
+        assert_eq!(left.source_in_tick, 0);
+        assert_eq!(left.source_out_tick, 400_000);
+        assert_eq!(left.effects[0].id, "effect-legacy-edit");
+        let right = project_clip(&split, "clip-main-right");
+        assert_eq!(right.timeline_start_tick, 400_000);
+        assert_eq!(right.duration_ticks, 600_000);
+        assert_eq!(right.source_in_tick, 400_000);
+        assert_eq!(right.source_out_tick, 1_000_000);
+        assert_eq!(
+            right
+                .effects
+                .iter()
+                .map(|effect| effect.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["effect-legacy-edit-right"]
+        );
+        assert_eq!(command.undo(&split).unwrap(), document);
+        let decoded: StructuralCommand =
+            serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
+        assert_eq!(decoded, command);
+    }
+
+    #[test]
+    fn split_clip_rejects_out_of_range_points_and_forged_payloads() {
+        let document = canonical_project();
+        for split_tick in [0, 1_000_000, 1_500_000] {
+            assert!(matches!(
+                StructuralCommand::split_clip(&document, "clip-main", split_tick),
+                Err(TimelineError::InvalidSplit)
+            ));
+        }
+        let (_, clip) = locate_project_clip(&document, "clip-main").unwrap();
+        let mut left = clip.clone();
+        left.duration_ticks = 400_000;
+        left.source_out_tick = 400_000;
+        let duplicate = StructuralCommand::Split {
+            clip: clip.clone(),
+            left: Box::new(left.clone()),
+            right: Box::new(ProjectClip {
+                id: "clip-main".to_owned(),
+                ..left.clone()
+            }),
+        };
+        assert!(matches!(
+            duplicate.apply(&document),
+            Err(TimelineError::DuplicateProjectClip(_))
+        ));
+        let shifted = StructuralCommand::Split {
+            clip,
+            left: Box::new(left.clone()),
+            right: Box::new(ProjectClip {
+                id: "clip-main-right".to_owned(),
+                timeline_start_tick: 500_000,
+                ..left
+            }),
+        };
+        assert!(matches!(
+            shifted.apply(&document),
+            Err(TimelineError::InvalidSplit)
+        ));
+    }
+
+    #[test]
+    fn split_clip_round_trips_through_structural_history() {
+        let document = canonical_project();
+        let mut history = StructuralHistory::new(1_000_000).unwrap();
+        let command = StructuralCommand::split_clip(&document, "clip-main", 400_000).unwrap();
+        let split = history.execute(&document, command).unwrap();
+        assert_eq!(history.undo_len(), 1);
+        let undone = history.undo(&split).unwrap().unwrap();
+        assert_eq!(undone, document);
+        let redone = history.redo(&undone).unwrap().unwrap();
+        assert_eq!(redone, split);
+    }
+
+    fn ripple_project() -> ProjectDocument {
+        let mut document = canonical_project();
+        let track = document
+            .sequences
+            .iter_mut()
+            .find(|sequence| sequence.id == "sequence-main")
+            .unwrap()
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == "track-video-main")
+            .unwrap();
+        let template = track.clips[0].clone();
+        for (id, start) in [("clip-b", 1_100_000u64), ("clip-c", 1_800_000)] {
+            let mut clip = template.clone();
+            clip.id = id.to_owned();
+            clip.timeline_start_tick = start;
+            clip.duration_ticks = 500_000;
+            clip.source_out_tick = 500_000;
+            clip.effects.clear();
+            track.clips.push(clip);
+        }
+        document.validate().unwrap();
+        document
+    }
+
+    fn ripple_track(document: &ProjectDocument) -> Vec<ProjectClip> {
+        document
+            .sequences
+            .iter()
+            .find(|sequence| sequence.id == "sequence-main")
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|track| track.id == "track-video-main")
+            .unwrap()
+            .clips
+            .clone()
+    }
+
+    #[test]
+    fn ripple_delete_shifts_downstream_clips_and_undo_restores() {
+        let document = ripple_project();
+        let command = StructuralCommand::ripple_delete_clip(&document, "clip-main").unwrap();
+        let rippled = command.apply(&document).unwrap();
+        let clips = ripple_track(&rippled);
+        assert_eq!(clips.len(), 2);
+        let clip_b = clips.iter().find(|clip| clip.id == "clip-b").unwrap();
+        let clip_c = clips.iter().find(|clip| clip.id == "clip-c").unwrap();
+        assert_eq!(clip_b.timeline_start_tick, 100_000);
+        assert_eq!(clip_c.timeline_start_tick, 800_000);
+        // The gap between the remaining clips is preserved by the ripple.
+        assert_eq!(
+            clip_c.timeline_start_tick - (clip_b.timeline_start_tick + clip_b.duration_ticks),
+            200_000
+        );
+        assert_eq!(command.undo(&rippled).unwrap(), document);
+        let decoded: StructuralCommand =
+            serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
+        assert_eq!(decoded, command);
+    }
+
+    #[test]
+    fn ripple_delete_leaves_earlier_clips_in_place() {
+        let document = ripple_project();
+        let command = StructuralCommand::ripple_delete_clip(&document, "clip-b").unwrap();
+        let rippled = command.apply(&document).unwrap();
+        let clips = ripple_track(&rippled);
+        assert_eq!(clips.len(), 2);
+        let clip_main = clips.iter().find(|clip| clip.id == "clip-main").unwrap();
+        let clip_c = clips.iter().find(|clip| clip.id == "clip-c").unwrap();
+        assert_eq!(clip_main.timeline_start_tick, 0);
+        assert_eq!(clip_c.timeline_start_tick, 1_300_000);
+        assert_eq!(command.undo(&rippled).unwrap(), document);
+    }
+
+    #[test]
+    fn close_gap_shifts_downstream_clips_and_undo_restores() {
+        let document = ripple_project();
+        let command =
+            StructuralCommand::close_gap(&document, "sequence-main", "track-video-main", 1_000_000)
+                .unwrap();
+        let closed = command.apply(&document).unwrap();
+        let clips = ripple_track(&closed);
+        let clip_b = clips.iter().find(|clip| clip.id == "clip-b").unwrap();
+        let clip_c = clips.iter().find(|clip| clip.id == "clip-c").unwrap();
+        assert_eq!(clip_b.timeline_start_tick, 1_000_000);
+        assert_eq!(clip_c.timeline_start_tick, 1_700_000);
+        assert_eq!(command.undo(&closed).unwrap(), document);
+        let decoded: StructuralCommand =
+            serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
+        assert_eq!(decoded, command);
+    }
+
+    #[test]
+    fn close_gap_rejects_unbounded_and_overlapping_ticks() {
+        let document = ripple_project();
+        assert_eq!(
+            StructuralCommand::close_gap(&document, "sequence-main", "track-video-main", 999_999)
+                .unwrap_err(),
+            TimelineError::CommandPrecondition
+        );
+        // Trailing space after the last clip (ends at 2_300_000) is not a gap.
+        assert_eq!(
+            StructuralCommand::close_gap(&document, "sequence-main", "track-video-main", 2_300_000)
+                .unwrap_err(),
+            TimelineError::CommandPrecondition
+        );
+        assert!(StructuralCommand::close_gap(
+            &document,
+            "sequence-main",
+            "track-video-missing",
+            1_000_000
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn ripple_delete_round_trips_through_structural_history() {
+        let document = ripple_project();
+        let mut history = StructuralHistory::new(1_000_000).unwrap();
+        let command = StructuralCommand::ripple_delete_clip(&document, "clip-main").unwrap();
+        let rippled = history.execute(&document, command).unwrap();
+        assert_eq!(history.undo_len(), 1);
+        let undone = history.undo(&rippled).unwrap().unwrap();
+        assert_eq!(undone, document);
+        let redone = history.redo(&undone).unwrap().unwrap();
+        assert_eq!(redone, rippled);
     }
 }

@@ -18,6 +18,13 @@ import {
   timelineState,
   undoTimeline,
   redoTimeline,
+  splitSelectedClipAtPlayhead,
+  rippleDeleteSelectedClip,
+  removeSelectedClip,
+  closeSelectedTimelineGap,
+  addTimelineMarkerAtPlayhead,
+  jumpTimelineMarker,
+  removeSelectedTimelineMarker,
   flushProjectSave,
   projectRecovery,
 } from './store'
@@ -75,6 +82,43 @@ function onKey(e: KeyboardEvent) {
     const inTimeline = (e.target as HTMLElement | null)?.closest('.timeline-editor') !== null
     if (inTimeline) redoTimeline()
     else redo()
+    return
+  }
+  // Timeline blade and ripple delete (S, Delete/Backspace, Shift+Delete).
+  if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    splitSelectedClipAtPlayhead()
+    return
+  }
+  if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    addTimelineMarkerAtPlayhead()
+    return
+  }
+  if (e.key === '[' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    jumpTimelineMarker(-1)
+    return
+  }
+  if (e.key === ']' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    jumpTimelineMarker(1)
+    return
+  }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    const inTimeline = (e.target as HTMLElement | null)?.closest('.timeline-editor') !== null
+    if (!inTimeline) return
+    e.preventDefault()
+    if (!timelineState.selectedClipId && timelineState.selectedMarkerId) {
+      removeSelectedTimelineMarker()
+      return
+    }
+    if (!timelineState.selectedClipId && timelineState.selectedGap) {
+      closeSelectedTimelineGap()
+      return
+    }
+    if (e.shiftKey || e.altKey) removeSelectedClip()
+    else rippleDeleteSelectedClip()
     return
   }
   if (!legacyInspectorAvailable.value) return

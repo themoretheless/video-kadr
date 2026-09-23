@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { beginEditTransaction, buildEditPayload, clientOnlyMode, endEditTransaction, isIdentityCurves, publishPlayerState, setProjectProxyPolicy, state, timelineState, type ProjectProxyPolicy } from '../store'
 import {
   primaryCorrectionsActive,
@@ -22,6 +22,25 @@ import { videoScopeFrameBroker, type ScopeAccuracy, type ScopeTapId } from '../v
 import { videoScopesController } from '../video-scopes/controller'
 import { outputColorStatus, sourceColorStatus } from '../domain/color-management'
 import RectOverlay from './RectOverlay.vue'
+import { PREVIEW_GUIDES, loadEnabledPreviewGuides, saveEnabledPreviewGuides, type PreviewGuide } from '../domain/preview-guides'
+
+const enabledGuides = new Set<PreviewGuide>(loadEnabledPreviewGuides(localStorage))
+const guides = reactive<Record<PreviewGuide, boolean>>({
+  thirds: enabledGuides.has('thirds'),
+  center: enabledGuides.has('center'),
+  action: enabledGuides.has('action'),
+  title: enabledGuides.has('title'),
+})
+const anyGuideActive = computed(() =>
+  PREVIEW_GUIDES.some(({ key }) => guides[key]))
+
+function toggleGuide(key: PreviewGuide): void {
+  guides[key] = !guides[key]
+  saveEnabledPreviewGuides(
+    localStorage,
+    PREVIEW_GUIDES.map(({ key: item }) => item).filter((item) => guides[item]),
+  )
+}
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const cachedFrameCanvas = ref<HTMLCanvasElement | null>(null)
@@ -43,6 +62,46 @@ const multicamProgramKey = computed(() => {
 const multicamGapActive = computed(() => {
   const bounds = attachedMulticamOutputBounds()
   return Boolean(bounds && (state.playerTime < bounds.start || state.playerTime >= bounds.end))
+})
+interface ActiveTextLayer {
+  id: string
+  text: string
+  fontSizeRatio: number
+  color: string
+  xRatio: number
+  yRatio: number
+  opacity: number
+}
+const activeTextLayers = computed<ActiveTextLayer[]>(() => {
+  const document = timelineState.document
+  if (!document) return []
+  const sequence = document.sequences.find((item) => item.id === document.activeSequenceId)
+  if (!sequence) return []
+  const tick = Math.round(state.playerTime * sequence.settings.timeBase)
+  const anySolo = sequence.tracks.some((track) => track.solo)
+  const layers: ActiveTextLayer[] = []
+  for (const track of sequence.tracks) {
+    if (track.kind !== 'video' || track.hidden || (anySolo && !track.solo)) continue
+    for (const clip of track.clips) {
+      if (tick < clip.timelineStartTick || tick >= clip.timelineStartTick + clip.durationTicks) continue
+      const media = document.media.find((item) => item.id === clip.mediaId)
+      if (media?.kind !== 'text') continue
+      const metadata = media.metadata as Record<string, unknown>
+      if (metadata.contract !== 'text-layer-v1' || typeof metadata.text !== 'string') continue
+      const ratio = (value: unknown, fallback: number) =>
+        typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback
+      layers.push({
+        id: media.id,
+        text: metadata.text,
+        fontSizeRatio: typeof metadata.fontSizeRatio === 'number' && metadata.fontSizeRatio > 0 ? metadata.fontSizeRatio : 0.08,
+        color: typeof metadata.color === 'string' ? metadata.color : '#ffffff',
+        xRatio: ratio(metadata.xRatio, 0.5),
+        yRatio: ratio(metadata.yRatio, 0.85),
+        opacity: ratio(metadata.opacity, 1),
+      })
+    }
+  }
+  return layers
 })
 
 function outputPlayerTime(sourceTime: number): number {
@@ -766,7 +825,41 @@ const outputColor = computed(() => outputColorStatus(state.edit.format))
         @error="onPreviewError"
       ></video>
       <div v-if="multicamGapActive" class="multicam-gap" role="status" aria-live="polite">Вне multicam-клипа</div>
+      <div v-if="activeTextLayers.length" class="preview-text-layer-host" aria-hidden="true">
+        <div
+          v-for="layer in activeTextLayers"
+          :key="layer.id"
+          class="preview-text-layer"
+          :style="{
+            left: `${layer.xRatio * 100}%`,
+            top: `${layer.yRatio * 100}%`,
+            fontSize: `${layer.fontSizeRatio * 100}cqh`,
+            color: layer.color,
+            opacity: layer.opacity,
+          }"
+        >{{ layer.text }}</div>
+      </div>
       <canvas v-show="cachedFrameVisible" ref="cachedFrameCanvas" class="preview-frame-cache" :style="cachedFrameNeedsCss ? videoStyle : undefined" aria-hidden="true"></canvas>
+      <svg
+        v-if="anyGuideActive"
+        class="preview-guides"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <template v-if="guides.thirds">
+          <line x1="33.333" y1="0" x2="33.333" y2="100" class="preview-guide-line" />
+          <line x1="66.667" y1="0" x2="66.667" y2="100" class="preview-guide-line" />
+          <line x1="0" y1="33.333" x2="100" y2="33.333" class="preview-guide-line" />
+          <line x1="0" y1="66.667" x2="100" y2="66.667" class="preview-guide-line" />
+        </template>
+        <template v-if="guides.center">
+          <line x1="50" y1="0" x2="50" y2="100" class="preview-guide-line" />
+          <line x1="0" y1="50" x2="100" y2="50" class="preview-guide-line" />
+        </template>
+        <rect v-if="guides.action" x="5" y="5" width="90" height="90" class="preview-guide-action" />
+        <rect v-if="guides.title" x="10" y="10" width="80" height="80" class="preview-guide-title" />
+      </svg>
       <RectOverlay
         v-if="state.video && state.edit.cropEnabled"
         :rect="state.edit.crop"
@@ -796,6 +889,17 @@ const outputColor = computed(() => outputColorStatus(state.edit.format))
     <p v-if="state.video && sourceColor.warning" class="hint" role="status">{{ sourceColor.warning }}</p>
     <p v-if="state.video && outputColor.warning" class="hint" role="status">{{ outputColor.warning }}</p>
     <div v-if="state.video" class="proxy-controls">
+      <span class="preview-guides-controls" role="group" aria-label="Направляющие превью">
+        <button
+          v-for="guide in PREVIEW_GUIDES"
+          :key="guide.key"
+          class="btn ghost sm"
+          :class="{ active: guides[guide.key] }"
+          :aria-pressed="guides[guide.key]"
+          :title="`Направляющие: ${guide.label}`"
+          @click="toggleGuide(guide.key)"
+        >{{ guide.label }}</button>
+      </span>
       <label for="proxy-policy">Источник предпросмотра</label>
       <select id="proxy-policy" :value="proxyPolicy" @change="changeProxyPolicy">
         <option value="auto">Авто</option>
@@ -825,6 +929,64 @@ const outputColor = computed(() => outputColorStatus(state.edit.format))
 </template>
 
 <style scoped>
+.preview-guides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.preview-guide-line {
+  stroke: rgb(255 255 255 / 55%);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.preview-guide-action {
+  fill: none;
+  stroke: rgb(255 255 255 / 70%);
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.preview-guide-title {
+  fill: none;
+  stroke: rgb(255 211 42 / 85%);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.preview-guides-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-inline-end: 8px;
+}
+
+.preview-text-layer-host {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  container-type: size;
+  pointer-events: none;
+}
+
+.preview-text-layer {
+  position: absolute;
+  max-width: 90%;
+  transform: translate(-50%, -50%);
+  white-space: pre-wrap;
+  text-align: center;
+  font-family: system-ui, sans-serif;
+  font-weight: 600;
+  line-height: 1.15;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+}
+
 .multicam-gap {
   position: absolute;
   inset: 0;
