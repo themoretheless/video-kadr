@@ -86,7 +86,7 @@ pub struct WorkloadConfig {
 impl Default for WorkloadConfig {
     fn default() -> Self {
         Self {
-            job_timeout: Duration::from_secs(30 * 60),
+            job_timeout: Duration::from_secs(24 * 60 * 60),
             recover_jobs_limit: 200,
             queue_limits: QueueLimits::default(),
             max_download_height: 720,

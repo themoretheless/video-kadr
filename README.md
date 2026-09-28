@@ -222,7 +222,7 @@ LUT API принимает только 3D `.cube` размером до 16 Ми
 
 Переменные окружения: `PORT` (8080), `BIND_ADDR` (127.0.0.1), `STORAGE_DIR` (storage),
 `MAX_HEIGHT` (720), `MAX_CONCURRENT_JOBS` (2; размер независимых job/upload
-пулов), `JOB_TIMEOUT_SECS` (1800),
+пулов), `JOB_TIMEOUT_SECS` (86400),
 `JOB_DEDUPE_TTL_SECS` (300), `JOB_RATE_WINDOW_SECS` (60), `JOB_RATE_LIMIT` (60),
 `FILE_TTL_HOURS` (0 = выключено), `MAX_UPLOAD_BYTES` (2 ГиБ),
 `OBJECT_STORE_URL` (optional `s3://bucket/prefix`; AWS credentials/region/endpoint
