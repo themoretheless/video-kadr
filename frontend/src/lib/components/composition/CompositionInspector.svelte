@@ -33,6 +33,7 @@
   import { sampleAnimatableValue, visualPropertyFallback } from '$lib/composition/keyframes.js'
   import { buildAnimationPreset, type CompositionAnimationPreset } from '$lib/composition/animationPresets.js'
   import { minimumCompositionSpeed } from '$lib/composition/speedRamp.js'
+  import { targetVideoBitrateKbps } from '$lib/composition/payload.js'
   import {
     compositionTransitionUnavailableReason,
     primaryCompositionVideoTrack,
@@ -44,6 +45,7 @@
     addCompositionVideoMask,
     cancelCompositionExport,
     clearCompositionVisualAnimations,
+    compositionDuration,
     compositionState,
     exportComposition,
     freezeCompositionClipAtPlayhead,
@@ -92,6 +94,31 @@
   }
 
   const exportReason = $derived(getCompositionExportUnavailableReason(legacyState.capabilities))
+  const exportSizeSeconds = $derived.by(() => {
+    const rangeIn = compositionState.export.rangeInTicks
+    const rangeOut = compositionState.export.rangeOutTicks
+    const ticks = rangeIn !== null && rangeOut !== null ? rangeOut - rangeIn : compositionDuration()
+    return ticks / COMPOSITION_TIME_BASE
+  })
+  const targetVideoKbps = $derived(
+    compositionState.export.targetSizeBytes === null
+      ? null
+      : targetVideoBitrateKbps(compositionState.export.targetSizeBytes, exportSizeSeconds),
+  )
+  const renderedSizeNote = $derived.by(() => {
+    const result = compositionState.export.result
+    if (!result || typeof result.sizeBytes !== 'number') return ''
+    const target = result.targetSizeBytes
+    if (typeof target !== 'number' || target <= 0) return fmtBytes(result.sizeBytes)
+    const deviation = result.sizeDeviationPercent
+    const signed = typeof deviation === 'number' ? `${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}%` : '?'
+    return `цель ${fmtBytes(target)} · вышло ${fmtBytes(result.sizeBytes)} (${signed})`
+  })
+  function fmtBytes(bytes: number): string {
+    if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} МБ`
+    if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(0)} КБ`
+    return `${bytes} Б`
+  }
   function filterUnavailable(id: string, missing: string): string {
     if (!legacyState.capabilities) return ''
     const feature = legacyState.capabilities.filters?.find((option) => option.id === id)
@@ -920,7 +947,7 @@
       <select
         aria-label="Качество delivery"
         value={compositionState.export.qualityTier}
-        disabled={compositionState.export.running || deliveryOption.profile.container === 'audio' || compositionState.export.videoBitrateKbps !== null}
+        disabled={compositionState.export.running || deliveryOption.profile.container === 'audio' || compositionState.export.videoBitrateKbps !== null || compositionState.export.targetSizeBytes !== null}
         onchange={(event) => run(() => updateCompositionExportSettings({ qualityTier: event.currentTarget.value as 'high' | 'medium' | 'compact' }))}
       >
         <option value="high">Высокое</option>
@@ -937,6 +964,7 @@
           disabled={compositionState.export.running}
           onchange={(event) => run(() => updateCompositionExportSettings({
             videoBitrateKbps: event.currentTarget.checked ? 12_000 : undefined,
+            ...(event.currentTarget.checked ? { targetSizeBytes: undefined } : {}),
           }))}
         />
         Custom bitrate
@@ -957,6 +985,44 @@
             }))}
           />
         </label>
+      {/if}
+      <label class="composition-check composition-grid-wide">
+        <input
+          type="checkbox"
+          aria-label="Target file size"
+          checked={compositionState.export.targetSizeBytes !== null}
+          disabled={compositionState.export.running}
+          onchange={(event) => run(() => updateCompositionExportSettings({
+            targetSizeBytes: event.currentTarget.checked ? 25_000_000 : undefined,
+            ...(event.currentTarget.checked ? { videoBitrateKbps: undefined } : {}),
+          }))}
+        />
+        Целевой размер файла
+      </label>
+      {#if compositionState.export.targetSizeBytes !== null}
+        <label class="composition-grid-wide">
+          Целевой размер, МБ
+          <input
+            type="number"
+            aria-label="Target file size megabytes"
+            min="1"
+            step="0.5"
+            value={compositionState.export.targetSizeBytes / 1_000_000}
+            disabled={compositionState.export.running}
+            onchange={(event) => run(() => updateCompositionExportSettings({
+              targetSizeBytes: Math.round(Number(event.currentTarget.value) * 1_000_000),
+            }))}
+          />
+        </label>
+        <p class="composition-help" role="status">
+          {#if targetVideoKbps !== null && targetVideoKbps > 0}
+            Видео ≈ {targetVideoKbps} Kbps на {exportSizeSeconds.toFixed(1)} s (аудио забирает 192 Kbps).
+            Размер достигается bitrate-контролем и может отклониться на несколько процентов —
+            факт покажем после экспорта.
+          {:else}
+            Цель слишком мала для этой длительности: аудио 192 Kbps уже съедает бюджет.
+          {/if}
+        </p>
       {/if}
     {/if}
     <p class="composition-help" aria-live="polite">
@@ -989,6 +1055,9 @@
     {#if compositionState.export.error}<p class="error" role="alert">{compositionState.export.error}</p>{/if}
     {#if compositionState.export.result}
       <a class="btn ghost composition-download" href={compositionState.export.result.url} download={compositionState.export.result.filename}>Скачать {compositionState.export.result.filename}</a>
+      {#if renderedSizeNote}
+        <p class="composition-help" role="status">{renderedSizeNote}</p>
+      {/if}
     {/if}
   </div>
 </aside>

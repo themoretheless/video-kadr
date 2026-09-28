@@ -723,6 +723,32 @@ describe('composition editor state', () => {
     })
   })
 
+  it('persists a target file size and keeps it exclusive with custom bitrate', () => {
+    addMediaInfoToComposition(video)
+    updateCompositionExportSettings({ targetSizeBytes: 25_000_000 })
+    expect(compositionRenderOutput()).toEqual({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      targetSizeBytes: 25_000_000,
+    })
+    undoComposition()
+    expect(compositionState.export.targetSizeBytes).toBeNull()
+    redoComposition()
+    expect(compositionState.export.targetSizeBytes).toBe(25_000_000)
+
+    expect(() => updateCompositionExportSettings({ videoBitrateKbps: 12_000 })).toThrow('исключают')
+    expect(() => updateCompositionExportSettings({ targetSizeBytes: 0 })).toThrow('целым числом')
+
+    updateCompositionExportSettings({
+      profile: { container: 'mov', profile: 'hq' },
+      targetSizeBytes: undefined,
+    })
+    expect(compositionRenderOutput()).toEqual({
+      profile: { container: 'mov', profile: 'hq' },
+      qualityTier: 'medium',
+    })
+  })
+
   it('persists delivery settings through history, autosave, and exact capability gates', () => {
     addMediaInfoToComposition(video)
     expect(compositionRenderOutput()).toEqual({

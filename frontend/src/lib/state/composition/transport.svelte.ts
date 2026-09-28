@@ -77,6 +77,7 @@ export function undoComposition(): void {
   compositionState.export.profile = { ...previousOutput.profile }
   compositionState.export.qualityTier = previousOutput.qualityTier
   compositionState.export.videoBitrateKbps = previousOutput.videoBitrateKbps ?? null
+  compositionState.export.targetSizeBytes = previousOutput.targetSizeBytes ?? null
   repairSelection()
   stopAtDuration()
   scheduleAutosave()
@@ -96,6 +97,7 @@ export function redoComposition(): void {
   compositionState.export.profile = { ...nextOutput.profile }
   compositionState.export.qualityTier = nextOutput.qualityTier
   compositionState.export.videoBitrateKbps = nextOutput.videoBitrateKbps ?? null
+  compositionState.export.targetSizeBytes = nextOutput.targetSizeBytes ?? null
   repairSelection()
   stopAtDuration()
   scheduleAutosave()

@@ -22,6 +22,7 @@ import {
   CompositionPayloadError,
   buildCompositionRenderRequest,
   normalizeCompositionRenderOutput,
+  targetVideoBitrateKbps,
 } from './payload'
 import {
   COMPOSITION_SCHEMA_VERSION,
@@ -1721,6 +1722,61 @@ describe('composition render payload', () => {
       qualityTier: 'high',
       videoBitrateKbps: 18_000,
     })
+  })
+
+  it('carries a target file size through the payload and rejects conflicting knobs', () => {
+    expect(buildCompositionRenderRequest(populatedComposition(), {
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      targetSizeBytes: 25_000_000,
+    }).output).toMatchObject({ targetSizeBytes: 25_000_000 })
+    expect(() => buildCompositionRenderRequest(populatedComposition(), {
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      targetSizeBytes: 25_000_000,
+      videoBitrateKbps: 12_000,
+    })).toThrow(CompositionPayloadError)
+    expect(() => buildCompositionRenderRequest(populatedComposition(), {
+      profile: { container: 'audio', codec: 'mp3' },
+      qualityTier: 'medium',
+      targetSizeBytes: 25_000_000,
+    })).toThrow(CompositionPayloadError)
+    expect(() => buildCompositionRenderRequest(populatedComposition(), {
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      targetSizeBytes: 0,
+    })).toThrow(CompositionPayloadError)
+    expect(normalizeCompositionRenderOutput({
+      profile: { container: 'webm', codec: 'vp9' },
+      qualityTier: 'compact',
+      targetSizeBytes: 8_000_000,
+    })).toEqual({
+      profile: { container: 'webm', codec: 'vp9' },
+      qualityTier: 'compact',
+      targetSizeBytes: 8_000_000,
+    })
+    // Persisted state claiming both keeps the explicit bitrate and drops the target.
+    expect(normalizeCompositionRenderOutput({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      videoBitrateKbps: 12_000,
+      targetSizeBytes: 8_000_000,
+    })).toEqual({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      videoBitrateKbps: 12_000,
+    })
+  })
+
+  it('mirrors the backend size-to-bitrate arithmetic', () => {
+    // 400_000 bytes over 4 s is 800 Kbps total; the muxed audio stream keeps 192.
+    expect(targetVideoBitrateKbps(400_000, 4)).toBe(608)
+    // Floored, never rounded up, so the render leans under the target.
+    expect(targetVideoBitrateKbps(1_096_499, 4)).toBe(2_000)
+    expect(targetVideoBitrateKbps(1_097_000, 4)).toBe(2_002)
+    // A budget the audio stream alone consumes leaves nothing for video.
+    expect(targetVideoBitrateKbps(96_000, 4)).toBe(0)
+    expect(targetVideoBitrateKbps(1_000_000, 0)).toBe(0)
   })
 
   it('rejects an empty timeline and unsupported output at runtime', () => {

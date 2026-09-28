@@ -4501,3 +4501,138 @@ async fn real_composition_audio_only_profiles_have_no_video_stream_and_exact_clo
         assert!((probe.duration - 0.5).abs() < 0.12, "{probe:?}");
     }
 }
+
+/// Proves the whole target-size chain: the request resolves to a video bitrate
+/// from the export duration, FFmpeg honours it, and the muxed file lands near
+/// the requested byte count. Rate control is not exact, so the assertion bounds
+/// the error instead of demanding equality.
+#[tokio::test]
+async fn real_target_size_export_lands_near_the_requested_bytes() {
+    use video_kadr_backend::services::composition::{
+        CompositionOutputRequest, CompositionQualityTier,
+    };
+
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!("skipping real_target_size_export_lands_near_the_requested_bytes: ffmpeg/ffprobe not on PATH");
+        return;
+    }
+
+    let directory = tempfile::tempdir().unwrap();
+    let source_path = directory.path().join("sized-source.mp4");
+    generate(
+        &[
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=640x360:rate=25:duration=4",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=4",
+            "-shortest",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+        ],
+        &source_path,
+    )
+    .await;
+
+    let source = CompositionSource {
+        id: source_id("sized-source"),
+        kind: SourceKind::Video,
+        duration_ticks: 4_000_000,
+        width: 640,
+        height: 360,
+        has_audio: true,
+    };
+    let mut composition = Composition::new(CanvasSpec {
+        width: 640,
+        height: 360,
+        fps_milli: 25_000,
+        ..CanvasSpec::default()
+    });
+    composition.sources.insert(source.id.clone(), source);
+    composition.tracks.push(CompositionTrack::Video {
+        id: TrackId::parse("sized-track").unwrap(),
+        name: "Sized".to_owned(),
+        hidden: false,
+        muted: false,
+        locked: false,
+        clips: vec![video_clip(
+            "sized-clip",
+            "sized-source",
+            placement(0, 4_000_000),
+        )],
+        transitions: Vec::new(),
+    });
+
+    let target_size_bytes: u64 = 400_000;
+    let request = CompositionOutputRequest {
+        profile: CompositionExportProfile::Mp4 {
+            codec: CompositionMp4Codec::H264,
+        },
+        quality_tier: CompositionQualityTier::Medium,
+        video_bitrate_kbps: None,
+        target_size_bytes: Some(target_size_bytes),
+        range: None,
+    };
+
+    let seconds = request
+        .effective_duration_seconds(&composition)
+        .expect("documented duration is available");
+    assert!((seconds - 4.0).abs() < 1e-9, "{seconds}");
+
+    // 400_000 bytes over 4 s is 800 Kbps; the muxed audio stream takes 192 Kbps
+    // of that, so video is budgeted the remainder.
+    let spec = request
+        .export_spec(None, seconds)
+        .expect("target size is reachable");
+    assert_eq!(spec.video_bitrate_kbps, Some(608));
+
+    let output = directory.path().join("sized.mp4");
+    let inputs = BTreeMap::from([(source_id("sized-source"), source_path)]);
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
+            destination: &output,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: spec,
+        })
+        .unwrap();
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_compiled_ffmpeg(
+        &runtime,
+        &command,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(90),
+    )
+    .await
+    .expect("target-size render failed");
+    drop(progress);
+    let _ = drain.await;
+    assert!(matches!(done, Done::Completed));
+
+    let actual = tokio::fs::metadata(&output).await.unwrap().len();
+    let deviation = actual as f64 / target_size_bytes as f64 - 1.0;
+    assert!(
+        deviation.abs() < 0.10,
+        "rendered {actual} bytes, {:+.1}% off the {target_size_bytes}-byte target",
+        deviation * 100.0
+    );
+}

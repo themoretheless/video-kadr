@@ -70,6 +70,11 @@
 - MP4/WebM composition delivery поддерживает сохраняемый Custom bitrate
   `100…200000 Kbps`; он заменяет CRF на bounded `b:v/maxrate/bufsize`, входит в
   render identity и автоматически сбрасывается для ProRes/audio-only профилей.
+- Целевой размер файла в MP4/WebM пересчитывается в тот же bounded bitrate: из
+  бюджета вычитается фиксированные 192 Kbps аудио и берётся длительность экспорта
+  (In/Out range), поэтому недосягаемый размер отклоняется до хеширования источников.
+  Настройка исключает Custom bitrate, входит в render identity, а результат отдаёт
+  `targetSizeBytes` и фактическое `sizeDeviationPercent` вместо обещания точных байтов.
 - Motion: Hold/Linear speed curves с preserve-pitch/mute audio policy, reverse/freeze,
   optical-flow slow motion, deterministic deshake и локальный classical point
   tracker с forward/reverse/speed-ramp sampling, который записывает парные X/Y

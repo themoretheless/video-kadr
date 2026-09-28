@@ -12,6 +12,11 @@ use crate::domain::composition::{Composition, CompositionClipId, SourceId};
 
 use super::media_export::CompiledExportCommand;
 
+/// Every MP4/WebM composition delivery muxes stereo audio at this constant
+/// bitrate (silent clips still get an `anullsrc` stream), so target-file-size
+/// arithmetic must subtract it from the budget before the video stream sees it.
+pub const COMPOSITION_AUDIO_BITRATE_KBPS: u32 = 192;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "container", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CompositionExportProfile {

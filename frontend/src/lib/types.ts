@@ -42,6 +42,10 @@ export interface ResultInfo {
   url: string
   filename: string
   sizeBytes?: number | null
+  /** Echoed back when the render requested a target file size. */
+  targetSizeBytes?: number | null
+  /** Signed difference between `sizeBytes` and `targetSizeBytes`, in percent. */
+  sizeDeviationPercent?: number | null
 }
 
 /** Metadata returned after the backend validates and stores a 3D `.cube` LUT. */

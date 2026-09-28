@@ -42,6 +42,9 @@ export function updateCompositionExportSettings(
   const videoBitrateKbps = Object.hasOwn(patch, 'videoBitrateKbps')
     ? patch.videoBitrateKbps
     : compositionState.export.videoBitrateKbps ?? undefined
+  const targetSizeBytes = Object.hasOwn(patch, 'targetSizeBytes')
+    ? patch.targetSizeBytes
+    : compositionState.export.targetSizeBytes ?? undefined
   compositionDeliveryProfileOption(profile)
   if (qualityTier !== 'high' && qualityTier !== 'medium' && qualityTier !== 'compact') {
     throw new Error('Неизвестный quality tier для composition export')
@@ -52,10 +55,22 @@ export function updateCompositionExportSettings(
   )) {
     throw new Error('Custom video bitrate доступен для MP4/WebM в диапазоне 100..200000 Kbps')
   }
+  if (targetSizeBytes !== undefined) {
+    if (videoBitrateKbps !== undefined) {
+      throw new Error('Целевой размер файла и custom bitrate исключают друг друга')
+    }
+    if (!Number.isSafeInteger(targetSizeBytes) || targetSizeBytes <= 0) {
+      throw new Error('Целевой размер файла должен быть целым числом байт больше нуля')
+    }
+    if (profile.container !== 'mp4' && profile.container !== 'webm') {
+      throw new Error('Целевой размер файла доступен для MP4/WebM')
+    }
+  }
   commitDocument(compositionState.document, compositionState.media, {
     profile: { ...profile },
     qualityTier,
     ...(videoBitrateKbps === undefined ? {} : { videoBitrateKbps }),
+    ...(targetSizeBytes === undefined ? {} : { targetSizeBytes }),
   })
 }
 
@@ -68,7 +83,7 @@ export function setCompositionDeliveryProfile(profileId: CompositionDeliveryProf
     ...(
       option.profile.container === 'mp4' || option.profile.container === 'webm'
         ? {}
-        : { videoBitrateKbps: undefined }
+        : { videoBitrateKbps: undefined, targetSizeBytes: undefined }
     ),
   })
 }

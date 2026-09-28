@@ -170,6 +170,7 @@ export const compositionState = $state({
     profile: { ...restoredOutput.profile } as CompositionDeliveryProfile,
     qualityTier: restoredOutput.qualityTier as CompositionQualityTier,
     videoBitrateKbps: restoredOutput.videoBitrateKbps ?? null as number | null,
+    targetSizeBytes: restoredOutput.targetSizeBytes ?? null as number | null,
     rangeInTicks: null as number | null,
     rangeOutTicks: null as number | null,
   },
@@ -213,6 +214,9 @@ export function compositionRenderOutput(): CompositionRenderOutput {
     ...(compositionState.export.videoBitrateKbps === null
       ? {}
       : { videoBitrateKbps: compositionState.export.videoBitrateKbps }),
+    ...(compositionState.export.targetSizeBytes === null
+      ? {}
+      : { targetSizeBytes: compositionState.export.targetSizeBytes }),
   }
 }
 
@@ -606,6 +610,7 @@ export function commitDocument(
     profile: { ...output.profile },
     qualityTier: output.qualityTier,
     ...(output.videoBitrateKbps === undefined ? {} : { videoBitrateKbps: output.videoBitrateKbps }),
+    ...(output.targetSizeBytes === undefined ? {} : { targetSizeBytes: output.targetSizeBytes }),
   }
   if (
     JSON.stringify(normalized) === JSON.stringify(compositionState.document) &&
@@ -628,6 +633,7 @@ export function commitDocument(
   compositionState.export.profile = { ...nextOutput.profile }
   compositionState.export.qualityTier = nextOutput.qualityTier
   compositionState.export.videoBitrateKbps = nextOutput.videoBitrateKbps ?? null
+  compositionState.export.targetSizeBytes = nextOutput.targetSizeBytes ?? null
   compositionState.export.result = null
   compositionState.export.error = ''
   stopAtDuration()
@@ -971,6 +977,7 @@ export function activateStoredDraft(draft: StoredDraft): void {
   compositionState.export.profile = { ...output.profile }
   compositionState.export.qualityTier = output.qualityTier
   compositionState.export.videoBitrateKbps = output.videoBitrateKbps ?? null
+  compositionState.export.targetSizeBytes = output.targetSizeBytes ?? null
   compositionState.export.result = null
   compositionState.export.error = ''
   clearCompositionExportRange()

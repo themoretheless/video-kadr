@@ -488,6 +488,8 @@ export interface CompositionRenderOutput {
   readonly profile: CompositionDeliveryProfile
   readonly qualityTier: CompositionQualityTier
   readonly videoBitrateKbps?: number
+  /** Final-file-size target; the server turns it into a video bitrate. */
+  readonly targetSizeBytes?: number
   readonly range?: {
     readonly startTicks: Tick
     readonly endTicks: Tick

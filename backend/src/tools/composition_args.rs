@@ -3901,6 +3901,16 @@ mod tests {
     use crate::domain::keyframes::{Interpolation, Keyframe, KeyframeTrack};
     use crate::ports::CompositionProResProfile;
 
+    #[test]
+    fn muxed_audio_bitrate_matches_the_size_budget_contract() {
+        // The service layer subtracts COMPOSITION_AUDIO_BITRATE_KBPS from any
+        // target file size; if this flag drifts, that budget silently lies.
+        assert_eq!(
+            DEFAULT_AUDIO_BITRATE,
+            format!("{}k", crate::ports::COMPOSITION_AUDIO_BITRATE_KBPS)
+        );
+    }
+
     fn id(value: &str) -> SourceId {
         SourceId::parse(value).unwrap()
     }

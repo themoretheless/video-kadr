@@ -26,6 +26,8 @@ pub use crate::ports::{
     CompositionExportSpec, CompositionMp4Codec, CompositionProResProfile, CompositionWebmCodec,
 };
 
+use crate::ports::COMPOSITION_AUDIO_BITRATE_KBPS;
+
 pub const COMPOSITION_RENDER_SCHEMA_VERSION: u32 = 1;
 const MAX_VISUAL_FILTER_DIMENSION: f64 = 8_192.0;
 const MAX_VISUAL_POSITION: f64 = 32_768.0;
@@ -106,6 +108,8 @@ pub struct CompositionOutputRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_bitrate_kbps: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<CompositionExportRange>,
 }
 
@@ -115,22 +119,107 @@ impl Default for CompositionOutputRequest {
             profile: CompositionExportProfile::default(),
             quality_tier: CompositionQualityTier::Medium,
             video_bitrate_kbps: None,
+            target_size_bytes: None,
             range: None,
         }
     }
 }
 
 impl CompositionOutputRequest {
-    pub fn export_spec(self, av1_encoder: Option<CompositionAv1Encoder>) -> CompositionExportSpec {
-        CompositionExportSpec {
+    /// Resolve the request into process-level delivery settings. A target file
+    /// size becomes a video bitrate here, so the FFmpeg layer only ever sees
+    /// one rate-control knob. `effective_duration_seconds` must be the duration
+    /// of the media that will actually be encoded (export range already
+    /// subtracted), otherwise the size arithmetic is off by the trimmed part.
+    pub fn export_spec(
+        self,
+        av1_encoder: Option<CompositionAv1Encoder>,
+        effective_duration_seconds: f64,
+    ) -> Result<CompositionExportSpec> {
+        let video_bitrate_kbps = match (self.video_bitrate_kbps, self.target_size_bytes) {
+            (Some(_), Some(_)) => {
+                bail!("нельзя задать одновременно custom video bitrate и целевой размер файла")
+            }
+            (Some(bitrate), None) => Some(bitrate),
+            (None, Some(target)) => Some(target_video_bitrate_kbps(
+                self.profile,
+                target,
+                effective_duration_seconds,
+            )?),
+            (None, None) => None,
+        };
+        Ok(CompositionExportSpec {
             profile: self.profile,
             video_quality: self.quality_tier.video_quality(self.profile),
-            video_bitrate_kbps: self.video_bitrate_kbps,
+            video_bitrate_kbps,
             av1_encoder,
             range: self.range,
-        }
+        })
+    }
+
+    /// Export duration in seconds after an optional In/Out range is applied.
+    pub fn effective_duration_seconds(&self, composition: &Composition) -> Result<f64> {
+        let time_base = composition.time_base;
+        ensure!(
+            time_base > 0,
+            "composition time_base должен быть положительным"
+        );
+        let total_ticks = composition.duration_ticks()?;
+        let ticks = match self.range {
+            Some(range) => {
+                ensure!(
+                    range.start_ticks < range.end_ticks && range.end_ticks <= total_ticks,
+                    "граница экспорта выходит за длительность композиции"
+                );
+                range.end_ticks - range.start_ticks
+            }
+            None => total_ticks,
+        };
+        Ok(ticks as f64 / f64::from(time_base))
     }
 }
+
+/// Video bitrate that fills `target_size_bytes` over the whole export, after the
+/// constant-bitrate audio stream has taken its share. Floored so the encoded
+/// file leans under the target rather than over it.
+pub fn target_video_bitrate_kbps(
+    profile: CompositionExportProfile,
+    target_size_bytes: u64,
+    effective_duration_seconds: f64,
+) -> Result<u32> {
+    ensure!(
+        matches!(
+            profile,
+            CompositionExportProfile::Mp4 { .. } | CompositionExportProfile::Webm { .. }
+        ),
+        "целевой размер файла доступен только для MP4/WebM"
+    );
+    ensure!(
+        effective_duration_seconds.is_finite() && effective_duration_seconds > 0.0,
+        "целевой размер файла требует положительной длительности экспорта"
+    );
+    let audio_kbps = f64::from(COMPOSITION_AUDIO_BITRATE_KBPS);
+    let total_kbps =
+        target_size_bytes as f64 * BITS_PER_BYTE / (effective_duration_seconds * BITS_PER_KILOBIT);
+    let video_kbps = (total_kbps - audio_kbps).floor();
+    let size_for = |kbps: f64| {
+        (kbps + audio_kbps) * effective_duration_seconds * BITS_PER_KILOBIT / BITS_PER_BYTE
+    };
+    ensure!(
+        video_kbps >= f64::from(MIN_VIDEO_BITRATE_KBPS)
+            && video_kbps <= f64::from(MAX_VIDEO_BITRATE_KBPS),
+        "целевой размер файла даёт видеопоток {video_kbps:.0} Kbps; для длительности \
+         {effective_duration_seconds:.3} с допустимый размер — {}…{} байт",
+        size_for(f64::from(MIN_VIDEO_BITRATE_KBPS)).ceil() as u64,
+        size_for(f64::from(MAX_VIDEO_BITRATE_KBPS)).floor() as u64,
+    );
+    Ok(video_kbps as u32)
+}
+
+const BITS_PER_BYTE: f64 = 8.0;
+const BITS_PER_KILOBIT: f64 = 1_000.0;
+const MIN_VIDEO_BITRATE_KBPS: u32 = 100;
+const MAX_VIDEO_BITRATE_KBPS: u32 = 200_000;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -141,6 +230,8 @@ struct CompositionOutputRequestWire {
     quality_tier: CompositionQualityTier,
     #[serde(default)]
     video_bitrate_kbps: Option<u32>,
+    #[serde(default)]
+    target_size_bytes: Option<u64>,
     #[serde(default)]
     format: Option<CompositionOutputFormat>,
     #[serde(default)]
@@ -168,6 +259,7 @@ impl<'de> Deserialize<'de> for CompositionOutputRequest {
             profile,
             quality_tier: wire.quality_tier,
             video_bitrate_kbps: wire.video_bitrate_kbps,
+            target_size_bytes: wire.target_size_bytes,
             range: wire.range,
         })
     }
@@ -213,6 +305,10 @@ impl CompositionPlan {
         request.composition.validate()?;
         if let Some(bitrate) = request.output.video_bitrate_kbps {
             ensure!(
+                request.output.target_size_bytes.is_none(),
+                "нельзя задать одновременно custom video bitrate и целевой размер файла"
+            );
+            ensure!(
                 matches!(
                     request.output.profile,
                     CompositionExportProfile::Mp4 { .. } | CompositionExportProfile::Webm { .. }
@@ -223,6 +319,14 @@ impl CompositionPlan {
                 (100..=200_000).contains(&bitrate),
                 "custom video bitrate должен быть в диапазоне 100..=200000 Kbps"
             );
+        }
+        if let Some(target) = request.output.target_size_bytes {
+            // Fail before source resolution and hashing, which are the expensive
+            // steps that would otherwise run for an impossible size.
+            let seconds = request
+                .output
+                .effective_duration_seconds(&request.composition)?;
+            target_video_bitrate_kbps(request.output.profile, target, seconds)?;
         }
         if let Some(range) = request.output.range {
             ensure!(
@@ -1399,6 +1503,7 @@ mod tests {
                 profile,
                 quality_tier: CompositionQualityTier::Compact,
                 video_bitrate_kbps: None,
+                target_size_bytes: None,
                 range: None,
             };
             let round_trip: CompositionOutputRequest =
@@ -1476,6 +1581,136 @@ mod tests {
                 .to_string()
                 .contains("MP4/WebM")
         );
+    }
+
+    #[test]
+    fn target_size_resolves_to_video_bitrate_after_audio_budget() {
+        // 2192 Kbps total over 4 s is exactly 1_096_000 bytes; the 192 Kbps audio
+        // stream leaves 2000 Kbps for video.
+        assert_eq!(
+            target_video_bitrate_kbps(CompositionExportProfile::default(), 1_096_000, 4.0).unwrap(),
+            2_000
+        );
+        // Floored, never rounded up: 1_096_499 bytes only affords 2192.998 Kbps
+        // total, so video must stay at 2000 rather than 2001.
+        assert_eq!(
+            target_video_bitrate_kbps(CompositionExportProfile::default(), 1_096_499, 4.0).unwrap(),
+            2_000
+        );
+        assert_eq!(
+            target_video_bitrate_kbps(CompositionExportProfile::default(), 1_097_000, 4.0).unwrap(),
+            2_002
+        );
+    }
+
+    #[test]
+    fn target_size_rejects_unreachable_and_incompatible_requests() {
+        let mp4 = CompositionExportProfile::default();
+        // Below the 100 Kbps video floor for 4 s: (100 + 192) * 4 * 1000 / 8.
+        let error = target_video_bitrate_kbps(mp4, 145_999, 4.0)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("146000"), "{error}");
+        assert!(error.contains("100096000"), "{error}");
+        // Zero seconds would divide the budget into nothing.
+        assert!(target_video_bitrate_kbps(mp4, 1_000_000, 0.0).is_err());
+        assert!(target_video_bitrate_kbps(mp4, 1_000_000, f64::NAN)
+            .unwrap_err()
+            .to_string()
+            .contains("положительной длительности"));
+        assert!(target_video_bitrate_kbps(
+            CompositionExportProfile::Mov {
+                profile: crate::ports::CompositionProResProfile::Standard,
+            },
+            1_096_000,
+            4.0,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("MP4/WebM"));
+    }
+
+    #[test]
+    fn export_range_shrinks_the_duration_used_for_size_math() {
+        let mut render_request = request(2_000_000);
+        assert_eq!(
+            render_request
+                .output
+                .effective_duration_seconds(&render_request.composition)
+                .unwrap(),
+            4.0
+        );
+        render_request.output.range = Some(CompositionExportRange {
+            start_ticks: 500_000,
+            end_ticks: 1_500_000,
+        });
+        assert_eq!(
+            render_request
+                .output
+                .effective_duration_seconds(&render_request.composition)
+                .unwrap(),
+            1.0
+        );
+        // The same byte target over a shorter export must demand a higher bitrate.
+        let full =
+            target_video_bitrate_kbps(render_request.output.profile, 1_096_000, 4.0).unwrap();
+        let trimmed = target_video_bitrate_kbps(
+            render_request.output.profile,
+            1_096_000,
+            render_request
+                .output
+                .effective_duration_seconds(&render_request.composition)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(trimmed > full, "{trimmed} should exceed {full}");
+    }
+
+    #[test]
+    fn target_size_conflicts_with_custom_bitrate_and_changes_identity() {
+        let default_request = request(2_000_000);
+        let default =
+            CompositionPlan::compile(default_request.clone(), trusted(&default_request)).unwrap();
+        let mut sized_request = default_request.clone();
+        sized_request.output.target_size_bytes = Some(1_096_000);
+        let sized =
+            CompositionPlan::compile(sized_request.clone(), trusted(&sized_request)).unwrap();
+        assert_ne!(default.fingerprint(), sized.fingerprint());
+        assert_eq!(
+            sized
+                .output()
+                .export_spec(None, 4.0)
+                .unwrap()
+                .video_bitrate_kbps,
+            Some(2_000)
+        );
+
+        sized_request.output.video_bitrate_kbps = Some(12_000);
+        assert!(
+            CompositionPlan::compile(sized_request.clone(), trusted(&sized_request))
+                .unwrap_err()
+                .to_string()
+                .contains("одновременно")
+        );
+
+        sized_request.output.video_bitrate_kbps = None;
+        sized_request.output.profile = CompositionExportProfile::Audio {
+            codec: CompositionAudioCodec::Mp3,
+        };
+        assert!(
+            CompositionPlan::compile(sized_request.clone(), trusted(&sized_request))
+                .unwrap_err()
+                .to_string()
+                .contains("MP4/WebM")
+        );
+    }
+
+    #[test]
+    fn absent_size_target_keeps_the_canonical_output_shape() {
+        // Cached plan fingerprints are taken from canonical JSON; an unset target
+        // must serialize to nothing so existing renders keep their identity.
+        let json = serde_json::to_value(CompositionOutputRequest::default()).unwrap();
+        assert!(json.get("targetSizeBytes").is_none(), "{json}");
     }
 
     #[test]

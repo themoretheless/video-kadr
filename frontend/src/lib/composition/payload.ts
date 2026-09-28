@@ -80,6 +80,7 @@ export function buildCompositionRenderRequest(
       profile: { ...output.profile },
       qualityTier: output.qualityTier,
       ...(output.videoBitrateKbps !== undefined ? { videoBitrateKbps: output.videoBitrateKbps } : {}),
+      ...(output.targetSizeBytes !== undefined ? { targetSizeBytes: output.targetSizeBytes } : {}),
       ...(output.range ? { range: { ...output.range } } : {}),
     },
   }
@@ -360,6 +361,7 @@ function colorToRgba(color: string): WireRgba {
 function validateOutput(output: CompositionRenderOutput): void {
   const optionalKeys = [
     ...(output.videoBitrateKbps === undefined ? [] : ['videoBitrateKbps']),
+    ...(output.targetSizeBytes === undefined ? [] : ['targetSizeBytes']),
     ...(output.range === undefined ? [] : ['range']),
   ]
   if (
@@ -368,10 +370,36 @@ function validateOutput(output: CompositionRenderOutput): void {
     !isDeliveryProfile(output.profile) ||
     !isQualityTier(output.qualityTier) ||
     !isVideoBitrate(output.videoBitrateKbps, output.profile) ||
+    !isTargetSize(output.targetSizeBytes, output.profile, output.videoBitrateKbps) ||
     !isDeliveryRange(output.range)
   ) {
     throw new CompositionPayloadError('Composition output must use a canonical delivery profile and known quality tier')
   }
+}
+
+/**
+ * The same arithmetic the backend applies: the target is a whole-file budget,
+ * the muxed audio stream is constant-bitrate, and the remainder floors to video
+ * so the result leans under the target instead of over it.
+ */
+export const COMPOSITION_AUDIO_BITRATE_KBPS = 192
+
+export function targetVideoBitrateKbps(targetSizeBytes: number, durationSeconds: number): number {
+  if (!(durationSeconds > 0) || !Number.isFinite(durationSeconds)) return 0
+  const totalKbps = (targetSizeBytes * 8) / (durationSeconds * 1_000)
+  return Math.max(0, Math.floor(totalKbps - COMPOSITION_AUDIO_BITRATE_KBPS))
+}
+
+function isTargetSize(
+  value: unknown,
+  profile: CompositionRenderOutput['profile'],
+  videoBitrateKbps: number | undefined,
+): boolean {
+  if (value === undefined) return true
+  // A target size and an explicit bitrate are two claims about the same stream.
+  if (videoBitrateKbps !== undefined) return false
+  return Number.isSafeInteger(value) && Number(value) > 0 &&
+    (profile.container === 'mp4' || profile.container === 'webm')
 }
 
 function isVideoBitrate(value: unknown, profile: CompositionRenderOutput['profile']): boolean {
@@ -419,10 +447,14 @@ export function normalizeCompositionRenderOutput(value: unknown): CompositionRen
     const videoBitrateKbps = isVideoBitrate(value.videoBitrateKbps, value.profile)
       ? value.videoBitrateKbps as number | undefined
       : undefined
+    const targetSizeBytes = isTargetSize(value.targetSizeBytes, value.profile, videoBitrateKbps)
+      ? value.targetSizeBytes as number | undefined
+      : undefined
     return {
       profile: { ...value.profile },
       qualityTier,
       ...(videoBitrateKbps !== undefined ? { videoBitrateKbps } : {}),
+      ...(targetSizeBytes !== undefined ? { targetSizeBytes } : {}),
     }
   }
   if (

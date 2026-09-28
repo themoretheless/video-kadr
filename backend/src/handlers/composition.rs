@@ -79,8 +79,16 @@ pub async fn composition_render_handler(
         .validate()
         .map_err(|error| AppError::bad_request(error.to_string()))?;
     validate_composition_capabilities(state.tools.as_ref(), &request.composition)?;
-    resolve_composition_output(state.tools.as_ref(), request.output)
-        .map_err(AppError::bad_request)?;
+    let effective_duration_seconds = request
+        .output
+        .effective_duration_seconds(&request.composition)
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    resolve_composition_output(
+        state.tools.as_ref(),
+        request.output,
+        effective_duration_seconds,
+    )
+    .map_err(AppError::bad_request)?;
     let requirements = source_requirements(&request.composition)
         .map_err(|error| AppError::bad_request(error.to_string()))?;
     if requirements.is_empty() {
@@ -193,6 +201,7 @@ fn validate_composition_capabilities(
 fn resolve_composition_output(
     tools: &crate::state::ToolInfo,
     output: CompositionOutputRequest,
+    effective_duration_seconds: f64,
 ) -> Result<CompositionExportSpec, String> {
     let has_encoder = |name: &str| {
         tools.ffmpeg
@@ -275,7 +284,9 @@ fn resolve_composition_output(
         }
     }
     if missing.is_empty() {
-        Ok(output.export_spec(av1_encoder))
+        output
+            .export_spec(av1_encoder, effective_duration_seconds)
+            .map_err(|error| error.to_string())
     } else {
         Err(format!(
             "composition delivery {} недоступен: нужны {}",
@@ -306,7 +317,23 @@ pub(crate) fn spawn_composition_job(
         // the durable queued state before starting filesystem source lookup.
         tokio::task::yield_now().await;
 
-        let output = match resolve_composition_output(st.tools.as_ref(), work.request.output) {
+        let target_size_bytes = work.request.output.target_size_bytes;
+        let effective_duration_seconds = match work
+            .request
+            .output
+            .effective_duration_seconds(&work.request.composition)
+        {
+            Ok(seconds) => seconds,
+            Err(error) => {
+                finish_job(&st, &jid, Err(error), "output").await;
+                return;
+            }
+        };
+        let output = match resolve_composition_output(
+            st.tools.as_ref(),
+            work.request.output,
+            effective_duration_seconds,
+        ) {
             Ok(output) => output,
             Err(reason) => {
                 finish_job(&st, &jid, Err(anyhow::anyhow!(reason)), "output").await;
@@ -415,6 +442,7 @@ pub(crate) fn spawn_composition_job(
                 &filename,
                 output.profile,
                 size,
+                target_size_bytes,
             )))
         }
         .await;
@@ -784,8 +812,9 @@ fn composition_result_info(
     filename: &str,
     profile: CompositionExportProfile,
     size: Option<u64>,
+    target_size_bytes: Option<u64>,
 ) -> Value {
-    json!({
+    let mut info = json!({
         "id": output_id,
         "url": format!("/files/outputs/{filename}"),
         "filename": filename,
@@ -794,7 +823,17 @@ fn composition_result_info(
         "videoCodec": profile.video_codec(),
         "audioCodec": profile.audio_codec(),
         "sizeBytes": size,
-    })
+    });
+    // A target size is an estimate, not a guarantee: single-pass rate control
+    // can miss by double digits depending on codec. Report the miss instead of
+    // hiding it so the caller can decide whether to re-encode.
+    if let Some(target) = target_size_bytes {
+        let deviation = size.map(|actual| (actual as f64 - target as f64) / target as f64 * 100.0);
+        info["targetSizeBytes"] = json!(target);
+        info["sizeDeviationPercent"] =
+            json!(deviation.map(|value| (value * 100.0).round() / 100.0));
+    }
+    info
 }
 
 #[cfg(test)]
@@ -831,7 +870,7 @@ mod tests {
             ..crate::state::ToolInfo::default()
         };
         let default =
-            resolve_composition_output(&base, CompositionOutputRequest::default()).unwrap();
+            resolve_composition_output(&base, CompositionOutputRequest::default(), 10.0).unwrap();
         assert_eq!(default.profile, CompositionExportProfile::default());
         assert_eq!(default.video_quality, 23);
         assert_eq!(default.av1_encoder, None);
@@ -842,10 +881,11 @@ mod tests {
             },
             quality_tier: crate::services::composition::CompositionQualityTier::Medium,
             video_bitrate_kbps: None,
+            target_size_bytes: None,
             range: None,
         };
         assert_eq!(
-            resolve_composition_output(&base, h265).unwrap_err(),
+            resolve_composition_output(&base, h265, 10.0).unwrap_err(),
             "composition delivery mp4/h265 недоступен: нужны encoder libx265"
         );
 
@@ -855,10 +895,11 @@ mod tests {
             },
             quality_tier: crate::services::composition::CompositionQualityTier::High,
             video_bitrate_kbps: None,
+            target_size_bytes: None,
             range: None,
         };
         assert_eq!(
-            resolve_composition_output(&base, av1).unwrap_err(),
+            resolve_composition_output(&base, av1, 10.0).unwrap_err(),
             concat!(
                 "composition delivery webm/av1 недоступен: нужны muxer webm, ",
                 "encoder libsvtav1 or libaom-av1, encoder libopus"
@@ -871,7 +912,9 @@ mod tests {
             ..crate::state::ToolInfo::default()
         };
         assert_eq!(
-            resolve_composition_output(&both, av1).unwrap().av1_encoder,
+            resolve_composition_output(&both, av1, 10.0)
+                .unwrap()
+                .av1_encoder,
             Some(CompositionAv1Encoder::LibSvtAv1)
         );
         let aom_only = crate::state::ToolInfo {
@@ -879,7 +922,7 @@ mod tests {
             ..both
         };
         assert_eq!(
-            resolve_composition_output(&aom_only, av1)
+            resolve_composition_output(&aom_only, av1, 10.0)
                 .unwrap()
                 .av1_encoder,
             Some(CompositionAv1Encoder::LibAomAv1)
@@ -889,7 +932,7 @@ mod tests {
             "result.webm"
         );
         assert_eq!(
-            composition_result_info("result", "result.webm", av1.profile, Some(42)),
+            composition_result_info("result", "result.webm", av1.profile, Some(42), None),
             json!({
                 "id": "result",
                 "url": "/files/outputs/result.webm",
@@ -901,12 +944,17 @@ mod tests {
                 "sizeBytes": 42,
             })
         );
+        let targeted =
+            composition_result_info("result", "result.webm", av1.profile, Some(50), Some(40));
+        assert_eq!(targeted["targetSizeBytes"], 40);
+        assert_eq!(targeted["sizeDeviationPercent"], 25.0);
         let wav = CompositionOutputRequest {
             profile: CompositionExportProfile::Audio {
                 codec: CompositionAudioCodec::Wav,
             },
             quality_tier: crate::services::composition::CompositionQualityTier::Medium,
             video_bitrate_kbps: None,
+            target_size_bytes: None,
             range: Some(crate::ports::CompositionExportRange {
                 start_ticks: 250_000,
                 end_ticks: 750_000,
@@ -918,11 +966,11 @@ mod tests {
             ffmpeg_muxers: vec!["wav".into()],
             ..crate::state::ToolInfo::default()
         };
-        let wav_spec = resolve_composition_output(&wav_tools, wav).unwrap();
+        let wav_spec = resolve_composition_output(&wav_tools, wav, 10.0).unwrap();
         assert_eq!(wav_spec.video_quality, 0);
         assert_eq!(wav_spec.range, wav.range);
         assert_eq!(
-            composition_result_info("audio", "audio.wav", wav.profile, Some(84))["mediaType"],
+            composition_result_info("audio", "audio.wav", wav.profile, Some(84), None)["mediaType"],
             "audio"
         );
     }

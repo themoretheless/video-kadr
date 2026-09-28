@@ -10,7 +10,7 @@ pub use composition_export::{
     CompositionAudioCodec, CompositionAv1Encoder, CompositionExportCommandCompiler,
     CompositionExportCompileRequest, CompositionExportProfile, CompositionExportRange,
     CompositionExportSpec, CompositionMp4Codec, CompositionProResProfile, CompositionTextResource,
-    CompositionWebmCodec,
+    CompositionWebmCodec, COMPOSITION_AUDIO_BITRATE_KBPS,
 };
 pub use media_export::{CompiledExportCommand, ExportCommandCompiler, ExportCompileRequest};
 pub use media_search::{

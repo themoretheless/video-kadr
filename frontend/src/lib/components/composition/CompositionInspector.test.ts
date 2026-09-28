@@ -9,6 +9,7 @@ import {
   addCompositionVideoMask,
   addMediaInfoToComposition,
   compositionState,
+  compositionRenderOutput,
   resetCompositionForTests,
   setCompositionPlayhead,
   splitSelectedCompositionClip,
@@ -730,6 +731,51 @@ describe('CompositionInspector static authoring', () => {
     await tick()
     expect(compositionState.export.videoBitrateKbps).toBeNull()
     expect(target.querySelector('input[aria-label="Custom video bitrate"]')).toBeNull()
+    await unmount(component)
+  })
+
+  it('authors a target file size with derived bitrate hint and excludes custom bitrate', async () => {
+    const component = mount(CompositionInspector, { target })
+    await tick()
+
+    const bitrateToggle = control<HTMLInputElement>('input[aria-label="Custom video bitrate"]')
+    bitrateToggle.checked = true
+    bitrateToggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    expect(compositionState.export.videoBitrateKbps).toBe(12_000)
+
+    const sizeToggle = control<HTMLInputElement>('input[aria-label="Target file size"]')
+    sizeToggle.checked = true
+    sizeToggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    expect(compositionState.export.targetSizeBytes).toBe(25_000_000)
+    expect(compositionState.export.videoBitrateKbps).toBeNull()
+    expect(sizeToggle.checked).toBe(true)
+    expect(bitrateToggle.checked).toBe(false)
+    expect(control<HTMLInputElement>('input[aria-label="Target file size megabytes"]').value).toBe('25')
+    expect(control<HTMLSelectElement>('select[aria-label="Качество delivery"]').disabled).toBe(true)
+    expect(target.textContent).toContain('Видео ≈ 19808 Kbps на 10.0 s')
+
+    change(control<HTMLInputElement>('input[aria-label="Target file size megabytes"]'), '40')
+    await tick()
+    expect(compositionState.export.targetSizeBytes).toBe(40_000_000)
+    expect(compositionRenderOutput()).toEqual({
+      profile: { container: 'mp4', codec: 'h264' },
+      qualityTier: 'medium',
+      targetSizeBytes: 40_000_000,
+    })
+
+    bitrateToggle.checked = true
+    bitrateToggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    expect(compositionState.export.videoBitrateKbps).toBe(12_000)
+    expect(compositionState.export.targetSizeBytes).toBeNull()
+    expect(target.querySelector('input[aria-label="Target file size megabytes"]')).toBeNull()
+
+    change(control<HTMLSelectElement>('select[aria-label="Delivery profile"]'), 'mov-prores-hq')
+    await tick()
+    expect(compositionState.export.videoBitrateKbps).toBeNull()
+    expect(target.querySelector('input[aria-label="Target file size"]')).toBeNull()
     await unmount(component)
   })
 
