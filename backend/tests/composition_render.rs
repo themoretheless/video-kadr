@@ -4636,3 +4636,133 @@ async fn real_target_size_export_lands_near_the_requested_bytes() {
         deviation * 100.0
     );
 }
+
+#[tokio::test]
+async fn real_av1_target_size_render_opens_the_encoder_and_writes_output() {
+    use video_kadr_backend::services::composition::{
+        CompositionOutputRequest, CompositionQualityTier,
+    };
+
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        eprintln!("skipping real_av1_target_size_render_opens_the_encoder_and_writes_output: ffmpeg/ffprobe not on PATH");
+        return;
+    }
+    let (encoders, muxers, _) = inspect_ffmpeg_support(&runtime).await;
+    let has = |name: &str| encoders.iter().any(|encoder| encoder == name);
+    if !has("libsvtav1") || !muxers.iter().any(|muxer| muxer == "webm") || !has("libopus") {
+        eprintln!("skipping AV1 target-size render: libsvtav1/libopus/webm unavailable");
+        return;
+    }
+
+    let directory = tempfile::tempdir().unwrap();
+    let source_path = directory.path().join("av1-source.mp4");
+    generate(
+        &[
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=640x360:rate=25:duration=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-shortest",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+        ],
+        &source_path,
+    )
+    .await;
+
+    let source = CompositionSource {
+        id: source_id("av1-source"),
+        kind: SourceKind::Video,
+        duration_ticks: 2_000_000,
+        width: 640,
+        height: 360,
+        has_audio: true,
+    };
+    let mut composition = Composition::new(CanvasSpec {
+        width: 640,
+        height: 360,
+        fps_milli: 25_000,
+        ..CanvasSpec::default()
+    });
+    composition.sources.insert(source.id.clone(), source);
+    composition.tracks.push(CompositionTrack::Video {
+        id: TrackId::parse("av1-track").unwrap(),
+        name: "AV1".to_owned(),
+        hidden: false,
+        muted: false,
+        locked: false,
+        clips: vec![video_clip(
+            "av1-clip",
+            "av1-source",
+            placement(0, 2_000_000),
+        )],
+        transitions: Vec::new(),
+    });
+
+    let request = CompositionOutputRequest {
+        profile: CompositionExportProfile::Webm {
+            codec: CompositionWebmCodec::Av1,
+        },
+        quality_tier: CompositionQualityTier::Medium,
+        video_bitrate_kbps: None,
+        target_size_bytes: Some(200_000),
+        range: None,
+    };
+    let spec = request
+        .export_spec(
+            Some(CompositionAv1Encoder::LibSvtAv1),
+            request
+                .effective_duration_seconds(&composition)
+                .expect("documented duration is available"),
+        )
+        .expect("target size is reachable");
+    assert_eq!(spec.video_bitrate_kbps, Some(608));
+
+    let output = directory.path().join("sized.webm");
+    let inputs = BTreeMap::from([(source_id("av1-source"), source_path)]);
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
+            destination: &output,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: spec,
+        })
+        .unwrap();
+    assert!(!command
+        .arguments
+        .iter()
+        .any(|argument| argument == "-maxrate"));
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_compiled_ffmpeg(
+        &runtime,
+        &command,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(120),
+    )
+    .await
+    .expect("SVT-AV1 rejected the compiled rate control");
+    drop(progress);
+    let _ = drain.await;
+    assert!(matches!(done, Done::Completed));
+    assert!(tokio::fs::metadata(&output).await.unwrap().len() > 0);
+}

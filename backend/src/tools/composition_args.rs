@@ -1023,7 +1023,7 @@ fn append_delivery_arguments(
                 "-preset".to_owned(),
                 "veryfast".to_owned(),
             ]);
-            append_video_rate_control(arguments, output, false);
+            append_video_rate_control(arguments, output, RateControlStyle::Vbv);
             arguments.extend(["-pix_fmt".to_owned(), "yuv420p".to_owned()]);
         }
         CompositionExportProfile::Mp4 {
@@ -1035,7 +1035,7 @@ fn append_delivery_arguments(
                 "-preset".to_owned(),
                 "veryfast".to_owned(),
             ]);
-            append_video_rate_control(arguments, output, false);
+            append_video_rate_control(arguments, output, RateControlStyle::Vbv);
             arguments.extend([
                 "-tag:v".to_owned(),
                 "hvc1".to_owned(),
@@ -1054,7 +1054,7 @@ fn append_delivery_arguments(
                 "-cpu-used".to_owned(),
                 "2".to_owned(),
             ]);
-            append_video_rate_control(arguments, output, true);
+            append_video_rate_control(arguments, output, RateControlStyle::VbvZeroBitrateCrf);
             arguments.extend([
                 "-row-mt".to_owned(),
                 "1".to_owned(),
@@ -1077,7 +1077,14 @@ fn append_delivery_arguments(
                     arguments.extend(["-cpu-used".to_owned(), "6".to_owned()])
                 }
             }
-            append_video_rate_control(arguments, output, true);
+            append_video_rate_control(
+                arguments,
+                output,
+                match encoder {
+                    CompositionAv1Encoder::LibSvtAv1 => RateControlStyle::AverageBitrateOnly,
+                    CompositionAv1Encoder::LibAomAv1 => RateControlStyle::VbvZeroBitrateCrf,
+                },
+            );
             arguments.extend(["-pix_fmt".to_owned(), "yuv420p".to_owned()]);
         }
         CompositionExportProfile::Mov { profile } => arguments.extend([
@@ -1148,23 +1155,46 @@ fn append_delivery_arguments(
 fn append_video_rate_control(
     arguments: &mut Vec<String>,
     output: CompositionExportSpec,
-    constant_quality_needs_zero_bitrate: bool,
+    style: RateControlStyle,
 ) {
     if let Some(bitrate) = output.video_bitrate_kbps {
         let bitrate = format!("{bitrate}k");
-        arguments.extend([
-            "-b:v".to_owned(),
-            bitrate.clone(),
-            "-maxrate".to_owned(),
-            bitrate,
-            "-bufsize".to_owned(),
-            format!("{}k", output.video_bitrate_kbps.expect("checked") * 2),
-        ]);
+        arguments.extend(["-b:v".to_owned(), bitrate.clone()]);
+        if style.caps_bitrate_with_vbv() {
+            arguments.extend([
+                "-maxrate".to_owned(),
+                bitrate,
+                "-bufsize".to_owned(),
+                format!("{}k", output.video_bitrate_kbps.expect("checked") * 2),
+            ]);
+        }
     } else {
         arguments.extend(["-crf".to_owned(), output.video_quality.to_string()]);
-        if constant_quality_needs_zero_bitrate {
+        if style.needs_zero_bitrate_for_constant_quality() {
             arguments.extend(["-b:v".to_owned(), "0".to_owned()]);
         }
+    }
+}
+
+/// How one encoder family is told about its rate target.
+#[derive(Clone, Copy)]
+enum RateControlStyle {
+    /// x264/x265 accept a VBV cap alongside the average bitrate.
+    Vbv,
+    /// libvpx/libaom need `-b:v 0` to stay in constant-quality mode.
+    VbvZeroBitrateCrf,
+    /// SVT-AV1 rejects `-maxrate` unless it encodes in CRF mode, so the average
+    /// bitrate is the only rate-control argument it accepts.
+    AverageBitrateOnly,
+}
+
+impl RateControlStyle {
+    fn caps_bitrate_with_vbv(self) -> bool {
+        matches!(self, Self::Vbv | Self::VbvZeroBitrateCrf)
+    }
+
+    fn needs_zero_bitrate_for_constant_quality(self) -> bool {
+        matches!(self, Self::VbvZeroBitrateCrf | Self::AverageBitrateOnly)
     }
 }
 
@@ -4975,6 +5005,42 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("requires MP4 or WebM"));
+    }
+
+    #[test]
+    fn av1_custom_bitrate_only_passes_the_rate_control_its_encoder_accepts() {
+        let av1 = CompositionExportProfile::Webm {
+            codec: CompositionWebmCodec::Av1,
+        };
+        for (encoder, capped) in [
+            (CompositionAv1Encoder::LibSvtAv1, false),
+            (CompositionAv1Encoder::LibAomAv1, true),
+        ] {
+            let command = build_composition_ffmpeg_command_for_output(
+                &inputs(),
+                Path::new("/renders/av1-custom.webm"),
+                &first_slice_composition(),
+                CompositionExportSpec {
+                    profile: av1,
+                    video_quality: 23,
+                    video_bitrate_kbps: Some(12_000),
+                    av1_encoder: Some(encoder),
+                    range: None,
+                },
+                2,
+            )
+            .unwrap();
+            let has = |flag: &str| {
+                command
+                    .arguments
+                    .windows(2)
+                    .any(|pair| pair[0] == flag && pair[1] != "0")
+            };
+            assert!(has("-b:v"), "{encoder:?} sets the average bitrate");
+            assert_eq!(has("-maxrate"), capped, "{encoder:?} vbv cap");
+            assert_eq!(has("-bufsize"), capped, "{encoder:?} vbv buffer");
+            assert!(!has("-crf"), "{encoder:?} keeps constant quality off");
+        }
     }
 
     fn expected_delivery_tail(
