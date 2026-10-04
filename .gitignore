@@ -5,6 +5,7 @@
 /backend/mutants.out*/
 
 # Node
+/.vite/
 /frontend/node_modules/
 /frontend/dist/
 /frontend/storybook-static/
@@ -16,6 +17,9 @@
 /backend/storage/sources/*
 /backend/storage/outputs/*
 /backend/storage/fixtures/
+/backend/storage/staging/
+/backend/storage/thumbnails/
+/backend/ffmpeg2pass-*.log*
 !/backend/storage/sources/.gitkeep
 !/backend/storage/outputs/.gitkeep
 
