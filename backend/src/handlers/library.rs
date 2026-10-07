@@ -226,22 +226,46 @@ impl LibraryEntryResponse {
     }
 }
 
-/// `GET /api/library` — list persisted sources and outputs, newest first.
+#[derive(Debug, Deserialize)]
+pub struct LibraryListQuery {
+    #[serde(default = "default_limit")]
+    limit: u32,
+    #[serde(default)]
+    offset: u32,
+}
+
+fn default_limit() -> u32 {
+    50
+}
+
+/// `GET /api/library` — list persisted sources and outputs with pagination (newest first).
 pub async fn library_list_handler(
     State(state): State<AppState>,
+    query: Option<Query<LibraryListQuery>>,
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<LibraryEntryResponse>>> {
     let visibility = library_visibility(&state, &headers).await?;
+    let limit = query.as_ref().map(|q| q.limit).unwrap_or_default().min(200).max(1) as usize;
+    let offset = query.as_ref().map(|q| q.offset).unwrap_or_default() as usize;
+    
     let entries = state.library.list().await;
     let mut metadata = state
         .db
         .list_library_metadata()
         .await
         .map_err(|error| AppError::internal("list library metadata", error))?;
+    
+    // Filter first, then paginate using Iterator
+    let filtered: Vec<_> = entries
+        .into_iter()
+        .filter(|entry| visibility.allows(&entry.id, &entry.kind))
+        .collect();
+    
+    // Skip offset entries, take limit
+    let paginated = filtered.into_iter().skip(offset).take(limit);
+    
     Ok(Json(
-        entries
-            .into_iter()
-            .filter(|entry| visibility.allows(&entry.id, &entry.kind))
+        paginated
             .map(|entry| {
                 let item_metadata = metadata.remove(&entry.id);
                 LibraryEntryResponse::new(entry, item_metadata)

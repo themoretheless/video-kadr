@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at INTEGER NOT NULL,
     updated_order INTEGER NOT NULL DEFAULT 0
 );
+CREATE INDEX IF NOT EXISTS idx_projects_video_id ON projects(video_id);  -- ✅ P0: Fast project lookup by video
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     status TEXT NOT NULL,
@@ -90,6 +91,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_updated_at ON jobs(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at DESC);  -- ✅ P0: Fast RUNNING job polling
 CREATE TABLE IF NOT EXISTS render_cache (
     cache_key TEXT PRIMARY KEY,
     output_json TEXT NOT NULL,

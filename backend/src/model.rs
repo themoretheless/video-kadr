@@ -3,6 +3,75 @@ use std::fmt;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+// Helper function to validate f64 values - rejects NaN and Infinity
+fn validate_finite_float<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Visitor;
+    
+    struct FiniteFloatVisitor;
+    
+    impl<'de> Visitor<'de> for FiniteFloatVisitor {
+        type Value = f64;
+        
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a finite floating-point number")
+        }
+        
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            if !value.is_finite() {
+                return Err(E::custom("value must be finite (no NaN or Infinity)"));
+            }
+            Ok(value)
+        }
+    }
+    
+    deserializer.deserialize_f64(FiniteFloatVisitor)
+}
+
+// For optional f64 fields
+fn validate_optional_finite_float<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Visitor;
+
+    struct OptionalFiniteFloatVisitor;
+
+    impl<'de> Visitor<'de> for OptionalFiniteFloatVisitor {
+        type Value = Option<f64>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a finite floating-point number or null")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let value = f64::deserialize(deserializer)?;
+            if !value.is_finite() {
+                return Err(D::Error::custom("value must be finite (no NaN or Infinity)"));
+            }
+            Ok(Some(value))
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+    }
+
+    deserializer.deserialize_option(OptionalFiniteFloatVisitor)
+}
+
 pub const WIRE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -164,7 +233,7 @@ pub struct EditRequest {
     pub scale: Option<Scale>,
     #[serde(default)]
     pub mute: bool,
-    #[serde(default = "default_speed")]
+    #[serde(default = "default_speed", deserialize_with = "validate_finite_float")]
     pub speed: f64,
     // --- round 2 effects ---
     /// Clockwise rotation in degrees: 0, 90, 180, 270.
@@ -175,12 +244,12 @@ pub struct EditRequest {
     #[serde(default)]
     pub flip_v: bool,
     /// Linear audio gain (1.0 = unchanged).
-    #[serde(default = "default_one")]
+    #[serde(default = "default_one", deserialize_with = "validate_finite_float")]
     pub volume: f64,
     /// Fade in/out durations in seconds (0 = none), applied to video and audio.
-    #[serde(default)]
+    #[serde(deserialize_with = "validate_finite_float")]
     pub fade_in: f64,
-    #[serde(default)]
+    #[serde(deserialize_with = "validate_finite_float")]
     pub fade_out: f64,
     /// Normalize loudness to a streaming target (EBU R128 via loudnorm).
     #[serde(default)]
@@ -189,7 +258,7 @@ pub struct EditRequest {
     #[serde(default)]
     pub highpass: bool,
     /// Stereo balance, -1 = left and +1 = right.
-    #[serde(default)]
+    #[serde(deserialize_with = "validate_finite_float")]
     pub pan: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_eq: Option<AudioEqSelection>,
@@ -198,11 +267,11 @@ pub struct EditRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limiter: Option<AudioLimiterSelection>,
     /// eq filter params: brightness -1..1, contrast/saturation around 1.0.
-    #[serde(default)]
+    #[serde(deserialize_with = "validate_finite_float")]
     pub brightness: f64,
-    #[serde(default = "default_one")]
+    #[serde(default = "default_one", deserialize_with = "validate_finite_float")]
     pub contrast: f64,
-    #[serde(default = "default_one")]
+    #[serde(default = "default_one", deserialize_with = "validate_finite_float")]
     pub saturation: f64,
     /// Selective HSL adjustments for the six deterministic FFmpeg colour
     /// ranges. Omitted/zero-valued bands are identity operations.
@@ -225,7 +294,7 @@ pub struct EditRequest {
     #[serde(default)]
     pub boomerang: bool,
     /// Output frame rate override.
-    #[serde(default)]
+    #[serde(deserialize_with = "validate_optional_finite_float")]
     pub fps: Option<f64>,
     /// Hide a rectangular region with a filled box (privacy / censor).
     #[serde(default)]
@@ -239,10 +308,10 @@ pub struct EditRequest {
     #[serde(default)]
     pub denoise: bool,
     /// Sharpen amount (0 = off, ~0..3 luma_amount for unsharp).
-    #[serde(default)]
+    #[serde(deserialize_with = "validate_finite_float")]
     pub sharpen: f64,
     /// Film grain amount (0 = off, ~0..100 noise strength).
-    #[serde(default)]
+    #[serde(deserialize_with = "validate_finite_float")]
     pub grain: f64,
     /// Optional immutable LUT asset selected by id. The HTTP adapter resolves
     /// the id to a private filesystem path before the FFmpeg adapter runs.

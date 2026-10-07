@@ -241,10 +241,11 @@ export async function persistProject(): Promise<void> {
 
 export function scheduleProjectSave(): void {
   clearProjectSaveTimer()
+  // Debounce autosave: wait 100ms after last edit change
   projectSaveTimer = setTimeout(() => {
     projectSaveTimer = null
     void persistProject()
-  }, 1000)
+  }, 100)
 }
 
 

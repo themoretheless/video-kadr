@@ -906,30 +906,42 @@ export async function cancelJob(jobId: string): Promise<void> {
   }
 }
 
-/**
- * Poll a job until it finishes. Resolves with the completed job (status `done`),
- * rejects with the job's error, or rejects with Error('cancelled') so callers
- * can tell a user cancellation apart from a real failure.
- */
+const MAX_POLL_ATTEMPTS = 3600; // 50 minutes max (500ms * 3600)
+const POLL_TIMEOUT_MS = 50 * 60 * 1000; // 50 minutes
+
+/** Resolve a job status, rejecting after timeout or max attempts to prevent hangs. */
 export function pollJob(jobId: string, onTick?: (job: Job) => void): Promise<Job> {
   return new Promise((resolve, reject) => {
+    let attempt = 0;
+    const startTime = Date.now();
+    
     const tick = async () => {
       try {
-        const job = await getJob(jobId)
-        onTick?.(job)
-        if (job.status === 'done') return resolve(job)
-        if (job.status === 'cancelled') return reject(new Error('cancelled'))
+        // Check timeout before each poll
+        if (attempt >= MAX_POLL_ATTEMPTS || Date.now() - startTime > POLL_TIMEOUT_MS) {
+          return reject(new Error('Job polling timed out'));
+        }
+        
+        const job = await getJob(jobId);
+        attempt++;
+        onTick?.(job);
+        
+        if (job.status === 'done') return resolve(job);
+        if (job.status === 'cancelled') return reject(new Error('cancelled'));
         if (job.status === 'interrupted') {
-          return reject(new Error('Задача прервана (сервер перезапущен)'))
+          return reject(new Error('Задача прервана (сервер перезапущен)'));
         }
         if (job.status === 'error') {
-          return reject(new Error(job.error || 'задача завершилась с ошибкой'))
+          return reject(new Error(job.error || 'задача завершилась с ошибкой'));
         }
-        setTimeout(tick, 500)
+        
+        // Exponential backoff: 500ms → 1s → 2s → 4s → max 5s
+        const delay = Math.min(500 * Math.pow(2, Math.min(attempt, 4)), 5000);
+        setTimeout(tick, delay);
       } catch (e) {
-        reject(e)
+        reject(e);
       }
-    }
-    void tick()
-  })
+    };
+    void tick();
+  });
 }

@@ -2805,6 +2805,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "lazy_static",
  "libc",
  "loom",
  "object_store",
