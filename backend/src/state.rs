@@ -76,9 +76,9 @@ pub struct AppState {
     pub proxy_service: ProxyService<FfmpegProxyEncoder>,
     pub thumbnail_service: ThumbnailService<FfmpegThumbnailEncoder>,
     pub tools: Arc<ToolInfo>,
-    pub library: Library,
-    pub db: Db,
-    pub job_store: SqliteJobStore,
+    pub library: Arc<Library>,
+    pub db: Arc<Db>,
+    pub job_store: Arc<SqliteJobStore>,
     pub media_search: Arc<dyn MediaSearchQuery>,
     pub media_index: Arc<dyn MediaIndexWriter>,
     pub media_indexer: MediaIndexer,
@@ -190,7 +190,7 @@ impl AppState {
             threads: encode_budget.threads,
             queue_capacity: cpu_queue_capacity,
         })?;
-        let job_store = SqliteJobStore::new(db.clone());
+        let job_store = Arc::new(SqliteJobStore::new(db.clone()));
         let media_adapter = Arc::new(SqliteMediaSearch::new(db.clone()));
         let media_search: Arc<dyn MediaSearchQuery> = media_adapter.clone();
         let media_index: Arc<dyn MediaIndexWriter> = media_adapter;
@@ -226,8 +226,8 @@ impl AppState {
             proxy_service,
             thumbnail_service,
             tools: Arc::new(tools),
-            library,
-            db,
+            library: Arc::new(library),
+            db: Arc::new(db),
             job_store,
             media_search,
             media_index,

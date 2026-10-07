@@ -223,7 +223,7 @@ impl JobService {
         actor: Option<&str>,
     ) -> bool {
         use crate::ports::RenderCache;
-        let cache: &dyn RenderCache = &st.db;
+        let cache = &*st.db; // Unwrap Arc to get Db for RenderCache trait
         let Ok(Some((output, filename))) = cache.cache_get(cache_key).await else {
             st.telemetry
                 .record(TelemetryEvent::CacheLookup { result: "miss" });

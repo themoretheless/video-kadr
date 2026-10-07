@@ -41,11 +41,11 @@ pub trait AuthPort: Send + Sync {
 
 #[derive(Clone)]
 pub struct SqliteAuthPort {
-    db: Db,
+    db: Arc<Db>,
 }
 
 impl SqliteAuthPort {
-    pub fn new(db: Db) -> Self {
+    pub fn new(db: Arc<Db>) -> Self {
         Self { db }
     }
 }
@@ -119,11 +119,11 @@ pub trait ProjectPort: Send + Sync {
 
 #[derive(Clone)]
 pub struct SqliteProjectPort {
-    db: Db,
+    db: Arc<Db>,
 }
 
 impl SqliteProjectPort {
-    pub fn new(db: Db) -> Self {
+    pub fn new(db: Arc<Db>) -> Self {
         Self { db }
     }
 }
@@ -194,13 +194,13 @@ pub trait CompositionProjectPort: Send + Sync {
 
 #[derive(Clone)]
 pub struct SqliteCompositionProjectPort {
-    db: Db,
-    library: Library,
+    db: Arc<Db>,
+    library: Arc<Library>,
     changes: broadcast::Sender<CompositionProjectChange>,
 }
 
 impl SqliteCompositionProjectPort {
-    pub fn new(db: Db, library: Library) -> Self {
+    pub fn new(db: Arc<Db>, library: Arc<Library>) -> Self {
         let (changes, _) = broadcast::channel(256);
         Self {
             db,
@@ -382,11 +382,11 @@ pub trait ProjectReviewPort: Send + Sync {
 
 #[derive(Clone)]
 pub struct SqliteProjectReviewPort {
-    db: Db,
+    db: Arc<Db>,
 }
 
 impl SqliteProjectReviewPort {
-    pub fn new(db: Db) -> Self {
+    pub fn new(db: Arc<Db>) -> Self {
         Self { db }
     }
 }
@@ -563,12 +563,12 @@ pub trait SpacePort: Send + Sync {
 
 #[derive(Clone)]
 pub struct SqliteSpacePort {
-    db: Db,
-    library: Library,
+    db: Arc<Db>,
+    library: Arc<Library>,
 }
 
 impl SqliteSpacePort {
-    pub fn new(db: Db, library: Library) -> Self {
+    pub fn new(db: Arc<Db>, library: Arc<Library>) -> Self {
         Self { db, library }
     }
 }

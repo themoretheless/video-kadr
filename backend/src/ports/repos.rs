@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use serde_json::Value;
@@ -74,6 +74,26 @@ impl ProjectRepo for Db {
 impl MediaRepo for Db {
     fn ping<'a>(&'a self) -> BoxFuture<'a, Result<()>> {
         Box::pin(async { Ok(()) })
+    }
+}
+
+// Also implement for Arc<Db> to support AppState field
+impl RenderCache for Arc<Db> {
+    fn cache_get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<(Value, String)>>> {
+        Box::pin(async move { self.as_ref().cache_get(key).await })
+    }
+
+    fn cache_put<'a>(
+        &'a self,
+        key: &'a str,
+        output: &'a Value,
+        filename: &'a str,
+    ) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move { self.as_ref().cache_put(key, output, filename).await })
+    }
+
+    fn cache_delete<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<bool>> {
+        Box::pin(async move { self.as_ref().cache_delete(key).await })
     }
 }
 
