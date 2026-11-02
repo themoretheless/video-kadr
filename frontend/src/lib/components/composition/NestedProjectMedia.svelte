@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { nestedComposition, nestedHistory, setNestedMediaPlaceholder } from '$lib/state/nestedComposition.svelte'
+  import { nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia } from '$lib/state/nestedComposition.svelte'
   let { disabled = false }: { disabled?: boolean } = $props()
   const project = $derived(nestedComposition.document)
   const items = $derived.by(() => {
@@ -19,6 +19,7 @@
     <summary>Медиа проекта и слоты шаблона</summary>
     {#each items as item (item.id)}
       <label><input type="checkbox" aria-label={`Слот шаблона: ${item.name}`} checked={item.placeholder} disabled={disabled || nestedHistory.busy} onchange={event => { void setNestedMediaPlaceholder(item.id, event.currentTarget.checked) }} />{item.name} <span>Таймлайнов: {item.timelines}</span></label>
+      <button disabled={disabled || nestedHistory.busy} aria-label={`Удалить медиа и все его клипы: ${item.name}`} onclick={() => { void removeNestedMedia(item.id) }}>Удалить медиа и его клипы</button>
     {:else}<p>В проекте пока нет медиа.</p>{/each}
   </details>
 {/if}

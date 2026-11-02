@@ -123,3 +123,97 @@ pub fn set_placeholder(
     next.dependency_order()?;
     Ok((next, true))
 }
+
+/// Remove the bin entry and direct media placements in every timeline.
+/// Derived-mask dependencies are validated before committing the pure result.
+pub fn remove(
+    project: &NestedCompositionProject,
+    id: &SourceId,
+) -> Result<(NestedCompositionProject, bool)> {
+    use super::composition::CompositionTrack;
+    use std::collections::BTreeSet;
+    project.dependency_order()?;
+    let mut next = project.clone();
+    let mut applied = next.project_media.remove(id).is_some();
+    for node in next.compositions.values_mut() {
+        let mut removed = BTreeSet::new();
+        for track in &mut node.content.tracks {
+            match track {
+                CompositionTrack::Video {
+                    clips, transitions, ..
+                } => {
+                    clips.retain(|clip| {
+                        if &clip.source_id == id {
+                            removed.insert(clip.id.clone());
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                    transitions.retain(|transition| {
+                        !transition
+                            .from_clip_id
+                            .as_ref()
+                            .is_some_and(|id| removed.contains(id))
+                            && !transition
+                                .to_clip_id
+                                .as_ref()
+                                .is_some_and(|id| removed.contains(id))
+                    });
+                }
+                CompositionTrack::Audio { clips, .. } => {
+                    let mut ordered: Vec<_> = clips.iter().collect();
+                    ordered.sort_by(|a, b| {
+                        a.placement
+                            .timeline_start_tick
+                            .cmp(&b.placement.timeline_start_tick)
+                            .then(a.id.cmp(&b.id))
+                    });
+                    let reset: BTreeSet<_> = ordered
+                        .windows(2)
+                        .filter(|pair| &pair[0].source_id == id)
+                        .map(|pair| pair[1].id.clone())
+                        .collect();
+                    clips.retain(|clip| {
+                        if &clip.source_id == id {
+                            removed.insert(clip.id.clone());
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                    for clip in clips {
+                        if reset.contains(&clip.id) {
+                            clip.crossfade_in_ticks = 0;
+                        }
+                    }
+                }
+                CompositionTrack::Image { clips, .. } => {
+                    clips.retain(|clip| {
+                        if &clip.source_id == id {
+                            removed.insert(clip.id.clone());
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                }
+                _ => {}
+            }
+        }
+        applied |= !removed.is_empty();
+        applied |= node.content.sources.remove(id).is_some();
+        if let Some(metadata) = &mut node.content.metadata {
+            metadata.source_names.remove(id);
+            metadata.clip_names.retain(|key, _| !removed.contains(key));
+            metadata
+                .media_versions
+                .retain(|key, _| !removed.contains(key));
+            metadata
+                .clip_links
+                .retain(|_, members| !members.iter().any(|key| removed.contains(key)));
+        }
+    }
+    next.dependency_order()?;
+    Ok((next, applied))
+}

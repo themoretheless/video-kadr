@@ -2,11 +2,11 @@
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, expect, it, vi } from 'vitest'
 import * as api from '$lib/api'
-import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMediaPlaceholder, undoNestedComposition, redoNestedComposition } from '$lib/state/nestedComposition.svelte'
+import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, undoNestedComposition, redoNestedComposition } from '$lib/state/nestedComposition.svelte'
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import Controls from './NestedProjectMedia.svelte'
-vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn() }))
+vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn(), removeNativeProjectMedia: vi.fn() }))
 const source = { id: 'source-a', kind: 'image' as const, durationTicks: 0, width: 16, height: 16, hasAudio: false }
 function project(): api.NativeNestedProject {
   const content = { ...buildCompositionWireDocument(createComposition({ width: 16, height: 16, fps: 24, backgroundColor: '#000000' })), sources: { [source.id]: source } }
@@ -32,4 +32,29 @@ it('retains media with no timeline placement and drops a late result after proje
   let resolve!: (p: api.NativeNestedProject) => void; vi.mocked(api.setNativeProjectMediaPlaceholder).mockImplementation(() => new Promise(done => { resolve = done }))
   const pending = setNestedMediaPlaceholder(source.id, false); await vi.waitFor(() => expect(api.setNativeProjectMediaPlaceholder).toHaveBeenCalledTimes(1)); closeNestedComposition(); resolve({ ...initial, projectMedia: { [source.id]: { source, name: 'Retained' } } }); await pending; await tick()
   expect(nestedComposition.document).toBeNull(); expect(nestedHistory.past).toHaveLength(0); expect(api.setNativeProjectMediaPlaceholder).toHaveBeenCalledTimes(1)
+})
+
+it('removes media project-wide through Rust in one history step and invalidates rendered outputs', async () => {
+  const initial = project(); nestedComposition.document = initial; nestedComposition.activeCompositionId = 'other'; nestedComposition.timeUs = 123; nestedComposition.renderedOutputs = { root: 'old movie' }
+  const removed = { ...initial, compositions: Object.fromEntries(Object.entries(initial.compositions).map(([id,node]) => [id,{...node,content:{...node.content,sources:{}}}])) }
+  vi.mocked(api.removeNativeProjectMedia).mockResolvedValue(removed)
+  component = mount(Controls,{target:document.body}); await tick()
+  document.querySelector<HTMLButtonElement>('button')!.click()
+  await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1)); await tick()
+  expect(api.removeNativeProjectMedia).toHaveBeenCalledExactlyOnceWith(initial,source.id)
+  expect(nestedComposition.document).toEqual(removed); expect(nestedComposition.renderedOutputs).toEqual({})
+  expect(nestedComposition.activeCompositionId).toBe('other'); expect(nestedComposition.timeUs).toBe(123)
+  undoNestedComposition(); expect(nestedComposition.document).toEqual(initial); expect(nestedComposition.renderedOutputs).toEqual({root:'old movie'})
+  redoNestedComposition(); expect(nestedComposition.document).toEqual(removed); expect(nestedComposition.renderedOutputs).toEqual({})
+})
+it('keeps the project and history on refusal and ignores a removal after close', async () => {
+  const initial=project(); nestedComposition.document=initial
+  vi.mocked(api.removeNativeProjectMedia).mockRejectedValue(new Error('dependent mask'))
+  await removeNestedMedia(source.id)
+  expect(nestedComposition.document).toEqual(initial); expect(nestedHistory.past).toHaveLength(0); expect(nestedHistory.error).toBe('dependent mask')
+  let resolve!:(value:api.NativeNestedProject)=>void
+  vi.mocked(api.removeNativeProjectMedia).mockImplementation(()=>new Promise(done=>{resolve=done}))
+  const pending=removeNestedMedia(source.id); await vi.waitFor(()=>expect(api.removeNativeProjectMedia).toHaveBeenCalledTimes(2))
+  closeNestedComposition(); resolve(initial); await pending
+  expect(nestedComposition.document).toBeNull(); expect(nestedHistory.past).toHaveLength(0)
 })

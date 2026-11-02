@@ -1065,6 +1065,12 @@ export async function setNativeProjectMediaPlaceholder(project: NativeNestedProj
   if (!reply || typeof reply.applied !== 'boolean' || !reply.project || reply.project.root !== project.root || reply.project.schemaVersion !== 1) throw new Error('Native media placeholder returned invalid project')
   return reply.applied ? reply.project : project
 }
+export async function removeNativeProjectMedia(project: NativeNestedProject, sourceId: string, signal?: AbortSignal): Promise<NativeNestedProject> {
+  const reply = await requestJson<{ project: NativeNestedProject; applied: boolean }>('/api/compositions/nested-media-remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, sourceId }), signal })
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  if (!reply || typeof reply.applied !== 'boolean' || !reply.project || reply.project.root !== project.root || reply.project.schemaVersion !== 1) throw new Error('Native media removal returned invalid project')
+  return reply.applied ? reply.project : project
+}
 export interface NativeNestedFrameResponse {
   entries: readonly { composition: string;sourceTimeUs: number;canvasToRoot: readonly [number,number,number,number,number,number];instancePath: readonly string[];ancestors: readonly NativeCompositionInstance[];ancestorPoses: readonly { localTimeUs: number;x: number;y: number;scaleX: number;scaleY: number;rotationDegrees: number;opacity: number }[] }[]
 }

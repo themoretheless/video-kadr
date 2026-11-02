@@ -327,3 +327,13 @@ pub async fn project_media_placeholder_handler(ApiJson(request):ApiJson<ProjectM
         .await.map_err(|e|AppError::bad_request(e.to_string()))?.map_err(|e|AppError::bad_request(e.to_string()))?;
     Ok(Json(ProjectMediaPlaceholderResponse{project,applied}))
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct ProjectMediaRemoveRequest { project:NestedCompositionProject, source_id:crate::domain::composition::SourceId }
+pub async fn project_media_remove_handler(ApiJson(request):ApiJson<ProjectMediaRemoveRequest>)->AppResult<Json<ProjectMediaPlaceholderResponse>> {
+    let permit=NESTED_SLOTS.acquire().await.map_err(|e|AppError::bad_request(e.to_string()))?;
+    let (project,applied)=tokio::task::spawn_blocking(move||{let _permit=permit;crate::domain::project_media::remove(&request.project,&request.source_id)})
+        .await.map_err(|e|AppError::bad_request(e.to_string()))?.map_err(|e|AppError::bad_request(e.to_string()))?;
+    Ok(Json(ProjectMediaPlaceholderResponse{project,applied}))
+}

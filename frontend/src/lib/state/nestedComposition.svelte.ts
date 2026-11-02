@@ -145,6 +145,15 @@ export async function setNestedMediaPlaceholder(sourceId: string, placeholder: b
   }, false, undefined, undefined, 0, undefined, guard)
 }
 
+export async function removeNestedMedia(sourceId: string): Promise<void> {
+  const guard = () => assertHistoryUnlocked()
+  await editNestedDocument(async document => {
+    guard()
+    const { removeNativeProjectMedia } = await import('$lib/api')
+    return removeNativeProjectMedia(document, sourceId)
+  }, true, undefined, undefined, 0, undefined, guard)
+}
+
 export async function groupNestedDocument(parent: string, child: string, instanceId: string): Promise<void> {
   await editNestedDocument(async (document) => {
     const { groupNestedComposition } = await import('$lib/api')
