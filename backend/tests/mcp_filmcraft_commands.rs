@@ -218,7 +218,7 @@ async fn source_discovery_and_run_cross_the_claimed_bridge_to_owner_native_servi
         .all(|item| item["enabled"] == true && item["partial"] == true));
     let all = native(&native_app, Some(&owner.token), "command.list", json!({})).await;
     assert_eq!(all.0, 200);
-    assert_eq!(all.1.as_array().unwrap().len(), 75);
+    assert_eq!(all.1.as_array().unwrap().len(), 98);
     assert!(all.1.as_array().unwrap().iter().any(|row| row["id"] == "clip.rename"));
     assert_eq!(
         native(
@@ -231,6 +231,42 @@ async fn source_discovery_and_run_cross_the_claimed_bridge_to_owner_native_servi
         .0,
         400
     );
+    let marks_oracle: Value = serde_json::from_str(include_str!("fixtures/filmcraft-marks-oracle.json")).unwrap();
+    let source_id = marks_oracle["project"]["items"].as_object().unwrap().iter().find(|(_, item)| item.pointer("/kind/Media").is_some()).unwrap().0.clone();
+    for id in ["project.setMarks", "markers.markSplitAudioOut"] {
+        let reply = forward(&bridge, &native_app, Some(&owner.token), "command_run", json!({"id":id,"params":{"document":serde_json::to_string(&json!({"format":"filmcraft.project","schema_version":12,"project":marks_oracle["project"]})).unwrap(),"item":source_id,"in":"9007199254740997","target":"source","time":"9007199254740997","context":{"sourceItem":source_id}}})).await;
+        assert_eq!(reply["result"]["isError"], false, "{reply}");
+        let returned: Value = serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(returned["markEdit"], true);
+        let document: Value = serde_json::from_str(returned["documentText"].as_str().unwrap()).unwrap();
+        let value = if id == "project.setMarks" { &document["project"]["items"][&source_id]["kind"]["Media"]["mark_in"] } else { &document["project"]["items"][&source_id]["split"]["audioOut"] };
+        assert_eq!(value.as_i64(), Some(9007199254740997));
+    }
+    for id in ["source.open", "markers.goToSplitAudioOut"] {
+        let reply = forward(&bridge, &native_app, Some(&owner.token), "command_run", json!({"id":id,"params":{"document":serde_json::to_string(&json!({"format":"filmcraft.project","schema_version":12,"project":marks_oracle["project"]})).unwrap(),"item":source_id,"target":"source","context":{"sourceItem":source_id,"sourcePlayhead":"9007199254740997"}}})).await;
+        assert_eq!(reply["result"]["isError"], false, "{reply}");
+        let returned: Value = serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(returned["context"]["sourceItem"], source_id);
+        assert!(returned["context"]["sourcePlayhead"].is_string());
+        assert!(returned.get("documentText").is_none());
+        assert!(returned.get("markEdit").is_none());
+    }
+    let source_edit_oracle: Value = serde_json::from_str(include_str!("fixtures/filmcraft-source-edit-oracle.json")).unwrap();
+    for id in ["source.insert", "source.overwrite"] {
+        let case = source_edit_oracle["cases"].as_array().unwrap().iter().find(|case| case["command"] == id && case["ok"] == true && case["profile"] == 0).unwrap();
+        let document = json!({"format":"filmcraft.project","schema_version":12,"project":source_edit_oracle["profiles"][0]});
+        let reply = forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":id,"params":{"document":serde_json::to_string(&document).unwrap(),"context":case["context"]}})).await;
+        assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let returned: Value = serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(returned["sourceEdit"],true);assert!(returned["documentText"].is_string());assert!(returned["context"]["playhead"].is_string());
+        assert!(returned["result"]["clips"].as_array().unwrap().iter().all(Value::is_string));
+    }
+    let subclip_oracle: Value = serde_json::from_str(include_str!("fixtures/filmcraft-subclip-oracle.json")).unwrap();
+    for id in ["clip.makeSubclip","clip.editSubclip"] {
+        let case=subclip_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==id&&case["ok"]==true).unwrap();let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":subclip_oracle["project"]});params["context"]=case["context"].clone();
+        let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":id,"params":params})).await;assert_eq!(reply["result"]["isError"],false,"{reply}");let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert!(returned["documentText"].is_string());assert!(returned["subclipEdit"]["itemId"].is_string());
+    }
+    let case=subclip_oracle["cases"].as_array().unwrap().iter().find(|case|case["defaults"].is_object()).unwrap();let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":subclip_oracle["project"]});params["context"]=case["context"].clone();let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":"clip.subclipDefaults","params":params})).await;assert_eq!(reply["result"]["isError"],false,"{reply}");let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert!(returned["startTicks"].is_string());assert!(returned.get("documentText").is_none());
     let formats = forward(
         &bridge,
         &native_app,

@@ -1,22 +1,22 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { duplicateFilmcraftProjectItems, editFilmcraftBins, type FilmcraftBinEditCommand, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
-  let { document, sequenceId, clipId, token, items, bins, selected = $bindable<string[]>([]), disabled = false, onedit }: {
+  import { deleteFilmcraftProjectItems, duplicateFilmcraftProjectItems, editFilmcraftBins, type FilmcraftBinEditCommand, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
+  let { document, sequenceId, clipId, token, items, bins, selected = $bindable<string[]>([]), clipSelection, disabled = false, onedit }: {
     document: string; sequenceId: string; clipId: string; token: string | null
-    items: NonNullable<FilmcraftImportResult['projectItems']>; bins: NonNullable<FilmcraftImportResult['projectBins']>; selected?: string[]; disabled?: boolean
+    items: NonNullable<FilmcraftImportResult['projectItems']>; bins: NonNullable<FilmcraftImportResult['projectBins']>; selected?: string[]; clipSelection?: string[]; disabled?: boolean
     onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean | void
   } = $props()
   let target = $state('')
   let automatic = $state(true)
   let name = $state('')
-  let operation = $state<'bins' | 'duplicate'>('bins')
+  let operation = $state<'bins' | 'duplicate' | 'delete'>('bins')
   let busy = $state(false)
   let error = $state('')
   let status = $state('')
   let controller: AbortController | undefined
   let alive = true
   function location(id: string) { return bins.find(bin => bin.itemIds?.includes(id))?.name }
-  function context() { return JSON.stringify([document, sequenceId, clipId, token, disabled, selected, target, automatic, name]) }
+  function context() { return JSON.stringify([document, sequenceId, clipId, token, disabled, selected, clipSelection, target, automatic, name]) }
   $effect(() => { alive = true; return () => { alive = false; controller?.abort() } })
   $effect(() => {
     void document; void sequenceId; void clipId; void token; void disabled
@@ -52,6 +52,22 @@
     } catch (failure) { if (alive && !current.signal.aborted && captured === context()) error = failure instanceof Error ? failure.message : String(failure) }
     finally { if (controller === current) { controller = undefined; busy = false } }
   }
+  async function remove(folder: boolean) {
+    const ids = folder ? [target] : [...selected]
+    if (!token || disabled || busy || !ids.length || (folder ? !target || !bins.some(bin => bin.id === target && bin.parentId !== null) : ids.some(id => !items.some(item => item.id === id)))) return
+    const selection = clipSelection ?? (clipId ? [clipId] : [])
+    const expected = { document, sequenceId, clipId, token, projectSelection: [...selected], timelineSelection: [...selection] }
+    const captured = context(); const current = new AbortController()
+    controller = current; busy = true; operation = 'delete'; error = ''; status = ''
+    try {
+      const result = await deleteFilmcraftProjectItems(token, { document, items: ids, context: { activeSequence: sequenceId || null, selection: [...selection], projectSelection: folder ? ids : [...selected] } }, current.signal)
+      if (!alive || current.signal.aborted || captured !== context()) return
+      if (onedit(result, expected) === false) status = 'Результат не применён: контекст изменился'
+      else { selected = []; status = 'Удалено из проекта. Правку можно отменить.' }
+    } catch (failure) { if (alive && !current.signal.aborted && captured === context()) error = failure instanceof Error ? failure.message : String(failure) }
+    finally { if (controller === current) { controller = undefined; busy = false } }
+  }
+
 </script>
 <details>
   <summary>Элементы и папки проекта</summary>
@@ -66,7 +82,9 @@
   <button type="button" disabled={disabled || busy || !token} onclick={() => run('file.newBin')}>Создать папку</button>
   <button type="button" disabled={disabled || busy || !token || !selected.length} onclick={() => run('file.newBinFromSelection')}>Создать папку из выделения</button>
   <button type="button" disabled={disabled || busy || !token || !selected.length} onclick={() => run('project.moveToBin')}>Переместить в папку</button>
-  {#if busy}<span role="status">{operation === 'duplicate' ? 'Создаются копии…' : 'Обновляются папки…'}</span>{/if}
+  <button type="button" disabled={disabled || busy || !token || !selected.length} onclick={() => remove(false)}>Удалить элементы из проекта</button>
+  <button type="button" disabled={disabled || busy || !token || !target} onclick={() => remove(true)}>Удалить папку с содержимым</button>
+  {#if busy}<span role="status">{operation === 'duplicate' ? 'Создаются копии…' : operation === 'delete' ? 'Удаляется из проекта…' : 'Обновляются папки…'}</span>{/if}
   {#if status}<span role="status">{status}</span>{/if}
   {#if error}<span role="alert">{error}</span>{/if}
 </details>

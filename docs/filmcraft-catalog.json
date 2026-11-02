@@ -2186,20 +2186,138 @@
       "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_subclip.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_edit.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_project_index.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_subclip.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-subclip-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-subclip-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-subclip-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftSubclipControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftSubclipControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:clip.makeSubclip",
       "kind": "command",
       "label": "Make Subclip…",
+      "note": "Authenticated native snapshot Make/Edit Subclip preserves source/project/timeline precedence and named-target admission, sixteen-node media-root resolution, root-parent bin traversal, planned name/label, source marks/still ranges and timeline speed-derived source span. Exact tick/frame overrides retain original null/type fallback and endpoint semantics. Creation resets metadata/split and selects the new item. Editing preserves identity/top-level metadata/split; conversion requires direct parent Media, clones its complete payload and filters inherited markers by start in [a,b). 1152 actual original engine cases (594 success/558 refusal) compare full project SHA256, result/selection and one Undo delta; 367 original make-dialog defaults are compared separately. Native host clip.subclipDefaults extends original read-only helper with exact ticks/rational clock and edit-dialog data. Additional tests cover u64::MAX parent and near-MAX new ID, guarded allocator/frame-overflow refusal, exact imported metadata and File-media conversion without opening a path. Editor supports all input origins, optional bounds/restriction overrides, master conversion, defaults without history and one accepted Undo/Redo frame including unchanged edits. Validated direct-parent provenance inherits existing authorized library bindings for converted file aliases; inactive choices are excluded from payloads across Undo and retained for Redo. Still preferences are shared with source navigation/placement. Full persistent engine/media-cache lifetime, playback/render/browser and settings/session qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_subclip.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_edit.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_project_index.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_subclip.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-subclip-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-subclip-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-subclip-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftSubclipControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftSubclipControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:clip.editSubclip",
       "kind": "command",
       "label": "Edit Subclip…",
+      "note": "Authenticated native snapshot Make/Edit Subclip preserves source/project/timeline precedence and named-target admission, sixteen-node media-root resolution, root-parent bin traversal, planned name/label, source marks/still ranges and timeline speed-derived source span. Exact tick/frame overrides retain original null/type fallback and endpoint semantics. Creation resets metadata/split and selects the new item. Editing preserves identity/top-level metadata/split; conversion requires direct parent Media, clones its complete payload and filters inherited markers by start in [a,b). 1152 actual original engine cases (594 success/558 refusal) compare full project SHA256, result/selection and one Undo delta; 367 original make-dialog defaults are compared separately. Native host clip.subclipDefaults extends original read-only helper with exact ticks/rational clock and edit-dialog data. Additional tests cover u64::MAX parent and near-MAX new ID, guarded allocator/frame-overflow refusal, exact imported metadata and File-media conversion without opening a path. Editor supports all input origins, optional bounds/restriction overrides, master conversion, defaults without history and one accepted Undo/Redo frame including unchanged edits. Validated direct-parent provenance inherits existing authorized library bindings for converted file aliases; inactive choices are excluded from payloads across Undo and retained for Redo. Still preferences are shared with source navigation/placement. Full persistent engine/media-cache lifetime, playback/render/browser and settings/session qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -2778,20 +2896,108 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.markIn",
       "kind": "command",
       "label": "Mark In",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.markOut",
       "kind": "command",
       "label": "Mark Out",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -2810,108 +3016,716 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.markSplitVideoIn",
       "kind": "command",
       "label": "Video In",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.markSplitVideoOut",
       "kind": "command",
       "label": "Video Out",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.markSplitAudioIn",
       "kind": "command",
       "label": "Audio In",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.markSplitAudioOut",
       "kind": "command",
       "label": "Audio Out",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:markers.goToIn",
       "kind": "command",
       "label": "Go to In",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:markers.goToOut",
       "kind": "command",
       "label": "Go to Out",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:markers.goToSplitVideoIn",
       "kind": "command",
       "label": "Video In",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:markers.goToSplitVideoOut",
       "kind": "command",
       "label": "Video Out",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:markers.goToSplitAudioIn",
       "kind": "command",
       "label": "Audio In",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:markers.goToSplitAudioOut",
       "kind": "command",
       "label": "Audio Out",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.clearIn",
       "kind": "command",
       "label": "Clear In",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.clearOut",
       "kind": "command",
       "label": "Clear Out",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:markers.clearInOut",
       "kind": "command",
       "label": "Clear In and Out",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -3106,20 +3920,120 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:source.open",
       "kind": "command",
       "label": "Open in Source Monitor",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_source_inspect.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-navigation-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-navigation-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        }
+      ],
       "id": "command:source.setPlayhead",
       "kind": "command",
       "label": "Set Source Playhead",
+      "note": "Authenticated native context navigation preserves source.open item/first-project-selection resolution and OpenSource event, restricted/unrestricted source spans, rational frame snapping, still preferences, missing-source-view fallback, ordinary mark program-only behavior and split navigation cross-monitor admission/fallback. Program seeks clamp/snap and optionally select under targeted tracks with original linked-selection ordering; source split seeks remain exact and unclamped. 8304 actual original engine cases compare result/context/events, refusal, unchanged document and zero Undo delta, including exact large ticks, five ItemKinds, still/rational clocks, empty/partial targeting and linked-selection flags. API validates exact context/event/clock consistency with one request and no document import/replay. Editor shares source identity/clock with marks, applies program clock/selection with source/document/owner/selection/clock fences, retains document Undo/Redo, and prunes deleted sources without resurrecting them on document Undo. Hostile frame/rational pairs that overflow i128 refuse without panicking. Source seek units include ticks/frames/seconds in the editor. Live persistent engine, playback/render, full timeline-view/sidecar session persistence and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [
@@ -3156,20 +4070,138 @@
       "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_source_edit.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_trim.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_duplicate.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_source_edit.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-source-edit-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-source-edit-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-source-edit-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:source.insert",
       "kind": "command",
       "label": "Insert",
+      "note": "Authenticated native source Insert/Overwrite builds original clip/effect instances, exact ID/link/channel allocation, source ranges/marks/split offsets, sequence-In precedence, source patching, media scaling and still preferences over existing original-qualified placement primitives. Sequence-as-clips preserves clipped attributes, remaps clip/link/transition IDs, adds default lanes, removes orphan transitions and validates the result; multicam remains a single nested clip. Source graphics/meta, multi-audio channel mapping, captions/sync-lock/ripple markers, selection-follow-playhead and new-versus-existing nesting cycles follow original semantics. 3696 actual original engine cases compare refusal, full project SHA256, result, returned clock/selection and one Undo delta; additional tests prove exact u64::MAX media and near-MAX clip IDs, imported track metadata, allocator collision/exhaustion refusal and envelope preservation. Explicit snapshot adoption validates exact context and retains raw declared placed IDs even if a later same-track overwrite removed one, while visible selection reconciles against the manifest. UI exposes patching, nested/as-clips mode, marker ripple, scaling/still preferences, current-monitor marks and one Undo/Redo frame with source/selection/clock/document/owner/control fences. Existing library bindings are retained. Full persistent engine/session, playback/render/browser qualification and complete feature transfer remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_source_edit.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_trim.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_navigation.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_duplicate.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_source_edit.rs"
+        },
+        {
+          "path": "backend/tests/mcp_filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-source-edit-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-source-edit-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-source-edit-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:source.overwrite",
       "kind": "command",
       "label": "Overwrite",
+      "note": "Authenticated native source Insert/Overwrite builds original clip/effect instances, exact ID/link/channel allocation, source ranges/marks/split offsets, sequence-In precedence, source patching, media scaling and still preferences over existing original-qualified placement primitives. Sequence-as-clips preserves clipped attributes, remaps clip/link/transition IDs, adds default lanes, removes orphan transitions and validates the result; multicam remains a single nested clip. Source graphics/meta, multi-audio channel mapping, captions/sync-lock/ripple markers, selection-follow-playhead and new-versus-existing nesting cycles follow original semantics. 3696 actual original engine cases compare refusal, full project SHA256, result, returned clock/selection and one Undo delta; additional tests prove exact u64::MAX media and near-MAX clip IDs, imported track metadata, allocator collision/exhaustion refusal and envelope preservation. Explicit snapshot adoption validates exact context and retains raw declared placed IDs even if a later same-track overwrite removed one, while visible selection reconciles against the manifest. UI exposes patching, nested/as-clips mode, marker ripple, scaling/still preferences, current-monitor marks and one Undo/Redo frame with source/selection/clock/document/owner/control fences. Existing library bindings are retained. Full persistent engine/session, playback/render/browser qualification and complete feature transfer remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -4088,12 +5120,53 @@
       "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_project_delete.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_project_delete.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-project-delete-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-project-delete-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-delete-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:project.delete",
       "kind": "command",
       "label": "Clear",
+      "note": "Authenticated native snapshot Clear preserves source admission, nested folder descendant removal, ancestor suppression, duplicate requested bin counts, requested item deduplication (including unknown/root IDs), original tree removal order, all-track item references and orphan transitions. Fixed context follows source order for mask validity before active-sequence fallback, timeline/caption/project selection, source item, open tabs and views. 224 actual original engine cases compare full-project SHA256, result, fixed context and source Undo delta. Exact-text frontend adopts items/folders with selection/document/owner fences, one bounded Undo frame including no-ops, active-sequence fallback and inactive binding exclusion with Undo/Redo. Underlying files are retained. Full persistent engine/media-cache/session history behavior and live-browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [
@@ -4148,12 +5221,56 @@
       "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_marks.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-marks-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-marks-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-marks-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:project.setMarks",
       "kind": "command",
       "label": "Set Source In/Out",
+      "note": "Authenticated native snapshot ordinary and split mark edits preserve source target dispatch, item fallback, absent/null semantics, source/program clock differences, exact decimal ticks/frames, seconds/timecode resolution and same-channel opposite-point invalidation. Ordinary source marks clear item split points and sequence split points without clearing a crossed ordinary opposite mark; program marks clear a crossed opposite bound and validate the entire sequence. Clear commands always target the active sequence even with target=source. Empty split omission and complete split results match source serialization. 12240 actual original engine cases compare success/refusal, full project SHA256, results and accepted Undo delta. Imports expose exact ordinary/split source and sequence marks. Editor supports target/item, clock units, all ten commands, authoritative values and one bounded history frame including accepted no-ops; document/owner/clock/control fences reject late replies. Full persistent source-monitor/editor-state integration, global history and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [
@@ -136657,8 +137774,8 @@
     },
     "sourceFiles": 1064,
     "statuses": {
-      "partial": 1113,
-      "unreviewed": 1582
+      "partial": 1136,
+      "unreviewed": 1559
     }
   }
 }

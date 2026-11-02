@@ -807,3 +807,11 @@ pub mod filmcraft_selection;
 pub mod filmcraft_duplicate;
 
 pub mod filmcraft_project_delete;
+
+pub mod filmcraft_marks;
+
+pub mod filmcraft_navigation;
+
+pub mod filmcraft_source_edit;
+
+pub mod filmcraft_subclip;

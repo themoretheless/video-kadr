@@ -22,7 +22,7 @@ struct Request {
     #[serde(rename = "items")]
     _items: Option<Value>,
 }
-fn nest_cycle(doc: &SourceProjectDocument) -> Result<Option<u64>> {
+pub(super) fn nest_cycle(doc: &SourceProjectDocument) -> Result<Option<u64>> {
     let index = ProjectIndex::new(doc)?;
     let sequences: BTreeSet<_> = index.sequences().map(|(id, _)| id).collect();
     let mut graph = BTreeMap::new();

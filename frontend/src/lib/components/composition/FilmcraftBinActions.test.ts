@@ -1,9 +1,9 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, expect, it, vi } from 'vitest'
-import { duplicateFilmcraftProjectItems, editFilmcraftBins, type FilmcraftImportResult } from '$lib/api'
+import { deleteFilmcraftProjectItems, duplicateFilmcraftProjectItems, editFilmcraftBins, type FilmcraftImportResult } from '$lib/api'
 import Controls from './FilmcraftBinActions.svelte'
-vi.mock('$lib/api', () => ({ duplicateFilmcraftProjectItems: vi.fn(), editFilmcraftBins: vi.fn() }))
+vi.mock('$lib/api', () => ({ deleteFilmcraftProjectItems: vi.fn(), duplicateFilmcraftProjectItems: vi.fn(), editFilmcraftBins: vi.fn() }))
 const props = { document: 'exact', sequenceId: '18446744073709551615', clipId: '', token: 'owner', items: [{ id: '9007199254740993', name: 'One', kind: 'Media' as const }, { id: '9007199254740995', name: 'Two', kind: 'Graphic' as const }], bins: [{ id: '0', name: 'Root', parentId: null, depth: 0 }, { id: '9007199254740997', name: 'Nested', parentId: '0', depth: 1 }] }
 const result = { documentText: 'changed', originalSchema: 12, sequences: [], media: [] } as FilmcraftImportResult
 let component: ReturnType<typeof mount> | undefined
@@ -90,4 +90,26 @@ it('reports duplicate refusal and server failure without changing selection', as
   button('Дублировать элементы проекта').click(); await tick(); await vi.waitFor(() => expect(document.body.textContent).toContain('контекст изменился'))
   button('Дублировать элементы проекта').click(); await tick(); await vi.waitFor(() => expect(document.querySelector('[role=alert]')?.textContent).toBe('new nesting cycle'))
   expect(onedit).toHaveBeenCalledTimes(1); expect(duplicateFilmcraftProjectItems).toHaveBeenCalledTimes(2)
+})
+
+it.each([false, true])('deletes items or a folder with exact session and selection fences (%s)', async folder => {
+  const deleted = { ...result, deletedItemIds: [props.items[0].id], deletedBinIds: folder ? [props.bins[1].id] : [], deletionContext: { activeSequence: props.sequenceId, selection: [], projectSelection: [] } }
+  vi.mocked(deleteFilmcraftProjectItems).mockResolvedValue(deleted)
+  const onedit = vi.fn().mockReturnValue(true)
+  component = mount(Controls, { target: document.body, props: { ...props, onedit, clipSelection: ['9007199254740999'] } }); await tick()
+  await selectItems([props.items[0].id])
+  const target = document.querySelector<HTMLSelectElement>('[aria-label="Папка назначения Filmcraft"]')!
+  target.value = props.bins[1].id; target.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  button(folder ? 'Удалить папку с содержимым' : 'Удалить элементы из проекта').click(); await tick()
+  await vi.waitFor(() => expect(onedit).toHaveBeenCalledExactlyOnceWith(deleted, { document: props.document, sequenceId: props.sequenceId, clipId: '', token: props.token, projectSelection: [props.items[0].id], timelineSelection: ['9007199254740999'] }))
+  expect(deleteFilmcraftProjectItems).toHaveBeenCalledWith('owner', { document: 'exact', items: [folder ? props.bins[1].id : props.items[0].id], context: { activeSequence: props.sequenceId, selection: ['9007199254740999'], projectSelection: [folder ? props.bins[1].id : props.items[0].id] } }, expect.any(AbortSignal))
+  expect([...document.querySelector<HTMLSelectElement>('[aria-label="Элементы для организации Filmcraft"]')!.options].some(o => o.selected)).toBe(false)
+})
+it('keeps selection when parent refuses deletion and protects root', async () => {
+  vi.mocked(deleteFilmcraftProjectItems).mockResolvedValue({ ...result, deletedItemIds: [], deletedBinIds: [], deletionContext: { activeSequence: null, selection: [], projectSelection: [] } })
+  component = mount(Controls, { target: document.body, props: { ...props, onedit: () => false } }); await tick()
+  expect(button('Удалить папку с содержимым').disabled).toBe(true)
+  await selectItems([props.items[0].id]); button('Удалить элементы из проекта').click(); await tick()
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Результат не применён'))
+  expect([...document.querySelector<HTMLSelectElement>('[aria-label="Элементы для организации Filmcraft"]')!.options].filter(o => o.selected).map(o => o.value)).toEqual([props.items[0].id])
 })

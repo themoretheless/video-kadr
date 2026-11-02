@@ -178,3 +178,25 @@ pub fn inspect(params: Value) -> Result<Value> {
     super::filmcraft_project_inspect::exact_numbers(&mut result);
     Ok(result)
 }
+
+/// Exact source monitor clock, kept rational for seeks instead of reconstructing fps from JSON.
+pub(super) fn frame_rate(index: &ProjectIndex<'_>, item: u64) -> Result<FrameRate> {
+    let item = index.item(item).context("source item is gone")?;
+    if let Some(media) = item.pointer("/kind/Media") {
+        return media_rate(media);
+    }
+    if let Some(sequence) = item.pointer("/kind/Sequence") {
+        return rate(&sequence["settings"]["frame_rate"]);
+    }
+    if item.pointer("/kind/Subclip").is_some() {
+        let resolved = index
+            .resolve_media(item["id"].as_u64().context("invalid subclip ID")?)
+            .context("source subclip media is gone or cyclic")?;
+        return media_rate(resolved.media);
+    }
+    let value = item
+        .pointer("/kind/Graphic")
+        .or_else(|| item.pointer("/kind/AdjustmentLayer"))
+        .context("unsupported source kind")?;
+    rate(&value["rate"])
+}

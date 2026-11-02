@@ -215,3 +215,40 @@ it('routes edit.duplicate as an operation with exact ordered context IDs', async
   expect(request).toHaveBeenCalledWith('owner', 'edit.duplicate', params, expect.any(AbortSignal))
   expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
 })
+
+it('routes project.delete with exact folder IDs and session context as an operation', async () => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: { items: 3, bins: 1 }, documentText: '{}' })
+  const params = { document: '{"id":18446744073709551615}', items: ['18446744073709551615'], context: { activeSequence: '9007199254740993', projectSelection: ['18446744073709551615'], selection: ['9007199254740995'] } }
+  await call('command_run', { id: 'project.delete', params })
+  expect(request).toHaveBeenCalledWith('owner', 'project.delete', params, expect.any(AbortSignal))
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+
+it.each(['project.setMarks', 'markers.markSplitAudioOut'] as const)('routes %s with exact ticks and one native request', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: null, markEdit: true, documentText: '{}' })
+  const params = { document: '{}', item: '18446744073709551615', in: '-9223372036854775808', out: null, target: 'source', time: '9007199254740997', context: { sourceItem: '18446744073709551615' } }
+  await call('command_run', { id: command, params })
+  expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal))
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+it.each(['source.open', 'source.setPlayhead', 'markers.goToIn', 'markers.goToOut', 'markers.goToSplitVideoIn', 'markers.goToSplitVideoOut', 'markers.goToSplitAudioIn', 'markers.goToSplitAudioOut'] as const)('routes %s as context navigation without composition history changes', async command => {
+  const before = nestedHistory.past.length
+  const ordinary = JSON.stringify(compositionState.document); const nested = JSON.stringify(nestedComposition.document)
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: null, context: {} })
+  const params = { document: '{}', target: 'source', time: '9007199254740997', context: { sourceItem: '18446744073709551615' } }
+  await call('command_run', { id: command, params })
+  expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal))
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('read')
+  expect(nestedHistory.past).toHaveLength(before); expect(JSON.stringify(compositionState.document)).toBe(ordinary); expect(JSON.stringify(nestedComposition.document)).toBe(nested)
+})
+it.each(['source.insert', 'source.overwrite'] as const)('routes %s as one authoring operation with exact source patch context', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ sourceEdit: true, documentText: '{}' })
+  const params = { document: '{}', context: { activeSequence: '18446744073709551615', sourceItem: '9007199254740993', playhead: '9007199254740997', targeting: { videoDest: '9007199254740995', audioDest: null }, sequencesAsClips: true } }
+  await call('command_run', { id: command, params }); expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal)); expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+
+it.each(['clip.makeSubclip', 'clip.editSubclip', 'clip.subclipDefaults'] as const)('routes %s with exact boundaries and the correct activity class', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: null })
+  const params = { document: '{}', item: '18446744073709551615', start: '9007199254740997', end: '9007199254740999', context: { projectSelection: [] } }
+  await call('command_run', { id: command, params }); expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal)); expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe(command === 'clip.subclipDefaults' ? 'read' : 'operation')
+})
