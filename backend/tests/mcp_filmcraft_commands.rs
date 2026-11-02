@@ -218,7 +218,7 @@ async fn source_discovery_and_run_cross_the_claimed_bridge_to_owner_native_servi
         .all(|item| item["enabled"] == true && item["partial"] == true));
     let all = native(&native_app, Some(&owner.token), "command.list", json!({})).await;
     assert_eq!(all.0, 200);
-    assert_eq!(all.1.as_array().unwrap().len(), 47);
+    assert_eq!(all.1.as_array().unwrap().len(), 75);
     assert!(all.1.as_array().unwrap().iter().any(|row| row["id"] == "clip.rename"));
     assert_eq!(
         native(

@@ -27,6 +27,7 @@ struct Case {
     times_seconds: Vec<f64>,
     expected_model: Option<String>,
     stabilization_mode: Option<StabilizationMode>,
+    experimental_occlusion_strength: Option<f64>,
 }
 fn qualify(case: &Case, out: &Path) -> Result<Value> {
     let mut file = File::open(&case.source)?;
@@ -82,6 +83,8 @@ fn qualify(case: &Case, out: &Path) -> Result<Value> {
         None
     };
     result["stabilizationMode"] = serde_json::to_value(stabilization_mode)?;
+    result["experimentalOcclusionStrength"] =
+        json!(case.experimental_occlusion_strength.unwrap_or(0.));
     let folder = out.join(&case.id);
     std::fs::create_dir(&folder)?;
     let mut frames = vec![];
@@ -116,6 +119,7 @@ fn qualify(case: &Case, out: &Path) -> Result<Value> {
                 source_frame_clock: gyro.as_ref().and_then(|g| g.source_frame_clock.clone()),
                 stitching: Stitching {
                     mode,
+                    occlusion_strength: case.experimental_occlusion_strength.unwrap_or(0.),
                     ..Default::default()
                 },
                 ..Default::default()

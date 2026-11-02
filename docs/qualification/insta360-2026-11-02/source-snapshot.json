@@ -1,0 +1,11 @@
+{
+  "backend/src/domain/insta360_gyro.rs": "64a088ef34d35b160002f0bc92b3d46cd89a05a896e83eeeafbad88c89ba4476",
+  "backend/src/domain/spherical_video.rs": "92b3eb1011405ef6573ba83e0d0fac4444826dcc5915c61f36bc7590e95bedd3",
+  "backend/src/domain/spherical_optical_flow.rs": "10ed5daaf625133dd41e05667248e0520d537a12010e83b56741f84619886c0e",
+  "backend/vision-runtime/src/sam_instance.rs": "f7d0ec18e6836dadffcb02f93e36f338395103bb9fbdf25bd20f1b725bdf7ab0",
+  "backend/vision-runtime/src/sam_reidentification.rs": "143cfa0aa756b646eb38eca18698fc0a4a250612c21ade5014a13bc64c203cdd",
+  "backend/vision-runtime/src/slim_sam.rs": "fe2fe1b198206faf907f7971a3d641da521a012081ce6165d094b6bf7cda0707",
+  "frontend/src/lib/motion/sphericalSemanticTracking.ts": "d1ba605039d2fd890f6886b0d25f8437d425701745b296d90e5fcb37e3d4d25e",
+  "frontend/src/lib/motion/sphericalSemanticTracking.test.ts": "9668b3c42997fc7108c0640548f81ab0c071f157410179dc47d82a3219b84945",
+  "backend/examples/qualify_insta360_matrix.rs": "54d38912ec3d05c9bd0788ba763416d47f09b59914dd4dd5b4185a3a7254643e"
+}

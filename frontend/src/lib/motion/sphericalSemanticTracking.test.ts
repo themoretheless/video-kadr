@@ -32,3 +32,15 @@ it('allows previously lost source ordinals only for explicit neural recovery and
  expect(plan.ordinals.some(i=>i>=2)).toBe(true)
  expect(plan.times.length).toBeLessThanOrEqual(60)
 })
+
+it('keeps intermediate poses in short neural clips and spans long clips within the inference budget',()=>{
+ const source={...region(),frames:3000,trackedFrames:3000,frameRate:{numerator:30,denominator:1},frameTimesUs:undefined}
+ const short=sphericalSemanticSamplePlan(source,0,10,true)
+ expect(short.times).toHaveLength(50)
+ expect(short.times.slice(0,4)).toEqual([0,.2,.4,.6])
+ expect(short.ordinals.slice(0,4)).toEqual([0,6,12,18])
+ const long=sphericalSemanticSamplePlan(source,0,60,true)
+ expect(long.times).toHaveLength(60)
+ expect(long.times.at(-1)).toBe(59)
+ expect(sphericalSemanticSamplePlan(source,0,.2,true).times.length).toBeGreaterThanOrEqual(2)
+})

@@ -1,0 +1,25 @@
+   Compiling video-kadr-vision-runtime v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vision-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.80s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 1 test
+test sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap ... visible continuity measured matches=4
+saved real frame=1 state=Tracked agreement=0.962421
+visible continuity measured matches=0
+saved real frame=2 state=Occluded agreement=0
+
+thread 'sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap' panicked at src/sam_reidentification.rs:1282:13:
+assertion `left == right` failed
+  left: Occluded
+ right: Tracked
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 44 filtered out; finished in 69.22s
+
+error: test failed, to rerun pass `--lib`

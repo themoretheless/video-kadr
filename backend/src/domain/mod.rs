@@ -793,3 +793,17 @@ pub mod filmcraft_mask_commands;
 pub mod filmcraft_mask_track_batch;
 
 pub mod filmcraft_clip_rename;
+
+pub mod filmcraft_bin_rename;
+
+pub mod filmcraft_bin_edit;
+
+pub mod filmcraft_labels;
+
+pub mod filmcraft_label_group;
+
+pub mod filmcraft_selection;
+
+pub mod filmcraft_duplicate;
+
+pub mod filmcraft_project_delete;

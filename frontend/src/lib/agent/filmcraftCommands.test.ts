@@ -170,3 +170,48 @@ it('routes clip.rename with exact item IDs and explicit source selection', async
   await call('command_run', { id: 'clip.rename', params })
   expect(request).toHaveBeenCalledWith('owner', 'clip.rename', params, expect.any(AbortSignal))
 })
+it('routes project.renameBin with exact IDs and original whitespace', async () => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: { bin: '18446744073709551615', name: 'Папка' }, documentText: '{}' })
+  const params = { document: '{}', bin: '18446744073709551615', name: '  Папка  ' }
+  await call('command_run', { id: 'project.renameBin', params })
+  expect(request).toHaveBeenCalledWith('owner', 'project.renameBin', params, expect.any(AbortSignal))
+})
+it.each(['file.newBin', 'file.newBinFromSelection', 'project.moveToBin'] as const)('routes %s with exact source ordering and owner transport', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: { moved: 2 }, documentText: '{}' })
+  const params = { document: '{}', items: ['18446744073709551615', '9007199254740993'], bin: '9007199254740995' }
+  await call('command_run', { id: command, params })
+  expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal))
+})
+it.each(['edit.label', 'edit.label.rose', 'edit.label.magenta'] as const)('routes %s with exact selections and presence semantics', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ documentText: '{}', result: null })
+  const params = { document: '{}', label: 'rOsE', items: null, clips: ['18446744073709551615'], context: { selection: ['9007199254740993'] } }
+  await call('command_run', { id: command, params })
+  expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal))
+})
+it('records label group as a read without composition history changes', async () => {
+  const before = nestedHistory.past.length
+  const ordinary = JSON.stringify(compositionState.document); const nested = JSON.stringify(nestedComposition.document)
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: { items: ['18446744073709551615'] } })
+  const params = { document: '{}', context: { selection: [], projectSelection: ['18446744073709551615'] } }
+  await call('command_run', { id: 'edit.selectLabelGroup', params })
+  expect(request).toHaveBeenCalledWith('owner', 'edit.selectLabelGroup', params, expect.any(AbortSignal))
+  expect(nestedHistory.past).toHaveLength(before)
+  expect(JSON.stringify(compositionState.document)).toBe(ordinary); expect(JSON.stringify(nestedComposition.document)).toBe(nested)
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('read')
+})
+it.each(['edit.selectAllMatching', 'project.selectAll', 'project.deselectAll', 'project.select'] as const)('records %s as a context read without document/history changes', async command => {
+  const before = nestedHistory.past.length; const ordinary = JSON.stringify(compositionState.document); const nested = JSON.stringify(nestedComposition.document)
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: null, context: { selection: [], projectSelection: ['18446744073709551615'] } })
+  const params = { document: '{}', context: { selection: [], projectSelection: ['18446744073709551615'] } }
+  await call('command_run', { id: command, params })
+  expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal))
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('read')
+  expect(nestedHistory.past).toHaveLength(before); expect(JSON.stringify(compositionState.document)).toBe(ordinary); expect(JSON.stringify(nestedComposition.document)).toBe(nested)
+})
+it('routes edit.duplicate as an operation with exact ordered context IDs', async () => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ result: { items: ['18446744073709551614'] }, documentText: '{}' })
+  const params = { document: '{}', context: { projectSelection: ['18446744073709551615', '9007199254740993', '18446744073709551615'] } }
+  await call('command_run', { id: 'edit.duplicate', params })
+  expect(request).toHaveBeenCalledWith('owner', 'edit.duplicate', params, expect.any(AbortSignal))
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})

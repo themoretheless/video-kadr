@@ -340,11 +340,13 @@ impl Instance {
             && self.shape_similarity(other) >= 0.8
     }
     pub fn matches(&self, other: &Self, cancel: &AtomicBool) -> Result<bool> {
+        check(cancel)?;
         Ok(self.low_texture_match(other) || self.proof(other, cancel)?.is_some())
     }
     /// Keep only new-view features tied to the immutable original, not unmatched
     /// background patches accidentally included by a propagated SAM plane.
     pub fn retain_original_witness(&self, other: &mut Self, cancel: &AtomicBool) -> Result<bool> {
+        check(cancel)?;
         if self.low_texture_match(other) {
             return Ok(true);
         }
@@ -644,5 +646,23 @@ mod tests {
         let id = Instance::new(&gray, &mask, &c).unwrap();
         assert!(id.uniform.is_none());
         assert!(!id.matches(&id, &c).unwrap());
+    }
+    #[test]
+    fn cancellation_also_stops_uniform_and_insufficient_feature_fast_paths() {
+        let c = AtomicBool::new(false);
+        let mask = Mask {
+            width: 256,
+            height: 256,
+            bytes: vec![255; 65536],
+        };
+        for color in [[255, 0, 0, 255], [100, 100, 100, 255]] {
+            let rgb = Image::new(64, 64, color.repeat(64 * 64)).unwrap();
+            let id = Instance::new(&rgb, &mask, &c).unwrap();
+            let mut view = id.clone();
+            c.store(true, Ordering::Relaxed);
+            assert!(id.matches(&view, &c).is_err());
+            assert!(id.retain_original_witness(&mut view, &c).is_err());
+            c.store(false, Ordering::Relaxed);
+        }
     }
 }

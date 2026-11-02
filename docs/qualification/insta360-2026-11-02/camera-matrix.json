@@ -1,0 +1,465 @@
+{
+  "boundary": "Read-only native source/calibration/render checks. Successful decode and opaque coverage do not establish vendor quality parity. Compare fixed source frames and Studio settings independently; private source/output images must not be published.",
+  "cases": [
+    {
+      "calibrationField": 111,
+      "clock": {
+        "denominator": 1,
+        "numerator": 50,
+        "sampleCount": 37
+      },
+      "firmware": "v1.0.20",
+      "frames": [
+        {
+          "decodedRgbaSha256": "0daaae4e19ad71eefc6745646616f17057bd4ff0a9313669d273b6e12d8480f4",
+          "timeSeconds": 0.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "51da55a3cda99cda76151d58791413039489f5d5af8ff647fe8df92731e19f03",
+              "renderSeconds": 2.8719499170000002,
+              "rgbaSha256": "c555f135c990b8e4f89b5d1dcbe7f8230d888414a69c77f699fbcc7e378ae0cd",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "8242a8a97d5ba050753128ab498ab0da00eb613a56fbed5dedcbcc1efa017fab",
+              "renderSeconds": 4.080658708,
+              "rgbaSha256": "f94a74ea72f8d0f73d71154143a652e8932f77e1ad51bc814ac3a1de8b98cc89",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "5581db4ae386243a8ac786cbf87b288b9180ee49843a2d96ec884d39b14ac380",
+          "timeSeconds": 0.2,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "5b208324a093a32032a523b247fb4fed119be41b99c0cc7de7478dd851168901",
+              "renderSeconds": 2.212336667,
+              "rgbaSha256": "ea89b86aba0d646bf6016c9b7bdbdf3e3ebae01b277bd6b7afe07d7733972f0e",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "64172861832e6df3c67ff0e72fbb4d223c7caba9997d9c7b0409ba9de76d6c95",
+              "renderSeconds": 2.61123025,
+              "rgbaSha256": "8eabac4f94efd263af787832a27a77fcf2d980e21f28b3d46dd0f448e4634745",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        }
+      ],
+      "hasSourceTimeMap": false,
+      "id": "x6-garage",
+      "identityBoundary": "Source size/mtime rechecked; exact decoded RGBA and output hashes retained. Original full-content hash was not computed.",
+      "model": "Insta360 X6",
+      "profileReferenceSize": [
+        15488,
+        7744
+      ],
+      "profileStatus": "available",
+      "sourceBytes": 33770533,
+      "sourceLayout": "dual_video_streams",
+      "stabilizationMode": "disabled",
+      "status": "rendered_requires_reference_review",
+      "timingBoundary": "CFR is a presentation-clock check; capture/gyro time-map qualification is separate."
+    },
+    {
+      "calibrationField": 111,
+      "clock": {
+        "denominator": 1,
+        "numerator": 50,
+        "sampleCount": 213
+      },
+      "firmware": "v1.0.20",
+      "frames": [
+        {
+          "decodedRgbaSha256": "1b93f44d5fe88f4ab5681b49075a4fa37ebcfd9facab6aa1d23fda5b016aef91",
+          "timeSeconds": 0.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "e44f68160d225258fe4c34f2871f83f7b3183382995f637ef7a65046995ebd34",
+              "renderSeconds": 2.311868792,
+              "rgbaSha256": "8c5ca57d603ddbc736294a7cb625127ba669e096336afc606796aeb2f1e2e539",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "a45837d9db87a12487116fedcea94c4f9c663094d576a8ff13f6a2038d10c425",
+              "renderSeconds": 2.480821916,
+              "rgbaSha256": "d9a255801ca1feed4803e5cbcb7c5495c6f68963ecfe2249151c4981e3825bd8",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "8014deecbeb10772f80677d2abc1158d7afa06914de64809691a3116dbe87470",
+          "timeSeconds": 1.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "de3200803cea6223dac39afb1240e47ba6d93a472f2c170b9cb9daf0c7bcc6a2",
+              "renderSeconds": 1.435164166,
+              "rgbaSha256": "a6c45304f3cf41b0a885a2862bd4c0aa4abf20007f5e7be2de101019536ef44a",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "745bb7d54f71c7c76f1fb9b95e1a9adf2ffead186c63ba7a1dba1f5cfb81866d",
+              "renderSeconds": 2.302268834,
+              "rgbaSha256": "b2f9f4305e360fa577601a68842e9ba02d41ac04de1944aed33a557dabd926b9",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "c3f1fdc6b09665295fa9d5f7ba0d19cee329d62b4e0e29b7aa6727761172e54d",
+          "timeSeconds": 3.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "b37878c3f5dad055e088e21d69e35dba6c2ffac1580327af267da56355d88240",
+              "renderSeconds": 1.579064042,
+              "rgbaSha256": "072fc38aa9e744a0aea9f2146ad18fd8061d0d5dd044e2ead369ba117bcc004d",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "ac75f19673e7d9eeab1fa0ded6818add296c2e0400fe21d1167c2593c1901ebf",
+              "renderSeconds": 2.425754875,
+              "rgbaSha256": "ac1c0d89ec8e5033803d724a6e65c04bd41aaff6bf0fe4ecca4bfdf65c68b2e5",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        }
+      ],
+      "hasSourceTimeMap": false,
+      "id": "x6-office",
+      "identityBoundary": "Source size/mtime rechecked; exact decoded RGBA and output hashes retained. Original full-content hash was not computed.",
+      "model": "Insta360 X6",
+      "profileReferenceSize": [
+        15488,
+        7744
+      ],
+      "profileStatus": "available",
+      "sourceBytes": 113793755,
+      "sourceLayout": "dual_video_streams",
+      "stabilizationMode": "disabled",
+      "status": "rendered_requires_reference_review",
+      "timingBoundary": "CFR is a presentation-clock check; capture/gyro time-map qualification is separate."
+    },
+    {
+      "calibrationField": 5,
+      "clock": {
+        "denominator": 1,
+        "numerator": 100,
+        "sampleCount": 762
+      },
+      "firmware": "v0.3.11_build1",
+      "frames": [
+        {
+          "decodedRgbaSha256": "941ebb5bcec895d99f7e03376b7ee536b0852308e7cbfa0035a8e617adcaf281",
+          "timeSeconds": 0.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "c5cea935351557e0bf6af630c361a7dd0bc5ff63a42444be15e40b8be7385b13",
+              "renderSeconds": 4.216057333,
+              "rgbaSha256": "33732b1629fd32f36a926124ec0eef83a30f9942815a18f69bbf81274907469c",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "b67dea09dfeab8f71d3c710093b3088d479d81fc689cba95aee372674c95b1bb",
+              "renderSeconds": 2.886166583,
+              "rgbaSha256": "ee8f7490690736746fb1d050b152659f05f0a4f0a84d13b3c84f11a811ce58c0",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "aacf576a8abab49f023e992d69a049bd88e80a874492a13113bb5bf00d5158b4",
+          "timeSeconds": 1.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "6c320195fb121b222b769ab10972d5f86157f96d3c30713d902447846cf1207a",
+              "renderSeconds": 1.238209417,
+              "rgbaSha256": "865352168bfca75b745e02aef33808c65a7f2673f773261537965c4a804b96fe",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "83d3b0b12aeafddebc5c3dc70bdd4dd1340d4159323cde1013b8d4867073678a",
+              "renderSeconds": 1.731267084,
+              "rgbaSha256": "3c37b2d3129c2827d1467651a26aee4bb60e22228f35f8d18f7e003dab8f74ef",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "a73763501679a79029ac414574c804f29eb5ecd01cddc89110c7e55b23d66c92",
+          "timeSeconds": 3.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "84f74b2a8cd19d7151c4df7bc4e458ed156096bf1b3793caa0e7edb4914bd3e2",
+              "renderSeconds": 1.365359959,
+              "rgbaSha256": "4956503d8cf70246d9e90fec3114ce3fe0c61acce944e5b6b3b1d4cb8166d77e",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "c83eefc25268d14c8c16d156a70fb316d002195a6ddbeedcff9c78997eaf9fc7",
+              "renderSeconds": 1.9656242499999999,
+              "rgbaSha256": "1c545c1323150dc0fac69ca0b595bd3c80a1ea5ad18869aabb2c9baf607576f3",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        }
+      ],
+      "hasSourceTimeMap": true,
+      "id": "x4-hawaii-100fps",
+      "identityBoundary": "Source size/mtime rechecked; exact decoded RGBA and output hashes retained. Original full-content hash was not computed.",
+      "model": "Insta360 X4",
+      "profileReferenceSize": [
+        11520,
+        5760
+      ],
+      "profileStatus": "available",
+      "sourceBytes": 214039326,
+      "sourceLayout": "dual_video_streams",
+      "stabilizationMode": "disabled",
+      "status": "rendered_requires_reference_review",
+      "timingBoundary": "CFR is a presentation-clock check; capture/gyro time-map qualification is separate."
+    },
+    {
+      "calibrationField": 5,
+      "clock": {
+        "denominator": 1,
+        "numerator": 100,
+        "sampleCount": 762
+      },
+      "firmware": "v0.3.11_build1",
+      "frames": [
+        {
+          "decodedRgbaSha256": "941ebb5bcec895d99f7e03376b7ee536b0852308e7cbfa0035a8e617adcaf281",
+          "timeSeconds": 0.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "4c5195acefa5754710973f4a1408c7336efa8101d3cf8973b9fd8f1a9acd3ae5",
+              "renderSeconds": 1.29139275,
+              "rgbaSha256": "31d57969dd9b1d093be19b35d06a2a16e52b8c2511656784fe6584c091619e0f",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "025ac77d002a38b270eef562ae8ff4542cc55d25922b8269f16e0cc2fb6c6cff",
+              "renderSeconds": 2.065375916,
+              "rgbaSha256": "c0a579352bac57bd18000979246bc3677831cb22beac7f4c4a6522192e5ef4e5",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "aacf576a8abab49f023e992d69a049bd88e80a874492a13113bb5bf00d5158b4",
+          "timeSeconds": 1.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "107f95700aca68d63dcc48037b7d66ecce120a1c1923d64902d528b5e13a1768",
+              "renderSeconds": 2.047591792,
+              "rgbaSha256": "33b6775bbcaeeef2bee34e1d53ddcb6f581ffd34d399614e4323714ccb994b53",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "930fd574da6959dfa2d0830177ad0378d4fb7bcb7c79c50a44195a142cbb0e13",
+              "renderSeconds": 3.100327417,
+              "rgbaSha256": "42ede5e57c77cd74f60b8b4a2e958706fda3c1f1ac28c023bbe1e27bf933823c",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "a73763501679a79029ac414574c804f29eb5ecd01cddc89110c7e55b23d66c92",
+          "timeSeconds": 3.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "ee1576e4cbb3c0886cfdea5ba8cc6da0153fba3fd5947d46860b4c6dc7f2ec85",
+              "renderSeconds": 1.575982583,
+              "rgbaSha256": "c21a54530fee42f1033a5a2852d6d0e5d760f6a45ad1fceb333699a15c356ec8",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "a35531b70202f2eec0613f74c8eddb915195e5eef7061443dadd28bd9a397af5",
+              "renderSeconds": 2.27688875,
+              "rgbaSha256": "2636d15d0c68cf841493ae047d17afd31e7f8aa34c0e3326c36f5db46317c98e",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        }
+      ],
+      "hasSourceTimeMap": true,
+      "id": "x4-horizon",
+      "identityBoundary": "Source size/mtime rechecked; exact decoded RGBA and output hashes retained. Original full-content hash was not computed.",
+      "model": "Insta360 X4",
+      "profileReferenceSize": [
+        11520,
+        5760
+      ],
+      "profileStatus": "available",
+      "sourceBytes": 214039326,
+      "sourceLayout": "dual_video_streams",
+      "stabilizationMode": "horizon",
+      "status": "rendered_requires_reference_review",
+      "timingBoundary": "CFR is a presentation-clock check; capture/gyro time-map qualification is separate.",
+      "gyroSummary": {
+        "status": "orientation_ready",
+        "gravityAlignment": {
+          "initializationSamples": 52,
+          "observedPrerollSeconds": 0.7312900864923222,
+          "requestedForceNormG": 1.2396182259194755,
+          "status": "estimated_observed_preroll",
+          "warning": "Horizon is estimated from a short observed pre-roll segment; precise absolute gravity alignment is not established."
+        },
+        "synchronization": "exposure_midpoint_trim_map",
+        "mountingSource": "embedded_legacy_145",
+        "originalTimeMapOffsetSeconds": 21.0
+      }
+    },
+    {
+      "calibrationField": 5,
+      "clock": {
+        "denominator": 1,
+        "numerator": 100,
+        "sampleCount": 762
+      },
+      "firmware": "v0.3.11_build1",
+      "frames": [
+        {
+          "decodedRgbaSha256": "941ebb5bcec895d99f7e03376b7ee536b0852308e7cbfa0035a8e617adcaf281",
+          "timeSeconds": 0.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "62394f303a98690627d44ecd8a3a500797f83bd9cbec7fc8c942290bccfdece1",
+              "renderSeconds": 2.8736467919999997,
+              "rgbaSha256": "04073fd76ce55149f7aa0738c1e8e30f9cc065deb110bdb6264d340ac3486302",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "d287ba4af689ad7a048be4f6d4c2dea91a4ff5b37a6e95a6f898bc3088ee67ab",
+              "renderSeconds": 4.404829375,
+              "rgbaSha256": "1b76bfab784c1aeb3b45938e30ed659bb51a47d9f522a498f29a89c32662a638",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "aacf576a8abab49f023e992d69a049bd88e80a874492a13113bb5bf00d5158b4",
+          "timeSeconds": 1.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "ddcf1ca7fed51edae7e6660f7041b45ecd78aeaedb0d95a2ad8aaaacc678f11e",
+              "renderSeconds": 1.579673959,
+              "rgbaSha256": "56763fd5bc7c6b956cd791e2b02f5970785b095d2c2fec5f9aa381b0eebd6237",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "6259b261bec34d71323949fd5db99fec1cd5aac85ed2ed49e395909f963e1d80",
+              "renderSeconds": 2.153477625,
+              "rgbaSha256": "65171e012340c98b0d0fe94ab467791df77d644c613baf954445ea4f3150323d",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        },
+        {
+          "decodedRgbaSha256": "a73763501679a79029ac414574c804f29eb5ecd01cddc89110c7e55b23d66c92",
+          "timeSeconds": 3.0,
+          "variants": [
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "8a08d7d22d1565e78c960397fb8cf7ef4c4611daccbd2875e73cc6ec7bfcd04a",
+              "renderSeconds": 1.323067625,
+              "rgbaSha256": "28c253de4df3601771cd9b391d037b4b2592215bb874ee158d4b9b34ffe243fa",
+              "totalPixels": 524288,
+              "variant": "feather"
+            },
+            {
+              "opaquePixels": 524288,
+              "pngSha256": "0dbd9698ca7db2a639400e6586a8d84f0995b44557c6443a9c26b0f8f2abe075",
+              "renderSeconds": 2.008027334,
+              "rgbaSha256": "d05d9ec547ec1f16828c379b35d909380f9f8131b1c9280861d70eecc136fe38",
+              "totalPixels": 524288,
+              "variant": "flow"
+            }
+          ]
+        }
+      ],
+      "hasSourceTimeMap": true,
+      "id": "x4-locked",
+      "identityBoundary": "Source size/mtime rechecked; exact decoded RGBA and output hashes retained. Original full-content hash was not computed.",
+      "model": "Insta360 X4",
+      "profileReferenceSize": [
+        11520,
+        5760
+      ],
+      "profileStatus": "available",
+      "sourceBytes": 214039326,
+      "sourceLayout": "dual_video_streams",
+      "stabilizationMode": "locked",
+      "status": "rendered_requires_reference_review",
+      "timingBoundary": "CFR is a presentation-clock check; capture/gyro time-map qualification is separate.",
+      "gyroSummary": {
+        "status": "orientation_ready",
+        "gravityAlignment": {
+          "initializationSamples": 52,
+          "observedPrerollSeconds": 0.7312900864923222,
+          "requestedForceNormG": 1.2396182259194755,
+          "status": "estimated_observed_preroll",
+          "warning": "Horizon is estimated from a short observed pre-roll segment; precise absolute gravity alignment is not established."
+        },
+        "synchronization": "exposure_midpoint_trim_map",
+        "mountingSource": "embedded_legacy_145",
+        "originalTimeMapOffsetSeconds": 21.0
+      }
+    }
+  ],
+  "manifestSha256": "63faf9edcd3868bfab74130e6ac03d5346c785ba7b050f08c24512764e460e15"
+}

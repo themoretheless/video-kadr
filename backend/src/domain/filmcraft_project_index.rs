@@ -52,6 +52,10 @@ impl<'a> ProjectIndex<'a> {
         }
         Ok(Self { items })
     }
+    /// All validated project items, in numeric source-ID order.
+    pub fn items(&self) -> impl Iterator<Item = (u64, &'a Value)> + '_ {
+        self.items.iter().map(|(id, item)| (*id, *item))
+    }
     pub fn item(&self, id: u64) -> Option<&'a Value> {
         self.items.get(&id).copied()
     }

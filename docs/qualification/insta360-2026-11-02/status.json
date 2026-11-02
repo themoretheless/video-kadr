@@ -1,0 +1,21 @@
+{
+  "fullParity": false,
+  "nearObjectSeam": "open; continuous ownership candidate rejected",
+  "strongPoseReidentification": "open; safety refusal passes, positive recovery gate fails",
+  "ordinaryCalibratedReidentification": "open; first transition passes, second target refused",
+  "cameraQualification": "14 held frames / 28 variants on X4 and X6; Luna neural safety only; broader corpus open",
+  "absoluteHorizon": "unconfirmed under dynamic start",
+  "visionLibraryTests": {
+    "passed": 32,
+    "ignored": 13
+  },
+  "samplingTests": {
+    "passed": 5
+  },
+  "svelteCheck": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "matrixExampleCheck": "passed",
+  "publishedRuntime": false
+}

@@ -42,7 +42,8 @@ fn command_addressing_matches_actual_original_engine() {
     use sha2::{Digest, Sha256};
     let oracle: Value = serde_json::from_str(include_str!("fixtures/filmcraft-clip-rename-oracle.json")).unwrap();
     assert_eq!(oracle["sourceCommit"], "5231852443363f001c3f6b396dd9b1e6461ae2be");
-    assert_eq!(oracle["cases"].as_array().unwrap().len(), 320);
+    assert_eq!(oracle["cases"].as_array().unwrap().len(), 320 + 2 * oracle["project"]["items"].as_object().unwrap().len());
+    assert_eq!(oracle["itemKinds"], json!(["AdjustmentLayer", "Graphic", "Media", "Sequence", "Subclip"]));
     for case in oracle["cases"].as_array().unwrap() {
         let mut doc = json!({"format":"filmcraft.project","schema_version":12,"project":oracle["project"]});
         doc["project"]["items"][oracle["sequence"].to_string()]["kind"]["Sequence"]["video_tracks"][0]["locked"] = case["locked"].clone();
@@ -55,5 +56,53 @@ fn command_addressing_matches_actual_original_engine() {
             let hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&actual["document"]["project"]).unwrap()));
             assert_eq!(hash, case["afterSha256"], "params {params}");
         }
+    }
+}
+
+#[tokio::test]
+async fn renamed_sequence_and_offline_media_survive_actual_manifest_import() {
+    use video_kadr_backend::{error::ApiJson, handlers::filmcraft_project::{import, ImportRequest}};
+    let (mut doc, seq, _) = sample();
+    let media_id = doc["project"]["items"].as_object().unwrap().iter().find(|(_, value)| value.pointer("/kind/Media").is_some()).unwrap().0.clone();
+    doc["project"]["items"][&media_id]["kind"]["Media"]["media"] = json!({"File":{"path":"/offline/source.mov"}});
+    doc["project"]["items"][&media_id]["kind"]["Media"]["offline"] = json!(true);
+    for (id, collection) in [(seq.to_string(), "sequences"), (media_id, "media")] {
+        let changed = rename(json!({"document":doc,"item":id,"name":"Новое имя 🎬"})).unwrap();
+        let request: ImportRequest = serde_json::from_value(json!({"document":changed["documentText"]})).unwrap();
+        let manifest = import(ApiJson(request)).await.unwrap().0;
+        let item = manifest[collection].as_array().unwrap().iter().find(|item| item["id"] == id).unwrap();
+        assert_eq!(item["name"], "Новое имя 🎬");
+        if collection == "media" { assert_eq!(item["offline"], true); assert_eq!(item["path"], "/offline/source.mov"); }
+    }
+}
+
+#[tokio::test]
+async fn all_project_item_kinds_import_with_exact_ids_names_and_numeric_order() {
+    use video_kadr_backend::{error::ApiJson, handlers::filmcraft_project::{import, ImportRequest}};
+    let (mut doc, _, _) = sample();
+    let kinds = ["Media", "Sequence", "Subclip", "Graphic", "AdjustmentLayer"];
+    let template = doc["project"]["items"].as_object().unwrap().values().next().unwrap().clone();
+    for (offset, kind) in kinds.iter().enumerate() {
+        let id = u64::MAX - offset as u64;
+        let mut item = template.clone();
+        item["id"] = json!(id); item["name"] = json!(format!("{kind} 🎬"));
+        // Sequence/media retain actual demo payloads; remaining variants are metadata-only.
+        let payload = doc["project"]["items"].as_object().unwrap().values().find_map(|v| v["kind"].get(*kind)).cloned().unwrap_or(json!({"width":1920,"height":1080,"rate":{"num":24,"den":1},"duration":254016000000i64,"parent":5,"range":{"start":0,"duration":254016000000i64},"restrict_trims":false}));
+        item["kind"] = json!({*kind:payload});
+        doc["project"]["items"][id.to_string()] = item;
+    }
+    let request: ImportRequest = serde_json::from_value(json!({"document":serde_json::to_string(&doc).unwrap()})).unwrap();
+    let manifest = import(ApiJson(request)).await.unwrap().0;
+    let rows = manifest["projectItems"].as_array().unwrap();
+    let ids: Vec<u64> = rows.iter().map(|row| row["id"].as_str().unwrap().parse().unwrap()).collect();
+    assert!(ids.windows(2).all(|pair|pair[0]<pair[1]));
+    for (offset, kind) in kinds.iter().enumerate() {
+        let id = (u64::MAX - offset as u64).to_string();
+        let row = rows.iter().find(|row|row["id"]==id).unwrap();
+        assert_eq!(row["kind"], *kind); assert_eq!(row["name"], format!("{kind} 🎬"));
+        let renamed = rename(json!({"document":manifest["documentText"],"item":id,"name":"новое"})).unwrap();
+        let request: ImportRequest = serde_json::from_value(json!({"document":renamed["documentText"]})).unwrap();
+        let updated = import(ApiJson(request)).await.unwrap().0;
+        assert_eq!(updated["projectItems"].as_array().unwrap().iter().find(|row|row["id"]==id).unwrap()["name"], "новое");
     }
 }

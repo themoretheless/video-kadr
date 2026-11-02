@@ -1,0 +1,30 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 1 test
+test sam_reidentification::tests::actual_front_back_close_person_identity ... visible continuity measured matches=3
+hard pose contiguous index=1 state=Ambiguous agreement=0 score=Some(0.7363986) views=0
+freeze bank before unqualified source view index=1
+heldout proposed queries index=8 [[0.4609375, 0.625], [0.7421875, 0.7638888955116272], [0.3984375, 0.9583333134651184], [0.2578125, 0.625]]
+hard pose heldout index=8 state=Occluded agreement=0 score=None
+hard pose positive coverage OPEN index=8 state=Occluded
+heldout proposed queries index=20 [[0.5234375, 0.625], [0.3359375, 0.7361111044883728], [0.1171875, 0.9861111044883728], [0.9140625, 0.625]]
+hard pose heldout index=20 state=Occluded agreement=0 score=None
+hard pose positive coverage OPEN index=20 state=Occluded
+real background helmet with foreground removed state=Occluded
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 42 filtered out; finished in 60.13s
+
+     Running unittests src/main.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-f7f4401ca1ad3e54)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/person_checkpoints.rs (backend/vision-runtime/target/debug/deps/person_checkpoints-5063d4d55fa4bc65)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

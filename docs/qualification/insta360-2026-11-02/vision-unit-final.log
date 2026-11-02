@@ -1,0 +1,52 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 45 tests
+test object_matting::tests::actual_learned_object_mask_matches_original_postprocessing ... ignored, requires pinned public IS-Net and ONNX Runtime
+test person_matting::tests::actual_ordered_recurrence_matches_original ... ignored, requires pinned RVM model and ORT
+test reference_brush::tests::bilinear_reads_between_pixels_and_clamps_at_the_edge ... ok
+test sam_reidentification::tests::actual_front_back_close_person_identity ... ignored, requires explicit private front-back-close subject video and pinned SAM
+test sam_reidentification::tests::actual_front_back_close_person_identity_coverage ... ignored, quality gate: requires private strong-pose footage; refusals are not recovery
+test sam_reidentification::tests::actual_neural_reidentification_on_private_photographic_material ... ignored, requires explicit private real-image fixture and pinned SAM runtime
+test sam_reidentification::tests::actual_photographic_twins_and_missing_identity_are_refused ... ignored, requires explicit private photographic fixture and pinned SAM
+test sam_reidentification::tests::actual_pinned_encoder_decoder_reacquires_a_returning_target ... ignored, requires pinned SlimSAM models and host ORT
+test sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap ... ignored, requires explicit private calibrated real-video sequence and pinned SAM
+test sam_reidentification::tests::actual_real_video_pose_and_exposure ... ignored, requires explicit private real-video frames and pinned SAM runtime
+test reference_brush::tests::the_picture_fits_the_square_by_its_long_edge ... ok
+test mask_apply::tests::malformed_mapping_mask_and_precancel_refuse_without_mutation ... ok
+test mask_edit::tests::blank_custom_eraser_tidy_and_transactional_refusal ... ok
+test reference_brush::tests::interior_points_lie_inside_the_region_and_overlap_is_one_with_itself ... ok
+test sam_instance::tests::neutral_uniform_surfaces_cannot_bypass_instance_evidence ... ok
+test sam_instance::tests::cancellation_also_stops_uniform_and_insufficient_feature_fast_paths ... ok
+test person_matting::tests::sizes_and_planes_match_source_contract ... ok
+test sam_instance::tests::local_texture_tracks_gain_and_translation_but_rejects_same_palette_other_instance ... ok
+test sam_reidentification::tests::semantic_support_survives_scale_growth_without_selecting_an_old_size_arm ... ok
+test sam_tracking::tests::malformed_and_cancelled_regions_refuse_without_mutation ... ok
+test sam_tracking::tests::overlap_threshold_ties_and_candidate_scores ... ok
+test sam_tracking::tests::prompts_have_exact_grid_ties_and_confidence_threshold ... ok
+test selfie_matting::tests::actual_selfie_matches_original_pre_postprocessing ... ignored, requires pinned Selfie model and ORT
+test selfie_matting::tests::source_preprocessing_and_probability_bytes_match_original ... ok
+test sam_instance::tests::matching_points_cannot_endorse_returned_background_scope ... ok
+test slim_sam::tests::learned_regions_match_original_and_reuse_embedding ... ignored, requires pinned SlimSAM models and host ORT
+test slim_sam::tests::tracked_regions_match_original_on_same_and_moving_frames ... ignored, requires pinned SlimSAM models and host ORT
+test tests::actual_learned_restoration_and_cancel ... ignored, requires verified Real-ESRGAN model and ONNX Runtime
+test sam_reidentification::tests::connected_background_spill_cannot_merge_two_known_instances ... ok
+test slim_sam::tests::geometry_padding_and_refusals ... ok
+test sam_reidentification::tests::bad_masks_and_cancellation_do_not_change_identity ... ok
+test sam_continuity::tests::flat_occluded_and_ambiguous_flow_never_prove_visible_identity ... ok
+test sam_reidentification::tests::illumination_change_preserves_identity_without_accepting_green_distractor ... ok
+test sam_reidentification::tests::close_same_instance_hypotheses_preserve_authored_extent ... ok
+test tests::edge_windows_and_byte_averaging ... ok
+test sam_reidentification::tests::lookalike_identity_is_ambiguous_and_color_distractor_is_rejected ... ok
+test sam_reidentification::tests::visible_flow_can_follow_known_twin_but_global_recovery_refuses_choice ... ok
+test sam_continuity::tests::measured_flow_supports_translation_exposure_and_reverse_direction ... ok
+test sam_reidentification::tests::immutable_neural_identity_reacquires_after_occlusion_at_different_position ... ok
+test object_matting::tests::original_preprocess_postprocess_byte_oracle_and_refusal ... ok
+test mask_apply::tests::original_cut_matches_crop_flip_alpha_and_parallel_row_boundaries ... ok
+test sam_reidentification::tests::bounded_frozen_views_cover_pose_variation_and_do_not_replace_seed ... ok
+test tests::original_concat_tile_and_downscale_oracle ... ok
+test mask_edit::tests::smart_fallback_uses_original_confidence_and_work_is_bounded ... ok
+test mask_edit::tests::corrections_and_feather_match_original_all_bytes ... ok
+
+test result: ok. 32 passed; 0 failed; 13 ignored; 0 measured; 0 filtered out; finished in 8.33s
+

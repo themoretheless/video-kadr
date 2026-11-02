@@ -1,0 +1,29 @@
+   Compiling video-kadr-vision-runtime v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vision-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.33s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 1 test
+test sam_reidentification::tests::actual_front_back_close_person_identity_coverage ... visible continuity measured matches=3
+hard pose contiguous index=1 state=Ambiguous agreement=0 score=Some(0.7363986) views=0
+freeze bank before unqualified source view index=1
+heldout proposed queries index=8 [[0.4609375, 0.625], [0.7421875, 0.7638888955116272], [0.3984375, 0.9583333134651184], [0.2578125, 0.625]]
+hard pose heldout index=8 state=Occluded agreement=0 score=None
+hard pose positive coverage OPEN index=8 state=Occluded
+heldout proposed queries index=20 [[0.5234375, 0.625], [0.3359375, 0.7361111044883728], [0.1171875, 0.9861111044883728], [0.9140625, 0.625]]
+hard pose heldout index=20 state=Occluded agreement=0 score=None
+hard pose positive coverage OPEN index=20 state=Occluded
+real background helmet with foreground removed state=Occluded
+
+thread 'sam_reidentification::tests::actual_front_back_close_person_identity_coverage' panicked at src/sam_reidentification.rs:1575:9:
+hard pose qualification incomplete: ["unqualified positive index8 state=Occluded", "unqualified positive index20 state=Occluded"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sam_reidentification::tests::actual_front_back_close_person_identity_coverage
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 43 filtered out; finished in 99.83s
+
+error: test failed, to rerun pass `--lib`

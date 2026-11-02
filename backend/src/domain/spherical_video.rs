@@ -342,7 +342,7 @@ impl SphericalVideo {
         if let Some(rs)=self.rolling_shutter.as_ref().filter(|r|r.readout_seconds>0.){projection.rolling=Some(super::rolling_shutter::RollingFrame::prepare(rs,&self.orientation,source_time+self.orientation_offset_seconds,h,checkpoint)?);}
         let flow=if self.stitching.mode==super::spherical_optical_flow::Mode::OpticalFlow&&self.stitching.strength>0.{Some(super::spherical_optical_flow::Flow::prepare_with_priority(|lens,u,v|self.lens_sample_at(&rgb,&projection,lens,vr_sphere::dir((u-0.5)*TAU,(0.5-v)*PI),time_seconds).map(|s|(s.pixel,s.priority)),self.stitching,checkpoint)?)}else{None};
         let mut output=Vec::with_capacity(256*256);
-        for y in 0..256{checkpoint()?;for x in 0..256{let uv=[(x as f64+0.5)/256.,(y as f64+0.5)/256.];let d=vr_sphere::dir((uv[0]-0.5)*TAU,(0.5-uv[1])*PI);let displacement=flow.as_ref().and_then(|f|f.displacement(uv[0],uv[1]));let mut best=0f32;
+        for y in 0..256{checkpoint()?;for x in 0..256{let uv=[(x as f64+0.5)/256.,(y as f64+0.5)/256.];let d=vr_sphere::dir((uv[0]-0.5)*TAU,(0.5-uv[1])*PI);let displacement=flow.as_ref().and_then(|f|f.render_displacement(uv[0],uv[1]));let mut best=0f32;
             let mut colors=[None,None];let mut masks=[None,None];
             for lens in 0..2{let warped=if let Some((delta,confidence))=displacement{let factor=(if lens==0{-0.5}else{0.5})*self.stitching.strength*confidence;vr_sphere::dir((uv[0]+delta[0]*factor-0.5)*TAU,(0.5-(uv[1]+delta[1]*factor).clamp(0.,1.))*PI)}else{d};
                 masks[lens]=self.lens_sample_at(&probability,&projection,lens,warped,time_seconds).or_else(||self.lens_sample_at(&probability,&projection,lens,d,time_seconds));
@@ -439,7 +439,7 @@ impl SphericalVideo {
                     vr_sphere::sample_dir(&src, d)
                 } else {
                     let uv=if flow.is_some(){[d[0].atan2(d[2])/TAU+0.5,0.5-d[1].clamp(-1.,1.).asin()/PI]}else{[0.,0.]};
-                    let displacement=flow.as_ref().and_then(|field|field.displacement(uv[0],uv[1]));
+                    let displacement=flow.as_ref().and_then(|field|field.render_displacement(uv[0],uv[1]));
                     let mut sum=[0.;4];let mut total=0.;
                     let mut samples=[None,None];
                     for lens in 0..2 {

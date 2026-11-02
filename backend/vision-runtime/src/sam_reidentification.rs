@@ -1253,6 +1253,25 @@ mod tests {
                 .map(|m| crate::sam_tracking::overlap(m, &saved, &cancel).unwrap())
                 .unwrap_or(0.);
             println!("saved real frame={index} state={state:?} agreement={agreement}");
+            if let Ok(folder) = std::env::var("VIDEO_KADR_REID_DIAGNOSTIC") {
+                std::fs::create_dir_all(&folder).unwrap();
+                for (name, mask) in [
+                    ("previous", Some(&previous)),
+                    ("reference", Some(&saved)),
+                    ("actual", found.as_ref()),
+                ] {
+                    if let Some(mask) = mask {
+                        image::save_buffer(
+                            Path::new(&folder).join(format!("office-{index}-{name}.png")),
+                            &mask.bytes,
+                            256,
+                            256,
+                            image::ColorType::L8,
+                        )
+                        .unwrap();
+                    }
+                }
+            }
             if state == State::Ambiguous {
                 // A hash-valid propagated shirt/arm plane is not identity truth.
                 // This real frame has competing hypotheses; freeze before it.
@@ -1331,6 +1350,14 @@ mod tests {
     #[test]
     #[ignore = "requires explicit private front-back-close subject video and pinned SAM"]
     fn actual_front_back_close_person_identity() {
+        front_back_close_person_identity(false);
+    }
+    #[test]
+    #[ignore = "quality gate: requires private strong-pose footage; refusals are not recovery"]
+    fn actual_front_back_close_person_identity_coverage() {
+        front_back_close_person_identity(true);
+    }
+    fn front_back_close_person_identity(require_coverage: bool) {
         ort::init_from(std::env::var("VIDEO_KADR_TEST_CHATTERBOX_LIBRARY").unwrap())
             .unwrap()
             .commit();
@@ -1541,7 +1568,9 @@ mod tests {
             } else {
                 assert!(found.is_none());
                 println!("hard pose positive coverage OPEN index={index} state={state:?}");
-                if std::env::var_os("VIDEO_KADR_REQUIRE_HARD_COVERAGE").is_some() {
+                if require_coverage
+                    || std::env::var_os("VIDEO_KADR_REQUIRE_HARD_COVERAGE").is_some()
+                {
                     failures.push(format!("unqualified positive index{index} state={state:?}"));
                 }
             }

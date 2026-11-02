@@ -1,0 +1,20 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 1 test
+test sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap ... visible continuity measured matches=6
+saved real frame=1 state=Tracked agreement=0.30625686
+
+thread 'sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap' panicked at src/sam_reidentification.rs:1264:13:
+assertion failed: agreement >= 0.5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 43 filtered out; finished in 55.74s
+
+error: test failed, to rerun pass `--lib`

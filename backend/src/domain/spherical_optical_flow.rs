@@ -58,6 +58,7 @@ struct Vector {
     dx: f64,
     dy: f64,
     confidence: f64,
+    support: f64,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Correspondence {
@@ -581,6 +582,7 @@ impl Flow {
                     dx,
                     dy,
                     confidence: forward.min(backward),
+                    support: 1.,
                 };
                 admitted += 1;
             }
@@ -660,6 +662,7 @@ impl Flow {
                 v.dx /= v.confidence;
                 v.dy /= v.confidence;
                 v.confidence = (v.confidence / coverage[i].max(1.)).clamp(0., 1.);
+                v.support = coverage[i].clamp(0., 1.);
             }
         }
         // Rasterize locally coherent source-grid triangles at their actual
@@ -727,6 +730,7 @@ impl Flow {
                                 continue;
                             }
                             let value = Vector {
+                                support: 1.,
                                 dx: (0..3).map(|i| anchors[i].dx * weights[i]).sum(),
                                 dy: (0..3).map(|i| anchors[i].dy * weights[i]).sum(),
                                 confidence: (0..3)
@@ -768,7 +772,7 @@ impl Flow {
                     (x as f64 + 0.5) / self.width as f64,
                     (y as f64 + 0.5) / self.height as f64,
                 );
-                let displacement = self.displacement(u, v);
+                let displacement = self.render_displacement(u, v);
                 for lens in 0..2 {
                     let p = if let Some((delta, c)) = displacement {
                         let factor = if lens == 0 { -0.5 } else { 0.5 } * config.strength * c;
@@ -844,6 +848,16 @@ impl Flow {
     /// smoothly fade the warp to the original calibrated blend; inconsistent
     /// supported vectors at depth/occlusion boundaries never get averaged.
     pub fn displacement(&self, u: f64, v: f64) -> Option<([f64; 2], f64)> {
+        self.interpolate(u, v)
+            .map(|(delta, confidence, _)| (delta, confidence))
+    }
+    /// Geometry fades only with missing spatial support, not the NCC score.
+    /// A fully covered, admitted match reaches its measured midpoint.
+    pub fn render_displacement(&self, u: f64, v: f64) -> Option<([f64; 2], f64)> {
+        self.interpolate(u, v)
+            .map(|(delta, _, support)| (delta, support))
+    }
+    fn interpolate(&self, u: f64, v: f64) -> Option<([f64; 2], f64, f64)> {
         if !u.is_finite() || !v.is_finite() || !(0. ..=1.).contains(&v) {
             return None;
         }
@@ -907,6 +921,81 @@ impl Flow {
         Some((
             [dx / self.width as f64, dy / self.height as f64],
             confidence,
+            points
+                .iter()
+                .zip(weights)
+                .map(|(p, w)| p.support * w)
+                .sum::<f64>()
+                .clamp(0., 1.),
         ))
+    }
+}
+
+#[cfg(test)]
+mod render_support_tests {
+    use super::*;
+    fn field(nodes: Vec<Vector>) -> Flow {
+        Flow {
+            width: 8,
+            height: 8,
+            cols: 2,
+            rows: 2,
+            step: 4,
+            vectors: nodes,
+            midpoint_vectors: vec![],
+            ownership: vec![],
+            admitted: 4,
+            candidates: 4,
+        }
+    }
+    #[test]
+    fn fully_supported_geometry_reaches_measured_midpoint_at_lower_ncc() {
+        let f = field(vec![
+            Vector {
+                dx: 2.,
+                dy: 0.,
+                confidence: 0.4,
+                support: 1.
+            };
+            4
+        ]);
+        let (delta, confidence) = f.displacement(0.3125, 0.3125).unwrap();
+        let (geometry, support) = f.render_displacement(0.3125, 0.3125).unwrap();
+        assert_eq!(delta, [0.25, 0.]);
+        assert_eq!(geometry, delta);
+        assert!((confidence - 0.4).abs() < 1e-12);
+        assert_eq!(support, 1.);
+        assert_eq!(geometry[0] * support * 0.5, 0.125);
+    }
+    #[test]
+    fn missing_spatial_support_still_fades_without_inventing_a_vector() {
+        let mut nodes = vec![Vector::default(); 4];
+        nodes[0] = Vector {
+            dx: 2.,
+            dy: 0.,
+            confidence: 0.4,
+            support: 1.,
+        };
+        let f = field(nodes);
+        let (delta, support) = f.render_displacement(0.3125, 0.3125).unwrap();
+        assert_eq!(delta, [0.25, 0.]);
+        assert_eq!(support, 0.25);
+        assert!(field(vec![Vector::default(); 4])
+            .render_displacement(0.3125, 0.3125)
+            .is_none());
+    }
+    #[test]
+    fn competing_depths_do_not_gain_render_support() {
+        let mut nodes = vec![
+            Vector {
+                dx: 2.,
+                dy: 0.,
+                confidence: 0.4,
+                support: 1.
+            };
+            4
+        ];
+        nodes[1].dx = 6.;
+        assert!(field(nodes).render_displacement(0.3125, 0.3125).is_none());
     }
 }

@@ -41,7 +41,7 @@ export function startAgentActivity(actor:string,tool:string,args:unknown,work:{i
  const id=crypto.randomUUID()
  actor=String(actor).slice(0,128);tool=String(tool).slice(0,128)
  const client=agentConnections.items.find(item=>item.id===actor)
- const commandRead=tool==='command_run'&&args!==null&&typeof args==='object'&&'id' in args&&(args.id==='project.inspect'||args.id==='sequence.inspect'||args.id==='source.inspect'||args.id==='effects.list'||args.id==='masks.list'||args.id==='jobs.list')
+ const commandRead=tool==='command_run'&&args!==null&&typeof args==='object'&&'id' in args&&(args.id==='project.inspect'||args.id==='sequence.inspect'||args.id==='source.inspect'||args.id==='effects.list'||args.id==='masks.list'||args.id==='jobs.list'||args.id==='edit.selectLabelGroup'||args.id==='edit.selectAllMatching'||args.id==='project.selectAll'||args.id==='project.deselectAll'||args.id==='project.select')
  const kind=reads.has(tool)||commandRead?'read':tool==='restore_checkpoint'?'restore':tool.includes('checkpoint')||tool==='begin_agent_session'?'checkpoint':'operation'
  agentActivity.activities=[...agentActivity.activities,withEffect({id,actor,client:client?.client,clientVersion:client?.version,tool,kind,sessionId:work?.owner===actor?work.id:null,startedAt:Date.now(),endedAt:null,durationMs:null,state:'running',args:activityDetails(args),error:null,historyIds:[],effect:null})]
  agentActivity.revision++

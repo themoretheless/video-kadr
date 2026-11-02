@@ -26,7 +26,7 @@ fn manifest(document:&SourceProjectDocument)->AppResult<Value> {
             .filter_map(|clip|Some(clip["start"].as_i64()? as i128+clip["duration"].as_i64()? as i128)).max().unwrap_or(0).max(0);
         let clips:Vec<_>=["video_tracks","audio_tracks"].into_iter().flat_map(|kind|sequence[kind].as_array().into_iter().flatten().map(move |track|(kind,track)))
             .flat_map(|(kind,track)|track["items"].as_array().into_iter().flatten().map(move |clip|json!({
-                "id":clip["id"].as_u64().map(|v|v.to_string()),"name":clip["name"],
+                "id":clip["id"].as_u64().map(|v|v.to_string()),"name":clip["name"],"label":clip["label"],
                 "trackId":track["id"].as_u64().map(|v|v.to_string()),"trackKind":kind,
                 "locked":track["locked"].as_bool().unwrap_or(false),
                 "linkId":clip["link"].as_u64().map(|v|v.to_string()),
@@ -44,11 +44,15 @@ fn manifest(document:&SourceProjectDocument)->AppResult<Value> {
         let den=254_016_000_000i128*rate.den as i128;let frames=(end*rate.num as i128+den-1)/den;
         json!({"transitions":transitions,"clips":clips,"id":id.to_string(),"name":index.item(id).and_then(|v|v.get("name")),"settings":sequence["settings"],"sampleRate":sequence["settings"]["sample_rate"],"durationSeconds":end as f64/254_016_000_000.,"durationFrames":frames.to_string()})
     }).collect();
+    let project_items:Vec<_>=index.items().map(|(id,item)|json!({
+        "id":id.to_string(),"name":item["name"],"label":item["label"],
+        "kind":item["kind"].as_object().and_then(|kind|kind.keys().next())
+    })).collect();
     let media:Vec<_>=document.project()["items"].as_object().into_iter().flat_map(|items|items.iter()).filter_map(|(id,item)| {
         let file=item.pointer("/kind/Media/media/File/path")?.as_str()?;
         Some(json!({"id":id,"name":item["name"],"path":file,"offline":item.pointer("/kind/Media/offline").and_then(Value::as_bool).unwrap_or(false)}))
     }).collect();
-    Ok(json!({"documentText":String::from_utf8(document.encode_preserved().map_err(|e|AppError::bad_request(e.to_string()))?).map_err(|e|AppError::bad_request(e.to_string()))?,"document":document.envelope,"originalSchema":document.original_schema,"sequences":sequences,"media":media}))
+    Ok(json!({"documentText":String::from_utf8(document.encode_preserved().map_err(|e|AppError::bad_request(e.to_string()))?).map_err(|e|AppError::bad_request(e.to_string()))?,"document":document.envelope,"originalSchema":document.original_schema,"sequences":sequences,"media":media,"projectItems":project_items,"labelPalette":crate::domain::filmcraft_labels::palette(),"projectBins":crate::domain::filmcraft_bin_rename::list(document).map_err(|e|AppError::bad_request(e.to_string()))?}))
 }
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]

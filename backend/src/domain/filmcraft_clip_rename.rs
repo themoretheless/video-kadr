@@ -23,7 +23,7 @@ struct Request {
 }
 // Source command IDs use u64_p: nonnumeric values are absent and numeric
 // floats cast to u64. Decimal strings extend transport for exact large IDs.
-fn target_id(value: Option<Value>) -> Result<Option<u64>> {
+pub(super) fn target_id(value: Option<Value>) -> Result<Option<u64>> {
     match value {
         Some(Value::String(s)) => Ok(Some(s.parse().context("invalid source ID")?)),
         Some(v) => Ok(v.as_u64().or_else(|| v.as_f64().map(|v| v as u64))),

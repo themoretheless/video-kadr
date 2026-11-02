@@ -1,10 +1,12 @@
 <script lang="ts">
-  import type { FilmcraftSourceEditFence } from '$lib/api'
+  import type { FilmcraftSourceEditFence, FilmcraftLabelGroupSelection } from '$lib/api'
   import { untrack } from 'svelte'
   import { MonitorQueue } from '$lib/filmcraft/monitor-queue'
   import { trimFilmcraftToPlayhead, type FilmcraftTrimShift, trimFilmcraftEditPoints, getFilmcraftNearestEditPoints, type FilmcraftNearestEditKind, getFilmcraftTrimMonitor, type FilmcraftTrimMonitor, applyFilmcraftSelectionTransitions, setFilmcraftTransition, applyFilmcraftTransition, getFilmcraftTransitions, type FilmcraftTransitionCatalogEntry, type FilmcraftTransitionParameter, importFilmcraftProject, exportFilmcraftAudio, exportFilmcraftFrame, trimFilmcraftProject, slipFilmcraftProject, stretchFilmcraftProject, rollFilmcraftProject, slideFilmcraftProject, deleteFilmcraftClips, closeFilmcraftGap, razorFilmcraftProject, removeFilmcraftRange, copyFilmcraftClips, pasteFilmcraftClips, type FilmcraftClipboardResult, type FilmcraftImportResult } from '$lib/api'
   import { parseFilmcraftSession, encodeFilmcraftSession, validTransitionDurationText } from '$lib/filmcraft/session'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
+  import FilmcraftLabelControls from './FilmcraftLabelControls.svelte'
+  import FilmcraftBinActions from './FilmcraftBinActions.svelte'
   import FilmcraftRenameControls from './FilmcraftRenameControls.svelte'
   import FilmcraftScalarParameterEditor from './FilmcraftScalarParameterEditor.svelte'
   import FilmcraftProgramPreview from './FilmcraftProgramPreview.svelte'
@@ -67,7 +69,7 @@
     const text = project?.documentText; const selectedSequence = sequenceId; const point = editPoints[0]; const retry = monitorRetry
     if (!monitorOpen || !text || !point || !selectedSequence) { untrack(() => monitorQueue.clear()); return }
     void retry
-    const sources = Object.fromEntries(Object.entries(bindings).filter(([,id])=>id))
+    const sources = Object.fromEntries(Object.entries(activeBindings).filter(([,id])=>id))
     const key = JSON.stringify([selectedSequence, point.clipId, point.edge, point.kind, token, sources])
     const request = { input: { document: text, sequenceId: selectedSequence, clipId: point.clipId, edge: point.edge, includeFrames: true, sources }, token, retry }
     untrack(() => { monitorError = ''; monitorQueue.submit(key, request) })
@@ -91,6 +93,8 @@
   let editPointEdge = $state<'in' | 'out'>('out')
   let rightClipId = $state('')
   let extraSelectedIds = $state<string[]>([])
+  let projectSelection = $state<string[]>([])
+  const timelineSelection = $derived([clipId, ...extraSelectedIds].filter(id => sequence?.clips?.some(clip => clip.id === id)))
   let edge = $state<'in' | 'out'>('out')
   let trimMode = $state<'regular' | 'ripple'>('regular')
   let trimFrames = $state(1)
@@ -108,14 +112,47 @@
     if (!ids.includes(clipId)) { clipId = ''; rightClipId = '' }
     editPoints = editPoints.filter((point) => ids.includes(point.clipId))
     extraSelectedIds = extraSelectedIds.filter((id) => ids.includes(id))
+    const projectIds = new Set(document.projectItems?.map(item => item.id) ?? [...document.sequences.map(item => item.id), ...document.media.map(item => item.id)])
+    projectSelection = projectSelection.filter(id => projectIds.has(id))
     if (editingTransitionId && !document.sequences.find((item) => item.id === sequenceId)?.transitions?.some((item) => item.id === editingTransitionId)) { editingTransitionId = ''; transitionDraft = {} }
   }
-  function commitEdit(edited: FilmcraftImportResult, expected?: FilmcraftSourceEditFence) {
+  let renameBinId = $state('')
+  const renameBins = $derived(project?.projectBins?.filter(bin => bin.parentId !== null) ?? [])
+  let renameItemId = $state('')
+  const projectItemLabels = { Media: 'Медиа', Sequence: 'Секвенция', Subclip: 'Подклип', Graphic: 'Графика', AdjustmentLayer: 'Корректирующий слой' }
+  const renameItems = $derived(project ? project.projectItems?.map(item => ({ ...item, kind: projectItemLabels[item.kind] })) ?? [...project.sequences.map(item => ({ ...item, kind: 'Секвенция' })), ...project.media.map(item => ({ ...item, kind: 'Медиа' }))] : [])
+  function acceptsFence(expected?: FilmcraftSourceEditFence) {
     if (expected && (project?.documentText !== expected.document || sequenceId !== expected.sequenceId || clipId !== expected.clipId || token !== expected.token)) return false
-    if (expected?.sourceBindings && (Object.keys(expected.sourceBindings).length !== Object.keys(bindings).length || Object.entries(expected.sourceBindings).some(([id, source]) => bindings[id] !== source))) return false
+    if (expected?.binId !== undefined && (expected.binId !== renameBinId || !renameBins.some(bin => bin.id === expected.binId))) return false
+    if (expected?.itemId !== undefined && (expected.itemId !== renameItemId || !renameItems.some(item => item.id === expected.itemId))) return false
+    if (expected?.sourceBindings && (Object.keys(expected.sourceBindings).length !== Object.keys(activeBindings).length || Object.entries(expected.sourceBindings).some(([id, source]) => activeBindings[id] !== source))) return false
     if (expected?.timeFrames !== undefined && expected.timeFrames !== editPositionFrames) return false
     if (expected?.timeTicks !== undefined && expected.timeTicks !== (pastePositionTicks || null)) return false
-    if (project && edited.documentText !== project.documentText) { undo = boundedHistory([...undo, project]); redo = [] }
+    if (expected?.projectSelection && JSON.stringify(expected.projectSelection) !== JSON.stringify(projectSelection)) return false
+    if (expected?.timelineSelection && JSON.stringify(expected.timelineSelection) !== JSON.stringify(timelineSelection)) return false
+    return true
+  }
+  function adoptLabelSelection(result: FilmcraftLabelGroupSelection, expected: FilmcraftSourceEditFence) {
+    if (!acceptsFence(expected)) return false
+    if ('clips' in result) {
+      if (result.clips.some(id => !sequence?.clips?.some(clip => clip.id === id))) return false
+      clipId = result.clips[0] || ''; extraSelectedIds = result.clips.slice(1); rightClipId = ''; editPoints = []
+    } else {
+      const ids = new Set(project?.projectItems?.map(item => item.id) ?? [])
+      if (result.items.some(id => !ids.has(id))) return false
+      projectSelection = [...result.items]
+    }
+    return true
+  }
+  function commitEdit(edited: FilmcraftImportResult, expected?: FilmcraftSourceEditFence) {
+    if (!acceptsFence(expected)) return false
+    // Original Duplicate pushes an edit frame even when all requested IDs are absent.
+    if (project && (edited.documentText !== project.documentText || 'duplicatedItemIds' in edited && Array.isArray(edited.duplicatedItemIds))) { undo = boundedHistory([...undo, project]); redo = [] }
+    if ('duplicateSources' in edited && Array.isArray(edited.duplicateSources)) {
+      const inherited = { ...bindings }
+      for (const record of edited.duplicateSources) if (edited.media.some(media => media.id === record.id) && inherited[record.sourceId]) inherited[record.id] = inherited[record.sourceId]
+      bindings = inherited
+    }
     clearDownload(); pointTrimCount = null; batchTransitionCount = null; project = edited; reconcileSelection(edited)
     return true
   }
@@ -290,7 +327,9 @@
     } catch (failure) { if (!controller.signal.aborted) error = failure instanceof Error ? failure.message : String(failure) }
     finally { busy = false }
   }
+  // Retain inactive choices for document Redo, but never send absent source IDs.
   let bindings = $state<Record<string, string>>({})
+  const activeBindings = $derived(Object.fromEntries(Object.entries(bindings).filter(([id]) => project?.media.some(media => media.id === id))))
   let start = $state(0)
   let end = $state(1)
   let format = $state<'wav' | 'aiff'>('wav')
@@ -333,7 +372,7 @@
       const loaded = await importFilmcraftProject(session?.documentText || text, controller.signal)
       if (controller.signal.aborted) return
       if (session && !loaded.sequences.some((item) => item.id === session.sequenceId)) throw new Error('Секвенция из сессии отсутствует в проекте')
-      clearDownload(); resetTrimShift(); pointTrimCount = null; nearestTargets = []; editPoints = []; batchTransitionCount = null; editingTransitionId = ''; transitionDraft = {}; transitionTarget = 'edge'; clipboard = null; pastePlayheadTicks = ''; pastePositionTicks = ''; editPositionFrames = '0'; undo = []; redo = []; extraSelectedIds = []; rightClipId = ''; clipId = ''; project = loaded; sequenceId = loaded.sequences[0]?.id || ''; bindings = {}
+      clearDownload(); resetTrimShift(); pointTrimCount = null; nearestTargets = []; editPoints = []; batchTransitionCount = null; editingTransitionId = ''; transitionDraft = {}; transitionTarget = 'edge'; clipboard = null; pastePlayheadTicks = ''; pastePositionTicks = ''; editPositionFrames = '0'; undo = []; redo = []; extraSelectedIds = []; rightClipId = ''; clipId = ''; renameItemId = ''; renameBinId = ''; projectSelection = []; project = loaded; sequenceId = loaded.sequences[0]?.id || ''; bindings = {}
       for (const media of loaded.media.filter((media) => !media.offline)) {
         const name = media.path.split(/[\\/]/).pop()
         const matches = files.filter((entry) => (entry.originalFilename ?? entry.filename) === name)
@@ -362,7 +401,7 @@
   function saveSession() {
     if (!project || !valid) return
     try {
-      const text = encodeFilmcraftSession({ format: 'video-kadr.filmcraft-session', version: 1, documentText: project.documentText, sequenceId, sources: Object.fromEntries(Object.entries(bindings).filter(([, id]) => id)), start, end, audioFormat: format, bits, channels, transitionSettings: { video: { effect: batchVideoEffect, duration: { value: batchVideoValue, unit: batchVideoUnit } }, audio: { effect: batchAudioEffect, duration: { value: batchAudioValue, unit: batchAudioUnit } }, single: { value: transitionFrames, unit: transitionUnit } } })
+      const text = encodeFilmcraftSession({ format: 'video-kadr.filmcraft-session', version: 1, documentText: project.documentText, sequenceId, sources: Object.fromEntries(Object.entries(activeBindings).filter(([, id]) => id)), start, end, audioFormat: format, bits, channels, transitionSettings: { video: { effect: batchVideoEffect, duration: { value: batchVideoValue, unit: batchVideoUnit } }, audio: { effect: batchAudioEffect, duration: { value: batchAudioValue, unit: batchAudioUnit } }, single: { value: transitionFrames, unit: transitionUnit } } })
       if (new Blob([text]).size > 24 * 1024 * 1024) throw new Error('Сессия слишком большая: скачайте исходный проект отдельно')
       saveText(text, 'project.filmcraft-session.json')
     } catch (failure) { error = failure instanceof Error ? failure.message : String(failure) }
@@ -371,7 +410,7 @@
     if (!project || !sequence || busy) return
     busy = true; error = ''; controller = new AbortController()
     try {
-      const blob = await exportFilmcraftFrame({ document: project.documentText, sequenceId, timeFrames: editPositionFrames, sources: Object.fromEntries(Object.entries(bindings).filter(([, id]) => id)) }, token, controller.signal)
+      const blob = await exportFilmcraftFrame({ document: project.documentText, sequenceId, timeFrames: editPositionFrames, sources: Object.fromEntries(Object.entries(activeBindings).filter(([, id]) => id)) }, token, controller.signal)
       if (!controller.signal.aborted) saveBlob(blob, 'frame.png')
     } catch (failure) { if (!controller.signal.aborted) error = failure instanceof Error ? failure.message : String(failure) }
     finally { busy = false }
@@ -380,7 +419,7 @@
     if (!project || !sequence || !valid || busy) return
     busy = true; error = ''; clearDownload(); controller = new AbortController()
     try {
-      const sources = Object.fromEntries(Object.entries(bindings).filter(([, id]) => id && !library.some(file => file.id === id && !/\.wav$/i.test(file.filename))))
+      const sources = Object.fromEntries(Object.entries(activeBindings).filter(([, id]) => id && !library.some(file => file.id === id && !/\.wav$/i.test(file.filename))))
       const blob = await exportFilmcraftAudio({ document: project.documentText, sequenceId, startSample: Math.floor(start * sequence.sampleRate), frames: Math.floor(end * sequence.sampleRate) - Math.floor(start * sequence.sampleRate), channels, bits, format, sources }, token, controller.signal)
       if (!controller.signal.aborted) download = URL.createObjectURL(blob)
     } catch (failure) { if (!controller.signal.aborted) error = failure instanceof Error ? failure.message : String(failure) }
@@ -406,10 +445,16 @@
       <button type="button" disabled={busy} onclick={() => project && saveText(project.documentText, 'project.filmcraft.json')}>Скачать проект</button>
       <button type="button" disabled={busy || !valid} onclick={saveSession}>Сохранить рабочую сессию</button>
         <label>Позиция правки, кадров <input aria-label="Позиция правки, кадров" type="text" inputmode="numeric" value={editPositionFrames} oninput={(event) => { editPositionFrames = event.currentTarget.value; pastePositionTicks = '' }} disabled={busy} /></label>
+      <FilmcraftLabelControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} palette={project.labelPalette ?? []} bind:selected={projectSelection} clipSelection={timelineSelection} onselection={adoptLabelSelection} clipLabel={sequence?.clips?.find(clip => clip.id === clipId)?.label} disabled={busy} onedit={commitEdit} />
+      <FilmcraftBinActions document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} bins={project.projectBins ?? []} bind:selected={projectSelection} disabled={busy} onedit={commitEdit} />
+      {#if renameBins.length}<label>Папка проекта <select aria-label="Папка проекта Filmcraft" value={renameBinId} onchange={(event) => { renameBinId = event.currentTarget.value }} disabled={busy}><option value="">Выбрать папку для переименования</option>{#each renameBins as bin}<option value={bin.id}>{'—'.repeat(Math.min(bin.depth, 10))} {bin.name || bin.id}</option>{/each}</select></label>{/if}
+      {#if renameBinId && renameBins.some(bin => bin.id === renameBinId)}<FilmcraftRenameControls document={project.documentText} {sequenceId} {clipId} {token} binId={renameBinId} name={renameBins.find(bin => bin.id === renameBinId)?.name || ''} disabled={busy} onedit={commitEdit} />{/if}
+      <label>Элемент проекта <select aria-label="Элемент проекта Filmcraft" value={renameItemId} onchange={(event) => { renameItemId = event.currentTarget.value }} disabled={busy}><option value="">Выбрать элемент для переименования</option>{#each renameItems as item}<option value={item.id}>{item.kind}: {item.name || item.id}</option>{/each}</select></label>
+      {#if renameItemId && renameItems.some(item => item.id === renameItemId)}<FilmcraftRenameControls document={project.documentText} {sequenceId} {clipId} {token} itemId={renameItemId} name={renameItems.find(item => item.id === renameItemId)?.name || ''} disabled={busy} onedit={commitEdit} />{/if}
       {#if clipId}<FilmcraftRenameControls document={project.documentText} {sequenceId} {clipId} {token} name={sequence?.clips?.find(clip => clip.id === clipId)?.name || ''} disabled={busy} onedit={commitEdit} />{/if}
-      {#if clipId}<FilmcraftScalarParameterEditor trackKind={sequence?.clips?.find(clip => clip.id === clipId)?.trackKind === 'audio_tracks' ? 'Audio' : 'Video'} sources={bindings} document={project.documentText} {sequenceId} {clipId} {token} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />{/if}
-      {#key sequenceId}<FilmcraftVideoExportPanel document={project.documentText} {sequenceId} sources={bindings} imageSources={library.filter(entry => entry.kind === 'source' && (entry.mediaType === 'image' || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(entry.filename)))} {token} initialFrames={sequence?.durationFrames ?? '24'} disabled={busy} />{/key}
-      <FilmcraftProgramPreview sources={bindings} document={project.documentText} {sequenceId} timeFrames={editPositionFrames} {token} />
+      {#if clipId}<FilmcraftScalarParameterEditor trackKind={sequence?.clips?.find(clip => clip.id === clipId)?.trackKind === 'audio_tracks' ? 'Audio' : 'Video'} sources={activeBindings} document={project.documentText} {sequenceId} {clipId} {token} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />{/if}
+      {#key sequenceId}<FilmcraftVideoExportPanel document={project.documentText} {sequenceId} sources={activeBindings} imageSources={library.filter(entry => entry.kind === 'source' && (entry.mediaType === 'image' || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(entry.filename)))} {token} initialFrames={sequence?.durationFrames ?? '24'} disabled={busy} />{/key}
+      <FilmcraftProgramPreview sources={activeBindings} document={project.documentText} {sequenceId} timeFrames={editPositionFrames} {token} />
       {#if sequence?.clips?.length}
         <label>Клип <select aria-label="Клип Filmcraft" value={clipId} onchange={(event) => { clipId = event.currentTarget.value; rightClipId = ''; extraSelectedIds = [] }} disabled={busy}><option value="">Выберите клип</option>{#each sequence.clips as clip}<option value={clip.id}>{clip.name || clip.id} · {clip.trackKind === 'video_tracks' ? 'Видео' : 'Звук'} {clip.trackId}</option>{/each}</select></label>
         <label>Режим <select aria-label="Режим обрезки" value={trimMode} onchange={(event) => trimMode = event.currentTarget.value as 'regular' | 'ripple'} disabled={busy}><option value="regular">Обычная</option><option value="ripple">Со сдвигом</option></select></label>
@@ -420,7 +465,7 @@
         <button type="button" disabled={busy || !clipId || !Number.isSafeInteger(trimFrames)} onclick={() => editClip('slip')}>Сдвинуть исходный участок</button>
         <button type="button" disabled={busy || !clipId || !Number.isSafeInteger(trimFrames)} onclick={() => editClip('stretch')}>Растянуть со сменой скорости</button>
         <button type="button" disabled={busy || !clipId || !Number.isSafeInteger(trimFrames)} onclick={() => editClip('slide')}>Переместить с подрезкой соседей</button>
-        <label>Выбрать также <select aria-label="Дополнительные клипы" multiple size="3" value={extraSelectedIds} onchange={(event) => extraSelectedIds = [...event.currentTarget.selectedOptions].map((option) => option.value)} disabled={busy}>{#each sequence.clips.filter((clip) => clip.id !== clipId) as clip}<option value={clip.id}>{clip.name || clip.id} · {clip.trackKind === 'video_tracks' ? 'Видео' : 'Звук'} {clip.trackId}{clip.locked ? ' · Заблокирован' : ''}</option>{/each}</select></label>
+        <label>Выбрать также <select aria-label="Дополнительные клипы" multiple size="3" value={extraSelectedIds} onchange={(event) => extraSelectedIds = [...event.currentTarget.options].filter(option => option.selected).map((option) => option.value)} disabled={busy}>{#each sequence.clips.filter((clip) => clip.id !== clipId) as clip}<option value={clip.id}>{clip.name || clip.id} · {clip.trackKind === 'video_tracks' ? 'Видео' : 'Звук'} {clip.trackId}{clip.locked ? ' · Заблокирован' : ''}</option>{/each}</select></label>
         <span>Выбрано клипов: {selectedIds.length}</span>
         <button type="button" disabled={busy || !clipId || !validEditPosition} onclick={() => editClip('close-gap')}>Закрыть зазор на дорожке</button>
         <button type="button" disabled={busy || !clipId || !validEditPosition} onclick={() => editClip('razor')}>Разрезать выбранные клипы</button>
@@ -472,7 +517,7 @@
             <label>Длительность звука <input aria-label="Длительность пакетного аудиоперехода" inputmode="decimal" bind:value={batchAudioValue} disabled={busy} /></label><label>Единицы <select aria-label="Единицы пакетного аудиоперехода" value={batchAudioUnit} onchange={(event) => { batchAudioUnit = event.currentTarget.value as 'frames' | 'seconds' }} disabled={busy}><option value="frames">Кадры</option><option value="seconds">Секунды</option></select></label>
             <button type="button" disabled={busy || !selectedIds.length || !validBatchTransitions} onclick={() => applySelectionTransitions()}>Применить к выделенным</button>
             <label>Ближайшие точки <select aria-label="Режим ближайших точек" value={nearestKind} onchange={(event) => { nearestKind = event.currentTarget.value as FilmcraftNearestEditKind }} disabled={busy}><option value="roll">Стык соседних клипов</option><option value="trimIn">Начало · обычная подрезка</option><option value="trimOut">Конец · обычная подрезка</option><option value="rippleIn">Начало · со сдвигом</option><option value="rippleOut">Конец · со сдвигом</option></select></label>
-            <label>Дорожки <select aria-label="Дорожки ближайших точек" multiple value={nearestTargets} onchange={(event) => { nearestTargets = [...event.currentTarget.selectedOptions].map((option) => option.value) }} disabled={busy}>{#each nearestTracks as track}<option value={track.id}>{track.kind === 'video_tracks' ? 'Видео' : 'Звук'} {track.id}</option>{/each}</select></label>
+            <label>Дорожки <select aria-label="Дорожки ближайших точек" multiple value={nearestTargets} onchange={(event) => { nearestTargets = [...event.currentTarget.options].filter(option => option.selected).map((option) => option.value) }} disabled={busy}>{#each nearestTracks as track}<option value={track.id}>{track.kind === 'video_tracks' ? 'Видео' : 'Звук'} {track.id}</option>{/each}</select></label>
             <button type="button" disabled={busy || !validEditPosition} onclick={selectNearestPoints}>Выбрать ближайшие точки</button>
             <button type="button" disabled={busy || (!pastePositionTicks && !validEditPosition) || (!selectedIds.length && !nearestTargets.length)} onclick={() => trimRangeToPlayhead('previous', false)}>Удалить до курсора с зазором</button>
             <button type="button" disabled={busy || (!pastePositionTicks && !validEditPosition) || (!selectedIds.length && !nearestTargets.length)} onclick={() => trimRangeToPlayhead('next', false)}>Удалить после курсора с зазором</button>

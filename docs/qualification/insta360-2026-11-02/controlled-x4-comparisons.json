@@ -1,0 +1,327 @@
+{
+  "scope": "Single initial feather-derived SO3 per mode, reused at later frames. Relative trajectory diagnostic; absolute gravity and vendor parity are not proven.",
+  "rows": [
+    {
+      "mode": "horizon",
+      "captureSeconds": 0,
+      "inputSha256": {
+        "reference": "d9c2a09812674144999397394a1a856c2f4dce4c01f49f967c400fe572b51f89",
+        "feather": "4c5195acefa5754710973f4a1408c7336efa8101d3cf8973b9fd8f1a9acd3ae5",
+        "flow": "025ac77d002a38b270eef562ae8ff4542cc55d25922b8269f16e0cc2fb6c6cff"
+      },
+      "fittedOn": "feather frame0 only; downsampled-luma SO3, deterministic identity/local and global candidates; identical rotation for every variant",
+      "rotationEulerXYZRadians": [
+        -0.07580631497624009,
+        0.4714046173104559,
+        -0.04985835552730282
+      ],
+      "objective": 0.014474625122580066,
+      "metrics": {
+        "feather": {
+          "sphereWeightedMse": 0.002767482669060122,
+          "psnr": 25.57915090143954,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.0025619936611591862,
+              "psnr": 25.914219491139683
+            }
+          },
+          "changedRegionMse": 0.006932762438728977,
+          "changedRegionPsnr": 21.590936812835245
+        },
+        "flow": {
+          "sphereWeightedMse": 0.002803048119013621,
+          "psnr": 25.523694467838748,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.002580676712357027,
+              "psnr": 25.88266397173797
+            }
+          },
+          "changedRegionMse": 0.007731081035368762,
+          "changedRegionPsnr": 21.117597745332034
+        }
+      },
+      "limitation": "Different renderer calibration, resampling, chromatic calibration, seam modes, and time-selection may contribute. Single frame is not full vendor parity.",
+      "fixedRectangles": {
+        "distant-cliff": [
+          70,
+          185,
+          220,
+          110
+        ]
+      },
+      "changedRegionPixels": 14800,
+      "changedRegionDefinition": "Same fixed SO3 for both images. Native RGB feather-versus-flow difference >1/255 before rotation; rotate and threshold interpolated mask >0.5."
+    },
+    {
+      "mode": "horizon",
+      "captureSeconds": 1,
+      "inputSha256": {
+        "reference": "e50edf73912b9d8f7347e281d5ba03a9b1b37aa8a6968417671b9ebdd2f6f03d",
+        "feather": "107f95700aca68d63dcc48037b7d66ecce120a1c1923d64902d528b5e13a1768",
+        "flow": "930fd574da6959dfa2d0830177ad0378d4fb7bcb7c79c50a44195a142cbb0e13"
+      },
+      "fittedOn": "Exact rotation reused from prior report; no refitting of either current variant",
+      "rotationEulerXYZRadians": [
+        -0.07580631497624009,
+        0.4714046173104559,
+        -0.04985835552730282
+      ],
+      "objective": 0.2771727509517581,
+      "metrics": {
+        "feather": {
+          "sphereWeightedMse": 0.020686831426687306,
+          "psnr": 16.843060245245518,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.009707743678596548,
+              "psnr": 20.1288169921698
+            }
+          },
+          "changedRegionMse": 0.025475041408098722,
+          "changedRegionPsnr": 15.938851014022362
+        },
+        "flow": {
+          "sphereWeightedMse": 0.020723038582835834,
+          "psnr": 16.835465644188197,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.009697679601230792,
+              "psnr": 20.13332168510459
+            }
+          },
+          "changedRegionMse": 0.026155585582636903,
+          "changedRegionPsnr": 15.824355523537685
+        }
+      },
+      "limitation": "Different renderer calibration, resampling, chromatic calibration, seam modes, and time-selection may contribute. Single frame is not full vendor parity.",
+      "rotationSourceSha256": "993d71686f6bfc557352d3d21777cb0382fd264e307fdac2b6ab0c8d272dfdca",
+      "fixedRectangles": {
+        "distant-cliff": [
+          70,
+          185,
+          220,
+          110
+        ]
+      },
+      "changedRegionPixels": 17698,
+      "changedRegionDefinition": "Same fixed SO3 for both images. Native RGB feather-versus-flow difference >1/255 before rotation; rotate and threshold interpolated mask >0.5."
+    },
+    {
+      "mode": "horizon",
+      "captureSeconds": 3,
+      "inputSha256": {
+        "reference": "34f0f0799d68009ec464a1ec0adad935f1b38a9101fa7395750612415976c615",
+        "feather": "ee1576e4cbb3c0886cfdea5ba8cc6da0153fba3fd5947d46860b4c6dc7f2ec85",
+        "flow": "a35531b70202f2eec0613f74c8eddb915195e5eef7061443dadd28bd9a397af5"
+      },
+      "fittedOn": "Exact rotation reused from prior report; no refitting of either current variant",
+      "rotationEulerXYZRadians": [
+        -0.07580631497624009,
+        0.4714046173104559,
+        -0.04985835552730282
+      ],
+      "objective": 0.12192167676483982,
+      "metrics": {
+        "feather": {
+          "sphereWeightedMse": 0.013011874358537203,
+          "psnr": 18.856601388775363,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.007929156480297638,
+              "psnr": 21.007730113503914
+            }
+          },
+          "changedRegionMse": 0.018922079585862988,
+          "changedRegionPsnr": 17.230311352157425
+        },
+        "flow": {
+          "sphereWeightedMse": 0.013039282541597882,
+          "psnr": 18.847463040639997,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.008063093087024544,
+              "psnr": 20.93498326316518
+            }
+          },
+          "changedRegionMse": 0.019429373428965994,
+          "changedRegionPsnr": 17.115412045844806
+        }
+      },
+      "limitation": "Different renderer calibration, resampling, chromatic calibration, seam modes, and time-selection may contribute. Single frame is not full vendor parity.",
+      "rotationSourceSha256": "993d71686f6bfc557352d3d21777cb0382fd264e307fdac2b6ab0c8d272dfdca",
+      "fixedRectangles": {
+        "distant-cliff": [
+          70,
+          185,
+          220,
+          110
+        ]
+      },
+      "changedRegionPixels": 17945,
+      "changedRegionDefinition": "Same fixed SO3 for both images. Native RGB feather-versus-flow difference >1/255 before rotation; rotate and threshold interpolated mask >0.5."
+    },
+    {
+      "mode": "locked",
+      "captureSeconds": 0,
+      "inputSha256": {
+        "reference": "d9c2a09812674144999397394a1a856c2f4dce4c01f49f967c400fe572b51f89",
+        "feather": "62394f303a98690627d44ecd8a3a500797f83bd9cbec7fc8c942290bccfdece1",
+        "flow": "d287ba4af689ad7a048be4f6d4c2dea91a4ff5b37a6e95a6f898bc3088ee67ab"
+      },
+      "fittedOn": "feather frame0 only; downsampled-luma SO3, deterministic identity/local and global candidates; identical rotation for every variant",
+      "rotationEulerXYZRadians": [
+        -0.07712613270069905,
+        0.4946595504836773,
+        -0.05047279071493448
+      ],
+      "objective": 0.014474869386806538,
+      "metrics": {
+        "feather": {
+          "sphereWeightedMse": 0.002765394711904026,
+          "psnr": 25.582428719659433,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.002567718031222085,
+              "psnr": 25.90452669157617
+            }
+          },
+          "changedRegionMse": 0.006935636480859187,
+          "changedRegionPsnr": 21.589136777138247
+        },
+        "flow": {
+          "sphereWeightedMse": 0.0027998453249033673,
+          "psnr": 25.528659602279316,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.002584875449041505,
+              "psnr": 25.875603783329645
+            }
+          },
+          "changedRegionMse": 0.007705729006080482,
+          "changedRegionPsnr": 21.131862682575267
+        }
+      },
+      "limitation": "Different renderer calibration, resampling, chromatic calibration, seam modes, and time-selection may contribute. Single frame is not full vendor parity.",
+      "fixedRectangles": {
+        "distant-cliff": [
+          70,
+          185,
+          220,
+          110
+        ]
+      },
+      "changedRegionPixels": 14798,
+      "changedRegionDefinition": "Same fixed SO3 for both images. Native RGB feather-versus-flow difference >1/255 before rotation; rotate and threshold interpolated mask >0.5."
+    },
+    {
+      "mode": "locked",
+      "captureSeconds": 1,
+      "inputSha256": {
+        "reference": "e50edf73912b9d8f7347e281d5ba03a9b1b37aa8a6968417671b9ebdd2f6f03d",
+        "feather": "ddcf1ca7fed51edae7e6660f7041b45ecd78aeaedb0d95a2ad8aaaacc678f11e",
+        "flow": "6259b261bec34d71323949fd5db99fec1cd5aac85ed2ed49e395909f963e1d80"
+      },
+      "fittedOn": "Exact rotation reused from prior report; no refitting of either current variant",
+      "rotationEulerXYZRadians": [
+        -0.07712613270069905,
+        0.4946595504836773,
+        -0.05047279071493448
+      ],
+      "objective": 0.038366716999264874,
+      "metrics": {
+        "feather": {
+          "sphereWeightedMse": 0.004431930750467187,
+          "psnr": 23.534070341381405,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.005322586207732549,
+              "psnr": 22.738772957441547
+            }
+          },
+          "changedRegionMse": 0.011295875033920365,
+          "changedRegionPsnr": 19.470801208584025
+        },
+        "flow": {
+          "sphereWeightedMse": 0.004527908188134385,
+          "psnr": 23.441023878690036,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.005532709415817576,
+              "psnr": 22.57062138826324
+            }
+          },
+          "changedRegionMse": 0.01317676973536991,
+          "changedRegionPsnr": 18.801910433116266
+        }
+      },
+      "limitation": "Different renderer calibration, resampling, chromatic calibration, seam modes, and time-selection may contribute. Single frame is not full vendor parity.",
+      "rotationSourceSha256": "29ca8fbee4e4d719095ea4b41dd4285ae30003de51b0d1e3704947f4a9a52ec3",
+      "fixedRectangles": {
+        "distant-cliff": [
+          70,
+          185,
+          220,
+          110
+        ]
+      },
+      "changedRegionPixels": 17689,
+      "changedRegionDefinition": "Same fixed SO3 for both images. Native RGB feather-versus-flow difference >1/255 before rotation; rotate and threshold interpolated mask >0.5."
+    },
+    {
+      "mode": "locked",
+      "captureSeconds": 3,
+      "inputSha256": {
+        "reference": "34f0f0799d68009ec464a1ec0adad935f1b38a9101fa7395750612415976c615",
+        "feather": "8a08d7d22d1565e78c960397fb8cf7ef4c4611daccbd2875e73cc6ec7bfcd04a",
+        "flow": "0dbd9698ca7db2a639400e6586a8d84f0995b44557c6443a9c26b0f8f2abe075"
+      },
+      "fittedOn": "Exact rotation reused from prior report; no refitting of either current variant",
+      "rotationEulerXYZRadians": [
+        -0.07712613270069905,
+        0.4946595504836773,
+        -0.05047279071493448
+      ],
+      "objective": 0.04705425163191828,
+      "metrics": {
+        "feather": {
+          "sphereWeightedMse": 0.006152053831824301,
+          "psnr": 22.109798730177506,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.005147491679071775,
+              "psnr": 22.884043467470626
+            }
+          },
+          "changedRegionMse": 0.014525761775995879,
+          "changedRegionPsnr": 18.378610825908986
+        },
+        "flow": {
+          "sphereWeightedMse": 0.0061954900786232794,
+          "psnr": 22.079243341590168,
+          "fixedRectangles": {
+            "distant-cliff": {
+              "mse": 0.005408301425133779,
+              "psnr": 22.669391115145974
+            }
+          },
+          "changedRegionMse": 0.01533780960604752,
+          "changedRegionPsnr": 18.14236657592346
+        }
+      },
+      "limitation": "Different renderer calibration, resampling, chromatic calibration, seam modes, and time-selection may contribute. Single frame is not full vendor parity.",
+      "rotationSourceSha256": "29ca8fbee4e4d719095ea4b41dd4285ae30003de51b0d1e3704947f4a9a52ec3",
+      "fixedRectangles": {
+        "distant-cliff": [
+          70,
+          185,
+          220,
+          110
+        ]
+      },
+      "changedRegionPixels": 18038,
+      "changedRegionDefinition": "Same fixed SO3 for both images. Native RGB feather-versus-flow difference >1/255 before rotation; rotate and threshold interpolated mask >0.5."
+    }
+  ]
+}

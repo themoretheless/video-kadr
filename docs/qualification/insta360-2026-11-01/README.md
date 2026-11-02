@@ -1,5 +1,7 @@
 # Insta360 quality qualification, 2026-11-01
 
+See the [2026-11-02 follow-up](../insta360-2026-11-02/README.md) for fresh production renders, the separate failing strong-pose recovery gate, sampling changes and current verification boundaries. This document retains the earlier stage's evidence.
+
 Full DeepTrack/FlowState quality parity is **not established**. This stage separates implemented source handling, measured quality and unsupported cases. Current safety fixes require the final coherent verification recorded below; older passing runs are not silently attributed to later code.
 
 ## Camera and clock reconstruction

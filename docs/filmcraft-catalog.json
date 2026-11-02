@@ -370,20 +370,108 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_bin_edit.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_bin_rename.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_bin_edit.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-bin-edit-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-bin-edit-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:file.newBin",
       "kind": "command",
       "label": "Bin",
+      "note": "Snapshot creation matches original default/explicit/empty names and parent targeting, including missing-parent root fallback. Native allocation preserves exact next_id, rejects collisions and exhausted u64 space instead of losing identity. Registered authenticated API/MCP command, exact decimal-string IDs and editor operations with explicit automatic/manual naming, multiple selection, destination membership display, one-step project Undo/Redo and context/selection/owner fences. 238 actual original Session.execute cases cover the three commands together. Original live-session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_bin_edit.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_bin_rename.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_bin_edit.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-bin-edit-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-bin-edit-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:file.newBinFromSelection",
       "kind": "command",
       "label": "Bin From Selection",
+      "note": "Snapshot grouping matches original named-selection admission, singular/array/context selection rules, first-item parent, globally unique Bin NN names, explicit/empty names and source reported moved count (requested items, even when unknown entries are skipped). Registered authenticated API/MCP command, exact decimal-string IDs and editor operations with explicit automatic/manual naming, multiple selection, destination membership display, one-step project Undo/Redo and context/selection/owner fences. 238 actual original Session.execute cases cover the three commands together. Original live-session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -961,12 +1049,53 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-selection-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-selection-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-selection-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.selectAllMatching",
       "kind": "command",
       "label": "Select All Matching",
+      "note": "Matches direct TrackItem.item identity across audio/video tracks, independent of label/lock/time. Separate project items with the same media payload and subclips of the source remain distinct. Preserves source clips-array/singular/context fallbacks and named-selection admission; returns track order. Native authenticated API/MCP selection-only query returns exact context without document snapshots. 576 actual original Session.execute cases cover these four commands with unchanged-project checks. Typed API validates IDs, result/context consistency, unaffected selection classes and source counts without import/replay. Editor matching/select-all/clear actions reuse shared selection and preserve Undo/Redo; project.select is also exposed through typed API/agent transport. Full persistent engine session/history and live-browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -993,148 +1122,943 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_duplicate.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_duplicate.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-duplicate-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-duplicate-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-duplicate-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.duplicate",
       "kind": "command",
       "label": "Duplicate",
+      "note": "Native authenticated edit.duplicate copies all five source ItemKinds with original add_item semantics: ordered/evolving context selection, fresh exact IDs, root insertion, Copy suffix, inherited label/kind, reset top-level metadata/split, created counter and copied selection. Introduced sequence cycles refuse atomically while pre-existing cycles remain editable, matching source Session.edit; collisions/exhaustion are guarded refusals. 126 actual original cases compare full project/result/selection and accepted Undo delta, including no-op edits and copy-of-created-ID requests. Typed API validates exact copy provenance and imported identities without JSON reconstruction/replay. Editor selects copies and creates one Undo/Redo frame even for accepted unchanged snapshots. Rust provenance inherits authorized library bindings for file copies; inactive binding choices are retained for Redo but excluded from monitor/preview/export/session payloads. Full persistent engine/history semantics and browser/render qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_label_group.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_label_group.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-group-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-group-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-label-group-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.selectLabelGroup",
       "kind": "command",
       "label": "Select Label Group",
+      "note": "Native authenticated selection-only query follows original timeline-priority, no-active-sequence refusal, project tree order, track order, unknown IDs, locked tracks and ignored explicit arrays. Returns exact decimal-string IDs and updated context without document snapshots. 300 actual original Session.execute cases prove result/context and unchanged project; separate test preserves tree duplicates/unlinked-item exclusion and u64 IDs. API refuses malformed/unsafe/wrong-scope results without import/replay. Editor shares project selection between label/organization controls, preserves result ordering/duplicates, applies labels to the complete explicit timeline selection, and guards both selection classes plus document/sequence/clip/owner. Selection adoption creates no Undo step and preserves Redo; agent activity is a read. Full original persistent engine session/history grouping and live-browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.violet",
       "kind": "command",
       "label": "Violet",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.iris",
       "kind": "command",
       "label": "Iris",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.caribbean",
       "kind": "command",
       "label": "Caribbean",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.lavender",
       "kind": "command",
       "label": "Lavender",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.cerulean",
       "kind": "command",
       "label": "Cerulean",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.forest",
       "kind": "command",
       "label": "Forest",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.rose",
       "kind": "command",
       "label": "Rose",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.mango",
       "kind": "command",
       "label": "Mango",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.purple",
       "kind": "command",
       "label": "Purple",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.blue",
       "kind": "command",
       "label": "Blue",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.teal",
       "kind": "command",
       "label": "Teal",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.magenta",
       "kind": "command",
       "label": "Magenta",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.tan",
       "kind": "command",
       "label": "Tan",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.green",
       "kind": "command",
       "label": "Green",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.brown",
       "kind": "command",
       "label": "Brown",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label.yellow",
       "kind": "command",
       "label": "Yellow",
+      "note": "Named color command implements source named-selection admission and items/clips array, absence and explicit-null suppression semantics; returns source label/labelled count including repeated target requests. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -1161,12 +2085,56 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_labels.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-label-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-label-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:edit.label",
       "kind": "command",
       "label": "Label",
+      "note": "Generic command uses explicit editor-context selections only, resolves ASCII-insensitive source label names without trimming and returns null. Native snapshot mutation covers project items and active-sequence audio/video clips including locked tracks, skips unknown targets and preserves exact source IDs. Original Session.execute oracle covers all 17 commands across 1637 cases; Label::rgb palette is compared independently and exposed in import metadata along with authored labels. Editor offers 16 colors, project/timeline targets, one-step Undo/Redo and context/owner/selection fences with no replay. Editor project selection is now shared with bin organization, and label-group selection is provided by edit.selectLabelGroup. Full original persistent engine session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [
@@ -1202,12 +2170,18 @@
         },
         {
           "path": "backend/tests/fixtures/filmcraft-clip-rename-oracle.json"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_project_index.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
         }
       ],
       "id": "command:clip.rename",
       "kind": "command",
       "label": "Rename…",
-      "note": "Native snapshot clip.rename implements project-item precedence, explicit clip or first selected clip and explicit/active sequence context, Unicode/empty names, missing-target refusal and source-compatible no-target no-op. Preserves other document fields and returns exact documentText. Registered API/MCP command and typed agent transport; original live-session history, independent original-engine oracle remain open. Authenticated editor clip rename now reimports exact returned documentText, permits empty/Unicode names and creates one bounded project Undo/Redo entry. Parent document/sequence/clip/owner fences and component abort cleanup refuse stale responses after selection changes/unmount; errors never replay commands. Project-item rename UI remain open. Original Session.execute oracle now includes 320 addressing/name/locked-track/context cases. Native target IDs follow original u64_p behavior for absent/nonnumeric values and numeric casts, with decimal-string support for exact transport IDs; explicit session context remains validated.",
+      "note": "Native snapshot clip.rename is registered in authenticated API/MCP and typed agent transport. Project-item precedence, explicit/selected clip resolution, context handling, Unicode/empty names, target numeric casts and nonnumeric absence are compared against actual original Session.execute, with exact decimal strings extending transport. Import now exposes every validated Media/Sequence/Subclip/Graphic/AdjustmentLayer item in numeric source-ID order; editor controls address all five types, including generators/offline media, without opening media paths. Exact documentText reimport and document/sequence/clip/owner/item-selection fences protect one-step bounded Undo/Redo adoption. All five item kinds are constructed and renamed by the original oracle. Bin naming uses the separately registered project.renameBin command. Full original live-session/history grouping and live-browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
       "status": "partial"
     },
@@ -3065,12 +4039,53 @@
       "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-selection-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-selection-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-selection-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:project.select",
       "kind": "command",
       "label": "Select Project Items",
+      "note": "Preserves original explicit array ordering, duplicates, unknown IDs and non-array clearing; decimal strings extend exact ID transport. Returns the original null result and updated explicit context. Native authenticated API/MCP selection-only query returns exact context without document snapshots. 576 actual original Session.execute cases cover these four commands with unchanged-project checks. Typed API validates IDs, result/context consistency, unaffected selection classes and source counts without import/replay. Editor matching/select-all/clear actions reuse shared selection and preserve Undo/Redo; project.select is also exposed through typed API/agent transport. Full persistent engine session/history and live-browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -3081,12 +4096,56 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_bin_edit.rs"
+        },
+        {
+          "path": "backend/src/domain/filmcraft_bin_rename.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_bin_edit.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-bin-edit-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-bin-edit-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftBinActions.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:project.moveToBin",
       "kind": "command",
       "label": "Move to Bin",
+      "note": "Snapshot organization matches original root/explicit target, item ordering, unknown-item skipping, duplicate requests and same-folder reordering. Removing Item entries can shift target Bin indices; target identity is resolved after each removal. Registered authenticated API/MCP command, exact decimal-string IDs and editor operations with explicit automatic/manual naming, multiple selection, destination membership display, one-step project Undo/Redo and context/selection/owner fences. 238 actual original Session.execute cases cover the three commands together. Original live-session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -8192,28 +9251,154 @@
       "status": "unreviewed"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_bin_rename.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_project.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_bin_rename.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-bin-rename-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-bin-rename-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftRenameControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftRenameControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-rename-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:project.renameBin",
       "kind": "command",
       "label": "Rename Bin",
+      "note": "Native project.renameBin snapshot command and owner-authenticated API/MCP dispatch implement Rust Unicode trim, empty-name/root refusal, nested bin targeting and exact decimal-string transport. Project import exposes depth-first bin metadata with parent/depth/exact IDs; editor excludes root from rename targets and adopts exact snapshots through document/sequence/clip/owner/bin-selection fences as one project Undo/Redo entry. 100 actual original Session.execute cases cover trim/BOM/NEL, root/missing/fractional/nonnumeric IDs and nested bins. Duplicate bin identities refuse rather than choosing an ambiguous node. Original live-session/history grouping and browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-selection-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-selection-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-selection-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:project.selectAll",
       "kind": "command",
       "label": "Select All Project Items",
+      "note": "Selects every validated project-item map key in numeric u64 order, including unlinked items, and returns the original selected count; does not alter timeline selection. Native authenticated API/MCP selection-only query returns exact context without document snapshots. 576 actual original Session.execute cases cover these four commands with unchanged-project checks. Typed API validates IDs, result/context consistency, unaffected selection classes and source counts without import/replay. Editor matching/select-all/clear actions reuse shared selection and preserve Undo/Redo; project.select is also exposed through typed API/agent transport. Full persistent engine session/history and live-browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        {
+          "path": "backend/src/domain/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/src/handlers/filmcraft_commands.rs"
+        },
+        {
+          "path": "backend/tests/filmcraft_selection.rs"
+        },
+        {
+          "path": "backend/tests/fixtures/filmcraft-selection-oracle.json"
+        },
+        {
+          "path": "scripts/filmcraft-selection-oracle.rs"
+        },
+        {
+          "path": "scripts/generate-filmcraft-effects-list-oracle.py"
+        },
+        {
+          "path": "frontend/src/lib/api.ts"
+        },
+        {
+          "path": "frontend/src/lib/filmcraft-selection-api.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.svelte"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftLabelControls.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/activity.svelte.ts"
+        },
+        {
+          "path": "frontend/src/lib/agent/filmcraftCommands.test.ts"
+        }
+      ],
       "id": "command:project.deselectAll",
       "kind": "command",
       "label": "Deselect All Project Items",
+      "note": "Clears only project selection and returns the original null result, even with an active timeline selection. Native authenticated API/MCP selection-only query returns exact context without document snapshots. 576 actual original Session.execute cases cover these four commands with unchanged-project checks. Typed API validates IDs, result/context consistency, unaffected selection classes and source counts without import/replay. Editor matching/select-all/clear actions reuse shared selection and preserve Undo/Redo; project.select is also exposed through typed API/agent transport. Full persistent engine session/history and live-browser qualification remain open; partial only.",
       "source": "crates/engine/src/commands.rs",
-      "status": "unreviewed"
+      "status": "partial"
     },
     {
       "evidence": [],
@@ -135472,8 +136657,8 @@
     },
     "sourceFiles": 1064,
     "statuses": {
-      "partial": 1086,
-      "unreviewed": 1609
+      "partial": 1113,
+      "unreviewed": 1582
     }
   }
 }

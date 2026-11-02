@@ -1,0 +1,22 @@
+// Actual source matching and project-selection commands; expected output comes from Session.execute.
+use serde_json::{json,Value};use sha2::{Digest,Sha256};
+fn hash(v:&Value)->String{format!("{:x}",Sha256::digest(serde_json::to_vec(v).unwrap()))}
+fn main()->Result<(),Box<dyn std::error::Error>>{
+ let mut s=filmcraft_engine::Session::default();s.execute("file.openDemoProject",json!({}))?;let seq=s.state.active_sequence.unwrap();let seed=s.project.sequence(seq).unwrap().video_tracks[0].items[0].clone();let item=seed.item;
+ let orphan;
+ {let p=std::sync::Arc::make_mut(&mut s.project);let source=p.items[&item].clone();let duplicate=p.add_item("Separate Item Same Media",source.label,source.kind.clone(),None);let sub=p.add_item("Subclip",source.label,filmcraft_project::ItemKind::Subclip{parent:item,range:filmcraft_time::TimeRange::new(filmcraft_time::Tick(0),filmcraft_time::Tick(254016000000)),restrict_trims:false},None);orphan=p.add_item("Unlinked",source.label,source.kind,None);p.root.remove_item(orphan);
+  for (track,item) in [(0,item),(1,item),(2,duplicate),(0,sub)]{let mut clip=seed.clone();clip.id=filmcraft_project::ClipId(p.alloc_id());clip.item=item;clip.label=filmcraft_project::Label::Yellow;clip.start=filmcraft_time::Tick(0);if track==1{p.sequence_mut(seq).unwrap().audio_tracks[0].items.push(clip)}else{p.sequence_mut(seq).unwrap().video_tracks[track].items.push(clip)}}p.root.children.reverse();}
+ let base=s.project.clone();let selections=vec![vec![],vec![seed.id],vec![filmcraft_project::ClipId(u64::MAX)],vec![seed.id,filmcraft_project::ClipId(u64::MAX)]];let projects=vec![vec![],vec![item]];let mut cases=Vec::new();
+ let variants=vec![json!({}),json!({"clips":[seed.id.0]}),json!({"clips":[seed.id.0,seed.id.0]}),json!({"clips":[]}),json!({"clips":[u64::MAX]}),json!({"clips":null}),json!({"clip":seed.id.0}),json!({"clips":false,"clip":seed.id.0}),json!({"clip":u64::MAX}),json!({"clips":[false,1.5,seed.id.0]}),json!({"clip":"ignored"}),json!({"items":[item.0]})];
+ for locked in [false,true]{for active in [false,true]{for selection in &selections{for project in &projects{for params in &variants{
+  s.project=base.clone();for t in std::sync::Arc::make_mut(&mut s.project).sequence_mut(seq).unwrap().all_tracks_mut(){t.locked=locked;}
+  s.state.active_sequence=active.then_some(seq);s.state.selection=selection.clone();s.state.project_selection=project.clone();let before=serde_json::to_value(s.project.as_ref())?;let result=s.execute("edit.selectAllMatching",params.clone());let after=serde_json::to_value(s.project.as_ref())?;
+  cases.push(json!({"command":"edit.selectAllMatching","locked":locked,"active":active,"selection":selection.iter().map(|id|id.0).collect::<Vec<_>>(),"projectSelection":project.iter().map(|id|id.0).collect::<Vec<_>>(),"params":params,"ok":result.is_ok(),"result":result.ok(),"afterSelection":s.state.selection.iter().map(|id|id.0).collect::<Vec<_>>(),"afterProjectSelection":s.state.project_selection.iter().map(|id|id.0).collect::<Vec<_>>(),"unchanged":hash(&before)==hash(&after)}));
+ }}}}}
+ let item_variants=vec![json!({}),json!({"items":[]}),json!({"items":[item.0]}),json!({"items":[item.0,u64::MAX,item.0]}),json!({"items":null}),json!({"items":false}),json!({"items":[false,1.5,item.0]}),json!({"items":[u64::MAX]})];
+ for command in ["project.selectAll","project.deselectAll","project.select"]{for active in [false,true]{for selection in [vec![],vec![seed.id]]{for project in &projects{for params in &item_variants{
+  s.project=base.clone();s.state.active_sequence=active.then_some(seq);s.state.selection=selection.clone();s.state.project_selection=project.clone();let before=serde_json::to_value(s.project.as_ref())?;let result=s.execute(command,params.clone());let after=serde_json::to_value(s.project.as_ref())?;
+  cases.push(json!({"command":command,"locked":false,"active":active,"selection":selection.iter().map(|id|id.0).collect::<Vec<_>>(),"projectSelection":project.iter().map(|id|id.0).collect::<Vec<_>>(),"params":params,"ok":result.is_ok(),"result":result.ok(),"afterSelection":s.state.selection.iter().map(|id|id.0).collect::<Vec<_>>(),"afterProjectSelection":s.state.project_selection.iter().map(|id|id.0).collect::<Vec<_>>(),"unchanged":hash(&before)==hash(&after)}));
+ }}}}}
+ std::fs::write(std::env::args().nth(1).ok_or("output required")?,serde_json::to_vec(&json!({"sourceCommit":"5231852443363f001c3f6b396dd9b1e6461ae2be","sequence":seq.0,"orphan":orphan.0,"project":serde_json::to_value(base.as_ref())?,"cases":cases}))?)?;Ok(())
+}

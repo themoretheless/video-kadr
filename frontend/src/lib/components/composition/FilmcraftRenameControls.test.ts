@@ -1,9 +1,9 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, expect, it, vi } from 'vitest'
-import { renameFilmcraftClip, type FilmcraftImportResult } from '$lib/api'
+import { renameFilmcraftBin, renameFilmcraftClip, type FilmcraftImportResult } from '$lib/api'
 import Controls from './FilmcraftRenameControls.svelte'
-vi.mock('$lib/api', () => ({ renameFilmcraftClip: vi.fn() }))
+vi.mock('$lib/api', () => ({ renameFilmcraftBin: vi.fn(), renameFilmcraftClip: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 const props = { document: 'exact source', sequenceId: '18446744073709551615', clipId: '9007199254740993', token: 'owner', name: 'Shot' }
 const result = { documentText: 'renamed', sequences: [], media: [], originalSchema: 12 } as FilmcraftImportResult
@@ -50,4 +50,23 @@ it('refuses anonymous submission and exposes errors without replay', async () =>
   await tick(); await submit('new')
   await vi.waitFor(() => expect(document.querySelector('[role=alert]')?.textContent).toBe('No such clip'))
   expect(renameFilmcraftClip).toHaveBeenCalledTimes(1); expect(onedit).not.toHaveBeenCalled()
+})
+it('uses the item target and adds it to the adoption fence', async () => {
+  vi.mocked(renameFilmcraftClip).mockResolvedValue(result)
+  const onedit = vi.fn()
+  component = mount(Controls, { target: document.body, props: { ...props, itemId: '18446744073709551614', onedit } })
+  await tick(); await submit('медиа 🎬')
+  await vi.waitFor(() => expect(onedit).toHaveBeenCalledExactlyOnceWith(result, { document: props.document, sequenceId: props.sequenceId, clipId: props.clipId, token: props.token, itemId: '18446744073709551614' }))
+  expect(renameFilmcraftClip).toHaveBeenCalledWith('owner', { document: props.document, item: '18446744073709551614', name: 'медиа 🎬' }, expect.any(AbortSignal))
+  expect(document.querySelector('[aria-label="Имя элемента проекта Filmcraft"]')).not.toBeNull()
+})
+it('uses the bin command and parent fence without rewriting Unicode whitespace', async () => {
+  vi.mocked(renameFilmcraftBin).mockResolvedValue(result)
+  const onedit = vi.fn()
+  component = mount(Controls, { target: document.body, props: { ...props, binId: '18446744073709551615', onedit } })
+  await tick(); await submit('\u0085 Папка 🎬 \u2003')
+  await vi.waitFor(() => expect(onedit).toHaveBeenCalledExactlyOnceWith(result, { document: props.document, sequenceId: props.sequenceId, clipId: props.clipId, token: props.token, binId: '18446744073709551615' }))
+  expect(renameFilmcraftBin).toHaveBeenCalledWith('owner', { document: props.document, bin: '18446744073709551615', name: '\u0085 Папка 🎬 \u2003' }, expect.any(AbortSignal))
+  expect(renameFilmcraftClip).not.toHaveBeenCalled()
+  expect(document.querySelector('[aria-label="Имя папки Filmcraft"]')).not.toBeNull()
 })

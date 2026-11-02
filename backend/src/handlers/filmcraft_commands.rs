@@ -314,6 +314,34 @@ fn catalog(params: Value) -> AppResult<Value> {
         ("effects.remove","Remove Effect","{document:object|string,sequence?:id,context?:{activeSequence?:id},clip:id,index:n}; returns edited document snapshot"),
         ("effects.toggleEnabled","Toggle Effect","{document:object|string,sequence?:id,context?:{activeSequence?:id},clip:id,index?:n}; returns edited document snapshot"),
         ("effects.reset","Reset Effect","{document:object|string,sequence?:id,context?:{activeSequence?:id},clip:id,index?:n}; returns edited document snapshot"),
+        ("project.delete","Clear Project Items","{document:object|string,items?:[id],context?:{projectSelection?,activeSequence?,selection?,sourceItem?,openSequences?,captionSelection?,selectedMask?,timelineViews?}}; project-only removal, bin contents, track references and orphan transitions; returns fixed context"),
+        ("edit.duplicate","Duplicate Project Items","{document:object|string,context:{projectSelection:[id]}}; source constructor copies into root with new IDs, returns copied selection; explicit items array is ignored"),
+        ("edit.selectAllMatching","Select All Matching","{document:object|string,sequence?:id,clips?:[id],clip?:id,context?:{activeSequence?,selection?,projectSelection?}}; matching direct source-item identity, track order; selection only"),
+        ("project.selectAll","Select All Project Items","{document:object|string,context?:{selection?,projectSelection?}}; all item-map keys in numeric order, including unlinked items; selection only"),
+        ("project.deselectAll","Deselect All Project Items","{document:object|string,context?:{selection?,projectSelection?}}; clears only project selection"),
+        ("project.select","Select Project Items","{document:object|string,items?:[id],context?:{selection?,projectSelection?}}; explicit ordered project selection, preserves unknown IDs/duplicates"),
+        ("edit.selectLabelGroup","Select Label Group","{document:object|string,sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; selection-only query, timeline selection takes precedence; no document/history edit"),
+        ("edit.label","Label","{document:object|string,label:str,sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; generic source command uses context selection only"),
+        ("edit.label.violet","Label Violet","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.iris","Label Iris","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.caribbean","Label Caribbean","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.lavender","Label Lavender","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.cerulean","Label Cerulean","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.forest","Label Forest","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.rose","Label Rose","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.mango","Label Mango","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.purple","Label Purple","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.blue","Label Blue","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.teal","Label Teal","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.magenta","Label Magenta","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.tan","Label Tan","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.green","Label Green","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.brown","Label Brown","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("edit.label.yellow","Label Yellow","{document:object|string,items?:[id],clips?:[id],sequence?:id,context?:{activeSequence?,selection?,projectSelection?}}; source selection presence rules"),
+        ("file.newBin","New Bin","{document:object|string,name?:str,parent?:id}; missing parent falls back to root"),
+        ("file.newBinFromSelection","New Bin From Selection","{document:object|string,items?:[id],item?:id,name?:str,context?:{projectSelection?:[id]}}; first item parent and unique default bin name"),
+        ("project.moveToBin","Move to Bin","{document:object|string,items?:[id],bin?:id|null,context?:{projectSelection?:[id]}}; missing bin targets root"),
+        ("project.renameBin","Rename Bin","{document:object|string,bin:id,name:str}; trims name, refuses empty names and root bin; explicit snapshot adoption"),
         ("clip.rename","Rename","{document:object|string,name:str,item?:id,clip?:id,sequence?:id,context?:{activeSequence?:id,selection?:[id]}}; snapshot adoption required"),
         ("effects.list","List Effects","{kind?:Video|Audio|VideoTransition|AudioTransition,folder?:str,detail?:bool}; pinned source catalog, not render admission"),
         ("source.inspect","Inspect Source Monitor","{document:object|string,item?:id,context?:{sourceItem?:id,sourcePlayhead?:ticks,stillImageDuration?:number,stillImageUnit?:seconds|frames}}; exact large IDs/ticks use decimal strings"),
@@ -463,6 +491,34 @@ async fn dispatch(
     }
     if matches!(request.command.as_str(),"effects.toggleAnimation"|"effects.addKeyframe"|"effects.setParam"|"effects.deleteKeyframe"|"effects.moveKeyframe"|"effects.setInterpolation"|"effects.setKeyframe") {
         let value=state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(),move |_|crate::domain::filmcraft_effect_set_param::edit_command(&request.command,params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if request.command == "project.delete" {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_project_delete::delete(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if request.command == "edit.duplicate" {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_duplicate::duplicate(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if matches!(request.command.as_str(), "edit.selectAllMatching" | "project.selectAll" | "project.deselectAll" | "project.select") {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_selection::select(&request.command, params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if request.command == "edit.selectLabelGroup" {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_label_group::select(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if request.command == "edit.label" || request.command.starts_with("edit.label.") {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_labels::edit(&request.command, params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if matches!(request.command.as_str(), "file.newBin" | "file.newBinFromSelection" | "project.moveToBin") {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_bin_edit::edit(&request.command, params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if request.command == "project.renameBin" {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_bin_rename::rename(params)).await.map_err(bad)?;
         return Ok(Json(value));
     }
     if request.command == "clip.rename" {

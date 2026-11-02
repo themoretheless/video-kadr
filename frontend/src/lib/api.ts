@@ -1449,10 +1449,17 @@ export function prepareCaptionFileImport(dataBase64:string,path:string,rate:{rea
 
 /** Source JSON stays text so Filmcraft u64 IDs and ticks survive browser transport. */
 export interface FilmcraftAppliedTransition { id: string; trackId: string; trackKind: string; effect: string; reverse: boolean; startTicks: string; durationTicks: string; paramsText: string }
+export const FILMCRAFT_LABELS = ['Violet', 'Iris', 'Caribbean', 'Lavender', 'Cerulean', 'Forest', 'Rose', 'Mango', 'Purple', 'Blue', 'Teal', 'Magenta', 'Tan', 'Green', 'Brown', 'Yellow'] as const
+export type FilmcraftLabel = typeof FILMCRAFT_LABELS[number]
+export type FilmcraftLabelCommand = 'edit.label' | `edit.label.${Lowercase<FilmcraftLabel>}`
+export type FilmcraftProjectItemKind = 'Media' | 'Sequence' | 'Subclip' | 'Graphic' | 'AdjustmentLayer'
 export interface FilmcraftImportResult {
+  projectBins?: Array<{ id: string; name: string; parentId: string | null; depth: number; itemIds?: string[] }>
+  labelPalette?: Array<{ name: FilmcraftLabel; rgb: number[] }>
+  projectItems?: Array<{ id: string; name: string; kind: FilmcraftProjectItemKind; label?: FilmcraftLabel }>
   documentText: string
   originalSchema: number
-  sequences: Array<{ id: string; name: string; settings: unknown; sampleRate: number; durationSeconds: number; durationFrames?: string; transitions?: FilmcraftAppliedTransition[]; clips?: Array<{ id: string; name: string; trackId: string; trackKind: string; locked: boolean; linkId?: string | null; startTicks: string; durationTicks: string }> }>
+  sequences: Array<{ id: string; name: string; settings: unknown; sampleRate: number; durationSeconds: number; durationFrames?: string; transitions?: FilmcraftAppliedTransition[]; clips?: Array<{ id: string; name: string; label?: FilmcraftLabel; trackId: string; trackKind: string; locked: boolean; linkId?: string | null; startTicks: string; durationTicks: string }> }>
   media: Array<{ id: string; name: string; path: string; offline: boolean }>
 }
 export function importFilmcraftProject(documentText: string, signal?: AbortSignal): Promise<FilmcraftImportResult> {
@@ -1683,9 +1690,11 @@ export function startFilmcraftQuickExportJob(token: string, input: FilmcraftQuic
   return requestJson('/api/compositions/filmcraft/quick-export', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
 }
 export type FilmcraftExportCommand = `export.presets.${'list' | 'get' | 'save' | 'delete' | 'favorite' | 'import' | 'export'}` | `export.queue.${'add' | 'list' | 'start' | 'stop' | 'cancel' | 'retry' | 'remove' | 'move' | 'clear'}` | 'export.quick' | 'export.formats'
-export interface FilmcraftSourceEditFence { document: string; sequenceId: string; clipId: string; token: string | null; sourceBindings?: Record<string, string>; timeFrames?: string; timeTicks?: string | null }
+export interface FilmcraftSourceEditFence { document: string; sequenceId: string; clipId: string; token: string | null; itemId?: string; binId?: string; projectSelection?: string[]; timelineSelection?: string[]; sourceBindings?: Record<string, string>; timeFrames?: string; timeTicks?: string | null }
 export type FilmcraftEffectRackCommand = 'effects.remove' | 'effects.toggleEnabled' | 'effects.reset'
-export type FilmcraftNativeCommand = 'clip.rename' | FilmcraftExportCommand | FilmcraftEffectRackCommand | 'effects.apply' | 'masks.track' | 'jobs.list' | 'jobs.cancel' | 'masks.add' | 'masks.remove' | 'masks.set' | 'masks.moveVertex' | 'masks.translate' | 'masks.addVertex' | 'masks.removeVertex' | 'masks.toggleVertexSmooth' | 'masks.list' | 'masks.select' | 'effects.toggleAnimation' | 'effects.addKeyframe' | 'effects.setParam' | 'effects.deleteKeyframe' | 'effects.moveKeyframe' | 'effects.setInterpolation' | 'effects.setKeyframe' | 'project.inspect' | 'sequence.inspect' | 'source.inspect' | 'effects.list' | 'command.list' | 'command.batch'
+export type FilmcraftBinEditCommand = 'file.newBin' | 'file.newBinFromSelection' | 'project.moveToBin'
+export type FilmcraftSelectionCommand = 'edit.selectAllMatching' | 'project.selectAll' | 'project.deselectAll' | 'project.select'
+export type FilmcraftNativeCommand = 'edit.duplicate' | FilmcraftSelectionCommand | 'edit.selectLabelGroup' | FilmcraftLabelCommand | FilmcraftBinEditCommand | 'project.renameBin' | 'clip.rename' | FilmcraftExportCommand | FilmcraftEffectRackCommand | 'effects.apply' | 'masks.track' | 'jobs.list' | 'jobs.cancel' | 'masks.add' | 'masks.remove' | 'masks.set' | 'masks.moveVertex' | 'masks.translate' | 'masks.addVertex' | 'masks.removeVertex' | 'masks.toggleVertexSmooth' | 'masks.list' | 'masks.select' | 'effects.toggleAnimation' | 'effects.addKeyframe' | 'effects.setParam' | 'effects.deleteKeyframe' | 'effects.moveKeyframe' | 'effects.setInterpolation' | 'effects.setKeyframe' | 'project.inspect' | 'sequence.inspect' | 'source.inspect' | 'effects.list' | 'command.list' | 'command.batch'
 export function runFilmcraftExportCommand<T = unknown>(token: string, command: FilmcraftNativeCommand, params: Record<string, unknown> = {}, signal?: AbortSignal, deadlineUnixMs?: number): Promise<T> {
   return requestJson('/api/compositions/filmcraft/command', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ command, params, ...(deadlineUnixMs !== undefined ? { deadlineUnixMs } : {}) }), signal })
 }
@@ -1737,9 +1746,78 @@ export async function editFilmcraftEffectRack(token: string, input: { document: 
   const result = await runFilmcraftExportCommand<{ documentText?: unknown }>(token, command, params, signal)
   return importFilmcraftCommandSnapshot(result, signal)
 }
-export async function renameFilmcraftClip(token: string, input: { document: string; sequence: string; clip: string; name: string }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+export async function renameFilmcraftClip(token: string, input: { document: string; name: string } & ({ sequence: string; clip: string; item?: never } | { item: string; sequence?: never; clip?: never }), signal?: AbortSignal): Promise<FilmcraftImportResult> {
   const result = await runFilmcraftExportCommand(token, 'clip.rename', input, signal)
   return importFilmcraftCommandSnapshot(result, signal)
+}
+export async function renameFilmcraftBin(token: string, input: { document: string; bin: string; name: string }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const result = await runFilmcraftExportCommand(token, 'project.renameBin', input, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+export async function editFilmcraftBins(token: string, command: FilmcraftBinEditCommand, input: { document: string; name?: string; parent?: string | null; bin?: string | null; items?: string[] }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const result = await runFilmcraftExportCommand(token, command, input, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+export async function editFilmcraftLabels(token: string, command: FilmcraftLabelCommand, input: { document: string; sequence?: string; label?: string; items?: string[] | null; clips?: string[] | null; context?: { activeSequence?: string | null; selection?: string[]; projectSelection?: string[] } }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const result = await runFilmcraftExportCommand(token, command, input, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+export type FilmcraftLabelGroupSelection = { clips: string[] } | { items: string[] }
+export interface FilmcraftDuplicateResult extends FilmcraftImportResult { duplicatedItemIds: string[]; duplicateSources: Array<{ id: string; sourceId: string }> }
+export async function duplicateFilmcraftProjectItems(token: string, input: { document: string; context: { projectSelection: string[] } }, signal?: AbortSignal): Promise<FilmcraftDuplicateResult> {
+  const raw = await runFilmcraftExportCommand<{ result?: { items?: unknown }; context?: { projectSelection?: unknown }; copies?: unknown; documentText?: unknown }>(token, 'edit.duplicate', input, signal)
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const ids = filmcraftSelectionIds(raw?.result?.items, 'Duplicate')
+  if (new Set(ids).size !== ids.length || JSON.stringify(ids) !== JSON.stringify(raw?.context?.projectSelection)) throw new Error('Duplicate returned inconsistent selection')
+  if (!Array.isArray(raw.copies) || raw.copies.length !== ids.length) throw new Error('Duplicate returned missing copy provenance')
+  let position = 0
+  const sources = raw.copies.map((record, index) => {
+    if (!record || typeof record !== 'object') throw new Error('Duplicate returned invalid copy provenance')
+    const [id, sourceId] = filmcraftSelectionIds([record.id, record.sourceId], 'Duplicate')
+    const sourcePosition = input.context.projectSelection.indexOf(sourceId, position)
+    if (id !== ids[index] || id === sourceId || sourcePosition < 0) throw new Error('Duplicate returned inconsistent copy provenance')
+    position = sourcePosition + 1
+    return { id, sourceId }
+  })
+  const project = await importFilmcraftCommandSnapshot(raw, signal)
+  const known = new Set(project.projectItems?.map(item => item.id) ?? [])
+  if (ids.some(id => !known.has(id)) || sources.some(record => !known.has(record.sourceId))) throw new Error('Duplicate snapshot omitted copied items')
+  return { ...project, duplicatedItemIds: [...ids], duplicateSources: sources }
+}
+function filmcraftSelectionIds(ids: unknown, prefix: string): string[] {
+  if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !/^(0|[1-9]\d{0,19})$/.test(id) || BigInt(id) > 18446744073709551615n)) throw new Error(`${prefix} returned invalid source IDs`)
+  return ids
+}
+export async function selectFilmcraftSelection(token: string, command: FilmcraftSelectionCommand, input: { document: string; sequence?: string; clips?: string[] | null; clip?: string; items?: string[] | null; context: { selection: string[]; projectSelection: string[] } }, signal?: AbortSignal): Promise<FilmcraftLabelGroupSelection> {
+  const raw = await runFilmcraftExportCommand<{ result?: unknown; context?: unknown }>(token, command, input, signal)
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const context = raw?.context
+  if (!context || typeof context !== 'object' || Array.isArray(context)) throw new Error('Selection command returned invalid context')
+  const clips = filmcraftSelectionIds('selection' in context ? context.selection : null, 'Selection command')
+  const items = filmcraftSelectionIds('projectSelection' in context ? context.projectSelection : null, 'Selection command')
+  if (command === 'edit.selectAllMatching') {
+    if (JSON.stringify(items) !== JSON.stringify(input.context.projectSelection)) throw new Error('Selection command changed project selection')
+    if (!raw.result || typeof raw.result !== 'object' || Object.keys(raw.result).length !== 1 || !('clips' in raw.result) || JSON.stringify(raw.result.clips) !== JSON.stringify(clips)) throw new Error('Selection command returned mismatched clips')
+    return { clips }
+  }
+  if (JSON.stringify(clips) !== JSON.stringify(input.context.selection)) throw new Error('Selection command changed timeline selection')
+  if (command === 'project.selectAll') {
+    if (!raw.result || typeof raw.result !== 'object' || Object.keys(raw.result).length !== 1 || !('selected' in raw.result) || raw.result.selected !== items.length || new Set(items).size !== items.length) throw new Error('Selection command returned invalid count')
+  } else {
+    if (raw.result !== null || (command === 'project.deselectAll' ? items.length !== 0 : JSON.stringify(items) !== JSON.stringify(input.items ?? []))) throw new Error('Selection command returned mismatched project selection')
+  }
+  return { items }
+}
+export async function selectFilmcraftLabelGroup(token: string, input: { document: string; sequence?: string; context: { selection: string[]; projectSelection: string[] } }, signal?: AbortSignal): Promise<FilmcraftLabelGroupSelection> {
+  const raw = await runFilmcraftExportCommand<{ result?: unknown }>(token, 'edit.selectLabelGroup', input, signal)
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const result = raw?.result
+  if (!result || typeof result !== 'object' || Array.isArray(result) || Object.keys(result).length !== 1) throw new Error('Label group returned an invalid selection')
+  const key = 'clips' in result ? 'clips' : 'items' in result ? 'items' : null
+  if (key && key !== (input.context.selection.length ? 'clips' : 'items')) throw new Error('Label group returned invalid selection scope')
+  const ids: unknown = key ? (result as Record<string, unknown>)[key] : null
+  const exactIds = filmcraftSelectionIds(ids, 'Label group')
+  return key === 'clips' ? { clips: exactIds } : { items: exactIds }
 }
 function importFilmcraftCommandSnapshot(result: unknown, signal?: AbortSignal): Promise<FilmcraftImportResult> {
   if (!result || typeof result !== 'object' || !('documentText' in result) || typeof result.documentText !== 'string' || !result.documentText) throw new Error('Effect command returned no source snapshot')

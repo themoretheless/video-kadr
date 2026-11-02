@@ -7,7 +7,9 @@ export function sphericalSemanticSamplePlan(region:SamVideoRegionAttachment,sour
  if(!Number.isFinite(sourceInSeconds)||sourceInSeconds<0||!Number.isFinite(duration)||duration<.2)throw new Error('Некорректный диапазон семантического трекинга')
  const times:number[]=[],ordinals:number[]=[]
  const end=Math.min(duration,60)
- const rate=allowLost?Math.max(1,3/end):5
+ // Retain intermediate poses on short clips without exceeding the native
+ // sixty-sample inference budget on longer clips.
+ const rate=allowLost?Math.min(Math.max(5,3/end),60/end):5
  for(let i=0;i<Math.min(allowLost?60:300,Math.ceil(end*rate));i++){
   const local=i/rate,sourceUs=Math.round((sourceInSeconds+local)*1e6),ordinal=videoRegionOrdinal(region,sourceUs)
   if(!allowLost&&(region.forwardLostAt!==null&&ordinal>=region.forwardLostAt||region.backwardLostAt!==null&&ordinal<=region.backwardLostAt))throw new Error('Область SAM потеряна внутри диапазона; уточните область или сократите клип')
