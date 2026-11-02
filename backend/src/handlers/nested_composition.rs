@@ -151,10 +151,11 @@ pub async fn nested_preview_handler(
         )
         .map_err(|error| AppError::bad_request(error.to_string()))?;
     for id in image_ids {
-        super::library::authorize_source_access(&state, id.as_str(), &headers).await?;
+        let physical=request.project.library_source_id(&id);
+        super::library::authorize_source_access(&state, physical.as_str(), &headers).await?;
         let entry = state
             .library
-            .get(id.as_str())
+            .get(physical.as_str())
             .await
             .filter(|entry| entry.kind == "source")
             .ok_or_else(|| AppError::not_found("image source not found"))?;

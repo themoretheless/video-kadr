@@ -167,9 +167,10 @@ async fn bindings(
         },
     };
     for id in ids {
+        let physical=request.project.library_source_id(&id);
         if let Some(space) = state
             .db
-            .source_space_id(id.as_str())
+            .source_space_id(physical.as_str())
             .await
             .map_err(|e| AppError::internal("resolve export source space", e))?
         {
@@ -183,13 +184,13 @@ async fn bindings(
             }
             state
                 .library
-                .relocate_source_to_space(id.as_str(), &space)
+                .relocate_source_to_space(physical.as_str(), &space)
                 .await
                 .map_err(|e| AppError::internal("isolate export source", e))?;
         }
         let entry = state
             .library
-            .get(id.as_str())
+            .get(physical.as_str())
             .await
             .filter(|entry| entry.kind == "source")
             .ok_or_else(|| AppError::not_found("export source not found"))?;

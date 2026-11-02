@@ -1049,7 +1049,7 @@ export interface NativeCompositionInstance {
 }
 export interface NativeProjectLut {readonly id:string;readonly name:string;readonly lut:import("./composition/types").WireColorLut;readonly sourcePath?:string}
 export interface NativeProjectFont {readonly family:string;readonly data:string}
-export interface NativeProjectMediaItem { source: import('./composition/types').CompositionSource; name: string; placeholder?: boolean; concatMetadata?:Readonly<Record<string,unknown>> }
+export interface NativeProjectMediaItem { librarySourceId?:string; source: import('./composition/types').CompositionSource; name: string; placeholder?: boolean; concatMetadata?:Readonly<Record<string,unknown>> }
 export interface NativeNestedProject {
   projectMedia?: Readonly<Record<string,NativeProjectMediaItem>>
   fonts?:readonly NativeProjectFont[]

@@ -9,6 +9,9 @@ use std::collections::BTreeMap;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectMediaItem {
     pub source: CompositionSource,
+    /// Physical library identity. The record key/source.id remain editorial IDs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library_source_id: Option<SourceId>,
     pub name: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub placeholder: bool,
@@ -108,6 +111,7 @@ pub fn set_placeholder(
                 .unwrap_or_else(|| id.as_str().into());
             Some(ProjectMediaItem {
                 source,
+                library_source_id: None,
                 name,
                 placeholder: false,
                 concat_metadata: Default::default(),
@@ -216,4 +220,13 @@ pub fn remove(
     }
     next.dependency_order()?;
     Ok((next, applied))
+}
+
+impl NestedCompositionProject {
+    pub fn library_source_id<'a>(&'a self, logical: &'a SourceId) -> &'a SourceId {
+        self.project_media
+            .get(logical)
+            .and_then(|item| item.library_source_id.as_ref())
+            .unwrap_or(logical)
+    }
 }

@@ -567,16 +567,24 @@ fn rewrite_document_source_ids(
         if ids != source_mapping.keys().cloned().collect::<Vec<_>>() || source_mapping.values().collect::<std::collections::BTreeSet<_>>().len() != source_mapping.len() {
             return Err(AppError::bad_request("Nested source mapping must be complete and unique"));
         }
+        let bound:std::collections::BTreeSet<String>=document.get("projectMedia").and_then(Value::as_object).into_iter().flat_map(|items|items.iter()).filter(|(_,item)|item.get("librarySourceId").is_some_and(Value::is_string)).map(|(id,_)|id.clone()).collect();
         for composition in document["compositions"].as_object_mut().unwrap().values_mut() {
-            let local = composition["content"]["sources"].as_object().unwrap().keys().map(|id| (id.clone(),source_mapping[id].clone())).collect();
+            let local = composition["content"]["sources"].as_object().unwrap().keys().map(|id| (id.clone(),if bound.contains(id){id.clone()}else{source_mapping[id].clone()})).collect();
             composition["content"] = rewrite_document_source_ids(composition["content"].take(), &local)?;
         }
         if let Some(records)=document.get_mut("projectMedia").and_then(Value::as_object_mut) {
             let old=std::mem::take(records);
             for (old_id,mut item) in old {
-                let new_id=&source_mapping[&old_id];
-                item["source"]["id"]=Value::String(new_id.clone());
-                records.insert(new_id.clone(),item);
+                if let Some(physical)=item.get("librarySourceId").and_then(Value::as_str) {
+                    let new_physical=source_mapping.get(physical).ok_or_else(||AppError::bad_request("Missing bound media source mapping"))?.clone();
+                    item["librarySourceId"]=Value::String(new_physical);
+                    records.insert(old_id,item);
+                } else {
+                    let new_id=&source_mapping[&old_id];
+                    item["source"]["id"]=Value::String(new_id.clone());
+                    if bound.contains(new_id) {return Err(AppError::bad_request("Archive source mapping collides with logical media ID"));}
+                    records.insert(new_id.clone(),item);
+                }
             }
         }
         crate::db::extract_document_source_ids(&document).map_err(|error| AppError::bad_request(error.to_string()))?;

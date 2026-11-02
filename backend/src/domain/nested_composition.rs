@@ -612,6 +612,15 @@ impl NestedCompositionProject {
 
     pub fn dependency_order(&self) -> Result<Vec<String>> {
         super::project_media::validate(&self.project_media)?;
+        for (id,item) in &self.project_media {
+            if item.library_source_id.is_some() {
+                for node in self.compositions.values() {
+                    if let Some(source)=node.content.sources.get(id) {
+                        ensure!(source==&item.source,"bound project media descriptor differs from timeline source");
+                    }
+                }
+            }
+        }
         if !self.timeline_order.is_empty() {
             let ordered: BTreeSet<_> = self.timeline_order.iter().collect();
             let ids: BTreeSet<_> = self.compositions.keys().collect();

@@ -107,8 +107,12 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
  }
  let mut document=json!({"version":1,"media":media.into_values().collect::<Vec<_>>(),"activeTimelineId":project.root,"timelines":timelines});
  ensure!(serde_json::to_vec(&document)?.len()<=4*1024*1024,"Concat JSON exceeds the import budget");
- let report=super::concat_project_import::import(serde_json::from_value(json!({"schemaVersion":1,"document":document,"mediaBindings":bindings}))?)?;
+ let mut report=super::concat_project_import::import(serde_json::from_value(json!({"schemaVersion":1,"document":document,"mediaBindings":bindings}))?)?;
  ensure!(report.status=="converted","Reverse conversion failed native admission: {}",report.diagnostics.join("; "));
+ // File bindings belong to the native project, not to portable Concat JSON.
+ for (id,item) in &project.project_media {
+  if let Some(restored)=report.project.as_mut().and_then(|project|project.project_media.get_mut(id)) {restored.library_source_id=item.library_source_id.clone();}
+ }
  ensure!(report.project.as_ref().context("Missing reconstructed project")?.project_media==project.project_media,"Reverse conversion changes project media properties");
  // Compare normalized media ownership after the existing importer has reconstructed it.
  let restored=serde_json::to_value(report.project.context("Missing reconstructed project")?)?;

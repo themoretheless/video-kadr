@@ -226,6 +226,7 @@ fn convert(
         if owns_record {
             project_media.insert(binding.id.clone(), super::project_media::ProjectMediaItem {
                 source: binding.clone(),
+                library_source_id: None,
                 name: item.get("name").and_then(Value::as_str).unwrap_or(id).to_owned(),
                 placeholder,
                 concat_metadata,

@@ -110,15 +110,20 @@ async fn local_probe_available(state: &video_kadr_backend::state::AppState) -> b
 
 #[tokio::test]
 async fn composition_project_archive_http_round_trip_relinks_sources_and_metadata() {
-    archive_roundtrip(false).await;
+    archive_roundtrip(false, false).await;
 }
 
 #[tokio::test]
 async fn nested_project_archive_http_roundtrip_preserves_instances_and_relinks_child_media() {
-    archive_roundtrip(true).await;
+    archive_roundtrip(true, false).await;
 }
 
-async fn archive_roundtrip(nested: bool) {
+#[tokio::test]
+async fn nested_archive_relinks_physical_library_binding_without_renaming_logical_slots() {
+    archive_roundtrip(true, true).await;
+}
+
+async fn archive_roundtrip(nested: bool, bound: bool) {
     let (state, directory) = make_state(true, false).await;
     if !local_probe_available(&state).await {
         eprintln!("skipping .veproj HTTP roundtrip: ffmpeg/ffprobe not on PATH");
@@ -188,6 +193,12 @@ async fn archive_roundtrip(nested: bool) {
         } })
     } else { document(old_id) };
     if nested { project_document["projectMedia"]=json!({old_id:{"source":project_document["compositions"]["child"]["content"]["sources"][old_id],"name":"Dialogue slot","placeholder":true,"concatMetadata":{"audioCodec":"pcm_u8","audioTracks":[{"index":0,"codec":"pcm_u8","channels":1,"sampleRate":8000,"title":"Dialogue"}],"origin":"speech"}}}); }
+    if bound {
+        project_document["projectMedia"][old_id]["librarySourceId"]=json!(old_id);
+        let mut alias=project_document["projectMedia"][old_id].clone();
+        alias["source"]["id"]=json!("second-slot");alias["name"]=json!("Independent slot");
+        project_document["projectMedia"]["second-slot"]=alias;
+    }
     let content = if nested { &mut project_document["compositions"]["child"]["content"] } else { &mut project_document };
     let mut copy_source = content["sources"][old_id].clone();
     copy_source["id"] = json!(copy_id);
@@ -287,22 +298,28 @@ async fn archive_roundtrip(nested: bool) {
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&json!(new_id)) && ids.contains(&json!(new_copy)));
     let restored = if nested {
-        assert!(body["project"]["document"]["projectMedia"].get(old_id).is_none());
-        assert_eq!(body["project"]["document"]["projectMedia"][new_id]["source"]["id"],new_id);
-        assert_eq!(body["project"]["document"]["projectMedia"][new_id]["placeholder"],true);
-        assert_eq!(body["project"]["document"]["projectMedia"][new_id]["concatMetadata"],project_document["projectMedia"][old_id]["concatMetadata"]);
+        let logical=if bound{old_id}else{new_id};
+        if bound {
+            assert_eq!(body["project"]["document"]["projectMedia"][old_id]["librarySourceId"],new_id);
+            assert_eq!(body["project"]["document"]["projectMedia"]["second-slot"]["librarySourceId"],new_id);
+            assert_eq!(body["project"]["document"]["projectMedia"]["second-slot"]["source"]["id"],"second-slot");
+        } else {assert!(body["project"]["document"]["projectMedia"].get(old_id).is_none());}
+        assert_eq!(body["project"]["document"]["projectMedia"][logical]["source"]["id"],logical);
+        assert_eq!(body["project"]["document"]["projectMedia"][logical]["placeholder"],true);
+        assert_eq!(body["project"]["document"]["projectMedia"][logical]["concatMetadata"],project_document["projectMedia"][old_id]["concatMetadata"]);
         assert_eq!(body["project"]["document"]["timelineOrder"], project_document["timelineOrder"]);
         assert_eq!(body["project"]["document"]["luts"], project_document["luts"]);
         assert_eq!(body["project"]["document"]["compositions"]["root"]["instances"], project_document["compositions"]["root"]["instances"]);
         &body["project"]["document"]["compositions"]["child"]["content"]
     } else { &body["project"]["document"] };
-    assert!(restored["sources"].get(new_id).is_some());
-    assert_eq!(restored["sources"][new_id]["id"], new_id);
-    assert_eq!(restored["tracks"][0]["clips"][0]["sourceId"], new_id);
+    let logical=if bound{old_id}else{new_id};
+    assert!(restored["sources"].get(logical).is_some());
+    assert_eq!(restored["sources"][logical]["id"], logical);
+    assert_eq!(restored["tracks"][0]["clips"][0]["sourceId"], logical);
 
     assert_eq!(restored["metadata"]["clipLinks"]["voice-link"],json!(["voice-clip","linked-voice"]));
-    assert_eq!(restored["tracks"][1]["clips"][0]["sourceId"],new_id);
-    assert_eq!(restored["metadata"]["mediaVersions"]["voice-clip"], json!({"originalSourceId":new_id,"copySourceId":new_copy}));
+    assert_eq!(restored["tracks"][1]["clips"][0]["sourceId"],logical);
+    assert_eq!(restored["metadata"]["mediaVersions"]["voice-clip"], json!({"originalSourceId":logical,"copySourceId":new_copy}));
     assert!(restored["sources"].get(new_copy).is_some());
     let imported_copy = state.library.get(new_copy).await.unwrap();
     assert_eq!(tokio::fs::read(state.library.resolve_media_path(&imported_copy).await.unwrap()).await.unwrap(), media);

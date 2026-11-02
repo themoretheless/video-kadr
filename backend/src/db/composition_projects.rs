@@ -633,7 +633,10 @@ pub(crate) fn extract_document_source_ids(document: &Value) -> Result<Vec<String
             sources.entry(id.as_str().to_owned()).or_insert(&entry.source);
         }
         ensure!(sources.len() <= MAX_COMPOSITION_PROJECT_SOURCES, "nested project has too many sources");
-        return Ok(sources.into_keys().collect());
+        return Ok(sources.keys().map(|id| {
+            let logical=crate::domain::composition::SourceId::parse(id).expect("validated source ID");
+            project.library_source_id(&logical).as_str().to_owned()
+        }).collect::<BTreeSet<_>>().into_iter().collect());
     }
 
     let document = document
