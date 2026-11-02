@@ -1,0 +1,13 @@
+   Compiling video-kadr-vision-runtime v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vision-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.57s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 4 tests
+test sam_continuity::tests::flat_occluded_and_ambiguous_flow_never_prove_visible_identity ... ok
+test sam_continuity::tests::measured_flow_supports_translation_exposure_and_reverse_direction ... ok
+actual continuity matches=7 support=1 warpedIoU=0.76831394
+test sam_continuity::tests::actual_calibrated_continuity ... ok
+test sam_continuity::tests::coarse_visible_texture_survives_independent_sensor_noise ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; finished in 11.17s
+

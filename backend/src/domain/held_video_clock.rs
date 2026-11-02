@@ -73,6 +73,15 @@ struct Entry {
 static CACHE: OnceLock<Mutex<VecDeque<Entry>>> = OnceLock::new();
 const MAX_ENTRIES: usize = 128;
 fn capture(tool: &Path, input: &Path, deadline: Instant, cancel: &AtomicBool) -> Result<Vec<u8>> {
+    capture_with_spawn(tool, input, deadline, cancel, |_| {})
+}
+fn capture_with_spawn(
+    tool: &Path,
+    input: &Path,
+    deadline: Instant,
+    cancel: &AtomicBool,
+    spawned: impl FnOnce(u32),
+) -> Result<Vec<u8>> {
     ensure!(
         !cancel.load(Ordering::Relaxed) && Instant::now() < deadline,
         "video clock probe cancelled/timeout"
@@ -97,6 +106,7 @@ fn capture(tool: &Path, input: &Path, deadline: Instant, cancel: &AtomicBool) ->
         .spawn()
         .context("start video clock probe")?;
     let stdout = child.stdout.take().context("video clock probe stdout")?;
+    spawned(child.id());
     let (tx, rx) = mpsc::sync_channel(1);
     let reader = std::thread::spawn(move || {
         let mut bytes = vec![];
@@ -216,4 +226,56 @@ pub(crate) fn resolve(
         clock,
     });
     Ok(clock)
+}
+
+#[cfg(all(test, unix))]
+mod lifecycle_tests {
+    use super::*;
+    use std::{cell::Cell, os::unix::fs::PermissionsExt};
+    #[test]
+    fn timeout_and_post_spawn_cancel_kill_and_reap_the_observed_probe() {
+        let root = tempfile::tempdir().unwrap();
+        let probe = root.path().join("ffprobe");
+        std::fs::write(&probe, "#!/bin/sh\nexec sleep 5\n").unwrap();
+        std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let source = root.path().join("source");
+        std::fs::write(&source, b"test").unwrap();
+        for explicit_cancel in [false, true] {
+            let cancelled = AtomicBool::new(false);
+            let pid = Cell::new(0);
+            let started = Instant::now();
+            let error = capture_with_spawn(
+                &probe,
+                &source,
+                started + Duration::from_millis(500),
+                &cancelled,
+                |child| {
+                    pid.set(child);
+                    if explicit_cancel {
+                        cancelled.store(true, Ordering::Relaxed);
+                    }
+                },
+            )
+            .unwrap_err();
+            assert!(
+                error.to_string().contains(if explicit_cancel {
+                    "cancelled"
+                } else {
+                    "timeout"
+                }),
+                "{error:#}"
+            );
+            assert_ne!(pid.get(), 0, "probe must be observed after spawn");
+            assert!(started.elapsed() < Duration::from_secs(2));
+            assert!(
+                !Command::new("kill")
+                    .args(["-0", &pid.get().to_string()])
+                    .stderr(Stdio::null())
+                    .status()
+                    .unwrap()
+                    .success(),
+                "owned probe survived cleanup"
+            );
+        }
+    }
 }

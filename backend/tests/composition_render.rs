@@ -406,7 +406,8 @@ fn source_id(value: &str) -> SourceId {
 
 fn placement(timeline_start_tick: u64, source_out_tick: u64) -> ClipPlacement {
     ClipPlacement {
-        source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+        concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
         timeline_duration_tick: None,
         timeline_start_tick,
         source_in_tick: 0,
@@ -573,7 +574,8 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
             "overlay-red-clip",
             "overlay-red",
             ClipPlacement {
-                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
                 timeline_duration_tick: None,
                 timeline_start_tick: 0,
                 source_in_tick: 100_000,
@@ -586,7 +588,8 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
             "overlay-blue-clip",
             "overlay-blue",
             ClipPlacement {
-                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
                 timeline_duration_tick: None,
                 timeline_start_tick: 800_000,
                 source_in_tick: 100_000,
@@ -1578,7 +1581,8 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
                 id: CompositionClipId::parse(id).unwrap(),
                 source_id: source_id(source),
                 placement: ClipPlacement {
-                    source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                    concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
                     timeline_duration_tick: None,
                     timeline_start_tick: start,
                     source_in_tick: source_in,
@@ -3127,7 +3131,8 @@ async fn real_linear_speed_ramp_preserves_reverse_order_exact_frames_and_av_sync
                 id: CompositionClipId::parse("speed-ramp-audio-clip").unwrap(),
                 source_id: music.clone(),
                 placement: ClipPlacement {
-                    source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                    concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
                     timeline_duration_tick: None,
                     timeline_start_tick: 0,
                     source_in_tick: 0,
@@ -3384,7 +3389,8 @@ async fn real_visual_layers_preserve_z_order_opacity_chroma_and_image_timing() {
             hidden: false,
             locked: false,
             clips: vec![ImageClip {
-                    effects: Vec::new(),
+                    concat_source_timing: None,
+effects: Vec::new(),
                 id: CompositionClipId::parse("image-clip").unwrap(),
                 source_id: source_id("image"),
                 timeline_start_tick: 250_000,
@@ -3621,7 +3627,8 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
         "inverted-mask",
         "mask-red",
         ClipPlacement {
-            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
             timeline_duration_tick: None,
             timeline_start_tick: 1_250_000,
             source_in_tick: 1_000_000,
@@ -3644,7 +3651,8 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
         "linear-mask",
         "mask-red",
         ClipPlacement {
-            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
             timeline_duration_tick: None,
             timeline_start_tick: 2_000_000,
             source_in_tick: 2_000_000,
@@ -3662,7 +3670,8 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
     });
 
     let animated_image = ImageClip {
-                    effects: Vec::new(),
+                    concat_source_timing: None,
+effects: Vec::new(),
         id: CompositionClipId::parse("animated-image").unwrap(),
         source_id: source_id("animated-yellow"),
         timeline_start_tick: 0,
@@ -3874,7 +3883,8 @@ async fn real_dissolve_preserves_timeline_with_exact_handles_and_no_black_frames
         id: CompositionClipId::parse(id).unwrap(),
         source_id: source_id(source),
         placement: ClipPlacement {
-            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
             timeline_duration_tick: None,
             timeline_start_tick,
             source_in_tick: 250_000,
@@ -4050,7 +4060,8 @@ async fn real_unicode_textfile_and_dissolve_use_exact_handles_without_black_fram
         id: CompositionClipId::parse(id).unwrap(),
         source_id: source_id(source),
         placement: ClipPlacement {
-            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
             timeline_duration_tick: None,
             timeline_start_tick,
             source_in_tick: 250_000,
@@ -6485,7 +6496,8 @@ async fn real_motion_path_image_position_matches_distance_and_clip_clock() {
             hidden: false,
             locked: false,
             clips: vec![ImageClip {
-                    effects: Vec::new(),
+                    concat_source_timing: None,
+effects: Vec::new(),
                 id: CompositionClipId::parse("image-clip").unwrap(),
                 source_id: source_id("image"),
                 timeline_start_tick: 250_000,

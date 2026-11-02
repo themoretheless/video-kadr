@@ -1138,7 +1138,8 @@ mod tests {
             id: CompositionClipId::parse("motion-clip").unwrap(),
             source_id: source_id.clone(),
             placement: ClipPlacement {
-                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
                 timeline_duration_tick: None,
                 timeline_start_tick: 0,
                 source_in_tick: 0,

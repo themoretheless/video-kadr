@@ -28,9 +28,11 @@ An isolated512×256 analysis-grid experiment was also rejected: it does not impr
 
 When fine RGB texture is insufficient, visible continuity now considers2×/4× downsampled evidence. This preserves NCC>=0.8, uniqueness ratio<=0.8, reverse-cycle error<=3original pixels, coherent-motion residual<=6original pixels and the original bounded search window. Error budgets account separately for horizontal/vertical scale, including non-divisible dimensions. A replacement cannot reduce the number of measured matches or either source-coordinate witness span. Evidence from separate scales is not pooled to inflate its support count.
 
-The native sensor-noise regression initially exposed a new ambiguity: identical subjects with independent noise could produce two valid displacement clusters, and the previous median retained only the majority. Matching now refuses two separately cycle-checked coherent clusters instead of choosing their majority. A detected ambiguity cannot be silently overturned by a coarser pyramid level. The noisy-twin refusal, unique noisy-target tracking, flat-frame refusal, exact-twin refusal, exposure and cancellation tests pass.
+The native sensor-noise regression initially exposed a new ambiguity: identical subjects with independent noise could produce two valid displacement clusters, and the previous median retained only the majority. Matching now refuses two separately cycle-checked coherent clusters when their transported object supports are distinct (IoU<0.25), instead of choosing their majority. Different limbs moving within the same overlapping support are not treated as different owners. A detected owner ambiguity cannot be silently overturned by a coarser pyramid level. The noisy-twin refusal, unique noisy-target tracking, flat-frame refusal, exact-twin refusal, exposure and cancellation tests pass.
 
 On the calibrated X6 shirt sequence, three consecutive transitions have prompted-reference IoUs0.962421/0.9648962/0.9827846 instead of losing the target at the second transition. The standalone aligned image/mask continuity check also passes. The actual4second gap still ends `Occluded`, with no admitted extra view, so the existing positive recovery regression remains **failed**.
+
+The standalone fixture uses calibrated images and masks in the same half-longitude-rolled coordinate frame. Pairing its masks with unrolled or raw dual-fisheye images is invalid evidence.
 
 The actual Luna front→back→close-up safety case still refuses the different helmeted person and the incorrect close-up extent. Positive back/close recovery remains **unqualified** and its separate coverage gate remains failed. No identity threshold was lowered; immutable source identity and frozen-gallery safeguards remain enforced. Prompted reference masks are not independent hand-annotated ground truth.
 
@@ -39,3 +41,5 @@ The QA runtime alias and global model configuration were not republished. These 
 ## Evidence
 
 See [machine-readable results](seam-reid-results.json), [source snapshot](seam-reid-source-snapshot.json), [main optical integration run](support-optical-main.log), [geometry module tests](render-support-main-tests.log), and the continuation logs alongside this report. Source images, camera originals and masks remain private.
+
+Final vision-library checks pass33tests (14opt-in cases ignored). The actual continuity check passes separately. The real hard-case safety test passes, while strong-pose positive recovery and the office4second gap remain failed. No quality gate is reported green from a refusal alone.

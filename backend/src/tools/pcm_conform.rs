@@ -144,12 +144,12 @@ pub(crate) async fn conform_pcm_with_tempo(
     cancel: &CancellationToken,
     tempo_graph: Option<&str>,
 ) -> Result<ConformedPcm> {
-    conform_pcm_with_tempo_and_stream(runtime,ffmpeg,source,staging,spec,timeout,cancel,tempo_graph,None,false).await
+    conform_pcm_with_tempo_and_stream(runtime,ffmpeg,source,staging,spec,timeout,cancel,tempo_graph,None,false,false).await
 }
 /// Decode an explicitly selected absolute container stream (not an audio ordinal).
 #[allow(clippy::too_many_arguments)]
 pub async fn conform_pcm_stream(runtime:&ProcessRuntime,ffmpeg:&Path,source:&Path,staging:&Path,spec:PcmConformSpec,timeout:Duration,cancel:&CancellationToken,stream_index:u32)->Result<ConformedPcm>{
-    conform_pcm_with_tempo_and_stream(runtime,ffmpeg,source,staging,spec,timeout,cancel,None,Some(stream_index),true).await
+    conform_pcm_with_tempo_and_stream(runtime,ffmpeg,source,staging,spec,timeout,cancel,None,Some(stream_index),true,false).await
 }
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn conform_pcm_with_tempo_and_stream(
@@ -163,6 +163,7 @@ pub(crate) async fn conform_pcm_with_tempo_and_stream(
     tempo_graph: Option<&str>,
     stream_index:Option<u32>,
     stream_relative:bool,
+    allow_empty_source:bool,
 ) -> Result<ConformedPcm> {
     spec.validate()?;
     ensure!(
@@ -231,7 +232,7 @@ pub(crate) async fn conform_pcm_with_tempo_and_stream(
     let frame_bytes = u64::from(spec.channels) * 4;
     let maximum = (spec.end_sample - spec.start_sample) * frame_bytes;
     ensure!(
-        size > 0 && size % frame_bytes == 0 && size <= maximum && size <= spec.staging_bytes,
+        (size > 0 || allow_empty_source) && size % frame_bytes == 0 && size <= maximum && size <= spec.staging_bytes,
         "PCM conform produced invalid or over-budget samples"
     );
     let file = File::open(&path)?;

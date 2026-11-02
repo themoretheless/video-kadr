@@ -42,3 +42,10 @@ it('hides unavailable source editing for a locked linked participant', async () 
   const component = mount(NestedSourceSpeedCurve, { target, props: { project: value, compositionId: 'new-timeline', clipIds: ['auto-first'] } })
   try { await tick(); expect(target.querySelector('details')).toBeNull() } finally { await unmount(component) }
 })
+
+it('shows and edits retained image speed curves',async()=>{
+ vi.clearAllMocks();const value=JSON.parse(JSON.stringify(project())),node=value.compositions['new-timeline'],video=node.content.tracks[1].clips[0]
+ node.content.metadata.clipLinks={};node.content.tracks=[{id:'images',kind:'image',name:'Images',locked:false,hidden:false,clips:[{id:'still',sourceId:video.sourceId,timelineStartTick:2000000,durationTicks:3000000,transform:video.transform,opacity:video.opacity,blendMode:'normal',enabled:true,concatSourceTiming:{sourceStart:4,speed:2,speedCurve:[{at:0,speed:1},{at:1,speed:3}]}}]}]
+ const target=document.createElement('div');document.body.append(target);const component=mount(NestedSourceSpeedCurve,{target,props:{project:value,compositionId:'new-timeline',clipIds:['still']}})
+ try{await tick();expect(target.textContent).toContain('Кривая скорости');expect(target.querySelector<HTMLInputElement>('[aria-label="Скорость точки 2"]')!.value).toBe('3');const button=[...target.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.includes('Применить'))!;button.click();await vi.waitFor(()=>expect(setNestedSourceSpeedCurve).toHaveBeenCalledWith('new-timeline',['still'],[{at:0,speed:1},{at:1,speed:3}]))}finally{await unmount(component);target.remove()}
+})

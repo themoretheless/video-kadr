@@ -61,6 +61,7 @@ fn all_119_animated_effects_match_original_4284_scene_frames() {
                 serde_json::json!({"id":"clip","sourceId":"source","placement":{"timelineStartTick":mode*10000000,"sourceInTick":20000000,"sourceOutTick":30000000,"speed":1.0},"playbackMode":if hold>0 {serde_json::json!({"mode":"freeze","sourceTick":25000000})} else {serde_json::json!({"mode":"forward"})},"transform":crate::domain::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1.0},"blendMode":"normal","effects":partition.media_effects}),
             )?;
             composition.metadata = Some(crate::domain::metadata_burnin::CompositionMetadata {
+ caption_text_tracks: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),
@@ -84,7 +85,7 @@ fn all_119_animated_effects_match_original_4284_scene_frames() {
                 rgba: rgba.repeat(16),
             };
             let mut decode =
-                |_: &crate::domain::composition::SourceId, _: u64, _: bool, _: &crate::domain::composition::CompositionClipId| Ok(picture());
+                |_: &crate::domain::composition::SourceId, _: crate::domain::video_clock::FrameTime, _: bool, _: &crate::domain::composition::CompositionClipId| Ok(picture());
             let mut context = CompositionEffectContext {
                 exact_sample: Some(EffectContextSample {
                     timeline_tick: at,

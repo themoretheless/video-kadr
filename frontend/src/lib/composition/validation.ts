@@ -1199,7 +1199,10 @@ function validateClip(
     validateSpeedRamp(clip, path, add)
   } else if (clip.kind === 'image' || clip.kind === 'color' || clip.kind === 'graphic') {
     validateDuration(clip.durationTicks, `${path}.durationTicks`, add)
-    if (clip.kind === 'image') validateSourceReference(clip, path, sources, add)
+    if (clip.kind === 'image') {
+      validateSourceReference(clip, path, sources, add)
+      if(clip.concatSourceTiming!==undefined){const timing=clip.concatSourceTiming;if(!isRecord(timing)||Object.keys(timing).some(key=>key!=='sourceStart'&&key!=='speed'&&key!=='speedCurve')||!isFiniteNumber(timing.sourceStart)||timing.sourceStart<0||timing.sourceStart>86400||!isFiniteNumber(timing.speed)||timing.speed<0.0625||timing.speed>16||timing.speedCurve!==undefined&&(!Array.isArray(timing.speedCurve)||!timing.speedCurve.length||timing.speedCurve.length>4096||timing.speedCurve.some(point=>!isRecord(point)||!isFiniteNumber(point.at)||point.at<0||point.at>1||!isFiniteNumber(point.speed)||point.speed<0.0625||point.speed>16)))add('image-source-timing',`${path}.concatSourceTiming`,'Invalid retained image source timing')}
+    }
     else {
       if (!Number.isInteger(clip.width) || Number(clip.width) < 1 || Number(clip.width) > 3840 || !Number.isInteger(clip.height) || Number(clip.height) < 1 || Number(clip.height) > 2160) add('solid-size',path,'Solid dimensions must be positive bounded integers')
       if (clip.kind === 'color') validateColor(clip.color,`${path}.color`,add)

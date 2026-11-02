@@ -1,12 +1,12 @@
 import type {CompositionSource} from './types'
-export interface ConcatImportMedia{id:string;name:string;kind:string}
+export interface ConcatImportMedia{id:string;name:string;kind:string;placeholder?:boolean}
 export interface ConcatImportSource{label:string;source:CompositionSource}
 export function concatImportMedia(document:unknown):readonly ConcatImportMedia[]{
  if(!document||typeof document!=='object'||Array.isArray(document))throw new Error('Ожидается документ Concat JSON')
  const media=(document as Record<string,unknown>).media??[]
  if(!Array.isArray(media)||media.length>32)throw new Error('Список медиа должен содержать не более 32 записей')
  const ids=new Set<string>()
- return media.map((entry:unknown)=>{if(!entry||typeof entry!=='object')throw new Error('Некорректное медиа');const item=entry as Record<string,unknown>;if(typeof item.id!=='string'||!item.id||ids.has(item.id))throw new Error('Повторный или пустой ID медиа');ids.add(item.id);return{id:item.id,name:typeof item.name==='string'?item.name:item.id,kind:typeof item.kind==='string'?item.kind:''}})
+ return media.map((entry:unknown)=>{if(!entry||typeof entry!=='object')throw new Error('Некорректное медиа');const item=entry as Record<string,unknown>;if(typeof item.id!=='string'||!item.id||ids.has(item.id))throw new Error('Повторный или пустой ID медиа');ids.add(item.id);return{id:item.id,name:typeof item.name==='string'?item.name:item.id,kind:typeof item.kind==='string'?item.kind:'',...(item.placeholder===true?{placeholder:true}:{})}})
 }
 
 

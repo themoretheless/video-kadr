@@ -145,7 +145,8 @@ impl Clock {
         let source_in = micro(raw.source_start)?;
         let duration = micro(raw.duration)?;
         let placement = super::composition::ClipPlacement {
-            timeline_start_tick: micro(raw.start)?,
+            concat_source_eof: false,
+timeline_start_tick: micro(raw.start)?,
             source_in_tick: source_in,
             source_out_tick: source_in
                 .checked_add(span)

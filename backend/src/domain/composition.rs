@@ -256,6 +256,10 @@ pub enum SourceKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClipPlacement {
+    /// Concat keeps editorial source windows after replacing a slot with a
+    /// shorter file. Only the native held-video / padded-audio path admits it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub concat_source_eof: bool,
     pub timeline_start_tick: u64,
     pub source_in_tick: u64,
     pub source_out_tick: u64,
@@ -1467,9 +1471,34 @@ pub enum AudioVoiceEffect {
     Robot,
 }
 
+/// Retained Concat source metadata. A still raster and its visual effects use
+/// timeline-local time; source In/speed must survive later media replacement.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageSourceTiming {
+    pub source_start: f64,
+    pub speed: f64,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub speed_curve: Option<Vec<super::concat_retime_edit::Point>>,
+}
+impl ImageSourceTiming {
+    pub fn validate(&self) -> Result<(), CompositionError> {
+        if !self.source_start.is_finite() || !(0.0..=86400.0).contains(&self.source_start)
+            || !self.speed.is_finite() || !(0.0625..=16.0).contains(&self.speed) {
+            return Err(CompositionError::InvalidPlacement);
+        }
+        if self.speed_curve.as_ref().is_some_and(|points| points.is_empty() || points.len()>4096 || points.iter().any(|point| !point.at.is_finite() || !(0.0..=1.0).contains(&point.at) || !point.speed.is_finite() || !(0.0625..=16.0).contains(&point.speed))) {
+            return Err(CompositionError::InvalidSpeedRamp);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageClip {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concat_source_timing: Option<ImageSourceTiming>,
     pub id: CompositionClipId,
     pub source_id: SourceId,
     pub timeline_start_tick: u64,
@@ -1943,6 +1972,7 @@ impl Composition {
                             &clip.placement,
                             true,
                             clip.playback_mode == PlaybackMode::Reverse,
+                            native,
                         )?;
                         if let Some(motion)=&clip.filmcraft_motion {
                             motion.parameters.validate().map_err(|_|CompositionError::InvalidTransform)?;
@@ -1986,6 +2016,7 @@ impl Composition {
                             &clip.placement,
                             false,
                             clip.reversed,
+                            native,
                         )?;
                         clip.gain.validate()?;
                         if !clip.role_gain.is_finite()
@@ -2027,6 +2058,7 @@ impl Composition {
                         let source = self.sources.get(&clip.source_id).ok_or_else(|| {
                             CompositionError::MissingSource(clip.source_id.clone())
                         })?;
+                        if let Some(timing) = &clip.concat_source_timing { timing.validate()?; }
                         if source.kind != SourceKind::Image || clip.duration_ticks == 0 {
                             return Err(CompositionError::InvalidClipSource(clip.id.clone()));
                         }
@@ -2557,7 +2589,11 @@ fn validate_media_clip(
     placement: &ClipPlacement,
     needs_video: bool,
     reverse: bool,
+    native: bool,
 ) -> Result<(), CompositionError> {
+    if placement.concat_source_eof && (!native || reverse || placement.speed_ramp.is_some()) {
+        return Err(CompositionError::InvalidPlacement);
+    }
     // Do not admit source curves to production until audio and edit clocks are wired.
     if placement.concat_retime.is_some(){return Err(CompositionError::InvalidSpeedRamp);}
 
@@ -2567,7 +2603,7 @@ fn validate_media_clip(
     let head = placement.source_head_ticks()?;
     if (reverse && placement.source_out_tick.checked_add(head).is_none_or(|end| end > source.duration_ticks))
         || (!reverse && head > placement.source_in_tick)
-        || placement.source_out_tick > source.duration_ticks
+        || (!placement.concat_source_eof && placement.source_out_tick > source.duration_ticks)
         || (needs_video && source.kind != SourceKind::Video)
         || (!needs_video && !source.has_audio)
     {
@@ -2950,7 +2986,8 @@ mod tests {
 
     fn placement(start: u64) -> ClipPlacement {
         ClipPlacement {
-            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
             timeline_duration_tick: None,
             timeline_start_tick: start,
             source_in_tick: 0,
@@ -3432,7 +3469,8 @@ timeline: None,
                 id: CompositionClipId::parse("clip-audio").unwrap(),
                 source_id: SourceId::parse("source-a").unwrap(),
                 placement: ClipPlacement {
-                    source_out_tick: 99_000,
+                    concat_source_eof: false,
+source_out_tick: 99_000,
                     ..placement(0)
                 },
                 gain: AnimatableValue::constant(1.0),

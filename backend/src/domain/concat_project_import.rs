@@ -169,6 +169,8 @@ fn convert(
     let mut media_ids = BTreeSet::new();
     let mut sources = BTreeMap::new();
     let mut source_names = serde_json::Map::new();
+    let mut project_media = BTreeMap::new();
+    let mut binding_owners = BTreeMap::new();
     for item in media {
         fields(
             item,
@@ -208,9 +210,27 @@ fn convert(
         );
         inactive(
             item,
-            &["colorRange", "placeholder"],
+            &["colorRange"],
             &format!("document.media[{id}]"),
         )?;
+        let placeholder = match item.get("placeholder") {
+            None => false,
+            Some(value) => value.as_bool().context("media.placeholder: expected boolean")?,
+        };
+        let concat_metadata=super::project_media::capture_concat_metadata(item);
+        let owns_record=item.get("placeholder").is_some()||!concat_metadata.is_empty();
+        if let Some((previous_id, previous_placeholder)) = binding_owners.insert(binding.id.clone(), (id, placeholder||owns_record)) {
+            ensure!(!placeholder && !owns_record && !previous_placeholder,
+                "distinct template media IDs {previous_id} and {id} require distinct registered source bindings");
+        }
+        if owns_record {
+            project_media.insert(binding.id.clone(), super::project_media::ProjectMediaItem {
+                source: binding.clone(),
+                name: item.get("name").and_then(Value::as_str).unwrap_or(id).to_owned(),
+                placeholder,
+                concat_metadata,
+            });
+        }
         if let Some(previous) = sources.insert(binding.id.clone(), binding.clone()) {
             ensure!(
                 previous == *binding,
@@ -422,7 +442,7 @@ fn convert(
         .cloned()
         .unwrap_or_else(|| order[0].clone());
     let project = NestedCompositionProject {
-        project_media: Default::default(),
+        project_media,
         fonts,
         schema_version: 1,
         root,
@@ -498,7 +518,6 @@ fn convert_clip(
     inactive(
         clip,
         &[
-            "speedCurve",
             "transitionIn",
             "enhanced",
             "text",
@@ -511,6 +530,7 @@ fn convert_clip(
         bail!("Concat cutout requires source-owned model/mask analysis before import: subject={:?}, custom={}, strokes={}, smart source frames={}. Original cutout retained in sourceDocument",plan.subject,plan.correction.custom,plan.correction.strokes.len(),plan.region_source_seconds.len());
     }
     let kind = text(clip, "kind")?;
+    if kind != "image" { inactive(clip, &["speedCurve"], "clip")?; }
     let audio_stream=match clip.get("audioStream") {None|Some(Value::Null)=>None,Some(value)=>Some(value.as_u64().filter(|index|*index<=u32::MAX as u64).context("audioStream: expected absolute unsigned stream index")? as u32)};
     ensure!(audio_stream.is_none()||kind=="audio"||kind=="video","audio stream selection requires audio/video");
 
@@ -594,6 +614,9 @@ fn convert_clip(
     }
 
     let mut placement = json!({"timelineStartTick":start,"sourceInTick":source_start,"sourceOutTick":source_out,"speed":speed});
+    if matches!(kind,"video"|"audio") && source_out > source.duration_ticks {
+        placement["concatSourceEof"] = json!(true);
+    }
     // Preserve the authored timeline when rounded source microseconds cannot
     // reconstruct its duration at the original constant speed.
     if ((source_out-source_start) as f64/speed).round() as u64 != duration {
@@ -657,10 +680,17 @@ fn convert_clip(
             out["audioGain"] = value(gain);
             out["concatGainKeys"]=serde_json::to_value(&gain_keys)?;
         } else {
-            ensure!(
-                speed == 1. && source_start == 0,
-                "image source timing is not converted"
-            );
+            let raw_start = number(clip, "sourceStart", 0.)?;
+            let curve = match clip.get("speedCurve") {
+                None|Some(Value::Null)=>None,
+                Some(Value::Array(points)) if points.is_empty()=>None,
+                Some(value)=>Some(serde_json::from_value::<Vec<super::concat_retime_edit::Point>>(value.clone())?),
+            };
+            if speed != 1. || raw_start != 0. || curve.is_some() {
+                let timing = super::composition::ImageSourceTiming{source_start:raw_start,speed,speed_curve:curve};
+                timing.validate()?;
+                out["concatSourceTiming"] = serde_json::to_value(timing)?;
+            }
             out["timelineStartTick"] = json!(start);
             out["durationTicks"] = json!(duration);
         }

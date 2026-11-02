@@ -1,3 +1,4 @@
+import {isConcatImageClip} from './concatImageSource'
 import type { SourceSplitParts } from './concatSourceSplit'
 import {windowNativeTreatment} from './nativeTreatmentWindow'
 import {rewindowNativeClipSourceEffects} from './concatSourceWindow'
@@ -17,7 +18,7 @@ export function splitNativeClips(project: NativeNestedProject, compositionId: st
       const start = 'placement' in clip ? clip.placement.timelineStartTick : clip.timelineStartTick
       const end = nativeClipEnd(clip)
       if (!selected.has(clip.id)) return [clip]
-      const source = 'placement' in clip && clip.placement.concatRetime
+      const source = isConcatImageClip(clip)||('placement' in clip && clip.placement.concatRetime)
       if (source) {
         if (!sourceParts?.has(clip.id)) throw new Error('Разрез Concat требует нативного плана')
         const parts = sourceParts.get(clip.id)

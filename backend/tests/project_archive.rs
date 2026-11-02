@@ -187,7 +187,7 @@ async fn archive_roundtrip(nested: bool) {
             "child": { "content": child_content,"instances": [] }
         } })
     } else { document(old_id) };
-    if nested { project_document["projectMedia"]=json!({old_id:{"source":project_document["compositions"]["child"]["content"]["sources"][old_id],"name":"Dialogue slot","placeholder":true}}); }
+    if nested { project_document["projectMedia"]=json!({old_id:{"source":project_document["compositions"]["child"]["content"]["sources"][old_id],"name":"Dialogue slot","placeholder":true,"concatMetadata":{"audioCodec":"pcm_u8","audioTracks":[{"index":0,"codec":"pcm_u8","channels":1,"sampleRate":8000,"title":"Dialogue"}],"origin":"speech"}}}); }
     let content = if nested { &mut project_document["compositions"]["child"]["content"] } else { &mut project_document };
     let mut copy_source = content["sources"][old_id].clone();
     copy_source["id"] = json!(copy_id);
@@ -290,6 +290,7 @@ async fn archive_roundtrip(nested: bool) {
         assert!(body["project"]["document"]["projectMedia"].get(old_id).is_none());
         assert_eq!(body["project"]["document"]["projectMedia"][new_id]["source"]["id"],new_id);
         assert_eq!(body["project"]["document"]["projectMedia"][new_id]["placeholder"],true);
+        assert_eq!(body["project"]["document"]["projectMedia"][new_id]["concatMetadata"],project_document["projectMedia"][old_id]["concatMetadata"]);
         assert_eq!(body["project"]["document"]["timelineOrder"], project_document["timelineOrder"]);
         assert_eq!(body["project"]["document"]["luts"], project_document["luts"]);
         assert_eq!(body["project"]["document"]["compositions"]["root"]["instances"], project_document["compositions"]["root"]["instances"]);

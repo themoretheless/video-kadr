@@ -1,13 +1,13 @@
 {
   "fullParity": false,
-  "nearObjectSeam": "open; continuous ownership candidate rejected",
+  "nearObjectSeam": "open; geometry-confidence scaling corrected, extreme flat forearm still ghosts",
   "strongPoseReidentification": "open; safety refusal passes, positive recovery gate fails",
-  "ordinaryCalibratedReidentification": "open; first transition passes, second target refused",
+  "ordinaryCalibratedReidentification": "three visible transitions pass;4second positive recovery still fails",
   "cameraQualification": "14 held frames / 28 variants on X4 and X6; Luna neural safety only; broader corpus open",
   "absoluteHorizon": "unconfirmed under dynamic start",
   "visionLibraryTests": {
-    "passed": 32,
-    "ignored": 13
+    "passed": 33,
+    "ignored": 14
   },
   "samplingTests": {
     "passed": 5
@@ -17,5 +17,13 @@
     "warnings": 0
   },
   "matrixExampleCheck": "passed",
-  "publishedRuntime": false
+  "publishedRuntime": false,
+  "opticalIntegrationTests": {
+    "passed": 14,
+    "includesOriginalX6": true
+  },
+  "geometryModuleTests": {
+    "passed": 4
+  },
+  "latestReport": "seam-reid-followup.md"
 }

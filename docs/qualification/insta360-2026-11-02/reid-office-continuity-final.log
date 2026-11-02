@@ -1,0 +1,27 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 1 test
+test sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap ... visible continuity measured matches=4
+saved real frame=1 state=Tracked agreement=0.962421
+visible continuity measured matches=7
+saved real frame=2 state=Tracked agreement=0.9648962
+visible continuity measured matches=7
+saved real frame=3 state=Tracked agreement=0.9827846
+real4sec bank views=0 recovery=Occluded IoU=0
+
+thread 'sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap' panicked at src/sam_reidentification.rs:1301:9:
+assertion `left == right` failed
+  left: Occluded
+ right: Reacquired
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 46 filtered out; finished in 104.89s
+
+error: test failed, to rerun pass `--lib`

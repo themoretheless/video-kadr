@@ -178,67 +178,18 @@ fn held_video_uses_video_origin_when_audio_starts_earlier() {
 
 #[cfg(unix)]
 #[test]
-fn clock_probe_timeout_and_cancellation_reap_the_owned_process() {
-    use std::{os::unix::fs::PermissionsExt, sync::atomic::Ordering, time::Instant};
-    let root = tempfile::tempdir().unwrap();
-    let source = root.path().join("source");
-    std::fs::write(&source, b"private test source").unwrap();
-    let ffmpeg = root.path().join("ffmpeg");
-    std::fs::write(&ffmpeg, b"unused").unwrap();
-    let probe = root.path().join("ffprobe");
-    let pid = root.path().join("probe.pid");
-    std::fs::write(
-        &probe,
-        format!(
-            "#!/bin/sh\nprintf '%s' \"$$\" > '{}'\nexec sleep 5\n",
-            pid.display()
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let cancelled = AtomicBool::new(false);
-    for explicit_cancel in [false, true] {
-        let _ = std::fs::remove_file(&pid);
-        let started = Instant::now();
-        let result = std::thread::scope(|scope| {
-            if explicit_cancel {
-                scope.spawn(|| {
-                    let until = Instant::now() + Duration::from_secs(1);
-                    while !pid.exists() && Instant::now() < until {
-                        std::thread::sleep(Duration::from_millis(5));
-                    }
-                    std::thread::sleep(Duration::from_millis(50));
-                    cancelled.store(true, Ordering::Relaxed);
-                });
-            }
-            render(
-                &ffmpeg,
-                source.clone(),
-                0,
-                if explicit_cancel {
-                    Duration::from_secs(4)
-                } else {
-                    Duration::from_millis(500)
-                },
-                &cancelled,
-            )
-        });
-        let error = result.unwrap_err().to_string();
-        assert!(
-            error.contains(if explicit_cancel {
-                "cancelled"
-            } else {
-                "timeout"
-            }),
-            "{error}"
-        );
-        assert!(started.elapsed() < Duration::from_secs(2));
-        let child = std::fs::read_to_string(&pid).expect("owned probe must have started");
-        assert!(!std::process::Command::new("kill")
-            .args(["-0", child.trim()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .unwrap()
-            .success());
+fn render_timeout_and_pre_cancellation_do_not_start_a_probe() {
+    use std::{os::unix::fs::PermissionsExt,time::Instant};
+    let root=tempfile::tempdir().unwrap();let source=root.path().join("source");std::fs::write(&source,b"test").unwrap();
+    let ffmpeg=root.path().join("ffmpeg");std::fs::write(&ffmpeg,b"unused").unwrap();
+    let probe=root.path().join("ffprobe");let marker=root.path().join("unexpected-probe");
+    std::fs::write(&probe,format!("#!/bin/sh\nprintf started > '{}'\nexit 1\n",marker.display())).unwrap();
+    std::fs::set_permissions(&probe,std::fs::Permissions::from_mode(0o700)).unwrap();
+    for cancelled in [false,true] {
+        let started=Instant::now();
+        let error=render(&ffmpeg,source.clone(),0,if cancelled{Duration::from_secs(4)}else{Duration::ZERO},&AtomicBool::new(cancelled)).unwrap_err();
+        assert!(error.to_string().contains(if cancelled{"cancelled"}else{"timeout"}),"{error:#}");
+        assert!(!marker.exists(),"preflight refusal must not start a probe");
+        assert!(started.elapsed()<Duration::from_secs(2));
     }
 }

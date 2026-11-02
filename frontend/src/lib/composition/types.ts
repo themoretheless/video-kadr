@@ -367,6 +367,7 @@ export interface AudioClip extends SourceClipTiming {
 }
 
 export interface ImageClip {
+  readonly concatSourceTiming?: {readonly sourceStart:number;readonly speed:number;readonly speedCurve?:readonly {readonly at:number;readonly speed:number}[]}
   readonly concatAnimation?:WireConcatClipAnimation
   readonly position?: CompositionPositionAnimation
   /** Authoring link; true requires structurally identical X/Y scale tracks. */
@@ -822,6 +823,7 @@ export interface ConcatSourceRetime {
 }
 
 export interface WireClipPlacement {
+  readonly concatSourceEof?: boolean
   readonly concatRetime?: ConcatSourceRetime
   readonly sourceHeadTimelineTick?: Tick
   readonly sourceTimelineOffsetTick?: Tick
@@ -894,6 +896,7 @@ export interface WireAudioClip {
 }
 
 export interface WireImageClip {
+  readonly concatSourceTiming?: {readonly sourceStart:number;readonly speed:number;readonly speedCurve?:readonly {readonly at:number;readonly speed:number}[]}
   readonly id: StableId
   readonly sourceId: StableId
   readonly timelineStartTick: Tick

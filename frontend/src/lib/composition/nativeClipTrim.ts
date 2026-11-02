@@ -1,3 +1,4 @@
+import {isConcatImageClip} from './concatImageSource'
 import type { SourceTrimParts } from './concatSourceTrim'
 import {windowNativeTreatment} from './nativeTreatmentWindow'
 import {rewindowNativeClipSourceEffects} from './concatSourceWindow'
@@ -31,7 +32,7 @@ export function trimNativeClipEnds(project: NativeNestedProject, compositionId: 
     if (track.locked) throw new Error('Дорожка связанного клипа заблокирована')
     const clips = track.clips.map(clip => {
       if (!selected.has(clip.id)) return clip
-      if ('placement' in clip && clip.placement.concatRetime) {
+      if (isConcatImageClip(clip)||('placement' in clip && clip.placement.concatRetime)) {
         const planned = sourceParts?.get(clip.id)
         if (!planned) throw new Error('Обрезка Concat требует нативного плана')
         return planned
@@ -62,7 +63,7 @@ export function trimNativeClipEnds(project: NativeNestedProject, compositionId: 
       }
       const sourceInTick = reverse ? p.sourceOutTick - nextSpan : p.sourceInTick
       const sourceOutTick = reverse ? p.sourceOutTick : p.sourceInTick + nextSpan
-      if (sourceInTick < 0 || sourceOutTick > source.durationTicks || sourceOutTick <= sourceInTick) throw new Error('Не хватает исходного материала для удлинения')
+      if (sourceInTick < 0 || (!p.concatSourceEof && sourceOutTick > source.durationTicks) || sourceOutTick <= sourceInTick) throw new Error('Не хватает исходного материала для удлинения')
       const placement = { ...p, sourceInTick, sourceOutTick, speed, ...(speedRamp ? { speedRamp } : {}), timelineDurationTick: duration }
       return { ...clip, placement }
     })
@@ -106,7 +107,7 @@ export function trimNativeClipStarts(project: NativeNestedProject, compositionId
     const clips = track.clips.map(clip => {
       if (!selected.has(clip.id)) return clip
       if (track.locked) throw new Error('Дорожка связанного клипа заблокирована')
-      if ('placement' in clip && clip.placement.concatRetime) {
+      if (isConcatImageClip(clip)||('placement' in clip && clip.placement.concatRetime)) {
         const planned = sourceParts?.get(clip.id)
         if (!planned) throw new Error('Обрезка Concat требует нативного плана')
         return planned

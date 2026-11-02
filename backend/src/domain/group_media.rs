@@ -170,6 +170,9 @@ pub fn render_project_frame_sources_with_clip_filter(
                             .sources
                             .get(source)
                             .context("missing video source metadata")?;
+                        let bounded_time = source_time.clamp_video_duration(metadata.duration_ticks)?;
+                        let hold_presented = hold_presented || bounded_time != source_time;
+                        let source_time = bounded_time;
                         let remaining = deadline
                             .checked_duration_since(Instant::now())
                             .context("nested frame render timeout")?;

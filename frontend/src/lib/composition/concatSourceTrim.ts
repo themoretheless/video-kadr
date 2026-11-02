@@ -1,21 +1,22 @@
+import {isConcatImageClip} from './concatImageSource'
 import { planConcatSourceEdit, type NativeNestedProject } from '$lib/api'
-import { applyConcatSourcePart, concatSourceEditInput, type SourceClip } from './concatSourceSplit'
+import { applyConcatSourcePart, concatSourceEditInput, type PlannedSourceClip } from './concatSourceSplit'
 import { expandNativeClipLinks } from './nativeClipLinks'
 import { nativeClipEditBounds, trimNativeClipEnds, trimNativeClipStarts } from './nativeClipTrim'
-export type SourceTrimParts = ReadonlyMap<string, SourceClip>
+export type SourceTrimParts = ReadonlyMap<string, PlannedSourceClip>
 /** Non-ripple source edits clamp against original neighboring document bounds. */
 export async function trimNativeClipsWithSourcePlans(project: NativeNestedProject, compositionId: string, ids: readonly string[], deltaUs: number, edge: 'start' | 'end'): Promise<NativeNestedProject> {
   if (!Number.isSafeInteger(deltaUs)) throw new Error('Некорректный сдвиг границы')
   const selected = new Set(expandNativeClipLinks(project, compositionId, ids))
   if (!selected.size || deltaUs === 0) return project
-  const node = project.compositions[compositionId]!, parts = new Map<string, SourceClip>()
+  const node = project.compositions[compositionId]!, parts = new Map<string, PlannedSourceClip>()
   let ordinary = false, changed = false
   for (const track of node.content.tracks) for (const clip of track.clips) {
     if (!selected.has(clip.id)) continue
     if (track.locked) throw new Error('Дорожка связанного клипа заблокирована')
-    if (!('placement' in clip) || !clip.placement.concatRetime) { ordinary = true; continue }
+    if (!(isConcatImageClip(clip)||('placement' in clip&&clip.placement.concatRetime))) { ordinary = true; continue }
     if (!('sourceId' in clip)) throw new Error('Неподдерживаемый исходный клип Concat')
-    const source = clip as SourceClip, input = concatSourceEditInput(source, node.content.canvas)
+    const source = clip as PlannedSourceClip, input = concatSourceEditInput(source, node.content.canvas)
     const [start, end] = nativeClipEditBounds(source)
     let floor = 0, ceiling: number | null = null
     for (const other of track.clips) {
@@ -31,7 +32,7 @@ export async function trimNativeClipsWithSourcePlans(project: NativeNestedProjec
     if (!plan.changed) { parts.set(clip.id, source); continue }
     const part = plan.parts[0]
     if (plan.parts.length !== 1 || part?.role !== 'clip' || plan.rippleBy !== 0 || !part.placement.concatRetime?.documentClock) throw new Error('Некорректный план обрезки Concat')
-    parts.set(clip.id, applyConcatSourcePart(source, part, source.placement.timelineStartTick - part.placement.timelineStartTick))
+    parts.set(clip.id, applyConcatSourcePart(source, part, ('placement' in source?source.placement.timelineStartTick:source.timelineStartTick) - part.placement.timelineStartTick))
     changed = true
   }
   if (!ordinary && !changed) return project
@@ -46,9 +47,9 @@ export function preflightNativeClipTrim(project: NativeNestedProject, compositio
   for (const track of node.content.tracks) for (const clip of track.clips) {
     if (!selected.has(clip.id)) continue
     if (track.locked) throw new Error('Дорожка связанного клипа заблокирована')
-    if ('placement' in clip && clip.placement.concatRetime) {
+    if (isConcatImageClip(clip)||('placement' in clip && clip.placement.concatRetime)) {
       if (!('sourceId' in clip)) throw new Error('Неподдерживаемый исходный клип Concat')
-      concatSourceEditInput(clip as SourceClip, node.content.canvas)
+      concatSourceEditInput(clip as PlannedSourceClip, node.content.canvas)
       source = true
     }
   }

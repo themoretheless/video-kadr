@@ -1,21 +1,22 @@
+import {isConcatImageClip} from './concatImageSource'
 import { planConcatSourceEdit, type NativeNestedProject } from '$lib/api'
 import type { ConcatSourceDocumentClock, WireCompositionTrack } from './types'
-import { applyConcatSourcePart, concatSourceEditInput, type SourceClip } from './concatSourceSplit'
+import { applyConcatSourcePart, concatSourceEditInput, type PlannedSourceClip } from './concatSourceSplit'
 import { expandNativeClipLinks } from './nativeClipLinks'
 import { nativeClipEnd } from './nativeClipInsert'
 export type SourceSpeedPoints = ConcatSourceDocumentClock['speedCurve']
 export function validateSourceSpeedPoints(points: SourceSpeedPoints): void {
   if (points != null && (!Array.isArray(points) || points.length > 4096 || points.some(point => !point || typeof point !== 'object' || Object.keys(point).some(key => key !== 'at' && key !== 'speed') || !Number.isFinite(point.at) || !Number.isFinite(point.speed)))) throw new Error('Некорректные точки скорости Concat')
 }
-export function sourceCurveParticipants(project: NativeNestedProject, compositionId: string, ids: readonly string[]): readonly SourceClip[] {
+export function sourceCurveParticipants(project: NativeNestedProject, compositionId: string, ids: readonly string[]): readonly PlannedSourceClip[] {
   const selected = new Set(expandNativeClipLinks(project, compositionId, ids)), node = project.compositions[compositionId]!
   if (!selected.size) throw new Error('Выберите клипы для изменения скорости')
-  const clips: SourceClip[] = []
+  const clips: PlannedSourceClip[] = []
   for (const track of node.content.tracks) for (const clip of track.clips) {
     if (!selected.has(clip.id)) continue
     if (track.locked) throw new Error('Дорожка связанного клипа заблокирована')
-    if (!('placement' in clip) || !clip.placement.concatRetime || !('sourceId' in clip)) throw new Error('Выберите клипы с исходными часами Concat')
-    const source = clip as SourceClip
+    if (!(isConcatImageClip(clip)||('placement' in clip&&clip.placement.concatRetime)) || !('sourceId' in clip)) throw new Error('Выберите клипы с исходными часами Concat')
+    const source = clip as PlannedSourceClip
     concatSourceEditInput(source, node.content.canvas)
     clips.push(source)
   }
@@ -26,7 +27,7 @@ export async function setNativeSourceSpeedCurve(project: NativeNestedProject, co
   validateSourceSpeedPoints(points)
   // Snapshot mutable caller input before the first asynchronous request.
   const captured = points?.map(point => ({ at: point.at, speed: point.speed })) ?? null
-  const clips = sourceCurveParticipants(project, compositionId, ids), node = project.compositions[compositionId]!, replacements = new Map<string, SourceClip>()
+  const clips = sourceCurveParticipants(project, compositionId, ids), node = project.compositions[compositionId]!, replacements = new Map<string, PlannedSourceClip>()
   for (const clip of clips) {
     const input = concatSourceEditInput(clip, node.content.canvas)
     const plan = await planConcatSourceEdit({ ...input, command: { kind: 'setCurve', points: captured } })

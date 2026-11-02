@@ -30,6 +30,6 @@ it('retains media with no timeline placement and drops a late result after proje
   const initial = project(); initial.projectMedia = { [source.id]: { source, name: 'Retained', placeholder: true } }; initial.compositions = { root: { ...initial.compositions.root, content: { ...initial.compositions.root.content, sources: {} } } }
   nestedComposition.document = initial; component = mount(Controls, { target: document.body }); await tick(); expect(document.body.textContent).toContain('Таймлайнов: 0')
   let resolve!: (p: api.NativeNestedProject) => void; vi.mocked(api.setNativeProjectMediaPlaceholder).mockImplementation(() => new Promise(done => { resolve = done }))
-  const pending = setNestedMediaPlaceholder(source.id, false); closeNestedComposition(); resolve({ ...initial, projectMedia: { [source.id]: { source, name: 'Retained' } } }); await pending; await tick()
+  const pending = setNestedMediaPlaceholder(source.id, false); await vi.waitFor(() => expect(api.setNativeProjectMediaPlaceholder).toHaveBeenCalledTimes(1)); closeNestedComposition(); resolve({ ...initial, projectMedia: { [source.id]: { source, name: 'Retained' } } }); await pending; await tick()
   expect(nestedComposition.document).toBeNull(); expect(nestedHistory.past).toHaveLength(0); expect(api.setNativeProjectMediaPlaceholder).toHaveBeenCalledTimes(1)
 })

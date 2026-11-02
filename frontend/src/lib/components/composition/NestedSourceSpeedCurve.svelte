@@ -5,7 +5,7 @@
   let { project, compositionId, clipIds, disabled = false }: { project: NativeNestedProject; compositionId: string; clipIds: readonly string[]; disabled?: boolean } = $props()
   let rows = $state<{ at: number; speed: number }[]>([])
   const participants = $derived.by(() => { try { return sourceCurveParticipants(project, compositionId, clipIds) } catch { return [] } })
-  const original = $derived(JSON.stringify(participants[0]?.placement.concatRetime?.documentClock?.speedCurve ?? null))
+  const original = $derived.by(()=>{const first=participants[0];return JSON.stringify(first?('placement' in first?first.placement.concatRetime?.documentClock?.speedCurve:first.concatSourceTiming?.speedCurve)??null:null)})
   const selection = $derived(`${compositionId}/${clipIds.join('/')}/${original}`)
   const points = $derived(rows.map(row => ({ at: row.at / 100, speed: row.speed })))
   // Document positions are normalized; the form displays percentages.

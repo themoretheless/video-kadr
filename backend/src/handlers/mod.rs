@@ -473,3 +473,5 @@ mod spherical_reidentify;
 pub mod filmcraft_commands;
 
 pub(crate) mod filmcraft_tracking_jobs;
+
+pub mod concat_registered_media;

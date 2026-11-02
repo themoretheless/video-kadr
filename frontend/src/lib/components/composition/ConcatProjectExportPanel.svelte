@@ -3,7 +3,7 @@
  import {nestedComposition,nestedHistory} from '$lib/state/nestedComposition.svelte'
  let {disabled=false}:{disabled?:boolean}=$props()
  let mediaPaths=$state<Record<string,string>>({})
- const sourceIds=$derived([...new Set(Object.values(nestedComposition.document?.compositions??{}).flatMap(node=>Object.keys(node.content.sources)))].sort())
+ const sourceIds=$derived([...new Set([...Object.keys(nestedComposition.document?.projectMedia??{}),...Object.values(nestedComposition.document?.compositions??{}).flatMap(node=>Object.keys(node.content.sources))])].sort())
  let busy=$state(false),error=$state(''),controller:AbortController|undefined
  $effect(()=>{const project=nestedComposition.document,scope=nestedComposition.activeCompositionId;void project;void scope;mediaPaths={};return()=>controller?.abort()})
  async function download(){

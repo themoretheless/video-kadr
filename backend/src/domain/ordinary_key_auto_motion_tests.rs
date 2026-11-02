@@ -74,6 +74,7 @@ fn all_216_ordinary_automatic_key_motion_frames_match_original() {
         transitions.clear();
         composition.validate().unwrap();
         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+ caption_text_tracks: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),

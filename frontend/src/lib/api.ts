@@ -1049,7 +1049,7 @@ export interface NativeCompositionInstance {
 }
 export interface NativeProjectLut {readonly id:string;readonly name:string;readonly lut:import("./composition/types").WireColorLut;readonly sourcePath?:string}
 export interface NativeProjectFont {readonly family:string;readonly data:string}
-export interface NativeProjectMediaItem { source: import('./composition/types').CompositionSource; name: string; placeholder?: boolean }
+export interface NativeProjectMediaItem { source: import('./composition/types').CompositionSource; name: string; placeholder?: boolean; concatMetadata?:Readonly<Record<string,unknown>> }
 export interface NativeNestedProject {
   projectMedia?: Readonly<Record<string,NativeProjectMediaItem>>
   fonts?:readonly NativeProjectFont[]
@@ -2729,6 +2729,15 @@ export interface ConcatProjectImportReport {
   readonly sourceDocument:unknown
   readonly timelineIds:Readonly<Record<string,string>>
 }
+export interface RegisteredConcatSlotFill { readonly document:unknown; readonly source:import('./composition/types').CompositionSource }
+/** Fill from an ACL-checked registered source and fresh server probe. */
+export async function fillConcatMediaSlot(document:unknown,mediaId:string,entry:{label:string;source:import('./composition/types').CompositionSource},signal?:AbortSignal,token?:string|null):Promise<RegisteredConcatSlotFill>{
+ const reply=await requestJson<{schemaVersion:number;document:unknown;applied:boolean;source:import('./composition/types').CompositionSource}>('/api/compositions/concat-project/fill-registered-slot',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({document,mediaId,sourceId:entry.source.id}),signal})
+ if(signal?.aborted)throw new DOMException('Aborted','AbortError')
+ if(reply.schemaVersion!==1||reply.applied!==true||!reply.document||typeof reply.document!=='object'||reply.source?.id!==entry.source.id||!['video','audio','image'].includes(reply.source.kind)||!Number.isSafeInteger(reply.source.durationTicks))throw new Error('Некорректный ответ заполнения слота Concat')
+ return {document:reply.document,source:reply.source}
+}
+
 export type ConcatFontBinding={readonly data:string}|{readonly fallback:true}
 export function importConcatProject(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={}):Promise<ConcatProjectImportReport>{
  return requestJson('/api/compositions/concat-project/import',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({schemaVersion:1,document,mediaBindings,...(Object.keys(fontBindings).length?{fontBindings}:{})}),signal})

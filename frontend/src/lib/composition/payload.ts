@@ -251,6 +251,7 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
           sourceId: clip.sourceId,
           timelineStartTick: clip.timelineStartTicks,
           durationTicks: clip.durationTicks,
+          ...(clip.concatSourceTiming ? {concatSourceTiming:clip.concatSourceTiming} : {}),
           transform: transformToWire(composition, clip),
           opacity: visualValueToWire(composition, clip, 'opacity'),
           blendMode: clip.blendMode ?? 'normal',

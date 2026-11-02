@@ -50,7 +50,6 @@ fn visual(clip:&Value,width:f64,height:f64,media_kind:Option<&str>)->Result<Valu
 pub fn export(project:&NestedCompositionProject)->Result<Value>{export_with_paths(project,&BTreeMap::new())}
 pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<String,String>)->Result<Value>{
  project.dependency_order()?;
- ensure!(project.project_media.is_empty(),"Project media records require slot-aware Concat export; native project data is retained");
  for node in project.compositions.values(){super::concat_lane_groups::groups(&node.content)?;}
  ensure!(project.fonts.is_empty()&&project.luts.is_empty(),"Embedded fonts/LUTs require a resource bundle for Concat export");
  let wire=serde_json::to_value(project)?;
@@ -61,6 +60,15 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
   if let Some(previous)=bindings.insert(id.to_owned(),source.clone()){ensure!(previous==*source,"Conflicting source metadata for {id}");}
   let source=serde_json::to_value(source)?;media.insert(id.to_owned(),json!({"id":id,"path":path,"name":wire["compositions"][node_id]["content"]["metadata"]["sourceNames"][id].as_str().unwrap_or(id),"kind":source["kind"],"duration":source["durationTicks"].as_u64().unwrap() as f64/1e6,"width":source["width"],"height":source["height"],"hasAudio":source["hasAudio"],"colorSpace":"sdr"}));
  }}
+ for (source_id,entry) in &project.project_media {
+  let id=source_id.as_str();
+  let path=paths.get(id).with_context(||format!("Media {id}: supply an explicit Concat file path"))?;
+  ensure!(!path.is_empty()&&path.len()<=4096&&!path.contains('\0'),"Invalid source path for {id}");
+  if let Some(previous)=bindings.insert(id.to_owned(),entry.source.clone()){ensure!(previous==entry.source,"Project media descriptor differs from live source {id}");}
+  let source=serde_json::to_value(&entry.source)?;
+  media.insert(id.to_owned(),json!({"id":id,"path":path,"name":entry.name,"placeholder":entry.placeholder,"kind":source["kind"],"duration":source["durationTicks"].as_u64().unwrap() as f64/1e6,"width":source["width"],"height":source["height"],"hasAudio":source["hasAudio"],"colorSpace":"sdr"}));
+  let item=media.get_mut(id).unwrap();for (key,value) in &entry.concat_metadata {item[key]=value.clone();}
+ }
  ensure!(paths.keys().all(|id|bindings.contains_key(id)),"File path supplied for unknown source");
  let mut timelines=vec![];
  for id in order{
@@ -101,6 +109,7 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
  ensure!(serde_json::to_vec(&document)?.len()<=4*1024*1024,"Concat JSON exceeds the import budget");
  let report=super::concat_project_import::import(serde_json::from_value(json!({"schemaVersion":1,"document":document,"mediaBindings":bindings}))?)?;
  ensure!(report.status=="converted","Reverse conversion failed native admission: {}",report.diagnostics.join("; "));
+ ensure!(report.project.as_ref().context("Missing reconstructed project")?.project_media==project.project_media,"Reverse conversion changes project media properties");
  // Compare normalized media ownership after the existing importer has reconstructed it.
  let restored=serde_json::to_value(report.project.context("Missing reconstructed project")?)?;
  for timeline in document["timelines"].as_array().unwrap(){let restored_id=&report.timeline_ids[timeline["id"].as_str().unwrap()];let original=&wire["compositions"][timeline["id"].as_str().unwrap()]["content"];let rebuilt=&restored["compositions"][restored_id]["content"];
@@ -152,7 +161,14 @@ fn media_timing(clip:&Value)->Result<(u64,u64)>{
  else{Ok((clip["timelineStartTick"].as_u64().context("Image start missing")?,clip["durationTicks"].as_u64().context("Image duration missing")?))}
 }
 fn media_controls(clip:&Value,kind:&str,out:&mut Value)->Result<()>{
- if kind=="image"{return Ok(())}
+ if kind=="image"{
+  if let Some(value)=clip.get("concatSourceTiming") {
+   let timing:super::composition::ImageSourceTiming=serde_json::from_value(value.clone())?;timing.validate()?;
+   out["sourceStart"]=json!(timing.source_start);out["speed"]=json!(timing.speed);
+   if let Some(points)=timing.speed_curve {out["speedCurve"]=serde_json::to_value(points)?;}
+  }
+  return Ok(())
+ }
  let placement=&clip["placement"];out["sourceStart"]=json!(placement["sourceInTick"].as_u64().context("Media source start missing")? as f64/1e6);out["speed"]=placement["speed"].clone();out["preservePitch"]=json!(true);
  let audio=kind=="audio";out["volume"]=json!(constant(&clip[if audio{"gain"}else{"audioGain"}])?);out["muted"]=json!(if audio{clip["enabled"]==false}else{clip["sourceAudioEnabled"]==false});
  out["fadeIn"]=json!(clip[if audio{"fadeInTicks"}else{"audioFadeInTicks"}].as_u64().unwrap_or(0) as f64/1e6);out["fadeOut"]=json!(clip[if audio{"fadeOutTicks"}else{"audioFadeOutTicks"}].as_u64().unwrap_or(0) as f64/1e6);

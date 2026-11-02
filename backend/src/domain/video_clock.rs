@@ -9,6 +9,19 @@ pub enum FrameTime {
     SourceTicks(i64),
 }
 impl FrameTime {
+    /// Clamp a still-valid timeline sample to the source's final presentation
+    /// interval. Keep exact Concat ticks rather than rounding to microseconds.
+    pub fn clamp_video_duration(self, duration_us: u64) -> Result<Self> {
+        ensure!(duration_us > 0, "empty video source duration");
+        Ok(match self {
+            Self::Microseconds(value) => Self::Microseconds(value.min(duration_us - 1)),
+            Self::SourceTicks(value) => {
+                ensure!(value >= 0, "negative source frame clock");
+                let end = i128::from(duration_us) * 254_016;
+                Self::SourceTicks(i64::try_from(i128::from(value).min(end - 1))?)
+            }
+        })
+    }
     pub fn microseconds(self) -> Result<u64> {
         let value = match self {
             Self::Microseconds(value) => return Ok(value),
@@ -112,7 +125,8 @@ mod tests {
     #[test]
     fn clocks_preserve_offsets_reverse_freeze_and_half_open_boundaries() {
         let placement = ClipPlacement {
-            timeline_start_tick: 500000,
+            concat_source_eof: false,
+timeline_start_tick: 500000,
             source_in_tick: 100000,
             source_out_tick: 1100000,
             speed: 2.0,
@@ -175,7 +189,8 @@ pub fn transition_source_tick(placement:&ClipPlacement,mode:PlaybackMode,timelin
 #[cfg(test)]mod transition_clock_tests{
  use super::*;
  #[test]fn transition_clock_reads_both_source_handles_with_signed_exact_time(){
-  let placement=ClipPlacement{timeline_start_tick:10000000,source_in_tick:20000000,source_out_tick:30000000,speed:1.,source_timeline_offset_tick:None,source_head_timeline_tick:None, concat_retime: None,timeline_duration_tick:None,speed_ramp:None};
+  let placement=ClipPlacement{concat_source_eof: false,
+timeline_start_tick:10000000,source_in_tick:20000000,source_out_tick:30000000,speed:1.,source_timeline_offset_tick:None,source_head_timeline_tick:None, concat_retime: None,timeline_duration_tick:None,speed_ramp:None};
   assert_eq!(transition_source_tick(&placement,PlaybackMode::Forward,9000000i128*254016).unwrap(),Some(19000000));
   assert_eq!(transition_source_tick(&placement,PlaybackMode::Forward,21000000i128*254016).unwrap(),Some(31000000));
   assert_eq!(transition_source_tick(&placement,PlaybackMode::Reverse,0).unwrap(),Some(39999999));

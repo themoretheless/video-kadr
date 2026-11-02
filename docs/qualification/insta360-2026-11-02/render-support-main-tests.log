@@ -1,0 +1,9 @@
+
+running 4 tests
+test render_support_tests::competing_depths_do_not_gain_render_support ... ok
+test render_support_tests::fully_supported_geometry_reaches_measured_midpoint_at_lower_ncc ... ok
+test render_support_tests::missing_spatial_support_still_fades_without_inventing_a_vector ... ok
+test seam_cut::tests::iterative_cut_matches_exhaustive_binary_energy ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

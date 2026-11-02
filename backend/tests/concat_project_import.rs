@@ -404,3 +404,33 @@ async fn cutout_import_preserves_source_and_names_real_analysis_dependencies(){
  let diagnostic=report["diagnostics"].as_array().unwrap().iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n");assert!(diagnostic.contains("source-owned model/mask analysis"),"{diagnostic}");assert!(diagnostic.contains("subject=Object"),"{diagnostic}");assert!(diagnostic.contains("smart source frames=1"),"{diagnostic}");
  input["document"]["timelines"][0]["clips"][0]["cutout"]["future"]=json!(true);let(_,report,_)=support::send(&app,request(input.clone())).await;assert_eq!(report["status"],"needs_attention");assert!(report["project"].is_null());assert_eq!(report["sourceDocument"],input["document"]);
 }
+
+#[tokio::test]
+async fn imports_creator_slots_without_opening_paths_or_changing_timeline_placements() {
+    let (state, _dir) = support::make_state(false, false).await;
+    let app = support::router(state);
+    let original = source();
+    let (_, baseline, _) = support::send(&app, request(body(original.clone()))).await;
+    let mut slots = original;
+    slots["media"][0]["placeholder"] = json!(true);
+    slots["media"][0]["name"] = json!("Creator slot");
+    let (status, result, _) = support::send(&app, request(body(slots.clone()))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["status"], "converted", "{result}");
+    assert_eq!(result["sourceDocument"], slots);
+    let entry = &result["project"]["projectMedia"]["source"];
+    assert_eq!(entry["placeholder"], true);
+    assert_eq!(entry["name"], "Creator slot");
+    assert_eq!(entry["source"]["id"], "source");
+    for id in ["concat-timeline-0", "concat-timeline-1"] {
+        assert_eq!(result["project"]["compositions"][id]["content"]["tracks"], baseline["project"]["compositions"][id]["content"]["tracks"]);
+    }
+    // A distinct logical slot cannot silently collapse into another bin item.
+    let mut alias = slots["media"][0].clone(); alias["id"] = json!("second-slot");
+    slots["media"].as_array_mut().unwrap().push(alias);
+    let mut value = body(slots.clone()); value["mediaBindings"]["second-slot"] = value["mediaBindings"]["m1"].clone();
+    let (_, refused, _) = support::send(&app, request(value)).await;
+    assert_eq!(refused["status"], "needs_attention");
+    assert!(refused["project"].is_null());
+    assert_eq!(refused["sourceDocument"], slots);
+}

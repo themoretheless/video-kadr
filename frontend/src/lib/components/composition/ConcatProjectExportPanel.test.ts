@@ -26,3 +26,9 @@ it('requires explicit media paths and snapshots the mapping into the export requ
  vi.mocked(exportConcatProject).mockRejectedValue(Error('missing path'));const component=mount(ConcatProjectExportPanel,{target:document.body})
  try{await tick();const input=document.querySelector('input')!;expect(input.getAttribute('aria-label')).toBe('Путь медиа Concat: sound');input.value='/portable/source.wav';input.dispatchEvent(new Event('input',{bubbles:true}));await tick();document.querySelector('button')!.click();await vi.waitFor(()=>expect(exportConcatProject).toHaveBeenCalled());expect(vi.mocked(exportConcatProject).mock.calls[0][3]).toEqual({sound:'/portable/source.wav'})}finally{await unmount(component)}
 })
+
+it('includes retained project media even when no timeline references it',async()=>{
+ setup();nestedComposition.document!.projectMedia={retained:{name:'Unused slot',placeholder:true,source:{id:'retained',kind:'image',durationTicks:0,width:16,height:16,hasAudio:false}}}
+ vi.mocked(exportConcatProject).mockRejectedValue(Error('retry'));const component=mount(ConcatProjectExportPanel,{target:document.body})
+ try{await tick();const input=document.querySelector('input')!;expect(input.getAttribute('aria-label')).toBe('Путь медиа Concat: retained');input.value='/creator/retained.png';input.dispatchEvent(new Event('input',{bubbles:true}));await tick();document.querySelector('button')!.click();await vi.waitFor(()=>expect(exportConcatProject).toHaveBeenCalled());expect(vi.mocked(exportConcatProject).mock.calls[0][3]).toEqual({retained:'/creator/retained.png'})}finally{await unmount(component)}
+})

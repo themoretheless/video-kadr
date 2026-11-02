@@ -1,0 +1,8 @@
+{
+  "backend/src/domain/spherical_optical_flow.rs": "90c8f2c5be160f49ae30773537a9891ece9a0e02d998b891e3505fb572ce27ed",
+  "backend/src/domain/spherical_video.rs": "bc5f8621ee7d84b3a5cd5510f449c184adb9fb70ec2ca65be94f46cfc4547aec",
+  "backend/vision-runtime/src/sam_continuity.rs": "55dd7405cbf6bf3efda0efa177fad881af4181e34aae7193fe03ba45f6f42ed5",
+  "backend/vision-runtime/src/sam_instance.rs": "f7d0ec18e6836dadffcb02f93e36f338395103bb9fbdf25bd20f1b725bdf7ab0",
+  "backend/vision-runtime/src/sam_reidentification.rs": "143cfa0aa756b646eb38eca18698fc0a4a250612c21ade5014a13bc64c203cdd",
+  "backend/vision-runtime/src/slim_sam.rs": "fe2fe1b198206faf907f7971a3d641da521a012081ce6165d094b6bf7cda0707"
+}

@@ -50,7 +50,8 @@ impl ImportedVideoPlacement {
         .map_err(anyhow::Error::msg)?
         .frame;
         let placement = ClipPlacement {
-            timeline_start_tick: microseconds(source.timeline_start)?,
+            concat_source_eof: false,
+timeline_start_tick: microseconds(source.timeline_start)?,
             source_in_tick: microseconds(source.source_in)?,
             source_out_tick: microseconds(source_out)?,
             speed,

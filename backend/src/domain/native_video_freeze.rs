@@ -200,7 +200,8 @@ pub fn splice(
     let mut opacity = picture.opacity.clone();
     retime(&mut opacity, duration)?;
     let frozen = ImageClip {
-        id: CompositionClipId::parse(still_id.to_owned())?,
+        concat_source_timing: None,
+id: CompositionClipId::parse(still_id.to_owned())?,
         source_id: still.id.clone(),
         timeline_start_tick: at,
         duration_ticks: 1_000_000,

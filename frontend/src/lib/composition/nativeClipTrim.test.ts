@@ -86,3 +86,16 @@ it('retains same-file cutout identities when trimming the selected source window
  const output=trimNativeClipEnds(input,'new-timeline',['auto-first'],-1000000)
  expect(output.compositions['new-timeline']!.content.tracks[1]!.clips[0]).toMatchObject({concatCutout:binding})
 })
+
+it('preserves Concat EOF admission across a split after EOF and a tail extension, while strict clips still refuse',()=>{
+ const value=JSON.parse(JSON.stringify(project())),node=value.compositions['new-timeline']
+ for(const source of Object.values(node.content.sources) as {kind:string;durationTicks:number}[])if(source.kind!=='image')source.durationTicks=1000000
+ for(const index of [1,3])node.content.tracks[index].clips[0].placement.concatSourceEof=true
+ const input=value as NativeNestedProject
+ const extended=trimNativeClipEnds(input,'new-timeline',['auto-first'],1000000)
+ for(const index of [1,3])expect(extended.compositions['new-timeline']!.content.tracks[index]!.clips[0]).toMatchObject({placement:{concatSourceEof:true,sourceOutTick:5000000,timelineDurationTick:4000000}})
+ let next=0;const split=splitNativeClips(input,'new-timeline',['auto-first'],4500000,()=>`tail-eof-${++next}`)
+ for(const index of [1,3])expect(split.compositions['new-timeline']!.content.tracks[index]!.clips[1]).toMatchObject({placement:{concatSourceEof:true,sourceOutTick:4000000,sourceTimelineOffsetTick:2500000,timelineDurationTick:500000}})
+ for(const index of [1,3])delete node.content.tracks[index].clips[0].placement.concatSourceEof
+ expect(()=>trimNativeClipEnds(value as NativeNestedProject,'new-timeline',['auto-first'],1000000)).toThrow('Не хватает исходного материала')
+})

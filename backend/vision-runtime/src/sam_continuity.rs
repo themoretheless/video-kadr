@@ -48,6 +48,25 @@ fn patch(image: &Image, x: i32, y: i32) -> Option<[f32; N]> {
 fn circular_delta(a: f32, b: f32, width: usize) -> f32 {
     (a - b + width as f32 / 2.).rem_euclid(width as f32) - width as f32 / 2.
 }
+fn shifted_support_overlap(mask: &Mask, shift: [f32; 2], cancel: &AtomicBool) -> Result<f32> {
+    let (mut both, mut union) = (0usize, 0usize);
+    for y in 0..mask.height {
+        check(cancel)?;
+        for x in 0..mask.width {
+            let a = mask.bytes[y * mask.width + x] >= 128;
+            let v = (y as f32 + 0.5) / mask.height as f32 - shift[1];
+            let b = (0. ..1.).contains(&v)
+                && crate::mask_apply::sample(
+                    mask,
+                    ((x as f32 + 0.5) / mask.width as f32 - shift[0]).rem_euclid(1.),
+                    v,
+                ) >= 0.5;
+            both += usize::from(a && b);
+            union += usize::from(a || b);
+        }
+    }
+    Ok(both as f32 / union.max(1) as f32)
+}
 fn locate(
     image: &Image,
     feature: &[f32; N],
@@ -309,11 +328,29 @@ impl Continuity {
             .iter()
             .filter(|a| pairs.iter().filter(|b| distance(a.2, b.2) <= 6.).count() >= 3)
             .collect();
-        if supported
-            .iter()
-            .any(|a| supported.iter().any(|b| distance(a.2, b.2) > 12.))
-        {
-            return Ok(MotionEvidence::Competing);
+        let mut modes: Vec<[f32; 2]> = vec![];
+        for point in supported {
+            if modes.iter().all(|mode| distance(point.2, *mode) > 6.) {
+                modes.push(point.2);
+            }
+        }
+        for (i, a) in modes.iter().enumerate() {
+            for b in &modes[i + 1..] {
+                // Different limbs can move within the SAME authored object.
+                // Competing owners must also predict separate object supports.
+                if distance(*a, *b) > 12.
+                    && shifted_support_overlap(
+                        mask,
+                        [
+                            (a[0] - b[0]) / current.width as f32,
+                            (a[1] - b[1]) / current.height as f32,
+                        ],
+                        cancel,
+                    )? < 0.25
+                {
+                    return Ok(MotionEvidence::Competing);
+                }
+            }
         }
         let median = |axis: usize| {
             let mut v: Vec<_> = pairs.iter().map(|p| p.2[axis]).collect();

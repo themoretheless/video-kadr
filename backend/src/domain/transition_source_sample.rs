@@ -24,12 +24,14 @@ mod exact_transition_source_tests {
  use super::*;
  #[test]
  fn source_tick_retains_reverse_offset_and_one_tick_boundary_for_metadata(){
-  let p=ClipPlacement{timeline_start_tick:10_000_000,source_in_tick:20_000_000,source_out_tick:30_000_000,speed:1.,source_timeline_offset_tick:None,source_head_timeline_tick:None, concat_retime: None,timeline_duration_tick:None,speed_ramp:None};
+  let p=ClipPlacement{concat_source_eof: false,
+timeline_start_tick:10_000_000,source_in_tick:20_000_000,source_out_tick:30_000_000,speed:1.,source_timeline_offset_tick:None,source_head_timeline_tick:None, concat_retime: None,timeline_duration_tick:None,speed_ramp:None};
   let at=10_000_000i128*254_016;
   assert_eq!(transition_source_sample_tick(&p,PlaybackMode::Forward,at+1).unwrap(),Some(20_000_000*254_016+1));
   assert_eq!(transition_source_sample_tick(&p,PlaybackMode::Reverse,at).unwrap(),Some(30_000_000*254_016-1));
   assert_eq!(transition_source_sample_tick(&p,PlaybackMode::Freeze{source_tick:25_000_000},at-1).unwrap(),Some(25_000_000*254_016));
-  let before=ClipPlacement{timeline_start_tick:1,source_in_tick:0,source_out_tick:1,..p};
+  let before=ClipPlacement{concat_source_eof: false,
+timeline_start_tick:1,source_in_tick:0,source_out_tick:1,..p};
   assert_eq!(transition_source_sample_tick(&before,PlaybackMode::Forward,0).unwrap(),None);
  }
 }

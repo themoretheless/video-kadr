@@ -822,3 +822,7 @@ pub mod filmcraft_clip_edit;
 pub mod filmcraft_attribute_transfer;
 
 pub mod project_media;
+
+pub mod concat_media_slots;
+
+pub mod concat_registered_media;

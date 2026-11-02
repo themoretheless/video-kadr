@@ -727,7 +727,8 @@ async fn archive_region(
             id: clip.clone(),
             source_id: SourceId::parse("sam-holder-copy").unwrap(),
             placement: ClipPlacement {
-                timeline_start_tick: 0,
+                concat_source_eof: false,
+timeline_start_tick: 0,
                 source_in_tick: 0,
                 source_out_tick: 1_000_000,
                 speed: 1.,

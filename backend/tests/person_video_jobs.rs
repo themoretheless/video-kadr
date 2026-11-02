@@ -1347,7 +1347,8 @@ fn project_with_video_resources(accepted: &Value) -> Value {
             id: clip.clone(),
             source_id: SourceId::parse(accepted["id"].as_str().unwrap()).unwrap(),
             placement: ClipPlacement {
-                timeline_start_tick: 0,
+                concat_source_eof: false,
+timeline_start_tick: 0,
                 source_in_tick: 0,
                 source_out_tick: 1_000_000,
                 speed: 1.,

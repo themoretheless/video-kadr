@@ -4965,7 +4965,8 @@ mod tests {
 
     fn placement(start: u64, source_in: u64, source_out: u64) -> ClipPlacement {
         ClipPlacement {
-            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            concat_source_eof: false,
+source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
             timeline_duration_tick: None,
             timeline_start_tick: start,
             source_in_tick: source_in,
@@ -5120,7 +5121,8 @@ mod tests {
             ..TransformSpec::default()
         };
         let image = ImageClip {
-                    effects: Vec::new(),
+                    concat_source_timing: None,
+effects: Vec::new(),
             id: CompositionClipId::parse("image-clip").unwrap(),
             source_id: id("image"),
             timeline_start_tick: 2_000_000,
@@ -8471,7 +8473,8 @@ timeline: None,
         };
         let clips = (0_u64..410)
             .map(|index| ImageClip {
-                    effects: Vec::new(),
+                    concat_source_timing: None,
+effects: Vec::new(),
                 id: CompositionClipId::parse(format!("budget-image-{index}")).unwrap(),
                 source_id: id("budget-image"),
                 timeline_start_tick: index * 10_000,

@@ -12,6 +12,60 @@ pub struct ProjectMediaItem {
     pub name: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub placeholder: bool,
+    /// Retained Concat authoring properties; never file-path or render authority.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub concat_metadata: BTreeMap<String, serde_json::Value>,
+}
+const CONCAT_METADATA_FIELDS: &[&str] = &[
+    "frameRate",
+    "frameRateFraction",
+    "videoCodec",
+    "audioCodec",
+    "audioTracks",
+    "origin",
+    "colorRange",
+    "colorSpace",
+];
+pub fn capture_concat_metadata(item: &serde_json::Value) -> BTreeMap<String, serde_json::Value> {
+    CONCAT_METADATA_FIELDS
+        .iter()
+        .filter_map(|key| {
+            let value = item.get(*key)?;
+            if value.is_null()
+                || value.as_array().is_some_and(Vec::is_empty)
+                || (*key == "colorSpace" && value == "sdr")
+            {
+                None
+            } else {
+                Some(((*key).to_owned(), value.clone()))
+            }
+        })
+        .collect()
+}
+fn validate_concat_metadata(values: &BTreeMap<String, serde_json::Value>) -> Result<()> {
+    ensure!(
+        values
+            .keys()
+            .all(|key| CONCAT_METADATA_FIELDS.contains(&key.as_str())),
+        "unknown Concat media property"
+    );
+    ensure!(
+        serde_json::to_vec(values)?.len() <= 64 * 1024,
+        "Concat media properties exceed 64 KiB"
+    );
+    ensure!(
+        values
+            .get("colorSpace")
+            .map_or(true, |value| value == "sdr"),
+        "native HDR source mapping is not implemented"
+    );
+    ensure!(
+        values
+            .get("colorRange")
+            .map_or(true, serde_json::Value::is_null),
+        "native source color-range mapping is not implemented"
+    );
+    Ok(())
 }
 pub fn validate(items: &BTreeMap<SourceId, ProjectMediaItem>) -> Result<()> {
     ensure!(items.len() <= MAX_SOURCES, "too many project media records");
@@ -25,6 +79,7 @@ pub fn validate(items: &BTreeMap<SourceId, ProjectMediaItem>) -> Result<()> {
             "invalid project media name"
         );
         item.source.validate()?;
+        validate_concat_metadata(&item.concat_metadata)?;
     }
     Ok(())
 }
@@ -55,6 +110,7 @@ pub fn set_placeholder(
                 source,
                 name,
                 placeholder: false,
+                concat_metadata: Default::default(),
             })
         })
     });

@@ -506,6 +506,7 @@ mod composition_metadata_tests {
         let clip = CompositionClipId::parse("clip").unwrap();
         let source = SourceId::parse("source").unwrap();
         c.metadata = Some(CompositionMetadata {
+ caption_text_tracks: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),

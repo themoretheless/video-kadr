@@ -12,6 +12,11 @@ fn clocked(value: &crate::domain::composition::AnimatableValue) -> bool {
 }
 
 pub fn needs_native_audio(composition: &crate::domain::composition::Composition) -> bool {
+    if composition.tracks.iter().any(|track| match track {
+        CompositionTrack::Audio{clips,..}=>clips.iter().any(|clip|clip.placement.concat_source_eof),
+        CompositionTrack::Video{clips,..}=>clips.iter().any(|clip|clip.placement.concat_source_eof&&composition.sources.get(&clip.source_id).is_some_and(|source|source.has_audio)),
+        _=>false,
+    }) {return true}
     if crate::domain::transition_export::has_independent_windows(composition) {return true}
     composition.tracks.iter().any(|track| match track {
         CompositionTrack::Audio {
@@ -20,8 +25,8 @@ pub fn needs_native_audio(composition: &crate::domain::composition::Composition)
             ..
         } => clips
             .iter()
-            .any(|clip| clip.enabled && (clocked(&clip.gain) || clocked(&clip.pan) || clip.audio_stream.is_some() || !clip.concat_gain_keys.is_empty() || clip.dsp_effects.iter().any(|effect| !effect.bypass) || clip.placement.timeline_duration_ticks().is_ok_and(|duration|clip.fade_in_ticks>duration||clip.fade_out_ticks>duration))),
-        CompositionTrack::Video{muted:false,clips,..}=>clips.iter().any(|clip|clip.enabled&&clip.source_audio_enabled&&composition.sources.get(&clip.source_id).is_some_and(|source|source.has_audio)&&(clocked(&clip.audio_gain)||clocked(&clip.audio_pan)||clip.audio_stream.is_some()||clip.independent_audio||!clip.concat_gain_keys.is_empty()||!clip.dsp_effects.is_empty()||clip.audio_fade_in_ticks>0||clip.audio_fade_out_ticks>0)),
+            .any(|clip| clip.enabled && (clip.placement.concat_source_eof || clocked(&clip.gain) || clocked(&clip.pan) || clip.audio_stream.is_some() || !clip.concat_gain_keys.is_empty() || clip.dsp_effects.iter().any(|effect| !effect.bypass) || clip.placement.timeline_duration_ticks().is_ok_and(|duration|clip.fade_in_ticks>duration||clip.fade_out_ticks>duration))),
+        CompositionTrack::Video{muted:false,clips,..}=>clips.iter().any(|clip|clip.enabled&&clip.source_audio_enabled&&composition.sources.get(&clip.source_id).is_some_and(|source|source.has_audio)&&(clip.placement.concat_source_eof||clocked(&clip.audio_gain)||clocked(&clip.audio_pan)||clip.audio_stream.is_some()||clip.independent_audio||!clip.concat_gain_keys.is_empty()||!clip.dsp_effects.is_empty()||clip.audio_fade_in_ticks>0||clip.audio_fade_out_ticks>0)),
         _ => false,
     })
 }

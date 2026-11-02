@@ -207,7 +207,8 @@ pub fn expand_audio(clip:&super::composition::AudioClip)->Result<Vec<ExpandedAud
         let mut derived=clip.clone();
         derived.id=CompositionClipId::parse(format!("concat-retime-{identity}-{index}"))?;
         derived.placement=ClipPlacement{
-            timeline_start_tick:((source.start_seconds*1000.).round().max(0.)as u64).checked_mul(1000).ok_or_else(||anyhow::anyhow!("source delay overflow"))?,
+            concat_source_eof: false,
+timeline_start_tick:((source.start_seconds*1000.).round().max(0.)as u64).checked_mul(1000).ok_or_else(||anyhow::anyhow!("source delay overflow"))?,
             source_in_tick:source_in,source_out_tick:source_in.checked_add(span).ok_or_else(||anyhow::anyhow!("source audio range overflow"))?,
             speed:source.speed,timeline_duration_tick:Some(duration),source_timeline_offset_tick:None,source_head_timeline_tick:None,speed_ramp:None,concat_retime:None,
         };

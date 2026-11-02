@@ -189,7 +189,8 @@ pub async fn mix_prepared_audio_layers(
         curve_readers.insert(alias.clone(),reader);
         layer.clip.source_id=alias;
         let duration=u64::try_from((u128::from(end)*1_000_000).div_ceil(u128::from(RATE)))?;
-        layer.clip.placement=crate::domain::composition::ClipPlacement{timeline_start_tick:0,source_in_tick:0,source_out_tick:duration,speed:1.,timeline_duration_tick:Some(duration),source_timeline_offset_tick:None,source_head_timeline_tick:None,speed_ramp:None,concat_retime:None};
+        layer.clip.placement=crate::domain::composition::ClipPlacement{concat_source_eof: false,
+timeline_start_tick:0,source_in_tick:0,source_out_tick:duration,speed:1.,timeline_duration_tick:Some(duration),source_timeline_offset_tick:None,source_head_timeline_tick:None,speed_ramp:None,concat_retime:None};
         layer.clip_local_start_us=local_start;
         layer.clip.gain=crate::domain::composition::AnimatableValue::Constant{value:1.};
         layer.clip.concat_gain_keys.clear();layer.clip.fade_in_ticks=0;layer.clip.fade_out_ticks=0;layer.clip.dsp_effects.clear();
@@ -305,10 +306,11 @@ pub async fn mix_prepared_audio_layers(
         let remaining = deadline
             .checked_duration_since(std::time::Instant::now())
             .context("native audio timeout")?;
+        let allow_empty_source=layers.iter().any(|layer|layer.source_id()==id&&layer.clip.placement.concat_source_eof);
         let reader = if let Some(reader)=curve_readers.remove(id){reader}else if let Some((source, graph)) = tempo_sources.get(id) {
-            conform_pcm_with_tempo_and_stream(runtime, ffmpeg, &sources[source].path, staging, *spec, remaining, cancel, Some(graph),bound_stream(&sources[source]),stream_relative_sources.contains(source)).await?
+            conform_pcm_with_tempo_and_stream(runtime, ffmpeg, &sources[source].path, staging, *spec, remaining, cancel, Some(graph),bound_stream(&sources[source]),stream_relative_sources.contains(source),allow_empty_source).await?
         } else {
-            conform_pcm_with_tempo_and_stream(runtime, ffmpeg, &sources[id].path, staging, *spec, remaining, cancel,None,bound_stream(&sources[id]),stream_relative_sources.contains(id)).await?
+            conform_pcm_with_tempo_and_stream(runtime, ffmpeg, &sources[id].path, staging, *spec, remaining, cancel,None,bound_stream(&sources[id]),stream_relative_sources.contains(id),allow_empty_source).await?
         };
         readers.insert(id.clone(), reader);
         let _ = progress.send(30.0 * (index + 1) as f64 / specs.len() as f64);

@@ -55,7 +55,7 @@ fn marking_is_project_wide_metadata_and_retains_unused_media_without_changing_ti
         video_kadr_backend::domain::concat_project_export::export(&marked)
             .unwrap_err()
             .to_string()
-            .contains("slot-aware")
+            .contains("explicit Concat file path")
     );
 }
 #[tokio::test]
@@ -98,4 +98,27 @@ async fn placeholder_http_is_pure_and_no_op_admission_is_explicit() {
         marked
     );
     assert!(p.project_media.is_empty());
+}
+
+#[test]
+fn concat_export_roundtrips_unplaced_slot_and_unmarked_bin_record() {
+    use std::collections::BTreeMap;
+    use video_kadr_backend::domain::{concat_project_export::export_with_paths, concat_project_import::{import, ImportRequest}};
+    let id = SourceId::parse("source-a").unwrap();
+    let (mut marked, _) = set_placeholder(&project(), &id, true).unwrap();
+    for node in marked.compositions.values_mut() { node.content.sources.clear(); }
+    let paths = BTreeMap::from([("source-a".to_owned(), "/never-open/creator.png".to_owned())]);
+    for placeholder in [true, false] {
+        marked.project_media.get_mut(&id).unwrap().placeholder = placeholder;
+        let original = serde_json::to_value(&marked).unwrap();
+        let output = export_with_paths(&marked, &paths).unwrap();
+        assert_eq!(output["media"][0]["placeholder"], placeholder);
+        assert_eq!(output["media"][0]["id"], "source-a");
+        assert_eq!(output["media"][0]["path"], "/never-open/creator.png");
+        let request: ImportRequest = serde_json::from_value(json!({"schemaVersion":1,"document":output,"mediaBindings":{"source-a":marked.project_media[&id].source}})).unwrap();
+        let report = import(request).unwrap();
+        assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+        assert_eq!(report.project.unwrap().project_media, marked.project_media);
+        assert_eq!(serde_json::to_value(&marked).unwrap(), original);
+    }
 }

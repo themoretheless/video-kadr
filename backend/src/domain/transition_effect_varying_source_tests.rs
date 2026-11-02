@@ -88,6 +88,7 @@ fn all_127_effects_on_varying_alpha_source_match_original_1524_frames() {
         ];
         composition.tracks=serde_json::from_value(serde_json::json!([{"kind":"video","id":"video","name":"Video","transitions":transitions,"clips":[{"id":"a","sourceId":"red","placement":{"timelineStartTick":0,"sourceInTick":20000000,"sourceOutTick":30000000,"speed":1.0},"transform":super::super::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1.0},"blendMode":"normal","effects":if mode==0{effects.clone()}else{serde_json::json!([])},"enabled":true},{"id":"b","sourceId":"blue","placement":{"timelineStartTick":10000000,"sourceInTick":20000000,"sourceOutTick":30000000,"speed":1.0},"transform":super::super::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1.0},"blendMode":"normal","effects":if mode==1{effects.clone()}else{serde_json::json!([])},"enabled":true}]}])).unwrap();
         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+ caption_text_tracks: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),
