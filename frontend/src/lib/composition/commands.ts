@@ -1,3 +1,12 @@
+import {rewindowConcatClipAnimation,rewindowDspSourceKeys,rewindowConcatSourceEffects,rewindowConcatSourceRun} from './concatSourceWindow'
+import {splitTransitionWindow,transitionWindowReplaces,transitionSourceSpan} from './transitionTimeline'
+import { cloneGraphicValue } from './graphicLayers'
+import { rebaseNativeEffects } from './nativeEffects'
+import { rebaseDspEffects } from './dsp'
+import { AUDIO_TIME_GRID, canvasTimeGrid, shiftTimeGridMembers, shiftTimeGridSpan, snapTimeGridTicks } from './timeGrid'
+import { assertCompositionLocksPreserved } from './locks'
+import { rebaseColorAnimation } from './colorAnimation'
+import { createCompositionLink, linkedClipIds, pruneCompositionLinks } from './links.js'
 import {
   COMPOSITION_SCHEMA_VERSION,
   COMPOSITION_TIME_BASE,
@@ -22,12 +31,17 @@ import {
   type VideoTrack,
 } from './types'
 import {
+  cloneAnimatableValue,
+  shiftAnimatableValue,
   cloneAudioAnimation,
   cloneVisualAnimation,
   cloneVideoMasks,
-  sliceAudioAnimation,
-  sliceVisualAnimation,
-  sliceVideoMasks,
+  splitAudioAnimation,
+  splitVisualAnimation,
+  splitVideoMasks,
+  shiftAudioAnimation,
+  shiftVisualAnimation,
+  shiftVideoMasks,
 } from './keyframes'
 import {
   cloneCompositionSpeedRamp,
@@ -55,6 +69,7 @@ export type CompositionCommandErrorCode =
   | 'source-in-use'
   | 'track-kind'
   | 'track-locked'
+  | 'clip-locked'
   | 'transition-conflict'
 
 export class CompositionCommandError extends Error {
@@ -136,9 +151,13 @@ export function deleteTrack(composition: Composition, trackId: string): Composit
   const index = composition.tracks.findIndex((track) => track.id === trackId)
   if (index < 0) throw commandError('missing-track', `Track ${trackId} does not exist`)
   if (composition.tracks[index]!.locked) throw commandError('track-locked', `Track ${trackId} is locked`)
+  for (const clip of composition.tracks[index]!.clips) ensureUnlocked(composition.tracks[index]!, clip)
   return finalize({
     ...composition,
     tracks: composition.tracks.filter((track) => track.id !== trackId),
+    ...(composition.metadata?.captionTextTracks ? { metadata: { ...composition.metadata,
+      captionTextTracks: composition.metadata.captionTextTracks.filter((id) => id !== trackId),
+    } } : {}),
   })
 }
 
@@ -158,13 +177,19 @@ export function moveClip(
   clipId: string,
   targetTrackId: string,
   timelineStartTicks: number,
+  escapeLink = false,
 ): Composition {
   assertValidComposition(composition)
   if (!isSafeTick(timelineStartTicks)) throw commandError('invalid-range', 'Clip start must be a non-negative safe tick')
   const location = findClipLocation(composition, clipId)
+  const members = escapeLink ? [clipId] : linkedClipIds(composition, clipId)
+  if (members.length > 1) {
+    return moveClipSet(composition, [clipId, ...members.filter((id) => id !== clipId)], targetTrackId, timelineStartTicks, true)
+  }
+  if (location.track.kind === 'video' && location.track.transitions?.some(transition=>transition.timeline&&(transition.fromClipId===clipId||transition.toClipId===clipId))) return moveClipSet(composition,[clipId],targetTrackId,timelineStartTicks)
   const targetTrackIndex = findTrackIndex(composition, targetTrackId)
   const targetTrack = composition.tracks[targetTrackIndex]!
-  ensureUnlocked(location.track)
+  ensureUnlocked(location.track, location.clip)
   if (targetTrack.id !== location.track.id) ensureUnlocked(targetTrack)
   ensureCompatible(targetTrack, location.clip)
   if (
@@ -175,9 +200,9 @@ export function moveClip(
     throw commandError('transition-conflict', 'Remove transitions before moving this clip to another track')
   }
 
-  const moved = withTimelineStart(location.clip, timelineStartTicks)
+  const moved = withClipGridStart(composition, location.clip, timelineStartTicks, true)
   ensureTimelineRange(moved)
-  if (targetTrack.id === location.track.id && timelineStartTicks === location.clip.timelineStartTicks) return composition
+  if (targetTrack.id === location.track.id && JSON.stringify(moved) === JSON.stringify(location.clip)) return composition
 
   const tracks = [...composition.tracks]
   const sourceClips = location.track.clips.filter((clip) => clip.id !== clipId)
@@ -190,12 +215,141 @@ export function moveClip(
   return finalize({ ...composition, tracks })
 }
 
+/** Move an exact subject set together. Only the anchor changes track. */
+export function moveClips(composition: Composition, clipIds: readonly string[], targetTrackId: string, timelineStartTicks: number): Composition {
+  return moveClipSet(composition, clipIds, targetTrackId, timelineStartTicks)
+}
+
+/** Explicit per-subject lane destinations; links never expand this set. */
+export function moveClipPlacements(composition: Composition, placements: readonly { clipId: string; trackId: string }[], anchorId: string, startTicks: number): Composition {
+  if (!Array.isArray(placements) || placements.some((placement) => !placement || typeof placement.clipId !== 'string' || typeof placement.trackId !== 'string') || !placements.some((placement) => placement.clipId === anchorId)) {
+    throw commandError('invalid-range', 'Placements require a selected anchor and valid destinations')
+  }
+  const ordered = [anchorId, ...placements.filter((placement) => placement.clipId !== anchorId).map((placement) => placement.clipId)]
+  if (new Set(placements.map((placement) => placement.clipId)).size !== placements.length) throw commandError('invalid-range', 'Placements require distinct subjects')
+  const targets = new Map(placements.map((placement) => [placement.clipId, placement.trackId]))
+  return moveClipSet(composition, ordered, targets.get(anchorId)!, startTicks, false, targets)
+}
+
+/** Shift every displayed subject by the anchor's displayed lane offset; hidden members stay put. */
+export function moveClipsByTrackOffset(composition: Composition, clipIds: readonly string[], anchorId: string, targetTrackId: string, startTicks: number, displayedTrackIds: readonly string[]): Composition {
+  if (new Set(displayedTrackIds).size !== displayedTrackIds.length || displayedTrackIds.some((id) => !composition.tracks.some((track) => track.id === id))) throw commandError('invalid-range', 'Displayed lanes must be distinct existing tracks')
+  const anchor = findClipLocation(composition, anchorId)
+  const origin = displayedTrackIds.indexOf(anchor.track.id)
+  const destination = displayedTrackIds.indexOf(targetTrackId)
+  if (origin < 0 || destination < 0 || !clipIds.includes(anchorId)) throw commandError('invalid-range', 'Move anchor and destination must be displayed')
+  const offset = destination - origin
+  const placements = clipIds.map((clipId) => {
+    const location = findClipLocation(composition, clipId)
+    const index = displayedTrackIds.indexOf(location.track.id)
+    const trackId = index < 0 ? location.track.id : displayedTrackIds[index + offset]
+    if (!trackId) throw commandError('invalid-range', 'Move exceeds displayed lanes')
+    return { clipId, trackId }
+  })
+  return moveClipPlacements(composition, placements, anchorId, startTicks)
+}
+
+function moveClipSet(composition: Composition, clipIds: readonly string[], targetTrackId: string, timelineStartTicks: number, preserveStationaryPartners = false, destinations?: ReadonlyMap<string, string>): Composition {
+  assertValidComposition(composition)
+  if (!Array.isArray(clipIds) || !clipIds.length || clipIds.length > 512 || new Set(clipIds).size !== clipIds.length || !isSafeTick(timelineStartTicks)) throw commandError('invalid-range', 'Move requires distinct clips and a safe start')
+  const locations = clipIds.map((id) => findClipLocation(composition, id))
+  const earliest = Math.min(...locations.map(({ clip }) => clip.timelineStartTicks))
+  const delta = Math.max(-earliest, snapClipGridStart(composition, locations[0]!.clip, timelineStartTicks) - locations[0]!.clip.timelineStartTicks)
+  const movedMembers = locations.map((item, index) => {
+    const target = composition.tracks[findTrackIndex(composition, destinations?.get(item.clip.id) ?? (index === 0 ? targetTrackId : item.track.id))]!
+    ensureUnlocked(item.track, item.clip)
+    ensureUnlocked(target)
+    ensureCompatible(target, item.clip)
+    const clip = withClipGridStart(composition, item.clip, item.clip.timelineStartTicks + delta, !preserveStationaryPartners || index === 0)
+    ensureTimelineRange(clip)
+    return { trackId: target.id, clip }
+  })
+  const targetOf = (id: string | null, sourceTrackId: string) => movedMembers.find((item) => item.clip.id === id)?.trackId ?? sourceTrackId
+  const transitions = composition.tracks.flatMap((track) => track.kind === 'video' ? (track.transitions ?? []).flatMap((transition) => {
+    // Filmcraft move_items deletes originals before placing them: touched explicit
+    // transitions become orphans even when both endpoints are moved together.
+    if (transition.timeline && [transition.fromClipId, transition.toClipId].some(id=>id!==null&&clipIds.includes(id))) return []
+    const fromTrackId = targetOf(transition.fromClipId, track.id)
+    const toTrackId = targetOf(transition.toClipId, track.id)
+    if (fromTrackId !== toTrackId) throw commandError('transition-conflict', 'Transition participants must move together to one track')
+    return [{ trackId: fromTrackId, sourceTrackId: track.id, transition }]
+  }) : [])
+  const result = finalize({ ...composition, tracks: composition.tracks.map((track) => {
+    const next = withClips(track, sortClips([...track.clips.filter((clip) => !clipIds.includes(clip.id)), ...movedMembers.filter((item) => item.trackId === track.id).map((item) => item.clip)]))
+    if (next.kind !== 'video') return next
+    const landedTransitions = transitions.filter((item) => item.trackId === track.id).map((item) => item.transition)
+    return next.transitions !== undefined || landedTransitions.length ? { ...next, transitions: landedTransitions } : next
+  }) })
+  for (const item of transitions.filter((item) => item.trackId !== item.sourceTrackId)) {
+    const reason = compositionTransitionUnavailableReason(result, item.trackId, item.transition)
+    if (reason) throw commandError('transition-conflict', reason)
+  }
+  return result
+}
+
+/** Raise an exact, homogeneous subject set without rounding authored times or expanding links. */
+export function moveClipsToNewTrack(composition: Composition, clipIds: readonly string[], trackId: string, anchor?: { clipId: string; startTicks: number }): Composition {
+  assertValidComposition(composition)
+  if (!Array.isArray(clipIds) || !clipIds.length || clipIds.length > 512 || new Set(clipIds).size !== clipIds.length) {
+    throw commandError('invalid-range', 'Raise requires 1–512 distinct clips')
+  }
+  if (!isStableId(trackId)) throw commandError('invalid-id', 'Track id is not a stable id')
+  if (composition.tracks.some((track) => track.id === trackId)) throw commandError('duplicate-id', `Track ${trackId} already exists`)
+  const locations = clipIds.map((id) => findClipLocation(composition, id))
+  if (anchor !== undefined && (!anchor || !clipIds.includes(anchor.clipId) || !isSafeTick(anchor.startTicks))) {
+    throw commandError('invalid-range', 'Landing requires a selected anchor and a safe start')
+  }
+  const kind = locations[0]!.clip.kind
+  for (const { track, clip } of locations) {
+    ensureUnlocked(track, clip)
+    if (clip.kind !== kind) throw commandError('track-kind', 'Mixed clip kinds require a mixed timeline lane')
+  }
+  const selected = new Set(clipIds)
+  const carriedTransitions = composition.tracks.flatMap((track) => track.kind === 'video' ? (track.transitions ?? []).filter((transition) => {
+    const from = (transition.fromClipId !== null && selected.has(transition.fromClipId))
+    const to = (transition.toClipId !== null && selected.has(transition.toClipId))
+    if (transition.timeline) return false
+    if (from !== to) throw commandError('transition-conflict', 'Transition participants must be raised together')
+    return from && to
+  }) : [])
+  const sourceTracks = new Set(locations.map(({ track }) => track.id))
+  const rate = canvasTimeGrid(composition.canvas)
+  const seed = anchor ? locations.find(({ clip }) => clip.id === anchor.clipId)!.clip : null
+  const landings = anchor && seed ? shiftTimeGridMembers(locations.map(({ clip }) => ({ id: clip.id, kind: clip.kind, start: clip.timelineStartTicks, end: clipEndTicks(clip) })), snapTimeGridTicks(anchor.startTicks, seed.kind === 'audio' ? AUDIO_TIME_GRID : rate) - seed.timelineStartTicks, rate) : null
+  const moved = locations.map(({ clip }) => {
+    const landed = landings?.get(clip.id)
+    if (!landed) return cloneClip(clip)
+    const duration = landed.end - landed.start
+    if (clip.kind === 'video' || clip.kind === 'audio') {
+      const next = shiftClipAutomation({ ...cloneClip(clip), timelineStartTicks: landed.start, timelineDurationTicks: duration }, 0)
+      ensureTimelineRange(next)
+      return next
+    }
+    const next = { ...cloneClip(clip), timelineStartTicks: landed.start, durationTicks: duration }
+    ensureTimelineRange(next)
+    return next
+  })
+  const fresh = withClips({ ...locations[0]!.track, id: trackId, name: 'Новая дорожка', clips: [], ...(kind === 'video' ? { transitions: carriedTransitions } : {}) } as CompositionTrack, sortClips(moved))
+  const tracks = composition.tracks.map((track) => {
+    if (!sourceTracks.has(track.id)) return track
+    const remaining = withClips(track, track.clips.filter((clip) => !selected.has(clip.id)))
+    return remaining.kind === 'video' && remaining.transitions ? { ...remaining, transitions: remaining.transitions.filter((transition) => transition.timeline ? ![transition.fromClipId,transition.toClipId].some(id=>id!==null&&selected.has(id)) : !(transition.fromClipId !== null && selected.has(transition.fromClipId))) } : remaining
+  }).filter((track) => !sourceTracks.has(track.id) || track.clips.length > 0)
+  // Array index zero is the highest local visual layer.
+  const result = finalize({ ...composition, tracks: [fresh, ...tracks] })
+  for (const transition of carriedTransitions) {
+    const reason = compositionTransitionUnavailableReason(result, trackId, transition)
+    if (reason) throw commandError('transition-conflict', reason)
+  }
+  return result
+}
+
 /** Move media under a fixed timeline range without changing clip placement. */
 export function slipClip(composition: Composition, clipId: string, sourceDeltaTicks: number): Composition {
   assertValidComposition(composition)
   if (!Number.isSafeInteger(sourceDeltaTicks)) throw commandError('invalid-range', 'Slip delta must be a safe tick')
   const location = findClipLocation(composition, clipId)
-  ensureUnlocked(location.track)
+  ensureUnlocked(location.track, location.clip)
   if (location.clip.kind !== 'video' && location.clip.kind !== 'audio') {
     throw commandError('track-kind', 'Only video and audio clips can slip')
   }
@@ -223,17 +377,63 @@ export function trimClip(
   clipId: string,
   newStartTicks: number,
   newEndTicks: number,
+  escapeLink = false,
 ): Composition {
   assertValidComposition(composition)
   if (!isSafeTick(newStartTicks) || !isSafeTick(newEndTicks) || newEndTicks <= newStartTicks) {
     throw commandError('invalid-range', 'Trim must produce a positive safe range')
   }
   const location = findClipLocation(composition, clipId)
-  ensureUnlocked(location.track)
+  ensureUnlocked(location.track, location.clip)
   const oldStart = location.clip.timelineStartTicks
   const oldEnd = clipEndTicks(location.clip)
-  const oldDuration = clipDurationTicks(location.clip)
   if (oldStart === newStartTicks && oldEnd === newEndTicks) return composition
+
+  const members = escapeLink ? [clipId] : linkedClipIds(composition, clipId)
+  if (members.length > 1) {
+    const affected = members.map((id) => findClipLocation(composition, id)).filter((item) =>
+      (newStartTicks !== oldStart && item.clip.timelineStartTicks === oldStart) ||
+      (newEndTicks !== oldEnd && clipEndTicks(item.clip) === oldEnd))
+    let startDelta = newStartTicks - oldStart
+    let endDelta = newEndTicks - oldEnd
+    for (const item of affected) {
+      ensureUnlocked(item.track, item.clip)
+      const clip = item.clip
+      const startAligned = clip.timelineStartTicks === oldStart
+      const endAligned = clipEndTicks(clip) === oldEnd
+      if (startAligned) startDelta = Math.max(startDelta, -clip.timelineStartTicks)
+      if (endAligned) endDelta = Math.min(endDelta, MAX_COMPOSITION_DURATION_TICKS - clipEndTicks(clip))
+      if (clip.kind === 'video' || clip.kind === 'audio') {
+        if (clip.speedRamp) {
+          // Existing ramp evaluation supports slicing the authored range, not extrapolation.
+          if (startAligned) startDelta = Math.max(startDelta, 0)
+          if (endAligned) endDelta = Math.min(endDelta, 0)
+        } else if (!(clip.kind === 'video' && clip.playbackMode?.mode === 'freeze')) {
+          const source = composition.sources[clip.sourceId]!
+          const reverse = clip.kind === 'video' && clip.playbackMode?.mode === 'reverse'
+          const speed = clip.speed ?? 1
+          const before = reverse ? source.durationTicks - clip.sourceOutTicks : clip.sourceInTicks
+          const after = reverse ? clip.sourceInTicks : source.durationTicks - clip.sourceOutTicks
+          if (startAligned) startDelta = Math.max(startDelta, -Math.floor(before / speed))
+          if (endAligned) endDelta = Math.min(endDelta, Math.floor(after / speed))
+        }
+      }
+    }
+    // Keep every touched range positive; a slipped, unaligned edge stays fixed.
+    for (const { clip } of affected) {
+      const duration = clipDurationTicks(clip)
+      const left = clip.timelineStartTicks === oldStart
+      const right = clipEndTicks(clip) === oldEnd
+      if (left && !right) startDelta = Math.min(startDelta, duration - 1)
+      if (right && !left) endDelta = Math.max(endDelta, 1 - duration)
+      if (left && right && duration + endDelta - startDelta <= 0) throw commandError('invalid-range', 'Linked trim would invert a member')
+    }
+    let result = composition
+    for (const { clip } of affected) result = trimClip(result, clip.id,
+      clip.timelineStartTicks + (clip.timelineStartTicks === oldStart ? startDelta : 0),
+      clipEndTicks(clip) + (clipEndTicks(clip) === oldEnd ? endDelta : 0), true)
+    return result
+  }
 
   const startDelta = newStartTicks - oldStart
   const endDelta = newEndTicks - oldEnd
@@ -284,7 +484,14 @@ export function trimClip(
       durationTicks: newEndTicks - newStartTicks,
     }
   }
-  trimmed = sliceClipVisualData(trimmed, newStartTicks - oldStart, newEndTicks - oldStart, oldDuration)
+  if ((trimmed.kind === 'video' || trimmed.kind === 'audio') && location.clip.kind !== 'text' && location.clip.kind !== 'image' && location.clip.kind !== 'color' && location.clip.kind !== 'graphic' && location.clip.timelineDurationTicks !== undefined) {
+    trimmed = { ...trimmed, timelineDurationTicks: newEndTicks - newStartTicks }
+  }
+  trimmed = shiftClipAutomation(trimmed, oldStart - newStartTicks)
+  if((trimmed.kind==='video'||trimmed.kind==='audio')&&trimmed.concatGainKeys?.length)trimmed={...trimmed,concatGainKeys:rewindowConcatSourceRun(trimmed.concatGainKeys,(newStartTicks-oldStart)/(oldEnd-oldStart),(newEndTicks-oldStart)/(oldEnd-oldStart))}
+  if((trimmed.kind==='video'||trimmed.kind==='audio')&&trimmed.dspEffects)trimmed={...trimmed,dspEffects:rewindowDspSourceKeys(trimmed.dspEffects,oldEnd-oldStart,newStartTicks-oldStart,newEndTicks-oldStart)}
+  if((trimmed.kind==='video'||trimmed.kind==='image')&&trimmed.effects)trimmed={...trimmed,effects:rewindowConcatSourceEffects(trimmed.effects,oldEnd-oldStart,newStartTicks-oldStart,newEndTicks-oldStart)}
+  if((trimmed.kind==='video'||trimmed.kind==='image')&&trimmed.concatAnimation)trimmed={...trimmed,concatAnimation:rewindowConcatClipAnimation(trimmed.concatAnimation,oldEnd-oldStart,newStartTicks-oldStart,newEndTicks-oldStart)}
   ensureTimelineRange(trimmed)
   return replaceLocatedClip(composition, location, trimmed)
 }
@@ -294,11 +501,35 @@ export function splitClip(
   clipId: string,
   atTicks: number,
   rightClipId: string,
+  escapeLink = false,
 ): Composition {
   assertValidComposition(composition)
   ensureUniqueClipId(composition, rightClipId)
   const location = findClipLocation(composition, clipId)
-  ensureUnlocked(location.track)
+  const members = escapeLink ? [clipId] : linkedClipIds(composition, clipId)
+  if (members.length > 1) {
+    if (!isSafeTick(atTicks) || atTicks <= location.clip.timelineStartTicks || atTicks >= clipEndTicks(location.clip)) throw commandError('invalid-range', 'Split point must be strictly inside the clip')
+    let result = composition
+    const added: string[] = []
+    for (const [index, member] of members.entries()) {
+      const item = findClipLocation(composition, member)
+      if (item.clip.timelineStartTicks >= atTicks || clipEndTicks(item.clip) <= atTicks) continue
+      const rightId = member === clipId ? rightClipId : `${rightClipId}-linked-${index}`
+      result = splitClip(result, member, atTicks, rightId, true)
+      added.push(rightId)
+    }
+    // Filmcraft split_track_at assigns one fresh link to the right pieces.
+    // Left pieces and unsplit partners retain the original link.
+    const rightLinkId = `${rightClipId}-link`
+    if (added.length >= 2 && result.links?.some((link) => link.id === rightLinkId)) {
+      throw commandError('duplicate-id', `Link ${rightLinkId} already exists`)
+    }
+    return finalize({ ...result, links: [
+      ...(result.links ?? []),
+      ...(added.length >= 2 ? [{ id: rightLinkId, memberIds: added }] : []),
+    ] })
+  }
+  ensureUnlocked(location.track, location.clip)
   const end = clipEndTicks(location.clip)
   if (!isSafeTick(atTicks) || atTicks <= location.clip.timelineStartTicks || atTicks >= end) {
     throw commandError('invalid-range', 'Split point must be strictly inside the clip')
@@ -348,13 +579,18 @@ export function splitClip(
       left = split.left
       right = split.right
     } else {
-      const sourceBoundary = location.clip.sourceInTicks + Math.round(leftDuration * (location.clip.speed ?? 1))
-      left = { ...location.clip, sourceOutTicks: sourceBoundary }
+      const sourceDelta = Math.round(leftDuration * (location.clip.speed ?? 1))
+      const sourceBoundary = location.clip.reversed
+        ? location.clip.sourceOutTicks - sourceDelta
+        : location.clip.sourceInTicks + sourceDelta
+      left = location.clip.reversed
+        ? { ...location.clip, sourceInTicks: sourceBoundary }
+        : { ...location.clip, sourceOutTicks: sourceBoundary }
       right = {
         ...location.clip,
         id: rightClipId,
         timelineStartTicks: atTicks,
-        sourceInTicks: sourceBoundary,
+        ...(location.clip.reversed ? { sourceOutTicks: sourceBoundary } : { sourceInTicks: sourceBoundary }),
       }
     }
   } else {
@@ -366,20 +602,36 @@ export function splitClip(
       durationTicks: rightDuration,
     }
   }
-  left = sliceClipVisualData(left, 0, leftDuration, leftDuration + rightDuration)
-  right = sliceClipVisualData(right, leftDuration, leftDuration + rightDuration, leftDuration + rightDuration)
+  if ((left.kind === 'video' || left.kind === 'audio') && (right.kind === 'video' || right.kind === 'audio') && left.timelineDurationTicks !== undefined) {
+    left = { ...left, timelineDurationTicks: leftDuration }
+    right = { ...right, timelineDurationTicks: rightDuration }
+  }
+  for(const side of ['left','right']as const){const clip=side==='left'?left:right;if((clip.kind==='video'||clip.kind==='audio')&&clip.concatGainKeys?.length){const next={...clip,concatGainKeys:rewindowConcatSourceRun(clip.concatGainKeys,side==='left'?0:leftDuration/(leftDuration+rightDuration),side==='left'?leftDuration/(leftDuration+rightDuration):1)};if(side==='left')left=next;else right=next;}}
+  for(const side of ['left','right']as const){const clip=side==='left'?left:right;if((clip.kind==='video'||clip.kind==='audio')&&clip.dspEffects){const next={...clip,dspEffects:rewindowDspSourceKeys(clip.dspEffects,leftDuration+rightDuration,side==='left'?0:leftDuration,side==='left'?leftDuration:leftDuration+rightDuration)};if(side==='left')left=next;else right=next;}}
+  for(const side of ['left','right']as const){const clip=side==='left'?left:right;if((clip.kind==='video'||clip.kind==='image')&&clip.effects){const next={...clip,effects:rewindowConcatSourceEffects(clip.effects,leftDuration+rightDuration,side==='left'?0:leftDuration,side==='left'?leftDuration:leftDuration+rightDuration)};if(side==='left')left=next;else right=next;}}
+  for(const side of ['left','right']as const){const clip=side==='left'?left:right;if((clip.kind==='video'||clip.kind==='image')&&clip.concatAnimation){const next={...clip,concatAnimation:rewindowConcatClipAnimation(clip.concatAnimation,leftDuration+rightDuration,side==='left'?0:leftDuration,side==='left'?leftDuration:leftDuration+rightDuration)};if(side==='left')left=next;else right=next;}}
+  left = splitClipAutomation(left, leftDuration, false)
+  right = splitClipAutomation(right, leftDuration, true)
   const clips = [...location.track.clips]
   clips.splice(location.clipIndex, 1, left, right)
   let replacement = withClips(location.track, sortClips(clips))
   if (replacement.kind === 'video') {
     replacement = {
       ...replacement,
-      transitions: (replacement.transitions ?? []).map((transition) =>
-        transition.fromClipId === clipId ? { ...transition, fromClipId: rightClipId } : transition,
-      ),
+      transitions: (replacement.transitions ?? []).flatMap((transition) => {
+        if (transition.timeline) {
+          const result=splitTransitionWindow({...transition,timeline:transition.timeline},atTicks,clipId,rightClipId)
+          return result?[result]:[]
+        }
+        return [transition.fromClipId === clipId ? { ...transition, fromClipId: rightClipId } : transition]
+      }),
     }
   }
-  return finalize(replaceTrack(composition, location.trackIndex, replacement))
+  let next = replaceTrack(composition, location.trackIndex, replacement)
+  next = copyMediaVersions(next, clipId, rightClipId)
+  const name = composition.metadata?.clipNames?.[clipId]
+  if (name !== undefined) next = { ...next, metadata: { ...next.metadata, clipNames: { ...next.metadata?.clipNames, [rightClipId]: name } } }
+  return finalize(next)
 }
 
 export interface SourceTickRange {
@@ -400,7 +652,7 @@ export function removeSilenceFromClip(
 ): Composition {
   assertValidComposition(composition)
   const location = findClipLocation(composition, clipId)
-  ensureUnlocked(location.track)
+  ensureUnlocked(location.track, location.clip)
   if (location.clip.kind !== 'video' && location.clip.kind !== 'audio') {
     throw commandError('track-kind', 'Silence removal requires a video or audio clip')
   }
@@ -478,17 +730,39 @@ export function removeSilenceFromClip(
       ? { ...candidate, timelineStartTicks: candidate.timelineStartTicks - removedDuration } as CompositionClip
       : candidate)
   clips.push(...slices)
-  return finalize(replaceTrack(
+  const next = finalize(replaceTrack(
     composition,
     location.trackIndex,
     withClips(location.track, sortClips(clips)),
   ))
+  assertCompositionLocksPreserved(composition, next)
+  return next
+}
+
+/** Exact selection, no link expansion. All guards precede constructing the result. */
+export function setClipLocked(composition: Composition, clipId: string, locked: boolean): Composition {
+  assertValidComposition(composition)
+  if (typeof locked !== 'boolean') throw commandError('invalid-range', 'locked must be a boolean')
+  const location = findClipLocation(composition, clipId)
+  return finalize(replaceTrack(composition, location.trackIndex, withClips(location.track, location.track.clips.map((clip) => clip.id === clipId ? { ...clip, locked } : clip))))
+}
+
+export function setClipsEnabled(composition: Composition, clipIds: readonly string[], enabled: boolean): Composition {
+  assertValidComposition(composition)
+  if (typeof enabled !== 'boolean' || !Array.isArray(clipIds) || !clipIds.length || clipIds.length > 512) {
+    throw commandError('invalid-range', 'Enabled command requires a boolean and 1–512 clip IDs')
+  }
+  const ids = new Set(clipIds)
+  for (const id of ids) { const location = findClipLocation(composition, id); ensureUnlocked(location.track, location.clip) }
+  return finalize({ ...composition, tracks: composition.tracks.map((track) =>
+    withClips(track, track.clips.map((clip) => ids.has(clip.id) ? { ...clip, enabled } : clip)),
+  ) })
 }
 
 export function deleteClip(composition: Composition, clipId: string): Composition {
   assertValidComposition(composition)
   const location = findClipLocation(composition, clipId)
-  ensureUnlocked(location.track)
+  ensureUnlocked(location.track, location.clip)
   let replacement = withClips(location.track, location.track.clips.filter((clip) => clip.id !== clipId))
   if (replacement.kind === 'video') {
     replacement = {
@@ -498,7 +772,9 @@ export function deleteClip(composition: Composition, clipId: string): Compositio
       ),
     }
   }
-  return finalize(replaceTrack(composition, location.trackIndex, replacement))
+  const next = finalize(replaceTrack(composition, location.trackIndex, replacement))
+  assertCompositionLocksPreserved(composition, next)
+  return next
 }
 
 export function upsertTransition(
@@ -511,11 +787,21 @@ export function upsertTransition(
   const track = composition.tracks[trackIndex]!
   ensureUnlocked(track)
   if (track.kind !== 'video') throw commandError('track-kind', 'Transitions require a video track')
+  const windowOf = (item:CompositionTransition) => ({...item,timeline:item.timeline??{startTick:(track.clips.find(clip=>clip.id===item.toClipId)?.timelineStartTicks??0)-Math.floor(item.durationTicks/2),durationTick:item.durationTicks}})
+  const removed=(track.transitions??[]).filter(item=>item.id===transition.id||(transition.timeline&&transitionWindowReplaces(windowOf(item),windowOf(transition))))
+  const affected = [transition.fromClipId, transition.toClipId, ...removed.flatMap(item=>[item.fromClipId,item.toClipId])]
+  for (const id of affected) { const clip = track.clips.find((clip) => clip.id === id); if (clip) ensureUnlocked(track, clip) }
   if (!isStableId(transition.id)) throw commandError('invalid-id', 'Transition id is not stable')
-  const reason = compositionTransitionUnavailableReason(composition, trackId, transition)
+  const reason = transition.timeline ? null : compositionTransitionUnavailableReason(composition, trackId, transition)
   if (reason) throw commandError('transition-conflict', reason)
-  const transitions = [...(track.transitions ?? []).filter((candidate) => candidate.id !== transition.id), { ...transition }]
-    .sort((left, right) => left.fromClipId.localeCompare(right.fromClipId) || left.id.localeCompare(right.id))
+  const transitions = [...(track.transitions ?? []).filter(candidate=>!removed.includes(candidate)), { ...transition }]
+    .sort((left, right) => {
+      if (left.timeline || right.timeline) {
+        const a=transitionSourceSpan(windowOf(left).timeline)[0],b=transitionSourceSpan(windowOf(right).timeline)[0]
+        return a<b?-1:a>b?1:0
+      }
+      return (left.fromClipId ?? '').localeCompare(right.fromClipId ?? '') || left.id.localeCompare(right.id)
+    })
   return finalize(replaceTrack(composition, trackIndex, { ...track, transitions }))
 }
 
@@ -525,6 +811,8 @@ export function deleteTransition(composition: Composition, trackId: string, tran
   const track = composition.tracks[trackIndex]!
   ensureUnlocked(track)
   if (track.kind !== 'video') throw commandError('track-kind', 'Transitions require a video track')
+  const removedTransition = track.transitions?.find((transition) => transition.id === transitionId)
+  if (removedTransition) for (const id of [removedTransition.fromClipId, removedTransition.toClipId]) { const clip = track.clips.find((clip) => clip.id === id); if (clip) ensureUnlocked(track, clip) }
   if (!(track.transitions ?? []).some((transition) => transition.id === transitionId)) {
     throw commandError('missing-clip', `Transition ${transitionId} does not exist`)
   }
@@ -535,6 +823,10 @@ export function deleteTransition(composition: Composition, trackId: string, tran
 }
 
 export interface DuplicateClipOptions {
+  /** Clipboard reads a protected source while destination admission stays enforced. */
+  readonly allowLockedSource?: boolean
+  readonly escapeLink?: boolean
+  readonly linkId?: string
   readonly id: string
   readonly targetTrackId?: string
   readonly timelineStartTicks?: number
@@ -548,19 +840,65 @@ export function duplicateClip(
   assertValidComposition(composition)
   ensureUniqueClipId(composition, options.id)
   const location = findClipLocation(composition, clipId)
-  ensureUnlocked(location.track)
+  if (!options.allowLockedSource) ensureUnlocked(location.track, location.clip)
   const targetTrackId = options.targetTrackId ?? location.track.id
   const targetIndex = findTrackIndex(composition, targetTrackId)
   const target = composition.tracks[targetIndex]!
-  if (target.id !== location.track.id) ensureUnlocked(target)
+  ensureUnlocked(target)
   ensureCompatible(target, location.clip)
   const start = options.timelineStartTicks ?? clipEndTicks(location.clip)
   if (!isSafeTick(start)) throw commandError('invalid-range', 'Duplicate start must be a non-negative safe tick')
-  const duplicate = withTimelineStart({ ...cloneClip(location.clip), id: options.id } as CompositionClip, start)
+  const members = options.escapeLink ? [clipId] : linkedClipIds(composition, clipId)
+  if (members.length > 1) {
+    const earliest = Math.min(...members.map((id) => findClipLocation(composition, id).clip.timelineStartTicks))
+    const delta = Math.max(-earliest, snapClipGridStart(composition, location.clip, start) - location.clip.timelineStartTicks)
+    let result = composition
+    const copies: string[] = []
+    for (const [index, member] of members.entries()) {
+      const item = findClipLocation(composition, member)
+      const id = member === clipId ? options.id : `${options.id}-linked-${index}`
+      result = duplicateClip(result, member, {
+        id, escapeLink: true,
+        targetTrackId: member === clipId ? targetTrackId : item.track.id,
+        timelineStartTicks: item.clip.timelineStartTicks + delta,
+      })
+      copies.push(id)
+    }
+    return createCompositionLink(result, options.linkId ?? `${options.id}-link`, copies)
+  }
+  const duplicate = withClipGridStart(composition, { ...cloneClip(location.clip), id: options.id } as CompositionClip, start, true)
   ensureTimelineRange(duplicate)
-  return finalize(
-    replaceTrack(composition, targetIndex, withClips(target, sortClips([...target.clips, duplicate]))),
-  )
+  return finalize(copyMediaVersions(replaceTrack(composition, targetIndex, withClips(target, sortClips([...target.clips, duplicate]))), clipId, options.id))
+}
+
+/** Copy exactly the named subjects. The first subject anchors time and destination. */
+export function pasteClips(composition: Composition, subjects: readonly { clipId: string; id: string }[], options: { targetTrackId?: string; timelineStartTicks?: number; linkIds?: readonly string[]; allowLockedSource?: boolean } = {}): Composition {
+  assertValidComposition(composition)
+  if (!Array.isArray(subjects) || !subjects.length || subjects.length > 512 || subjects.some((subject) => !subject || typeof subject.clipId !== 'string' || typeof subject.id !== 'string') || new Set(subjects.map((subject) => subject.clipId)).size !== subjects.length || new Set(subjects.map((subject) => subject.id)).size !== subjects.length || (options.linkIds !== undefined && !Array.isArray(options.linkIds))) throw commandError('invalid-range', 'Paste requires distinct subjects and copy ids')
+  const locations = subjects.map((subject) => {
+    ensureUniqueClipId(composition, subject.id)
+    const location = findClipLocation(composition, subject.clipId)
+    if (!options.allowLockedSource) ensureUnlocked(location.track, location.clip)
+    return location
+  })
+  const anchor = locations[0]!
+  const proposed = options.timelineStartTicks ?? anchor.clip.timelineStartTicks + Math.max(...locations.map(({ clip }) => clipEndTicks(clip))) - Math.min(...locations.map(({ clip }) => clip.timelineStartTicks))
+  if (!isSafeTick(proposed)) throw commandError('invalid-range', 'Paste start must be a non-negative safe tick')
+  const delta = Math.max(-Math.min(...locations.map(({ clip }) => clip.timelineStartTicks)), snapClipGridStart(composition, anchor.clip, proposed) - anchor.clip.timelineStartTicks)
+  const copyIds = new Map(subjects.map((subject) => [subject.clipId, subject.id]))
+  const copiedLinks = (composition.links ?? []).map((link) => link.memberIds.filter((id) => copyIds.has(id)).map((id) => copyIds.get(id)!)).filter((members) => members.length >= 2)
+  if (options.linkIds && options.linkIds.length !== copiedLinks.length) throw commandError('invalid-range', 'Paste link ids must match the copied link subsets')
+  let result = composition
+  for (const [index, subject] of subjects.entries()) {
+    const location = locations[index]!
+    result = duplicateClip(result, subject.clipId, {
+      id: subject.id, escapeLink: true, allowLockedSource: options.allowLockedSource,
+      targetTrackId: index === 0 ? options.targetTrackId ?? location.track.id : location.track.id,
+      timelineStartTicks: location.clip.timelineStartTicks + delta,
+    })
+  }
+  for (const [index, members] of copiedLinks.entries()) result = createCompositionLink(result, options.linkIds?.[index] ?? `${subjects[0]!.id}-link-${index}`, members)
+  return result
 }
 
 export function reorderTrack(composition: Composition, trackId: string, toIndex: number): Composition {
@@ -742,6 +1080,9 @@ function withClips(track: CompositionTrack, clips: readonly CompositionClip[]): 
       return { ...track, clips: clips as readonly AudioClip[] }
     case 'image':
       return { ...track, clips: clips as readonly ImageClip[] }
+    case 'graphic': return { ...track, clips: clips as typeof track.clips }
+    case 'color':
+      return { ...track, clips: clips as typeof track.clips }
     case 'text':
       return { ...track, clips: clips as readonly TextClip[] }
   }
@@ -759,17 +1100,28 @@ function cloneTrack(track: CompositionTrack): CompositionTrack {
       return { ...track, clips: track.clips.map(cloneClip) as AudioClip[] } as AudioTrack
     case 'image':
       return { ...track, clips: track.clips.map(cloneClip) as ImageClip[] } as ImageTrack
+    case 'graphic': return cloneGraphicValue(track)
+    case 'color':
+      return { ...track, clips: track.clips.map(cloneClip) }
     case 'text':
       return { ...track, clips: track.clips.map(cloneClip) as TextClip[] } as TextTrack
   }
 }
 
 function cloneClip<T extends CompositionClip>(clip: T): T {
-  if (clip.kind === 'video' || clip.kind === 'image') {
+  if((clip.kind==='video'||clip.kind==='image')&&clip.concatAnimation)clip={...clip,concatAnimation:cloneGraphicValue(clip.concatAnimation)}
+  if((clip.kind==='audio'||clip.kind==='video')&&clip.concatGainKeys)clip={...clip,concatGainKeys:cloneGraphicValue(clip.concatGainKeys)}
+  if (clip.kind === 'graphic') return cloneGraphicValue(clip)
+  if (clip.kind === 'video' || clip.kind === 'image' || clip.kind === 'color') {
     return {
       ...clip,
       transform: { ...clip.transform },
+      ...((clip.kind === 'image' || clip.kind === 'video') && clip.effects ? {effects:rebaseNativeEffects(clip.effects)} : {}),
+      ...(clip.kind === 'color' && clip.colorAnimation ? { colorAnimation: rebaseColorAnimation(clip.colorAnimation) } : {}),
+      ...(clip.position ? { position: rebasePosition(clip.position,0) } : {}),
       ...(clip.animation ? { animation: cloneVisualAnimation(clip.animation) } : {}),
+      ...(clip.kind === 'video' && clip.dspEffects ? {dspEffects:rebaseDspEffects(clip.dspEffects)}:{}),
+      ...(clip.kind === 'video' && clip.videoEffects ? { videoEffects: clip.videoEffects.map((effect) => ({ ...effect })) } : {}),
       ...(clip.kind === 'video' && clip.chromaKey ? { chromaKey: { ...clip.chromaKey } } : {}),
       ...(clip.kind === 'video' && clip.masks ? { masks: cloneVideoMasks(clip.masks) } : {}),
       ...(clip.kind === 'video' && clip.audioAnimation ? { audioAnimation: cloneAudioAnimation(clip.audioAnimation) } : {}),
@@ -782,11 +1134,14 @@ function cloneClip<T extends CompositionClip>(clip: T): T {
     return {
       ...clip,
       style: { ...clip.style },
+      ...(clip.colorAnimation ? { colorAnimation: rebaseColorAnimation(clip.colorAnimation) } : {}),
+      ...(clip.position ? { position: rebasePosition(clip.position,0) } : {}),
       ...(clip.animation ? { animation: cloneVisualAnimation(clip.animation) } : {}),
     } as T
   }
   return {
     ...clip,
+    ...(clip.kind === 'audio' && clip.dspEffects ? { dspEffects: rebaseDspEffects(clip.dspEffects) } : {}),
     ...(clip.kind === 'audio' && clip.audioAnimation ? { audioAnimation: cloneAudioAnimation(clip.audioAnimation) } : {}),
     ...(clip.kind === 'audio' && clip.speedRamp ? { speedRamp: cloneCompositionSpeedRamp(clip.speedRamp) } : {}),
   }
@@ -940,7 +1295,7 @@ function findRepresentableRampSplit(
   }
 }
 
-function freezeSourceRange(
+export function freezeSourceRange(
   composition: Composition,
   clip: VideoClip,
   timelineDurationTicks: number,
@@ -958,35 +1313,20 @@ function freezeSourceRange(
   return { sourceInTicks, sourceOutTicks: sourceInTicks + sourceSpan }
 }
 
-function sliceClipVisualData<T extends CompositionClip>(
-  clip: T,
-  startTicks: number,
-  endTicks: number,
-  sourceDurationTicks: number,
-): T {
-  if (clip.kind === 'audio') {
-    const duration = clipDurationTicks(clip)
-    return {
-      ...clip,
-      ...(clip.audioAnimation ? {
-        audioAnimation: sliceAudioAnimation(clip.audioAnimation, startTicks, endTicks, sourceDurationTicks),
-      } : {}),
-      fadeInTicks: Math.min(clip.fadeInTicks ?? 0, duration),
-      fadeOutTicks: Math.min(clip.fadeOutTicks ?? 0, duration),
-    } as T
-  }
-  return {
-    ...clip,
-    ...(clip.animation ? {
-      animation: sliceVisualAnimation(clip.animation, startTicks, endTicks, sourceDurationTicks),
-    } : {}),
-    ...(clip.kind === 'video' && clip.masks ? {
-      masks: sliceVideoMasks(clip.masks, startTicks, endTicks, sourceDurationTicks),
-    } : {}),
-    ...(clip.kind === 'video' && clip.audioAnimation ? {
-      audioAnimation: sliceAudioAnimation(clip.audioAnimation, startTicks, endTicks, sourceDurationTicks),
-    } : {}),
-  } as T
+function splitClipAutomation<T extends CompositionClip>(clip: T, cut: number, right: boolean): T {
+  if (clip.kind === 'graphic') clip = { ...clip, animationOffsetUs: (clip.animationOffsetUs ?? 0) + (right ? cut : 0) }
+  if ((clip.kind === 'text' || clip.kind === 'color') && clip.colorAnimation) clip = { ...clip,colorAnimation: rebaseColorAnimation(clip.colorAnimation,right ? -cut : 0) }
+  const duration = clipDurationTicks(clip)
+  if (clip.kind === 'audio') return { ...clip, dspEffects: rebaseDspEffects(clip.dspEffects, right ? -cut : 0), audioAnimation: splitAudioAnimation(clip.audioAnimation, cut, right), fadeInTicks: right ? 0 : clip.fadeInTicks ?? 0, fadeOutTicks: right ? clip.fadeOutTicks ?? 0 : 0 } as T
+  return { ...clip, ...((clip.kind === 'image' || clip.kind === 'video') && clip.effects ? {effects:rebaseNativeEffects(clip.effects,right ? -cut : 0)} : {}), ...(clip.position ? { position: rebasePosition(clip.position,right ? -cut : 0) } : {}), ...(clip.animation ? { animation: splitVisualAnimation(clip.animation, cut, right) } : {}), ...(clip.kind === 'video' ? { ...(clip.dspEffects?{dspEffects:rebaseDspEffects(clip.dspEffects,right ? -cut : 0)}:{}),audioFadeInTicks:right?0:clip.audioFadeInTicks??0,audioFadeOutTicks:right?clip.audioFadeOutTicks??0:0, ...(clip.audioAnimation ? { audioAnimation: splitAudioAnimation(clip.audioAnimation, cut, right) } : {}), ...(clip.masks ? { masks: splitVideoMasks(clip.masks, cut, right) } : {}) } : {}) } as T
+}
+
+export function shiftClipAutomation<T extends CompositionClip>(clip: T, delta: number): T {
+  if (clip.kind === 'graphic') clip = { ...clip, animationOffsetUs: (clip.animationOffsetUs ?? 0) - delta }
+  if ((clip.kind === 'text' || clip.kind === 'color') && clip.colorAnimation) clip = { ...clip,colorAnimation: rebaseColorAnimation(clip.colorAnimation,delta) }
+  const duration = clipDurationTicks(clip)
+  if (clip.kind === 'audio') return { ...clip, dspEffects: rebaseDspEffects(clip.dspEffects, delta), audioAnimation: shiftAudioAnimation(clip.audioAnimation, delta) } as T
+  return { ...clip, ...((clip.kind === 'image' || clip.kind === 'video') && clip.effects ? {effects:rebaseNativeEffects(clip.effects,delta)} : {}), ...(clip.position ? { position: rebasePosition(clip.position,delta) } : {}), ...(clip.animation ? { animation: shiftVisualAnimation(clip.animation, delta) } : {}), ...(clip.kind === 'video' ? { ...(clip.dspEffects?{dspEffects:rebaseDspEffects(clip.dspEffects,delta)}:{}), ...(clip.audioAnimation ? { audioAnimation: shiftAudioAnimation(clip.audioAnimation, delta) } : {}), ...(clip.masks ? { masks: shiftVideoMasks(clip.masks, delta) } : {}) } : {}) } as T
 }
 
 function withTimelineStart(clip: CompositionClip, timelineStartTicks: number): CompositionClip {
@@ -1019,7 +1359,8 @@ function ensureCompatible(track: CompositionTrack, clip: CompositionClip): void 
   }
 }
 
-function ensureUnlocked(track: CompositionTrack): void {
+function ensureUnlocked(track: CompositionTrack, clip?: CompositionClip): void {
+  if (clip?.locked) throw commandError('clip-locked', `Clip ${clip.id} is locked`)
   if (track.locked) throw commandError('track-locked', `Track ${track.id} is locked`)
 }
 
@@ -1036,11 +1377,45 @@ function findTrackIndex(composition: Composition, trackId: string): number {
   return index
 }
 
+function copyMediaVersions(document: Composition, from: string, to: string): Composition {
+  const versions = document.metadata?.mediaVersions?.[from]
+  return versions ? { ...document, metadata: { ...document.metadata, mediaVersions: { ...document.metadata?.mediaVersions, [to]: { ...versions } } } } : document
+}
+
 function finalize(composition: Composition): Composition {
+  if (composition.metadata?.mediaVersions) {
+    const ids = new Set(composition.tracks.flatMap(t => t.clips.map(c => c.id)))
+    composition = { ...composition, metadata: { ...composition.metadata, mediaVersions: Object.fromEntries(Object.entries(composition.metadata.mediaVersions).filter(([id]) => ids.has(id))) } }
+  }
+  composition = pruneCompositionLinks(composition)
   assertValidComposition(composition)
   return composition
 }
 
 function commandError(code: CompositionCommandErrorCode, message: string): CompositionCommandError {
   return new CompositionCommandError(code, message)
+}
+
+function snapClipGridStart(composition: Composition, clip: CompositionClip, proposedStart: number): number {
+  return snapTimeGridTicks(proposedStart, clip.kind === 'audio' ? AUDIO_TIME_GRID : canvasTimeGrid(composition.canvas))
+}
+
+export function withClipGridStart(composition: Composition, clip: CompositionClip, proposedStart: number, resnap = false): CompositionClip {
+  if (!resnap && proposedStart === clip.timelineStartTicks) return withTimelineStart(clip, proposedStart)
+  const span = shiftTimeGridSpan(clip.timelineStartTicks, clipEndTicks(clip), proposedStart - clip.timelineStartTicks, clip.kind === 'audio' ? AUDIO_TIME_GRID : canvasTimeGrid(composition.canvas))
+  const durationTicks = span.end - span.start
+  if (clip.kind === 'video' || clip.kind === 'audio') {
+    const moved = { ...clip, timelineStartTicks: span.start }
+    if (durationTicks === clipDurationTicks(clip)) return moved
+    return shiftClipAutomation({ ...moved, timelineDurationTicks: durationTicks }, 0)
+  }
+  return { ...clip, timelineStartTicks: span.start, durationTicks }
+}
+
+
+/** Retains the full curve, including keys outside the edited clip interval. */
+function rebasePosition(position: import('./types').CompositionPositionAnimation,delta: number): import('./types').CompositionPositionAnimation {
+  const rebase = (value: import('./types').CompositionAnimatableValue) => delta === 0 ? cloneAnimatableValue(value) : shiftAnimatableValue(value,delta)
+  if (position.mode === 'xy') return { mode: 'xy',x: rebase(position.x),y: rebase(position.y) }
+  return { mode: 'path',path: { nodes: position.path.nodes.map(node => ({ ...node,point: { ...node.point },inHandle: { ...node.inHandle },outHandle: { ...node.outHandle } })) },progress: rebase(position.progress) }
 }

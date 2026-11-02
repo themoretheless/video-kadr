@@ -57,6 +57,7 @@ pub(crate) struct CompositionWork {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CompositionDedupeIdentity<'a> {
+    owner: Option<&'a str>,
     pipeline_version: &'static str,
     runtime_fingerprint: &'a str,
     request: &'a CompositionRenderRequest,
@@ -91,15 +92,17 @@ pub async fn composition_render_handler(
     .map_err(AppError::bad_request)?;
     let requirements = source_requirements(&request.composition)
         .map_err(|error| AppError::bad_request(error.to_string()))?;
-    if requirements.is_empty() {
-        return Err(AppError::bad_request("композиция не содержит media clips"));
+
+    for id in requirements.keys() {
+        super::library::authorize_source_access(&state, id.as_str(), &headers).await?;
     }
 
     let runtime_fingerprint = render_runtime_fingerprint(state.tools.as_ref());
     let key = dedupe_key(
         "composition",
         &CompositionDedupeIdentity {
-            pipeline_version: "composition-render-v2",
+            owner: owner.as_deref(),
+            pipeline_version: "composition-render-v15-audio-format-run",
             runtime_fingerprint: &runtime_fingerprint,
             request: &request,
         },
@@ -137,6 +140,16 @@ fn validate_composition_capabilities(
     composition: &Composition,
 ) -> AppResult<()> {
     let mut required = Vec::new();
+    if composition.tracks.iter().any(|track| matches!(track,
+        CompositionTrack::Color { hidden: false, clips, .. }
+        if clips.iter().any(|clip| clip.enabled && clip.color_animation.is_some()))) {
+        required.extend(["sendcmd", "colorchannelmixer", "overlay"]);
+    }
+    if composition.tracks.iter().any(|track| matches!(track,
+        CompositionTrack::Text { hidden: false, clips, .. }
+        if clips.iter().any(|clip| clip.enabled && clip.color_animation.is_some()))) {
+        required.extend(["drawtext", "sendcmd", "colorchannelmixer", "overlay"]);
+    }
     if composition.requires_canvas_blur() {
         required.push("gblur");
     }
@@ -395,6 +408,13 @@ pub(crate) fn spawn_composition_job(
         let filename = composition_output_filename(&work.output_id, output.profile);
         let output_path = st.outputs_dir().join(&filename);
         let outcome = async {
+            let native = tools::composition_native_audio::needs_native_audio(plan.composition()) || crate::domain::transition_export::sparse_primary_video_track(plan.composition()).is_some();
+            let native_video = !output.profile.is_audio_only() && tools::composition_native_video::needs_native_video(plan.composition());
+            let native_pipeline = native || native_video;
+            let visual_phase = super::nested_export::ProgressLane::new(&tx, 10.0, 0.3);
+            let preparation_phase = super::nested_export::ProgressLane::new(&tx, 0.0, if native_pipeline { 0.1 } else { 1.0 });
+            let mix_phase = super::nested_export::ProgressLane::new(&tx, if native_video {40.0} else {10.0}, 0.3);
+            let render_phase = super::nested_export::ProgressLane::new(&tx, if native_video {70.0} else {40.0}, if native_video {0.3} else {0.6});
             let text_resources =
                 PreparedTextResources::create(&st.staging_dir(), plan.composition()).await?;
             let vidstab = PreparedVidstabTransforms::create(
@@ -402,7 +422,7 @@ pub(crate) fn spawn_composition_job(
                 &st.staging_dir(),
                 plan.composition(),
                 &inputs,
-                &tx,
+                if native_pipeline { &preparation_phase.sender } else { &tx },
                 &token,
             )
             .await?;
@@ -410,22 +430,53 @@ pub(crate) fn spawn_composition_job(
                 let _ = tokio::fs::remove_file(&output_path).await;
                 return Ok::<Option<Value>, anyhow::Error>(None);
             }
-            let command =
-                FfmpegCompositionExportCompiler.compile(CompositionExportCompileRequest {
+            let deadline = std::time::Instant::now().checked_add(st.job_timeout()).context("composition native deadline overflow")?;
+            let remaining = || deadline.checked_duration_since(std::time::Instant::now()).context("composition native export timeout");
+            let mut audio_only_admission = plan.composition().clone();
+            if output.profile.is_audio_only() {
+                for track in &mut audio_only_admission.tracks {
+                    if let CompositionTrack::Image { clips, .. } = track {
+                        for clip in clips { clip.effects.clear(); }
+                    }
+                    if let CompositionTrack::Video { clips, .. } = track {
+                        for clip in clips { clip.effects.clear(); }
+                    }
+                }
+            }
+            let compile = |pcm: Option<&Path>, movie: Option<&Path>| {
+                let request = CompositionExportCompileRequest {
                     inputs: &inputs,
                     text_resources: text_resources.resources(),
+                    color_commands: &text_resources.solid_commands,
                     vidstab_transforms: vidstab.transforms(),
                     destination: &output_path,
                     parallel_jobs: st.render_parallelism(),
-                    composition: plan.composition(),
+                    composition: if output.profile.is_audio_only() {&audio_only_admission} else {plan.composition()},
                     output,
-                })?;
+                };
+                if let Some(movie) = movie { tools::composition_native_video::compile_with_native_video(request, movie, pcm) }
+                else if let Some(pcm) = pcm { tools::composition_native_audio::compile_with_native_audio(request, pcm) }
+                else { FfmpegCompositionExportCompiler.compile(request) }
+            };
+            let admission_movie = st.staging_dir().join("native-video-admission.mkv");
+            let admission_pcm = st.staging_dir().join("native-audio-admission.f32le");
+            let preliminary = compile(if native {Some(admission_pcm.as_path())} else {None}, if native_video {Some(admission_movie.as_path())} else {None})?;
+            let range = output.range.map(|range| range.start_ticks..range.end_ticks)
+                .unwrap_or(0..(preliminary.expected_duration_seconds * 1000000.0).round() as u64);
+            let movie = if native_video {
+                Some(tools::composition_native_video::prepare_native_video(&st.process_runtime, &st.staging_dir(), plan.composition(), &inputs, range.clone(), remaining()?, &token, &visual_phase.sender).await?)
+            } else {None};
+            let mixed = if native {
+                ensure!(plan.composition().time_base == 1000000, "native DSP export requires microsecond composition time base");
+                Some(tools::composition_native_audio::prepare_native_audio(&st.process_runtime, &st.staging_dir(), plan.composition(), &inputs, range, remaining()?, &token, &mix_phase.sender).await?)
+            } else {None};
+            let command = compile(mixed.as_ref().map(|pcm|pcm.path()), movie.as_ref().map(|movie|movie.path()))?;
             let done = tools::run_compiled_ffmpeg(
                 &st.process_runtime,
                 &command,
-                &tx,
+                if native_pipeline { &render_phase.sender } else { &tx },
                 &token,
-                st.job_timeout(),
+                if native_pipeline { remaining()? } else { st.job_timeout() },
             )
             .instrument(tracing::info_span!("process", process.tool = "ffmpeg"))
             .await?;
@@ -519,7 +570,7 @@ async fn resolve_sources(
         let identity = fingerprint_file(&state.cpu_pool, path.clone(), token.clone()).await?;
         let probe = tools::probe_video(&state.process_runtime, &path).await?;
         let has_video = probe.vcodec.is_some() && probe.width > 0 && probe.height > 0;
-        let has_audio = probe.acodec.is_some();
+        let has_audio = probe.streams.iter().any(|stream|stream.kind==crate::domain::media_probe::StreamKind::Audio);
         let kind = match requirement {
             SourceRequirement::Video => {
                 ensure!(
@@ -546,6 +597,11 @@ async fn resolve_sources(
         };
         let duration_ticks = duration_ticks(probe.duration, request.composition.time_base, kind)?;
         let source = CompositionSource {
+            audio_channels: probe
+                .streams
+                .iter()
+                .find(|stream| stream.kind == crate::domain::media_probe::StreamKind::Audio)
+                .and_then(|stream| stream.channels),
             id: id.clone(),
             kind,
             duration_ticks,
@@ -566,18 +622,55 @@ async fn resolve_sources(
 }
 
 struct PreparedTextResources {
+    solid_commands: BTreeMap<CompositionClipId, PathBuf>,
     resources: BTreeMap<CompositionClipId, CompositionTextResource>,
     temporary_files: Vec<PathBuf>,
+    color_files: Vec<PrivateColorCommandFile>,
+}
+
+struct PrivateColorCommandFile(PathBuf);
+impl Drop for PrivateColorCommandFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 impl PreparedTextResources {
     async fn create(staging: &Path, composition: &Composition) -> anyhow::Result<Self> {
         let mut prepared = Self {
+            solid_commands: BTreeMap::new(),
             resources: BTreeMap::new(),
             temporary_files: Vec::new(),
+            color_files: Vec::new(),
         };
         let mut fonts = BTreeMap::<String, PathBuf>::new();
         for track in &composition.tracks {
+            if let CompositionTrack::Color { hidden: false, clips, .. } = track {
+                for clip in clips.iter().filter(|clip| clip.enabled && clip.color_animation.is_some()) {
+                    use crate::domain::animated_color::{ColorExportFrames, ColorSampleRequest};
+                    let rate = composition.canvas.frame_rate();
+                    let duration_us = u64::try_from((u128::from(clip.timeline_end_tick - clip.timeline_start_tick) * 1_000_000).div_ceil(u128::from(composition.time_base)))?;
+                    let frames = ColorExportFrames::new(ColorSampleRequest {
+                        track: clip.color_animation.clone().expect("filtered animated solid"),
+                        default: clip.color, times_us: Vec::new(),
+                    }, rate.numerator, rate.denominator, duration_us).map_err(anyhow::Error::msg)?;
+                    let path = staging.join(format!("composition-color-{}.txt", Uuid::new_v4()));
+                    let target = crate::domain::animated_color::color_command_target(clip.id.as_str());
+                    let owned = tokio::task::spawn_blocking(move || -> anyhow::Result<PrivateColorCommandFile> {
+                        let mut options = std::fs::OpenOptions::new(); options.write(true).create_new(true);
+                        #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+                        let mut file = options.open(&path)?;
+                        let owned = PrivateColorCommandFile(path);
+                        let mut writer = std::io::BufWriter::new(&mut file);
+                        frames.write_solid_commands(&mut writer, &target).map_err(anyhow::Error::msg)?;
+                        std::io::Write::flush(&mut writer)?;
+                        drop(writer); file.sync_all()?;
+                        Ok(owned)
+                    }).await.context("solid color command worker")??;
+                    prepared.solid_commands.insert(clip.id.clone(), owned.0.clone());
+                    prepared.color_files.push(owned);
+                }
+            }
             let CompositionTrack::Text {
                 hidden: false,
                 clips,
@@ -621,11 +714,50 @@ impl PreparedTextResources {
                 file.sync_all()
                     .await
                     .context("sync composition text resource")?;
+                let color_commands_file = if let Some(track) = &clip.color_animation {
+                    use crate::domain::animated_color::{Color, ColorExportFrames, ColorSampleRequest};
+                    let duration = clip.timeline_end_tick.checked_sub(clip.timeline_start_tick)
+                        .context("invalid color clip duration")?;
+                    let duration_us = u64::try_from((u128::from(duration) * 1_000_000)
+                        .div_ceil(u128::from(composition.time_base)))?;
+                    let rate = composition.canvas.frame_rate();
+                    let frames = ColorExportFrames::new(ColorSampleRequest {
+                        track: track.clone(), default: Color { r: 0, g: 0, b: 0, a: 255 }, times_us: Vec::new(),
+                    }, rate.numerator, rate.denominator, duration_us).map_err(anyhow::Error::msg)?;
+                    let path = staging.join(format!("composition-color-{}.txt", Uuid::new_v4()));
+                    let target = crate::domain::animated_color::color_command_target(clip.id.as_str());
+                    // The worker owns its cleanup guard, including when its awaiting
+                    // future is cancelled before the worker finishes.
+                    let owned = tokio::task::spawn_blocking(move || -> anyhow::Result<PrivateColorCommandFile> {
+                        let mut options = std::fs::OpenOptions::new();
+                        options.write(true).create_new(true);
+                        #[cfg(unix)] {
+                            use std::os::unix::fs::OpenOptionsExt;
+                            options.mode(0o600);
+                        }
+                        let mut file = options.open(&path)?;
+                        let owned = PrivateColorCommandFile(path);
+                        #[cfg(unix)] {
+                            use std::os::unix::fs::PermissionsExt;
+                            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+                        }
+                        let mut writer = std::io::BufWriter::new(&mut file);
+                        frames.write_drawtext_commands(&mut writer, &target).map_err(anyhow::Error::msg)?;
+                        std::io::Write::flush(&mut writer)?;
+                        drop(writer);
+                        file.sync_all()?;
+                        Ok(owned)
+                    }).await.context("color command worker")??;
+                    let path = owned.0.clone();
+                    prepared.color_files.push(owned);
+                    Some(path)
+                } else { None };
                 prepared.resources.insert(
                     clip.id.clone(),
                     CompositionTextResource {
                         text_file,
                         font_file,
+                        color_commands_file,
                     },
                 );
             }
@@ -687,7 +819,7 @@ impl PreparedVidstabTransforms {
                     input,
                     &transform_path,
                     clip,
-                    composition.canvas.fps_milli,
+                    composition.canvas.frame_rate(),
                     composition.time_base,
                 )?;
                 let done = tools::run_compiled_ffmpeg(
@@ -796,7 +928,7 @@ fn duration_ticks(duration: f64, time_base: u32, kind: SourceKind) -> anyhow::Re
 
 fn composition_cache_key(plan: &Fingerprint, runtime: &str) -> String {
     Fingerprint::combine([
-        b"composition-render-cache-v2".as_slice(),
+        b"composition-render-cache-v13-audio-format-run".as_slice(),
         plan.as_str().as_bytes(),
         runtime.as_bytes(),
     ])
@@ -991,6 +1123,7 @@ mod tests {
         composition.sources.insert(
             source_id.clone(),
             CompositionSource {
+                audio_channels: None,
                 id: source_id.clone(),
                 kind: SourceKind::Video,
                 duration_ticks: 2_000_000,
@@ -999,10 +1132,14 @@ mod tests {
                 has_audio: false,
             },
         );
-        let clip = VideoClip {
+        let clip = VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
             id: CompositionClipId::parse("motion-clip").unwrap(),
             source_id: source_id.clone(),
             placement: ClipPlacement {
+                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                timeline_duration_tick: None,
                 timeline_start_tick: 0,
                 source_in_tick: 0,
                 source_out_tick: 1_000_000,
@@ -1226,11 +1363,16 @@ mod tests {
             hidden: false,
             locked: false,
             clips: vec![TextClip {
+                effects: vec![],
+                blend_mode: None,
+                concat_title: None,
+                color_animation: None,
                 id: CompositionClipId::parse("title-clip").unwrap(),
                 timeline_start_tick: 0,
                 timeline_end_tick: 1_000_000,
                 text: "Привет\n字幕".to_owned(),
                 style: TextStyle {
+                    align: None,
                     font_family: "Noto Sans".to_owned(),
                     font_size: 48.0,
                     color: Rgba {
@@ -1270,7 +1412,35 @@ mod tests {
             );
         }
         assert!(resource.font_file.is_absolute() && resource.font_file.is_file());
+        assert!(resource.color_commands_file.is_none());
         drop(prepared);
         assert!(!text_path.exists());
+
+        let CompositionTrack::Text { clips, .. } = &mut composition.tracks[0] else { unreachable!() };
+        clips[0].color_animation = Some(serde_json::from_value(serde_json::json!({
+            "keys":[{"t_us":0,"value":{"r":255,"g":0,"b":0,"a":128},
+                "in_":[0.6666666666666666,0.6666666666666666],"out":[0.3333333333333333,0.3333333333333333],"segment":{"kind":"Linear"}}],
+            "extrapolate":{"before":"Hold","after":"Hold"}
+        })).unwrap());
+        let prepared = PreparedTextResources::create(directory.path(), &composition).await.unwrap();
+        assert!(validate_composition_capabilities(&crate::state::ToolInfo::default(), &composition).is_err());
+        let tools = crate::state::ToolInfo {
+            ffmpeg: true,
+            ffmpeg_filters: ["drawtext", "sendcmd", "colorchannelmixer", "overlay"].into_iter().map(str::to_owned).collect(),
+            ..crate::state::ToolInfo::default()
+        };
+        validate_composition_capabilities(&tools, &composition).unwrap();
+        let resource = &prepared.resources()[&CompositionClipId::parse("title-clip").unwrap()];
+        let path = resource.color_commands_file.clone().unwrap();
+        let commands = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(commands.lines().count(), 30);
+        let target = crate::domain::animated_color::color_command_target("title-clip");
+        assert!(commands.starts_with(&format!("0.000000 drawtext@{target} fontcolor 0xFF0000@1.000000000, colorchannelmixer@{target} aa 0.501960784;")));
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        drop(prepared);
+        assert!(!path.exists());
     }
 }

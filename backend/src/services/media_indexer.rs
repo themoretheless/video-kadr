@@ -229,6 +229,7 @@ mod tests {
             storage_key: None,
             url: String::new(),
             media_type: None,
+            original_filename: None,
             title: Some(id.into()),
             duration: None,
             width: None,

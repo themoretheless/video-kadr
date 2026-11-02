@@ -1,0 +1,41 @@
+{
+  "method": "Source-bound portable Mach-O and original LLVM assembly reads; not REA Evidence",
+  "source_sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "initializer_registration": [
+    {
+      "section": "__init_offsets",
+      "index": 1246,
+      "source_offset": 54968760,
+      "raw_pointer": "0x18b9728",
+      "decoded_target": "0x1018b9728"
+    }
+  ],
+  "literal_va": "0x103b1d980",
+  "literal_bytes_hex": "edad0927000080bf2ebd3bb3000000002ebd3bb32ebd3bb30000803f00000000000080bf00000080",
+  "assembled_mat4_column_major": [
+    1.910685465164705e-15,
+    -1.0,
+    -4.371138828673793e-08,
+    0.0,
+    -4.371138828673793e-08,
+    -4.371138828673793e-08,
+    1.0,
+    0.0,
+    -1.0,
+    -0.0,
+    -4.371138828673793e-08,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "global_xyzw_quaternion_va": "0x104a63db0",
+  "inverse_va": "0x104a63dc0",
+  "limiting_ideal_quaternion_xyzw": [
+    0.5,
+    -0.5,
+    -0.5,
+    0.5
+  ]
+}

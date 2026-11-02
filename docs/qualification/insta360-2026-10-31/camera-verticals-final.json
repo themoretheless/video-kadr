@@ -1,0 +1,55 @@
+{
+  "method": "Bounded ROI grayscale-x-gradient weighted Hough; manually selected architectural window ROI, not a general gravity estimator",
+  "image_sha256": "80782c0c34115fd0b9c3406b4c7a38e36f88cc963c0769b0668119707a3b0fd5",
+  "image_size": [
+    1024,
+    512
+  ],
+  "parameters": {
+    "gradient_threshold": 8,
+    "normal_x_dominance": 2,
+    "weight_cap": 80,
+    "slope_step": 0.005,
+    "slope_range": [
+      -0.6,
+      0.6
+    ],
+    "intercept_bin_pixels": 2,
+    "distinct_intercept_pixels": 14
+  },
+  "observations": [
+    {
+      "label": "window_frame",
+      "roi": [
+        530,
+        645,
+        0,
+        160
+      ],
+      "edge_points": 2776,
+      "vertical_candidates": [
+        {
+          "score": 6006,
+          "dx_per_dy": 0.0,
+          "up_angle_from_image_y_degrees": -0.0,
+          "x_at_mid_y": 592,
+          "y_mid": 80.0
+        },
+        {
+          "score": 3822,
+          "dx_per_dy": -0.005,
+          "up_angle_from_image_y_degrees": 0.2864765102770745,
+          "x_at_mid_y": 566,
+          "y_mid": 80.0
+        },
+        {
+          "score": 2712,
+          "dx_per_dy": -0.1,
+          "up_angle_from_image_y_degrees": 5.710593137499643,
+          "x_at_mid_y": 608,
+          "y_mid": 80.0
+        }
+      ]
+    }
+  ]
+}

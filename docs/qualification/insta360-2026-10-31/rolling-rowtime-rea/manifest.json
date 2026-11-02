@@ -1,0 +1,21 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "fix_rotation",
+      "address": "0x101b57588",
+      "endAddress": "0x101b577c4",
+      "sourceOffset": 28685704,
+      "sha256": "bbcd1e83bfd9ff8350e61e8b15fa0981de71c9c6b86834a249724a9fe3380ab0"
+    },
+    {
+      "name": "get_raw_quat",
+      "address": "0x101878b30",
+      "endAddress": "0x101878b40",
+      "sourceOffset": 25676592,
+      "sha256": "01e98e72f3f145b84afedca25ec1a2ddc66f5dacd297b998bc85df758882c84f"
+    }
+  ]
+}

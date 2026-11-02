@@ -1,0 +1,88 @@
+{
+  "source_evidence_id": "ev_2dad431cc8d86dc0cdf87682695aa7f774ac5dedfc810f6f2989e30447165115",
+  "targets": [
+    {
+      "address": "0x101b5d7e8",
+      "name": "__ZN10extra_info14GyroDataParser8ReadNextEPNS_11RawGyroItemE",
+      "reexport": false,
+      "source": null,
+      "weak": null
+    },
+    {
+      "address": "0x101b5d6bc",
+      "name": "__ZN10extra_info14GyroDataParser15ParseFromBufferEOKNSt3__16vectorIhNS1_9allocatorIhEEEE",
+      "reexport": false,
+      "source": null,
+      "weak": null
+    },
+    {
+      "address": "0x101b5d508",
+      "name": "__ZN10extra_info14GyroDataParserC1Ebx",
+      "reexport": false,
+      "source": null,
+      "weak": null
+    },
+    {
+      "address": "0x1008c9034",
+      "name": "__ZN3pro22DeepTrackRenderManager24CreateDeepTrackerOptionsERKNSt3__110shared_ptrINS_22DeepTrackConfigurationEEEbf",
+      "reexport": false,
+      "source": null,
+      "weak": null
+    },
+    {
+      "address": "0x1004793c4",
+      "name": "__ZN6studio20StabilizationService12GetGyroCacheEv",
+      "reexport": false,
+      "source": null,
+      "weak": null
+    },
+    {
+      "address": "0x1018437d8",
+      "name": "__ZN9arvrender23PrecomputeStabilization19ConverToInsGyroDataEPKhmRNSt3__16vectorIN3ins10Stabilizer8GyroDataENS3_9allocatorIS7_EEEEi",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "arvrender::PrecomputeStabilization::ConverToInsGyroData(unsigned char const*, unsigned long, std::__1::vector<ins::Stabilizer::GyroData, std::__1::allocator<ins::Stabilizer::GyroData>>&, int)"
+    },
+    {
+      "address": "0x10189b91c",
+      "name": "__ZNK9arvrender17GyroTimeConverter12ToGyroTimeMsEN3ins8IdxTimedEi",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "arvrender::GyroTimeConverter::ToGyroTimeMs(ins::IdxTimed, int) const"
+    },
+    {
+      "address": "0x101b5fda8",
+      "name": "__ZN10extra_info16OffsetSerializer18ParseBase64EncodedERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS_12CameraOffsetE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "extra_info::OffsetSerializer::ParseBase64Encoded(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, extra_info::CameraOffset&)"
+    },
+    {
+      "address": "0x101b5f870",
+      "name": "__ZN10extra_info16OffsetSerializer5ParseERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS_12CameraOffsetE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "extra_info::OffsetSerializer::Parse(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, extra_info::CameraOffset&)"
+    },
+    {
+      "address": "0x1027a4bac",
+      "name": "__ZN12Insta360Lens12OffsetParser5ParseERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERN5Eigen6MatrixINS_12CameraParamsELin1ELi1ELi0ELin1ELi1EEE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "Insta360Lens::OffsetParser::Parse(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, Eigen::Matrix<Insta360Lens::CameraParams, -1, 1, 0, -1, 1>&)"
+    },
+    {
+      "address": "0x1027ab568",
+      "name": "__ZN3ins19GeometryWrapperBase16fromCameraParamsERKN12Insta360Lens12CameraParamsE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "ins::GeometryWrapperBase::fromCameraParams(Insta360Lens::CameraParams const&)"
+    }
+  ]
+}

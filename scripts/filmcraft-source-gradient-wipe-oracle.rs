@@ -1,0 +1,32 @@
+use filmcraft_project::{Project,ItemId,EffectInstance,ParamValue,Keyframe};use filmcraft_time::Tick;use filmcraft_media::{SharedSource,still::StillSource};use filmcraft_geom::Vec2;use filmcraft_render::{render_sequence,RenderOptions};use serde_json::{Value,json};use std::sync::Arc;
+const IDS:[&str;1]=["gradient_wipe_legacy"];
+fn main(){let args:Vec<_>=std::env::args().collect();let source:Value=serde_json::from_slice(&std::fs::read(&args[1]).unwrap()).unwrap();let masks:Value=serde_json::from_slice(&std::fs::read(&args[2]).unwrap()).unwrap();let mask=masks["cases"].as_array().unwrap().iter().find(|c|c["effect"]=="opacity"&&c["mask_mode"]=="Add"&&c["shape"]==2&&c["profile"]==1).unwrap()["document"]["project"]["items"]["6"]["kind"]["Sequence"]["video_tracks"][0]["items"][0]["effects"][0]["masks"].clone();let mut cases=vec![];
+for base in source["cases"].as_array().unwrap().iter().filter(|c|c["scale"]==1.&&IDS.contains(&c["effect"].as_str().unwrap())){for(width,height)in [(8u32,8u32),(7,5)]{for pattern in 0..3{for masked in 0..3{for mode in 0..6{let mut doc=base["document"].clone();doc["project"]["items"]["1"]["kind"]["Media"]["media"]=json!({"File":{"path":"/original/alpha-effects.png"}});doc["project"]["items"]["1"]["kind"]["Media"]["info"]["video"]["width"]=json!(width);doc["project"]["items"]["1"]["kind"]["Media"]["info"]["video"]["height"]=json!(height);let clip=&mut doc["project"]["items"]["6"]["kind"]["Sequence"]["video_tracks"][0]["items"][0];let mut effect:EffectInstance=serde_json::from_value(clip["effects"][0].clone()).unwrap();
+if base["profile"]==1{for pd in &effect.def().unwrap().params{let param=effect.params.get_mut(pd.id).unwrap();match &pd.kind{filmcraft_project::ParamKind::Choice(options)=>param.value=ParamValue::Choice((options.len()-1)as u32),filmcraft_project::ParamKind::Bool=>if let ParamValue::Bool(v)=param.value{param.value=ParamValue::Bool(!v)},_=>{}}}}
+if base["profile"]==1{for param in effect.params.values_mut(){match param.value{ParamValue::Color(_)=>{param.keyframes=vec![Keyframe::new(Tick(0),ParamValue::Color([0.05,0.8,0.2,0.6])),Keyframe::new(Tick(4*254016000000),ParamValue::Color([0.8,0.1,0.6,0.9]))];},ParamValue::Vec2(_)=>{param.keyframes=vec![Keyframe::new(Tick(0),ParamValue::Vec2(Vec2::new(-0.75,1.25))),Keyframe::new(Tick(4*254016000000),ParamValue::Vec2(Vec2::new(7.25,6.75)))];},_=>{}}}}
+// Both profiles actively remove pixels; profile1 retains independent animated angle.
+if base["profile"]==0 {
+ effect.params.get_mut("completion").unwrap().value=ParamValue::Float(37.5);
+} else {
+ effect.params.get_mut("completion").unwrap().keyframes=vec![Keyframe::new(Tick(0),ParamValue::Float(0.)),Keyframe::new(Tick(4*254016000000),ParamValue::Float(100.))];
+ effect.params.get_mut("softness").unwrap().keyframes=vec![Keyframe::new(Tick(0),ParamValue::Float(5.)),Keyframe::new(Tick(4*254016000000),ParamValue::Float(40.))];
+}
+effect.params.get_mut("layer").unwrap().value=ParamValue::Choice(match mode{0=>0,4=>8,5=>2,_=>1});
+effect.params.get_mut("placement").unwrap().value=ParamValue::Choice(match mode{1=>0,2=>1,_=>2});
+let mut raw=serde_json::to_value(effect).unwrap();if masked==1{raw["masks"]=mask.clone();}clip["effects"]=json!([raw]);if masked==2{clip["effects"].as_array_mut().unwrap().push(json!({"effect":"opacity","enabled":true,"params":{"opacity":{"value":{"Float":75.}},"blend":{"value":{"Choice":0}}},"masks":mask}));}
+let seq=&mut doc["project"]["items"]["6"]["kind"]["Sequence"];
+let mut external=seq["video_tracks"][0].clone();external["id"]=json!(9000);external["enabled"]=json!(false);
+external["items"][0]["id"]=json!(9001);external["items"][0]["item"]=json!(9);external["items"][0]["effects"]=json!([{"effect":"horizontal_flip","enabled":true,"params":{}},{"effect":"opacity","enabled":true,"params":{"opacity":{"value":{"Float":65.}},"blend":{"value":{"Choice":0}}}}]);
+if base["profile"]==1{
+ let mut motion=filmcraft_project::effect_defs().iter().find(|d|d.id=="motion").unwrap().instance();
+ motion.params.get_mut("rotation").unwrap().value=ParamValue::Float(17.);
+ motion.params.get_mut("scale").unwrap().value=ParamValue::Float(85.);
+ motion.params.get_mut("position").unwrap().value=ParamValue::Vec2(Vec2::new(7.3,3.6));
+ seq["video_tracks"][0]["items"][0]["effects"].as_array_mut().unwrap().push(serde_json::to_value(motion).unwrap());
+}
+seq["video_tracks"].as_array_mut().unwrap().insert(0,external);
+let mut gradient=doc["project"]["items"]["1"].clone();gradient["id"]=json!(9);gradient["kind"]["Media"]["media"]=json!({"File":{"path":"/original/gradient.png"}});gradient["kind"]["Media"]["info"]["video"]["width"]=json!(5);gradient["kind"]["Media"]["info"]["video"]["height"]=json!(7);doc["project"]["items"]["9"]=gradient;
+let rgba:Vec<u8>=(0..(width*height)as usize).flat_map(|i|[if pattern==2&&i%3!=0{0}else{((i*37+11)%256)as u8},if pattern==2&&i%3!=0{204}else{((i*73+51)%256)as u8},if pattern==2&&i%3!=0{51}else{((i*19+83)%256)as u8},if pattern==0{255}else{[0,1,64,128,255][i%5]}]).collect();let p:Project=serde_json::from_value(doc["project"].clone()).unwrap();let still=Arc::new(StillSource::from_rgba("alpha-effects.png",width,height,rgba,true,0))as SharedSource;let gradient:Vec<u8>=(0..35).flat_map(|i|{let v=((i*31+17)%256)as u8;[v,v,v,[64,128,255][i%3]]}).collect();
+let gradient=Arc::new(StillSource::from_rgba("gradient.png",5,7,gradient,true,0))as SharedSource;
+let provider=|id:ItemId|{let(root,_,_)=p.resolve_media(id)?;match root{ItemId(1)=>Some(still.clone()),ItemId(9)=>Some(gradient.clone()),_=>None}};for scale in [1f32,0.5,0.25]{let out=render_sequence(&p,ItemId(6),Tick(base["at"].as_i64().unwrap()),RenderOptions{scale,working_output:true,..Default::default()},&provider);cases.push(json!({"document":doc,"sequence":6,"at":base["at"],"effect":base["effect"],"profile":base["profile"],"pattern":pattern,"sourceWidth":width,"sourceHeight":height,"masked":masked,"mode":mode,"scale":scale,"width":out.w,"height":out.h,"bits":out.px.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),"rgba":out.to_rgba8()}));}
+}}}}}println!("{}",json!({"commit":"5231852443363f001c3f6b396dd9b1e6461ae2be","cases":cases}));}

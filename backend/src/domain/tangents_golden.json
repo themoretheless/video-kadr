@@ -1,0 +1,656 @@
+{
+  "cases": [
+    {
+      "name": "solve_middle_key_on_ramp_reproduces_smooth_numbers",
+      "comment": "Second half: m = (2 \u2212 0) / 2 s; out.y = m\u00b71 s / (3\u00b71) = 1/3 and in.y = 1 \u2212 1/3 = 2/3 \u2014 the former p1.y / p2.y exactly. The neighbours' Free sides stay identity.",
+      "op": "solve",
+      "args": {},
+      "input": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000002",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "t_us": 2000000,
+            "value": 2,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      },
+      "expect": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 2000000,
+            "value": 2,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      }
+    },
+    {
+      "name": "solve_peak_middle_key",
+      "comment": "Second half: the middle key is a local maximum \u2192 m = 0 \u2192 out.y = 0, in.y = 1 (the former p1.y / p2.y). animatedGolden `auto_solved_peak_middle_key_only` evaluates this result.",
+      "op": "solve",
+      "args": {},
+      "input": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000002",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "t_us": 2000000,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      },
+      "expect": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 1,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 2000000,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      }
+    },
+    {
+      "name": "solve_all_keys_auto_peak",
+      "comment": "Every key Auto (set_auto over all three ids, then solve). Endpoints have m = 0: the first key's out is (1/3, 0); the last key's in is (2/3, 1 \u2212 0) = (2/3, 1). The first key's in and the last key's out have no segment to solve against and keep the identity coords with mode Auto. animatedGolden `auto_solved_peak_all_keys_auto` evaluates this result.",
+      "op": "solve",
+      "args": {},
+      "input": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000002",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "t_us": 2000000,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      },
+      "expect": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 1,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 2000000,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 1,
+              "mode": "Auto"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Auto"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      }
+    },
+    {
+      "name": "solve_leaves_auto_sides_next_to_non_spline_segments_alone",
+      "comment": "An Auto out on a Hold segment is never read by the engine, so the solver leaves its coordinates as stored.",
+      "op": "solve",
+      "args": {},
+      "input": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.9,
+              "y": 0.1,
+              "mode": "Auto"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Hold"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000002",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      },
+      "expect": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.9,
+              "y": 0.1,
+              "mode": "Auto"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Hold"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      }
+    },
+    {
+      "name": "solve_smooth_free_pair_out_wins",
+      "comment": "Middle key Smooth with two Free sides on a 0 \u2192 1 \u2192 2 ramp (1 s steps). out = (1/3, 1/3) \u2192 slope m = (1/3)/(1/3)\u00b7(1/1 s) = 1 per s; in.x = 2/3 kept, in.y = 1 \u2212 m\u00b7(1 \u2212 2/3)\u00b71 s/1 = 2/3 (was 0).",
+      "op": "solve",
+      "args": {},
+      "input": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0,
+              "y": 0,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000002",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "t_us": 2000000,
+            "value": 2,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      },
+      "expect": {
+        "mode": "Keyframed",
+        "value": [
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 0,
+            "value": 0,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0,
+              "y": 0,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 1000000,
+            "value": 1,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Smooth",
+            "segment": {
+              "kind": "Spline"
+            }
+          },
+          {
+            "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "t_us": 2000000,
+            "value": 2,
+            "in": {
+              "x": 0.6666666666666666,
+              "y": 0.6666666666666666,
+              "mode": "Free"
+            },
+            "out": {
+              "x": 0.3333333333333333,
+              "y": 0.3333333333333333,
+              "mode": "Free"
+            },
+            "continuity": "Broken",
+            "segment": {
+              "kind": "Linear"
+            }
+          }
+        ],
+        "extrapolate": {
+          "before": "Hold",
+          "after": "Hold"
+        }
+      }
+    }
+  ]
+}

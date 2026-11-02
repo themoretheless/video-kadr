@@ -25,6 +25,7 @@
   const modes: { id: ShortcutMode; label: string; description: string }[] = [
     { id: 'legacy', label: 'Legacy', description: 'Один исходник и упорядоченная монтажная линия' },
     { id: 'composition', label: 'Multitrack', description: 'Многодорожечная композиция' },
+    { id: 'native', label: 'Таймлайны', description: 'Клипы и субтитры в панели таймлайнов' },
   ]
   const groupLabels: Record<ShortcutGroup, string> = {
     playback: 'Воспроизведение',

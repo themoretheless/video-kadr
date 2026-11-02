@@ -42,12 +42,22 @@ pub fn rescale_count_u64(value: u64, multiplier: u64, divisor: u64) -> Option<u6
 
 /// Count output frames for a tick duration and milli-frame-rate, rounding up.
 pub fn frame_count_ceil(duration_ticks: u64, time_base: u32, fps_milli: u32) -> Option<u64> {
-    if time_base == 0 || fps_milli == 0 {
+    rational_frame_count_ceil(duration_ticks, time_base, fps_milli, 1000)
+}
+
+/// Count frames at an exact rational rate without truncating fractional fps.
+pub fn rational_frame_count_ceil(
+    duration_ticks: u64,
+    time_base: u32,
+    numerator: u32,
+    denominator: u32,
+) -> Option<u64> {
+    if time_base == 0 || numerator == 0 || denominator == 0 {
         return None;
     }
-    let numerator = u128::from(duration_ticks).checked_mul(u128::from(fps_milli))?;
-    let denominator = u128::from(time_base).checked_mul(1_000)?;
-    let frames = numerator.checked_add(denominator - 1)? / denominator;
+    let frames_numerator = u128::from(duration_ticks).checked_mul(u128::from(numerator))?;
+    let frames_denominator = u128::from(time_base).checked_mul(u128::from(denominator))?;
+    let frames = frames_numerator.checked_add(frames_denominator - 1)? / frames_denominator;
     u64::try_from(frames).ok()
 }
 
@@ -125,6 +135,25 @@ mod verification {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_fractional_count_distinguishes_a_boundary_hidden_by_milli_rounding() {
+        assert_eq!(
+            rational_frame_count_ceil(333_667, 1_000_000, 30_000, 1001),
+            Some(11)
+        );
+        assert_eq!(frame_count_ceil(333_667, 1_000_000, 29_970), Some(10));
+        assert_eq!(
+            rational_frame_count_ceil(1_001_000_000, 1_000_000, 30_000, 1001),
+            Some(30_000)
+        );
+        assert_eq!(
+            rational_frame_count_ceil(0, 1_000_000, 30_000, 1001),
+            Some(0)
+        );
+        assert_eq!(rational_frame_count_ceil(1, 1_000_000, 30_000, 0), None);
+        assert_eq!(rational_frame_count_ceil(u64::MAX, 1, u32::MAX, 1), None);
+    }
 
     #[test]
     fn boundary_examples_are_explicit() {

@@ -1,0 +1,25 @@
+   Compiling video-kadr-vision-runtime v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vision-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.25s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 1 test
+saved real frame=1 state=Tracked agreement=0.98401904
+saved real frame=2 state=Tracked agreement=0.9472873
+test sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap has been running for over 60 seconds
+saved real frame=3 state=Ambiguous agreement=0
+
+thread 'sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap' panicked at src/sam_reidentification.rs:897:13:
+assertion `left == right` failed
+  left: Ambiguous
+ right: Tracked
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap ... FAILED
+
+failures:
+
+failures:
+    sam_reidentification::tests::actual_real_video_multiview_bank_pose_and_gap
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 31 filtered out; finished in 69.47s
+
+error: test failed, to rerun pass `--lib`

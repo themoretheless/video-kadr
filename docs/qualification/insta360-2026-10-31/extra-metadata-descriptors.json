@@ -1,0 +1,1564 @@
+{
+  "method": "Independent embedded FileDescriptorProto parsing; not REA Evidence",
+  "files": [
+    {
+      "name": "extra_info.proto",
+      "offset": 62262812,
+      "length": 29999,
+      "messages": [
+        {
+          "name": "ExtraMetadata",
+          "fields": [
+            {
+              "name": "serial_number",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "camera_type",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "fw_version",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "file_type",
+              "number": 4,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "offset",
+              "number": 5,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "ip",
+              "number": 6,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "creation_time",
+              "number": 7,
+              "label": 1,
+              "type": 4
+            },
+            {
+              "name": "export_time",
+              "number": 8,
+              "label": 1,
+              "type": 4
+            },
+            {
+              "name": "file_size",
+              "number": 9,
+              "label": 1,
+              "type": 4
+            },
+            {
+              "name": "total_time",
+              "number": 10,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "gps",
+              "number": 11,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "orientation",
+              "number": 12,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "user_options",
+              "number": 13,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.ExtraUserOptions"
+            },
+            {
+              "name": "gyro",
+              "number": 14,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "hdr_state",
+              "number": 15,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.HDR_STATE"
+            },
+            {
+              "name": "hdr_identifier",
+              "number": 16,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "original_offset",
+              "number": 17,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "trigger_source",
+              "number": 18,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.TriggerSource"
+            },
+            {
+              "name": "dimension",
+              "number": 19,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.Vector2"
+            },
+            {
+              "name": "frame_rate",
+              "number": 20,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "image_translate",
+              "number": 21,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.Vector2"
+            },
+            {
+              "name": "gamma_mode",
+              "number": 22,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "thumbnail_gyro_index",
+              "number": 23,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.GyroIndex"
+            },
+            {
+              "name": "first_frame_timestamp",
+              "number": 24,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "rolling_shutter_time",
+              "number": 25,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "file_group_info",
+              "number": 26,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.FileGroupInfo"
+            },
+            {
+              "name": "window_crop_info",
+              "number": 27,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.WindowCropInfo"
+            },
+            {
+              "name": "gyro_timestamp",
+              "number": 28,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "is_has_gyro_timestamp",
+              "number": 29,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "timelapse_interval",
+              "number": 30,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "gyro_calib",
+              "number": 31,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "evo_status_mode",
+              "number": 32,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.EvoStatusMode"
+            },
+            {
+              "name": "evo_status_id",
+              "number": 33,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "original_offset_3d",
+              "number": 34,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "gps_sources",
+              "number": 35,
+              "label": 3,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.GpsSource"
+            },
+            {
+              "name": "first_gps_timestamp",
+              "number": 36,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "orientation_calib",
+              "number": 37,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "is_collected",
+              "number": 38,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "recycle_time",
+              "number": 39,
+              "label": 1,
+              "type": 4
+            },
+            {
+              "name": "total_frames",
+              "number": 40,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "is_selfie",
+              "number": 41,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_flowstate_online",
+              "number": 42,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_dewarp",
+              "number": 43,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "resolution_size",
+              "number": 44,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.Vector2"
+            },
+            {
+              "name": "battery_type",
+              "number": 45,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.Battery_type"
+            },
+            {
+              "name": "cam_posture",
+              "number": 46,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.Camera_Posture"
+            },
+            {
+              "name": "fov_type",
+              "number": 47,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.Image_FovType"
+            },
+            {
+              "name": "distance",
+              "number": 48,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "fov",
+              "number": 49,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "gyro_filter_type",
+              "number": 50,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.Gyro_FilterType"
+            },
+            {
+              "name": "gyro_type",
+              "number": 51,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.GyroType"
+            },
+            {
+              "name": "media_data_rotate_angel",
+              "number": 52,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.VideoMediaDataRotateAngle"
+            },
+            {
+              "name": "offset_v2",
+              "number": 53,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "offset_v3",
+              "number": 54,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "original_offset_v2",
+              "number": 55,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "original_offset_v3",
+              "number": 56,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "focusSensor",
+              "number": 57,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.SensorDevice"
+            },
+            {
+              "name": "expectOutputType",
+              "number": 58,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ExpectOutputType"
+            },
+            {
+              "name": "timelapse_interval_in_millisecond",
+              "number": 59,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "photo_rot",
+              "number": 60,
+              "label": 3,
+              "type": 2
+            },
+            {
+              "name": "audio_mode",
+              "number": 61,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.AudioModeType"
+            },
+            {
+              "name": "is_raw_gyro",
+              "number": 62,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "raw_capture_type",
+              "number": 63,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.RawCaptureType"
+            },
+            {
+              "name": "pts_type",
+              "number": 64,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.VideoPtsType"
+            },
+            {
+              "name": "gyro_cfg_info",
+              "number": 65,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.GyroConfigInfo"
+            },
+            {
+              "name": "lens_283M_type1",
+              "number": 66,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.Lens283MType"
+            },
+            {
+              "name": "lens_283M_type2",
+              "number": 67,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.Lens283MType"
+            },
+            {
+              "name": "offset_states",
+              "number": 68,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.OffsetState"
+            },
+            {
+              "name": "q_i_uav",
+              "number": 69,
+              "label": 3,
+              "type": 2
+            },
+            {
+              "name": "r_uav_i",
+              "number": 70,
+              "label": 3,
+              "type": 2
+            },
+            {
+              "name": "auto_clip_para",
+              "number": 71,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.AutoClipParam"
+            },
+            {
+              "name": "meta_track_para",
+              "number": 72,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.MetaTrackParam"
+            },
+            {
+              "name": "time_scale",
+              "number": 73,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.TimeScale"
+            },
+            {
+              "name": "hdr_process_type",
+              "number": 74,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.HdrProcessType"
+            },
+            {
+              "name": "thumbnail_type",
+              "number": 75,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ThumbnailType"
+            },
+            {
+              "name": "pureshot_process_type",
+              "number": 76,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.PureShotProcessType"
+            },
+            {
+              "name": "pre_rec_time_flag",
+              "number": 77,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "frame_rate_av_rational",
+              "number": 78,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.FrameRateAVRational"
+            },
+            {
+              "name": "pano_record_type",
+              "number": 79,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.PanoRecordType"
+            },
+            {
+              "name": "pano_record_multi_track_order",
+              "number": 80,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.PanoRecordMultiTrackOrder"
+            },
+            {
+              "name": "thumbnail_stitch_type",
+              "number": 81,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ThumbnailStitchType"
+            },
+            {
+              "name": "image_stitch_type",
+              "number": 82,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ImageStitchType"
+            },
+            {
+              "name": "scene_type",
+              "number": 83,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.SceneType"
+            },
+            {
+              "name": "Is_Cutting_Thumbnail",
+              "number": 84,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "reprocessing_type",
+              "number": 85,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ReprocessingType"
+            },
+            {
+              "name": "online_flowstate_level",
+              "number": 86,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.OnlineFlowstateLevel"
+            },
+            {
+              "name": "bHighLightEidted",
+              "number": 87,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "file_split_type",
+              "number": 88,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.FileSplitType"
+            },
+            {
+              "name": "bFavorite",
+              "number": 89,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "edit_version",
+              "number": 90,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "q_i_wnew",
+              "number": 91,
+              "label": 3,
+              "type": 1
+            },
+            {
+              "name": "bInsideEditorExport",
+              "number": 92,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "total_time_ms",
+              "number": 93,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "bContinueRecord",
+              "number": 94,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "bPausedRecord",
+              "number": 95,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "bTorchmode",
+              "number": 96,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "hdr_mode_type",
+              "number": 97,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.HdrModeType"
+            },
+            {
+              "name": "continue_record_info",
+              "number": 98,
+              "label": 3,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.ContinueRecordInfo"
+            },
+            {
+              "name": "bDropFrameOccur",
+              "number": 99,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "photoGroupNum",
+              "number": 100,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "recovery",
+              "number": 101,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "has_pb_resolution",
+              "number": 102,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "pb_resolution_size",
+              "number": 103,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.Vector2"
+            },
+            {
+              "name": "guard_detected_type",
+              "number": 104,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.GuardDetectedType"
+            },
+            {
+              "name": "cooling_shell_selected_state",
+              "number": 105,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.CoolingShellSelectedState"
+            },
+            {
+              "name": "cooling_shell_algo_state",
+              "number": 106,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.CoolingShellAlgoDetectedState"
+            },
+            {
+              "name": "ai_switch_state",
+              "number": 107,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.AISwitchState"
+            },
+            {
+              "name": "pureshot_image_debug",
+              "number": 108,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "material_3a_info",
+              "number": 109,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.Material3AInfo"
+            },
+            {
+              "name": "resolution_type",
+              "number": 110,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ResolutiuonType"
+            },
+            {
+              "name": "offset_v6",
+              "number": 111,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "original_offset_v6",
+              "number": 112,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "interval_photo_interval_time",
+              "number": 113,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "flowstate_level",
+              "number": 114,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "folder_info",
+              "number": 115,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.FolderInfo"
+            },
+            {
+              "name": "horizon_enable",
+              "number": 116,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "time_zone_seconds_from_GMT",
+              "number": 117,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "underwater_mode_type",
+              "number": 118,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.UnderWaterModeType"
+            },
+            {
+              "name": "water_mark_type",
+              "number": 119,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.WaterMarkType"
+            },
+            {
+              "name": "audio_track_num",
+              "number": 120,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "audio_track_info",
+              "number": 121,
+              "label": 3,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.AudioTrackInfo"
+            },
+            {
+              "name": "cloud_video_type",
+              "number": 122,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.CloudVideoType"
+            },
+            {
+              "name": "extreme_lowpower_mode_type",
+              "number": 123,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ExtremeLowPowerModeType"
+            },
+            {
+              "name": "lowlight_stabilization_mode_type",
+              "number": 124,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.LowLightStabilizationModeType"
+            },
+            {
+              "name": "cloud_video_info",
+              "number": 125,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "lens_module_type",
+              "number": 126,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.LensModuleType"
+            },
+            {
+              "name": "file_duration_tailor_time",
+              "number": 127,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "blend_Angle",
+              "number": 128,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "file_category",
+              "number": 129,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.FileCategory"
+            },
+            {
+              "name": "file_rotate",
+              "number": 130,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.FileRotate"
+            },
+            {
+              "name": "stream_type",
+              "number": 131,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.StreamType"
+            },
+            {
+              "name": "codec_type",
+              "number": 132,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.CodecType"
+            },
+            {
+              "name": "timelapse_interval_ms",
+              "number": 133,
+              "label": 1,
+              "type": 4
+            },
+            {
+              "name": "is_pre_record",
+              "number": 134,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "file_expect_bitrate",
+              "number": 135,
+              "label": 1,
+              "type": 4
+            },
+            {
+              "name": "capture_offset_version",
+              "number": 136,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.OffsetVersion"
+            },
+            {
+              "name": "expected_pano_ratio",
+              "number": 148,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.Vector2"
+            },
+            {
+              "name": "mctf_process_type",
+              "number": 149,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.MCTFProcessType"
+            },
+            {
+              "name": "timelaps_storage_type",
+              "number": 150,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.TimelapsStorageType"
+            },
+            {
+              "name": "direction_lock_type",
+              "number": 151,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.DirectionLockType"
+            },
+            {
+              "name": "dewarp_type",
+              "number": 152,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.DeWarpType"
+            },
+            {
+              "name": "uav_camera_mode",
+              "number": 153,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.UavCameraMode"
+            },
+            {
+              "name": "trim_start",
+              "number": 154,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "trim_end",
+              "number": 155,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "remove_purple_fringing",
+              "number": 156,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.RemovePurpleFringing"
+            },
+            {
+              "name": "capture_recommend_stitch_type",
+              "number": 157,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.CaptureRecommendStitchType"
+            },
+            {
+              "name": "takeover_info",
+              "number": 158,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.IntervaRecTakeoverInfo"
+            },
+            {
+              "name": "preset_type",
+              "number": 159,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.PrsestType"
+            },
+            {
+              "name": "file_scene_info",
+              "number": 160,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.FileSceneInfo"
+            },
+            {
+              "name": "evmap_level",
+              "number": 161,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.EvMapLevel"
+            },
+            {
+              "name": "ae_state",
+              "number": 162,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "sharpen_state",
+              "number": 163,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.SharpenState"
+            },
+            {
+              "name": "aeflicker_type",
+              "number": 164,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.AeFlickerType"
+            },
+            {
+              "name": "uav_pos_data_version",
+              "number": 165,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "mag_calib_dongle",
+              "number": 166,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.MagCalib"
+            },
+            {
+              "name": "mag_calib_tm",
+              "number": 167,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.MagCalib"
+            },
+            {
+              "name": "q_i_mag_dongle",
+              "number": 168,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.MagQI"
+            },
+            {
+              "name": "q_i_mag_tm",
+              "number": 169,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.MagQI"
+            },
+            {
+              "name": "q_b_tm",
+              "number": 170,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.MagQI"
+            },
+            {
+              "name": "uav_datatype_version",
+              "number": 171,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "pre_rec_frano_sec",
+              "number": 172,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "bPlaybackCache",
+              "number": 173,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_horizontal_state",
+              "number": 174,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "propeller_guard_status",
+              "number": 175,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.PropellerGuardStatusType"
+            },
+            {
+              "name": "is_af_lens",
+              "number": 176,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "af_lens_info",
+              "number": 177,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.AFLensInfo"
+            },
+            {
+              "name": "camera_calib_additional_info",
+              "number": 178,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.CameraCalibAdditionalInfo"
+            },
+            {
+              "name": "high_light_source",
+              "number": 179,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.HighLightSource"
+            },
+            {
+              "name": "is_capture_beauty_mode_on",
+              "number": 180,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "beauty_info",
+              "number": 181,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.CaptureBeautyParams"
+            },
+            {
+              "name": "color_correction",
+              "number": 182,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ColorCorrectionType"
+            },
+            {
+              "name": "capture_image_quality_info",
+              "number": 183,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.CaptureImageQualityInfo"
+            },
+            {
+              "name": "is_capture_beauty_support",
+              "number": 184,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "record_start_timestamp_ms",
+              "number": 185,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "lens_accessory_type",
+              "number": 186,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.LensAccessoryType"
+            },
+            {
+              "name": "lens_accessory_offset",
+              "number": 187,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "screen_orientation",
+              "number": 188,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.Camera_Screen_Orientation"
+            },
+            {
+              "name": "filp_type",
+              "number": 189,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.CaptureFilpType"
+            },
+            {
+              "name": "shooting_accessories",
+              "number": 190,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.ShootingAccessoriesType"
+            },
+            {
+              "name": "street_photo_horizon_correction",
+              "number": 191,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.StreetPhotoHorizCorrection"
+            },
+            {
+              "name": "offset_calib",
+              "number": 192,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.CameraOffsetCalib"
+            },
+            {
+              "name": "P3_fake_on",
+              "number": 193,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "watermark_style",
+              "number": 194,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.WaterMarkStyle"
+            },
+            {
+              "name": "origin_framerate",
+              "number": 195,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.FrameRateAVRational"
+            },
+            {
+              "name": "final_framerate",
+              "number": 196,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.FrameRateAVRational"
+            },
+            {
+              "name": "offset_v8",
+              "number": 197,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "first_tracking_frame_number",
+              "number": 198,
+              "label": 1,
+              "type": 4
+            },
+            {
+              "name": "repaired_type",
+              "number": 199,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.RepairedType"
+            },
+            {
+              "name": "aperture_value",
+              "number": 200,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "extern_filter",
+              "number": 201,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "is_3a_description_supported",
+              "number": 202,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "main_video_bitdepth",
+              "number": 203,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.VideoBitDepth"
+            },
+            {
+              "name": "optional_video_bitdepth",
+              "number": 204,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.VideoBitDepth"
+            },
+            {
+              "name": "video_color_space",
+              "number": 205,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.VideoColorSpace"
+            },
+            {
+              "name": "offset_info",
+              "number": 206,
+              "label": 3,
+              "type": 11,
+              "typeName": ".insta360.messages.OffsetInfo"
+            },
+            {
+              "name": "sensor_module_temper",
+              "number": 207,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "is_ultra_hdr_on",
+              "number": 208,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "views",
+              "number": 209,
+              "label": 3,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.BigboomTracks"
+            },
+            {
+              "name": "photo_still_rot",
+              "number": 210,
+              "label": 3,
+              "type": 2
+            },
+            {
+              "name": "aigc_info",
+              "number": 211,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.AIGCInfo"
+            },
+            {
+              "name": "shooting_param_info",
+              "number": 212,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.ShootingParamInfo"
+            },
+            {
+              "name": "thumbnail_hero_rot_quat",
+              "number": 213,
+              "label": 1,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata.ThumbnailHeroRotQuatData"
+            },
+            {
+              "name": "fac_calib_temper",
+              "number": 214,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "is_vfr_record",
+              "number": 215,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "uav_control_type",
+              "number": 216,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.UavControlType"
+            },
+            {
+              "name": "uav_display_type",
+              "number": 217,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.UavDisplayType"
+            },
+            {
+              "name": "av_synth_status",
+              "number": 218,
+              "label": 1,
+              "type": 14,
+              "typeName": ".insta360.messages.ExtraMetadata.AvSynthStatus"
+            },
+            {
+              "name": "simulation_path",
+              "number": 219,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "FileExtraMetadataResp",
+          "fields": [
+            {
+              "name": "uri",
+              "number": 1,
+              "label": 3,
+              "type": 9
+            },
+            {
+              "name": "mediaData",
+              "number": 2,
+              "label": 3,
+              "type": 11,
+              "typeName": ".insta360.messages.ExtraMetadata"
+            },
+            {
+              "name": "total_count",
+              "number": 3,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "start",
+              "number": 4,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "end",
+              "number": 5,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "favorite_info",
+              "number": 6,
+              "label": 3,
+              "type": 11,
+              "typeName": ".insta360.messages.FavoriteInfo"
+            },
+            {
+              "name": "map_index_list",
+              "number": 7,
+              "label": 3,
+              "type": 13
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "extraMediaData.proto",
+      "offset": 62129872,
+      "length": 623,
+      "messages": [
+        {
+          "name": "CubemapProjectionDesc",
+          "fields": [
+            {
+              "name": "projectType",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "panoWidth",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "cubeWidthExtend",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "width",
+              "number": 4,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "WideAngleParam",
+          "fields": [
+            {
+              "name": "fov",
+              "number": 1,
+              "label": 1,
+              "type": 1
+            }
+          ]
+        },
+        {
+          "name": "ExtraMediaDataProto",
+          "fields": [
+            {
+              "name": "projectionDesc",
+              "number": 1,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmg.CubemapProjectionDesc"
+            },
+            {
+              "name": "wideAngleParam",
+              "number": 2,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmg.WideAngleParam"
+            },
+            {
+              "name": "isCompressed",
+              "number": 3,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "additionalData",
+              "number": 4,
+              "label": 3,
+              "type": 11,
+              "typeName": ".bmg.ExtraMediaDataProto.AdditionalDataEntry"
+            },
+            {
+              "name": "videoType",
+              "number": 5,
+              "label": 1,
+              "type": 14,
+              "typeName": ".bmg.VideoType"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offset_info.proto",
+      "offset": 62295304,
+      "length": 110,
+      "messages": [
+        {
+          "name": "OffsetInfo",
+          "fields": [
+            {
+              "name": "offset_version",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "offset",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offset_state.proto",
+      "offset": 62295456,
+      "length": 463,
+      "messages": []
+    },
+    {
+      "name": "af_lens_info.proto",
+      "offset": 62255616,
+      "length": 110,
+      "messages": [
+        {
+          "name": "AFLensInfo",
+          "fields": [
+            {
+              "name": "range_near",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "range_far",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

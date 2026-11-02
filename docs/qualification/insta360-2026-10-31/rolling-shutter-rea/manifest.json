@@ -1,0 +1,35 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "runtime_set_sweep_ms",
+      "address": "0x101852118",
+      "endAddress": "0x101852124",
+      "sourceOffset": 25518360,
+      "sha256": "7d65fb23bab4d4e61e5a477f5b1c1c616c8d3a841aa226cc60fb1bb6c165a309"
+    },
+    {
+      "name": "runtime_get_sweep_ms",
+      "address": "0x101854b08",
+      "endAddress": "0x101854b14",
+      "sourceOffset": 25529096,
+      "sha256": "b95212853f9b3d736cb348093a6dd0c371fe8804f0ba7941e5095ba80a0671fa"
+    },
+    {
+      "name": "gyro_set_sweep",
+      "address": "0x1027b72c0",
+      "endAddress": "0x1027b72f0",
+      "sourceOffset": 41661120,
+      "sha256": "91b45778eebada77f46da8e41192d172e5215ff397afe0ee1ab1341070e9e9fd"
+    },
+    {
+      "name": "deroll_flag",
+      "address": "0x1027edb28",
+      "endAddress": "0x1027edcc4",
+      "sourceOffset": 41884456,
+      "sha256": "9d726c2c0379d4b657bdc8c4d6366593e5633fe130aac68d0a8e9b46edffdc37"
+    }
+  ]
+}

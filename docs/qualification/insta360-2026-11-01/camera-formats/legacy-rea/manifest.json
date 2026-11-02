@@ -1,0 +1,37 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "capsules": [
+    {
+      "address": "0x1027ac0cc",
+      "end": "0x1027ac1b4",
+      "sourceOffset": 41615564,
+      "bytes": 232,
+      "sha256": "6f348503bbde764ef7395a2edbe6de6b901c8fefd57b3df4dd5fc1d6776d66af"
+    },
+    {
+      "address": "0x1027ad2cc",
+      "end": "0x1027ad490",
+      "sourceOffset": 41620172,
+      "bytes": 452,
+      "sha256": "2a1ed09f03459a9ec9761961d6197a620f9a40922b73a9f40a269df05a56676f"
+    },
+    {
+      "address": "0x1027a7828",
+      "end": "0x1027a8830",
+      "sourceOffset": 41596968,
+      "bytes": 4104,
+      "sha256": "d539aacdf66d4f4e6662ef5c07981179179adfadb579b9d4d1eda8afb722371f"
+    },
+    {
+      "address": "0x1027a2e04",
+      "end": "0x1027a2f5c",
+      "sourceOffset": 41577988,
+      "bytes": 344,
+      "sha256": "f758328b32b370e48f0dcff62ef22a3e94f838eb10c0c92802aa5f567b6a41d2",
+      "boundary": "LC_FUNCTION_STARTS mapped original arm64 text; adjacent function1027a2f5c"
+    }
+  ],
+  "limitations": [
+    "Function-only subranges; calls and data omitted; static REA only"
+  ]
+}

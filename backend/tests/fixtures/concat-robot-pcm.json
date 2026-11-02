@@ -1,0 +1,3325 @@
+{
+  "schemaVersion": 1,
+  "package": "concat.robot",
+  "reference": {
+    "repository": "https://github.com/jub0t/concat",
+    "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+    "files": {
+      "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+      "src/crates/concat-effects/src/catalogue.rs": "b03e52127cedc87429487f95e088b7d7bedfcc792490e559b72dfbfdd5218bdb",
+      "src/crates/concat-effects/packages/concat.echo/effect.toml": "225a48851a75fc8bd22e493c17903762cc3075ff0de4c98ecee4f1c93a59c8d3",
+      "src/crates/concat-effects/packages/concat.echo/fixtures.toml": "015e50ff01ba6c792ff4f25dd07789ef59209c2e5c1d766faaa596abc1e18062",
+      "src/crates/concat-effects/packages/concat.robot/effect.toml": "8eb8a879786d70e9c63405b5aaa2df3850ddc20b9d4ee12d3296ac17dd6170ad",
+      "src/crates/concat-effects/packages/concat.robot/fixtures.toml": "9377f9cd80178f1511eac6d8289ae49be00b6922f921f32d91a84ab6a8c9fb28",
+      "src/crates/concat-effects/packages/concat.bass/effect.toml": "40fe2c41fd48ea0647435644849383fcd2bb1579bf764d21849e980109fe7f78",
+      "src/crates/concat-effects/packages/concat.bass/fixtures.toml": "5499ec696adab5ada3aa5755ca38d9a42ad78ec821425e45232d0c288dfbd4bb"
+    },
+    "adapterSha256": "2dcc8722cb81e267b9d91dea5f1c829d4cccccc7ea17921d29c69e6692bee1a9"
+  },
+  "ffmpeg": {
+    "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "binarySha256": "768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e"
+  },
+  "aliasVerified": {
+    "robot": "concat.robot"
+  },
+  "pcmBytes": 71695920,
+  "cases": [
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 0,
+      "byteLength": 36068,
+      "outputSha256": "db71e2e30754546317ef5e429b2f8571c6a2a2aed5d0d9665cb4e539ea127ae0"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 36068,
+      "byteLength": 36068,
+      "outputSha256": "90e2b7bcbb130957e3c37a71c21fe7674471f495095bff7d67c94cccd38779e5"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 72136,
+      "byteLength": 36068,
+      "outputSha256": "7807af2badc4dded35a258c000641f35c9600f4299a60bda58ae4f9adee7461a"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 108204,
+      "byteLength": 36068,
+      "outputSha256": "2b72274a4042cea765fdc4413d35fda3e3916e07eb6f51a173baf03972cbb84b"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 144272,
+      "byteLength": 36068,
+      "outputSha256": "b0d033dd65f0cca0708f1613ab341fc472d66afde6200734a2deb7dfc12f33f8"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 180340,
+      "byteLength": 37668,
+      "outputSha256": "412ffc45e1bc084ee9393afcbe884ce632a0f9d974d22282e2bde2941d20134f"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 218008,
+      "byteLength": 37668,
+      "outputSha256": "aab6592077d197170a53dc9e7dec4811f1a0e442eceeef34b8c71fb209f9133f"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 255676,
+      "byteLength": 36068,
+      "outputSha256": "1b01146c044fc28482ea6f624610053801289af5330be73fac75bb02034db422"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 291744,
+      "byteLength": 36068,
+      "outputSha256": "68dc90d0390445816ba8c74fe56b958889830a578a88d62da3d93ade4c9cd5c7"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 327812,
+      "byteLength": 36068,
+      "outputSha256": "67cc9feb13fa2d6683584c3049006b4401211ebcde8f430558bf9c84a92f9785"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 363880,
+      "byteLength": 36068,
+      "outputSha256": "c878443763c256161136ec0f67cc64d32507ee078830f1e14526e66261dc2055"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 399948,
+      "byteLength": 36068,
+      "outputSha256": "b003463d6edf5f4099a0c3c18cc2ef145958013cb3ab466aee17134c7e0263fe"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 436016,
+      "byteLength": 36068,
+      "outputSha256": "4fa509b5e769bbae75e61ac6585fc0aabbefa4d83626123d2a9ba9529c3cf295"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 472084,
+      "byteLength": 36068,
+      "outputSha256": "2b2982d258641eaeda559e0e12f2470d1e2bed0a961cfdcccfb39c6377ad9a67"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 508152,
+      "byteLength": 37668,
+      "outputSha256": "fb3c1456b662bdc2435515d588874422885b41a9dccf6fc2d0649c8f5ac3067e"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 545820,
+      "byteLength": 37668,
+      "outputSha256": "4308bb6f84facf8c6aa6e7fe5f258b56c6114bddba523f131db3ba425ce884bd"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 583488,
+      "byteLength": 36068,
+      "outputSha256": "7f31edc0566f7e4abb0ed37edad253aef9ac03ae6ad7e479fb2af67cf8b53e4e"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 619556,
+      "byteLength": 36068,
+      "outputSha256": "7cf7556d1a6d236951fa3226f39da602dcf430b1e7493c9d8649fdac4becea59"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 655624,
+      "byteLength": 72136,
+      "outputSha256": "b51342c9ee8c96c70f7ef05f0cef3ee3d72b9b4af9fee9962b5a7045eac0c27e"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 727760,
+      "byteLength": 72136,
+      "outputSha256": "f487b9e456b203e554402d4fbcb52812e5ec0f4f5b98c565246f7a3a794bfa16"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 799896,
+      "byteLength": 72136,
+      "outputSha256": "f2ce16647251e11bd42d3df78a5927b886c08f3b98565a18fb5db7b60a4714b5"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 872032,
+      "byteLength": 72136,
+      "outputSha256": "4a9994385d02d9907b4425448e95b916132b332ccaee6817f607317da740c90d"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 944168,
+      "byteLength": 72136,
+      "outputSha256": "baf5ff68178b505d8e0a71a47717f35e9029bf9681cd48c2b7b369567e498ac2"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 1016304,
+      "byteLength": 75336,
+      "outputSha256": "e16c5817766a22e1859b654a58086a4fb9167565f8abac24c21bc4d3caad1ff3"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 1091640,
+      "byteLength": 75336,
+      "outputSha256": "793a1d51e084de57a00489624c295a4a327ab72f33844f8ebf569d35191b04fa"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1166976,
+      "byteLength": 72136,
+      "outputSha256": "9f92f44ee238560618bb41f82a64af8b2fb13daaeeed0470672a50fa988d20f8"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1239112,
+      "byteLength": 72136,
+      "outputSha256": "deb8c2939ab0d282cd04cd97d1de0b54ef049bcb4eef0488c803c9676e3e7316"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1311248,
+      "byteLength": 72136,
+      "outputSha256": "3c6338b0192322fbd24ee5d86887d7a8df8edcc6639dc66346fc3eca9690116f"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1383384,
+      "byteLength": 72136,
+      "outputSha256": "124dafebf28b98a31e59691afb0e868d5757314daa4e897c3ad1ff8e10cb2338"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1455520,
+      "byteLength": 72136,
+      "outputSha256": "8c0b2c1c5e97e952e404811c91b6b52d223696eac6d96169a0a311ab9801ec88"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1527656,
+      "byteLength": 72136,
+      "outputSha256": "030d183d648698e57918906b02830e314d366811beddb8f4d2ee4d8ca3f1b903"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1599792,
+      "byteLength": 72136,
+      "outputSha256": "6e702204cddc6c2545b2259e35ea6698e2407d127040f7c879a89012fa5ccaac"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 1671928,
+      "byteLength": 75336,
+      "outputSha256": "9d4f712c381fa375a058e0d54ce9722892305e223f3c586c9cdf3e7550ac7ed6"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 1747264,
+      "byteLength": 75336,
+      "outputSha256": "4b6e7207b0e42d0cc30100c3298e5fbee26385a886462400d2dc1187221ca45f"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1822600,
+      "byteLength": 72136,
+      "outputSha256": "e3c4bd417b10d759ec95fcfe5e3c43aa0732fdd7236c9852930d7477ddd499b7"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1894736,
+      "byteLength": 72136,
+      "outputSha256": "41932b5691d819ffa9d8fc1cf42e98c8bceb2562435eabe7810eb14fc088d934"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 1966872,
+      "byteLength": 198516,
+      "outputSha256": "e2f6a145aa94163ef9c82cf8d87396333fac2e7b4e827dbe2c261a5e93561d2c"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 2165388,
+      "byteLength": 198516,
+      "outputSha256": "06e8024987552e16333c6d555ad686c61c1e3a1650157c2a4941ddf567cae06e"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 2363904,
+      "byteLength": 198516,
+      "outputSha256": "d7b305cccf32f13242eabdd09d134868e29c5f31908f564c8295ca025c825431"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 2562420,
+      "byteLength": 198516,
+      "outputSha256": "6880e3cabea135f06382ab4f684a0603c609589d8e70f0cffe4cef3f1c41ff96"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 2760936,
+      "byteLength": 198516,
+      "outputSha256": "27a8bf7e0df3edcfd5fb75f863d536dc70346a357545f55d40ab56b2138938af"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 2959452,
+      "byteLength": 207336,
+      "outputSha256": "fa9d09760ed6b09e58236b662b424c3da085be8e5e714b72f569a9c2906c110f"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 3166788,
+      "byteLength": 207336,
+      "outputSha256": "9bec56bdf33a7672ee3477e458fb92218922c218e697157accac707f9f4cda6b"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 3374124,
+      "byteLength": 198516,
+      "outputSha256": "a2f8b51bed087749b51e33f1d73460389895e3c7044b3e553de3bca9cd8f5c16"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 3572640,
+      "byteLength": 198516,
+      "outputSha256": "803fd5c0f9085dc7713e49767a5103520d0a1b6a688bdf6ca94c85f4a90b7cc4"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 3771156,
+      "byteLength": 198516,
+      "outputSha256": "0d6e4785ff992c0561e5ce2acd77b01d6f4361e58e8dc1799121fbcc8f635c34"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 3969672,
+      "byteLength": 198516,
+      "outputSha256": "a135cb82f5a60172f78d8df7b46a3de40816822f637c028c04e7fcf7495fe0c3"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 4168188,
+      "byteLength": 198516,
+      "outputSha256": "988d5f055f399c9edcda969b552e65828b17eb9b9252f8daa5319576141fbe6c"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 4366704,
+      "byteLength": 198516,
+      "outputSha256": "bbcdb25759f88f7891a22e1845d88d83649dfdb4882de43a99a97e7f81c211d8"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 4565220,
+      "byteLength": 198516,
+      "outputSha256": "e5fd63b8ca41fd212d2775b547e5fb6add5182ec39a2b66b669678368215acee"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 4763736,
+      "byteLength": 207336,
+      "outputSha256": "cae684f24de0a30439c845140dec670f4f73207ed5bd07aaa53c072773bf6e16"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 4971072,
+      "byteLength": 207336,
+      "outputSha256": "300486a2224a9db78fe9a9716aac7c88565f18494f96f851fe15e6ac16fede6e"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 5178408,
+      "byteLength": 198516,
+      "outputSha256": "66411a24f838190fe3473552bdb9680ce8a89d832c6b6e0fcab574c1e59c81e2"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 5376924,
+      "byteLength": 198516,
+      "outputSha256": "1be373604a6105053c8d6a41b813cd0632d7a077f3d1ed1cf9a38fdfc656ff43"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 5575440,
+      "byteLength": 397032,
+      "outputSha256": "5b403fea394bcd9d4b3f2f03539cf7eb367baf0865b51314eb84d55219e923a2"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 5972472,
+      "byteLength": 397032,
+      "outputSha256": "9bd5d88d281cfa83594a53e07b398b241eb352e4e6187ba63025fec1ed4699d2"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 6369504,
+      "byteLength": 397032,
+      "outputSha256": "9a8a0a15932e06bf62fb2e50d0bdc7d909166252fbcc7f09d46d9e43eaeca778"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 6766536,
+      "byteLength": 397032,
+      "outputSha256": "52251aadce63e4e18047aef095c9ddde72cabed72144771b4432e483a4bbbc56"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 7163568,
+      "byteLength": 397032,
+      "outputSha256": "629e265ebe018bcdca819716389b83fcc077d134f0ca4d942b9b68a59e637a35"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 7560600,
+      "byteLength": 414672,
+      "outputSha256": "a402fbcee009753982e2e59caff08a07ee5eccffdf04b1c8fd85104088c80c4b"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 7975272,
+      "byteLength": 414672,
+      "outputSha256": "1437de20d5c7542950b8a39781808b695f6e4a4a36a44738057f07d99ccb94a9"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 8389944,
+      "byteLength": 397032,
+      "outputSha256": "de3405641fc5fec69902a35f53d76774ba0b12b771bf93f30c517916689c8d75"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 8786976,
+      "byteLength": 397032,
+      "outputSha256": "e26aa42dcaa5196c46a6dd54181ecc2f20beac0f566082688e95793bee3de40b"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 9184008,
+      "byteLength": 397032,
+      "outputSha256": "3561babcc4ee6cc2c9d9c49a43ba16a54df473ae017424f75e96283f1ec8ed33"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 9581040,
+      "byteLength": 397032,
+      "outputSha256": "a17cee2576556db0f53421021296dbca37f3c58dba54cd4ff6c54cea72821112"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 9978072,
+      "byteLength": 397032,
+      "outputSha256": "5dc059b245d1578653a1dc4ba5a10d693877322033b70aad119a86453696e70d"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 10375104,
+      "byteLength": 397032,
+      "outputSha256": "a5d2079cee339c768f452947c705fac3f74b5d1e64f684ad0b8d6ec844a938be"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 10772136,
+      "byteLength": 397032,
+      "outputSha256": "4debbac6ccdc016bfe7c1ecdeac13fa135f742063da5cf790b218926f2621d27"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 11169168,
+      "byteLength": 414672,
+      "outputSha256": "744e084c73cec1ac7f47ce895170559560d04690bcffd3dcf733181e187b4d6d"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 11583840,
+      "byteLength": 414672,
+      "outputSha256": "5eb750ceb2a024c1ff129883b61054e405b392903950bcd69b06778b26ff992e"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 11998512,
+      "byteLength": 397032,
+      "outputSha256": "ef50f23ef381d4aff213f4ab7b16d404395c5eafd5c23a8f66a4a27c83f06dae"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 12395544,
+      "byteLength": 397032,
+      "outputSha256": "57205eaf3b3b71a0570f02e5add92b4212d59036c38956edf53037008ce735ef"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 12792576,
+      "byteLength": 216068,
+      "outputSha256": "a02496b1b261ea5c14509489f376d25a019a7a660543f9c320cf2a6289b64caf"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 13008644,
+      "byteLength": 216068,
+      "outputSha256": "e2ca2d1775ca3064321b1d1732e36b89387cb22b4626701c5919449570eb6a9d"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 13224712,
+      "byteLength": 216068,
+      "outputSha256": "ff5e84c9410e2a566d772e7deadd896bfd8fbaf0976df6b08e0c0086610f1e4e"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 13440780,
+      "byteLength": 216068,
+      "outputSha256": "0d396db1cbb888b1df2f3d8c95bf866fd351de666340b193bc55c28734503b39"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 13656848,
+      "byteLength": 216068,
+      "outputSha256": "10aca49657f46429b419155d58d6804a82d76e259d2728512544edbea7892daa"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 13872916,
+      "byteLength": 225668,
+      "outputSha256": "4dfa248c03b205be6e713579562f01fa40099e7ccfd56e57bfa72f70506ee830"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 14098584,
+      "byteLength": 225668,
+      "outputSha256": "cceedbcccbdc297a9bc60f16b935234c024148a793bcdcd24652e910c10c8700"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 14324252,
+      "byteLength": 216068,
+      "outputSha256": "7119be6ee3870e2af40fe1d078ae1aa1c4511547b676d36edf047ceb6dbd5c9b"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 14540320,
+      "byteLength": 216068,
+      "outputSha256": "3467ba30b181c705420d220a30964091ae157e2b66cc05b440ce52c49bb85564"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 14756388,
+      "byteLength": 216068,
+      "outputSha256": "e9c4af52b46bce71269d47bcf0f2f75aa7f66c43217209d27d209c60aa6c17ce"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 14972456,
+      "byteLength": 216068,
+      "outputSha256": "6a62aa7d24e9db7885c700f6304c8eb710f5ca0ce427692ca0ec805de4d48cdc"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 15188524,
+      "byteLength": 216068,
+      "outputSha256": "f86dc74df45f020c3eb4a5f9758736d1e71902c11489874dae54c8c26d35c14a"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 15404592,
+      "byteLength": 216068,
+      "outputSha256": "db4c01a1cb281973d41eed4954995f9f0d889533d93e9f7d38106ca2f5041d40"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 15620660,
+      "byteLength": 216068,
+      "outputSha256": "166eee4b254f4a6821ad20eb7cf876b7fcaa44657995d4ebf21889e29cf38281"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 15836728,
+      "byteLength": 225668,
+      "outputSha256": "d17bba5f25aa281c01fb60d97515d7ca2a13a0b6a7a1f26af851faed1b552877"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 16062396,
+      "byteLength": 225668,
+      "outputSha256": "3766859bf53b5ab2c41a1081e6be0974d59e7acf38a3d48bdb24046d62330ff7"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 16288064,
+      "byteLength": 216068,
+      "outputSha256": "f21d31ccb6bac41f1894753d6f984c117cb766c304a2f82d90f57ffc081ce394"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 16504132,
+      "byteLength": 216068,
+      "outputSha256": "3ce11f858426ae51458714e0f7211bb2d8c29612be9ef5a8c01230f57e4f1645"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 16720200,
+      "byteLength": 432136,
+      "outputSha256": "1b1df01006024dfd74f5f356c97aa9dbfd9fb8a12fdb98fad1561ce19e8d91e5"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 17152336,
+      "byteLength": 432136,
+      "outputSha256": "5bd145d3598dc740de275e17af0da16aa215c5049104f2a66112c022a6205cc4"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 17584472,
+      "byteLength": 432136,
+      "outputSha256": "ae9366047d814f42f6dcc18a53d88699a168e420c1ed47deece7558ff5cf96df"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 18016608,
+      "byteLength": 432136,
+      "outputSha256": "aade2c2176ffd4bb61dcf6794c5d27bbb03683065d8db3ef36ca7e3019c63782"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 18448744,
+      "byteLength": 432136,
+      "outputSha256": "eb1b2eae972c96561d918309aa09c6100ad7ba98d4f3a5bd91ec1b356fee4b33"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 18880880,
+      "byteLength": 451336,
+      "outputSha256": "a6662eca926db5b67c6c1e6e8c76ad8959e446a89c53c600eb82732191bba505"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 19332216,
+      "byteLength": 451336,
+      "outputSha256": "c0289e850c96ee0f551a34cc5a5458367b457b19b6091341ecb70f92e954a610"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 19783552,
+      "byteLength": 432136,
+      "outputSha256": "9e828a9dbbae48fa5f33bad6b8f1f8a84fda8ef4aff157a5eeb0a719546dcc45"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 20215688,
+      "byteLength": 432136,
+      "outputSha256": "d4d8afdc2ef17bfdfd45d7ccd639894f5996dcc0740f443cd85df59e868e842c"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 20647824,
+      "byteLength": 432136,
+      "outputSha256": "278765e6a5b53bb5494254f4efe3d1917cf8c78a90e8327af453a687a3e0fa3b"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 21079960,
+      "byteLength": 432136,
+      "outputSha256": "6d9fee1f9ae1a22f7432c0aa3a8a6403fb6937e456930cac656a237d28c2fa2b"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 21512096,
+      "byteLength": 432136,
+      "outputSha256": "7e47f1e59cf3b9ee03a8b82810df61648602fa7ba536662d91e4d753c006fedc"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 21944232,
+      "byteLength": 432136,
+      "outputSha256": "b1bd521fc947a4c819cd2a244b539f5288eb814114f0c532a8ab8b93a61b66d0"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 22376368,
+      "byteLength": 432136,
+      "outputSha256": "c9e7758d22e2b855e2ffac7ab0498e40ee33abf48e7bbb7b900312597c0ca50e"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 22808504,
+      "byteLength": 451336,
+      "outputSha256": "a91d1f147c9a1c5e7072ea96ac4be0e580fc71aa118568e0cc0983aa49c38ce3"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 23259840,
+      "byteLength": 451336,
+      "outputSha256": "6ca510a831cce31cb471b5da2c2e8d09a856612910e176732e669440bb39ef54"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 23711176,
+      "byteLength": 432136,
+      "outputSha256": "2634aa36fbf55521e4c591fcefd81a0c581853a3ad5c8f32dbcfcf1f89de0740"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 24143312,
+      "byteLength": 432136,
+      "outputSha256": "419bcc8d5704973774e488da0e43b3f5bf6311b579965add542cedb27644359a"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 24575448,
+      "byteLength": 864068,
+      "outputSha256": "76899f4ef3ba2684b62728b4894f06ff90b8974132ff39fddc86ccd3c998821b"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 25439516,
+      "byteLength": 864068,
+      "outputSha256": "009de7e3cd38653e336ac10ecbd6e21f041580cd9cdf875f5796a0ca3a946d97"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 26303584,
+      "byteLength": 864068,
+      "outputSha256": "235e5e053b9819da98e7404171b637c9cf7f2ae270285184a1c52b15520a502f"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 27167652,
+      "byteLength": 864068,
+      "outputSha256": "f2640fe9edf9d5111e5d82d4b9e17a90e9d82df9e7630169cd4da7f74678f1e0"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 28031720,
+      "byteLength": 864068,
+      "outputSha256": "47a4d793bbc25f91d48d679e81f2f202ca4ee960ac0881219cbdd08ca1ab57d4"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 225617,
+      "offsetBytes": 28895788,
+      "byteLength": 902468,
+      "outputSha256": "e2e4e996ea8ab38d257bf0e321846babd31ef86620ac887b917ff5d1a17e6dc6"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 225617,
+      "offsetBytes": 29798256,
+      "byteLength": 902468,
+      "outputSha256": "7be5e951ebddd1fa76eac8e08edce7c5aa979d174162e05cf1dcfd325ca933bc"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 30700724,
+      "byteLength": 864068,
+      "outputSha256": "1e1c9a09334d6586849fa5d140cf219dd0648a2c58f120afb857de212367362d"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 31564792,
+      "byteLength": 864068,
+      "outputSha256": "1ae2296e4dbbd2fa794277cd8861e533c93ecf28e44a60509c81cbe9a0849d09"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 32428860,
+      "byteLength": 864068,
+      "outputSha256": "2cf1e140ec559f00b2746f36c50ab59921d0133fa5e4f49be4e8dbac51dd1116"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 33292928,
+      "byteLength": 864068,
+      "outputSha256": "b8991ddbace8795524d7a5bc26e62e1540d2ee754979a97f45d0fd3f0ccaac4f"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 34156996,
+      "byteLength": 864068,
+      "outputSha256": "3b572fe1240014b0ab7d7362f07f1664f9af1432895c39ac38ec05ddb9674e37"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 35021064,
+      "byteLength": 864068,
+      "outputSha256": "574798e555d73ffc11fec5473be3ba49cf55517f74cbdb3a4df8d572f0a93aa8"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 35885132,
+      "byteLength": 864068,
+      "outputSha256": "f7c7a30be275044b912fd6e6ba49d7c1dc0a24b3eef8fe2b26a094d58b2fe512"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 225617,
+      "offsetBytes": 36749200,
+      "byteLength": 902468,
+      "outputSha256": "d5e6b05035ededcc2417c6f17a89b44ad3509b82722361bc7fdd32186ec44149"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 225617,
+      "offsetBytes": 37651668,
+      "byteLength": 902468,
+      "outputSha256": "62eeda0968f881a63e6d0458b6dacc2cce19ffb400c075f267c1d3e868345756"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 38554136,
+      "byteLength": 864068,
+      "outputSha256": "bbc7ca1750cf4fb3ca68e916f4b9e0453fb836bb493f29c0eedfa42b5e577446"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 39418204,
+      "byteLength": 864068,
+      "outputSha256": "273e1899e70d74516ce78f77e427d3db57c1e6a8e517f044fda6d164d67a46a9"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 40282272,
+      "byteLength": 1728136,
+      "outputSha256": "872e2c7d03c873e41075258670968ae86ced684c050766dea3eac6a924d5a66c"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 42010408,
+      "byteLength": 1728136,
+      "outputSha256": "18a004df595ed1fe456f2aa9357ac72fc776f177094d25d584be8de1205b5a95"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 43738544,
+      "byteLength": 1728136,
+      "outputSha256": "921612a4d90282512ab138b8cbfa536d43a43e99bce18c08e8cf456b2423fe1c"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 45466680,
+      "byteLength": 1728136,
+      "outputSha256": "b8b8d8ee771b3cf5e4ca50c08b334d2fbdf668e93aafc22a4b158bc5704aaa0c"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 47194816,
+      "byteLength": 1728136,
+      "outputSha256": "2e7c688370095ec2d7aa27396e999d198ef03ca5b695202ec3e7868a3de1271e"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 225617,
+      "offsetBytes": 48922952,
+      "byteLength": 1804936,
+      "outputSha256": "7945e9a6b393bb72ce615cb8d32e9c175c10d2e1c272e5c1204c4f387ce2c1f8"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 225617,
+      "offsetBytes": 50727888,
+      "byteLength": 1804936,
+      "outputSha256": "c7211c8020cf52673e71c4860d005b75b54b3ee33b7c7ce670493e123f6d93a2"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 52532824,
+      "byteLength": 1728136,
+      "outputSha256": "4754563db2f8a7b551cbb3c992f50e31d9be7d26f2f628f8f489fd67f64dd5d1"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 54260960,
+      "byteLength": 1728136,
+      "outputSha256": "25ffa38b558974f7a918ca4b98b9019ae637e7588325be1999bd60540454f20a"
+    },
+    {
+      "chain": "aphaser=type=t:speed=0.56:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 55989096,
+      "byteLength": 1728136,
+      "outputSha256": "88d80129041b2dbe4ada40bba673a2b5c5306fb1218eeeef163b603d7ac25be7"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 57717232,
+      "byteLength": 1728136,
+      "outputSha256": "979a038223fd1900b4c27c8ab5d3999b0d32bc4234a27696696acb0f119224c6"
+    },
+    {
+      "chain": "aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 59445368,
+      "byteLength": 1728136,
+      "outputSha256": "7428a48fae82b3201fb78fb4e88f48c4ee62c4beb706c26fce4b1d118f61a715"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.45:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 61173504,
+      "byteLength": 1728136,
+      "outputSha256": "1283a78ac57efff34d577c4a478b1e09b6a3853758a2678671623747f4cef94f"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.28:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 62901640,
+      "byteLength": 1728136,
+      "outputSha256": "82fc7c5c9187768f6c9be9f92d1974056a37662de366cdc8285de419e187b0ba"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 225617,
+      "offsetBytes": 64629776,
+      "byteLength": 1804936,
+      "outputSha256": "8283d079e4a50f4c52147a8d9fd15e7e1105f8fa01082e50cf0656d8fb0bc0d1"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 225617,
+      "offsetBytes": 66434712,
+      "byteLength": 1804936,
+      "outputSha256": "0b25207b4b71fe9420453fbcac20ef1d6435b1fa0d249c6c5abf4ccb73436232"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 68239648,
+      "byteLength": 1728136,
+      "outputSha256": "22129fe3e79b651ee79bbb6bf419cdac4b60c198b819188b0d2ebb90742dddd9"
+    },
+    {
+      "chain": "aphaser=type=t:speed=1.20:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94,aphaser=type=t:speed=2.00:decay=0.6,flanger=delay=2:depth=4:speed=0.8,equalizer=f=1800:t=q:w=1.2:g=3,alimiter=limit=0.94",
+      "settings": [
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 5.0
+          }
+        },
+        {
+          "id": "concat.robot",
+          "params": {
+            "depth": 10.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 69967784,
+      "byteLength": 1728136,
+      "outputSha256": "cd980f253d1d9ceb63e69ec6933c04ffedc8bcedfcee0a3a6e8ed18ef7fb784d"
+    }
+  ]
+}

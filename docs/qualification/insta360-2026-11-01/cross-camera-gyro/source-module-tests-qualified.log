@@ -1,0 +1,28 @@
+
+running 21 tests
+test gyro_tests::fusion_initial_tilt_aligns_specific_force_to_world_up ... ok
+test gyro_tests::enormous_finite_window_is_rejected_without_index_overflow ... ok
+test gyro_tests::embedded_exposure_midpoint_clock_samples_earlier_sensor_time ... ok
+test gyro_tests::complementary_fusion_corrects_tilt_bias_but_rejects_dynamic_acceleration ... ok
+test gyro_tests::native_longitude_origin_and_axial_polar_basis_are_not_interchanged ... ok
+test gyro_tests::malformed_or_unqualified_retained_map_cannot_bypass_timing_with_manual_mount ... ok
+test gyro_tests::matching_embedded_calibration_automatically_maps_sensor_axes ... ok
+test gyro_tests::uncertain_video_pts_falls_back_to_explicitly_warned_capture_clock ... ok
+test gyro_tests::gyro_window_rejects_bounds_nonunit_and_time_discontinuity ... ok
+test time_map_tests::unsupported_time_maps_fail_closed_instead_of_guessing_original_capture_clock ... ok
+test gyro_tests::full_presentation_endpoint_keeps_midpoint_clock_with_bounded_last_period_extension ... ok
+test gyro_tests::x4_auto_mount_requires_qualified_legacy_profile_not_hardware_flag_alone ... ok
+test time_map_tests::constant_original_trim_uses_frame_aligned_translation_and_ignores_opaque_word ... ok
+real X4 strict145/trim21sec: sourceClock100fps at2.25sec; originalCapture23.247756761sec; 506 IMU records; 150 orientation samples
+test gyro_tests::real_x4_trim_map_and_auto_mount_keep_clip_frame_clock_separate_from_original_capture ... ok
+test gyro_tests::raw_offset_binary_capture_clock_and_explicit_sensor_axes ... ok
+test gyro_tests::embedded_gravity_polarity_aligns_physical_up_without_changing_manual_contract ... ok
+test gyro_tests::explicit_and_declared_bias_correct_orientation_but_preserve_raw_sensor_report ... ok
+test gyro_tests::padded_relative_track_preserves_clip_origin_and_observed_heading_is_not_erased ... ok
+test gyro_tests::retained_trim_map_shifts_original_exposure_but_preserves_decoded_source_frame_phase ... ok
+real X6 read-only raw IMU: 499 integrated-range records, 31 output samples, capture coverage -0.144339..1.549233s
+test gyro_tests::read_real_x6_capture_gyro ... ok
+test gyro_tests::precise_track_keeps_real_exposure_breakpoint_between_uniform_output_samples ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+

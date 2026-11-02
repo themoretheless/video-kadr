@@ -1,0 +1,21 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "camerainfo",
+      "address": "0x1018b42d8",
+      "endAddress": "0x1018b51d4",
+      "sourceOffset": 25920216,
+      "sha256": "a4d4c1bc0f433f09899ca7e6bb1db0582853ab5fe3dc92dba2d014939e5419e6"
+    },
+    {
+      "name": "lenstype",
+      "address": "0x1018b218c",
+      "endAddress": "0x1018b22a4",
+      "sourceOffset": 25911692,
+      "sha256": "39942a28dd7bf1758d7fc9eb37ba3c7b9540b46914d9499b12c33d1f7686cb5d"
+    }
+  ]
+}

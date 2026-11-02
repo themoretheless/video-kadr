@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "provenance": {
+      "untrusted_content": true,
+      "source": "analysis_target"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"result\":{\"path\":\"/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/analysis.snapshot.json\",\"bytes\":253032,\"primitive_entries\":1,\"workflow_entries\":1,\"evidence_records\":19}}"
+    }
+  ],
+  "structuredContent": {
+    "result": {
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/analysis.snapshot.json",
+      "bytes": 253032,
+      "primitive_entries": 1,
+      "workflow_entries": 1,
+      "evidence_records": 19
+    }
+  }
+}

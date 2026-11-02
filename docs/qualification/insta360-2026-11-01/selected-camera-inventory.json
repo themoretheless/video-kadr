@@ -1,0 +1,44 @@
+{
+  "scope": "Directory/name inventory and selected metadata reads; not an exhaustive camera-model census or render qualification",
+  "mediaNames": {
+    "matchingVideoEntries": 7408,
+    "extensions": {
+      ".mp4": 5386,
+      ".lrv": 1482,
+      ".insv": 203,
+      ".mov": 337
+    },
+    "errorsInDepth9Inventory": 0
+  },
+  "selectedActualModels": [
+    {
+      "model": "Insta360 X6",
+      "firmware": "four prior INSV firmware families; mono MP4 v1.0.20 also sampled",
+      "kind": "dual-lens and single-lens v6",
+      "qualification": "see camera-formats report; mono is not dual-360"
+    },
+    {
+      "model": "Insta360 GO Ultra",
+      "firmware": "v1.6.25_build1",
+      "kind": "single lens legacy flags1156",
+      "qualification": "metadata integrity and explicit dual-360 refusal only"
+    },
+    {
+      "model": "Insta360 Luna Ultra",
+      "firmware": "v1.1.15",
+      "kind": "single lens legacy flags1168",
+      "qualification": "actual pose/appearance ReID case; raw camera projection not enabled"
+    },
+    {
+      "model": "Insta360 X4",
+      "firmware": "v0.3.11_build1",
+      "kind": "official public sample; two square tracks100fps; legacy flags1095",
+      "qualification": "native source crop/projection and Studio references evaluated separately"
+    }
+  ],
+  "limits": [
+    "Filename DJI/GoPro prefixes are not proof of exact hardware models.",
+    "The193-file prior X6 metadata result does not qualify image quality for all source files.",
+    "Private original footage and derived subject images remain outside the repository."
+  ]
+}

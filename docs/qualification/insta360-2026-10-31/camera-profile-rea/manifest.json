@@ -1,0 +1,83 @@
+{
+  "source_path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main",
+  "source_sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary_source": "LC_FUNCTION_STARTS original arm64 slice",
+  "limitations": [
+    "Function-only subranges; outside memory/calls/ABI not supplied",
+    "Selected original VA preserved; capsule Evidence binds subrange, not original app"
+  ],
+  "capsules": [
+    {
+      "address": "0x1027ae5cc",
+      "end_address": "0x1027ae708",
+      "source_offset": 41625036,
+      "bytes": 316,
+      "sha256": "2e0e185ebf38e4f6d9125f8693c074b2430559e07e7157ef8183af8f398bd93e",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027ae5cc.bin"
+    },
+    {
+      "address": "0x1027ae708",
+      "end_address": "0x1027ae748",
+      "source_offset": 41625352,
+      "bytes": 64,
+      "sha256": "58345bc82845725d1c3617f3055b922295a8f88a71441b615aa58475c038eabd",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027ae708.bin"
+    },
+    {
+      "address": "0x1027ae748",
+      "end_address": "0x1027ae8d8",
+      "source_offset": 41625416,
+      "bytes": 400,
+      "sha256": "ad589b412dd4d43090f00c881df13d9792e6459455c6eec60f8f68b86e289ce7",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027ae748.bin"
+    },
+    {
+      "address": "0x1027ae8d8",
+      "end_address": "0x1027ae8e0",
+      "source_offset": 41625816,
+      "bytes": 8,
+      "sha256": "1ded84d968da8af77bd6f3764819c05fb4b414036b2b887a3a428c4cc1d1e8e4",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027ae8d8.bin"
+    },
+    {
+      "address": "0x1027ae8e0",
+      "end_address": "0x1027ae8f0",
+      "source_offset": 41625824,
+      "bytes": 16,
+      "sha256": "3226c2f05a6d722c9ba979baedb51df61268b1e86bbdeec58e0ca10d2f8a3395",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027ae8e0.bin"
+    },
+    {
+      "address": "0x1027af66c",
+      "end_address": "0x1027af884",
+      "source_offset": 41629292,
+      "bytes": 536,
+      "sha256": "dd6df740b6443b2062a6aac86be53b4a3e936d88edf176360b94a54263c09b03",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027af66c.bin"
+    },
+    {
+      "address": "0x1027aecd0",
+      "end_address": "0x1027aee38",
+      "source_offset": 41626832,
+      "bytes": 360,
+      "sha256": "dc6091281b2dd787a5822ab444d25895af99e06668a9584ddd5d2ec599adc680",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027aecd0.bin"
+    },
+    {
+      "address": "0x1027ae9d8",
+      "end_address": "0x1027aecd0",
+      "source_offset": 41626072,
+      "bytes": 760,
+      "sha256": "5c0e9d81498c695d756f274cf4e5d461e46345643eb9c24ab9f9331c7a480752",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/1027ae9d8.bin"
+    },
+    {
+      "address": "0x101b566f4",
+      "end_address": "0x101b56e04",
+      "source_offset": 28681972,
+      "bytes": 1808,
+      "sha256": "8425bc23130362412662f143290444b14f0f97f9b88e84810bb90b05800b8f4c",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/camera-profile-rea/101b566f4.bin"
+    }
+  ]
+}

@@ -27,6 +27,35 @@ const IMMUTABLE_THUMBNAIL_CACHE: &str = "public, max-age=31536000, immutable";
 const MAX_THUMBNAIL_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_FILMSTRIP_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
+pub async fn output_file_handler(
+    State(state): State<AppState>,
+    AxPath(filename): AxPath<String>,
+    request: Request<Body>,
+) -> AppResult<Response> {
+    let path = std::path::Path::new(&filename);
+    if path.components().count() != 1
+        || !matches!(path.components().next(), Some(std::path::Component::Normal(_)))
+    {
+        return Err(AppError::not_found("Медиафайл не найден"));
+    }
+    let id = path.file_stem().and_then(|v| v.to_str())
+        .ok_or_else(|| AppError::not_found("Медиафайл не найден"))?;
+    let protected: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM output_access WHERE output_id=?)")
+        .bind(id).fetch_one(state.db.pool()).await
+        .map_err(|e| AppError::internal("resolve output access", e))?;
+    if protected {
+        let actor = super::publish::authenticated_actor(&state, request.headers()).await?;
+        if !state.db.can_access_output(id, &actor).await
+            .map_err(|e| AppError::internal("authorize output download", e))? {
+            return Err(AppError::forbidden("Нет доступа к результату экспорта"));
+        }
+    }
+    ServeFile::new(state.storage.join("outputs").join(filename))
+        .oneshot(request).await
+        .map(|response| response.map(Body::new))
+        .map_err(|e| AppError::internal("serve output file", e))
+}
+
 pub async fn source_file_handler(
     State(state): State<AppState>,
     AxPath(filename): AxPath<String>,
@@ -116,14 +145,14 @@ fn source_session_token(headers: &HeaderMap) -> Option<&str> {
         })
 }
 
-struct LibraryVisibility {
+pub(super) struct LibraryVisibility {
     all_scoped_sources: HashSet<String>,
     visible_scoped_sources: HashSet<String>,
     selected_space: bool,
 }
 
 impl LibraryVisibility {
-    fn allows(&self, id: &str, kind: &str) -> bool {
+    pub(super) fn allows(&self, id: &str, kind: &str) -> bool {
         if kind != "source" {
             return !self.selected_space;
         }
@@ -135,7 +164,7 @@ impl LibraryVisibility {
     }
 }
 
-async fn library_visibility(state: &AppState, headers: &HeaderMap) -> AppResult<LibraryVisibility> {
+pub(super) async fn library_visibility(state: &AppState, headers: &HeaderMap) -> AppResult<LibraryVisibility> {
     let selected_space = headers
         .get("x-space-id")
         .map(|value| {
@@ -199,6 +228,11 @@ async fn library_visibility(state: &AppState, headers: &HeaderMap) -> AppResult<
     })
 }
 
+/// Internal background jobs already hold a validated owner identity, not a token.
+pub(super) async fn library_visibility_for_owner(state:&AppState,owner:&str)->AppResult<LibraryVisibility>{
+    Ok(LibraryVisibility{all_scoped_sources:state.db.all_space_source_ids().await.map_err(|e|AppError::internal("list scoped sources",e))?,visible_scoped_sources:state.db.accessible_space_source_ids(owner).await.map_err(|e|AppError::internal("list accessible sources",e))?,selected_space:false})
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryEntryResponse {
@@ -245,25 +279,30 @@ pub async fn library_list_handler(
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<LibraryEntryResponse>>> {
     let visibility = library_visibility(&state, &headers).await?;
-    let limit = query.as_ref().map(|q| q.limit).unwrap_or_default().min(200).max(1) as usize;
+    let limit = query
+        .as_ref()
+        .map(|q| q.limit)
+        .unwrap_or_default()
+        .min(200)
+        .max(1) as usize;
     let offset = query.as_ref().map(|q| q.offset).unwrap_or_default() as usize;
-    
+
     let entries = state.library.list().await;
     let mut metadata = state
         .db
         .list_library_metadata()
         .await
         .map_err(|error| AppError::internal("list library metadata", error))?;
-    
+
     // Filter first, then paginate using Iterator
     let filtered: Vec<_> = entries
         .into_iter()
         .filter(|entry| visibility.allows(&entry.id, &entry.kind))
         .collect();
-    
+
     // Skip offset entries, take limit
     let paginated = filtered.into_iter().skip(offset).take(limit);
-    
+
     Ok(Json(
         paginated
             .map(|entry| {
@@ -853,4 +892,23 @@ pub async fn library_delete_handler(
 
 fn default_search_limit() -> u32 {
     20
+}
+
+
+/// Fresh stream metadata for an authorized registered source, without paths or arbitrary tags.
+pub async fn library_audio_streams_handler(
+ State(state):State<AppState>,AxPath(id):AxPath<String>,headers:HeaderMap,
+)->AppResult<Response>{
+ authorize_source_access(&state,&id,&headers).await?;
+ let entry=state.library.get(&id).await.filter(|entry|entry.kind=="source").ok_or_else(||AppError::not_found("Источник не найден"))?;
+ if !state.tools.ffmpeg{return Err(AppError::service_unavailable("Требуется локальный ffprobe"))}
+ let path=state.library.resolve_media_path(&entry).await.map_err(|_|AppError::not_found("Медиафайл не найден"))?;
+ let probe=crate::tools::probe_video(&state.process_runtime,&path).await.map_err(|_|AppError::bad_request("Не удалось прочитать потоки источника"))?;
+ let streams:Vec<_>=probe.streams.iter().filter(|stream|stream.kind==crate::domain::media_probe::StreamKind::Audio).map(|stream|serde_json::json!({
+  "index":stream.index,"codec":stream.codec_name,"channels":stream.channels,"sampleRate":stream.sample_rate,
+  "channelLayout":stream.channel_layout,"language":stream.tags.get("language"),"title":stream.tags.get("title"),
+  "default":stream.dispositions.contains("default")
+ })).collect();
+ use axum::response::IntoResponse;
+ Ok(([(header::CACHE_CONTROL,"private, no-store")],Json(serde_json::json!({"sourceId":id,"streams":streams}))).into_response())
 }

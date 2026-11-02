@@ -1,0 +1,86 @@
+{
+  "sourceSha256": "f3274d265e03f4f23ff5990df06b758a75129f19fe43b949d96edd9f8eb50009",
+  "scope": "Causal diagnostics and analytic prediction, not production render acceptance or vendor parity",
+  "gyroOnlyDiagnostic": {
+    "purpose": "diagnostic_only_downsampled_saved_raw_rate_integration_not_production_qualification",
+    "method": "start exact saved fusedclip0; cameraomega[-z,x,-y], trapezoidrawrates; dt fromcaptureclock; noacc correction. Compare Qfused*inverse(QgyroOnly).",
+    "observations": [
+      {
+        "seconds": 1,
+        "fusedRelativeToGyroOnlyRotvecDegrees": [
+          2.847045634564897,
+          0.05638246201655571,
+          1.2192912842172412
+        ],
+        "angleDegrees": 3.097663484480877,
+        "diagnosticVendorResidual": [
+          2.463881240287783,
+          -0.20689276596721584,
+          1.0097662562179535
+        ]
+      },
+      {
+        "seconds": 3,
+        "fusedRelativeToGyroOnlyRotvecDegrees": [
+          -12.46439015237812,
+          0.13668985271496475,
+          2.1404554293374143
+        ],
+        "angleDegrees": 12.647579034404803,
+        "diagnosticVendorResidual": [
+          -13.475284726487468,
+          -0.07299063167733917,
+          2.068941341591094
+        ]
+      }
+    ]
+  },
+  "prehistory": {
+    "testedHalfSecondWindows": 225,
+    "qualifiedHalfSecondWindows": 0,
+    "bestScatterWindow": {
+      "start": 19.159999999999933,
+      "end": 19.659999999999933,
+      "samples": 503,
+      "meanNormG": 1.0339007880460735,
+      "scatterG": 0.03383488006920446,
+      "maxRateRadS": 0.5195979484649533,
+      "sampleNormRangeG": [
+        0.968330046166133,
+        1.0887379933164913
+      ],
+      "qualified": false,
+      "meanRawAccelerationG": [
+        0.3274027708747515,
+        -0.9763994160039762,
+        0.0916648546222664
+      ]
+    },
+    "policy": "0.5sec, allnorm.97..1.03g, allrate<=.1rad/s, scatter<=.003g",
+    "conclusion": "Short pre-roll seed provides an estimate, not verified absolute gravity; widening to5sec did not find a quiet window"
+  },
+  "boundedPolicyPrediction": {
+    "purpose": "analytic_prediction_from_prior_diagnostic_refit_not_new_image_fit_or_parity",
+    "observations": [
+      {
+        "seconds": 1,
+        "predictedNewResidualRotvecDegrees": [
+          -0.37339238437645633,
+          -0.2334858801146101,
+          -0.22361655034219455
+        ],
+        "predictedAngleDegrees": 0.4939047382949193
+      },
+      {
+        "seconds": 3,
+        "predictedNewResidualRotvecDegrees": [
+          -0.9868038439717711,
+          -0.15967096315306684,
+          -0.10372894563413315
+        ],
+        "predictedAngleDegrees": 1.0050056403394263
+      }
+    ],
+    "status": "requires fresh production rendering with newly fitted initial alignment; initial pose also changed"
+  }
+}

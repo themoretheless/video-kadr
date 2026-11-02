@@ -1,3 +1,4 @@
+import { importPreferences, readAutoPairAudioOnImport } from '$lib/state/importPreferences.svelte.js'
 // @ts-expect-error Vitest's SSR condition exposes server-only mount; this test needs Svelte's client entry.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,6 +25,8 @@ import CompositionWorkspace from './CompositionWorkspace.svelte'
 let target: HTMLDivElement
 
 beforeEach(() => {
+  // Exercise embedded-audio authoring independently of the default import policy.
+  importPreferences.autoPairAudio = false
   setAuthSessionForTests({
     user: { id: 'user-1', username: 'alice', createdAt: 1 },
     token: 'session-token',
@@ -123,6 +126,26 @@ function voiceoverRuntime(): VoiceoverRuntime {
 }
 
 describe('CompositionWorkspace local integrations', () => {
+  it('exposes a persistent import toggle without changing the project or its Undo history', async () => {
+    importPreferences.autoPairAudio = true
+    const before = JSON.stringify(compositionState.document)
+    const historyDepth = compositionState.history.past.length
+    const component = mount(CompositionWorkspace, { target })
+    await settle()
+    const control = [...target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((input) => input.parentElement?.textContent?.includes('Отделять и связывать аудио'))!
+    expect(control.checked).toBe(true)
+    control.click()
+    await settle()
+    expect(readAutoPairAudioOnImport()).toBe(false)
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+    expect(compositionState.history.past).toHaveLength(historyDepth)
+    control.click()
+    await settle()
+    expect(readAutoPairAudioOnImport()).toBe(true)
+    await unmount(component)
+    window.localStorage?.removeItem('video-kadr.auto-pair-audio-on-import')
+  })
+
   it('guards the New control from discarding an active unsaved composition', async () => {
     const before = JSON.stringify(compositionState.document)
     const component = mount(CompositionWorkspace, { target })
@@ -137,6 +160,16 @@ describe('CompositionWorkspace local integrations', () => {
   })
 
   it('exposes CapturePanel and imports SRT plus a deterministic template through reachable controls', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/api/compositions/captions/file/prepare-import') {
+        const input = JSON.parse(String(options?.body))
+        expect(input.path).toBe('captions.srt')
+        const text = new TextDecoder().decode(Uint8Array.from(atob(input.dataBase64), c => c.charCodeAt(0)))
+        expect(text).toContain('Локальный субтитр')
+        return Promise.resolve(new Response(JSON.stringify({ name: 'captions', format: 'Subtitle', language: 'en', enabled: true, locked: false, syncLock: true, backgroundColor: [0, 0, 0, 191], document: { ticksPerSecond: '254016000000', cues: [{ startTick: '0', endTick: '254016000000', text: 'Локальный субтитр' }], blocks: [], warnings: [] } }), { status: 200 }))
+      }
+      return Promise.resolve(new Response('[]', { status: 200 }))
+    }))
     const component = mount(CompositionWorkspace, { target })
     await settle()
 
@@ -155,14 +188,13 @@ describe('CompositionWorkspace local integrations', () => {
     Object.defineProperty(srtInput, 'files', { configurable: true, value: [srt] })
     srtInput.dispatchEvent(new Event('change', { bubbles: true }))
     await settle()
-    expect(compositionState.document.tracks.find((track) => track.kind === 'text')?.clips[0]).toMatchObject({
-      text: 'Локальный субтитр',
-    })
+    await vi.waitFor(() => expect(compositionState.document.captionTracks?.[0]?.clips[0]).toMatchObject({ text: 'Локальный субтитр', timelineStartTick: '0', timelineEndTick: '254016000000' }))
 
     button('Создать из композиции').click()
     await settle()
     expect(compositionTemplateState.templates).toHaveLength(1)
-    expect(compositionTemplateState.templates[0]!.slots).toHaveLength(2)
+    expect(compositionTemplateState.templates[0]!.slots).toHaveLength(1)
+    expect(compositionTemplateState.templates[0]!.composition.captionTracks?.[0]?.clips[0]?.text).toBe('Локальный субтитр')
 
     await unmount(component)
   })

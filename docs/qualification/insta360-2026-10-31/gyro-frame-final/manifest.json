@@ -1,0 +1,21 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "cpu-map",
+      "address": "0x101b50538",
+      "endAddress": "0x101b506e4",
+      "sourceOffset": 28656952,
+      "sha256": "cc0ba898bde2f2a57df5d45a96441311f2d1169cca98efba51ee1a2786a9932f"
+    },
+    {
+      "name": "vqf-acc",
+      "address": "0x1027d28fc",
+      "endAddress": "0x1027d3cb0",
+      "sourceOffset": 41773308,
+      "sha256": "50686fba53e813c309ae7bdfc851bf06942d6ebd1fc5df5ee10c0f60f078693c"
+    }
+  ]
+}

@@ -5,3 +5,5 @@ pub mod proxy;
 #[cfg(feature = "spec-contracts")]
 pub mod quality;
 pub mod thumbnail;
+
+pub mod shots;

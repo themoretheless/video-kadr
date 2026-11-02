@@ -111,6 +111,7 @@
 
   function onKey(event: KeyboardEvent): void {
     if (event.defaultPrevented || shortcutState.capturingCommandId || isTyping(event.target)) return
+    if (event.target instanceof Element && event.target.closest('[data-native-clipboard]')) return
     const command = shortcutCommandForEvent(editorMode.value, event)
     if (!command) return
     const handled = editorMode.value === 'composition'

@@ -23,7 +23,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Запускаю бэкенд (cargo run) на :8080 ..."
-(cd "$ROOT/backend" && cargo run) &
+(
+  cd "$ROOT/backend"
+  cargo build --bin video-kadr-media-probe
+  cargo run
+) &
 backend_pid=$!
 
 echo "Запускаю фронтенд (npm run dev) на :5173 ..."

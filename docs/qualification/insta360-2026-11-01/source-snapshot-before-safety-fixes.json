@@ -1,0 +1,58 @@
+{
+  "date": "2026-11-01",
+  "scope": "selected source snapshot; not a clean Git tree or a test certificate; neural runtime recorded separately",
+  "files": [
+    {
+      "path": "backend/src/domain/insta360_camera_profile.rs",
+      "sha256": "1e3a01aa83fb928f5c7d90c0df87ece46024e2046f49d870df0b7e2c50256911"
+    },
+    {
+      "path": "backend/src/domain/insta360_metadata.rs",
+      "sha256": "5a94309c13aef2012c64dbe0ae596d8e3e6ecd63c9c41341b41129b04700ff17"
+    },
+    {
+      "path": "backend/src/domain/insta360_time_map.rs",
+      "sha256": "8a22dc8282eb4c350dcaa52b2b741cfa87c5230fa8c2a0aa71b1a1ff1b786a01"
+    },
+    {
+      "path": "backend/src/domain/insta360_gyro.rs",
+      "sha256": "ed1ff0a5bd9894fc977e05f7a57355c479c4b3959169ef788c13f9f9895753ef"
+    },
+    {
+      "path": "backend/src/domain/spherical_optical_flow.rs",
+      "sha256": "10ed5daaf625133dd41e05667248e0520d537a12010e83b56741f84619886c0e"
+    },
+    {
+      "path": "backend/src/domain/spherical_video.rs",
+      "sha256": "4c8b149dd79efcb35aab39eb9d2c78a8c88236a6cf60022456b35f73f35f4590"
+    },
+    {
+      "path": "backend/src/handlers/spherical_reidentify.rs",
+      "sha256": "d21e0687424cd7f7c9c871c998c1acce89adeb6ee44a703d6e6348ac512dfa9a"
+    },
+    {
+      "path": "backend/src/services/local_sam_reidentify.rs",
+      "sha256": "8a5305c698847b22f4d972458e3feaef74e9a805bd960eba4ff75644b695d26d"
+    },
+    {
+      "path": "backend/examples/qualify_insta360_matrix.rs",
+      "sha256": "7a6fd364df83873806c2724ef6aaab03a4a439c5bbe75e8023e87c3da7c27788"
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "sha256": "20d0b6dd836cd83b79b32c1ca58809857bee81b49932c5a9e214dd6a94fa9900"
+    },
+    {
+      "path": "frontend/src/lib/composition/types.ts",
+      "sha256": "0f68002cda296cc3bb662c5a7af5b2a36c78224c315f3671a6d512ec7c62619e"
+    },
+    {
+      "path": "frontend/src/lib/components/composition/Insta360GyroImport.svelte",
+      "sha256": "cc33338a76bbe3fca30810f7abc5e37f1c7638047cec3fbf4d7324b3b3454ff9"
+    },
+    {
+      "path": "frontend/src/lib/components/composition/SphericalSemanticTracker.svelte",
+      "sha256": "8c86f21f54f60e682bdb323ea3191c701600f52bacc8ce36b62f0b0f758e41cd"
+    }
+  ]
+}

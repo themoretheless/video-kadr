@@ -195,6 +195,7 @@ export interface EditState {
 }
 
 export interface MediaEntry {
+  originalFilename?: string | null
   id: string
   kind: 'source' | 'output'
   filename: string

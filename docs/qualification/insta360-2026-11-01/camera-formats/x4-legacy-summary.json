@@ -1,0 +1,87 @@
+{
+  "cameraModel": "Insta360 X4",
+  "firmware": "v0.3.11_build1",
+  "sourceBytes": 214039326,
+  "sourceSha256": "f3274d265e03f4f23ff5990df06b758a75129f19fe43b949d96edd9f8eb50009",
+  "provenance": "Official Insta360 GMKT X4 4K100FPS Hawaii public sample; complete ranged download and footer checked by parent",
+  "calibrations": [
+    {
+      "field": 5,
+      "tokenCount": 16,
+      "lensCount": 2,
+      "referenceSize": [
+        16000,
+        6000
+      ],
+      "flags": 1095,
+      "lensType": 71,
+      "gyroType": 4,
+      "payloadSha256": "e215a3fa655cfb915690071727d93b59cb8f69473e20a03c929267e7343fab5b"
+    },
+    {
+      "field": 17,
+      "tokenCount": 16,
+      "lensCount": 2,
+      "referenceSize": [
+        16000,
+        6000
+      ],
+      "flags": 1095,
+      "lensType": 71,
+      "gyroType": 4,
+      "payloadSha256": "e215a3fa655cfb915690071727d93b59cb8f69473e20a03c929267e7343fab5b"
+    }
+  ],
+  "sourceLayout": "dual_video_streams",
+  "videoStreams": [
+    {
+      "width": 1920,
+      "height": 1920,
+      "rate": "100/1",
+      "timeBase": "1/100000",
+      "frameCount": 762
+    },
+    {
+      "width": 1920,
+      "height": 1920,
+      "rate": "100/1",
+      "timeBase": "1/100000",
+      "frameCount": 762
+    }
+  ],
+  "limit": "Raw16000x6000 calibration must be converted through embedded sensor window crop before decodedsquare sampling; native images/Studio quality qualification separate",
+  "metadataIndex": {
+    "format": "compact sparse index; kind is not row ordinal",
+    "nonemptyKinds": [
+      128,
+      1,
+      2,
+      3,
+      4,
+      9,
+      10,
+      11,
+      12,
+      22
+    ],
+    "unknown128": "opaque; suffix type/format/length, bounded extent and nonoverlap validated"
+  },
+  "sourceWindowCrop": {
+    "sourceSize": [
+      8000,
+      6000
+    ],
+    "destinationSize": [
+      5760,
+      5760
+    ],
+    "offset": [
+      0,
+      0
+    ]
+  },
+  "correctedReferenceSize": [
+    11520,
+    5760
+  ]
+}

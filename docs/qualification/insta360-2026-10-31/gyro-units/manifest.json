@@ -1,0 +1,22 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS matching native symbols; arm64 __TEXT mapping",
+  "limitations": "Function-only derived image; excludes outside memory and ABI context. Not target execution.",
+  "functions": [
+    {
+      "name": "acc",
+      "address": "0x1018b9224",
+      "endAddress": "0x1018b9244",
+      "sourceOffset": 25940516,
+      "sha256": "0b0ac5148c3e354eb6acddd51cef3220a9bb9f7f132ffe09a079d490fd72a1c4"
+    },
+    {
+      "name": "gyro",
+      "address": "0x1018b9244",
+      "endAddress": "0x1018b928c",
+      "sourceOffset": 25940548,
+      "sha256": "d874e9e0481281153ed6800dd8d9c41d33c5b2ea635d10b4c0179ed7532d6aee"
+    }
+  ],
+  "functionStartsVerified": true
+}

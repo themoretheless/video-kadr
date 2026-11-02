@@ -1,0 +1,35 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT mapping",
+  "limitations": "Derived function capsules omit outside data/calls and use generic arm64 ABI; selected branches do not establish actual clip execution.",
+  "functions": [
+    {
+      "name": "init",
+      "address": "0x10274d0a8",
+      "endAddress": "0x10274dcb0",
+      "sourceOffset": 41226408,
+      "sha256": "abefb0314c5f3659aa095ab75dfdf5b0d4a4fa6e7baebdde189f791d58f3b17b"
+    },
+    {
+      "name": "calc",
+      "address": "0x10274dcb0",
+      "endAddress": "0x10274e2d8",
+      "sourceOffset": 41229488,
+      "sha256": "b343b8f24347ff2c60f8010ef4fa2e84f63ad3f45e1fbf1dbb6b0a21ac3d777b"
+    },
+    {
+      "name": "temporal",
+      "address": "0x102751654",
+      "endAddress": "0x10275165c",
+      "sourceOffset": 41244244,
+      "sha256": "bcd225d18ba207d860e566a8c96f7cf018e14451092054af56823b741449ace0"
+    },
+    {
+      "name": "lowtexture",
+      "address": "0x1027516a4",
+      "endAddress": "0x1027516b0",
+      "sourceOffset": 41244324,
+      "sha256": "e7fa5cf27fb2415b08814eb22ff010d67d3acd9a01e49c8c3f4e8ad7e67c8836"
+    }
+  ]
+}

@@ -1,0 +1,3168 @@
+{
+  "method": "Independent static byte parse of embedded FileDescriptorProto records; not REA Evidence; schema does not prove container layout",
+  "binary_sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "files": [
+    {
+      "file": "PBExtraData.proto",
+      "offset": 62255240,
+      "length": 306,
+      "sha256": "6b486a2971671803dcf75d92e5509de0cf7a40710ea342e41c68962d1e350206",
+      "messages": [
+        {
+          "name": "PBGyroData",
+          "fields": [
+            {
+              "name": "timeoffset",
+              "number": 1,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "isApply",
+              "number": 2,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "count",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "type",
+              "number": 4,
+              "label": 1,
+              "type": 14,
+              "typeName": ".PBGyroDataType"
+            },
+            {
+              "name": "gyroData",
+              "number": 7,
+              "label": 1,
+              "type": 12
+            }
+          ]
+        },
+        {
+          "name": "PBExtraData",
+          "fields": [
+            {
+              "name": "gyrodata",
+              "number": 1,
+              "label": 1,
+              "type": 11,
+              "typeName": ".PBGyroData"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "stab_info.proto",
+      "offset": 61993888,
+      "length": 2164,
+      "sha256": "c125f703767b114c5f8c447d2fb2e74d5ae23bfc5cefbb47b79ae943adf55c96",
+      "messages": [
+        {
+          "name": "PBRawGyroData",
+          "fields": [
+            {
+              "name": "gyro_type",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "gyrotime_offsetlist",
+              "number": 2,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "gyro_size_list",
+              "number": 3,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "gyro_list",
+              "number": 4,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "elemnet_size",
+              "number": 5,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "PBQuaternionData",
+          "fields": [
+            {
+              "name": "count",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "mean_quat",
+              "number": 2,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "time_and_quat",
+              "number": 3,
+              "label": 1,
+              "type": 12
+            }
+          ]
+        },
+        {
+          "name": "PBIMUData",
+          "fields": [
+            {
+              "name": "quaternion_data",
+              "number": 1,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBQuaternionData"
+            }
+          ]
+        },
+        {
+          "name": "PBExposureData",
+          "fields": [
+            {
+              "name": "frame_rate",
+              "number": 1,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "timestamp_coef",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "exposure_offsetlist",
+              "number": 3,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "exposure_buffer",
+              "number": 4,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "use_exposure_time_match",
+              "number": 5,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "use_list_index_mapping",
+              "number": 6,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "video_time_list",
+              "number": 7,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "video_time_list_seg_sizes",
+              "number": 8,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "first_frame_index_offset",
+              "number": 9,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "trim_start_frame_offset_seg0",
+              "number": 10,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "PBTimelapseData",
+          "fields": [
+            {
+              "name": "frame_rate",
+              "number": 1,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "timestamp_coef",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "camera_name",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "fw_version",
+              "number": 4,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "timelapse_buffer",
+              "number": 5,
+              "label": 1,
+              "type": 12
+            }
+          ]
+        },
+        {
+          "name": "PBTimemapData",
+          "fields": [
+            {
+              "name": "timemap_buffer",
+              "number": 1,
+              "label": 1,
+              "type": 12
+            }
+          ]
+        },
+        {
+          "name": "PBTimeConverterData",
+          "fields": [
+            {
+              "name": "gyrotime_offsetlist",
+              "number": 1,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "exposure_count",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "exposure1",
+              "number": 3,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBExposureData"
+            },
+            {
+              "name": "exposure2",
+              "number": 4,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBExposureData"
+            },
+            {
+              "name": "timelapse",
+              "number": 6,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBTimelapseData"
+            },
+            {
+              "name": "timemap",
+              "number": 8,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBTimemapData"
+            },
+            {
+              "name": "method_exposure",
+              "number": 9,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "delay_time",
+              "number": 10,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "froze",
+              "number": 11,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "froze_timestamp",
+              "number": 12,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "subTimemap",
+              "number": 13,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBTimemapData"
+            },
+            {
+              "name": "sub_stream_exposure",
+              "number": 14,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBExposureData"
+            },
+            {
+              "name": "sub_stream_secondary_exposure",
+              "number": 15,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBExposureData"
+            }
+          ]
+        },
+        {
+          "name": "PBTimeData",
+          "fields": [
+            {
+              "name": "time_data",
+              "number": 1,
+              "label": 1,
+              "type": 11,
+              "typeName": ".bmgstab.PBTimeConverterData"
+            }
+          ]
+        },
+        {
+          "name": "PBSettingData",
+          "fields": [
+            {
+              "name": "darklightStabOptimize",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "fisheyeModelRotationSet",
+              "number": 2,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "fisheyeModelRotation",
+              "number": 3,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "lensOffset",
+              "number": 4,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "stabType",
+              "number": 5,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "footageFilterType",
+              "number": 6,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "exposureOffsetMs",
+              "number": 7,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "enableAutoRoll",
+              "number": 8,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableOpenGLMode",
+              "number": 9,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableNightMode",
+              "number": 10,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableGravityCalib_hasValue",
+              "number": 11,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableGravityCalib",
+              "number": 12,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "autoFovRange_hasValue",
+              "number": 13,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "autoFovRange",
+              "number": 14,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "renderParam_hasValue",
+              "number": 15,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "sphereRadius",
+              "number": 16,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "distance",
+              "number": 17,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "camHorizontalFovRad",
+              "number": 18,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "heightWidthRatio",
+              "number": 19,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "sweepTimeMs",
+              "number": 20,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "gyroStartTimeS",
+              "number": 21,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "gyroEndTimeS",
+              "number": 22,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "isRawGyroFormat",
+              "number": 23,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "accRange",
+              "number": 24,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "filterType",
+              "number": 25,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "videoDurationS",
+              "number": 26,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "frameRate",
+              "number": 27,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "segmentDurationMs",
+              "number": 28,
+              "label": 1,
+              "type": 12
+            },
+            {
+              "name": "preferSubStreamExposure",
+              "number": 29,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "PBCompatibleData",
+          "fields": [
+            {
+              "name": "old_cache_buffer",
+              "number": 1,
+              "label": 1,
+              "type": 12
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "ExportModule.proto",
+      "offset": 59089756,
+      "length": 12897,
+      "sha256": "720d7675e1ae8593c49f47ac3ee8f73eef2ef95cadb66132dbfb8391ebd7bc43",
+      "messages": [
+        {
+          "name": "DownloadRequest",
+          "fields": [
+            {
+              "name": "task_id",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "source_url",
+              "number": 2,
+              "label": 3,
+              "type": 9
+            },
+            {
+              "name": "dest_path",
+              "number": 3,
+              "label": 3,
+              "type": 9
+            },
+            {
+              "name": "start_time_ms",
+              "number": 4,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "end_time_ms",
+              "number": 5,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "need_decode_key_frame",
+              "number": 6,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "video_tracks_count",
+              "number": 7,
+              "label": 1,
+              "type": 13
+            }
+          ]
+        },
+        {
+          "name": "DownloadReply",
+          "fields": [
+            {
+              "name": "task_id",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "download_progress",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "state_code",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "err_code",
+              "number": 4,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "err_info",
+              "number": 5,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "TaskList",
+          "fields": [
+            {
+              "name": "task_ids",
+              "number": 1,
+              "label": 3,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "OperStatus",
+          "fields": [
+            {
+              "name": "result",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "HeartBeat",
+          "fields": [
+            {
+              "name": "count",
+              "number": 1,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "exit_app",
+              "number": 2,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "LoopVideoInfo",
+          "fields": [
+            {
+              "name": "is_loop_video",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_loop_video_group",
+              "number": 2,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_57k_loop_video_group",
+              "number": 3,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "SourceGroup",
+          "fields": [
+            {
+              "name": "sourceFile",
+              "number": 1,
+              "label": 3,
+              "type": 9
+            },
+            {
+              "name": "fileName",
+              "number": 2,
+              "label": 3,
+              "type": 9
+            },
+            {
+              "name": "is_dng_group",
+              "number": 3,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "source_group_type",
+              "number": 4,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "group_identifier",
+              "number": 5,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "group_name",
+              "number": 6,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "group_start_index",
+              "number": 7,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "loop_video_info",
+              "number": 8,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.LoopVideoInfo"
+            },
+            {
+              "name": "associated_files",
+              "number": 9,
+              "label": 3,
+              "type": 9
+            },
+            {
+              "name": "pano_fpv_data_path",
+              "number": 10,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "still_quat_file_path",
+              "number": 11,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "immersion_quat_file_path",
+              "number": 12,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "BgmClip",
+          "fields": [
+            {
+              "name": "url",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "position_in_media_time_ms",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "start_src_time_ms",
+              "number": 3,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "end_src_time_ms",
+              "number": 4,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "volume",
+              "number": 5,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "afade_in_duration_ms",
+              "number": 6,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "afade_out_duration_ms",
+              "number": 7,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "total_src_duration_ms",
+              "number": 8,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "music_id",
+              "number": 9,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "TextParam",
+          "fields": [
+            {
+              "name": "text",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "color",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "font",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "font_size",
+              "number": 4,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "strokeable",
+              "number": 5,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "stroke_color",
+              "number": 6,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "stroke_size",
+              "number": 7,
+              "label": 1,
+              "type": 3
+            }
+          ]
+        },
+        {
+          "name": "PositionParam",
+          "fields": [
+            {
+              "name": "x",
+              "number": 1,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "y",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "rotation",
+              "number": 3,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "scale",
+              "number": 4,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "canvas_ratio",
+              "number": 5,
+              "label": 1,
+              "type": 1
+            }
+          ]
+        },
+        {
+          "name": "TextClip",
+          "fields": [
+            {
+              "name": "text_params",
+              "number": 1,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.TextParam"
+            },
+            {
+              "name": "position_param",
+              "number": 2,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.PositionParam"
+            },
+            {
+              "name": "url",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "start_ms",
+              "number": 4,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "duration_ms",
+              "number": 5,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "id",
+              "number": 6,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "effect_id",
+              "number": 7,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "AudioSettings",
+          "fields": [
+            {
+              "name": "clipAudioMode",
+              "number": 1,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.AudioSettings.ClipAudioMode"
+            }
+          ]
+        },
+        {
+          "name": "BulletTimeViewParam",
+          "fields": [
+            {
+              "name": "fov",
+              "number": 1,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "distance",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            }
+          ]
+        },
+        {
+          "name": "FrameRate",
+          "fields": [
+            {
+              "name": "den",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "num",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "TimeWaterMark",
+          "fields": [
+            {
+              "name": "enable",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "format",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "transparency",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "Resolution",
+          "fields": [
+            {
+              "name": "width",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "height",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "EulerAngle",
+          "fields": [
+            {
+              "name": "yaw",
+              "number": 1,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "pitch",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "roll",
+              "number": 3,
+              "label": 1,
+              "type": 2
+            }
+          ]
+        },
+        {
+          "name": "ViewData",
+          "fields": [
+            {
+              "name": "yaw",
+              "number": 1,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "pitch",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "roll",
+              "number": 3,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "fov",
+              "number": 4,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "distance",
+              "number": 5,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "src_time",
+              "number": 6,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "key_frame_type",
+              "number": 7,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.ViewData.KeyFrameType"
+            },
+            {
+              "name": "alpha",
+              "number": 8,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "original_eulers_handled",
+              "number": 9,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "original_euler",
+              "number": 10,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.EulerAngle"
+            }
+          ]
+        },
+        {
+          "name": "PlayRateSegment",
+          "fields": [
+            {
+              "name": "trim_start",
+              "number": 1,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "trim_end",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "factor",
+              "number": 3,
+              "label": 1,
+              "type": 1
+            }
+          ]
+        },
+        {
+          "name": "BezierControlPoint",
+          "fields": [
+            {
+              "name": "x",
+              "number": 1,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "y",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            }
+          ]
+        },
+        {
+          "name": "TransitionSegment",
+          "fields": [
+            {
+              "name": "startKeyFrameId",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "endKeyFrameId",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "funcType",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "p1",
+              "number": 4,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.BezierControlPoint"
+            },
+            {
+              "name": "p2",
+              "number": 5,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.BezierControlPoint"
+            }
+          ]
+        },
+        {
+          "name": "MovementTemplateData",
+          "fields": [
+            {
+              "name": "movement_id",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "key_points",
+              "number": 2,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.ViewData"
+            },
+            {
+              "name": "transitions",
+              "number": 3,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.TransitionSegment"
+            },
+            {
+              "name": "start_time",
+              "number": 4,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "end_time",
+              "number": 5,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "movement_name",
+              "number": 6,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "ViewSegment",
+          "fields": [
+            {
+              "name": "id",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "type",
+              "number": 1,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.ViewDataType"
+            },
+            {
+              "name": "key_points",
+              "number": 3,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.ViewData"
+            },
+            {
+              "name": "need_report",
+              "number": 4,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "movement_data",
+              "number": 5,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.MovementTemplateData"
+            }
+          ]
+        },
+        {
+          "name": "CameraMovementSegment",
+          "fields": [
+            {
+              "name": "yaw",
+              "number": 1,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "pitch",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "roll",
+              "number": 3,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "fov",
+              "number": 4,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "distance",
+              "number": 5,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "visible",
+              "number": 6,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "view_mode",
+              "number": 7,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "AppDataInfo",
+          "fields": [
+            {
+              "name": "app_data_id",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "app_data_source",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "app_data_mode",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "app_data_ratio",
+              "number": 4,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "app_data_types",
+              "number": 5,
+              "label": 3,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "TimelineSetting",
+          "fields": [
+            {
+              "name": "duration_ms",
+              "number": 6,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "trim_start",
+              "number": 1,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "trim_end",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "media_trim_start",
+              "number": 8,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "media_trim_end",
+              "number": 7,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "audio_fade_in",
+              "number": 9,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "audio_fade_out",
+              "number": 10,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "app_data_info",
+              "number": 11,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.AppDataInfo"
+            },
+            {
+              "name": "view_segments",
+              "number": 3,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.ViewSegment"
+            },
+            {
+              "name": "play_rate_segments",
+              "number": 4,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.PlayRateSegment"
+            },
+            {
+              "name": "transition_segment",
+              "number": 5,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.TransitionSegment"
+            },
+            {
+              "name": "camera_movement_segment",
+              "number": 12,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.CameraMovementSegment"
+            }
+          ]
+        },
+        {
+          "name": "LogoInfo",
+          "fields": [
+            {
+              "name": "logo_path",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "logo_size",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "logo_location",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "logo_corner_radius",
+              "number": 4,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "logo_feather",
+              "number": 5,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "logo_rotate",
+              "number": 6,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "FlatLogoInfo",
+          "fields": [
+            {
+              "name": "flat_logo_path",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "flat_logo_transparency",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "flat_logo_location",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "is_cn",
+              "number": 4,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "AspectRatio",
+          "fields": [
+            {
+              "name": "width_ratio",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "height_ratio",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "ColorAdjustSetting",
+          "fields": [
+            {
+              "name": "enable_adjustment",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "exposure",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "highlights",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "shadows",
+              "number": 4,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "brightness",
+              "number": 5,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "blackpoint",
+              "number": 6,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "saturation",
+              "number": 7,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "vibrance",
+              "number": 8,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "warmth",
+              "number": 9,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "tint",
+              "number": 10,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "definition",
+              "number": 11,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "contrast",
+              "number": 12,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "StitchingSetting",
+          "fields": [
+            {
+              "name": "enableStab",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableDirectionalLock",
+              "number": 2,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableDynamicStitching",
+              "number": 3,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableOpticalFlowStitching",
+              "number": 4,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableImageFusion",
+              "number": 5,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableColorPlus",
+              "number": 6,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableUnderWaterCorrection",
+              "number": 7,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableLocalToneMap",
+              "number": 8,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableMotionBlur",
+              "number": 9,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableAudioDirectFocus",
+              "number": 10,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableDroneFlag",
+              "number": 11,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_top_mounted_gyro",
+              "number": 12,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableColdShoe",
+              "number": 13,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableLogo",
+              "number": 14,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableRemoveGrain",
+              "number": 15,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "custom_blend_angle",
+              "number": 16,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "optimizedOffset",
+              "number": 17,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "colorPlusStrength",
+              "number": 18,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "ltmStrength",
+              "number": 19,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "underWaterBalance",
+              "number": 20,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "underWaterStrength",
+              "number": 21,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "motion_blur_strength",
+              "number": 22,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "motion_blur_threshold",
+              "number": 23,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "stabilizationType",
+              "number": 24,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.StabilizationType"
+            },
+            {
+              "name": "shellType",
+              "number": 25,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "fovType",
+              "number": 26,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "queryFovType",
+              "number": 27,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "audioDenoiseType",
+              "number": 28,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "user_rotate_degree",
+              "number": 29,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "logo_info",
+              "number": 30,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.LogoInfo"
+            },
+            {
+              "name": "bulletTimeViewParam",
+              "number": 31,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.BulletTimeViewParam"
+            },
+            {
+              "name": "projection_layout",
+              "number": 32,
+              "label": 1,
+              "type": 13
+            },
+            {
+              "name": "aspect_ratio",
+              "number": 33,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.AspectRatio"
+            },
+            {
+              "name": "dewarp_type",
+              "number": 34,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.DewarpTypeMode"
+            },
+            {
+              "name": "stabIlization_level",
+              "number": 35,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "star_tail_type",
+              "number": 36,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "enable_ai_stitching",
+              "number": 37,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_cooling_shell",
+              "number": 38,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_horizontal_correct",
+              "number": 39,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "horizontal_correct_angle",
+              "number": 40,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "enable_lut",
+              "number": 41,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "support_lut",
+              "number": 42,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_time_logo",
+              "number": 43,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "time_logo_format",
+              "number": 44,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "time_logo_transparency",
+              "number": 45,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "enable_deghost",
+              "number": 46,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_pano_fpv",
+              "number": 47,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "pano_fpv_horizontal_on",
+              "number": 48,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "underWaterFilterIndex",
+              "number": 49,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "enable_immersive_stab",
+              "number": 50,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "de_version",
+              "number": 51,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "stab_input_data_type",
+              "number": 52,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "view_direction",
+              "number": 53,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "enable_head_track",
+              "number": 54,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_camera_movement",
+              "number": 55,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "propeller_guard_status",
+              "number": 56,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "enable_beauty_mode",
+              "number": 57,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "has_head_track_keyframe",
+              "number": 58,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enableFlatLogo",
+              "number": 59,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "flat_logo_info",
+              "number": 60,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.FlatLogoInfo"
+            },
+            {
+              "name": "extern_filter_resource_path",
+              "number": 61,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "extern_filter_opacity",
+              "number": 62,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "enable_main_window",
+              "number": 63,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "view_category_filter",
+              "number": 64,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "DashBoardSetting",
+          "fields": [
+            {
+              "name": "style_uuid",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "dashboard_xml_data",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "SrcTimeMsISOPair",
+          "fields": [
+            {
+              "name": "src_time_ms",
+              "number": 1,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "iso",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            }
+          ]
+        },
+        {
+          "name": "UserSettings",
+          "fields": [
+            {
+              "name": "is_free_capture",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "remove_grain_enabled",
+              "number": 3,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "remove_grain_block_enabled",
+              "number": 4,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_dashboard",
+              "number": 5,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "noise_level",
+              "number": 6,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "src_time_ms_iso_pairs",
+              "number": 7,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.SrcTimeMsISOPair"
+            },
+            {
+              "name": "is_silent",
+              "number": 8,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "ai_raw_enable",
+              "number": 9,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "custom_transform_param",
+              "number": 10,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ViewData"
+            },
+            {
+              "name": "audio_volume",
+              "number": 11,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "interpolation_type",
+              "number": 12,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.InterpolationType"
+            },
+            {
+              "name": "dolby_vision_enabled",
+              "number": 13,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_audio_mixing",
+              "number": 14,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "audio_mixing_weight",
+              "number": 15,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "audio_tracks_delay",
+              "number": 16,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "audio_trasks_default_delay",
+              "number": 17,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "extra_transform",
+              "number": 18,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ViewData"
+            },
+            {
+              "name": "show_dashboard_real_distance",
+              "number": 19,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "Quaternion",
+          "fields": [
+            {
+              "name": "w",
+              "number": 1,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "x",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "y",
+              "number": 3,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "z",
+              "number": 4,
+              "label": 1,
+              "type": 2
+            }
+          ]
+        },
+        {
+          "name": "ImageExportParam",
+          "fields": [
+            {
+              "name": "view_mode",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "interval_merge_stab_type",
+              "number": 2,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.ImageExportParam.IntervalMergeStabType"
+            },
+            {
+              "name": "duration",
+              "number": 3,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "start_in_second",
+              "number": 4,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "video_clip_id",
+              "number": 5,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "quaternions",
+              "number": 6,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.Quaternion"
+            }
+          ]
+        },
+        {
+          "name": "ObjectState",
+          "fields": [
+            {
+              "name": "timestamp_ms",
+              "number": 1,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "bigboom_quaternions",
+              "number": 6,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.Quaternion"
+            }
+          ]
+        },
+        {
+          "name": "DetectedObject",
+          "fields": [
+            {
+              "name": "target_id",
+              "number": 1,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "target_name",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "target_show_count",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "first_show_ms",
+              "number": 4,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "last_show_ms",
+              "number": 5,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "object_states",
+              "number": 6,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.ObjectState"
+            }
+          ]
+        },
+        {
+          "name": "GpsData",
+          "fields": [
+            {
+              "name": "real_timestamp",
+              "number": 1,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "real_speed",
+              "number": 2,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "real_altitude",
+              "number": 3,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "current_distance",
+              "number": 4,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "real_slope",
+              "number": 5,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "real_longitude",
+              "number": 6,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "real_latitude",
+              "number": 7,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "real_course",
+              "number": 8,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "longitude_direction",
+              "number": 9,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.LongitudeDirection"
+            },
+            {
+              "name": "latitude_direction",
+              "number": 10,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.LatitudeDirection"
+            }
+          ]
+        },
+        {
+          "name": "GpsInfo",
+          "fields": [
+            {
+              "name": "export_gps",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "gps_data",
+              "number": 2,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.GpsData"
+            },
+            {
+              "name": "max_latitude",
+              "number": 3,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "min_latitude",
+              "number": 4,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "max_longitude",
+              "number": 5,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "min_longitude",
+              "number": 6,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "first_gps_time_stamp",
+              "number": 7,
+              "label": 1,
+              "type": 3
+            }
+          ]
+        },
+        {
+          "name": "CutSceneSetting",
+          "fields": [
+            {
+              "name": "has_cut_scene",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "end_cut_duration_ms",
+              "number": 2,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "transition_file_path",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "end_cut_source_duration_ms",
+              "number": 4,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "is_meishe",
+              "number": 5,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "start_view_data",
+              "number": 6,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ViewData"
+            },
+            {
+              "name": "end_view_data",
+              "number": 7,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ViewData"
+            },
+            {
+              "name": "effect_id",
+              "number": 8,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "ClipInfo",
+          "fields": [
+            {
+              "name": "sourceGroup",
+              "number": 1,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.SourceGroup"
+            },
+            {
+              "name": "timelineSetting",
+              "number": 2,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.TimelineSetting"
+            },
+            {
+              "name": "stitchingSetting",
+              "number": 3,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.StitchingSetting"
+            },
+            {
+              "name": "dashBoardSetting",
+              "number": 4,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.DashBoardSetting"
+            },
+            {
+              "name": "AudioSettings",
+              "number": 5,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.AudioSettings"
+            },
+            {
+              "name": "user_settings",
+              "number": 6,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.UserSettings"
+            },
+            {
+              "name": "image_export_param",
+              "number": 7,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ImageExportParam"
+            },
+            {
+              "name": "file_type",
+              "number": 8,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.SourceFileType"
+            },
+            {
+              "name": "bigboom_object",
+              "number": 9,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.DetectedObject"
+            },
+            {
+              "name": "gps_info",
+              "number": 10,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.GpsInfo"
+            },
+            {
+              "name": "cut_scene_setting",
+              "number": 11,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.CutSceneSetting"
+            },
+            {
+              "name": "is_cloud_footage",
+              "number": 12,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "file_tail_url",
+              "number": 13,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "video_info_json",
+              "number": 14,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "cloud_preview_url",
+              "number": 15,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "source_file_name",
+              "number": 16,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "addition_info",
+              "number": 17,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.AdditionInfo"
+            },
+            {
+              "name": "clip_model_url",
+              "number": 18,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "is_pano_source",
+              "number": 19,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "color_adjust_setting",
+              "number": 20,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ColorAdjustSetting"
+            },
+            {
+              "name": "time_water_mark",
+              "number": 21,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.TimeWaterMark"
+            },
+            {
+              "name": "is_rough_trimmed",
+              "number": 22,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "time_code",
+              "number": 23,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "dashboard_id",
+              "number": 24,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "loop_video_segment_durations_ms",
+              "number": 25,
+              "label": 3,
+              "type": 3
+            },
+            {
+              "name": "media_info_json",
+              "number": 26,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "ExportClipInfo",
+          "fields": [
+            {
+              "name": "clipInfos",
+              "number": 1,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.ClipInfo"
+            },
+            {
+              "name": "bgm_clip",
+              "number": 2,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.BgmClip"
+            },
+            {
+              "name": "text_clips",
+              "number": 3,
+              "label": 3,
+              "type": 11,
+              "typeName": ".service.Export.TextClip"
+            }
+          ]
+        },
+        {
+          "name": "HardWareInfo",
+          "fields": [
+            {
+              "name": "is_amd_graphics_card",
+              "number": 1,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "amd_card_support_h264_full_range",
+              "number": 2,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "amd_card_support_h265_full_range",
+              "number": 3,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "ExportParam",
+          "fields": [
+            {
+              "name": "path",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "dest_dir",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "export_type",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "res",
+              "number": 4,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.Resolution"
+            },
+            {
+              "name": "frame_rate",
+              "number": 5,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.FrameRate"
+            },
+            {
+              "name": "encode_type",
+              "number": 6,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.EncodeType"
+            },
+            {
+              "name": "encode_bitrate",
+              "number": 7,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "meta_data_make",
+              "number": 8,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "meta_data_model",
+              "number": 9,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "meta_data_comment",
+              "number": 10,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "is_spherical",
+              "number": 11,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "request_from_multiple_clip",
+              "number": 12,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "enable_video_denoise",
+              "number": 13,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "has_audio",
+              "number": 14,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "support_audio",
+              "number": 15,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "image_processing_accel",
+              "number": 16,
+              "label": 1,
+              "type": 14,
+              "typeName": ".service.Export.ImageProcessingAccel"
+            },
+            {
+              "name": "hardware_info",
+              "number": 17,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.HardWareInfo"
+            },
+            {
+              "name": "proxy_type",
+              "number": 18,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "project_id",
+              "number": 19,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "enable_dolby_vision",
+              "number": 20,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_export_pano",
+              "number": 21,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_cloud_media",
+              "number": 22,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "star_trail_length_type",
+              "number": 23,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "enable_deflicker",
+              "number": 24,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "upload_platform_id",
+              "number": 25,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "clip_count",
+              "number": 26,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "enable_apmp",
+              "number": 27,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "report_apmp_visable",
+              "number": 28,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "is_screenshot_export",
+              "number": 29,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "screenshot_target_time_ms",
+              "number": 30,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "color_setting",
+              "number": 31,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "enable_ai_stitching_3_0",
+              "number": 32,
+              "label": 1,
+              "type": 8
+            }
+          ]
+        },
+        {
+          "name": "AdditionalUiParam",
+          "fields": [
+            {
+              "name": "thumbnailPath",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "sourceFileName",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "createdDate",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "cameraType",
+              "number": 4,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "resultDurationS",
+              "number": 5,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "TargetFileMb",
+              "number": 6,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "sourceFileType",
+              "number": 7,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "groupDisplayName",
+              "number": 9,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "ExportRequest",
+          "fields": [
+            {
+              "name": "uuid",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "exportInfo",
+              "number": 2,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ExportClipInfo"
+            },
+            {
+              "name": "exportParam",
+              "number": 3,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ExportParam"
+            },
+            {
+              "name": "jsonSetting",
+              "number": 4,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "uiParam",
+              "number": 5,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.AdditionalUiParam"
+            },
+            {
+              "name": "mark_trim",
+              "number": 6,
+              "label": 1,
+              "type": 8
+            },
+            {
+              "name": "group_uuid",
+              "number": 7,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "base_view_count",
+              "number": 8,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        },
+        {
+          "name": "ExportReplyInfo",
+          "fields": [
+            {
+              "name": "defringe_rate_list",
+              "number": 1,
+              "label": 3,
+              "type": 2
+            },
+            {
+              "name": "export_perf_et",
+              "number": 2,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "clip_index",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "thumbnail_path",
+              "number": 4,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "ExportReply",
+          "fields": [
+            {
+              "name": "uuid",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "export_progress",
+              "number": 2,
+              "label": 1,
+              "type": 2
+            },
+            {
+              "name": "state_code",
+              "number": 3,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "err_code",
+              "number": 4,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "err_info",
+              "number": 5,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "log_path",
+              "number": 6,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "reply_info",
+              "number": 7,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.ExportReplyInfo"
+            }
+          ]
+        },
+        {
+          "name": "CancelInfo",
+          "fields": [
+            {
+              "name": "uuid",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            }
+          ]
+        },
+        {
+          "name": "AdditionInfo",
+          "fields": [
+            {
+              "name": "firm_ware_version",
+              "number": 1,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "shoot_mode",
+              "number": 2,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "camera_type",
+              "number": 3,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "arvrender_media_type",
+              "number": 4,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "source_resolution",
+              "number": 5,
+              "label": 1,
+              "type": 11,
+              "typeName": ".service.Export.Resolution"
+            },
+            {
+              "name": "bitrate",
+              "number": 7,
+              "label": 1,
+              "type": 3
+            },
+            {
+              "name": "fps",
+              "number": 8,
+              "label": 1,
+              "type": 1
+            },
+            {
+              "name": "camera_serial_num",
+              "number": 9,
+              "label": 1,
+              "type": 9
+            },
+            {
+              "name": "offset_state",
+              "number": 10,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "guard_detected_file",
+              "number": 11,
+              "label": 1,
+              "type": 5
+            },
+            {
+              "name": "audio_track_number",
+              "number": 12,
+              "label": 1,
+              "type": 5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

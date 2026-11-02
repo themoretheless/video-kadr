@@ -1,0 +1,14 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "pixels",
+      "address": "0x101b51cc8",
+      "endAddress": "0x101b52234",
+      "sourceOffset": 28662984,
+      "sha256": "cf97bb5d78d1bd036576c897a9492e93a68668b53f1a20b82e463d49f2e8a138"
+    }
+  ]
+}

@@ -1,0 +1,141 @@
+{
+  "source": "camera-x4-horizon-final/qualification.json cases[0].gyro.orientation",
+  "method": "nearest saved quaternion knot; standard wxyz rotate basis; no gyro recalibration or time changes",
+  "rows": [
+    {
+      "seconds": 0,
+      "actualKnotSeconds": 0.0,
+      "quaternion": [
+        0.6638599286392189,
+        0.7476469648205337,
+        -6.342582747443613e-18,
+        -0.017720359527243202
+      ],
+      "forward": [
+        -0.026497146032144023,
+        -0.9926657214261763,
+        -0.11795196801071284
+      ],
+      "forwardHorizontalNorm": 0.12089154439185973,
+      "forwardHeadingDegrees": -167.33905826432874,
+      "rightHeadingDegrees": 1.5187728604254291,
+      "swingTwistHeadingDegrees": -1.0948189729900212e-15
+    },
+    {
+      "seconds": 0.1,
+      "actualKnotSeconds": 0.10970921592273096,
+      "quaternion": [
+        0.6697283535084606,
+        0.7423150950791166,
+        -0.00665280993876311,
+        -0.019697011053643868
+      ],
+      "forward": [
+        -0.0381539281591052,
+        -0.9940368518818231,
+        -0.10215192052479849
+      ],
+      "forwardHorizontalNorm": 0.10904465645264287,
+      "forwardHeadingDegrees": -159.5192483115532,
+      "rightHeadingDegrees": 1.1657633888657375,
+      "swingTwistHeadingDegrees": -1.138268649957844
+    },
+    {
+      "seconds": 0.25,
+      "actualKnotSeconds": 0.2528568621662619,
+      "quaternion": [
+        0.7052712898846382,
+        0.7076680313146555,
+        -0.025428987829917808,
+        -0.03393717279981662
+      ],
+      "forward": [
+        -0.0839011746217968,
+        -0.9964699146026025,
+        -0.0028813519336285953
+      ],
+      "forwardHorizontalNorm": 0.08395063604215673,
+      "forwardHeadingDegrees": -91.96689081288437,
+      "rightHeadingDegrees": 0.6994173731649994,
+      "swingTwistHeadingDegrees": -4.129879761469675
+    },
+    {
+      "seconds": 0.5,
+      "actualKnotSeconds": 0.5023570193767489,
+      "quaternion": [
+        0.6921497848013181,
+        0.7207934426772866,
+        0.0029411309863231006,
+        0.03710576965157418
+      ],
+      "forward": [
+        0.05756259725920912,
+        -0.9975757866127831,
+        -0.03910367451610708
+      ],
+      "forwardHorizontalNorm": 0.06958843268739102,
+      "forwardHeadingDegrees": 124.18922270812108,
+      "rightHeadingDegrees": -2.837092000912343,
+      "swingTwistHeadingDegrees": 0.4869274887443399
+    },
+    {
+      "seconds": 1,
+      "actualKnotSeconds": 0.9895565509777636,
+      "quaternion": [
+        0.6255989900384714,
+        0.7745552877746623,
+        0.03652777288465446,
+        0.08576556215196049
+      ],
+      "forward": [
+        0.17856381499752388,
+        -0.9628563615703496,
+        -0.20254034402320564
+      ],
+      "forwardHorizontalNorm": 0.27001412367413014,
+      "forwardHeadingDegrees": 138.59992327948788,
+      "rightHeadingDegrees": -5.068781553047711,
+      "swingTwistHeadingDegrees": 6.68323875432063
+    },
+    {
+      "seconds": 2,
+      "actualKnotSeconds": 2.0125194914015796,
+      "quaternion": [
+        0.6818415621902406,
+        0.7310669809774947,
+        -0.0009454453621770603,
+        -0.025144771374801853
+      ],
+      "forward": [
+        -0.03805431207811609,
+        -0.9968961587358371,
+        -0.06891964908496284
+      ],
+      "forwardHorizontalNorm": 0.07872768698325305,
+      "forwardHeadingDegrees": -151.0945067351742,
+      "rightHeadingDegrees": 2.034331837892179,
+      "swingTwistHeadingDegrees": -0.15889320129407103
+    },
+    {
+      "seconds": 3,
+      "actualKnotSeconds": 2.9968801725902967,
+      "quaternion": [
+        0.7361745716754963,
+        0.6740465430431668,
+        0.021602409532944584,
+        0.05693499567337273
+      ],
+      "forward": [
+        0.10855996319377736,
+        -0.9899719840417194,
+        0.0903891874278544
+      ],
+      "forwardHorizontalNorm": 0.14126383405706533,
+      "forwardHeadingDegrees": 50.218560799856036,
+      "rightHeadingDegrees": -2.592766633957956,
+      "swingTwistHeadingDegrees": 3.361626072316193
+    }
+  ],
+  "diagnosis": "Horizon currently projects near-vertical body +Z onto ground; ill-conditioned yaw creates artificial large image pan. Locked removes this desired-heading motion. This diagnosis does not prove gyro axis/time correctness or vendor equivalence.",
+  "recommendation": "Keep Locked comparison as control. For follow-camera yaw use an explicitly chosen nonsingular heading reference or continuous gravity swing-twist decomposition with a documented antipodal singularity fallback; no one-frame per-frame forward atan2 near poles."
+}

@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { createMediaGain, type MediaGain } from '$lib/audio/mediaGain'
   interface Props {
     kind: 'video' | 'audio'
     url: string
     sourceTime: number
     playing: boolean
     muted?: boolean
+    audioRole?: import('$lib/composition/types').CompositionAudioRole
+    pan?: number
     volume?: number
     playbackRate?: number
     class?: string
@@ -20,6 +23,8 @@
     playing,
     muted = false,
     volume = 1,
+    pan = 0,
+    audioRole,
     playbackRate = 1,
     class: className = '',
     style = '',
@@ -28,6 +33,10 @@
   }: Props = $props()
   let element = $state<HTMLMediaElement | null>(null)
   let syncedUrl = ''
+  let gain: MediaGain | undefined
+  let gainAttempted = false
+  let syncedElement: HTMLMediaElement | null = null
+  $effect(() => () => { gain?.dispose(); syncedElement?.pause() })
   const emptyCaptions = 'data:text/vtt;charset=utf-8,WEBVTT%0A%0A'
 
   function verifySeekTarget(): void {
@@ -48,6 +57,13 @@
 
   function syncMedia(forceSeek = false): void {
     if (!element) return
+    if (syncedElement !== element) {
+      gain?.dispose()
+      syncedElement?.pause()
+      gain = undefined
+      gainAttempted = false
+      syncedElement = element
+    }
     const urlChanged = syncedUrl !== url
     syncedUrl = url
     const target = Math.max(0, sourceTime)
@@ -62,7 +78,20 @@
       }
     }
     element.muted = muted
-    element.volume = Math.max(0, Math.min(volume, 1))
+    if (!gainAttempted) {
+      gainAttempted = true
+      try { gain = createMediaGain(element, undefined, audioRole) } catch { onmediaerror?.() }
+    }
+    if (gain) {
+      element.volume = 1
+      gain.setRole(audioRole)
+      gain.setGain(volume)
+      try { gain.setPan(pan) } catch { onmediaerror?.() }
+      if (playing) gain.resume()
+    } else {
+      element.volume = Number.isFinite(volume) ? Math.max(0, Math.min(volume, 1)) : 0
+      if (volume > 1 || pan !== 0) onmediaerror?.()
+    }
     element.playbackRate = Math.max(0.05, Math.min(playbackRate, 16))
     if (playing) void element.play().catch(() => undefined)
     else element.pause()

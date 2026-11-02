@@ -1,0 +1,31 @@
+
+> video-kadr-frontend@0.1.0 test
+> vitest run src/lib/components/composition/Insta360GyroImport.test.ts src/lib/components/composition/SphericalSemanticTracker.test.ts src/lib/motion/sphericalTracking.test.ts src/lib/motion/sphericalVideo.test.ts
+
+
+ RUN  v4.1.10 /Users/themoretheless/Documents/Sources/video-kadr/frontend
+
+ ❯ src/lib/motion/sphericalTracking.test.ts (7 tests | 1 failed) 15189ms
+   × tracks an eligible sixty second interval within the bounded sample budget 13810ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/motion/sphericalTracking.test.ts > tracks an eligible sixty second interval within the bounded sample budget
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/lib/motion/sphericalTracking.test.ts:37:1
+     35|  expect(()=>trackSphericalSubject([{...frame(20),width:64.5},frame(21)…
+     36| })
+     37| it('tracks an eligible sixty second interval within the bounded sample…
+       | ^
+     38|  const frames=Array.from({length:300},(_,i)=>frame((20+i)%64))
+     39|  const result=trackSphericalSubject(frames,frames.map((_,i)=>i/5),[20/…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 26 passed (27)
+   Start at  13:00:19
+   Duration  28.81s (transform 33.58s, setup 0ms, import 38.76s, tests 20.41s, environment 16.72s)
+

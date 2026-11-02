@@ -1,0 +1,189 @@
+{
+  "cases": [
+    {
+      "amount": 0.0,
+      "chain": "aresample=48000,asetrate=51445.126202,aresample=48000,atempo=0.93303299,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=0.800,equalizer=f=10500:t=q:w=0.7:g=1.000,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.180:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0120,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 1.2,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=51445.126202,aresample=48000,atempo=0.93303299",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 0.0,
+            "pitch": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 1.0,
+      "chain": "aresample=48000,asetrate=51558.170527,aresample=48000,atempo=0.93098726,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=0.852,equalizer=f=10500:t=q:w=0.7:g=1.070,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.183:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0125,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 1.238,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=51558.170527,aresample=48000,atempo=0.93098726",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 1.0,
+            "pitch": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 25.0,
+      "chain": "aresample=48000,asetrate=54347.025353,aresample=48000,atempo=0.88321301,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=2.100,equalizer=f=10500:t=q:w=0.7:g=2.750,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.260:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0240,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 2.15,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=54347.025353,aresample=48000,atempo=0.88321301",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 25.0,
+            "pitch": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 50.0,
+      "chain": "aresample=48000,asetrate=57412.613843,aresample=48000,atempo=0.83605321,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=3.400,equalizer=f=10500:t=q:w=0.7:g=4.500,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.340:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0360,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 3.0999999999999996,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=57412.613843,aresample=48000,atempo=0.83605321",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 50.0,
+            "pitch": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 65.0,
+      "chain": "aresample=48000,asetrate=59334.357554,aresample=48000,atempo=0.80897480,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=4.180,equalizer=f=10500:t=q:w=0.7:g=5.550,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.388:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0432,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 3.67,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=59334.357554,aresample=48000,atempo=0.80897480",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 65.0,
+            "pitch": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 75.0,
+      "chain": "aresample=48000,asetrate=60651.125005,aresample=48000,atempo=0.79141154,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=4.700,equalizer=f=10500:t=q:w=0.7:g=6.250,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.420:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0480,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 4.05,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=60651.125005,aresample=48000,atempo=0.79141154",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 75.0,
+            "pitch": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 100.0,
+      "chain": "aresample=48000,asetrate=64072.313000,aresample=48000,atempo=0.74915354,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=6.000,equalizer=f=10500:t=q:w=0.7:g=8.000,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.500:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0600,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 5.0,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=64072.313000,aresample=48000,atempo=0.74915354",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 100.0,
+            "pitch": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 65.0,
+      "chain": "aresample=48000,asetrate=49406.507359,aresample=48000,atempo=0.97153194,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=4.180,equalizer=f=10500:t=q:w=0.7:g=5.550,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.388:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0432,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 0.5,
+      "pitch": 0.5,
+      "prefix": "aresample=48000,asetrate=49406.507359,aresample=48000,atempo=0.97153194",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 65.0,
+            "pitch": 0.5
+          }
+        }
+      ]
+    },
+    {
+      "amount": 65.0,
+      "chain": "aresample=48000,asetrate=76195.250494,aresample=48000,atempo=0.62996052,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=4.180,equalizer=f=10500:t=q:w=0.7:g=5.550,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.388:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0432,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 8.0,
+      "pitch": 8.0,
+      "prefix": "aresample=48000,asetrate=76195.250494,aresample=48000,atempo=0.62996052",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 65.0,
+            "pitch": 8.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 100.0,
+      "chain": "aresample=48000,asetrate=76195.250494,aresample=48000,atempo=0.62996052,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=6.000,equalizer=f=10500:t=q:w=0.7:g=8.000,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.500:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0600,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 8.0,
+      "pitch": 8.0,
+      "prefix": "aresample=48000,asetrate=76195.250494,aresample=48000,atempo=0.62996052",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 100.0,
+            "pitch": 8.0
+          }
+        }
+      ]
+    },
+    {
+      "amount": 37.54999923706055,
+      "chain": "aresample=48000,asetrate=55864.923872,aresample=48000,atempo=0.85921535,highpass=f=85,equalizer=f=300:t=q:w=1.1:g=-1.4,equalizer=f=4200:t=q:w=0.8:g=2.753,equalizer=f=10500:t=q:w=0.7:g=3.628,compand=attacks=0.010:decays=0.180:points=-80/-80|-30/-24|-18/-13|-8/-5|0/-1.5:soft-knee=5:gain=1,deesser=i=0.300:m=0.45:f=0.55,aecho=0.8:0.82:38:0.0300,alimiter=limit=0.94:attack=5:release=60",
+      "derivedShift": 2.6268999710083007,
+      "pitch": 0.0,
+      "prefix": "aresample=48000,asetrate=55864.923872,aresample=48000,atempo=0.85921535",
+      "settings": [
+        {
+          "id": "concat.sweet",
+          "params": {
+            "amount": 37.54999923706055,
+            "pitch": 0.0
+          }
+        }
+      ]
+    }
+  ],
+  "repository": "https://github.com/jub0t/concat",
+  "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+  "license": "AGPL-3.0-or-later",
+  "adapterSha256": "1a43a234cf6a6ab8128e7c58d22cfa3d5fc1ebfa7f7a0c8e91d8baff196dfdb9",
+  "sourceHashes": {
+    "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+    "src/crates/concat-effects/packages/concat.sweet/effect.toml": "80321bd084ca83970b05a081707a0768841bae9240cf9f48d2f8a61391de3c5d",
+    "src/crates/concat-effects/packages/concat.sweet/fixtures.toml": "a6d6305dd0d4bad4ca835f9b971413a6427ba2ac00125927de6c45d7f0e34850"
+  }
+}

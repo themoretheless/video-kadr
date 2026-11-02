@@ -1,3 +1,4 @@
+import { importPreferences } from '$lib/state/importPreferences.svelte.js'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MAX_COMPOSITION_TEMPLATE_BYTES } from '../composition/templates'
 import type { CompositionClip } from '../composition/types'
@@ -20,6 +21,8 @@ import {
 } from './compositionTemplates.svelte.js'
 
 beforeEach(() => {
+  // Exercise embedded-audio authoring independently of the default import policy.
+  importPreferences.autoPairAudio = false
   const values = new Map<string, string>()
   setCompositionTemplateStorageForTests({
     get length() { return values.size },

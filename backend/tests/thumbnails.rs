@@ -39,6 +39,7 @@ async fn add_entry_with_duration(
                 storage_key: None,
                 url: format!("/files/sources/{filename}"),
                 media_type: Some(media_type.into()),
+                original_filename: None,
                 title: None,
                 duration: Some(duration),
                 width: None,

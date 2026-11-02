@@ -1,0 +1,14 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "worker",
+      "address": "0x101b51278",
+      "endAddress": "0x101b51c08",
+      "sourceOffset": 28660344,
+      "sha256": "89ee41597e8d3115bd6fb1d619938daf691c8d4d7a9587100cf78ce80bb60b8a"
+    }
+  ]
+}

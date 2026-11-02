@@ -1,0 +1,90 @@
+[
+  {
+    "address": "0x10189b8a0",
+    "name": "__ZN9arvrender17GyroTimeConverter12AddDeltaTimeEdi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::GyroTimeConverter::AddDeltaTime(double, int)"
+  },
+  {
+    "address": "0x10189b62c",
+    "name": "__ZN9arvrender17GyroTimeConverter23ConvertToExposureTimeMsERKN3ins8IdxTimedEddNS_26GyroTimestampResolveMethodEiRKNSt3__16vectorINS6_10shared_ptrINS_15ExposureRawDataEEENS6_9allocatorISA_EEEERKNS8_INS_16TimelapseRawDataEEE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::GyroTimeConverter::ConvertToExposureTimeMs(ins::IdxTimed const&, double, double, arvrender::GyroTimestampResolveMethod, int, std::__1::vector<std::__1::shared_ptr<arvrender::ExposureRawData>, std::__1::allocator<std::__1::shared_ptr<arvrender::ExposureRawData>>> const&, std::__1::shared_ptr<arvrender::TimelapseRawData> const&)"
+  },
+  {
+    "address": "0x10189be9c",
+    "name": "__ZN9arvrender17GyroTimeConverter5CloneEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::GyroTimeConverter::Clone()"
+  },
+  {
+    "address": "0x101858b40",
+    "name": "__ZN9arvrender20RuntimeTimeConverter12ToGyroTimeMsEd",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::RuntimeTimeConverter::ToGyroTimeMs(double)"
+  },
+  {
+    "address": "0x1018437d8",
+    "name": "__ZN9arvrender23PrecomputeStabilization19ConverToInsGyroDataEPKhmRNSt3__16vectorIN3ins10Stabilizer8GyroDataENS3_9allocatorIS7_EEEEi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::PrecomputeStabilization::ConverToInsGyroData(unsigned char const*, unsigned long, std::__1::vector<ins::Stabilizer::GyroData, std::__1::allocator<ins::Stabilizer::GyroData>>&, int)"
+  },
+  {
+    "address": "0x10189b91c",
+    "name": "__ZNK9arvrender17GyroTimeConverter12ToGyroTimeMsEN3ins8IdxTimedEi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::GyroTimeConverter::ToGyroTimeMs(ins::IdxTimed, int) const"
+  },
+  {
+    "address": "0x10189bc48",
+    "name": "__ZNK9arvrender17GyroTimeConverter16ToExposureTimeMsEN3ins8IdxTimedEi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::GyroTimeConverter::ToExposureTimeMs(ins::IdxTimed, int) const"
+  },
+  {
+    "address": "0x101858b84",
+    "name": "__ZNK9arvrender20RuntimeTimeConverter12ToGyroTimeMsEN3ins8IdxTimedEi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::RuntimeTimeConverter::ToGyroTimeMs(ins::IdxTimed, int) const"
+  },
+  {
+    "address": "0x1040a4d40",
+    "name": "__ZTIN9arvrender17GyroTimeConverterE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "typeinfo for arvrender::GyroTimeConverter"
+  },
+  {
+    "address": "0x103b1cec8",
+    "name": "__ZTSN9arvrender17GyroTimeConverterE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "typeinfo name for arvrender::GyroTimeConverter"
+  },
+  {
+    "address": "0x1040a4ce0",
+    "name": "__ZTVN9arvrender17GyroTimeConverterE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "vtable for arvrender::GyroTimeConverter"
+  }
+]

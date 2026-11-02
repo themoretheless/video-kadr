@@ -1,0 +1,120 @@
+{
+  "_meta": {
+    "provenance": {
+      "untrusted_content": true,
+      "source": "analysis_target"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"evidence_id\":\"ev_88f5ddec45fe189d22c7305a779e5d318c8423f91f5d689bbe7f179be2799ccf\",\"subject\":{\"name\":\"studio-main\",\"digest\":{\"sha256\":\"6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423\"},\"local_path\":\"/Applications/Insta360 Studio.app/Contents/MacOS/studio-main\",\"format\":\"mach-o-universal\",\"architecture\":\"arm64\"},\"provider\":{\"id\":\"rea-analysis-view\",\"name\":\"REA analysis view projection\",\"version\":\"1\"},\"analysis_profile\":null,\"predicate_type\":\"rea.analysis-view\",\"operation\":\"inspect_analysis_view\",\"parameters\":{\"parent_evidence_id\":\"ev_1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8\",\"view\":{\"kind\":\"summary\"}},\"raw_result\":null,\"normalized_result\":{\"kind\":\"summary\",\"view\":{\"kind\":\"summary\"},\"parent_evidence_id\":\"ev_1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8\",\"parent_operation\":\"search_procedures\",\"parent_digest\":\"1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8\",\"view_digest\":\"72d85adf8e45ef44f9168edbcfd5070c16bbc97d2a1bd814b4133a6e3c8e77c5\",\"artifact\":{\"path\":\"/Applications/Insta360 Studio.app/Contents/MacOS/studio-main\",\"sha256\":\"6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423\"},\"coverage\":{\"status\":\"complete-within-view\",\"examined\":43,\"total\":43,\"next_offset\":null,\"exhausted\":true},\"limitations\":[\"Cancelling an active Ghidra request terminates its ephemeral database and discards session annotations. The selected target remains open; the next provider query imports the original artifact again.\",\"Default-space addresses use lowercase 0x-prefixed hexadecimal; other address spaces use <percent-encoded-space>:0x<hex>.\",\"Regex mode uses Java Pattern semantics. Matcher or compiler stack exhaustion returns a resource constraint without closing the session; literal mode avoids regex recursion and returns complete matching values.\",\"The imported Program and temporary project are ephemeral and deleted on close. Annotation operations edit session database metadata; original executable bytes are never written.\",\"The session serves operations only after Ghidra reports default auto-analysis complete; incomplete analysis does not expose partial results.\",\"macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state.\"],\"unknowns\":[\"Counts and paging describe the retained provider-reported rows, not complete discovery of every program object. Missing matches do not establish absence outside that observation.\"],\"source_provider\":{\"id\":\"ghidra\",\"name\":\"Ghidra\",\"version\":\"12.1.4\"},\"source_analysis_profile_digest\":\"db0fc5a96abc1a9c527742a72b579de3c9862664869d1219120254068021463e\",\"source_parameters\":{\"pattern\":\"StitchingOptimizationViewModel\",\"mode\":\"literal\",\"case_sensitive\":false},\"summary\":{\"collection\":\"procedures\",\"row_count\":43,\"discovery_coverage\":\"unknown\",\"selectable_fields\":[\"address\",\"value\",\"symbol\",\"objc_class_label\",\"procedure\",\"string\",\"provider_value\",\"decoding\"]}},\"confidence\":\"derived\",\"authority\":\"shipped-artifact\",\"environment\":null,\"limitations\":[\"Cancelling an active Ghidra request terminates its ephemeral database and discards session annotations. The selected target remains open; the next provider query imports the original artifact again.\",\"Default-space addresses use lowercase 0x-prefixed hexadecimal; other address spaces use <percent-encoded-space>:0x<hex>.\",\"Regex mode uses Java Pattern semantics. Matcher or compiler stack exhaustion returns a resource constraint without closing the session; literal mode avoids regex recursion and returns complete matching values.\",\"The imported Program and temporary project are ephemeral and deleted on close. Annotation operations edit session database metadata; original executable bytes are never written.\",\"The session serves operations only after Ghidra reports default auto-analysis complete; incomplete analysis does not expose partial results.\",\"macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state.\"],\"relationship_coverage\":null,\"locations\":[{\"kind\":\"artifact-path\",\"path\":\"/Applications/Insta360 Studio.app/Contents/MacOS/studio-main\"}],\"evidence_links\":[\"ev_1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8\"]}"
+    }
+  ],
+  "structuredContent": {
+    "evidence_id": "ev_88f5ddec45fe189d22c7305a779e5d318c8423f91f5d689bbe7f179be2799ccf",
+    "subject": {
+      "name": "studio-main",
+      "digest": {
+        "sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423"
+      },
+      "local_path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main",
+      "format": "mach-o-universal",
+      "architecture": "arm64"
+    },
+    "provider": {
+      "id": "rea-analysis-view",
+      "name": "REA analysis view projection",
+      "version": "1"
+    },
+    "analysis_profile": null,
+    "predicate_type": "rea.analysis-view",
+    "operation": "inspect_analysis_view",
+    "parameters": {
+      "parent_evidence_id": "ev_1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8",
+      "view": {
+        "kind": "summary"
+      }
+    },
+    "raw_result": null,
+    "normalized_result": {
+      "kind": "summary",
+      "view": {
+        "kind": "summary"
+      },
+      "parent_evidence_id": "ev_1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8",
+      "parent_operation": "search_procedures",
+      "parent_digest": "1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8",
+      "view_digest": "72d85adf8e45ef44f9168edbcfd5070c16bbc97d2a1bd814b4133a6e3c8e77c5",
+      "artifact": {
+        "path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main",
+        "sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423"
+      },
+      "coverage": {
+        "status": "complete-within-view",
+        "examined": 43,
+        "total": 43,
+        "next_offset": null,
+        "exhausted": true
+      },
+      "limitations": [
+        "Cancelling an active Ghidra request terminates its ephemeral database and discards session annotations. The selected target remains open; the next provider query imports the original artifact again.",
+        "Default-space addresses use lowercase 0x-prefixed hexadecimal; other address spaces use <percent-encoded-space>:0x<hex>.",
+        "Regex mode uses Java Pattern semantics. Matcher or compiler stack exhaustion returns a resource constraint without closing the session; literal mode avoids regex recursion and returns complete matching values.",
+        "The imported Program and temporary project are ephemeral and deleted on close. Annotation operations edit session database metadata; original executable bytes are never written.",
+        "The session serves operations only after Ghidra reports default auto-analysis complete; incomplete analysis does not expose partial results.",
+        "macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state."
+      ],
+      "unknowns": [
+        "Counts and paging describe the retained provider-reported rows, not complete discovery of every program object. Missing matches do not establish absence outside that observation."
+      ],
+      "source_provider": {
+        "id": "ghidra",
+        "name": "Ghidra",
+        "version": "12.1.4"
+      },
+      "source_analysis_profile_digest": "db0fc5a96abc1a9c527742a72b579de3c9862664869d1219120254068021463e",
+      "source_parameters": {
+        "pattern": "StitchingOptimizationViewModel",
+        "mode": "literal",
+        "case_sensitive": false
+      },
+      "summary": {
+        "collection": "procedures",
+        "row_count": 43,
+        "discovery_coverage": "unknown",
+        "selectable_fields": [
+          "address",
+          "value",
+          "symbol",
+          "objc_class_label",
+          "procedure",
+          "string",
+          "provider_value",
+          "decoding"
+        ]
+      }
+    },
+    "confidence": "derived",
+    "authority": "shipped-artifact",
+    "environment": null,
+    "limitations": [
+      "Cancelling an active Ghidra request terminates its ephemeral database and discards session annotations. The selected target remains open; the next provider query imports the original artifact again.",
+      "Default-space addresses use lowercase 0x-prefixed hexadecimal; other address spaces use <percent-encoded-space>:0x<hex>.",
+      "Regex mode uses Java Pattern semantics. Matcher or compiler stack exhaustion returns a resource constraint without closing the session; literal mode avoids regex recursion and returns complete matching values.",
+      "The imported Program and temporary project are ephemeral and deleted on close. Annotation operations edit session database metadata; original executable bytes are never written.",
+      "The session serves operations only after Ghidra reports default auto-analysis complete; incomplete analysis does not expose partial results.",
+      "macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state."
+    ],
+    "relationship_coverage": null,
+    "locations": [
+      {
+        "kind": "artifact-path",
+        "path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main"
+      }
+    ],
+    "evidence_links": [
+      "ev_1ceb74e8810aaf4ed57a9f9d2cdcbdeac6fa115fcc443c2c3e8202bcd96247d8"
+    ]
+  }
+}

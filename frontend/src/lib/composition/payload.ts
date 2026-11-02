@@ -1,3 +1,10 @@
+import {compositionMarkers} from './markers'
+import { cloneGraphicValue } from './graphicLayers'
+import { cloneDspEffect } from './dsp'
+import { cloneInterpolation,cloneKeyframe } from './tangents'
+import { audioRoleGain } from './audioRoles'
+import { solidColorParamsToWire } from './solidColor'
+import { packColorAnimation } from './colorAnimation'
 import {
   COMPOSITION_SCHEMA_VERSION,
   type Composition,
@@ -8,6 +15,8 @@ import {
   type CompositionSourceRegistry,
   type CompositionTrack,
   type AudioClip,
+  type TextClip,
+  type WireTextClip,
   type VideoClip,
   type VisualClip,
   type WireAnimatableValue,
@@ -57,21 +66,13 @@ export function buildCompositionRenderRequest(
   if (unavailableReason) throw new CompositionPayloadError(unavailableReason)
   validateOutput(output)
 
-  const primaryTrackId = primaryCompositionVideoTrack(composition)?.id
-
-  const wire: WireComposition = {
-    schemaVersion: COMPOSITION_SCHEMA_VERSION,
-    timeBase: composition.timeBase,
-    canvas: {
-      width: composition.canvas.width,
-      height: composition.canvas.height,
-      fpsMilli: Math.round(composition.canvas.fps * 1_000),
-      background: colorToRgba(composition.canvas.backgroundColor),
-      backgroundMode: composition.canvas.backgroundMode ?? 'color',
-      backgroundBlur: composition.canvas.backgroundBlur ?? 24,
-    },
-    sources: copySources(composition.sources),
-    tracks: composition.tracks.map((track) => copyTrack(track, composition, track.id === primaryTrackId)),
+  let wire = buildCompositionWireDocument(composition)
+  // Markers remain authored project data; the render contract carries no editor markers.
+  if (wire.metadata?.markers !== undefined) {
+    const { metadata, ...fields } = wire
+    const renderMetadata = { ...metadata }
+    delete renderMetadata.markers
+    wire = Object.keys(renderMetadata).length ? { ...fields, metadata: renderMetadata } : fields
   }
   return {
     schemaVersion: COMPOSITION_SCHEMA_VERSION,
@@ -84,6 +85,40 @@ export function buildCompositionRenderRequest(
       ...(output.range ? { range: { ...output.range } } : {}),
     },
   }
+}
+
+/** Serialize authored composition data independently of render eligibility. */
+export function buildCompositionWireDocument(composition: Composition): WireComposition {
+  assertValidComposition(composition)
+  const primaryTrackId = primaryCompositionVideoTrack(composition)?.id
+  const markers=compositionMarkers(composition)
+  if (!Number.isSafeInteger(composition.metadata?.sequenceStartFrame ?? 0)) {
+    throw new Error('Sequence start frame must be a safe integer')
+  }
+
+  const wire: WireComposition = {
+    ...(composition.captionTracks?.length ? { captionTracks: JSON.parse(JSON.stringify(composition.captionTracks)) } : {}),
+    ...(composition.metadata||markers.length ? { metadata: {
+      ...composition.metadata,
+      ...(markers.length?{markers:markers.map(marker=>({...marker}))}:{}),
+      ...(composition.metadata?.clipNames ? { clipNames: { ...composition.metadata.clipNames } } : {}),
+      ...(composition.metadata?.sourceNames ? { sourceNames: { ...composition.metadata.sourceNames } } : {}),
+    } } : {}),
+    schemaVersion: COMPOSITION_SCHEMA_VERSION,
+    timeBase: composition.timeBase,
+    canvas: {
+      width: composition.canvas.width,
+      height: composition.canvas.height,
+      fpsMilli: Math.round(composition.canvas.fps * 1_000),
+      ...(composition.canvas.fpsRate ? { fpsRate: { ...composition.canvas.fpsRate } } : {}),
+      background: colorToRgba(composition.canvas.backgroundColor),
+      backgroundMode: composition.canvas.backgroundMode ?? 'color',
+      backgroundBlur: composition.canvas.backgroundBlur ?? 24,
+    },
+    sources: copySources(composition.sources),
+    tracks: composition.tracks.map((track) => copyTrack(track, composition, track.id === primaryTrackId)),
+  }
+  return wire
 }
 
 /** Alias matching existing `build*Payload` call sites. */
@@ -102,6 +137,7 @@ function copySources(sources: CompositionSourceRegistry): CompositionSourceRegis
           width: source.width,
           height: source.height,
           hasAudio: source.hasAudio,
+          ...(source.audioChannels !== undefined ? { audioChannels: source.audioChannels } : {}),
         }
         return [id, wireSource]
       }),
@@ -110,6 +146,18 @@ function copySources(sources: CompositionSourceRegistry): CompositionSourceRegis
 
 function copyTrack(track: CompositionTrack, composition: Composition, primary: boolean): WireCompositionTrack {
   switch (track.kind) {
+    case 'graphic':
+      return { id: track.id, kind: 'graphic', name: track.name, hidden: track.hidden, locked: track.locked,
+        clips: track.clips.map(clip => ({ id: clip.id, timelineStartTick: clip.timelineStartTicks,
+          timelineEndTick: clip.timelineStartTicks + clip.durationTicks, width: clip.width, height: clip.height,
+          animationOffsetUs: clip.animationOffsetUs ?? 0, graphic: cloneGraphicValue(clip.graphic),
+          ...(clip.template ? {template:cloneGraphicValue(clip.template)} : {}),
+          ...(clip.roll ? {roll:cloneGraphicValue(clip.roll)} : {}),
+          ...(clip.responsiveTime ? {responsiveTime: cloneGraphicValue(clip.responsiveTime)} : {}),
+          effects: cloneGraphicValue(clip.effects ?? []), transform: transformToWire(composition, clip),
+          opacity: visualValueToWire(composition, clip, 'opacity'), enabled: clip.enabled !== false })) }
+    case 'color':
+      return { id: track.id,kind: 'color',name: track.name,hidden: track.hidden,locked: track.locked,clips: track.clips.map(clip => ({ id: clip.id,timelineStartTick: clip.timelineStartTicks,timelineEndTick: clip.timelineStartTicks+clip.durationTicks,...solidColorParamsToWire(clip),transform: transformToWire(composition,clip),opacity: visualValueToWire(composition,clip,'opacity'),enabled: clip.enabled !== false })) }
     case 'video':
       return {
         id: track.id,
@@ -125,10 +173,18 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
           transform: primary ? primaryTransformToWire(composition, clip) : transformToWire(composition, clip),
           opacity: visualValueToWire(composition, clip, 'opacity'),
           blendMode: clip.blendMode ?? 'normal',
-          effects: [...chromaEffects(clip), ...styleEffects(clip), ...maskEffects(clip)],
+          effects: [...chromaEffects(clip), ...styleEffects(clip), ...cloneGraphicValue(clip.effects ?? []), ...maskEffects(clip)],
+          ...(clip.audioStream===undefined?{}:{audioStream:clip.audioStream}),
+          ...(clip.concatGainKeys?.length?{concatGainKeys:cloneGraphicValue(clip.concatGainKeys)}:{}),
+          ...(clip.dspEffects?.length?{dspEffects:clip.dspEffects.map(cloneDspEffect)}:{}),
+          ...(clip.audioFadeInTicks===undefined?{}:{audioFadeInTicks:clip.audioFadeInTicks}),
+          ...(clip.audioFadeOutTicks===undefined?{}:{audioFadeOutTicks:clip.audioFadeOutTicks}),
+          ...(clip.independentAudio===undefined?{}:{independentAudio:clip.independentAudio}),
+          ...(clip.concatCutout?{concatCutout:{...clip.concatCutout}}:{}),
           sourceAudioEnabled: clip.sourceAudioEnabled,
           audioGain: copyAnimatable(audioPropertyValue(clip, 'gain')),
           audioPan: copyAnimatable(audioPropertyValue(clip, 'pan')),
+          ...(clip.effectTiming ? { effectTiming: { ...clip.effectTiming } } : {}),
           frameInterpolation: clip.frameInterpolation ?? 'duplicate',
           playbackMode: clip.playbackMode?.mode === 'freeze'
             ? { mode: 'freeze', sourceTick: clip.playbackMode.sourceTick }
@@ -147,9 +203,9 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
                   smoothing: clip.stabilization.smoothing,
                 }
             : { mode: 'disabled' },
-          enabled: true,
+          enabled: clip.enabled !== false,
         })),
-        transitions: (track.transitions ?? []).map((transition) => ({ ...transition })),
+        transitions: (track.transitions ?? []).filter((transition) => transition.timeline !== undefined || track.clips.some((clip) => clip.id === transition.fromClipId && clip.enabled !== false) && track.clips.some((clip) => clip.id === transition.toClipId && clip.enabled !== false)).map((transition) => ({ ...transition })),
       }
     case 'audio':
       return {
@@ -163,17 +219,24 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
           id: clip.id,
           sourceId: clip.sourceId,
           placement: copyPlacement(clip),
+          ...(clip.detachedFrom===undefined?{}:{detachedFrom:clip.detachedFrom}),
+          ...(clip.concatDetachedOrder===undefined?{}:{concatDetachedOrder:clip.concatDetachedOrder}),
           gain: copyAnimatable(audioPropertyValue(clip, 'gain')),
+          roleGain: exportRoleGain(composition, clip.role),
           pan: copyAnimatable(audioPropertyValue(clip, 'pan')),
           reversed: clip.reversed ?? false,
           fadeInTicks: clip.fadeInTicks ?? 0,
           fadeOutTicks: clip.fadeOutTicks ?? 0,
+          ...(clip.audioStream===undefined?{}:{audioStream:clip.audioStream}),
+          ...(clip.concatGainKeys?.length?{concatGainKeys:cloneGraphicValue(clip.concatGainKeys)}:{}),
+          ...(clip.dspEffects?.length ? { dspEffects: clip.dspEffects.map(cloneDspEffect) } : {}),
           voiceEffect: clip.voiceEffect ?? 'none',
           pitchSemitones: clip.pitchSemitones ?? 0,
           toneDb: clip.toneDb ?? 0,
           crossfadeInTicks: clip.crossfadeInTicks ?? 0,
+          crossfadeCurve: clip.crossfadeCurve ?? 'constant_gain',
           ...(clip.ducking ? { ducking: { ...clip.ducking } } : {}),
-          enabled: true,
+          enabled: clip.enabled !== false,
         })),
       }
     case 'image':
@@ -191,7 +254,8 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
           transform: transformToWire(composition, clip),
           opacity: visualValueToWire(composition, clip, 'opacity'),
           blendMode: clip.blendMode ?? 'normal',
-          enabled: true,
+          ...(clip.effects?.length ? {effects:clip.effects} : {}),
+          enabled: clip.enabled !== false,
         })),
       }
     case 'text':
@@ -201,32 +265,40 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
         name: track.name,
         locked: track.locked,
         hidden: track.hidden,
-        clips: track.clips.map((clip) => ({
-          id: clip.id,
-          timelineStartTick: clip.timelineStartTicks,
-          timelineEndTick: clip.timelineStartTicks + clip.durationTicks,
-          text: clip.text,
-          style: {
-            fontFamily: clip.style.fontFamily ?? 'Noto Sans',
-            fontSize: clip.style.fontSizePx,
-            color: colorToRgba(clip.style.color),
-            background: colorToRgba(clip.style.backgroundColor ?? '#00000000'),
-            stroke: colorToRgba(clip.style.strokeColor ?? '#00000000'),
-            strokeWidth: clip.style.strokeWidthPx ?? 0,
-            shadow: colorToRgba(clip.style.shadowColor ?? '#00000000'),
-            shadowX: clip.style.shadowX ?? 0,
-            shadowY: clip.style.shadowY ?? 0,
-          },
-          transform: transformToWire(composition, clip),
-          opacity: visualValueToWire(composition, clip, 'opacity'),
-          enabled: true,
-        })),
+        clips: track.clips.map((clip) => textClipToWire(composition,clip)),
       }
+  }
+}
+
+/** Canonical text placement/style transport, shared by authored clips and subtitle import. */
+export function textClipToWire(composition: Composition, clip: TextClip): WireTextClip {
+  return {
+    id: clip.id,
+    timelineStartTick: clip.timelineStartTicks,
+    timelineEndTick: clip.timelineStartTicks + clip.durationTicks,
+    text: clip.text,
+    ...(clip.colorAnimation ? { colorAnimation: packColorAnimation(clip.colorAnimation) } : {}),
+    style: {
+      fontFamily: clip.style.fontFamily ?? 'Noto Sans',
+      fontSize: clip.style.fontSizePx,
+      align: clip.style.align,
+      color: colorToRgba(clip.style.color),
+      background: colorToRgba(clip.style.backgroundColor ?? '#00000000'),
+      stroke: colorToRgba(clip.style.strokeColor ?? '#00000000'),
+      strokeWidth: clip.style.strokeWidthPx ?? 0,
+      shadow: colorToRgba(clip.style.shadowColor ?? '#00000000'),
+      shadowX: clip.style.shadowX ?? 0,
+      shadowY: clip.style.shadowY ?? 0,
+    },
+    transform: transformToWire(composition, clip),
+    opacity: visualValueToWire(composition, clip, 'opacity'),
+    enabled: clip.enabled !== false,
   }
 }
 
 function copyPlacement(clip: VideoClip | AudioClip): WireClipPlacement {
   return {
+    ...(clip.timelineDurationTicks !== undefined ? { timelineDurationTick: clip.timelineDurationTicks } : {}),
     timelineStartTick: clip.timelineStartTicks,
     sourceInTick: clip.sourceInTicks,
     sourceOutTick: clip.sourceOutTicks,
@@ -260,6 +332,8 @@ function defaultTransform(): WireTransform {
 function transformToWire(composition: Composition, clip: VisualClip): WireTransform {
   return {
     ...defaultTransform(),
+    ...((clip.kind==='video'||clip.kind==='image')&&clip.concatAnimation?{concatAnimation:cloneGraphicValue(clip.concatAnimation)}:{}),
+    ...(clip.position ? { position: copyPosition(clip.position) } : {}),
     x: visualValueToWire(composition, clip, 'x'),
     y: visualValueToWire(composition, clip, 'y'),
     scaleX: visualValueToWire(composition, clip, 'scaleX'),
@@ -273,6 +347,8 @@ function primaryTransformToWire(composition: Composition, clip: VideoClip): Wire
   if (!source) return transformToWire(composition, clip)
   return {
     ...defaultTransform(),
+    ...((clip.kind==='video'||clip.kind==='image')&&clip.concatAnimation?{concatAnimation:cloneGraphicValue(clip.concatAnimation)}:{}),
+    ...(clip.position ? { position: copyPosition(clip.position) } : {}),
     x: visualValueToWire(composition, clip, 'x'),
     y: visualValueToWire(composition, clip, 'y'),
     scaleX: scaleAnimatable(visualValueToWire(composition, clip, 'scaleX'), source.width / composition.canvas.width),
@@ -306,9 +382,11 @@ function copyAnimatable(value: WireAnimatableValue): WireAnimatableValue {
     : {
         mode: 'keyframes',
         track: {
+          ...(value.track.extrapolation ? { extrapolation: { ...value.track.extrapolation } } : {}),
+          ...(value.track.sampleClock ? { sampleClock: { ...value.track.sampleClock } } : {}),
           timeBase: value.track.timeBase,
-          interpolation: normalizeInterpolation(value.track.interpolation),
-          keyframes: value.track.keyframes.map((keyframe) => ({ tick: keyframe.tick, value: keyframe.value })),
+          interpolation: cloneInterpolation(normalizeInterpolation(value.track.interpolation)),
+          keyframes: value.track.keyframes.map((keyframe) => ({ ...cloneKeyframe(keyframe), ...(keyframe.interpolation === undefined ? {} : { interpolation: cloneInterpolation(normalizeInterpolation(keyframe.interpolation)) }) })),
         },
       }
 }
@@ -477,4 +555,15 @@ function hasExactKeys(value: Record<string, unknown>, fields: readonly string[])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function exportRoleGain(composition: Composition, role: import('./types').CompositionAudioRole | undefined): number {
+  const gain = audioRoleGain(composition, role)
+  if (!Number.isFinite(gain) || gain < 0 || gain > Number.MAX_VALUE / 16) throw new Error('Audio role gain exceeds export numeric range')
+  return gain
+}
+
+function copyPosition(position: import('./types').CompositionPositionAnimation): import('./types').CompositionPositionAnimation {
+  if (position.mode === 'xy') return { mode: 'xy',x: copyAnimatable(position.x),y: copyAnimatable(position.y) }
+  return { mode: 'path',progress: copyAnimatable(position.progress),path: { nodes: position.path.nodes.map(node => ({ id: node.id,point: { x: node.point.x,y: node.point.y },inHandle: { x: node.inHandle.x,y: node.inHandle.y },outHandle: { x: node.outHandle.x,y: node.outHandle.y },segment: node.segment,tangentMode: node.tangentMode })) } }
 }

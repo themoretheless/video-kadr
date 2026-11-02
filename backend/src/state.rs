@@ -52,6 +52,23 @@ pub struct ToolInfo {
 /// `JobCell` per id keeps unrelated transitions from sharing a global lock.
 #[derive(Clone)]
 pub struct AppState {
+    pub speech: Arc<crate::services::local_speech::SpeechConfig>,
+    pub tts: Arc<crate::services::local_tts::TtsConfig>,
+    pub enhance:Arc<Option<crate::services::local_enhance::Config>>,
+    pub cutout:Arc<Option<crate::services::local_cutout::Config>>,
+    pub selfie:Arc<Option<crate::services::local_selfie::Config>>,
+    pub person:Arc<Option<crate::services::local_person::Config>>,
+    pub(crate) concat_video_cancellations:Arc<crate::services::concat_video_cancel::Registry>,
+    pub sam:Arc<Option<crate::services::local_sam::Config>>,
+    pub kokoro:Arc<Option<crate::services::local_kokoro::Runtime>>,
+    pub chatterbox: Arc<Option<crate::services::local_chatterbox::Runtime>>,
+    pub(crate) enhance_asset_ops: Arc<Mutex<()>>,
+    pub(crate) cutout_model_ops: Arc<Mutex<()>>,
+    pub(crate) sam_model_ops: Arc<Mutex<()>>,
+    pub(crate) enhance_model_ops: Arc<Mutex<()>>,
+    pub(crate) tts_model_ops: Arc<Mutex<()>>,
+    pub(crate) speech_model_ops: Arc<Mutex<()>>,
+    pub(crate) speech_model_pins: Arc<std::sync::Mutex<HashMap<String,usize>>>,
     jobs: Arc<Mutex<HashMap<String, Arc<JobCell>>>>,
     job_kinds: Arc<Mutex<HashMap<String, JobKind>>>,
     /// Per-job cancellation handles, removed when the job finishes.
@@ -71,6 +88,12 @@ pub struct AppState {
     workload: Arc<WorkloadConfig>,
     supervisor: TaskSupervisor,
     pub cpu_pool: CpuPool,
+    pub filmcraft_video_previews: Arc<crate::services::filmcraft_video_preview::VideoPreviewCache>,
+    pub filmcraft_trim_sessions: Arc<crate::domain::filmcraft_trim_sessions::TrimSessionStore>,
+    pub(crate) filmcraft_quick_presets: Arc<Mutex<HashMap<String,String>>>,
+    pub(crate) filmcraft_tracking_jobs: crate::handlers::filmcraft_tracking_jobs::Stores,
+    pub(crate) filmcraft_export_queues: crate::handlers::filmcraft_export_queue::Stores,
+    pub(crate) filmcraft_video_workers: Arc<std::sync::Mutex<HashMap<String,usize>>>,
     pub encode_budget: EncodeBudget,
     pub process_runtime: ProcessRuntime,
     pub proxy_service: ProxyService<FfmpegProxyEncoder>,
@@ -219,8 +242,31 @@ impl AppState {
             upload_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             max_concurrent_renders,
             workload: Arc::new(WorkloadConfig::default()),
+            speech: Arc::new(crate::services::local_speech::SpeechConfig::default()),
+            tts: Arc::new(crate::services::local_tts::TtsConfig::default()),
+            enhance:Arc::new(None),
+            cutout:Arc::new(None),
+            selfie:Arc::new(None),
+            person:Arc::new(None),
+            concat_video_cancellations:Arc::new(Default::default()),
+            sam:Arc::new(None),
+            kokoro:Arc::new(None),
+            chatterbox:Arc::new(None),
+            enhance_asset_ops:Arc::new(Mutex::new(())),
+            tts_model_ops: Arc::new(Mutex::new(())),
+            cutout_model_ops: Arc::new(Mutex::new(())),
+            sam_model_ops: Arc::new(Mutex::new(())),
+            enhance_model_ops: Arc::new(Mutex::new(())),
+            speech_model_ops: Arc::new(Mutex::new(())),
+            speech_model_pins: Arc::new(std::sync::Mutex::new(HashMap::new())),
             supervisor: TaskSupervisor::default(),
             cpu_pool,
+            filmcraft_video_previews: Arc::new(crate::services::filmcraft_video_preview::VideoPreviewCache::with_storage(storage.join("cache/stabilizer-v1"))),
+            filmcraft_trim_sessions: Arc::new(crate::domain::filmcraft_trim_sessions::TrimSessionStore::default()),
+            filmcraft_quick_presets: Arc::new(Mutex::new(HashMap::new())),
+            filmcraft_tracking_jobs: Arc::new(Mutex::new(Default::default())),
+            filmcraft_export_queues: Arc::new(Mutex::new(HashMap::new())),
+            filmcraft_video_workers: Arc::new(std::sync::Mutex::new(HashMap::new())),
             encode_budget,
             process_runtime,
             proxy_service,
@@ -239,6 +285,14 @@ impl AppState {
             youtube_token_cipher: None,
         })
     }
+
+    pub fn with_sam_config(mut self,value:Option<crate::services::local_sam::Config>)->Self{self.sam=Arc::new(value);self}
+    pub fn with_cutout_config(mut self,value:Option<crate::services::local_cutout::Config>)->Self{self.cutout=Arc::new(value);self}
+    pub fn with_enhance_config(mut self,value:Option<crate::services::local_enhance::Config>)->Self{self.enhance=Arc::new(value);self}
+    pub fn with_kokoro_runtime(mut self,value:Option<crate::services::local_kokoro::Runtime>)->Self{self.kokoro=Arc::new(value);self}
+    pub fn with_chatterbox_runtime(mut self,value:Option<crate::services::local_chatterbox::Runtime>)->Self{self.chatterbox=Arc::new(value);self}
+    pub fn with_tts_config(mut self, tts: crate::services::local_tts::TtsConfig) -> Self { self.tts=Arc::new(tts);self }
+    pub fn with_speech_config(mut self, speech: crate::services::local_speech::SpeechConfig) -> Self { self.speech=Arc::new(speech);self }
 
     pub fn with_workload_config(mut self, workload: WorkloadConfig) -> Self {
         self.workload = Arc::new(workload);
@@ -1021,3 +1075,7 @@ mod tests {
         );
     }
 }
+
+impl AppState {pub fn with_selfie_config(mut self,value:Option<crate::services::local_selfie::Config>)->Self {self.selfie=Arc::new(value);self}}
+
+impl AppState {pub fn with_person_config(mut self,value:Option<crate::services::local_person::Config>)->Self {self.person=Arc::new(value);self}}

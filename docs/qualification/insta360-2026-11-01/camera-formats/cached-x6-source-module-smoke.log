@@ -1,0 +1,3 @@
+cached X6 case1 PASS; firmwareSome("v1.0.20"); window{"sourceSize":[7744,7744],"destinationSize":[7680,7680],"offset":[0,0]}
+cached X6 case2 PASS; firmwareSome("v1.2.35"); window{"sourceSize":[7744,7744],"destinationSize":[7680,7680],"offset":[0,0]}
+cached X6 case3 PASS; firmwareSome("v1.0.20"); window{"sourceSize":[7744,7744],"destinationSize":[7680,7680],"offset":[0,0]}

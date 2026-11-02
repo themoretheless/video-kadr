@@ -96,7 +96,17 @@ impl Default for WorkloadConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppConfig {
+    pub speech: crate::services::local_speech::SpeechConfig,
+    pub tts: crate::services::local_tts::TtsConfig,
+    pub enhance:Option<crate::services::local_enhance::Config>,
+    pub cutout:Option<crate::services::local_cutout::Config>,
+    pub selfie:Option<crate::services::local_selfie::Config>,
+    pub person:Option<crate::services::local_person::Config>,
+    pub sam:Option<crate::services::local_sam::Config>,
+    pub kokoro:Option<crate::services::local_kokoro::Runtime>,
+    pub chatterbox:Option<crate::services::local_chatterbox::Runtime>,
     pub storage: PathBuf,
+    pub mcp_token: Option<String>,
     pub object_store_url: Option<String>,
     pub pexels_api_key: Option<String>,
     pub youtube_oauth: Option<YouTubeOAuthConfig>,
@@ -238,6 +248,16 @@ impl AppConfig {
                 workload_defaults.max_download_height,
             )?,
         };
+        let mcp_token = lookup("VIDEO_KADR_MCP_TOKEN");
+        if mcp_token.as_ref().is_some_and(|token| {
+            token.len() < 32
+                || token.len() > 256
+                || !token.bytes().all(|byte| byte.is_ascii_graphic())
+        }) {
+            return Err(anyhow!(
+                "VIDEO_KADR_MCP_TOKEN must contain 32-256 printable ASCII characters"
+            ));
+        }
         let cors_origins = CorsOrigins::parse(lookup("CORS_ALLOW_ORIGINS"))?;
         let profile = lookup("ENCODE_PROFILE")
             .as_deref()
@@ -335,7 +355,17 @@ impl AppConfig {
         }
 
         Ok(Self {
+            speech: crate::services::local_speech::SpeechConfig::from_lookup(&mut lookup)?,
+            tts: crate::services::local_tts::TtsConfig::from_lookup(&mut lookup)?,
+            enhance:crate::services::local_enhance::Config::from_lookup(&mut lookup)?,
+            cutout:crate::services::local_cutout::Config::from_lookup(&mut lookup)?,
+            selfie:crate::services::local_selfie::Config::from_lookup(&mut lookup)?,
+            person:crate::services::local_person::Config::from_lookup(&mut lookup)?,
+            sam:crate::services::local_sam::Config::from_lookup(&mut lookup)?,
+            kokoro:crate::services::local_kokoro::Runtime::from_lookup(&mut lookup)?,
+            chatterbox:crate::services::local_chatterbox::Runtime::from_lookup(&mut lookup)?,
             storage,
+            mcp_token,
             object_store_url,
             pexels_api_key,
             youtube_oauth,

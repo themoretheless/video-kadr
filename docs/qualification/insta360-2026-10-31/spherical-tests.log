@@ -1,0 +1,308 @@
+   Compiling cfg-if v1.0.4
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-core v0.3.32
+   Compiling once_cell v1.21.4
+   Compiling memchr v2.8.1
+   Compiling smallvec v1.15.1
+   Compiling scopeguard v1.2.0
+   Compiling bytes v1.11.1
+   Compiling itoa v1.0.18
+   Compiling libc v0.2.186
+   Compiling serde_core v1.0.228
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-io v0.3.32
+   Compiling log v0.4.32
+   Compiling zerofrom v0.1.8
+   Compiling futures-task v0.3.32
+   Compiling lock_api v0.4.14
+   Compiling writeable v0.6.3
+   Compiling litemap v0.8.2
+   Compiling utf8_iter v1.0.4
+   Compiling yoke v0.8.3
+   Compiling futures-sink v0.3.32
+   Compiling icu_normalizer_data v2.2.0
+   Compiling slab v0.4.12
+   Compiling tracing-core v0.1.36
+   Compiling percent-encoding v2.3.2
+   Compiling typenum v1.20.1
+   Compiling icu_properties_data v2.2.0
+   Compiling bitflags v2.12.1
+   Compiling equivalent v1.0.2
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling subtle v2.6.1
+   Compiling hashbrown v0.17.1
+   Compiling form_urlencoded v1.2.2
+   Compiling zmij v1.0.21
+   Compiling bytemuck v1.25.2
+   Compiling crossbeam-utils v0.8.21
+   Compiling thiserror v2.0.18
+   Compiling simd-adler32 v0.3.10
+   Compiling generic-array v0.14.7
+   Compiling spin v0.9.9
+   Compiling allocator-api2 v0.2.21
+   Compiling zeroize v1.9.0
+   Compiling tower-service v0.3.3
+   Compiling parking v2.2.1
+   Compiling foldhash v0.1.5
+   Compiling ryu v1.0.23
+   Compiling futures-util v0.3.32
+   Compiling adler2 v2.0.1
+   Compiling tracing v0.1.44
+   Compiling num-traits v0.2.19
+   Compiling aws-lc-sys v0.45.0
+   Compiling futures-channel v0.3.32
+   Compiling crc-catalog v2.5.0
+   Compiling http v1.4.1
+   Compiling hashbrown v0.15.5
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling untrusted v0.9.0
+   Compiling core-foundation-sys v0.8.7
+   Compiling base64 v0.22.1
+   Compiling icu_collections v2.2.0
+   Compiling icu_locale_core v2.2.0
+   Compiling crc v3.4.0
+   Compiling httparse v1.10.1
+   Compiling indexmap v2.14.0
+   Compiling libm v0.2.16
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling crc32fast v1.5.1
+   Compiling miniz_oxide v0.9.1
+   Compiling rustls-pki-types v1.15.1
+   Compiling parking_lot_core v0.9.12
+   Compiling errno v0.3.14
+   Compiling mio v1.2.1
+   Compiling socket2 v0.6.4
+   Compiling signal-hook-registry v1.4.8
+   Compiling aws-lc-rs v1.18.1
+   Compiling parking_lot v0.12.5
+   Compiling hashlink v0.10.0
+   Compiling http-body v1.0.1
+   Compiling tokio v1.52.3
+   Compiling atomic-waker v1.1.2
+   Compiling try-lock v0.2.5
+   Compiling fnv v1.0.7
+   Compiling httpdate v1.0.3
+   Compiling tower-layer v0.3.3
+   Compiling icu_provider v2.2.0
+   Compiling want v0.3.1
+   Compiling flate2 v1.1.10
+   Compiling icu_properties v2.2.0
+   Compiling digest v0.10.7
+   Compiling icu_normalizer v2.2.0
+   Compiling concurrent-queue v2.5.0
+   Compiling sync_wrapper v1.0.2
+   Compiling cpufeatures v0.2.17
+   Compiling rand_core v0.10.1
+   Compiling event-listener v5.4.1
+   Compiling libsqlite3-sys v0.30.1
+   Compiling futures-intrusive v0.5.0
+   Compiling sha2 v0.10.9
+   Compiling http-body-util v0.1.3
+   Compiling hybrid-array v0.4.14
+   Compiling crossbeam-queue v0.3.12
+   Compiling miniz_oxide v0.8.9
+   Compiling fdeflate v0.3.7
+   Compiling ipnet v2.12.1
+   Compiling mime v0.3.17
+   Compiling zerocopy v0.8.56
+   Compiling atoi v2.0.0
+   Compiling getrandom v0.4.2
+   Compiling crossbeam-epoch v0.9.20
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling rustls-webpki v0.103.15
+   Compiling png v0.18.1
+   Compiling core_maths v0.1.1
+   Compiling security-framework-sys v2.17.0
+   Compiling idna_adapter v1.2.2
+   Compiling either v1.16.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling idna v1.1.0
+   Compiling rustls v0.23.43
+   Compiling core-foundation v0.10.1
+   Compiling url v2.5.8
+   Compiling flume v0.11.1
+   Compiling font-types v0.12.6
+   Compiling quick-error v2.0.1
+   Compiling unicase v2.9.0
+   Compiling zune-core v0.5.3
+   Compiling regex-syntax v0.8.10
+   Compiling weezl v0.1.12
+   Compiling security-framework v3.7.0
+   Compiling mime_guess v2.0.5
+   Compiling zune-jpeg v0.5.15
+   Compiling read-fonts v0.41.0
+   Compiling ttf-parser v0.25.1
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling crossbeam-deque v0.8.7
+   Compiling strict-num v0.1.1
+   Compiling fax v0.2.7
+   Compiling lazy_static v1.5.0
+   Compiling arrayref v0.3.9
+   Compiling color_quant v1.1.0
+   Compiling tinyvec_macros v0.1.1
+   Compiling pxfm v0.1.30
+   Compiling byteorder-lite v0.1.0
+   Compiling tinyvec v1.12.0
+   Compiling regex-automata v0.4.14
+   Compiling futures-executor v0.3.32
+   Compiling image-webp v0.2.4
+   Compiling digest v0.11.3
+   Compiling gif v0.14.2
+   Compiling tiny-skia-path v0.12.0
+   Compiling sharded-slab v0.1.7
+   Compiling rayon-core v1.13.0
+   Compiling slotmap v1.1.1
+   Compiling tokio-stream v0.1.18
+   Compiling tracing-serde v0.2.0
+   Compiling chacha20 v0.10.2
+   Compiling memmap2 v0.9.12
+   Compiling iana-time-zone v0.1.65
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.9
+   Compiling encoding_rs v0.8.35
+   Compiling sqlx-core v0.8.6
+   Compiling unicode-bidi-mirroring v0.4.0
+   Compiling unicode-ccc v0.4.0
+   Compiling spin v0.10.1
+   Compiling unicode-bidi v0.3.18
+   Compiling same-file v1.0.6
+   Compiling rand_core v0.6.4
+   Compiling base64ct v1.8.3
+   Compiling arrayvec v0.7.8
+   Compiling unicode-properties v0.1.4
+   Compiling unicode-script v0.5.8
+   Compiling tokio-util v0.7.18
+   Compiling tower v0.5.3
+   Compiling unicode-linebreak v0.1.5
+   Compiling nu-ansi-term v0.50.3
+   Compiling rustybuzz v0.20.1
+   Compiling password-hash v0.5.0
+   Compiling tower-http v0.6.11
+   Compiling tiny-skia v0.12.0
+   Compiling crc-fast v1.10.0
+   Compiling matchers v0.2.0
+   Compiling walkdir v2.5.0
+   Compiling moxcms v0.8.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling h2 v0.4.19
+   Compiling half v2.7.1
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling tiff v0.11.3
+   Compiling multer v3.1.0
+   Compiling fontdb v0.23.0
+   Compiling chrono v0.4.45
+   Compiling rand v0.10.2
+   Compiling rayon v1.12.0
+   Compiling nix v0.31.3
+   Compiling anyhow v1.0.104
+   Compiling md-5 v0.11.0
+   Compiling axum-core v0.4.5
+   Compiling itertools v0.14.0
+   Compiling itertools v0.15.0
+   Compiling weftcut-eval v0.0.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/weftcut-eval)
+   Compiling sqlx-sqlite v0.8.6
+   Compiling quick-xml v0.41.0
+   Compiling filmcraft-time v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/filmcraft-time)
+   Compiling serde_path_to_error v0.1.20
+   Compiling blake2 v0.10.6
+   Compiling getrandom v0.2.17
+   Compiling roxmltree v0.21.1
+   Compiling matchit v0.7.3
+   Compiling humantime v2.4.0
+   Compiling http-range-header v0.4.2
+   Compiling tower-http v0.5.2
+   Compiling ring v0.17.14
+   Compiling argon2 v0.5.3
+   Compiling async-stream v0.3.6
+   Compiling weftcut-conversion v0.0.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/weftcut-conversion)
+   Compiling concat-text v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/concat-text)
+   Compiling filmcraft-captions v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/filmcraft-captions)
+   Compiling video-kadr-mask-core v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/mask-core)
+   Compiling filmcraft-color v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/filmcraft-color)
+   Compiling uuid v1.23.2
+   Compiling libloading v0.8.9
+   Compiling filmcraft-audio-dsp v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/filmcraft-audio-dsp)
+   Compiling generator v0.8.9
+   Compiling rustix v1.1.4
+   Compiling fastrand v2.4.1
+   Compiling scoped-tls v1.0.1
+   Compiling sqlx-macros-core v0.8.6
+   Compiling hyper v1.10.1
+   Compiling loom v0.7.2
+   Compiling image v0.25.10
+   Compiling harfrust v0.12.0
+   Compiling skrifa v0.44.0
+   Compiling sqlx-macros v0.8.6
+   Compiling sqlx v0.8.6
+   Compiling hyper-util v0.1.20
+   Compiling tempfile v3.27.0
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.7.9
+   Compiling image-compare v0.5.0
+   Compiling reqwest v0.13.4
+   Compiling filmcraft-text v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vendor/filmcraft-text)
+   Compiling object_store v0.14.1
+   Compiling video-kadr-backend v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend)
+src/services/concat_freeze_capture.rs:155:9: warning: variable does not need to be mutable
+src/jobs/runner.rs:225:13: warning: unused import: `crate::ports::RenderCache`
+src/domain/concat_chromatic_aberration.rs:74:17: warning: unused variable: `h`: help: if this is intentional, prefix it with an underscore: `_h`
+src/tools/args.rs:583:21: warning: unused variable: `cached_filters`: help: if this is intentional, prefix it with an underscore: `_cached_filters`
+src/domain/effect_context_sample.rs:8:8: warning: method `shifted` is never used
+src/domain/transition_auto_distortion_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_auto_layout_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_generator_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_distortion_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_layout_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_move_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_generator_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/ordinary_key_auto_motion_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_motion_import_tests.rs:4:4: warning: function `picture` is never used
+src/domain/graphic_clip.rs:142:19: warning: method `evaluated_layers` is never used
+src/domain/transition_kernel_pack/transitions/mod.rs:43:8: warning: function `apply` is never used
+src/domain/transition_kernel_pack/transitions/mod.rs:75:8: warning: function `audio_gains` is never used
+src/domain/filmcraft_source_effects.rs:175:15: warning: function `apply` is never used
+src/domain/filmcraft_source_effects.rs:179:15: warning: function `apply_with_project` is never used
+src/domain/concat_tempo.rs:427:19: warning: methods `push_packet` and `push` are never used
+src/domain/concat_pitch.rs:55:8: warning: associated function `silence` is never used
+src/domain/concat_pitch.rs:78:17: warning: type alias `Pitch` is never used
+src/domain/concat_pitch.rs:79:17: warning: type alias `FloatPitch` is never used
+src/domain/concat_pitch.rs:85:5: warning: field `packet_frames` is never read
+src/domain/concat_pitch.rs:91:19: warning: multiple associated items are never used
+src/domain/concat_enhance_voice.rs:47:19: warning: method `process_hop` is never used
+src/domain/concat_pitch_timeline.rs:7:17: warning: type alias `Timeline` is never used
+src/domain/concat_pitch_timeline.rs:8:17: warning: type alias `FloatTimeline` is never used
+src/domain/concat_pitch_timeline.rs:10:19: warning: struct `GraphTimeline` is never constructed
+src/domain/concat_pitch_timeline.rs:22:19: warning: associated items `new`, `new_with_source_planar`, `reset`, `pump`, and `render` are never used
+src/domain/concat_format_plan.rs:103:5: warning: variants `Denoise` and `Compressor` are never constructed
+src/domain/concat_format_plan.rs:112:19: warning: associated function `from_name` is never used
+src/domain/concat_format_plan.rs:159:9: warning: field `conversions` is never read
+src/domain/concat_ebur128.rs:26:19: warning: associated items `new` and `range` are never used
+src/tools/args.rs:29:7: warning: constant `MAX_CACHE_SIZE` is never used
+src/tools/args.rs:50:4: warning: function `cache_filter_graph` is never used
+src/tools/args.rs:61:4: warning: function `get_cached_filter_graph` is never used
+src/tools/packet_pitch.rs:7:19: warning: struct `Stream` is never constructed
+src/tools/packet_pitch.rs:12:8: warning: associated items `new` and `render` are never used
+src/tools/packet_pitch.rs:41:25: warning: enum `Reader` is never used
+src/tools/packet_pitch.rs:47:27: warning: associated items `new` and `render` are never used
+src/tools/packet_pitch.rs:64:7: warning: trait `FloatRead` is never used
+src/tools/packet_pitch.rs:72:8: warning: struct `FloatStream` is never constructed
+src/tools/packet_pitch.rs:77:8: warning: associated function `new` is never used
+src/tools/packet_pitch.rs:111:19: warning: struct `FloatReader` is never constructed
+src/tools/packet_pitch.rs:115:19: warning: associated items `new` and `render` are never used
+src/tools/packet_pitch.rs:136:6: warning: enum `Selected` is never used
+src/tools/packet_pitch.rs:143:19: warning: struct `PlannedReader` is never constructed
+src/tools/packet_pitch.rs:171:19: warning: associated items `new` and `render` are never used
+src/tools/packet_clip.rs:238:19: warning: method `reset` is never used
+warning: `video-kadr-backend` (lib) generated 50 warnings (run `cargo fix --lib -p video-kadr-backend` to apply 1 suggestion)
+tests/spherical_video.rs:5:280: error[E0624]: method `validate` is private: private method
+tests/spherical_video.rs:6:131: error[E0624]: method `validate` is private: private method
+tests/spherical_video.rs:18:35: error[E0271]: type mismatch resolving `<i32 as Mul>::Output == usize`: expected `usize`, found `i32`
+tests/spherical_video.rs:18:50: error[E0271]: type mismatch resolving `<i32 as Add>::Output == usize`: expected `usize`, found `i32`
+error: could not compile `video-kadr-backend` (test "spherical_video") due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...

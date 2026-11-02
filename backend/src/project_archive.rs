@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::db::{
     valid_composition_source_id, COMPOSITION_PROJECT_MODE, COMPOSITION_PROJECT_SCHEMA_VERSION,
-    MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES, MAX_COMPOSITION_PROJECT_NAME_BYTES,
+    MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES, MAX_COMPOSITION_PROJECT_NAME_BYTES,
     MAX_COMPOSITION_PROJECT_SOURCES, MAX_LIBRARY_TAGS, MAX_LIBRARY_TAG_BYTES,
     MAX_LIBRARY_TAG_CHARS, MAX_LIBRARY_TITLE_BYTES, MAX_LIBRARY_TITLE_CHARS,
 };
@@ -25,10 +25,10 @@ use crate::db::{
 pub const ARCHIVE_MEDIA_TYPE: &str = "application/vnd.video-editor.project";
 pub const ARCHIVE_EXTENSION: &str = "veproj";
 pub const ARCHIVE_FORMAT_VERSION: u16 = 1;
-pub const MAX_ARCHIVE_MANIFEST_BYTES: usize = 3 * 1024 * 1024;
+pub const MAX_ARCHIVE_MANIFEST_BYTES: usize = MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES + 1024 * 1024;
 pub const MAX_ARCHIVE_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub const MAX_ARCHIVE_TOTAL_MEDIA_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-pub const MAX_ARCHIVE_BYTES: u64 = MAX_ARCHIVE_TOTAL_MEDIA_BYTES + 4 * 1024 * 1024;
+pub const MAX_ARCHIVE_BYTES: u64 = MAX_ARCHIVE_TOTAL_MEDIA_BYTES + MAX_ARCHIVE_MANIFEST_BYTES as u64 + 1024 * 1024;
 pub const MAX_ARCHIVE_MULTIPART_BYTES: usize = MAX_ARCHIVE_BYTES as usize + 1024 * 1024;
 
 const ARCHIVE_MAGIC: &[u8; 8] = b"VEPROJ\r\n";
@@ -65,6 +65,8 @@ pub struct ArchivedSource {
     pub filename: String,
     pub media_type: String,
     pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_filename: Option<String>,
     pub duration: Option<f64>,
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -166,6 +168,9 @@ impl ProjectArchiveManifest {
 }
 
 pub async fn fingerprint_file(path: &Path) -> Result<(u64, String), ArchiveError> {
+    fingerprint_file_with_limit(path,MAX_ARCHIVE_ENTRY_BYTES).await
+}
+pub(crate) async fn fingerprint_file_with_limit(path: &Path,limit:u64) -> Result<(u64,String),ArchiveError> {
     let mut file = tokio::fs::File::open(path).await?;
     let mut hasher = Sha256::new();
     let mut total = 0_u64;
@@ -178,7 +183,7 @@ pub async fn fingerprint_file(path: &Path) -> Result<(u64, String), ArchiveError
         total = total
             .checked_add(read as u64)
             .ok_or(ArchiveError::Limit("media size overflow"))?;
-        if total > MAX_ARCHIVE_ENTRY_BYTES {
+        if total > limit {
             return Err(ArchiveError::Limit("media entry exceeds the archive limit"));
         }
         hasher.update(&buffer[..read]);
@@ -342,11 +347,9 @@ where
             filename,
             path,
         };
-        let mut staged = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(staged_media.path())
-            .await?;
+        let mut options=tokio::fs::OpenOptions::new();options.write(true).create_new(true);
+        #[cfg(unix)]{options.mode(0o600);}
+        let mut staged=options.open(staged_media.path()).await?;
         let mut hasher = Sha256::new();
         copy_exact_and_hash(&mut reader, &mut staged, media_length, &mut hasher).await?;
         staged.flush().await?;
@@ -384,7 +387,7 @@ fn validate_manifest(manifest: &ProjectArchiveManifest) -> Result<Vec<[u8; 32]>,
     }
     let document_bytes = serde_json::to_vec(&manifest.project.document)
         .map_err(|_| ArchiveError::Invalid("project document cannot be serialized"))?;
-    if document_bytes.len() > MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES {
+    if document_bytes.len() > crate::db::composition_document_byte_limit(&manifest.project.document).map_err(|_| ArchiveError::Invalid("invalid project document size"))? {
         return Err(ArchiveError::Limit("project document exceeds its limit"));
     }
     if manifest.sources.len() > MAX_COMPOSITION_PROJECT_SOURCES {
@@ -410,6 +413,14 @@ fn validate_manifest(manifest: &ProjectArchiveManifest) -> Result<Vec<[u8; 32]>,
             return Err(ArchiveError::Invalid("invalid media type"));
         }
         validate_title(source.title.as_deref())?;
+        if source.original_filename.as_ref().is_some_and(|name| {
+            name.is_empty()
+                || name.len() > 4096
+                || name.contains(['/', '\\'])
+                || name.chars().any(char::is_control)
+        }) {
+            return Err(ArchiveError::Invalid("invalid original media filename"));
+        }
         validate_tags(&source.tags)?;
         if source.byte_length == 0 || source.byte_length > MAX_ARCHIVE_ENTRY_BYTES {
             return Err(ArchiveError::Limit("media entry exceeds its size limit"));
@@ -439,6 +450,17 @@ fn validate_manifest(manifest: &ProjectArchiveManifest) -> Result<Vec<[u8; 32]>,
 }
 
 fn document_source_ids(document: &Value) -> Result<Vec<&str>, ArchiveError> {
+    if document.get("compositions").is_some() {
+        crate::db::extract_document_source_ids(document).map_err(|_| ArchiveError::Invalid("invalid nested composition document"))?;
+        let mut ids = std::collections::BTreeSet::new();
+        for composition in document["compositions"].as_object().unwrap().values() {
+            for id in composition["content"]["sources"].as_object().unwrap().keys() {
+                ids.insert(id.as_str());
+            }
+        }
+        return Ok(ids.into_iter().collect());
+    }
+
     let document = document.as_object().ok_or(ArchiveError::Invalid(
         "composition document is not an object",
     ))?;
@@ -478,7 +500,7 @@ fn validate_document_references(
     match value {
         Value::Object(object) => {
             for (key, child) in object {
-                if key == "sourceId" {
+                if matches!(key.as_str(), "sourceId" | "maskSourceId" | "originalSourceId" | "copySourceId") {
                     let source_id = child
                         .as_str()
                         .ok_or(ArchiveError::Invalid("clip sourceId is not a string"))?;
@@ -735,6 +757,7 @@ mod tests {
                 source_id: "source-a".into(),
                 filename: "source.wav".into(),
                 media_type: "audio".into(),
+                original_filename: None,
                 title: Some("Voice".into()),
                 duration: Some(1.0),
                 width: None,
@@ -907,6 +930,16 @@ mod tests {
             read_project_archive(std::io::Cursor::new(oversized_header), directory.path()).await,
             Err(ArchiveError::Limit("manifest exceeds the archive limit"))
         ));
+    }
+
+    #[tokio::test]
+    async fn manifest_rejects_missing_original_or_copy_sources() {
+        for key in ["originalSourceId", "copySourceId", "maskSourceId"] {
+            let (_directory, mut manifest, _inputs) = fixture().await;
+            manifest.project.document["metadata"] = serde_json::json!({"mediaVersions":{"clip":{"originalSourceId":"source-a","copySourceId":"source-a"}}});
+            manifest.project.document["metadata"]["mediaVersions"]["clip"][key] = serde_json::json!("absent");
+            assert!(matches!(validate_manifest(&manifest), Err(ArchiveError::Invalid("clip references an unknown source"))));
+        }
     }
 
     #[tokio::test]

@@ -1,0 +1,24 @@
+//! Stroke fixtures from the pinned active original renderer.
+use filmcraft_project::{Param,ParamValue};use filmcraft_render::{effects::{apply,FxCtx},image::Image};use serde_json::json;
+fn main(){let mut cases=vec![];
+for(w,h)in[(1,7),(7,1),(6,4),(18,10)]{for position in 0u32..3{for only in[false,true]{for(width,opacity)in[(0.,100.),(0.5,25.),(2.5,100.),(500.,0.)]{for color in[[1.,1.,1.,1.],[-1.,2.,0.5,0.]]{
+let rgba:Vec<u8>=(0..w*h).flat_map(|i|[[64,128,192,128],[0,0,0,0],[0,255,0,255],[255,0,0,64],[128,64,255,1]][(i+i/w)%5]).collect();let px=rgba.chunks_exact(4).flat_map(|p|{let a=p[3]as f32/255.;[filmcraft_color::srgb_to_linear(p[0]as f32/255.)*a,filmcraft_color::srgb_to_linear(p[1]as f32/255.)*a,filmcraft_color::srgb_to_linear(p[2]as f32/255.)*a,a]}).collect();let mut image=Image{w,h,px};let mut e=filmcraft_project::effect_defs().iter().find(|e|e.id=="stroke").unwrap().instance();
+e.params.insert("position".into(),Param::new(ParamValue::Choice(position)));e.params.insert("only".into(),Param::new(ParamValue::Bool(only)));e.params.insert("color".into(),Param::new(ParamValue::Color(color)));for(n,v)in[("width",width),("opacity",opacity)]{e.params.insert(n.into(),Param::new(ParamValue::Float(v)));}
+let cx=FxCtx{t:filmcraft_time::Tick(0),px_scale:1.,seconds:0.,timecode:"",clip_name:"",project:None,env:None,working:filmcraft_color::WorkingSpace::Rec709};apply(&mut image,&e,&cx);cases.push(json!({"parameters":{"position":position,"only":only,"width":width,"opacity":opacity,"color":color},"width":w,"height":h,"rgba":rgba,"bits":image.px.iter().map(|v|v.to_bits()).collect::<Vec<_>>()}));
+}}}}}let mut media=vec![];
+for position in 0u32..3 {for only in [false,true] {for tick in [0u64,250000,500000] {
+ let rgba:Vec<u8>=(0..256).flat_map(|i|{let v=if i%16<8&&i/16<12{255}else{32};[v,v,v,if i%16<8&&i/16<12{128}else{0}]}).collect();
+ let mut frames=vec![];
+ for index in 0..(1000000-tick).div_ceil(100000) {
+  let local=(tick+index*100000).min(500000);let t=local as f64/500000.;
+  let px=rgba.chunks_exact(4).flat_map(|p|{let a=p[3]as f32/255.;let v=filmcraft_color::srgb_to_linear(p[0]as f32/255.)*a;[v,v,v,a]}).collect();
+  let mut frame=Image{w:16,h:16,px};let mut e=filmcraft_project::effect_defs().iter().find(|e|e.id=="stroke").unwrap().instance();
+  e.params.insert("position".into(),Param::new(ParamValue::Choice(position)));e.params.insert("only".into(),Param::new(ParamValue::Bool(only)));
+  e.params.insert("color".into(),Param::new(ParamValue::Color([t as f32,(1.-t)as f32,(0.5*t)as f32,t as f32])));
+  for(n,v)in[("width",t*4.),("opacity",25.+75.*t)]{e.params.insert(n.into(),Param::new(ParamValue::Float(v)));}
+  let cx=FxCtx{t:filmcraft_time::Tick(local as i64),px_scale:1.,seconds:0.,timecode:"",clip_name:"",project:None,env:None,working:filmcraft_color::WorkingSpace::Rec709};apply(&mut frame,&e,&cx);
+  frames.push(frame.px.iter().map(|v|v.to_bits()).collect::<Vec<_>>());
+ }
+ media.push(json!({"position":position,"only":only,"localTick":tick,"rgba":rgba,"bits":frames[0],"frames":frames}));
+}}}
+println!("{}",json!({"commit":"5231852443363f001c3f6b396dd9b1e6461ae2be","cases":cases,"media":media}));}

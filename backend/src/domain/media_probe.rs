@@ -65,6 +65,9 @@ pub struct StreamMetadata {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub sample_rate: Option<u32>,
+    /// Decoder scalar/planar format, retained for source-faithful audio DSP.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_format: Option<String>,
     pub channels: Option<u32>,
     pub channel_layout: Option<String>,
     pub rotation_degrees: i32,
@@ -206,6 +209,7 @@ fn normalize_stream(stream: &Value) -> StreamMetadata {
         width: unsigned32(stream.get("width")),
         height: unsigned32(stream.get("height")),
         sample_rate: unsigned32(stream.get("sample_rate")),
+        sample_format: string(stream, "sample_fmt"),
         channels: unsigned32(stream.get("channels")),
         channel_layout: string(stream, "channel_layout"),
         rotation_degrees: rotation(stream),

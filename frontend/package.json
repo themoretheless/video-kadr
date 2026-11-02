@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:agent": "node scripts/run-agent-mcp-e2e.mjs",
     "test:e2e:real": "node scripts/run-real-composition-e2e.mjs",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:tokens": "node scripts/check-design-tokens.mjs",
@@ -18,7 +19,13 @@
     "bench:canvas": "node bench/canvas/run.mjs",
     "storybook": "storybook dev --no-open",
     "build-storybook": "storybook build",
-    "test:stories": "playwright test --config storybook.playwright.config.ts"
+    "test:stories": "playwright test --config storybook.playwright.config.ts",
+    "test:e2e:audio-gain": "node scripts/run-audio-gain-e2e.mjs",
+    "test:e2e:native-audio": "node scripts/run-native-audio-preview-e2e.mjs",
+    "build:preview-core": "node scripts/build-preview-core.mjs",
+    "test:e2e:clipboard": "node scripts/qualify-native-system-clipboard.mjs",
+    "test:e2e:clipboard:live": "node scripts/qualify-native-system-clipboard.mjs --live",
+    "test:e2e:source-graph": "node scripts/qualify-source-run-graph.mjs"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",

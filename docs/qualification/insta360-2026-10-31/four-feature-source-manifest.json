@@ -1,0 +1,147 @@
+{
+  "kind": "selected dirty-worktree source snapshot; not a Git commit or exhaustive dependency inventory",
+  "studioVersion": "6.0.2",
+  "studioSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "sources": [
+    {
+      "path": "backend/src/domain/orientation_track.rs",
+      "bytes": 9273,
+      "sha256": "628384c2196a395429d574af55052e857fd2d46441f59801b22455baf5fd7a24"
+    },
+    {
+      "path": "backend/src/domain/rolling_shutter.rs",
+      "bytes": 5717,
+      "sha256": "30358d6b078aeae05e517852590e441b9fff32674c1099d20e7c74c5787487d5"
+    },
+    {
+      "path": "backend/src/domain/spherical_video.rs",
+      "bytes": 23558,
+      "sha256": "81ae279c9d12d423ae744761b016239f5726863fd7bab03abec277a66a0cd588"
+    },
+    {
+      "path": "backend/src/domain/spherical_optical_flow.rs",
+      "bytes": 15611,
+      "sha256": "322175a3fab02d7541d16147267167c4fe6cb1794f8f377a2a4ec6ec4fa76430"
+    },
+    {
+      "path": "backend/src/domain/gyro_drift.rs",
+      "bytes": 16235,
+      "sha256": "bbf3ff7a8946b10cb43cdfd6d6cebc742ca4f9c2d03fe2aef13fffa177ed67f7"
+    },
+    {
+      "path": "backend/src/domain/visual_gyro_drift.rs",
+      "bytes": 13179,
+      "sha256": "be979dcf5bb268f4dae6675c198bfb1c90158e2736f5bf3323190fd914cae291"
+    },
+    {
+      "path": "backend/src/domain/visual_gyro_drift_essential.rs",
+      "bytes": 9760,
+      "sha256": "336aae32f659b181c353963a9f69c7ecddccd692fc5eb09d8c4e23b67b828abf"
+    },
+    {
+      "path": "backend/src/domain/insta360_gyro.rs",
+      "bytes": 31821,
+      "sha256": "51ddc7774d0ca48583b9aec4edf50c8ec12167a6d15e657c2d673bf17911238e"
+    },
+    {
+      "path": "backend/src/domain/group_media.rs",
+      "bytes": 31123,
+      "sha256": "11d07deed142eacb7c565ff728e1f6c82feaef8a61a6651f67eabfa16ac48c96"
+    },
+    {
+      "path": "backend/src/services/insta360_visual_drift.rs",
+      "bytes": 11453,
+      "sha256": "a78d775a5f3c58860927903de91f6bfbdc2b1a689a9cd0bc7f0d0d513096a3e1"
+    },
+    {
+      "path": "backend/src/services/local_sam_reidentify.rs",
+      "bytes": 12695,
+      "sha256": "342f2fa60175eeb55cba2c608388114abd428d6fa188e6732da4e85d7a3f75ad"
+    },
+    {
+      "path": "backend/src/handlers/spherical_reidentify.rs",
+      "bytes": 8752,
+      "sha256": "543cab31620e110825804fa6111fc84afde941efda49483dd4db30b1b1da63a5"
+    },
+    {
+      "path": "backend/src/handlers/spherical_tracking.rs",
+      "bytes": 13136,
+      "sha256": "f7df3b1929ad5be353a0d824a55c5af2eb02c969b7789527fdaa51918590bc68"
+    },
+    {
+      "path": "backend/src/handlers/insta360.rs",
+      "bytes": 5157,
+      "sha256": "bb04293e1adf80e3d2f8aa54d5caff27cf52b0ba12083811d09bf702367c4bb3"
+    },
+    {
+      "path": "backend/src/db/composition_projects.rs",
+      "bytes": 38667,
+      "sha256": "8eae850dbcc9d25e64fecbd6cbd96733eb2bcdbd91f59e821383f4cac5958cdf"
+    },
+    {
+      "path": "backend/src/lib.rs",
+      "bytes": 38935,
+      "sha256": "d9c617e3c28418b04c5a8368267f2de74c4b4a150aca5c382d1fbcf1ee67e0a7"
+    },
+    {
+      "path": "backend/vision-runtime/src/sam_reidentification.rs",
+      "bytes": 24706,
+      "sha256": "370a7a5a4384da2bb15e58b134721774fef4a4036ae6d707b5df39a990924c04"
+    },
+    {
+      "path": "backend/vision-runtime/src/reidentify.rs",
+      "bytes": 7698,
+      "sha256": "ab51ce4afca44609f7f27c7d9bd7489a67e5c6c052a259b1cdaa4fb08b54a5a9"
+    },
+    {
+      "path": "backend/vision-runtime/src/slim_sam.rs",
+      "bytes": 23614,
+      "sha256": "0a7d928d5c9421267a84ebf3fc4c444f8db928eeab180cbd0e6b6fc3f00ba670"
+    },
+    {
+      "path": "backend/vision-runtime/src/main.rs",
+      "bytes": 8394,
+      "sha256": "6f53e7ea300c53fed94ff13504dfcc7ec2a3d90e7250040c6147e8580aa9f45b"
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "bytes": 162032,
+      "sha256": "704c8d1edc02c7a7ff20f155cdcfabc6cd85d1c65b0ae078132e917253dd0a31"
+    },
+    {
+      "path": "frontend/src/lib/composition/types.ts",
+      "bytes": 108536,
+      "sha256": "6cf4ccc618a58600a56946cab663119b403500cda1875d076528b48da3e06f42"
+    },
+    {
+      "path": "frontend/src/lib/motion/gyroOptions.ts",
+      "bytes": 2334,
+      "sha256": "7d5cdc242580c862d2a94364e610b2c0e6333b749261310ec29682bb10a5291c"
+    },
+    {
+      "path": "frontend/src/lib/motion/sphericalTracking.ts",
+      "bytes": 6857,
+      "sha256": "34363bdd3040cc491392f455fc3bbc70d8192fcdc053b04da4bb9b20e8488f24"
+    },
+    {
+      "path": "frontend/src/lib/components/composition/Insta360GyroImport.svelte",
+      "bytes": 8949,
+      "sha256": "4b318a58ac2312e2d8f103da36597f5da72911774994c9b3662d0be659df69c8"
+    },
+    {
+      "path": "frontend/src/lib/components/composition/SphericalSemanticTracker.svelte",
+      "bytes": 6529,
+      "sha256": "27fab14be0b9481d1d48e3097a7ac8462b757a8dd80bfc33cf17b70a47397f20"
+    },
+    {
+      "path": "frontend/src/lib/components/composition/NestedSphericalVideoInspector.svelte",
+      "bytes": 20587,
+      "sha256": "5333f95bb81b638c6afa02b3c71d44181d278be3e775b93f9e35ceeaf9770cec"
+    },
+    {
+      "path": "frontend/e2e/real-spherical-video.spec.ts",
+      "bytes": 17653,
+      "sha256": "b62871d69866440cb0d5fb4731bc63ed6dcc21166d45fd65299a1493d301f78c"
+    }
+  ]
+}

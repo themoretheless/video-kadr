@@ -1,0 +1,21 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "stationary",
+      "address": "0x1027cad68",
+      "endAddress": "0x1027cb4bc",
+      "sourceOffset": 41741672,
+      "sha256": "af2d4d9d6ffcfb95f778c198703ca4858c1ce66169ec6bcab0414802c58834ae"
+    },
+    {
+      "name": "bias",
+      "address": "0x1027cb4bc",
+      "endAddress": "0x1027cb4d0",
+      "sourceOffset": 41743548,
+      "sha256": "ac599ffd05af6658441540f597a51b563cceea98eb629a781075c5e22ecfb9e0"
+    }
+  ]
+}

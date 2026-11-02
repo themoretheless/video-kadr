@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256};
 use crate::capabilities::Capabilities;
 use crate::db::{
     valid_composition_source_id, CompositionProject, Project, SpaceRole, COMPOSITION_PROJECT_MODE,
-    COMPOSITION_PROJECT_SCHEMA_VERSION, MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES,
+    COMPOSITION_PROJECT_SCHEMA_VERSION, MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES,
     MAX_COMPOSITION_PROJECT_NAME_BYTES, MAX_COMPOSITION_PROJECT_SOURCES,
 };
 use crate::domain::project_collaboration::{ProjectRole, ReviewThread};
@@ -37,7 +37,7 @@ use ports::{
 const MAX_PROJECT_JSON_BYTES: usize = 64 * 1024;
 const COMPOSITION_DOCUMENT_SCHEMA_VERSION: u64 = 1;
 const MAX_COMPOSITION_PROJECT_REQUEST_BYTES: usize =
-    MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES + 64 * 1024;
+    MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES + 64 * 1024;
 
 pub fn system_router(port: Arc<dyn SystemPort>) -> Router {
     Router::new()
@@ -1192,11 +1192,16 @@ fn parse_composition_project_body(
     let document_size = serde_json::to_vec(&body.document)
         .map_err(|error| AppError::internal("serialize composition project document", error))?
         .len();
-    if document_size > MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES {
+    let limit = crate::db::composition_document_byte_limit(&body.document).map_err(|error| AppError::bad_request(error.to_string()))?;
+    if document_size > limit {
         return Err(AppError::payload_too_large(format!(
-            "document больше {MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES} байт"
+            "document больше {limit} байт"
         )));
     }
+    let source_ids = if document.contains_key("compositions") {
+        crate::db::extract_document_source_ids(&body.document)
+            .map_err(|error| AppError::bad_request(error.to_string()))?
+    } else {
     let sources = document
         .get("sources")
         .and_then(Value::as_object)
@@ -1222,6 +1227,8 @@ fn parse_composition_project_body(
         }
         source_ids.push(source_id.clone());
     }
+        source_ids
+    };
     let fallback_name = document
         .get("name")
         .and_then(Value::as_str)
@@ -1259,6 +1266,21 @@ mod tests {
 
     use super::*;
     use ports::RuntimeSystemPort;
+
+    #[test]
+    fn nested_project_save_body_preserves_revision_and_validates_graph() {
+        let content = crate::domain::composition::Composition::new(crate::domain::composition::CanvasSpec::default());
+        let document = json!({ "schemaVersion": 1, "root": "root", "compositions": { "root": { "content": content, "instances": [] } } });
+        let request = json!({ "schemaVersion": 2, "mode": "composition", "name": "Nested", "baseRevision": 7, "document": document });
+        let draft = parse_composition_project_body(serde_json::from_value(request.clone()).unwrap()).unwrap();
+        assert_eq!(draft.base_revision, Some(7));
+        assert_eq!(draft.document, document);
+        assert!(draft.source_ids.is_empty());
+        let mut invalid = request;
+        invalid["document"]["root"] = json!("missing");
+        assert!(parse_composition_project_body(serde_json::from_value(invalid).unwrap()).is_err());
+    }
+
 
     #[derive(Default)]
     struct FakeProjects {

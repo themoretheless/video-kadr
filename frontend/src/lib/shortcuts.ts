@@ -1,10 +1,16 @@
 export const SHORTCUT_SCHEMA_VERSION = 1 as const
 export const SHORTCUT_STORAGE_KEY = 'video-kadr:keyboard-shortcuts:v1'
 
-export type ShortcutMode = 'legacy' | 'composition'
+export type ShortcutMode = 'legacy' | 'composition' | 'native'
 export type ShortcutGroup = 'playback' | 'history' | 'timeline'
 
 export type ShortcutCommandId =
+  | 'native.copy'
+  | 'native.cut'
+  | 'native.paste'
+  | 'native.delete'
+  | 'native.undo'
+  | 'native.redo'
   | 'legacy.playPause'
   | 'legacy.framePrevious'
   | 'legacy.frameNext'
@@ -31,9 +37,17 @@ export type ShortcutCommandId =
   | 'composition.undo'
   | 'composition.redo'
   | 'composition.split'
+  | 'composition.splitAll'
+  | 'composition.freezeInsert'
+  | 'composition.merge'
+  | 'composition.copy'
+  | 'composition.paste'
+  | 'composition.pasteInsert'
   | 'composition.duplicate'
   | 'composition.delete'
   | 'composition.toggleSnapping'
+  | 'composition.toggleLinks'
+  | 'composition.linkSelection'
   | 'composition.nudgePrevious'
   | 'composition.nudgeNext'
   | 'composition.trimStart'
@@ -50,7 +64,7 @@ export interface ShortcutDefinition {
   group: ShortcutGroup
   label: string
   description: string
-  defaultBinding: ShortcutChord
+  defaultBinding: ShortcutChord | null
 }
 
 export interface ShortcutConflict {
@@ -65,6 +79,12 @@ export interface StoredShortcutSettings {
 }
 
 export const SHORTCUT_DEFINITIONS = [
+  shortcut('native.copy', 'native', 'timeline', 'Копировать выделение', 'Сохранить клипы и субтитры в буфер', 'Mod+KeyC'),
+  shortcut('native.cut', 'native', 'timeline', 'Вырезать выделение', 'Сохранить выделение в буфер и удалить одной правкой', 'Mod+KeyX'),
+  shortcut('native.paste', 'native', 'timeline', 'Вставить на курсоре', 'Вставить буфер в активный таймлайн на курсоре', 'Mod+KeyV'),
+  shortcut('native.delete', 'native', 'timeline', 'Удалить выделение', 'Удалить выбранные клипы и субтитры', 'Delete'),
+  shortcut('native.undo', 'native', 'history', 'Отменить', 'Отменить правку активного проекта таймлайнов', 'Mod+KeyZ'),
+  shortcut('native.redo', 'native', 'history', 'Повторить', 'Повторить правку активного проекта таймлайнов', 'Mod+Shift+KeyZ'),
   shortcut('legacy.playPause', 'legacy', 'playback', 'Воспроизведение / пауза', 'Переключить воспроизведение', 'Space'),
   shortcut('legacy.framePrevious', 'legacy', 'playback', 'Предыдущий кадр', 'Шаг назад ровно на один кадр', 'Comma'),
   shortcut('legacy.frameNext', 'legacy', 'playback', 'Следующий кадр', 'Шаг вперёд ровно на один кадр', 'Period'),
@@ -91,9 +111,17 @@ export const SHORTCUT_DEFINITIONS = [
   shortcut('composition.undo', 'composition', 'history', 'Отменить', 'Отменить последнее изменение', 'Mod+KeyZ'),
   shortcut('composition.redo', 'composition', 'history', 'Повторить', 'Вернуть отменённое изменение', 'Mod+Shift+KeyZ'),
   shortcut('composition.split', 'composition', 'timeline', 'Разрезать клип', 'Разрезать выбранный клип на плейхеде', 'KeyB'),
+  shortcut('composition.splitAll', 'composition', 'timeline', 'Разрезать все дорожки', 'Разрезать все клипы под плейхедом одним действием', 'Mod+KeyB'),
+  shortcut('composition.freezeInsert', 'composition', 'timeline', 'Вставить стоп-кадр', 'Вставить стоп-кадр на одну секунду со сдвигом продолжения', null),
+  shortcut('composition.merge', 'composition', 'timeline', 'Соединить фрагменты', 'Соединить совместимые соседние фрагменты одним действием', 'Mod+KeyJ'),
+  shortcut('composition.copy', 'composition', 'timeline', 'Копировать', 'Копировать выбранные ключи или клип', 'Mod+KeyC'),
+  shortcut('composition.paste', 'composition', 'timeline', 'Вставить', 'Вставить клип или ключевые кадры', 'Mod+KeyV'),
+  shortcut('composition.pasteInsert', 'composition', 'timeline', 'Вставить со сдвигом', 'Вставить клипы со сдвигом таймлайна', 'Mod+Shift+KeyV'),
   shortcut('composition.duplicate', 'composition', 'timeline', 'Дублировать клип', 'Дублировать выбранный клип', 'Mod+KeyD'),
   shortcut('composition.delete', 'composition', 'timeline', 'Удалить клип', 'Удалить выбранный клип', 'Delete'),
   shortcut('composition.toggleSnapping', 'composition', 'timeline', 'Переключить магнит', 'Включить или выключить snapping', 'KeyN'),
+  shortcut('composition.toggleLinks', 'composition', 'timeline', 'Переключить связи', 'Временно отключить или включить совместные правки связанных клипов', 'Alt+Shift+KeyG'),
+  shortcut('composition.linkSelection', 'composition', 'timeline', 'Связать / разорвать связь', 'Создать связь выбранных клипов или разорвать общую связь', 'Mod+KeyL'),
   shortcut('composition.nudgePrevious', 'composition', 'timeline', 'Клип на кадр раньше', 'Сдвинуть выбранный клип на один кадр назад', 'Alt+Comma'),
   shortcut('composition.nudgeNext', 'composition', 'timeline', 'Клип на кадр позже', 'Сдвинуть выбранный клип на один кадр вперёд', 'Alt+Period'),
   shortcut('composition.trimStart', 'composition', 'timeline', 'Обрезать начало', 'Обрезать начало выбранного клипа по плейхеду', 'BracketLeft'),
@@ -246,6 +274,11 @@ export function parseShortcutSettings(serialized: string): ShortcutBindings {
     if (!normalized) throw new Error(`Некорректное сочетание для «${definition.label}»`)
     bindings[definition.id] = normalized
   }
+  // Paste Insert was added to schema v1; preserve prior custom Shift+V bindings.
+  const storedBindings = value.bindings
+  if (value.bindings['composition.pasteInsert'] === undefined &&
+      shortcutConflicts('composition.pasteInsert', bindings['composition.pasteInsert'], bindings)
+        .some(id => storedBindings[id] !== undefined)) bindings['composition.pasteInsert'] = null
   if (findShortcutConflicts(bindings).length) throw new Error('Сохранённые сочетания конфликтуют друг с другом')
   return bindings
 }
@@ -281,7 +314,7 @@ function shortcut(
   group: ShortcutGroup,
   label: string,
   description: string,
-  defaultBinding: ShortcutChord,
+  defaultBinding: ShortcutChord | null,
 ): ShortcutDefinition {
   return { id, mode, group, label, description, defaultBinding }
 }

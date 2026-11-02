@@ -17,6 +17,7 @@ RUN apt-get update \
     && rm -f /tmp/SHA2-256SUMS \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/target/release/video-kadr-backend /usr/local/bin/video-kadr-backend
+COPY --from=build /app/target/release/video-kadr-media-probe /usr/local/bin/video-kadr-media-probe
 RUN groupadd --gid 10001 video-kadr \
     && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin video-kadr \
     && mkdir -p /data \

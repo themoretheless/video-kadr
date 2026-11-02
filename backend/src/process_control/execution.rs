@@ -56,10 +56,22 @@ pub(crate) enum ProcessStatus {
 
 pub(crate) async fn capture_output(
     runtime: &ProcessRuntime,
-    mut command: Command,
+    command: Command,
     policy: ProcessPolicy,
     limit: Duration,
 ) -> Result<Output> {
+    capture_output_cancellable(runtime, command, policy, limit, &CancellationToken::new()).await
+}
+
+/// Cancellation waits for the complete process group to stop before returning.
+pub(crate) async fn capture_output_cancellable(
+    runtime: &ProcessRuntime,
+    mut command: Command,
+    policy: ProcessPolicy,
+    limit: Duration,
+    cancel: &CancellationToken,
+) -> Result<Output> {
+    anyhow::ensure!(!cancel.is_cancelled(), "external command cancelled");
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let prepared = runtime.prepare(command, policy)?;
     let output_budget = prepared.output_budget();
@@ -70,15 +82,21 @@ pub(crate) async fn capture_output(
     let mut stdout = child.stdout.take().expect("stdout piped");
     let mut stderr = child.stderr.take().expect("stderr piped");
 
-    let captured = timeout(limit, async {
+    let captured = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            terminate_child_tree(&mut child, child_id).await;
+            anyhow::bail!("external command cancelled");
+        }
+        captured = timeout(limit, async {
         let (stdout, stderr, status) = tokio::try_join!(
             drain_bounded(&mut stdout, output_budget.capture_bytes),
             drain_bounded(&mut stderr, output_budget.capture_bytes),
             child.wait(),
         )?;
         Ok::<_, std::io::Error>((stdout, stderr, status))
-    })
-    .await;
+        }) => captured,
+    };
 
     match captured {
         Ok(Ok((stdout, stderr, status))) => {
@@ -161,10 +179,93 @@ pub(crate) async fn stream_with_progress(
 
     if detached_pipe_holders {
         terminate_process_group(child_id).await;
+        // Child exit can precede delivery of its final pipe bytes. Drain after
+        // cleaning up descendants, with a bound for independently escaped holders.
+        let _ = timeout(Duration::from_millis(200), async {
+            while !out_done || !err_done {
+                tokio::select! {
+                    line = out_lines.next_line(), if !out_done => match line {
+                        Ok(Some(line)) => {
+                            if let Some(percent) = parse(&line) {
+                                let _ = progress.send(percent.clamp(0.0, 100.0));
+                            }
+                        }
+                        _ => out_done = true,
+                    },
+                    line = err_lines.next_line(), if !err_done => match line {
+                        Ok(Some(line)) => {
+                            if let Some(percent) = parse(&line) {
+                                let _ = progress.send(percent.clamp(0.0, 100.0));
+                            }
+                            err_buf.push_line(&line);
+                        }
+                        _ => err_done = true,
+                    },
+                }
+            }
+        }).await;
     } else if matches!(status, ProcessStatus::Cancelled | ProcessStatus::TimedOut) {
         terminate_child_tree(&mut child, child_id).await;
     }
     Ok((status, err_buf.into_string()))
+}
+
+
+/// Read bounded records until the observer has enough data. Early completion,
+/// parse errors, cancellation and timeout all terminate and reap this process
+/// group before returning; the callback cannot leave a decoder scanning EOF.
+pub(crate) async fn capture_lines_until<T>(
+    runtime:&ProcessRuntime,mut command:Command,policy:ProcessPolicy,
+    limit:Duration,cancel:&CancellationToken,mut observe:impl FnMut(&str)->Result<Option<T>>,
+)->Result<(Option<T>,String)>{
+    anyhow::ensure!(!cancel.is_cancelled()&&!limit.is_zero(),"external record probe cancelled or zero timeout");
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let prepared=runtime.prepare(command,policy)?;let budget=prepared.output_budget();
+    let mut child=prepared.spawn()?;let pid=child.id();
+    let mut stdout=BoundedLineReader::new(child.stdout.take().expect("stdout piped"),budget);
+    let mut stderr=BoundedLineReader::new(child.stderr.take().expect("stderr piped"),budget);
+    let(mut out_done,mut err_done)=(false,false);let(mut out_bytes,mut err_bytes)=(0usize,0usize);
+    let mut diagnostic=BoundedTail::new(budget.capture_bytes);let deadline=Instant::now()+limit;
+    let result:Result<Option<T>>=loop{
+        if out_done&&err_done{
+            break tokio::select!{biased;
+                _=cancel.cancelled()=>Err(anyhow::anyhow!("external record probe cancelled")),
+                _=tokio::time::sleep_until(deadline)=>Err(ProcessTimeout.into()),
+                status=child.wait()=>match status{Ok(status)if status.success()=>Ok(None),Ok(_)=>Err(anyhow::anyhow!("external record probe failed")),Err(error)=>Err(error.into())}
+            };
+        }
+        tokio::select!{biased;
+            _=cancel.cancelled()=>break Err(anyhow::anyhow!("external record probe cancelled")),
+            _=tokio::time::sleep_until(deadline)=>break Err(ProcessTimeout.into()),
+            line=stdout.next_line_strict(),if !out_done=>match line{
+                Ok(Some(line))=>{
+                    out_bytes=out_bytes.saturating_add(line.len()+1);
+                    if out_bytes>budget.capture_bytes{break Err(ProcessOutputLimit.into());}
+                    match observe(&line){Ok(Some(value))=>break Ok(Some(value)),Ok(None)=>{},Err(error)=>break Err(error)}
+                },Ok(None)=>out_done=true,Err(error)=>break Err(error.into()),
+            },
+            line=stderr.next_line_strict(),if !err_done=>match line{
+                Ok(Some(line))=>{err_bytes=err_bytes.saturating_add(line.len()+1);if err_bytes>budget.capture_bytes{break Err(ProcessOutputLimit.into());}diagnostic.push_line(&line);},
+                Ok(None)=>err_done=true,Err(error)=>break Err(error.into()),
+            }
+        }
+    };
+    if !matches!(result,Ok(None)){terminate_child_tree(&mut child,pid).await;}
+    // Successful EOF can still leave pipe-holding descendants after the leader.
+    else{terminate_process_group(pid).await;}
+    if !err_done{
+        let tail=timeout(Duration::from_millis(200),async{
+            while let Some(line)=stderr.next_line_strict().await?{
+                err_bytes=err_bytes.saturating_add(line.len()+1);
+                if err_bytes>budget.capture_bytes{return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,"external stderr exceeded budget"));}
+                diagnostic.push_line(&line);
+            }
+            Ok::<_,std::io::Error>(())
+        }).await;
+        if let Ok(Err(error))=tail{return Err(error).context("external record probe stderr");}
+    }
+    let diagnostic=diagnostic.into_string();
+    match result{Ok(value)=>Ok((value,diagnostic)),Err(error)=>Err(error).with_context(||format!("external record probe: {diagnostic}"))}
 }
 
 struct BoundedCapture {
@@ -194,6 +295,8 @@ async fn drain_bounded(
 struct BoundedLineReader<R> {
     reader: BufReader<R>,
     line_limit: usize,
+    retained: Vec<u8>,
+    saw_data: bool,
 }
 
 impl<R: AsyncRead + Unpin> BoundedLineReader<R> {
@@ -201,12 +304,20 @@ impl<R: AsyncRead + Unpin> BoundedLineReader<R> {
         Self {
             reader: BufReader::new(reader),
             line_limit: budget.line_bytes,
+            retained: Vec::with_capacity(budget.line_bytes.min(4096)),
+            saw_data: false,
         }
     }
 
     async fn next_line(&mut self) -> std::io::Result<Option<String>> {
-        let mut retained = Vec::with_capacity(self.line_limit.min(4096));
-        let mut saw_data = false;
+        self.next_line_mode(false).await
+    }
+
+    async fn next_line_strict(&mut self) -> std::io::Result<Option<String>> {
+        self.next_line_mode(true).await
+    }
+
+    async fn next_line_mode(&mut self,strict:bool) -> std::io::Result<Option<String>> {
         loop {
             let (consume, newline, chunk, eof) = {
                 let available = self.reader.fill_buf().await?;
@@ -216,7 +327,8 @@ impl<R: AsyncRead + Unpin> BoundedLineReader<R> {
                     let newline_at = available.iter().position(|byte| *byte == b'\n');
                     let consume = newline_at.map_or(available.len(), |index| index + 1);
                     let content_end = newline_at.unwrap_or(consume);
-                    let remaining = self.line_limit.saturating_sub(retained.len());
+                    let remaining = self.line_limit.saturating_sub(self.retained.len());
+                    if strict&&content_end>remaining{return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,"external command line exceeded budget"));}
                     let keep = content_end.min(remaining);
                     (
                         consume,
@@ -228,22 +340,25 @@ impl<R: AsyncRead + Unpin> BoundedLineReader<R> {
             };
 
             if eof {
-                if !saw_data {
+                if !self.saw_data {
                     return Ok(None);
                 }
                 break;
             }
-            saw_data = true;
+            self.saw_data = true;
             self.reader.consume(consume);
-            retained.extend_from_slice(&chunk);
+            self.retained.extend_from_slice(&chunk);
             if newline {
                 break;
             }
         }
-        if retained.last() == Some(&b'\r') {
-            retained.pop();
+        if self.retained.last() == Some(&b'\r') {
+            self.retained.pop();
         }
-        Ok(Some(String::from_utf8_lossy(&retained).into_owned()))
+        let line = String::from_utf8_lossy(&self.retained).into_owned();
+        self.retained.clear();
+        self.saw_data = false;
+        Ok(Some(line))
     }
 }
 
@@ -364,6 +479,53 @@ async fn terminate_child_tree(child: &mut tokio::process::Child, child_id: Optio
 mod tests {
     use super::*;
     use crate::process_control::ProcessRuntimeConfig;
+
+    #[tokio::test]
+    async fn interrupted_line_read_preserves_consumed_prefix() {
+        use tokio::io::AsyncWriteExt;
+        let (mut writer, reader) = tokio::io::duplex(64);
+        let mut lines = BoundedLineReader::new(reader, OutputBudget {
+            capture_bytes: 128, line_bytes: 64,
+        });
+        writer.write_all(b"channels=").await.unwrap();
+        assert!(timeout(Duration::from_millis(20), lines.next_line()).await.is_err());
+        writer.write_all(b"2\n").await.unwrap();
+        drop(writer);
+        assert_eq!(lines.next_line().await.unwrap().as_deref(), Some("channels=2"));
+        assert_eq!(lines.next_line().await.unwrap(), None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn captured_cancellation_reaps_descendants_and_precancel_does_not_spawn() {
+        let directory = tempfile::tempdir().unwrap();
+        let ready = directory.path().join("ready");
+        let late = directory.path().join("late");
+        let runtime = ProcessRuntime::local_default();
+        let mut command = Command::new("sh");
+        command.args(["-c", "trap '' TERM; touch \"$1\"; (trap '' TERM; sleep 1; touch \"$2\") & wait", "runner"])
+            .arg(&ready).arg(&late);
+        let cancel = CancellationToken::new();
+        let worker_cancel = cancel.clone();
+        let worker = tokio::spawn(async move {
+            capture_output_cancellable(&runtime, command, runtime.discovery_policy(),
+                Duration::from_secs(10), &worker_cancel).await
+        });
+        timeout(Duration::from_secs(5), async {
+            while !ready.exists() { tokio::time::sleep(Duration::from_millis(10)).await; }
+        }).await.unwrap();
+        cancel.cancel();
+        let error = timeout(Duration::from_secs(3), worker).await.unwrap().unwrap().unwrap_err();
+        assert!(error.to_string().contains("cancelled"));
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert!(!late.exists(), "descendant survived cancellation");
+        let runtime = ProcessRuntime::local_default();
+        let mut command = Command::new("touch");
+        command.arg(&late);
+        assert!(capture_output_cancellable(&runtime, command, runtime.discovery_policy(),
+            Duration::from_secs(2), &cancel).await.is_err());
+        assert!(!late.exists());
+    }
 
     fn tiny_output_runtime() -> ProcessRuntime {
         let mut config = ProcessRuntimeConfig::local_default();

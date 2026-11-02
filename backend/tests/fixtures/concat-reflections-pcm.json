@@ -1,0 +1,3396 @@
+{
+  "schemaVersion": 1,
+  "package": "concat.reflections",
+  "reference": {
+    "repository": "https://github.com/jub0t/concat",
+    "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+    "files": {
+      "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+      "src/crates/concat-effects/src/catalogue.rs": "b03e52127cedc87429487f95e088b7d7bedfcc792490e559b72dfbfdd5218bdb",
+      "src/crates/concat-effects/packages/concat.echo/effect.toml": "225a48851a75fc8bd22e493c17903762cc3075ff0de4c98ecee4f1c93a59c8d3",
+      "src/crates/concat-effects/packages/concat.echo/fixtures.toml": "015e50ff01ba6c792ff4f25dd07789ef59209c2e5c1d766faaa596abc1e18062",
+      "src/crates/concat-effects/packages/concat.room/effect.toml": "7f2268f961fcc983dc2e91249cbc803d355d1c98fb706ec4a1dcc52e8e60c739",
+      "src/crates/concat-effects/packages/concat.room/fixtures.toml": "ee11add21a8484e32696c4c815941cae59c5ec475511362afc4db329224a0a83",
+      "src/crates/concat-effects/packages/concat.hall/effect.toml": "41a7464142a7f5e803ab0e6c96ef5a356a6496f8e09b5a84450313aa285b0db9",
+      "src/crates/concat-effects/packages/concat.hall/fixtures.toml": "99d52e00c3abe1b94f6c5c351e265261217552f0062eb6cd68ad2ea5ec0b6b6d",
+      "src/crates/concat-effects/packages/concat.plate/effect.toml": "e0b742205d26c5b4c20b5c0a5bb07a3bc3951f9ccf78b05471eb5f1f002d9f0b",
+      "src/crates/concat-effects/packages/concat.plate/fixtures.toml": "97c689581c81de31f3f501a97401107276e149a94729e5a4bb7b5da5e3a5ac5a",
+      "src/crates/concat-effects/packages/concat.cathedral/effect.toml": "70e490900dd96675d1d1986a2cdaa7317814f4303ab19a9b2ef881cf79a598da",
+      "src/crates/concat-effects/packages/concat.cathedral/fixtures.toml": "92b77435c26f6fe52a79a497d86cef8a389368f9ec2b22b95f742a113ada4ead"
+    },
+    "adapterSha256": "bf5d8cdca03eb52e2b19f611b0fdff39d5fb06b84ae827bde31124dfca3ebc43"
+  },
+  "ffmpeg": {
+    "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "binarySha256": "768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e"
+  },
+  "aliasVerified": {
+    "cathedral": "concat.cathedral",
+    "hall": "concat.hall",
+    "plate": "concat.plate",
+    "room": "concat.room"
+  },
+  "pcmBytes": 48171684,
+  "cases": [
+    {
+      "chain": "aecho=0.8:0.88:24|43|70|101:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9825,
+      "offsetBytes": 0,
+      "byteLength": 39300,
+      "outputSha256": "6ad573ac2b14605149771d006aaa26f4b7d543e7c014dc52edc32284d5dddea8"
+    },
+    {
+      "chain": "aecho=0.8:0.88:9|16|27|39:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9329,
+      "offsetBytes": 39300,
+      "byteLength": 37316,
+      "outputSha256": "10819f1f2001327b2966b1b0df86340f6d1696c0a721e26b9bfe340e8f27b7ec"
+    },
+    {
+      "chain": "aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 10569,
+      "offsetBytes": 76616,
+      "byteLength": 42276,
+      "outputSha256": "c7b329e3573645854bbc5acab16f906a3df6bad4c22f681a39947d2cf7132363"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9785,
+      "offsetBytes": 118892,
+      "byteLength": 39140,
+      "outputSha256": "74f7e8fab4c41f984f8717c738329dd3a03b7ab4af31725759e55a162b8b0aed"
+    },
+    {
+      "chain": "aecho=0.8:0.88:14|25|40|58:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9481,
+      "offsetBytes": 158032,
+      "byteLength": 37924,
+      "outputSha256": "5278089c70ffb6670f60b98394f70cf440b7f53be5baa1659612dc4b509337ec"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 11337,
+      "offsetBytes": 195956,
+      "byteLength": 45348,
+      "outputSha256": "b5b3e33e4b1c8ad6c74d4d6d151e47946d3ede61e964efb759d4c76205923228"
+    },
+    {
+      "chain": "aecho=0.8:0.85:75|138|225|338:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 11721,
+      "offsetBytes": 241304,
+      "byteLength": 46884,
+      "outputSha256": "748c18334d1ca1e36651c8892243d3a0b7b843ca524aaafe9fc8f72860c6bbcd"
+    },
+    {
+      "chain": "aecho=0.8:0.85:30|55|90|135:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 10097,
+      "offsetBytes": 288188,
+      "byteLength": 40388,
+      "outputSha256": "81f0b0cf05875f6c10d9e3262a227b5c42d8c239ddaedb57a4697ddfe6a0e185"
+    },
+    {
+      "chain": "aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 13337,
+      "offsetBytes": 328576,
+      "byteLength": 53348,
+      "outputSha256": "4f7c9b3272d833cdb765e1e337b5b0c593d201a9de8f369bc57f024b1b6d1cc5"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 11297,
+      "offsetBytes": 381924,
+      "byteLength": 45188,
+      "outputSha256": "1b9103c6dfa544abf6f6a811de28e53d832198ad8581e35a4456436553975321"
+    },
+    {
+      "chain": "aecho=0.8:0.85:41|76|124|186:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 10505,
+      "offsetBytes": 427112,
+      "byteLength": 42020,
+      "outputSha256": "e40e03fbde4a36004a8d34463d558d04b90913c6bd42779fab60d7ed34d175b3"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 15617,
+      "offsetBytes": 469132,
+      "byteLength": 62468,
+      "outputSha256": "2d542ea587f7e8c4909166bc89740e6abe8461320fae0c95d459c8617b3a6463"
+    },
+    {
+      "chain": "aecho=0.8:0.9:9|19|32|47:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9393,
+      "offsetBytes": 531600,
+      "byteLength": 37572,
+      "outputSha256": "96eca43211762e90aea150c6ce532f2dee8182aaef48b6ed3073959f74e918b6"
+    },
+    {
+      "chain": "aecho=0.8:0.9:4|9|15|22:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9193,
+      "offsetBytes": 569172,
+      "byteLength": 36772,
+      "outputSha256": "90304073b786561736251056bc560c4a64de7bfe0e6f981d572a6af793ebfac0"
+    },
+    {
+      "chain": "aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9705,
+      "offsetBytes": 605944,
+      "byteLength": 38820,
+      "outputSha256": "bbbe3cee06c51bb97f499435eb2c18bdc261bdeb3f3cf8a1303ab1528bbe585e"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9377,
+      "offsetBytes": 644764,
+      "byteLength": 37508,
+      "outputSha256": "47f827846125ac500bc318119a86999fc8deca183e279cf77bff9099853a0389"
+    },
+    {
+      "chain": "aecho=0.8:0.9:6|12|20|30:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9257,
+      "offsetBytes": 682272,
+      "byteLength": 37028,
+      "outputSha256": "2aa827c7eea7821b4c6a4df5139761a745c71291418ca90df3754f9e7065b317"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 10065,
+      "offsetBytes": 719300,
+      "byteLength": 40260,
+      "outputSha256": "2b67d07abeb5e7bfb9ffb4edb47a66a336474f015c8e1d0a69c933daad8c3a9a"
+    },
+    {
+      "chain": "aecho=0.8:0.9:159|305|517|795:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 15377,
+      "offsetBytes": 759560,
+      "byteLength": 61508,
+      "outputSha256": "1aca4b4fdc02427c691e49e6c2592646cdec5e02f0c1c3279c24eedeb220cd1a"
+    },
+    {
+      "chain": "aecho=0.8:0.9:60|115|195|300:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 11417,
+      "offsetBytes": 821068,
+      "byteLength": 45668,
+      "outputSha256": "d90eaceecef45714c753da442104990023be5c791313c3d0400428fb66adc082"
+    },
+    {
+      "chain": "aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 18617,
+      "offsetBytes": 866736,
+      "byteLength": 74468,
+      "outputSha256": "7eca20557959789d94d960e608d17fe66c9ea976e0b46e71d615d2f162ca847f"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 14081,
+      "offsetBytes": 941204,
+      "byteLength": 56324,
+      "outputSha256": "e87dcf3bfbbd85dab77a80ddb900ba3c262111573017d45945ff3ec2878de445"
+    },
+    {
+      "chain": "aecho=0.8:0.9:83|158|268|413:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 12321,
+      "offsetBytes": 997528,
+      "byteLength": 49284,
+      "outputSha256": "6942f52209c050ca36eba8738cc0d05188e0626d2de38e998b6d7abff18b7782"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 23681,
+      "offsetBytes": 1046812,
+      "byteLength": 94724,
+      "outputSha256": "f0d8894377ae167fcba8ebac5cac26baae750c2960ff0eed034ee95ddb738548"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.12,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 17889,
+      "offsetBytes": 1141536,
+      "byteLength": 71556,
+      "outputSha256": "3592734a1cb94ea5692c09e109396981a040cdaba474f7d244b422e998a6d61a"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:50:0.12",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 17889,
+      "offsetBytes": 1213092,
+      "byteLength": 71556,
+      "outputSha256": "4ba1dbab04bd9e279c4739411d4c5090d60fd3a839204267c3182de85fa78a58"
+    },
+    {
+      "chain": "aecho=0.8:0.88:24|43|70|101:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9825,
+      "offsetBytes": 1284648,
+      "byteLength": 78600,
+      "outputSha256": "72864f5dd18ccb874ca40311c179482352d206f421d73f96a22c0173be37a52d"
+    },
+    {
+      "chain": "aecho=0.8:0.88:9|16|27|39:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9329,
+      "offsetBytes": 1363248,
+      "byteLength": 74632,
+      "outputSha256": "5d41e5ef16ccbe29165c6487e5df9a07ef02ca8a0685a0bfe37318c9981c9a84"
+    },
+    {
+      "chain": "aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 10569,
+      "offsetBytes": 1437880,
+      "byteLength": 84552,
+      "outputSha256": "c7b4b5be1823976652eb7432a476975b3a20c290c1e48ac80af535c831c16e3c"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9785,
+      "offsetBytes": 1522432,
+      "byteLength": 78280,
+      "outputSha256": "0feed27a73a9015cc461ee82c2ee4f79fb87ebafc7473dd0f39de5e14298008c"
+    },
+    {
+      "chain": "aecho=0.8:0.88:14|25|40|58:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9481,
+      "offsetBytes": 1600712,
+      "byteLength": 75848,
+      "outputSha256": "006b1b8a9d5a4c36e83d7bb23c816daddfd878cec9dd9f79ba3c0ef1984f14c6"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 11337,
+      "offsetBytes": 1676560,
+      "byteLength": 90696,
+      "outputSha256": "e8286011adab0d895f3ef7d492f9bc0c34f18766ca368a1cd2031f94d27b247d"
+    },
+    {
+      "chain": "aecho=0.8:0.85:75|138|225|338:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 11721,
+      "offsetBytes": 1767256,
+      "byteLength": 93768,
+      "outputSha256": "8bd03039786ed67e4688bcd23177fd436bc1e4ce75e804d6ef6315de2f7a74aa"
+    },
+    {
+      "chain": "aecho=0.8:0.85:30|55|90|135:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 10097,
+      "offsetBytes": 1861024,
+      "byteLength": 80776,
+      "outputSha256": "13c2cf892657da6c35154e5842c09787c037efc8e40b6fd055f5623baf38dc21"
+    },
+    {
+      "chain": "aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 13337,
+      "offsetBytes": 1941800,
+      "byteLength": 106696,
+      "outputSha256": "ead711558e07f14c4f6f8fb70c67f493d8ab3b4acde0ffb8aead4e159333daa5"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 11297,
+      "offsetBytes": 2048496,
+      "byteLength": 90376,
+      "outputSha256": "4afbef815ce8329aef601d1797e4cb501832e126a135f23c76c349413c230042"
+    },
+    {
+      "chain": "aecho=0.8:0.85:41|76|124|186:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 10505,
+      "offsetBytes": 2138872,
+      "byteLength": 84040,
+      "outputSha256": "588bbb92dec012e7f6dc2e20974dd61da7fb42e13f33b7ae78d12e0f004613b9"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 15617,
+      "offsetBytes": 2222912,
+      "byteLength": 124936,
+      "outputSha256": "2568a7306097c01619b70825c58fddf0d46b1071d77aff55d9ca0e0dcd21be3f"
+    },
+    {
+      "chain": "aecho=0.8:0.9:9|19|32|47:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9393,
+      "offsetBytes": 2347848,
+      "byteLength": 75144,
+      "outputSha256": "47dc59f1ca898246f8131cae24c0339f0879fce6883c09936777d41b92f67044"
+    },
+    {
+      "chain": "aecho=0.8:0.9:4|9|15|22:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9193,
+      "offsetBytes": 2422992,
+      "byteLength": 73544,
+      "outputSha256": "8df5ec7b66f653b36a7279beef2be0afc642c72c17997cfd4fd2006d9fe53f7c"
+    },
+    {
+      "chain": "aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9705,
+      "offsetBytes": 2496536,
+      "byteLength": 77640,
+      "outputSha256": "90c79bf96b0f99cb0f1519bf3ecca87ae0f52702edfa50359c8e7f8cdd1bbe67"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9377,
+      "offsetBytes": 2574176,
+      "byteLength": 75016,
+      "outputSha256": "c0d9a5f32a81277b3ae8276d3adfe3e75955bb9e30e6e3c14b766644d6c28b59"
+    },
+    {
+      "chain": "aecho=0.8:0.9:6|12|20|30:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9257,
+      "offsetBytes": 2649192,
+      "byteLength": 74056,
+      "outputSha256": "3746ebf194aaa06dec220e5cc39101d7539389806afdf15ceca050e6dd710e4d"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 10065,
+      "offsetBytes": 2723248,
+      "byteLength": 80520,
+      "outputSha256": "34cf424c87b8778ceae1eecfe2e26387a8e2ed3d16738fa6b77a0ccc4425ee7a"
+    },
+    {
+      "chain": "aecho=0.8:0.9:159|305|517|795:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 15377,
+      "offsetBytes": 2803768,
+      "byteLength": 123016,
+      "outputSha256": "c569f994ed4b052eb4374a36b4c277c5e3e863b34d3d18ef9644c4cd23ee5982"
+    },
+    {
+      "chain": "aecho=0.8:0.9:60|115|195|300:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 11417,
+      "offsetBytes": 2926784,
+      "byteLength": 91336,
+      "outputSha256": "286cd22ff692c59ae42a2869760c9221e1122b39c58df1c2342a8c40f4edb31d"
+    },
+    {
+      "chain": "aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 18617,
+      "offsetBytes": 3018120,
+      "byteLength": 148936,
+      "outputSha256": "02ee2e5e4bfbf1c39b6070887c07586c853462362ae5e1c21f9f817682107f36"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 14081,
+      "offsetBytes": 3167056,
+      "byteLength": 112648,
+      "outputSha256": "a916eb14271912822b3d96d13966673c2ef4e000e11c66c1e27ff85112e92025"
+    },
+    {
+      "chain": "aecho=0.8:0.9:83|158|268|413:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 12321,
+      "offsetBytes": 3279704,
+      "byteLength": 98568,
+      "outputSha256": "4d4fa4da3d46fec72603e59261582f349880043dcbbe9a99b90310620e4648e3"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 23681,
+      "offsetBytes": 3378272,
+      "byteLength": 189448,
+      "outputSha256": "a0e981f17bec7aeae833bb241d26cf02a95beb47447b7247d8e68031eda25c58"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.12,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 17889,
+      "offsetBytes": 3567720,
+      "byteLength": 143112,
+      "outputSha256": "172176ffbe59a64abc596a233321bf404e23ed0f071468fb454abd12dcb83f41"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:50:0.12",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 17889,
+      "offsetBytes": 3710832,
+      "byteLength": 143112,
+      "outputSha256": "14428dba23144988344dbccca1bd5ca217db43f4bfa7bbf32420029453d2cd00"
+    },
+    {
+      "chain": "aecho=0.8:0.88:24|43|70|101:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 54083,
+      "offsetBytes": 3853944,
+      "byteLength": 216332,
+      "outputSha256": "e8200b6abb4d429694fbf34c63ff048372daddcd3fdc307145bae61096d5e2b4"
+    },
+    {
+      "chain": "aecho=0.8:0.88:9|16|27|39:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51348,
+      "offsetBytes": 4070276,
+      "byteLength": 205392,
+      "outputSha256": "44107c416c19bef0ae979821c1fd574ed9a255fafd480f812ef90bc608b4035d"
+    },
+    {
+      "chain": "aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 58184,
+      "offsetBytes": 4275668,
+      "byteLength": 232736,
+      "outputSha256": "add093096d598696f315fa7a9e575045a21730e1339b97ce7d3349c4884cc910"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53862,
+      "offsetBytes": 4508404,
+      "byteLength": 215448,
+      "outputSha256": "56dc593700937be725caa6df244a4327aa8998763c519b031ccddf463fcb9018"
+    },
+    {
+      "chain": "aecho=0.8:0.88:14|25|40|58:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 52186,
+      "offsetBytes": 4723852,
+      "byteLength": 208744,
+      "outputSha256": "2e24528ae606e43d62fe533ef25d4ce6e2037e6823be3cee2449319aa2544b16"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 62417,
+      "offsetBytes": 4932596,
+      "byteLength": 249668,
+      "outputSha256": "e91047051fedbd854b5f7ac37fd5902d8b248c41b5ebe1ee09b6caf4bc78c451"
+    },
+    {
+      "chain": "aecho=0.8:0.85:75|138|225|338:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 64534,
+      "offsetBytes": 5182264,
+      "byteLength": 258136,
+      "outputSha256": "23b3cea4cb3bec91cd859bd5f0a2fdbe33dec8cde5af4ef64387ee82849f6fa0"
+    },
+    {
+      "chain": "aecho=0.8:0.85:30|55|90|135:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 55582,
+      "offsetBytes": 5440400,
+      "byteLength": 222328,
+      "outputSha256": "7cc2712c0c3397ecb201ed1dc3aefd74f7c1ff432dc53cf8a097f7803afc9380"
+    },
+    {
+      "chain": "aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 73443,
+      "offsetBytes": 5662728,
+      "byteLength": 293772,
+      "outputSha256": "fe246b2031c0a1d604d220b5e34872f0afe2cf3cf0316b740545dcda4d4635ee"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 62197,
+      "offsetBytes": 5956500,
+      "byteLength": 248788,
+      "outputSha256": "ef723cea2bd92486140b771ecc48c79be3e10d49f57317f1683e64ff846869cb"
+    },
+    {
+      "chain": "aecho=0.8:0.85:41|76|124|186:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 57831,
+      "offsetBytes": 6205288,
+      "byteLength": 231324,
+      "outputSha256": "56f6429099b5a05d59e2e25427004b1af46f27983e5af1c771359c88e58e0091"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 86011,
+      "offsetBytes": 6436612,
+      "byteLength": 344044,
+      "outputSha256": "fd7defe366b79bbdfcab60999c1eeb14a44ed448b4da489b2985f80eaf51e1f4"
+    },
+    {
+      "chain": "aecho=0.8:0.9:9|19|32|47:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51701,
+      "offsetBytes": 6780656,
+      "byteLength": 206804,
+      "outputSha256": "d5f764dc857af68d46850ea23569f6f53cfa0214589617538cca2d9f7a8feb12"
+    },
+    {
+      "chain": "aecho=0.8:0.9:4|9|15|22:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 50599,
+      "offsetBytes": 6987460,
+      "byteLength": 202396,
+      "outputSha256": "f16fbc37ef300d3d1d495911b6b30cf5082e2150ef4f04f4c3f9fb1c52d05604"
+    },
+    {
+      "chain": "aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53421,
+      "offsetBytes": 7189856,
+      "byteLength": 213684,
+      "outputSha256": "2b8af884714471b826fff9381cc3142a4c7a0f7e64ecda748427eb48ca8bf097"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51613,
+      "offsetBytes": 7403540,
+      "byteLength": 206452,
+      "outputSha256": "9a8ebb68be04f0b9838d052d42eca8ae4a4860d3dc8ef74775e4f29060e0f361"
+    },
+    {
+      "chain": "aecho=0.8:0.9:6|12|20|30:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 50952,
+      "offsetBytes": 7609992,
+      "byteLength": 203808,
+      "outputSha256": "bf1c22935c5c250d8c906cf557484396938d5e0ac595de6c8f30c6f6b21175ec"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 55405,
+      "offsetBytes": 7813800,
+      "byteLength": 221620,
+      "outputSha256": "71dc60a3f1de169860793e1baad01ae2fe57aef00654349b60427a2d2d060705"
+    },
+    {
+      "chain": "aecho=0.8:0.9:159|305|517|795:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 84688,
+      "offsetBytes": 8035420,
+      "byteLength": 338752,
+      "outputSha256": "1af5307d55acbe1f1b3aec48535a6b0f761494e6efac30b1ba5a79c61b1e3a1c"
+    },
+    {
+      "chain": "aecho=0.8:0.9:60|115|195|300:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 62859,
+      "offsetBytes": 8374172,
+      "byteLength": 251436,
+      "outputSha256": "e04bd8f30b0344dcb86d6ef3e0b809e58c0ebe2f9bb64e4d681f620a2a82f1f4"
+    },
+    {
+      "chain": "aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 102549,
+      "offsetBytes": 8625608,
+      "byteLength": 410196,
+      "outputSha256": "6fa02d854dea5932ac71e67e37fb34f40c1f67c6aec9e3b4b9c6dd29fd25ce16"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 77544,
+      "offsetBytes": 9035804,
+      "byteLength": 310176,
+      "outputSha256": "e2af5e950c7aaa0e492d9b467e643c8bd92a1a07b3132244f3aba131bd07e388"
+    },
+    {
+      "chain": "aecho=0.8:0.9:83|158|268|413:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 67842,
+      "offsetBytes": 9345980,
+      "byteLength": 271368,
+      "outputSha256": "b0a3c5dbc999d5281b963a6ec51525f79bb324dc441d8efa3cf2fd4f381f9ce7"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 130464,
+      "offsetBytes": 9617348,
+      "byteLength": 521856,
+      "outputSha256": "eb83a26b9e94dc89c58818821e3858de291e72b6ea84a298f8b2a431079e8ba3"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.12,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 98534,
+      "offsetBytes": 10139204,
+      "byteLength": 394136,
+      "outputSha256": "ad8127024e0ff860f61390850ab18f7bd37d7f523893571e4cd40007d6993ba6"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:50:0.12",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 98534,
+      "offsetBytes": 10533340,
+      "byteLength": 394136,
+      "outputSha256": "5ab794f61f85d501b765500d44d25a3571680f0aea238b629b14738c55b55d87"
+    },
+    {
+      "chain": "aecho=0.8:0.88:24|43|70|101:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 54083,
+      "offsetBytes": 10927476,
+      "byteLength": 432664,
+      "outputSha256": "def9c0ef23bb7b45e06876262dedab93f2a6c822359f7f80c98e38eb437d259b"
+    },
+    {
+      "chain": "aecho=0.8:0.88:9|16|27|39:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51348,
+      "offsetBytes": 11360140,
+      "byteLength": 410784,
+      "outputSha256": "2d3256aef887d229984031fadef1f9a783bb0271d65771d2f55a261b3621898d"
+    },
+    {
+      "chain": "aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 58184,
+      "offsetBytes": 11770924,
+      "byteLength": 465472,
+      "outputSha256": "07798f7d32061bc3f2475facc917b4c707155b925a533e70ffcf9f92701c79c0"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 53862,
+      "offsetBytes": 12236396,
+      "byteLength": 430896,
+      "outputSha256": "4e3f43e933923c6bf64c98d92621d81f8acde5cd008317d3a95d4cba6544085c"
+    },
+    {
+      "chain": "aecho=0.8:0.88:14|25|40|58:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 52186,
+      "offsetBytes": 12667292,
+      "byteLength": 417488,
+      "outputSha256": "e17911bc4fe6aaa84ac33837a3f5d18c81df2065d6f2a37ef611e5de11731029"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 62417,
+      "offsetBytes": 13084780,
+      "byteLength": 499336,
+      "outputSha256": "43229fa48cc72fd756fd6d05ed3c564fd6b81279c55305f6bfbc5b75f6d2273c"
+    },
+    {
+      "chain": "aecho=0.8:0.85:75|138|225|338:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 64534,
+      "offsetBytes": 13584116,
+      "byteLength": 516272,
+      "outputSha256": "b03de0e8e7ac2a2e191de3ed1c7198a8e813f645a1ec98cfb1d882575e16f2e2"
+    },
+    {
+      "chain": "aecho=0.8:0.85:30|55|90|135:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 55582,
+      "offsetBytes": 14100388,
+      "byteLength": 444656,
+      "outputSha256": "948d652d6c112d6c0c5a9c4315e056dd7c355b93dbcf7db096d966dba4c5f9f6"
+    },
+    {
+      "chain": "aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 73443,
+      "offsetBytes": 14545044,
+      "byteLength": 587544,
+      "outputSha256": "42bef732ad2b11a2e51efd7ea1083ca245306c04d3dd0e7ffff51d90cf662ee9"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 62197,
+      "offsetBytes": 15132588,
+      "byteLength": 497576,
+      "outputSha256": "279c3ba360ebd68d4bd017a7bc195b9a2417612b9668678d06208c9ac7148f4a"
+    },
+    {
+      "chain": "aecho=0.8:0.85:41|76|124|186:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 57831,
+      "offsetBytes": 15630164,
+      "byteLength": 462648,
+      "outputSha256": "5df38347cc8194d11ce32bd10803fd18868bd85a27e72d1d4a1fba3efbbb41e9"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 86011,
+      "offsetBytes": 16092812,
+      "byteLength": 688088,
+      "outputSha256": "7511fb9595f20a049c6aa54955d5f74b0a6581a7fd942dcf6d11cb343017fbd3"
+    },
+    {
+      "chain": "aecho=0.8:0.9:9|19|32|47:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51701,
+      "offsetBytes": 16780900,
+      "byteLength": 413608,
+      "outputSha256": "1c02fe3662b806716c8e417954702cfc162ca5ca67253f85c5b422cb734bc485"
+    },
+    {
+      "chain": "aecho=0.8:0.9:4|9|15|22:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 50599,
+      "offsetBytes": 17194508,
+      "byteLength": 404792,
+      "outputSha256": "a4595e47d0b3070500fa96f8aa644828d8c79a5de20ad6a0da986543be413e24"
+    },
+    {
+      "chain": "aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 53421,
+      "offsetBytes": 17599300,
+      "byteLength": 427368,
+      "outputSha256": "04a90878e79a1cdf492e7c4e5d634024d30d04c2354df4e3f547cc9b12283c90"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51613,
+      "offsetBytes": 18026668,
+      "byteLength": 412904,
+      "outputSha256": "6fab3624fbebbe28a7406fcdf0953cc0d7519a7cb422bf75e5c8bc09816790b0"
+    },
+    {
+      "chain": "aecho=0.8:0.9:6|12|20|30:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 50952,
+      "offsetBytes": 18439572,
+      "byteLength": 407616,
+      "outputSha256": "725b837b990a7917e8c9edf067ad92127559cb3eb9e8a5fc80d15e42bc26b686"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 55405,
+      "offsetBytes": 18847188,
+      "byteLength": 443240,
+      "outputSha256": "a93bbb0e33a3424e84aee0dcc062a278152e6224d483b792840c24069feeae3f"
+    },
+    {
+      "chain": "aecho=0.8:0.9:159|305|517|795:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 84688,
+      "offsetBytes": 19290428,
+      "byteLength": 677504,
+      "outputSha256": "b5f8a00b30a06f99677e4dcfaceb43084b47bee7e9405096e7c1c8e3b15caf96"
+    },
+    {
+      "chain": "aecho=0.8:0.9:60|115|195|300:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 62859,
+      "offsetBytes": 19967932,
+      "byteLength": 502872,
+      "outputSha256": "80b0059344cb4311eefb7b7f63b9c43a68e0f2205b8b4a4c0ed7dae879534c93"
+    },
+    {
+      "chain": "aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 102549,
+      "offsetBytes": 20470804,
+      "byteLength": 820392,
+      "outputSha256": "8013ef261cbcdc75b3819fb60ee9d1218fdfd9906964e5088949da5bc53e8302"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 77544,
+      "offsetBytes": 21291196,
+      "byteLength": 620352,
+      "outputSha256": "962f41af38eb2b40336e9b6c1f8f5299c9b71289dc2139c335b5d8bbfaa981dd"
+    },
+    {
+      "chain": "aecho=0.8:0.9:83|158|268|413:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 67842,
+      "offsetBytes": 21911548,
+      "byteLength": 542736,
+      "outputSha256": "566855e078aa4d8e1337ef2973bfbeb60a8b8b82bd710a8a89c1d93f58b5ef31"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 130464,
+      "offsetBytes": 22454284,
+      "byteLength": 1043712,
+      "outputSha256": "a649f609ac6d9aa13ffcdacfe980f753522599c3245fbba132c27f423c69610f"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.12,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 98534,
+      "offsetBytes": 23497996,
+      "byteLength": 788272,
+      "outputSha256": "e3eea92398954079230d0ce5da72a90c434416dc24afeae3ebd8588de3dd619b"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:50:0.12",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 98534,
+      "offsetBytes": 24286268,
+      "byteLength": 788272,
+      "outputSha256": "9219fc6dfdb5bd860d09375143845d0c2419b76609f9aa5a492903cc3519b43f"
+    },
+    {
+      "chain": "aecho=0.8:0.88:24|43|70|101:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 58865,
+      "offsetBytes": 25074540,
+      "byteLength": 235460,
+      "outputSha256": "b75d69a4cadd78e838cc671f05af24434de0027055480492048b013c06e7510b"
+    },
+    {
+      "chain": "aecho=0.8:0.88:9|16|27|39:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 55889,
+      "offsetBytes": 25310000,
+      "byteLength": 223556,
+      "outputSha256": "3c91e1371359f8029e8994db1f7088b4b619778b1f3e1ea61e71dc2a7fa19787"
+    },
+    {
+      "chain": "aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 63329,
+      "offsetBytes": 25533556,
+      "byteLength": 253316,
+      "outputSha256": "2b5fb5bc95b47eaa4af89bac9a194ed85b15347deb492fa64edb4f83a28d8d03"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 58625,
+      "offsetBytes": 25786872,
+      "byteLength": 234500,
+      "outputSha256": "03276dfbc713caee9e908a57051ea6c96f030650885fd117f2c14598bb264c4a"
+    },
+    {
+      "chain": "aecho=0.8:0.88:14|25|40|58:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56801,
+      "offsetBytes": 26021372,
+      "byteLength": 227204,
+      "outputSha256": "3f8a331eb7c37373542e2850fd1a97cbe19372596f8aa269a195400804cc1da9"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 67937,
+      "offsetBytes": 26248576,
+      "byteLength": 271748,
+      "outputSha256": "fc36a4edc39e8bf601d77fccc366fba882d29b44f504fcc30aa366ad9ae542cd"
+    },
+    {
+      "chain": "aecho=0.8:0.85:75|138|225|338:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 70241,
+      "offsetBytes": 26520324,
+      "byteLength": 280964,
+      "outputSha256": "9ced7512234320069e44350f25ad1cefd53c8f0aea31aae97e598a9cdbb9f02d"
+    },
+    {
+      "chain": "aecho=0.8:0.85:30|55|90|135:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 60497,
+      "offsetBytes": 26801288,
+      "byteLength": 241988,
+      "outputSha256": "2f31e69ef2a1fd94edf3ab8a95ffd23f6a64e39ba828aedb95e0c33b162a32de"
+    },
+    {
+      "chain": "aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 79937,
+      "offsetBytes": 27043276,
+      "byteLength": 319748,
+      "outputSha256": "37298d80be8027da91cbe82ed678c2712073f075fcb338212f39ae8595b7837b"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 67697,
+      "offsetBytes": 27363024,
+      "byteLength": 270788,
+      "outputSha256": "71c75987d54da3abd57af459bf413b58186ab56090649fd81ab8c2de15696670"
+    },
+    {
+      "chain": "aecho=0.8:0.85:41|76|124|186:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 62945,
+      "offsetBytes": 27633812,
+      "byteLength": 251780,
+      "outputSha256": "af08470836b879507fad62a7dbeb6301463d36c7ce4a8dd388dbfa2a3e5baf80"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 93617,
+      "offsetBytes": 27885592,
+      "byteLength": 374468,
+      "outputSha256": "e679224f00094cde2383bd6cb3df2562ccb6ffcc3aee171d17828380082de120"
+    },
+    {
+      "chain": "aecho=0.8:0.9:9|19|32|47:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56273,
+      "offsetBytes": 28260060,
+      "byteLength": 225092,
+      "outputSha256": "7079c462dd29f35e1500abcf8a7ad99e9704459b569a3a9dd78247086f42431d"
+    },
+    {
+      "chain": "aecho=0.8:0.9:4|9|15|22:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 55073,
+      "offsetBytes": 28485152,
+      "byteLength": 220292,
+      "outputSha256": "f92015bbcc7e6dabbdafbd38d06e75079d21446702aee8245089c1fc5e2bc333"
+    },
+    {
+      "chain": "aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 58145,
+      "offsetBytes": 28705444,
+      "byteLength": 232580,
+      "outputSha256": "b01ca8e09f03a2a8c05918bde03bdab36d10e5f495ce6578166b6a326b475d33"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56177,
+      "offsetBytes": 28938024,
+      "byteLength": 224708,
+      "outputSha256": "2d5e8edb7823bae6b3399a5e8996b17c553845c90845d9386191500b7ffb4013"
+    },
+    {
+      "chain": "aecho=0.8:0.9:6|12|20|30:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 55457,
+      "offsetBytes": 29162732,
+      "byteLength": 221828,
+      "outputSha256": "51aab1076be7c272907a1a42b8ac35fa2e33971b2bcef69f3f606d19add2c80e"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 60305,
+      "offsetBytes": 29384560,
+      "byteLength": 241220,
+      "outputSha256": "2c6cf00175c2fdfb9f417197cf0fdb70121bd1814fc10072624daf1f8b78105b"
+    },
+    {
+      "chain": "aecho=0.8:0.9:159|305|517|795:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 92177,
+      "offsetBytes": 29625780,
+      "byteLength": 368708,
+      "outputSha256": "cf5a976f5c5010821e583fb7cc746d32c751c1f0b84723d727cbcaf76cb1dda0"
+    },
+    {
+      "chain": "aecho=0.8:0.9:60|115|195|300:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 68417,
+      "offsetBytes": 29994488,
+      "byteLength": 273668,
+      "outputSha256": "5b40255e38b7a7832e961549b116c1e569556583c8a17177881d09b283f41cb9"
+    },
+    {
+      "chain": "aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 111617,
+      "offsetBytes": 30268156,
+      "byteLength": 446468,
+      "outputSha256": "316aedca4b7516fa274465effdd01dd2deddee8b864a84620f712d613252cafa"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 84401,
+      "offsetBytes": 30714624,
+      "byteLength": 337604,
+      "outputSha256": "bb5d425e1fbba2ded43c14ed628238baaee4b3aca83f4900e89739f40f2c504f"
+    },
+    {
+      "chain": "aecho=0.8:0.9:83|158|268|413:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 73841,
+      "offsetBytes": 31052228,
+      "byteLength": 295364,
+      "outputSha256": "494b51473b42b1bd72878ab95496f05e42236640a3ab9387709d4ac9da0fb852"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 142001,
+      "offsetBytes": 31347592,
+      "byteLength": 568004,
+      "outputSha256": "a62b0b2d49ccd21746344d700fb5fdf8fa18c5f5874b6628348beac66683995a"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.12,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 107249,
+      "offsetBytes": 31915596,
+      "byteLength": 428996,
+      "outputSha256": "ee6498fcecf96ccd8716e1f8a93fa5f6aefcaf3d49e75349da3c5750c5838ff9"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:50:0.12",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 107249,
+      "offsetBytes": 32344592,
+      "byteLength": 428996,
+      "outputSha256": "11f268305ef6c2ec50313371cd3f31dce3a044d12eb05a5da2c7554fbad0dfa3"
+    },
+    {
+      "chain": "aecho=0.8:0.88:24|43|70|101:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 58865,
+      "offsetBytes": 32773588,
+      "byteLength": 470920,
+      "outputSha256": "a8cc0d10c080f6be873c87e8b0a67691f3196119600a1319f6cbf6b81ea647ed"
+    },
+    {
+      "chain": "aecho=0.8:0.88:9|16|27|39:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 55889,
+      "offsetBytes": 33244508,
+      "byteLength": 447112,
+      "outputSha256": "4ac3e9988257b8c26a8d25061ac8ae9c3d96467400d7a6ea42cb9c041de2d0b6"
+    },
+    {
+      "chain": "aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 63329,
+      "offsetBytes": 33691620,
+      "byteLength": 506632,
+      "outputSha256": "027eeeb33b6e504201eba42176b31641d9c5afd2ce93147f1a52acd2059a22e6"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 58625,
+      "offsetBytes": 34198252,
+      "byteLength": 469000,
+      "outputSha256": "14df80969f5c25d9c584acc4132d5f590b46f7f99f5c6cee56972dd7619f2c51"
+    },
+    {
+      "chain": "aecho=0.8:0.88:14|25|40|58:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56801,
+      "offsetBytes": 34667252,
+      "byteLength": 454408,
+      "outputSha256": "b681372275444f31d9fdabeb2441f31b125c4aaa00bc25c740cadda9b9507d81"
+    },
+    {
+      "chain": "aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.88:46|82|134|194:0.320|0.240|0.170|0.110",
+      "settings": [
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 67937,
+      "offsetBytes": 35121660,
+      "byteLength": 543496,
+      "outputSha256": "08d8b6dcc6f8cb353168e4a6b849bc6e6d4782154546f6d2eebf3bdea25cfcfa"
+    },
+    {
+      "chain": "aecho=0.8:0.85:75|138|225|338:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 70241,
+      "offsetBytes": 35665156,
+      "byteLength": 561928,
+      "outputSha256": "8e24da343156b217d755c33c24259e167761442054e33ef06cb46e80d7b90f45"
+    },
+    {
+      "chain": "aecho=0.8:0.85:30|55|90|135:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 60497,
+      "offsetBytes": 36227084,
+      "byteLength": 483976,
+      "outputSha256": "4e37e88eb2ddcc510196e179128c00bcd86afc8d514cc456fa8cfa718ff31c64"
+    },
+    {
+      "chain": "aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 79937,
+      "offsetBytes": 36711060,
+      "byteLength": 639496,
+      "outputSha256": "46903e22d5502ae6afaa9136cb69448e54150f70528eb787915e1c8ee2c22d25"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 67697,
+      "offsetBytes": 37350556,
+      "byteLength": 541576,
+      "outputSha256": "386c09aa972f46d415ff2a2039a86252f0487365e4bd91ff180fff01c1b4cc32"
+    },
+    {
+      "chain": "aecho=0.8:0.85:41|76|124|186:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 62945,
+      "offsetBytes": 37892132,
+      "byteLength": 503560,
+      "outputSha256": "b1496e269f2b84b06ead860bcc4fd9d743fe16e15a7ee3e617fbc30cf29b1388"
+    },
+    {
+      "chain": "aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.85:120|220|360|540:0.5|0.4|0.3|0.2",
+      "settings": [
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 93617,
+      "offsetBytes": 38395692,
+      "byteLength": 748936,
+      "outputSha256": "4b8e52cf4eea5e64f82b09534375b187e2d488045c0f0114a41247e4ff06743b"
+    },
+    {
+      "chain": "aecho=0.8:0.9:9|19|32|47:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56273,
+      "offsetBytes": 39144628,
+      "byteLength": 450184,
+      "outputSha256": "5a292e19e3bb4e0edad6590e96f67b9c2dda299f3c58d908548c250723c6d81e"
+    },
+    {
+      "chain": "aecho=0.8:0.9:4|9|15|22:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 55073,
+      "offsetBytes": 39594812,
+      "byteLength": 440584,
+      "outputSha256": "441008ab54c3322983ecd04502022976cd9dad3f442e1f45187ac989b7b95022"
+    },
+    {
+      "chain": "aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 58145,
+      "offsetBytes": 40035396,
+      "byteLength": 465160,
+      "outputSha256": "3825396b04b2475367b287989c680616ad7b377dd87c876a9a65b9cba8f30e4d"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56177,
+      "offsetBytes": 40500556,
+      "byteLength": 449416,
+      "outputSha256": "168b65adf987e4d264e730e23406ea82aa9c4ef0f12ad7b8ec371b666ea49555"
+    },
+    {
+      "chain": "aecho=0.8:0.9:6|12|20|30:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 55457,
+      "offsetBytes": 40949972,
+      "byteLength": 443656,
+      "outputSha256": "0db628ce30168ea70afedaa39bb12a0f9a6523087c3ddde3582aa24704878b4d"
+    },
+    {
+      "chain": "aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:16|34|58|86:0.45|0.35|0.25|0.15",
+      "settings": [
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 60305,
+      "offsetBytes": 41393628,
+      "byteLength": 482440,
+      "outputSha256": "30039e81590c5e66d5b1b8c3dccfa9f26921c0f013cee82e85f905dfab82ac4d"
+    },
+    {
+      "chain": "aecho=0.8:0.9:159|305|517|795:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 92177,
+      "offsetBytes": 41876068,
+      "byteLength": 737416,
+      "outputSha256": "6f6d8d6a2cb4572d7846a782a9ce7bc3fc8e09dfba90faeea630060010d1f564"
+    },
+    {
+      "chain": "aecho=0.8:0.9:60|115|195|300:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 0.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 68417,
+      "offsetBytes": 42613484,
+      "byteLength": 547336,
+      "outputSha256": "3c2a92e6476313b99b193317a996cc246113de23bc12662de2a6646ffedd417e"
+    },
+    {
+      "chain": "aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 111617,
+      "offsetBytes": 43160820,
+      "byteLength": 892936,
+      "outputSha256": "35c2cd77f4f796d693413ea89dc27c34f4d8c8b08034fe2e90917f74d511c196"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 84401,
+      "offsetBytes": 44053756,
+      "byteLength": 675208,
+      "outputSha256": "e868be7e860dc1402a0f26074822bf86d65bec3afd6212af0c28f56e1af1b644"
+    },
+    {
+      "chain": "aecho=0.8:0.9:83|158|268|413:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 12.5
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 73841,
+      "offsetBytes": 44728964,
+      "byteLength": 590728,
+      "outputSha256": "315dfb9f977672e6dcf4c8d2a78e9f1ff76f88605e5cf4bac82e4f66bc8f2542"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:240|460|780|1200:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 100.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 142001,
+      "offsetBytes": 45319692,
+      "byteLength": 1136008,
+      "outputSha256": "2fa204bd4c5c69143f15723fbc6a4fe8888f8aea5d7473397d912a14a68c7540"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.12,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 107249,
+      "offsetBytes": 46455700,
+      "byteLength": 857992,
+      "outputSha256": "c181ff0cb3f8c54340def268e2af9394fcbd32fc7e1d1355bd2e9e2bce59c0f6"
+    },
+    {
+      "chain": "aecho=0.8:0.9:127|243|411|633:0.6|0.5|0.4|0.3,aecho=0.8:0.9:8|18|31|45:0.45|0.35|0.25|0.15,aecho=0.8:0.85:63|116|190|285:0.5|0.4|0.3|0.2,aecho=0.8:0.88:23|41|66|96:0.320|0.240|0.170|0.110,aecho=0.8:0.85:50:0.12",
+      "settings": [
+        {
+          "id": "concat.cathedral",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.plate",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.hall",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.room",
+          "params": {
+            "size": 37.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 107249,
+      "offsetBytes": 47313692,
+      "byteLength": 857992,
+      "outputSha256": "d31e8ca28f33d23c973be811b94d43c8abed8213342492f8b1f2347b38b43453"
+    }
+  ]
+}

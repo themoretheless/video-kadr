@@ -1,0 +1,34 @@
+import {readFile} from 'node:fs/promises'
+import {spawnSync} from 'node:child_process'
+import {expect,test} from '@playwright/test'
+import {lightingChannels} from '../src/lib/composition/lightingEffects'
+if(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE)test.use({launchOptions:{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}})
+for(const profile of ['default','five-lights'])test(`real Lighting Effects ${profile} authors64 keys undo and original preview`,async({page,request})=>{
+ const fixture=JSON.parse(await readFile('../backend/tests/fixtures/filmcraft-lighting-effects.json','utf8'))
+ const original=fixture.cases.find((c:any)=>c.width===18&&c.height===10&&c.scale===1&&(profile==='five-lights'?c.parameters.gloss===100:c.parameters.gloss===0&&c.parameters.lights[0].kind===3&&c.parameters.lights[0].major===20))
+ expect(original).toBeTruthy()
+ const png=spawnSync('ffmpeg',['-v','error','-f','rawvideo','-pixel_format','rgba','-video_size','18x10','-i','pipe:0','-frames:v','1','-f','image2pipe','-vcodec','png','pipe:1'],{input:Buffer.from(original.rgba)});expect(png.status).toBe(0)
+ const registered=await request.post('/api/auth/register',{data:{username:`lighting-effects-browser-${profile}`,password:'scope-browser-test-password'}});expect(registered.status()).toBe(201)
+ const {token}=await registered.json() as {token:string};const uploaded=await request.post('/api/upload',{headers:{Authorization:`Bearer ${token}`},multipart:{file:{name:'lighting-effects.png',mimeType:'image/png',buffer:png.stdout}}});expect(uploaded.ok()).toBe(true)
+ const {id}=await uploaded.json() as {id:string}
+ const constant=(value:number)=>({mode:'constant',value})
+ const content={schemaVersion:1,timeBase:1000000,canvas:{width:18,height:10,fpsMilli:10000,background:{red:0,green:0,blue:0,alpha:1}},sources:{[id]:{id,kind:'image',durationTicks:0,width:18,height:10,hasAudio:false}},tracks:[{kind:'image',id:'main',name:'Image',hidden:false,locked:false,clips:[{id:'clip',sourceId:id,timelineStartTick:0,durationTicks:1000000,transform:{x:constant(0),y:constant(0),scaleX:constant(1),scaleY:constant(1),rotationDegrees:constant(0),anchorX:0.5,anchorY:0.5},opacity:constant(1),blendMode:'normal',effects:[{kind:"lighting_effects",parameters:original.parameters}],enabled:true}]}]}
+
+ const props={token,project:{schemaVersion:1,root:'root',compositions:{root:{durationUs:1000000,content,instances:[]}}}}
+ await page.addInitScript(value=>localStorage.setItem('video-kadr.live-lighting-effects-test',JSON.stringify(value)),props)
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await page.goto('/e2e/fixtures/live-lighting-effects.html')
+ const history=page.getByLabel('Lighting Effects history');await expect(history).toHaveText('0')
+ await page.locator('section[aria-label="Lighting Effects"] details').evaluateAll(elements=>{for(const element of elements)(element as HTMLDetailsElement).open=true})
+ for(const[i,[channel]]of lightingChannels.entries()){await page.getByLabel(`clip Lighting Effects ${channel} key`,{exact:true}).click();await expect(history).toHaveText(String(i+1))}
+ const saved=JSON.parse(await page.getByLabel('Lighting Effects document').innerText());const effect=saved.compositions.root.content.tracks[0].clips[0].effects[0];expect(effect.kind).toBe('lighting_effects');expect(Object.keys(effect.animation)).toHaveLength(64);expect(effect.parameters).toEqual(original.parameters)
+ const key=page.getByLabel('clip Lighting Effects l1Intensity 500000 value',{exact:true});await key.locator('xpath=ancestor::details[1]').locator('summary').click()
+ await key.evaluate(element=>{(element as HTMLInputElement).value='3';element.dispatchEvent(new Event('change',{bubbles:true}))});await expect(history).toHaveText('65');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('64');expect(JSON.parse(await page.getByLabel('Lighting Effects document').innerText())).toEqual(saved)
+ const center=page.getByLabel('clip Lighting Effects l1CenterX',{exact:true});await center.evaluate(element=>{(element as HTMLInputElement).value='1.123456789012';element.dispatchEvent(new Event('change',{bubbles:true}))});await expect(history).toHaveText('65');const changed=JSON.parse(await page.getByLabel('Lighting Effects document').innerText()).compositions.root.content.tracks[0].clips[0].effects[0];expect(changed.parameters.lights[0].center[0]).toBe(1.123456789012);expect(changed.animation).toEqual(effect.animation);await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('64');expect(JSON.parse(await page.getByLabel('Lighting Effects document').innerText())).toEqual(saved)
+ const nextKind=(original.parameters.lights[1].kind+1)%4;await page.getByLabel('clip Lighting Effects l2Type',{exact:true}).selectOption(String(nextKind));await expect(history).toHaveText('65');expect(JSON.parse(await page.getByLabel('Lighting Effects document').innerText()).compositions.root.content.tracks[0].clips[0].effects[0].parameters.lights[1].kind).toBe(nextKind);await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('64');expect(JSON.parse(await page.getByLabel('Lighting Effects document').innerText())).toEqual(saved)
+ await page.getByLabel('clip Lighting Effects whiteHigh',{exact:true}).setChecked(!original.parameters.whiteHigh);await expect(history).toHaveText('65');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('64');expect(JSON.parse(await page.getByLabel('Lighting Effects document').innerText())).toEqual(saved)
+ const preview=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/compositions/nested-preview');await page.getByRole('button',{name:'Native Preview',exact:true}).click();expect((await preview).status()).toBe(200)
+ const bits=original.bits as number[];const f=(bit:number)=>{const buffer=new ArrayBuffer(4);new Uint32Array(buffer)[0]=bit;return new Float32Array(buffer)[0]!}
+ const expected:number[]=[];for(let i=0;i<bits.length;i+=4){const alpha=f(bits[i+3]!);const a=Math.max(0,Math.min(255,Math.round(alpha*255+1e-4)));for(let c=0;c<3;c++){const v=alpha>1e-6?Math.max(0,f(bits[i+c]!)/alpha):0;const d=v<=.0031308?v*12.92:1.055*Math.pow(v,1/2.4)-.055;expected.push(Math.round(Math.max(0,Math.min(255,Math.round(d*255+1e-4)))*a/255))}expected.push(255)}
+ await expect.poll(()=>page.getByLabel('Lighting Effects preview',{exact:true}).evaluate((element,expected)=>{const canvas=element as HTMLCanvasElement;if(canvas.width!==18||canvas.height!==10)return false;const pixels=canvas.getContext('2d')!.getImageData(0,0,18,10).data;for(let i=0;i<pixels.length;i++)if(Math.abs(pixels[i]!-expected[i]!)>1)return false;return true},expected)).toBe(true)
+ await expect(page.getByLabel('Lighting Effects error')).toHaveText('');expect(errors).toEqual([])
+})

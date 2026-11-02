@@ -1,0 +1,8 @@
+
+running 3 tests
+test semantic_centroid_wraps_panorama_seam ... ok
+test absent_ambiguous_and_invalid_semantic_masks_rejected ... ok
+test lossless_sam_transport_vfr_clock_verified_planes_and_native_camera_centres ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+

@@ -1,5 +1,6 @@
 # Rust
 /backend/target/
+/backend/preview-core/target/
 /backend/fuzz/target/
 /backend/sqlx-check.db
 /backend/mutants.out*/
@@ -38,3 +39,12 @@
 .claude/memory/
 .claude/settings.local.json
 .claude/worktrees/
+
+# Python bytecode and generated adversarial TTS test output
+__pycache__/
+*.pyc
+/backend/untrusted.wav
+
+# Nested Rust runtime build cache and root test cache
+/backend/vision-runtime/target/
+/node_modules/

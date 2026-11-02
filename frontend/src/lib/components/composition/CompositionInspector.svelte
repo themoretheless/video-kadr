@@ -1,4 +1,64 @@
 <script lang="ts">
+  import ClipMediaReplacement from './ClipMediaReplacement.svelte'
+  import { reattachAudioReason } from '$lib/composition/reattachAudio.js'
+  import ProceduralTransitionControls from './ProceduralTransitionControls.svelte'
+  import {defaultProceduralTransition,type ProceduralTransitionSpec} from '$lib/composition/transitionCatalog'
+
+  import {boundaryTransition} from '$lib/composition/boundaryTransition.js'
+  import {transitionSourceSpan} from '$lib/composition/transitionTimeline.js'
+  import {upsertTransition} from '$lib/composition/commands.js'
+  import {commitDocument} from '$lib/state/composition.svelte'
+  import CompositionFonts from './CompositionFonts.svelte'
+  import CompositionCaptions from './CompositionCaptions.svelte'
+  import GraphicTemplateControls from './GraphicTemplateControls.svelte'
+  import GraphicTemplateExport from './GraphicTemplateExport.svelte'
+  import GraphicTemplateBrowser from './GraphicTemplateBrowser.svelte'
+  import GraphicRollEditor from './GraphicRollEditor.svelte'
+  import GraphicResponsiveTime from './GraphicResponsiveTime.svelte'
+  import GraphicLayersEditor from './GraphicLayersEditor.svelte'
+  import ConcatGainSourceKeyEditor from './ConcatGainSourceKeyEditor.svelte'
+  import CompositionConcatClipAnimation from './CompositionConcatClipAnimation.svelte'
+  import CompositionSourceBypassEffects from './CompositionSourceBypassEffects.svelte'
+  import SourceAudioStreamEditor from './SourceAudioStreamEditor.svelte'
+  import AudioDspChain from './AudioDspChain.svelte'
+  import { SvelteSet } from 'svelte/reactivity'
+  import { createMeterDisplay } from '$lib/audio/meterDisplay'
+  const cancelledRoleDrags = new SvelteSet<string>()
+  const cancelledRoleReadouts = new SvelteSet<string>()
+  $effect(() => () => clearPreviewRoleGains())
+  const masterDisplayEnvelope = createMeterDisplay()
+  let masterDisplay = $state(masterDisplayEnvelope.value)
+  import { previewAudioState, setPreviewAudioMuted, setPreviewRoleGain, clearPreviewRoleGains } from '$lib/audio/previewAudio.svelte'
+  import { readAudioRoleMeter, readAudioMasterMeter, readMasterPeakHold, resetMasterPeakHold } from '$lib/audio/mediaGain'
+  import { COMPOSITION_AUDIO_ROLES } from '$lib/composition/types'
+  let roleLevels = $state<Partial<Record<import('$lib/composition/types').CompositionAudioRole, number>>>({})
+  let peakHold = $state(-Infinity)
+  let masterLevel = $state({ rmsDb: -Infinity, peakDb: -Infinity })
+  $effect(() => {
+    const playing = compositionState.transport.playing
+    let frame: number | undefined
+    if (!playing) {
+      roleLevels = {}
+      peakHold = readMasterPeakHold()
+      masterLevel = { rmsDb: -Infinity, peakDb: -Infinity }
+      masterDisplayEnvelope.receive({ rmsDb: -Infinity, peakDb: -Infinity }, performance.now())
+      masterDisplay = masterDisplayEnvelope.value
+    }
+    const sample = () => {
+      const now = performance.now()
+      if (playing) {
+        masterLevel = readAudioMasterMeter()
+        masterDisplayEnvelope.receive(masterLevel, now)
+        peakHold = readMasterPeakHold()
+        roleLevels = Object.fromEntries(COMPOSITION_AUDIO_ROLES.map(role => [role, readAudioRoleMeter(role).rmsDb]))
+      } else masterDisplayEnvelope.advance(now)
+      masterDisplay = masterDisplayEnvelope.value
+      if (playing || !masterDisplayEnvelope.settled) frame = requestAnimationFrame(sample)
+    }
+    if (playing || !masterDisplayEnvelope.settled) frame = requestAnimationFrame(sample)
+    return () => { if (frame !== undefined) cancelAnimationFrame(frame) }
+  })
+  import { audioRoleMix, audioRoleSilencedBySolo } from '$lib/composition/audioRoles'
   import ProgressBar from '$lib/components/ProgressBar.svelte'
   import { DEFAULT_SILENCE_REMOVAL, detectAudibleRanges } from '$lib/audio/silence.js'
   import { localWaveformCache, type LocalWaveformCache } from '$lib/audio/waveformCache.js'
@@ -40,12 +100,21 @@
   } from '$lib/composition/validation.js'
   import {
     addTextToComposition,
+    addColorToComposition,
+    addGraphicToComposition,
+    addGraphicTemplateToComposition,
+    updateCompositionGraphicLayers,
+    updateCompositionGraphicResponsiveTime,
+    updateCompositionGraphicRoll,
+    updateCompositionColorParams,
     applyCompositionTextStyleToTrack,
     applyCompositionVisualAnimation,
     addCompositionVideoMask,
     cancelCompositionExport,
     clearCompositionVisualAnimations,
     compositionDuration,
+    setCompositionPlayhead,
+    selectCompositionClip,
     compositionState,
     exportComposition,
     freezeCompositionClipAtPlayhead,
@@ -54,12 +123,20 @@
     removeSilenceFromSelectedCompositionClip,
     deleteCompositionVideoMask,
     detachCompositionVideoAudio,
+    reattachCompositionVideoAudio,
     selectedCompositionClip,
+    setCompositionScaleLinked,
+    setCompositionClipsEnabled,
+    setCompositionClipLocked,
     selectedCompositionTrack,
     setCompositionTransition,
     setCompositionDeliveryProfile,
     trimCompositionClip,
+    updateCompositionAudioStream,
     updateCompositionAudioMix,
+    setCompositionAudioRole,
+    setCompositionRoleGain,
+    setCompositionRoleFlags,
     updateCompositionCanvas,
     updateCompositionBlendMode,
     updateCompositionChromaKey,
@@ -75,6 +152,7 @@
     updateCompositionText,
     updateCompositionTextStyle,
     updateCompositionVideoAudio,
+    updateCompositionSourceGainKeys,
     updateCompositionVideoMask,
     updateCompositionVideoEffects,
     updateCompositionVisualTransform,
@@ -82,6 +160,8 @@
   import { state as legacyState } from '$lib/state/store.svelte.js'
   import CompositionKeyframeEditor from './CompositionKeyframeEditor.svelte'
   import CompositionSpeedRampEditor from './CompositionSpeedRampEditor.svelte'
+  import CompositionMotionPathEditor from './CompositionMotionPathEditor.svelte'
+  import CompositionColorEditor from './CompositionColorEditor.svelte'
 
   interface Props { waveformCache?: Pick<LocalWaveformCache, 'load'> }
   let { waveformCache = localWaveformCache }: Props = $props()
@@ -152,7 +232,12 @@
   const primaryTrack = $derived(primaryCompositionVideoTrack(compositionState.document))
   const transitionContext = $derived.by(findTransitionContext)
   let transitionKind = $state<CompositionTransitionKind>('dissolve')
+  let transitionKernel = $state<ProceduralTransitionSpec>(defaultProceduralTransition())
   let transitionSeconds = $state(0.5)
+  let transitionIndependent = $state(false)
+  let transitionStartSeconds = $state(0)
+  let transitionReverse = $state(false)
+  const independentTransition = $derived(transitionIndependent || Boolean(transitionContext?.transition?.timeline) || ['concat_dissolve','concat_fade_black','concat_fade_white','procedural','film_dissolve','additive_dissolve','fade_white'].includes(transitionKind))
   let transitionBoundaryKey = $state('')
   let silenceThresholdDb = $state(DEFAULT_SILENCE_REMOVAL.thresholdDb)
   let minimumSilenceSeconds = $state(DEFAULT_SILENCE_REMOVAL.minimumSilenceSeconds)
@@ -216,27 +301,59 @@
 
   $effect(() => {
     const context = transitionContext
-    const nextKey = context ? `${context.track.id}:${context.from.id}:${context.to.id}:${context.transition?.id ?? ''}` : ''
+    const nextKey = context ? `${context.track.id}:${context.from.id}:${context.to.id}:${JSON.stringify(context.transition ?? null)}` : ''
     if (nextKey !== transitionBoundaryKey) {
       transitionBoundaryKey = nextKey
       transitionKind = context?.transition?.kind ?? 'dissolve'
+      transitionKernel = context?.transition?.kernel ?? defaultProceduralTransition()
       transitionSeconds = context?.transition
-        ? seconds(context.transition.durationTicks)
+        ? context.transition.timeline ? Number(transitionSourceSpan(context.transition.timeline)[1])/254016000000 : seconds(context.transition.durationTicks)
         : Math.min(0.5, transitionHandleSeconds(context)) || 0.5
+      transitionIndependent = Boolean(context?.transition?.timeline)
+      transitionStartSeconds = context?.transition?.timeline ? Number(transitionSourceSpan(context.transition.timeline)[0])/254016000000 : context ? seconds(context.to.timelineStartTicks)-transitionSeconds/2 : 0
+      transitionReverse = context?.transition?.reverse ?? false
     }
   })
 
   const transitionReason = $derived.by(() => {
     const context = transitionContext
     if (!context) return null
-    return compositionTransitionUnavailableReason(compositionState.document, context.track.id, {
-      id: context.transition?.id ?? 'transition-preview',
-      fromClipId: context.from.id,
-      toClipId: context.to.id,
-      kind: transitionKind,
-      durationTicks: Math.max(1, Math.round(transitionSeconds * COMPOSITION_TIME_BASE)),
-    })
+    const candidate=boundaryTransition(context.transition?.id??'transition-preview',context.from.id,context.to.id,
+      transitionKind,Math.round(transitionSeconds*COMPOSITION_TIME_BASE),context.to.timelineStartTicks,context.transition,transitionOptions())
+    if(candidate.timeline){
+      try{upsertTransition(compositionState.document,context.track.id,candidate);return null}
+      catch(error){return error instanceof Error?error.message:String(error)}
+    }
+    return compositionTransitionUnavailableReason(compositionState.document, context.track.id, candidate)
   })
+
+  function commitRoleMixerGain(role: string, gainDb: number): void {
+    const audioRole = role as import('$lib/composition/types').CompositionAudioRole
+    cancelledRoleDrags.delete(role)
+    setPreviewRoleGain(audioRole)
+    run(() => setCompositionRoleGain(audioRole, Math.max(-30, Math.min(20, gainDb))))
+  }
+
+  function commitRoleReadout(role: string, input: HTMLInputElement): void {
+    if (cancelledRoleReadouts.delete(role)) return
+    if (Number.isFinite(input.valueAsNumber)) commitRoleMixerGain(role, input.valueAsNumber)
+  }
+
+  function roleReadoutKey(role: string, event: KeyboardEvent & { currentTarget: HTMLInputElement }): void {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      cancelledRoleReadouts.add(role)
+      const audioRole = role as import('$lib/composition/types').CompositionAudioRole
+      event.currentTarget.value = String(previewAudioState.roleGains[audioRole] ?? audioRoleMix(compositionState.document, audioRole).gainDb)
+      event.currentTarget.blur()
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      commitRoleReadout(role, event.currentTarget)
+      cancelledRoleReadouts.add(role)
+      event.currentTarget.blur()
+    }
+  }
 
   function run(action: () => void): void {
     try {
@@ -407,6 +524,14 @@
     return Math.max(0, (2 * Math.min(tail, head)) / COMPOSITION_TIME_BASE)
   }
 
+  function transitionOptions() {
+    if (!independentTransition) return undefined
+    const previous=transitionContext?.transition?.timeline
+    const startTick=previous&&transitionStartSeconds===Number(transitionSourceSpan(previous)[0])/254016000000
+      ? previous.startTick : Math.round(transitionStartSeconds*COMPOSITION_TIME_BASE)
+    return {independent:true,startTick,reverse:transitionReverse,...(transitionKind==='procedural'?{kernel:transitionKernel}:{})}
+  }
+
   function saveTransition(): void {
     const context = transitionContext
     if (!context) return
@@ -417,20 +542,21 @@
       transitionKind,
       Math.round(transitionSeconds * COMPOSITION_TIME_BASE),
       context.transition?.id,
+      transitionOptions(),
     )
   }
 
   function visualScalePercent(candidate: CompositionClip): number {
-    if (candidate.kind !== 'video' && candidate.kind !== 'image') return 100
+    if (candidate.kind !== 'video' && candidate.kind !== 'image' && candidate.kind !== 'color' && candidate.kind !== 'graphic') return 100
     const isPrimary = track?.id === primaryTrack?.id
-    const source = compositionState.document.sources[candidate.sourceId]
+    const source = (candidate.kind === 'color' || candidate.kind === 'graphic') ? candidate : compositionState.document.sources[candidate.sourceId]
     const baseWidth = isPrimary ? compositionState.document.canvas.width : source?.width
     return baseWidth ? Number(((candidate.transform.width / baseWidth) * 100).toFixed(2)) : 100
   }
 
-  function updateVisualScale(candidate: VideoClip | Extract<CompositionClip, { kind: 'image' }>, percent: number): void {
+  function updateVisualScale(candidate: VideoClip | Extract<CompositionClip, { kind: 'image' | 'color' | 'graphic' }>, percent: number): void {
     const isPrimary = track?.id === primaryTrack?.id
-    const source = compositionState.document.sources[candidate.sourceId]
+    const source = (candidate.kind === 'color' || candidate.kind === 'graphic') ? candidate : compositionState.document.sources[candidate.sourceId]
     const baseWidth = isPrimary ? compositionState.document.canvas.width : source?.width
     const baseHeight = isPrimary ? compositionState.document.canvas.height : source?.height
     if (!baseWidth || !baseHeight) throw new Error('Нет размеров источника для пропорционального scale')
@@ -473,7 +599,12 @@
   <div class="composition-inspector-head">
     <h2>Инспектор</h2>
     <button class="btn ghost sm" type="button" onclick={() => run(() => addTextToComposition())}>+ Текст</button>
+    <button class="btn ghost sm" type="button" onclick={() => run(() => addColorToComposition())}>+ Цвет</button>
+    <button class="btn ghost sm" type="button" onclick={() => run(() => addGraphicToComposition('text'))}>+ Графика</button>
   </div>
+  <GraphicTemplateBrowser onchoose={template => run(() => addGraphicTemplateToComposition(template))} />
+  <CompositionFonts composition={compositionState.document} onchange={document=>run(()=>commitDocument(document))} />
+  <CompositionCaptions composition={compositionState.document} playheadTicks={compositionState.transport.playheadTicks} onseek={(tick,clear)=>{setCompositionPlayhead(tick);if(clear)selectCompositionClip(null,null)}} onchange={document=>run(()=>commitDocument(document))} />
 
   <fieldset class="composition-fieldset">
     <legend>Canvas</legend>
@@ -495,7 +626,12 @@
       </label>
       <label>
         Частота кадров
-        <select aria-label="Canvas FPS" value={compositionState.document.canvas.fps} onchange={(event) => run(() => updateCompositionCanvas({ fps: Number(event.currentTarget.value) }))}>
+        <select aria-label="Canvas FPS" value={compositionState.document.canvas.fpsRate ? `${compositionState.document.canvas.fpsRate.numerator}/${compositionState.document.canvas.fpsRate.denominator}` : compositionState.document.canvas.fps} onchange={(event) => {
+          const value = event.currentTarget.value
+          const [numerator, denominator] = value.split('/').map(Number)
+          run(() => updateCompositionCanvas(denominator ? { fps: numerator! / denominator, fpsRate: { numerator: numerator!, denominator } } : { fps: Number(value) }))
+        }}>
+          {#each ['24000/1001', '30000/1001', '60000/1001'] as rate (rate)}<option value={rate}>{rate} fps</option>{/each}
           {#each [23.976, 24, 25, 29.97, 30, 50, 59.94, 60] as fps (fps)}<option value={fps}>{fps} fps</option>{/each}
         </select>
       </label>
@@ -521,14 +657,49 @@
     <p class="composition-help">Color и pattern заполняют пустые области; Blur растягивает активный primary video под contain-клипом. Preview и финальный файл используют один режим. Размеры должны быть чётными.</p>
   </fieldset>
 
+  <fieldset class="composition-fieldset">
+    <legend>Микшер ролей</legend>
+    <div style="display:flex;align-items:center;gap:6px">
+      <label style="display:flex;align-items:center;gap:3px;margin:0;font-size:11px"><input aria-label="Отключить звук предпросмотра" type="checkbox" style="width:auto" checked={previewAudioState.muted} onchange={(event) => setPreviewAudioMuted(event.currentTarget.checked)} /> Mute</label>
+      <div style="position:relative;flex:1;height:12px" title={`RMS ${masterDisplay.rmsDb <= -120 ? '−∞' : masterDisplay.rmsDb.toFixed(1)} dBFS`}>
+        <meter aria-label="Общий уровень звука" min="-60" max="0" value={Math.max(-60, Math.min(0, masterDisplay.levelDb))} style="width:100%;height:6px"></meter>
+        <span aria-label="Удерживаемый пик" style={`position:absolute;left:${Math.max(0, Math.min(100, (masterDisplay.peakDb + 60) / 60 * 100))}%;top:0;height:10px;border-left:1px solid currentColor`}></span>
+      </div>
+      <button type="button" class="btn ghost sm" aria-label="Сбросить пиковый уровень звука" title="Максимальный пик прохода; нажмите для сброса" style="font-size:11px;padding:2px 4px" onclick={() => { resetMasterPeakHold(); peakHold = readMasterPeakHold(); masterDisplayEnvelope.resetPeak(performance.now()); masterDisplay = masterDisplayEnvelope.value }}>Peak {Number.isFinite(peakHold) ? peakHold.toFixed(1) : '−∞'} dBFS</button>
+    </div>
+    {#each [['dialogue', 'Диалог'], ['music', 'Музыка'], ['sfx', 'Эффекты'], ['voiceover', 'Голос за кадром']] as [role, label] (role)}
+      {@const mix = audioRoleMix(compositionState.document, role as 'dialogue' | 'music' | 'sfx' | 'voiceover')}
+      <div style="display:grid;grid-template-columns:minmax(80px,1fr) 64px auto auto;align-items:center;gap:6px;margin:4px 0">
+        <span>{label}{#if audioRoleSilencedBySolo(compositionState.document, role as 'dialogue' | 'music' | 'sfx' | 'voiceover')}<small aria-label={`Роль ${role} заглушена Solo другой роли`} style="display:block;font-size:10px;opacity:0.65">Solo другой роли</small>{/if}</span><input aria-label={`Громкость роли ${role}`} type="number" min="-30" max="20" step="0.5" value={previewAudioState.roleGains[role as 'dialogue' | 'music' | 'sfx' | 'voiceover'] ?? mix.gainDb} oninput={() => cancelledRoleReadouts.delete(role)} onkeydown={(event) => roleReadoutKey(role, event)} onchange={(event) => commitRoleReadout(role, event.currentTarget)} />
+        <label style="display:flex;align-items:center;gap:3px;margin:0"><input style="width:auto" aria-label={`Mute роли ${role}`} type="checkbox" checked={mix.muted} onchange={(event) => run(() => setCompositionRoleFlags(role as 'dialogue' | 'music' | 'sfx' | 'voiceover', { muted: event.currentTarget.checked }))} /> M</label>
+        <label style="display:flex;align-items:center;gap:3px;margin:0"><input style="width:auto" aria-label={`Solo роли ${role}`} type="checkbox" checked={mix.solo} onchange={(event) => run(() => setCompositionRoleFlags(role as 'dialogue' | 'music' | 'sfx' | 'voiceover', { solo: event.currentTarget.checked }))} /> S</label>
+      </div>
+      {@const level = roleLevels[role as import('$lib/composition/types').CompositionAudioRole] ?? -Infinity}
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <input aria-label={`Прослушать громкость роли ${role}`} type="range" min="-30" max="20" step="0.5" style="flex:1;min-width:0" value={previewAudioState.roleGains[role as 'dialogue' | 'music' | 'sfx' | 'voiceover'] ?? mix.gainDb}
+          oninput={(event) => { cancelledRoleDrags.delete(role); setPreviewRoleGain(role as 'dialogue' | 'music' | 'sfx' | 'voiceover', inputNumber(event)) }}
+          onchange={(event) => { setPreviewRoleGain(role as 'dialogue' | 'music' | 'sfx' | 'voiceover'); if (cancelledRoleDrags.delete(role)) return; commitRoleMixerGain(role, inputNumber(event)) }}
+          onkeydown={(event) => { if (event.key === 'Escape') { event.preventDefault(); cancelledRoleDrags.add(role); setPreviewRoleGain(role as 'dialogue' | 'music' | 'sfx' | 'voiceover') } }}
+          onpointercancel={() => { cancelledRoleDrags.add(role); setPreviewRoleGain(role as 'dialogue' | 'music' | 'sfx' | 'voiceover') }} />
+        <meter aria-label={`Уровень роли ${role}`} min="-60" max="0" value={Math.max(-60, Math.min(0, level))} style="flex:1;height:6px"></meter>
+        <button type="button" class="btn ghost sm" aria-label={`Сбросить громкость роли ${role}`} title="Вернуть 0 dB" style="padding:1px 3px" onclick={() => commitRoleMixerGain(role, 0)}>↺</button>
+        <output style="font-size:11px;min-width:56px;text-align:right">{Number.isFinite(level) ? level.toFixed(1) : '−∞'} dBFS</output>
+      </div>
+    {/each}
+  </fieldset>
+
   {#if clip && track}
     <div class="composition-inspector-section">
-      <strong>{clip.kind === 'text' ? clip.text : compositionState.media[clip.sourceId]?.filename ?? clip.sourceId}</strong>
+      <strong>{clip.kind === 'text' ? clip.text : clip.kind === 'color' ? `Цвет ${clip.color}` : clip.kind === 'graphic' ? 'Графика' : compositionState.media[clip.sourceId]?.filename ?? clip.sourceId}</strong>
       <span class={`composition-kind ${clip.kind}`}>{clip.kind}</span>
     </div>
 
+    <label><input aria-label="Заблокировать клип" type="checkbox" checked={clip.locked ?? false} onchange={(event) => run(() => setCompositionClipLocked(clip.id, event.currentTarget.checked))} /> Заблокировать клип</label>
+    <fieldset class="composition-clip-controls" disabled={Boolean(track.locked || clip.locked)}>
     <fieldset class="composition-fieldset">
       <legend>Размещение</legend>
+      <label><input aria-label="Клип включён" type="checkbox" checked={clip.enabled !== false} disabled={track.locked} onchange={(event) => run(() => setCompositionClipsEnabled([clip.id], event.currentTarget.checked))} /> Клип включён</label>
+      {#if clip.enabled === false}<p class="composition-help">Клип выключен в предпросмотре и экспорте.</p>{/if}
       <div class="composition-form-grid">
         <label>
           Дорожка
@@ -641,6 +812,10 @@
         {/if}
       </div>
     </fieldset>
+    {#if clip.kind === 'video' || clip.kind === 'audio' || clip.kind === 'image'}
+      <ClipMediaReplacement clipId={clip.id} />
+    {/if}
+
 
     {#if clip.kind === 'video' || clip.kind === 'audio'}
       <CompositionSpeedRampEditor {clip} />
@@ -656,7 +831,8 @@
       </fieldset>
     {/if}
 
-    {#if clip.kind === 'video' || clip.kind === 'image' || clip.kind === 'text'}
+    {#if clip.kind === 'video' || clip.kind === 'image' || clip.kind === 'text' || clip.kind === 'color'}
+      {#if clip.kind !== 'video' || primaryTrack?.id !== selectedCompositionTrack()?.id}<CompositionMotionPathEditor {clip} />{/if}
       <fieldset class="composition-fieldset">
         <legend>Визуальный слой</legend>
         <div class="composition-form-grid">
@@ -667,6 +843,10 @@
           <label>
             Y, px от центра
             <input aria-label="Позиция Y" type="number" step="1" value={clip.kind === 'text' ? clip.y : clip.transform.y} onchange={(event) => run(() => updateCompositionVisualTransform(clip.id, { y: inputNumber(event) }))} />
+          </label>
+          <label>
+            <input aria-label="Связать масштаб X и Y" type="checkbox" checked={clip.scaleLinked === true} onchange={(event) => run(() => setCompositionScaleLinked(clip.id, event.currentTarget.checked))} />
+            Связать масштаб X и Y
           </label>
           {#if clip.kind !== 'text'}
             <label>
@@ -728,6 +908,26 @@
       <CompositionKeyframeEditor {clip} />
     {/if}
 
+    {#if clip.kind === 'graphic'}
+      <GraphicTemplateControls {clip} relativeUs={compositionState.transport.playheadTicks - clip.timelineStartTicks} durationUs={clip.durationTicks} animationOffsetUs={clip.animationOffsetUs ?? 0} onchange={layers => run(() => updateCompositionGraphicLayers(clip.id,layers))} />
+      <GraphicTemplateExport {clip} />
+      <GraphicRollEditor value={clip.roll} onchange={value => run(() => updateCompositionGraphicRoll(clip.id,value))} />
+      <GraphicResponsiveTime value={clip.responsiveTime} duration={clip.durationTicks} localUs={compositionState.transport.playheadTicks - clip.timelineStartTicks} onchange={value => run(() => updateCompositionGraphicResponsiveTime(clip.id,value))} />
+      <GraphicLayersEditor responsiveTime={clip.responsiveTime} relativeUs={compositionState.transport.playheadTicks - clip.timelineStartTicks} durationUs={clip.durationTicks} animationOffsetUs={clip.animationOffsetUs ?? 0} localUs={compositionState.transport.playheadTicks - clip.timelineStartTicks + (clip.animationOffsetUs ?? 0)} width={clip.width} height={clip.height} layers={clip.graphic.layers} onchange={layers => run(() => updateCompositionGraphicLayers(clip.id, layers))} />
+    {/if}
+
+    {#if clip.kind === 'color'}
+      <fieldset class="composition-fieldset">
+        <legend>Цветовой слой</legend>
+        <CompositionColorEditor {clip} />
+        <div class="composition-form-grid">
+          <label>RGBA<input aria-label="Цвет слоя RGBA" value={clip.color} onchange={(event) => run(() => updateCompositionColorParams(clip.id, { color: event.currentTarget.value }))} /></label>
+          <label>Исходная ширина<input aria-label="Исходная ширина цвета" type="number" min="1" max="3840" value={clip.width} onchange={(event) => run(() => updateCompositionColorParams(clip.id, { width: inputNumber(event) }))} /></label>
+          <label>Исходная высота<input aria-label="Исходная высота цвета" type="number" min="1" max="2160" value={clip.height} onchange={(event) => run(() => updateCompositionColorParams(clip.id, { height: inputNumber(event) }))} /></label>
+        </div>
+      </fieldset>
+    {/if}
+
     {#if clip.kind === 'text'}
       <fieldset class="composition-fieldset">
         <legend>Текст</legend>
@@ -743,6 +943,7 @@
           </label>
           <label>Размер, px<input type="number" min="1" max="512" value={clip.style.fontSizePx} onchange={(event) => run(() => patchText(clip, { fontSizePx: inputNumber(event) }))} /></label>
           <label>Цвет<input class="composition-color-field" aria-label="Цвет текста" value={clip.style.color} onchange={(event) => run(() => patchText(clip, { color: event.currentTarget.value }))} /></label>
+          <CompositionColorEditor {clip} />
           <label>Фон<input class="composition-color-field" aria-label="Цвет фона текста" value={clip.style.backgroundColor ?? '#00000000'} onchange={(event) => run(() => patchText(clip, { backgroundColor: event.currentTarget.value }))} /></label>
           <label>Выравнивание
             <select value={clip.style.align} onchange={(event) => run(() => patchText(clip, { align: event.currentTarget.value as TextClip['style']['align'] }))}>
@@ -808,7 +1009,7 @@
     {#if clip.kind === 'video'}
       <fieldset class="composition-fieldset">
         <legend>Chroma key</legend>
-        <label class="composition-check"><input type="checkbox" checked={chroma(clip).enabled} onchange={(event) => run(() => patchChroma(clip, { enabled: event.currentTarget.checked }))} /> включить chroma key</label>
+        <label class="composition-check"><input aria-label="Включить chroma key" type="checkbox" checked={chroma(clip).enabled} onchange={(event) => run(() => patchChroma(clip, { enabled: event.currentTarget.checked }))} /> включить chroma key</label>
         <div class="composition-form-grid">
           <label>Цвет<input aria-label="Цвет chroma key" class="composition-color-field" value={chroma(clip).color} onchange={(event) => run(() => patchChroma(clip, { color: event.currentTarget.value }))} /></label>
           <label>Similarity<input type="number" min="0.00001" max="1" step="0.01" value={chroma(clip).similarity} onchange={(event) => run(() => patchChroma(clip, { similarity: inputNumber(event) }))} /></label>
@@ -863,16 +1064,23 @@
       <fieldset class="composition-fieldset">
         <legend>Аудио</legend>
         <div class="composition-form-grid">
+          <label>Роль<select aria-label="Роль аудиоклипа" value={clip.role ?? 'dialogue'} onchange={(event) => run(() => setCompositionAudioRole(clip.id, event.currentTarget.value as 'dialogue' | 'music' | 'sfx' | 'voiceover'))}>
+            <option value="dialogue">Диалог</option><option value="music">Музыка</option><option value="sfx">Звуковые эффекты</option><option value="voiceover">Голос за кадром</option>
+          </select></label>
           <label>Gain<input aria-label="Громкость аудиоклипа" type="number" min="0" max="16" step="0.05" value={clip.gain} onchange={(event) => run(() => updateCompositionClipGain(clip.id, inputNumber(event)))} /></label>
           <label>Pan<input aria-label="Панорама аудиоклипа" type="number" min="-1" max="1" step="0.05" value={clip.pan ?? 0} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { pan: inputNumber(event) }))} /></label>
           <label class="composition-check"><input aria-label="Reverse audio" type="checkbox" checked={clip.reversed ?? false} disabled={audioClipHasCrossfade(clip)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { reversed: event.currentTarget.checked }))} /> reverse</label>
-          <label>Fade in, с<input aria-label="Fade in" type="number" min="0" max={seconds(clipDurationTicks(clip))} step="0.01" value={seconds(clip.fadeInTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { fadeInTicks: ticksFromInput(event) }))} /></label>
-          <label>Fade out, с<input aria-label="Fade out" type="number" min="0" max={seconds(clipDurationTicks(clip))} step="0.01" value={seconds(clip.fadeOutTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { fadeOutTicks: ticksFromInput(event) }))} /></label>
+          <label>Fade in, с<input aria-label="Fade in" type="number" min="0" max="86400" step="0.01" value={seconds(clip.fadeInTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { fadeInTicks: ticksFromInput(event) }))} /></label>
+          <label>Fade out, с<input aria-label="Fade out" type="number" min="0" max="86400" step="0.01" value={seconds(clip.fadeOutTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { fadeOutTicks: ticksFromInput(event) }))} /></label>
           <label>Voice effect<select aria-label="Voice effect" value={clip.voiceEffect ?? 'none'} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { voiceEffect: event.currentTarget.value as typeof COMPOSITION_VOICE_EFFECTS[number] }))}>{#each COMPOSITION_VOICE_EFFECTS as effect (effect)}<option value={effect} disabled={(effect === 'echo' && Boolean(echoUnavailable)) || (effect === 'robot' && Boolean(robotUnavailable))}>{effect}</option>{/each}</select></label>
           <label>Pitch, semitones<input aria-label="Pitch semitones" type="number" min="-12" max="12" step="1" value={clip.pitchSemitones ?? 0} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { pitchSemitones: inputNumber(event) }))} /></label>
           <label title={toneUnavailable}>Tone, dB<input aria-label="Tone dB" type="number" min="-12" max="12" step="1" disabled={Boolean(toneUnavailable)} value={clip.toneDb ?? 0} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { toneDb: inputNumber(event) }))} /></label>
           <label>Crossfade с предыдущим, с<input aria-label="Audio crossfade" type="number" min="0" max={seconds(audioCrossfadeMaxTicks(clip))} step="0.01" disabled={audioCrossfadeMaxTicks(clip) === 0} value={seconds(clip.crossfadeInTicks ?? 0)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { crossfadeInTicks: ticksFromInput(event) }))} /></label>
+          <label>Кривая crossfade<select aria-label="Audio crossfade curve" value={clip.crossfadeCurve ?? 'constant_gain'} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { crossfadeCurve: event.currentTarget.value as 'constant_gain' | 'constant_power' | 'exponential_fade' }))}><option value="constant_gain">Constant Gain</option><option value="constant_power">Constant Power</option><option value="exponential_fade">Exponential Fade</option></select></label>
+          {#if clip.crossfadeCurve && clip.crossfadeCurve !== 'constant_gain'}<small>Crossfade с DSP требует прямого воспроизведения со скоростью 1×.</small>{/if}
         </div>
+        <ConcatGainSourceKeyEditor keys={clip.concatGainKeys} rest={clip.gain} progress={(compositionState.transport.playheadTicks-clip.timelineStartTicks)/clipDurationTicks(clip)} disabled={!!clip.audioAnimation?.gain} onchange={keys=>run(()=>updateCompositionSourceGainKeys(clip.id,keys))} />
+        <AudioDspChain localTick={compositionState.transport.playheadTicks - clip.timelineStartTicks} effects={clip.dspEffects} onchange={effects => run(() => updateCompositionAudioMix(clip.id, { dspEffects: effects }))} />
         <label class="composition-check"><input aria-label="Auto ducking" type="checkbox" disabled={Boolean(duckingUnavailable)} checked={Boolean(clip.ducking)} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { ducking: event.currentTarget.checked ? DEFAULT_DUCKING : undefined }))} /> приглушать под primary voice</label>
         {#if duckingUnavailable}<p class="composition-help" role="status">{duckingUnavailable}</p>{/if}
         {#if clip.ducking}
@@ -883,12 +1091,14 @@
             <label>Ducking release, ms<input aria-label="Ducking release" type="number" min="1" max="5000" step="10" value={clip.ducking.releaseMs} onchange={(event) => run(() => updateCompositionAudioMix(clip.id, { ducking: { ...clip.ducking!, releaseMs: inputNumber(event) } }))} /></label>
           </div>
         {/if}
+        <button class="btn ghost sm" type="button" disabled={reattachAudioReason(compositionState.document, clip.id) !== null} title={reattachAudioReason(compositionState.document, clip.id) ?? 'Вернуть связанный звук в видео'} onclick={() => run(() => reattachCompositionVideoAudio(clip.id))}>Вернуть звук в видео</button>
         <CompositionKeyframeEditor {clip} mode="audio" />
         <p class="composition-help">Fade и animated gain слышны в preview; stereo pan, voice effect и auto ducking применяются точно при экспорте.</p>
       </fieldset>
     {:else if clip.kind === 'video'}
       <fieldset class="composition-fieldset" disabled={track.id !== primaryTrack?.id || !compositionState.document.sources[clip.sourceId]?.hasAudio || clip.playbackMode?.mode === 'freeze'}>
         <legend>Source audio</legend>
+        <button class="btn ghost sm" type="button" disabled={reattachAudioReason(compositionState.document, clip.id) !== null} title={reattachAudioReason(compositionState.document, clip.id) ?? 'Вернуть связанный звук в видео'} onclick={() => run(() => reattachCompositionVideoAudio(clip.id))}>Вернуть звук в видео</button>
         <label class="composition-check"><input aria-label="Использовать встроенный звук" type="checkbox" checked={clip.sourceAudioEnabled} disabled={!compositionState.document.sources[clip.sourceId]?.hasAudio || clip.playbackMode?.mode === 'freeze'} onchange={(event) => run(() => updateCompositionVideoAudio(clip.id, { sourceAudioEnabled: event.currentTarget.checked }))} /> использовать встроенный звук</label>
         <div class="composition-form-grid">
           <label>Gain<input aria-label="Громкость source audio" type="number" min="0" max="16" step="0.05" value={clip.audioGain} onchange={(event) => run(() => updateCompositionClipGain(clip.id, inputNumber(event)))} /></label>
@@ -896,10 +1106,20 @@
         </div>
         <button class="btn ghost sm" type="button" disabled={!clip.sourceAudioEnabled || clip.playbackMode?.mode === 'freeze' || clip.speedRamp?.audioPolicy === 'mute'} onclick={() => run(() => detachCompositionVideoAudio(clip.id))}>Отделить звук</button>
         {#if track.id === primaryTrack?.id}<CompositionKeyframeEditor {clip} mode="audio" />{/if}
-        <p class="composition-help">{clip.playbackMode?.mode === 'freeze' ? 'Freeze frame всегда экспортируется без embedded source audio.' : track.id === primaryTrack?.id ? 'Mute, enable и animated gain слышны в preview; stereo pan применяется точно при экспорте.' : 'Backend использует embedded audio только у primary video. Параметры сохранятся, но для overlay вынесите звук на audio track.'}</p>
+        <p class="composition-help">{clip.playbackMode?.mode === 'freeze' ? 'Freeze frame всегда экспортируется без embedded source audio.' : track.id === primaryTrack?.id ? 'Mute, gain и панорама слышны в предпросмотре. Анимированная панорама при экспорте пока может отличаться.' : 'Ключи громкости включают независимый микс видеослоя. Без ключей или независимого микса звучит основная видеодорожка.'}</p>
       </fieldset>
     {/if}
 
+    {#if clip.kind === 'video'||clip.kind === 'image'}
+      {#if clip.concatAnimation}<CompositionConcatClipAnimation clipId={clip.id} animation={clip.concatAnimation} disabled={!!clip.locked||track.locked||compositionState.save.busy}/>{/if}
+      <CompositionSourceBypassEffects clipId={clip.id} effects={clip.effects} disabled={!!clip.locked||track.locked||compositionState.save.busy} />
+    {/if}
+    {#if clip.kind === 'audio'||clip.kind === 'video'}
+      <SourceAudioStreamEditor sourceId={clip.sourceId} value={clip.audioStream} disabled={!!clip.locked||track.locked} onchange={stream=>run(()=>updateCompositionAudioStream(clip.id,stream))} />
+    {/if}
+    {#if clip.kind === 'video'}
+      <ConcatGainSourceKeyEditor keys={clip.concatGainKeys} rest={clip.audioGain} progress={(compositionState.transport.playheadTicks-clip.timelineStartTicks)/clipDurationTicks(clip)} disabled={!!clip.audioAnimation?.gain||!compositionState.document.sources[clip.sourceId]?.hasAudio||clip.playbackMode?.mode==='freeze'} onchange={keys=>run(()=>updateCompositionSourceGainKeys(clip.id,keys))} />
+    {/if}
     {#if clip.kind === 'video'}
       <fieldset class="composition-fieldset composition-transition-editor">
         <legend>Переход с предыдущего клипа</legend>
@@ -912,7 +1132,19 @@
             </label>
             <label>Длительность, с<input aria-label="Длительность перехода" type="number" min="0.001" max="30" step="0.05" value={transitionSeconds} oninput={(event) => { transitionSeconds = Number(event.currentTarget.value) }} /></label>
           </div>
+          {#if transitionKind==='procedural'}
+            <ProceduralTransitionControls value={transitionKernel} onchange={(value)=>{transitionKernel=value}} />
+          {/if}
+          <label><input aria-label="Независимый интервал перехода" type="checkbox" checked={independentTransition} disabled={Boolean(transitionContext.transition?.timeline)||['concat_dissolve','concat_fade_black','concat_fade_white','procedural','film_dissolve','additive_dissolve','fade_white'].includes(transitionKind)} onchange={(event)=>{transitionIndependent=event.currentTarget.checked}} /> Независимый интервал</label>
+          {#if independentTransition}
+            <div class="composition-form-grid">
+              <label>Начало, с<input aria-label="Начало независимого перехода" type="number" step="0.001" value={transitionStartSeconds} oninput={(event)=>{transitionStartSeconds=Number(event.currentTarget.value)}} /></label>
+              <label><input aria-label="Reverse перехода" type="checkbox" checked={transitionReverse} onchange={(event)=>{transitionReverse=event.currentTarget.checked}} /> Reverse</label>
+            </div>
+            <p class="composition-help">Независимый интервал перехода. Начало интервала задаётся отдельно от границ клипов. Экспорт доступен для перенесённых типов; предпросмотр интервала ещё не подключён.</p>
+          {:else}
           <p class="composition-help">Доступно по source handles примерно до {transitionHandleSeconds(transitionContext).toFixed(3)} с. Граница клипов должна быть общей; handles не меняют authored duration.</p>
+          {/if}
           {#if transitionReason}<p class="composition-inline-error" role="status">{transitionReason}</p>{/if}
           <div class="composition-inspector-actions">
             <button class="btn primary sm" type="button" disabled={Boolean(transitionReason)} onclick={() => run(saveTransition)}>{transitionContext.transition ? 'Обновить переход' : 'Добавить переход'}</button>
@@ -923,6 +1155,7 @@
         {/if}
       </fieldset>
     {/if}
+    </fieldset>
   {:else}
     <p class="composition-inspector-empty">Выберите клип на монтажной линии. Изменения сохраняются локально автоматически.</p>
   {/if}

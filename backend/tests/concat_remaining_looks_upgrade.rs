@@ -1,0 +1,24 @@
+mod support;
+use axum::{body::Body,http::{Request,StatusCode}};
+use serde_json::{json,Value};
+const CONTRACTS:&str=r#"[{"id": "concat.matcha", "kind": "concat_matcha", "fields": [["amount", 60, 0, 100]]}, {"id": "concat.sage", "kind": "concat_sage", "fields": [["amount", 60, 0, 100]]}, {"id": "concat.ivory", "kind": "concat_ivory", "fields": [["matte", 60, 0, 100], ["warmth", 50, 0, 100]]}, {"id": "concat.milk", "kind": "concat_milk", "fields": [["matte", 60, 0, 100], ["cool", 40, 0, 100]]}, {"id": "concat.bronze", "kind": "concat_bronze", "fields": [["tone", 80, 0, 100], ["contrast", 30, 0, 100]]}, {"id": "concat.cool-blue", "kind": "concat_cool_blue", "fields": [["chill", 60, 0, 100], ["contrast", 30, 0, 100]]}, {"id": "concat.fresh", "kind": "concat_fresh", "fields": [["pop", 50, 0, 100], ["brightness", 40, 0, 100]]}, {"id": "concat.vivid", "kind": "concat_vivid", "fields": [["colour", 60, 0, 100], ["punch", 50, 0, 100]]}, {"id": "concat.soft-light", "kind": "concat_soft_light", "fields": [["lift", 50, 0, 100], ["warmth", 40, 0, 100]]}, {"id": "concat.moody", "kind": "concat_moody", "fields": [["depth", 60, 0, 100], ["warmth", 50, 0, 100]]}, {"id": "concat.rain", "kind": "concat_rain", "fields": [["haze", 60, 0, 100], ["chill", 50, 0, 100]]}, {"id": "concat.umber", "kind": "concat_umber", "fields": [["warmth", 60, 0, 100], ["soften", 40, 0, 100]]}, {"id": "concat.fair", "kind": "concat_fair", "fields": [["brighten", 50, 0, 100], ["even", 50, 0, 100]]}, {"id": "concat.peach", "kind": "concat_peach", "fields": [["glow", 50, 0, 100], ["softness", 40, 0, 100]]}, {"id": "concat.polaroid", "kind": "concat_polaroid", "fields": [["fade", 60, 0, 100], ["warmth", 50, 0, 100]]}, {"id": "concat.vintage", "kind": "concat_vintage", "fields": [["age", 60, 0, 100], ["tint", 50, 0, 100]]}, {"id": "concat.cloudless-sky", "kind": "concat_cloudless_sky", "fields": [["sky", 60, 0, 100], ["greens", 40, 0, 100]]}, {"id": "concat.lagoon", "kind": "concat_lagoon", "fields": [["water", 60, 0, 100], ["brightness", 40, 0, 100]]}, {"id": "concat.golden-hour", "kind": "concat_golden_hour", "fields": [["glow", 50, 0, 100], ["warmth", 4600, 3500, 6500]]}, {"id": "concat.daydream", "kind": "concat_daydream", "fields": [["haze", 50, 0, 100], ["warmth", 50, 0, 100]]}]"#;
+fn request(links:Value,include:bool)->Request<Body>{Request::builder().method("POST").uri("/api/compositions/concat-effects/upgrade").header("content-type","application/json").body(Body::from(json!({"schemaVersion":1,"links":links,"includeNativeEffects":include}).to_string())).unwrap()}
+#[tokio::test]
+async fn defaults_explicit_parameters_disabled_links_and_original_response(){
+ let(state,_dir)=support::make_state(false,false).await;let app=support::router(state);let contracts:Vec<Value>=serde_json::from_str(CONTRACTS).unwrap();
+ for c in contracts{
+  let mut defaults=serde_json::Map::new();let mut settings=serde_json::Map::new();for field in c["fields"].as_array().unwrap(){let key=field[0].as_str().unwrap();defaults.insert(key.into(),field[1].clone());let lo=field[2].as_f64().unwrap();let hi=field[3].as_f64().unwrap();settings.insert(key.into(),json!(lo+(hi-lo)*0.375));}
+  let links=json!([{"id":c["id"]},{"id":c["id"],"params":settings},{"id":c["id"],"enabled":false}]);let(status,body,_)=support::send(&app,request(links.clone(),true)).await;assert_eq!(status,StatusCode::OK,"{body}");let native=body["nativeEffects"].as_array().unwrap();assert_eq!(native.len(),3);assert!(native[2].is_null());
+  for(index,expected)in [defaults,settings].iter().enumerate(){assert_eq!(native[index]["kind"],c["kind"]);assert_eq!(native[index]["parameters"].as_object().unwrap().len(),expected.len());for(key,value)in expected{assert_eq!(native[index]["parameters"][key].as_f64(),value.as_f64());}}
+  let(status,plain,_)=support::send(&app,request(links,false)).await;assert_eq!(status,StatusCode::OK);assert!(plain.get("nativeEffects").is_none());let mut stripped=body;stripped.as_object_mut().unwrap().remove("nativeEffects");assert_eq!(stripped,plain);
+ }
+}
+#[tokio::test]
+async fn rejects_unknown_fields_nonempty_keys_and_each_numeric_bound(){
+ let(state,_dir)=support::make_state(false,false).await;let app=support::router(state);let contracts:Vec<Value>=serde_json::from_str(CONTRACTS).unwrap();
+ for c in contracts{
+  let mut links=vec![json!({"id":c["id"],"params":{"unknown":1}}),json!({"id":c["id"],"keys":{"unknown":[{"at":0,"value":0}]}})];
+  for field in c["fields"].as_array().unwrap(){let key=field[0].as_str().unwrap();for value in [field[2].as_f64().unwrap()-0.0000001,field[3].as_f64().unwrap()+0.0000001]{links.push(json!({"id":c["id"],"params":{key:value}}));}}
+  for link in links{let(status,body,_)=support::send(&app,request(json!([link]),true)).await;assert_eq!(status,StatusCode::BAD_REQUEST,"{body}");}
+ }
+}

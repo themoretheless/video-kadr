@@ -1,0 +1,44 @@
+[
+  {
+    "purpose": "GetLensConfig dispatcher",
+    "retainedEvidence": "docs/qualification/insta360-2026-10-31/gyro-camera/camerainfo.json",
+    "evidenceId": "ev_b2c2abf7994c3e84322fd73824f974d9328eb6ea162686452b67fd34be770935",
+    "limitations": "Derived function-only capsule omits external memory/calls; original-byte switch supplement is separate"
+  },
+  {
+    "purpose": "ResolveGyroTypeFromOffset raw-remap",
+    "retainedEvidence": "docs/qualification/insta360-2026-10-31/gyro-axes/offset.json",
+    "evidenceId": "ev_85c2f192d00aa9f1baf0d0765bb824aeb9315d70dd8dd40ce0ca556a3edb1161",
+    "limitations": "Derived function-only capsule omits external memory/calls; original-byte switch supplement is separate"
+  },
+  {
+    "purpose": "AlignAxes dispatcher",
+    "retainedEvidence": "docs/qualification/insta360-2026-10-31/gyro-axes/axes.json",
+    "evidenceId": "ev_47d6a9b16d79ee0c414b98769f1359ab774d8e66facf470411d518e775d10cd4",
+    "limitations": "Derived function-only capsule omits external memory/calls; original-byte switch supplement is separate"
+  },
+  {
+    "purpose": "Actual flow-map spherical ray callback",
+    "retainedEvidence": "docs/qualification/insta360-2026-10-31/gyro-frame-ray/ray.json",
+    "evidenceId": "ev_475f23a9e73b47d787cf342896a9e308c7cd9582b81ef9ef0afa864a97933b0a",
+    "limitations": "Derived function-only capsule omits external memory/calls; original-byte switch supplement is separate"
+  },
+  {
+    "purpose": "Common dual-lens initialization",
+    "retainedEvidence": "docs/qualification/insta360-2026-10-31/gyro-frame-coherence/init.json",
+    "evidenceId": "ev_f007718c631475138eadabbe252bc4d64f0fceedcac14640ac9b34f4113bca7a",
+    "limitations": "Derived function-only capsule omits external memory/calls; original-byte switch supplement is separate"
+  },
+  {
+    "purpose": "Non-UAV common reference identity",
+    "retainedEvidence": "docs/qualification/insta360-2026-10-31/gyro-frame-render/sure-init.json",
+    "evidenceId": "ev_d85762d138ad0baed555828c9c16a5eae14788be245db1a2919c8af0cc811679",
+    "limitations": "Derived function-only capsule omits external memory/calls; original-byte switch supplement is separate"
+  },
+  {
+    "purpose": "Aligned acceleration polarity into VQF",
+    "retainedEvidence": "docs/qualification/insta360-2026-10-31/gyro-input-convention/vqf.json",
+    "evidenceId": "ev_185c791855246583f05af94de6670d1ff02d3e485d32b8f2ad0ca07000776416",
+    "limitations": "Derived function-only capsule omits external memory/calls; original-byte switch supplement is separate"
+  }
+]

@@ -1,0 +1,31 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 8 tests
+test sam_reidentification::tests::actual_neural_reidentification_on_private_photographic_material ... photographic source-owned target recovery IoU=0.97472286; predicted=4423; expected=4483; intersection=4396
+ok
+test sam_reidentification::tests::actual_pinned_encoder_decoder_reacquires_a_returning_target ... ok
+test sam_reidentification::tests::actual_real_video_pose_and_exposure ... real video pose exposure=1 state=Reacquired reference IoU=0.962215
+real video pose exposure=0.55 state=Reacquired reference IoU=0.9690993
+real video pose exposure=1.35 state=Reacquired reference IoU=0.9560155
+ok
+test sam_reidentification::tests::bad_masks_and_cancellation_do_not_change_identity ... ok
+test sam_reidentification::tests::bounded_frozen_views_cover_pose_variation_and_do_not_replace_seed ... ok
+test sam_reidentification::tests::illumination_change_preserves_identity_without_accepting_green_distractor ... ok
+test sam_reidentification::tests::immutable_neural_identity_reacquires_after_occlusion_at_different_position ... ok
+test sam_reidentification::tests::lookalike_identity_is_ambiguous_and_color_distractor_is_rejected ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 176.66s
+
+     Running unittests src/main.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-f7f4401ca1ad3e54)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/person_checkpoints.rs (backend/vision-runtime/target/debug/deps/person_checkpoints-5063d4d55fa4bc65)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

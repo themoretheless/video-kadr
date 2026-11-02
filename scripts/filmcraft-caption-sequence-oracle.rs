@@ -1,0 +1,12 @@
+use filmcraft_project::{Project,ItemId,MediaRef};use filmcraft_time::{Tick,FrameRate};use filmcraft_media::{SharedSource,generators::GeneratorSource};use filmcraft_render::{render_sequence,RenderOptions};use serde_json::{Value,json};use std::sync::Arc;
+fn main(){let input:Value=serde_json::from_slice(&std::fs::read(std::env::args().nth(1).unwrap()).unwrap()).unwrap();let captions:Value=serde_json::from_slice(&std::fs::read(std::env::args().nth(2).unwrap()).unwrap()).unwrap();const T:i64=254016000000;let mut cases=vec![];
+for(index,c)in captions["cases"].as_array().unwrap().iter().filter(|c|c["width"]==80).enumerate(){let mut doc=input["cases"][0]["document"].clone();let mut style=c["style"].clone();for(from,to)in [("backgroundColor","background_color"),("outlineColor","outline_color"),("lineSpacing","line_spacing")]{let value=style.as_object_mut().unwrap().remove(from).unwrap();style[to]=value;}for key in ["align","anchor"]{let text=style[key].as_str().unwrap();style[key]=json!(format!("{}{}",text[..1].to_uppercase(),&text[1..]));}
+let mut upper=style.clone();upper["anchor"]=json!("Top");upper["color"]=json!([100,220,80,190]);
+let seq=&mut doc["project"]["items"]["6"]["kind"]["Sequence"];seq["settings"]["width"]=json!(80);seq["settings"]["height"]=json!(64);seq["caption_tracks"]=json!([
+ {"id":880,"name":"first","format":"Subtitle","enabled":true,"locked":false,"style":style,"captions":[{"id":881,"start":0,"duration":T,"text":c["text"],"settings":c["settings"]}]},
+ {"id":890,"name":"second","format":"Subtitle","enabled":index%2==0,"locked":false,"style":upper,"captions":[{"id":891,"start":T/2,"duration":T,"text":"Top <i>track</i>","settings":""}]}
+]);
+let p:Project=serde_json::from_value(doc["project"].clone()).unwrap();let source=|id:ItemId|{let(_,media,_)=p.resolve_media(id)?;let MediaRef::Generator(generator)=&media.media else{return None};Some(Arc::new(GeneratorSource::new(generator.clone(),320,200,FrameRate::new(24,1),Tick(100*T)))as SharedSource)};
+for at in [0,T-1,T]{for scale in [1.,0.5]{let out=render_sequence(&p,ItemId(6),Tick(at),RenderOptions{scale,captions:true,working_output:true,..Default::default()},&source);cases.push(json!({"document":doc,"sequence":6,"at":at,"scale":scale,"width":out.w,"height":out.h,"bits":out.px.iter().map(|v|v.to_bits()).collect::<Vec<_>>()}));}}
+}
+println!("{}",json!({"commit":"5231852443363f001c3f6b396dd9b1e6461ae2be","cases":cases}));}

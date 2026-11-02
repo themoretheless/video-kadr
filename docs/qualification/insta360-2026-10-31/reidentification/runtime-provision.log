@@ -1,0 +1,3 @@
+   Compiling video-kadr-vision-runtime v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vision-runtime)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.22s
+{"destination": "/Users/themoretheless/Documents/Sources/video-kadr/backend/target/qualification-vision/reid-runtime/video-kadr-vision-runtime", "sha256": "47d90d4a8546b3d45a3c009946eee5aecee42a9bf44422f87571eeca87a006a5", "backup": "/Users/themoretheless/Documents/Sources/video-kadr/backend/target/qualification-vision/reid-runtime/video-kadr-vision-runtime.backup-36ac32fb5304d862", "capabilities": {"samRegionSchema": 5, "samReidentificationSchema": 14, "samTrackingSchema": 9, "schemaVersion": 1}}

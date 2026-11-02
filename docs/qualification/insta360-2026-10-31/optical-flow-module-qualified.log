@@ -1,0 +1,20 @@
+   Compiling optical-module-qualification v0.0.0 (/var/folders/jx/ps1h62vx3gdgly_ddwly4mqr0000gn/T/video-kadr-optical-module-8nhfkp91)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.76s
+     Running unittests src/lib.rs (/var/folders/jx/ps1h62vx3gdgly_ddwly4mqr0000gn/T/video-kadr-optical-module-8nhfkp91/target/debug/deps/optical_module_qualification-8b3c12be2f6c5c07)
+
+running 3 tests
+subpixel shift 0.2: measured mean 0.19891773210879848, nodes 855
+test tests::optical_flow_recovers_2d_shift_subpixel_nodes_and_excludes_occlusion ... ok
+subpixel shift 0.4: measured mean 0.4001002501980623, nodes 822
+test tests::optical_flow_wraps_longitude_and_flat_or_cancelled_frames_never_invent_motion ... ok
+subpixel shift 0.7: measured mean 0.6997070075026706, nodes 850
+test tests::subpixel_matches_have_small_mean_bias_on_band_limited_texture ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.40s
+
+   Doc-tests optical_module_qualification
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

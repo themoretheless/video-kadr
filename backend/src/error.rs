@@ -143,6 +143,11 @@ impl AppError {
         }
     }
 
+    /// Public error text, safe to retain in owner-visible job history.
+    pub(crate) fn public_message(&self) -> &str {
+        &self.message
+    }
+
     #[cfg(test)]
     pub(crate) fn status(&self) -> StatusCode {
         self.status

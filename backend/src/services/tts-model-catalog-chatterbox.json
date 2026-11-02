@@ -1,0 +1,60 @@
+{
+  "repository": "ResembleAI/chatterbox-turbo-ONNX",
+  "revision": "d21799bd0354adb85e348b8a0442a8405110a2cf",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 11357,
+      "sha256": "1e5f4f708ad60475377131e1cf5081108873e3cb424539c4ea6401e8d80303db"
+    },
+    {
+      "path": "onnx/conditional_decoder_quantized.onnx",
+      "bytes": 2202035,
+      "sha256": "2af3b150196d9d559cd3c91e03da80eb27a466032369dc2b57ea729cddad3ebb"
+    },
+    {
+      "path": "onnx/conditional_decoder_quantized.onnx_data",
+      "bytes": 326548688,
+      "sha256": "4918ca09e05e41d2b4aa1ace6201d1cd911ffc58a42801002bab177d495cfe0a"
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx",
+      "bytes": 2887,
+      "sha256": "0efe1bc01c2c48a98425a74444fd9887924d887f922c2722a6ec961ebb9e1db6"
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data",
+      "bytes": 67297376,
+      "sha256": "9025d04c124899823124b1d7bb7069b1f535fb8a6c2d88f97520eb6fecced986"
+    },
+    {
+      "path": "onnx/language_model_quantized.onnx",
+      "bytes": 279670,
+      "sha256": "0b40581277e30b7034331ec8c3ad47ed71d321f015b387a95221e54e2fcbfde8"
+    },
+    {
+      "path": "onnx/language_model_quantized.onnx_data",
+      "bytes": 367962860,
+      "sha256": "ec9945df36cb5d131d46688f2609fd715fbfcb0b8ee9681af5c84118de2d55a2"
+    },
+    {
+      "path": "onnx/speech_encoder_quantized.onnx",
+      "bytes": 1205728,
+      "sha256": "5b6f15870a43cf97892df86fc550a0ef4763522d527cde72b2a4316f80a34de4"
+    },
+    {
+      "path": "onnx/speech_encoder_quantized.onnx_data",
+      "bytes": 354676576,
+      "sha256": "d59861fb55e806fbeee731da9d4f8ff819fb5735de5d15e262d902594ee4dbb6"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 3562272,
+      "sha256": "3f04e34bea22f9144d1a19151154095bc9ce0430bf421304f5797e716288a906"
+    }
+  ],
+  "id": "3d500b0e333d1661a40e854cbdbc93d8f3e9f01942b6a4e1cea3f6b4aa8c9521",
+  "name": "Chatterbox Turbo q8 \u2014 \u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439, \u043f\u043e \u043e\u0431\u0440\u0430\u0437\u0446\u0443",
+  "family": "chatterbox",
+  "bytes": 1123749449
+}

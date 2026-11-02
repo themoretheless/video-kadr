@@ -389,7 +389,7 @@ async fn run_publish_work(
     ))
 }
 
-async fn resolve_output_path(
+pub(crate) async fn resolve_output_path(
     state: &AppState,
     output_id: &str,
 ) -> anyhow::Result<std::path::PathBuf> {
@@ -455,7 +455,7 @@ pub async fn youtube_connect_handler(
     Ok(Json(OAuthConnectResponse { authorization_url }))
 }
 
-async fn authenticated_actor(state: &AppState, headers: &HeaderMap) -> AppResult<String> {
+pub(crate) async fn authenticated_actor(state: &AppState, headers: &HeaderMap) -> AppResult<String> {
     let token = headers
         .get("authorization")
         .and_then(|value| value.to_str().ok())

@@ -1,0 +1,10 @@
+[package]
+name = "filmcraft-testkit"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+
+[dependencies]
+png = "0.18"

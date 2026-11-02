@@ -1,0 +1,15 @@
+[package]
+name="filmcraft-isobmff"
+version="0.1.0"
+edition="2024"
+rust-version="1.89"
+license="MIT"
+publish=false
+[dependencies]
+filmcraft-bitstream={path="../filmcraft-bitstream"}
+thiserror="2"
+[dev-dependencies]
+filmcraft-testkit={path="../filmcraft-testkit"}
+proptest="1"
+serde_json="1"
+[workspace]

@@ -1,0 +1,892 @@
+{
+  "commit": "5231852443363f001c3f6b396dd9b1e6461ae2be",
+  "scope": "Native default candidates; parameter translation and pixel parity are separate checks",
+  "effects": [
+    {
+      "source": "alpha_adjust",
+      "native": {
+        "kind": "alpha_adjust",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "alpha_glow",
+      "native": {
+        "kind": "alpha_glow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "asc_cdl",
+      "native": {
+        "kind": "asc_cdl",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "auto_align",
+      "native": {
+        "kind": "auto_align",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "auto_reframe",
+      "native": {
+        "kind": "auto_reframe",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "basic_3d",
+      "native": {
+        "kind": "basic_3d",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "bevel_alpha",
+      "native": {
+        "kind": "bevel_alpha",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "black_white",
+      "native": {
+        "kind": "black_white"
+      }
+    },
+    {
+      "source": "block_dissolve",
+      "native": {
+        "kind": "block_dissolve",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "bokeh_blur",
+      "native": {
+        "kind": "bokeh_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "brightness_contrast",
+      "native": {
+        "kind": "brightness_contrast",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "brush_strokes",
+      "native": {
+        "kind": "brush_strokes",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "camera_blur",
+      "native": {
+        "kind": "camera_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "camera_shake",
+      "native": {
+        "kind": "camera_shake",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "cell_pattern",
+      "native": {
+        "kind": "cell_pattern",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "change_to_color",
+      "native": {
+        "kind": "change_to_color",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "channel_blur",
+      "native": {
+        "kind": "channel_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "channel_mix",
+      "native": {
+        "kind": "channel_mix",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "checkerboard",
+      "native": {
+        "kind": "checkerboard",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "cineon_converter",
+      "native": {
+        "kind": "cineon_converter",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "circle",
+      "native": {
+        "kind": "circle",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "clip_name",
+      "native": {
+        "kind": "clip_name",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "clone",
+      "native": {
+        "kind": "clone",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "color_balance",
+      "native": {
+        "kind": "color_balance",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "color_emboss",
+      "native": {
+        "kind": "color_emboss",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "color_key",
+      "native": {
+        "kind": "color_key",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "color_pass",
+      "native": {
+        "kind": "color_pass",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "color_replace",
+      "native": {
+        "kind": "color_replace",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "compound_blur",
+      "native": {
+        "kind": "compound_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "corner_pin",
+      "native": {
+        "kind": "corner_pin",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "crop",
+      "native": {
+        "kind": "crop",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "directional_blur",
+      "native": {
+        "kind": "directional_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "directional_blur_legacy",
+      "native": {
+        "kind": "directional_blur_legacy",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "drop_shadow",
+      "native": {
+        "kind": "drop_shadow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "echo",
+      "native": {
+        "kind": "echo",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "echo_glow",
+      "native": {
+        "kind": "echo_glow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "edge_feather",
+      "native": {
+        "kind": "edge_feather",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "edge_glow",
+      "native": {
+        "kind": "edge_glow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "ellipse",
+      "native": {
+        "kind": "ellipse",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "emboss",
+      "native": {
+        "kind": "emboss",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "extract",
+      "native": {
+        "kind": "color_extract",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "find_edges",
+      "native": {
+        "kind": "find_edges",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "focus_blur",
+      "native": {
+        "kind": "focus_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "four_color_gradient",
+      "native": {
+        "kind": "four_color_gradient",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "gamma_correction",
+      "native": {
+        "kind": "gamma_correction",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "gaussian_blur",
+      "native": {
+        "kind": "gaussian_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "gaussian_blur_legacy",
+      "native": {
+        "kind": "gaussian_blur_legacy",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "glint",
+      "native": {
+        "kind": "glint",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "gradient",
+      "native": {
+        "kind": "gradient",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "gradient_wipe_legacy",
+      "native": {
+        "kind": "gradient_wipe",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "graphic_shape",
+      "native": {
+        "kind": "graphic_shape",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "graphic_text",
+      "native": {
+        "kind": "graphic_text",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "grid",
+      "native": {
+        "kind": "grid",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "grow",
+      "native": {
+        "kind": "grow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "horizontal_flip",
+      "native": {
+        "kind": "horizontal_flip"
+      }
+    },
+    {
+      "source": "invert",
+      "native": {
+        "kind": "color_invert",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "leave_color",
+      "native": {
+        "kind": "leave_color",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "lens_distortion",
+      "native": {
+        "kind": "lens_distortion",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "lens_flare",
+      "native": {
+        "kind": "lens_flare",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "levels",
+      "native": {
+        "kind": "color_levels",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "light_leaks",
+      "native": {
+        "kind": "light_leaks",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "lighting_effects",
+      "native": {
+        "kind": "lighting_effects",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "lightning",
+      "native": {
+        "kind": "lightning",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "linear_wipe_legacy",
+      "native": {
+        "kind": "linear_wipe",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "logo_cutout",
+      "native": {
+        "kind": "logo_cutout",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "long_shadow",
+      "native": {
+        "kind": "long_shadow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "luma_key",
+      "native": {
+        "kind": "luma_key",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "lumetri",
+      "native": {
+        "kind": "lumetri",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "magnify",
+      "native": {
+        "kind": "magnify",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "magnify_legacy",
+      "native": {
+        "kind": "magnify",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "median",
+      "native": {
+        "kind": "median",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "metadata_burnin",
+      "native": {
+        "kind": "metadata_burnin",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "mirror",
+      "native": {
+        "kind": "mirror",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "mosaic",
+      "native": {
+        "kind": "mosaic",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "mosaic_legacy",
+      "native": {
+        "kind": "mosaic_legacy",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "move",
+      "native": {
+        "kind": "move",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "noise",
+      "native": {
+        "kind": "noise",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "noise_legacy",
+      "native": {
+        "kind": "noise_legacy",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "offset",
+      "native": {
+        "kind": "offset",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "paint_bucket",
+      "native": {
+        "kind": "paint_bucket",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "posterize",
+      "native": {
+        "kind": "posterize",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "posterize_time",
+      "native": {
+        "kind": "posterize_time",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "proc_amp",
+      "native": {
+        "kind": "proc_amp",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "ramp",
+      "native": {
+        "kind": "ramp",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "reduce_interlace_flicker",
+      "native": {
+        "kind": "reduce_interlace_flicker",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "replicate",
+      "native": {
+        "kind": "replicate",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "rgb_split",
+      "native": {
+        "kind": "rgb_split",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "rotate_3d",
+      "native": {
+        "kind": "rotate_3d",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "roughen_edges",
+      "native": {
+        "kind": "roughen_edges",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "rounded_crop",
+      "native": {
+        "kind": "rounded_crop",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "sharpen",
+      "native": {
+        "kind": "sharpen",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "shrink",
+      "native": {
+        "kind": "shrink",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "simple_text",
+      "native": {
+        "kind": "simple_text",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "spacer",
+      "native": {
+        "kind": "spacer",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "spherize",
+      "native": {
+        "kind": "spherize",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "spin",
+      "native": {
+        "kind": "spin",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "strobe",
+      "native": {
+        "kind": "strobe",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "stroke",
+      "native": {
+        "kind": "stroke",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "timecode",
+      "native": {
+        "kind": "timecode",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "tint",
+      "native": {
+        "kind": "color_tint",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "track_matte",
+      "native": {
+        "kind": "track_matte",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "transform",
+      "native": {
+        "kind": "transform",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "turbulent_displace",
+      "native": {
+        "kind": "turbulent_displace",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "twirl",
+      "native": {
+        "kind": "twirl",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "twirl_legacy",
+      "native": {
+        "kind": "twirl_legacy",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "ultra_key",
+      "native": {
+        "kind": "ultra_key",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "unsharp_mask",
+      "native": {
+        "kind": "unsharp_mask",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vertical_flip",
+      "native": {
+        "kind": "vertical_flip"
+      }
+    },
+    {
+      "source": "video_limiter",
+      "native": {
+        "kind": "video_limiter",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vignette",
+      "native": {
+        "kind": "vignette",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "volumetric_rays",
+      "native": {
+        "kind": "volumetric_rays",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_blur",
+      "native": {
+        "kind": "vr_blur",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_chromatic_aberrations",
+      "native": {
+        "kind": "vr_chromatic_aberrations",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_color_gradients",
+      "native": {
+        "kind": "vr_color_gradients",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_denoise",
+      "native": {
+        "kind": "vr_denoise",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_digital_glitch",
+      "native": {
+        "kind": "vr_digital_glitch",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_fractal_noise",
+      "native": {
+        "kind": "vr_fractal_noise",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_glow",
+      "native": {
+        "kind": "vr_glow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_plane_to_sphere",
+      "native": {
+        "kind": "vr_plane_to_sphere",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_projection",
+      "native": {
+        "kind": "vr_projection",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_rotate_sphere",
+      "native": {
+        "kind": "vr_rotate_sphere",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "vr_sharpen",
+      "native": {
+        "kind": "vr_sharpen",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "warp_stabilizer",
+      "native": {
+        "kind": "warp_stabilizer",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "wave_warp",
+      "native": {
+        "kind": "wave_warp",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "wiggle",
+      "native": {
+        "kind": "wiggle",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "wonder_glow",
+      "native": {
+        "kind": "wonder_glow",
+        "parameters": {}
+      }
+    },
+    {
+      "source": "write_on",
+      "native": {
+        "kind": "write_on",
+        "parameters": {}
+      }
+    }
+  ]
+}

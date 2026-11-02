@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use video_kadr_backend::build_router_with_cors;
+use video_kadr_backend::build_router_with_mcp;
 use video_kadr_backend::config::AppConfig;
 use video_kadr_backend::db::Db;
 use video_kadr_backend::library::Library;
@@ -82,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
         process_runtime.clone(),
         config.resource_classes,
     )?
-    .with_workload_config(config.workload);
+    .with_workload_config(config.workload).with_speech_config(config.speech).with_tts_config(config.tts).with_chatterbox_runtime(config.chatterbox).with_kokoro_runtime(config.kokoro).with_enhance_config(config.enhance).with_cutout_config(config.cutout).with_selfie_config(config.selfie).with_person_config(config.person).with_sam_config(config.sam);
     if let Some(api_key) = config.pexels_api_key {
         state = state.with_stock_catalog(video_kadr_backend::stock_catalog::PexelsClient::new(
             api_key,
@@ -98,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
     }
     // Reconcile durable jobs and rebuild derived state before workers can add
     // new media; incremental indexing owns every change after this boundary.
+    video_kadr_backend::services::concat_freeze_publish::recover_at_startup(&state).await?;
     state.recover_jobs().await;
     state.sync_media_search().await;
     state.cleanup_thumbnail_cache().await;
@@ -130,7 +131,12 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     // Upload limit for local files (default 2 GiB), overridable via env.
-    let app = build_router_with_cors(state.clone(), config.max_upload_bytes, &config.cors_origins);
+    let app = build_router_with_mcp(
+        state.clone(),
+        config.max_upload_bytes,
+        &config.cors_origins,
+        config.mcp_token,
+    );
 
     let addr = SocketAddr::from((config.bind_addr, config.port));
 
@@ -139,11 +145,14 @@ async fn main() -> anyhow::Result<()> {
     let http_shutdown = CancellationToken::new();
     let http_shutdown_waiter = http_shutdown.clone();
     {
-        let server = axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                http_shutdown_waiter.cancelled().await;
-            })
-            .into_future();
+        let server = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            http_shutdown_waiter.cancelled().await;
+        })
+        .into_future();
         tokio::pin!(server);
 
         tokio::select! {

@@ -1,0 +1,66 @@
+[
+  {
+    "name": ".ExtraMetadata.GyroIndex",
+    "entries": [
+      {
+        "1": "index",
+        "3": 1,
+        "4": 1,
+        "5": 5
+      },
+      {
+        "1": "timestamp",
+        "3": 2,
+        "4": 1,
+        "5": 3
+      }
+    ]
+  },
+  {
+    "name": ".ExtraMetadata.GyroConfigInfo",
+    "entries": [
+      {
+        "1": "acc_range",
+        "3": 1,
+        "4": 1,
+        "5": 13
+      },
+      {
+        "1": "gyro_range",
+        "3": 2,
+        "4": 1,
+        "5": 13
+      }
+    ]
+  },
+  {
+    "name": ".ExtraMetadata.Gyro_FilterType",
+    "entries": [
+      {
+        "1": "GYRO_FILTER_TYPE_UNKNOWN",
+        "2": 0
+      },
+      {
+        "1": "GYRO_FILTER_TYPE_BRUTE",
+        "2": 1
+      },
+      {
+        "1": "GYRO_FILTER_TYPE_AKF",
+        "2": 2
+      }
+    ]
+  },
+  {
+    "name": ".ExtraMetadata.GyroType",
+    "entries": [
+      {
+        "1": "INSDEV_IMU_TYPE_20948",
+        "2": 0
+      },
+      {
+        "1": "INSDEV_IMU_TYPE_40609",
+        "2": 1
+      }
+    ]
+  }
+]

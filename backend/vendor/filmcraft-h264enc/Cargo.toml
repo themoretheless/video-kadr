@@ -1,0 +1,17 @@
+[package]
+name="filmcraft-h264enc"
+version="0.1.0"
+edition="2024"
+rust-version="1.89"
+license="MIT"
+publish=false
+[features]
+default=["threads"]
+threads=["dep:rayon"]
+[dependencies]
+filmcraft-bitstream={path="../filmcraft-bitstream"}
+thiserror="2"
+rayon={version="1",optional=true}
+[dev-dependencies]
+filmcraft-testkit={path="../filmcraft-testkit"}
+[workspace]

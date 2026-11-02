@@ -1,0 +1,11 @@
+
+running 1 test
+test legacy_x4_original_metadata_selects_source_owned_profile ... FAILED
+
+failures:
+
+failures:
+    legacy_x4_original_metadata_selects_source_owned_profile
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+

@@ -1,0 +1,2185 @@
+{
+  "schemaVersion": 1,
+  "package": "concat.distorted",
+  "reference": {
+    "repository": "https://github.com/jub0t/concat",
+    "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+    "files": {
+      "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+      "src/crates/concat-effects/src/catalogue.rs": "b03e52127cedc87429487f95e088b7d7bedfcc792490e559b72dfbfdd5218bdb",
+      "src/crates/concat-effects/packages/concat.echo/effect.toml": "225a48851a75fc8bd22e493c17903762cc3075ff0de4c98ecee4f1c93a59c8d3",
+      "src/crates/concat-effects/packages/concat.echo/fixtures.toml": "015e50ff01ba6c792ff4f25dd07789ef59209c2e5c1d766faaa596abc1e18062",
+      "src/crates/concat-effects/packages/concat.distorted/effect.toml": "3552510085f78dd4463ca3972c4d3ccdd00e36568a2c8ab9faebcbbe4b1f0fca",
+      "src/crates/concat-effects/packages/concat.distorted/fixtures.toml": "74b4c19977484dc90e2bfbe81d7cca6eaae42c5e9cbbab63fb1a7788edf840e0"
+    },
+    "adapterSha256": "bc2a4f9427668a21b7abd8649c23b3b1488593556e71d2899d4f81c4096899a5"
+  },
+  "ffmpeg": {
+    "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "binarySha256": "768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e"
+  },
+  "aliasVerified": null,
+  "pcmBytes": 21871536,
+  "cases": [
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 0,
+      "byteLength": 36068,
+      "outputSha256": "3b54c74f0c4cbdd0b6cc61884ccc29a0be720ceb527eba9c4f9b6e65ff2329b1"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 36068,
+      "byteLength": 36068,
+      "outputSha256": "3202d4361db344fd6b8bff77a227ce72aa9103b402cb130dd05871b677ba8eb2"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 72136,
+      "byteLength": 36068,
+      "outputSha256": "a3623b2722a1ebd9b9efa67106e3c9d1ae30d1f8f4b5ecd21b1f7069573ce863"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 108204,
+      "byteLength": 36068,
+      "outputSha256": "2b9b642eb97959f893096914c69cb10f20ffad0d7f52ead91d3717f16358ee12"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 144272,
+      "byteLength": 36068,
+      "outputSha256": "a8aea175a015a4ebf6d07e8fa799cfe1999630b3e60e000836d35544d5065092"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 180340,
+      "byteLength": 37668,
+      "outputSha256": "c65dcea24b5831ae687752199861ed7603877917d9a018084fdde3d4f0e9cf12"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 218008,
+      "byteLength": 37668,
+      "outputSha256": "6ac65e4f63839c2c77dd5ec8fca67459f7bca4e4be7d74b800f0de3c319e795a"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 255676,
+      "byteLength": 36068,
+      "outputSha256": "affb6d751de7f1cc5fb048d78d67e725d97e60780431e5c007f7f4d8c0a0d10f"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 291744,
+      "byteLength": 36068,
+      "outputSha256": "7012fe8488cf3797d14aceacec01ef781699f78d54a7ea749883d366c535768e"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 327812,
+      "byteLength": 36068,
+      "outputSha256": "a99bf99f8b49ad484c48ca9339b0a3745c74ccbfd46ecc6bf7829da1e86fa184"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 363880,
+      "byteLength": 36068,
+      "outputSha256": "76a4aa99fbf141ccd89771ea53408493fbcf1b9540b8bf4282064557b53b7e97"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 399948,
+      "byteLength": 36068,
+      "outputSha256": "d7ce1ed68a355ccd8d9103ff014bd7730263a24195a9367f1a1a5f59cdf4d446"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 436016,
+      "byteLength": 36068,
+      "outputSha256": "894565ffd13acddbdb780fd811c746c4604e15e6ddcdd38c8b74fc107459746c"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 472084,
+      "byteLength": 37668,
+      "outputSha256": "f31d94018effd90737b46a04219d8fca25064c6f99143a47d2636a6b07e0159b"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 509752,
+      "byteLength": 37668,
+      "outputSha256": "d3aaec9979b05ed5cba6df4779f00d9cc5d4add240b7fa94beacc02156634d50"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 547420,
+      "byteLength": 36068,
+      "outputSha256": "6a9f12b634f7b8e4ff097701df460ea4728e273cdaddc878d1cd129efd585d4a"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 583488,
+      "byteLength": 72136,
+      "outputSha256": "cfbe780b53eb1fb69a8a110272cf34b959b2d4409ca6aa965fb5e99f653579c0"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 655624,
+      "byteLength": 72136,
+      "outputSha256": "4c6c297eb7989e7da471df0f019a285d1016b0322136205069b163f245e2fb8a"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 727760,
+      "byteLength": 72136,
+      "outputSha256": "59d2c5dffbe42ae5d937c8f1c5e99e870dea4b886cad4c38371973d7a7effc1e"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 799896,
+      "byteLength": 72136,
+      "outputSha256": "08f781e4dc24a758135c035cbcbe6b6ce20cbf52ed0ef5db8a139ee3be10c185"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 872032,
+      "byteLength": 72136,
+      "outputSha256": "cebc38f26b0af161ea5e5dff4ed2baf86f0e7acf604a44f8c283b38909ec5811"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 944168,
+      "byteLength": 75336,
+      "outputSha256": "91917d91618d693719c43575163649a4bb3d00bf95b61838d087aadff14ba3c5"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 1019504,
+      "byteLength": 75336,
+      "outputSha256": "8eccffb10962a0bc18c42255a2b8e4ce32f38e847a4a03912bf0122b1221b281"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1094840,
+      "byteLength": 72136,
+      "outputSha256": "9dad48e59a2375a0004e0dc86e3514523cb22f21910ae1145ba0d1261aaf3a00"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1166976,
+      "byteLength": 72136,
+      "outputSha256": "4f0a4cae96d0986ba5a1bd65047fd30c5d4df03d66ac53393035ab60a5b4d2db"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1239112,
+      "byteLength": 72136,
+      "outputSha256": "0c4808ac5b33fcf812a5a0110d1b802bdea466f5bd3c2542bfdeb6baf270a13e"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1311248,
+      "byteLength": 72136,
+      "outputSha256": "4f0a4cae96d0986ba5a1bd65047fd30c5d4df03d66ac53393035ab60a5b4d2db"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1383384,
+      "byteLength": 72136,
+      "outputSha256": "9ba450d09664c3b41baf9bdb1cc15a2a7c2a45f30ae47f12b9f0849f20621d1b"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1455520,
+      "byteLength": 72136,
+      "outputSha256": "4f0a4cae96d0986ba5a1bd65047fd30c5d4df03d66ac53393035ab60a5b4d2db"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 1527656,
+      "byteLength": 75336,
+      "outputSha256": "4c2279eaae83005e614b6aaf1207e601c45b5045c42114839582ef0d90cc6c0c"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 1602992,
+      "byteLength": 75336,
+      "outputSha256": "a8a1506fe04e3626821e2a4fb5551537ef21b4fa0d432dfefaa61d0c059259d5"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 1678328,
+      "byteLength": 72136,
+      "outputSha256": "9db4847f13225ad77b885f72428fe15a4ac93238cc2166870e7c627b9a018c94"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 1750464,
+      "byteLength": 198516,
+      "outputSha256": "773a08940f73bb877f2d275cca72e6c2309a734166aca38062e123439d30306f"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 1948980,
+      "byteLength": 198516,
+      "outputSha256": "befa4194b7edb86862a5639c9644ce4018ccffc2cbf9a7981e5c83f346373fcf"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 2147496,
+      "byteLength": 198516,
+      "outputSha256": "3daec5983f80b82ede0446a2e556d51b1e5166220420d72d95e0aeb12791dcd9"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 2346012,
+      "byteLength": 198516,
+      "outputSha256": "632ba14a27293a10eebb6be67aaacb07e28c487879d8f1133f59f358e8786cfd"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 2544528,
+      "byteLength": 198516,
+      "outputSha256": "1ef8b818e88b7acf395cfd3edac2f7869b95878dfba675fa58f3eee4415a9df7"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 2743044,
+      "byteLength": 207336,
+      "outputSha256": "9531c08f283bdee4b8082700564c0ce89cf05a5504478ce6930b08af63218cac"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 2950380,
+      "byteLength": 207336,
+      "outputSha256": "f8ef28541e3f7bbc43ecd18599b5f5a52005a366f17a90bca7ab02636be5f1cc"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 3157716,
+      "byteLength": 198516,
+      "outputSha256": "e1e3c1fa011452849a839d8551ac92bd17ef7b39ce1939c2a9ee74af2d098196"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 3356232,
+      "byteLength": 198516,
+      "outputSha256": "dafe9caa05abf19d398bf98b02aba99a160309ac37667822a598b29e8b139676"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 3554748,
+      "byteLength": 198516,
+      "outputSha256": "2db75ae4719602681c42d7bdad91876281ef77e6e246c6f9779aec49e711cbcf"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 3753264,
+      "byteLength": 198516,
+      "outputSha256": "e821e03a5dd71609ea46e6be2066aac7552e1def85231ab1db7246b5dc572aa6"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 3951780,
+      "byteLength": 198516,
+      "outputSha256": "d9e8ccd86359a1cacba596e0e35b80797db45f3a1dbf23e25ce03d0f3232eaac"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 4150296,
+      "byteLength": 198516,
+      "outputSha256": "87c224c9d48fba8f19555d1b5c75d1d5cb71ac1c15d588037ee8d0f76ef2b0b7"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 4348812,
+      "byteLength": 207336,
+      "outputSha256": "8e16cfb4972654b2b3a3761e76ddbca3fd4a67123b7f2f3fea229a7fbba78de4"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 4556148,
+      "byteLength": 207336,
+      "outputSha256": "e4531c4a46ead1dbb1b8de6f73ed27af0f616c0eb96adccf96be494ea70073ae"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 4763484,
+      "byteLength": 198516,
+      "outputSha256": "db2b3f9ce6015c494a87db1dd63fb8934f8c66c63efb3e3e902f79c33406f25c"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 4962000,
+      "byteLength": 397032,
+      "outputSha256": "238355c7aeb06b39cc148bd75f3ff336de475caa29d82a9abddcf60e409b086d"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 5359032,
+      "byteLength": 397032,
+      "outputSha256": "137bce319460c7c7ad3d20a76051169898f8e314569c1a8216cce637981863ad"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 5756064,
+      "byteLength": 397032,
+      "outputSha256": "80dbcc67e29bc1eb7533229831d486bbac3306d138c7712a3223a83687bc16e0"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 6153096,
+      "byteLength": 397032,
+      "outputSha256": "c4656b88c3ee6e18c4334a7c9d311abc1cff501aabcd4fd6a66483623787eca7"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 6550128,
+      "byteLength": 397032,
+      "outputSha256": "d100c5b995208de8f6fcc7b34ddf71bf5ffb07b382e527fc69d7c3f9ca240a1d"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 6947160,
+      "byteLength": 414672,
+      "outputSha256": "2dbc747c9bcce64fb13df40819b1dfbd74a655962ab83c789566c6a00aff7d4b"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 7361832,
+      "byteLength": 414672,
+      "outputSha256": "effd03bb75c4c7fb1a5cae26dc76a2367ccfb9fbff688dabb18f8e05a56502d8"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 7776504,
+      "byteLength": 397032,
+      "outputSha256": "1b6324bf6f1f1c3abc4825063b52fbe8c4c284622ec9295d52aaf479ecdcdeae"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 8173536,
+      "byteLength": 397032,
+      "outputSha256": "0197fc0821320f6babd3e31775fa5763e19eeef533b5ef28eeb8788d16dd1fd7"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 8570568,
+      "byteLength": 397032,
+      "outputSha256": "d15f052a070dc7074f544a70f55e84e19c623d33bc965806262d192689c582cc"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 8967600,
+      "byteLength": 397032,
+      "outputSha256": "0197fc0821320f6babd3e31775fa5763e19eeef533b5ef28eeb8788d16dd1fd7"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 9364632,
+      "byteLength": 397032,
+      "outputSha256": "02db951220c1d9d773b58fdcbc36256ec412b3454e83338911cb0c54ebcbd7d4"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 9761664,
+      "byteLength": 397032,
+      "outputSha256": "0197fc0821320f6babd3e31775fa5763e19eeef533b5ef28eeb8788d16dd1fd7"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 10158696,
+      "byteLength": 414672,
+      "outputSha256": "9f53f297a37f04a6459128ff0f8a4d83b6ec19389118f689f6f0b6f59711d770"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 10573368,
+      "byteLength": 414672,
+      "outputSha256": "e850d578834b1ec180ef27a6b9eb8320d36424d6f3c074c9316337124c734496"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 10988040,
+      "byteLength": 397032,
+      "outputSha256": "b7bcf0fd82cf31bab693df4e65de493ed83390a4e49ecd105686a3f16e8eb086"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 11385072,
+      "byteLength": 216068,
+      "outputSha256": "3422f0576d2c1b8014eef9c2cd944fab09731701ab945fbfc41c4f49a612958f"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 11601140,
+      "byteLength": 216068,
+      "outputSha256": "da4e34aaf6e1e9209d94925003537848ddb022ddf4039008a8bcb4cd9f23fb59"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 11817208,
+      "byteLength": 216068,
+      "outputSha256": "28c8f237029f1bba673a294346b1c71689433a8c9eb55e65afe84712656403ac"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 12033276,
+      "byteLength": 216068,
+      "outputSha256": "33e91f601dc49a0da79639b5096a171d538dd6f0e752ac14725b433fd6ad1087"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 12249344,
+      "byteLength": 216068,
+      "outputSha256": "a6a8c289448abad125a5cecf2b1fd898bc1ab59e56ebdcf30c46cbf1f93cf545"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 12465412,
+      "byteLength": 225668,
+      "outputSha256": "39653acc3a2d89b16b53cd1d174376685688cdeecd41e1b1ce4aafe86243b6ff"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 12691080,
+      "byteLength": 225668,
+      "outputSha256": "c7d5bafcbff432140abe155098e8db0c6f60aac8befd21c5c81c309a2e021053"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 12916748,
+      "byteLength": 216068,
+      "outputSha256": "998186da4042df861121a130071b5323995275d6e5bbdcd50ec6e6929c81b18e"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 13132816,
+      "byteLength": 216068,
+      "outputSha256": "119f79c5e14f363086ac4b47a03be4fcf3bd89b1bb6788d4b204432fd9ea523e"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 13348884,
+      "byteLength": 216068,
+      "outputSha256": "b332b591aa275e5dd908284410f70c3370700a7fb573dde6869fb719d0ca48ed"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 13564952,
+      "byteLength": 216068,
+      "outputSha256": "ad6d6d4c9795d9d59aa3f94c00bd6a82efd512a1bd8eeff100a8a8457cd4e9aa"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 13781020,
+      "byteLength": 216068,
+      "outputSha256": "5cb9fa9c6b4325cd0ffe00e018e10322c00ee8768fa58d1f2ef42ec9f347d72a"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 13997088,
+      "byteLength": 216068,
+      "outputSha256": "d41ea17187b1d464570e12418a12cd7a9eace1b2cc5b2440f19f60be2f7e3ab4"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 14213156,
+      "byteLength": 225668,
+      "outputSha256": "3a8d7682f389a55335288abc48d8f0688787f9178556902bd000b83ead08c149"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 14438824,
+      "byteLength": 225668,
+      "outputSha256": "61e32f47b87e5fb849a32572a477ddbe5cef4ac17d83437c453bafd722576845"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 14664492,
+      "byteLength": 216068,
+      "outputSha256": "348c16a545511b46219207e24116e8dfc2e43f960e01ddd340680d0eae33877c"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 14880560,
+      "byteLength": 432136,
+      "outputSha256": "37cc24a50ac2436d9d9d8c369b0e5211be51a64a7d952c121da99630649bb653"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 15312696,
+      "byteLength": 432136,
+      "outputSha256": "84f39036928c8231e07b9fdfae312ea70940143ab6a6c24630136cd50b0f7027"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 15744832,
+      "byteLength": 432136,
+      "outputSha256": "dd628dfb8c8265f513a68aaf7eb944919d0f36bc7a250a8890169948c45f88d0"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 16176968,
+      "byteLength": 432136,
+      "outputSha256": "c4362ac76710e58ddea9c068a1bf716b7bad019d1f1623d08040d93b2bbc876f"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 16609104,
+      "byteLength": 432136,
+      "outputSha256": "7490fbcfc4c1aa64a17e32dbd0fe8f11763388cea3a60f6f91360b4b7e99d02b"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 17041240,
+      "byteLength": 451336,
+      "outputSha256": "4751676b691ce6f0c72eeecf2cda46e8f651ef35852f88c89dc8bcb0b6cfea48"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 17492576,
+      "byteLength": 451336,
+      "outputSha256": "b77e530d487b35f5d9a0d02161fbe87a8a3bcb1a68ca51de8f76c33c60533701"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 17943912,
+      "byteLength": 432136,
+      "outputSha256": "7b5db76550bb46f1a781acc63f6c09fc46381ffc2c1721b7edb4410847fd4861"
+    },
+    {
+      "chain": "volume=1.00,acrusher=bits=6:mode=lin:mix=0.00,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 18376048,
+      "byteLength": 432136,
+      "outputSha256": "e482e0a61783557e3d0526a744b5f895437d711d663e5b423aa2c0d9e7554fd3"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 18808184,
+      "byteLength": 432136,
+      "outputSha256": "90a8d610eff5ed424dec5309d0e00a5f9327f7d6cc5e807446e709ff8297af4d"
+    },
+    {
+      "chain": "volume=3.62,acrusher=bits=6:mode=lin:mix=0.26,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 19240320,
+      "byteLength": 432136,
+      "outputSha256": "e482e0a61783557e3d0526a744b5f895437d711d663e5b423aa2c0d9e7554fd3"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 19672456,
+      "byteLength": 432136,
+      "outputSha256": "40a49c7519683d2f6e1ed83fdd028ffce1593c4baa51549e2335d46c19290229"
+    },
+    {
+      "chain": "volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 20104592,
+      "byteLength": 432136,
+      "outputSha256": "e482e0a61783557e3d0526a744b5f895437d711d663e5b423aa2c0d9e7554fd3"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 20536728,
+      "byteLength": 451336,
+      "outputSha256": "756021042325dcd8c60ce3aabb2f5b7292796d15361883cf7347de10197f1946"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.2,
+            "delay": 0.05
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 20988064,
+      "byteLength": 451336,
+      "outputSha256": "ef87b80e7c35c5bdf88f4f17245fa934603a78157fc74aa493531461e0741ad2"
+    },
+    {
+      "chain": "volume=1.07,acrusher=bits=6:mode=lin:mix=0.01,alimiter=limit=0.85:level=false,volume=8.00,acrusher=bits=6:mode=lin:mix=0.70,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 1
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 100
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 21439400,
+      "byteLength": 432136,
+      "outputSha256": "353597aa69257f807ffcbf0ec2b4763dd74d14291fc79fdb8b110361d8ee3ef9"
+    }
+  ]
+}

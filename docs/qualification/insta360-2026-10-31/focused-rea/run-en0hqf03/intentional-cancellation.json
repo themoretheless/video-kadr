@@ -1,0 +1,6 @@
+{
+  "time": 1793398606.733161,
+  "worker_pid": 60544,
+  "reason": "ObjcMessageAnalyzer was mass-decompiling unrelated Objective-C dispatch. Narrowing the C++ parser investigation by excluding this stage as well. No completed native primitives were returned.",
+  "target_unchanged": true
+}

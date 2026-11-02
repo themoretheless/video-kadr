@@ -1,0 +1,8 @@
+
+running 1 test
+test real_x6_background_observation_admission_and_injected_heading_error has been running for over 60 seconds
+real X6 background drift: injected_extra=0.568374deg, visual_before=0.826750deg visual_after=0.162333deg report=DriftReport { source: "visual_heading", bias_radians_per_second: [0.0, 0.0, 0.0], calibration_samples: 0, heading_anchors: 4, visual_frames: 6, visual_pairs: 3, visual_rejected_pairs: 2, corrected_heading_degrees: -0.7984087201963156, warnings: ["Visual heading correction uses sampled orientation knots; combined input/compression knot error budget is 0.01 degrees, not a continuous-time sensor certificate.", "Some source intervals lacked a reliable static-background heading observation; correction holds across unobserved ends and interpolates only admitted observations.", "Visual correction observes relative world yaw in the sampled static background; scene translation/parallax, moving backgrounds and absolute compass heading are not assumed observable."] }
+test real_x6_background_observation_admission_and_injected_heading_error ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 61.83s
+

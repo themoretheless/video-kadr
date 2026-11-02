@@ -1,0 +1,38 @@
+{
+  "repository": "https://github.com/storytold/filmcraft",
+  "revision": "5231852443363f001c3f6b396dd9b1e6461ae2be",
+  "sourceSha256": {
+    "crates/text/Cargo.toml": "2f41b3c2050bd9c9080cdeba1d252e9981a50f109f3a01c468becd2bb4e99f1f",
+    "crates/text/build.rs": "95073104bb14806a853f5a47e7edbb6134c13961d0ad90f2f6e1dce80605a854",
+    "crates/text/README.md": "075bb4648a6731c07ff1df594d256b1c16ccc275e189d2129e2cbbc89ad8ad9c",
+    "crates/text/src/layout.rs": "c2f317d9d1f7886eaa59171514da1699aa568a617d7fac4bafa15046b8fba61a",
+    "crates/text/src/sfnt.rs": "82cab840a5f1b39502fe005a2380ede7d6b52973eb4d02fdd5e902048b60416d",
+    "crates/text/src/render.rs": "96a3ddbd5b7df8be15591761b5dc9d449f8c4020af57c077522cd330609e4886",
+    "crates/text/src/lib.rs": "56a265092cf610082f4863ec83551ce75d6c1f606cf085d17ed6d304cc253ee0",
+    "crates/text/src/mask.rs": "70375c08bac480b8b6ffbd0231de80c40ea19a17d7eb64fcc11aab0e5b93dded",
+    "crates/text/src/raster.rs": "04949bde73dd949e5f145337e6c9ec8e682dd9129c894714098aab6395e955de",
+    "crates/text/src/fonts.rs": "8e1c01eda3ba69da5d064141c675690badfbbcc9d08019c76d8074b0b78d05de",
+    "assets/fonts/Inter-Medium.ttf": "97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872",
+    "assets/fonts/Inter-Italic.ttf.attribution": "767ad7b0c79fddb0e1b16dbcac3b57bd59df86f72c2dd98fbe23ac92bdebcb5d",
+    "assets/fonts/OFL-NotoSerif.txt": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a",
+    "assets/fonts/Inter-SemiBold.ttf.attribution": "019da1edbbe1c6e1bcc036fae249fad1a23c5ba62572b2a7567fbdb98557bc42",
+    "assets/fonts/NotoSerif-Regular.ttf": "a15cfbbc1539d707115111d672d590a3d70d4f74b4c0a315956da20ae19a14e1",
+    "assets/fonts/JetBrainsMono-Regular.ttf": "e6fd0d7e91550b3ed2b735d4312474362c4716edc4fc0577a0f61ed782d5aed1",
+    "assets/fonts/Inter-Bold.ttf": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f",
+    "assets/fonts/Inter-Regular.ttf": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82",
+    "assets/fonts/Inter-Medium.ttf.attribution": "ec46a12fd5df95dfd044c675b1a02d414de0d4f3b7f8511f45289c14499459b6",
+    "assets/fonts/Inter-Regular.ttf.attribution": "0e6e9b503157c34daeede7c0b0f1ba7f0ebb4e84cd0f05568ed74c618368b52e",
+    "assets/fonts/JetBrainsMono-Regular.ttf.attribution": "ec548030afc176d90291b6f5ea93df4843184cec2fd8e867e8f453bf4fe83343",
+    "assets/fonts/OFL-JetBrainsMono.txt": "a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697",
+    "assets/fonts/OFL-Inter.txt": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a",
+    "assets/fonts/Inter-Italic.ttf": "bbc051dd204b5019a1aa0bc0ae2aa8a05ab13e7a3f979fa357631dc7feb6833a",
+    "assets/fonts/Inter-Bold.ttf.attribution": "207d44f72d0e4ff451a9dfca26c9da686a06d2cfb3c8e0b02fb2af2aae105405",
+    "assets/fonts/Inter-SemiBold.ttf": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3",
+    "assets/fonts/NotoSerif-Regular.ttf.attribution": "e4a5764962e0ef024db4f718b66efc5e7395a7196a3b5abb75de8bee919009b6"
+  },
+  "adaptations": [
+    "Standalone manifest with host Rust1.89 compatibility subject to tests; removed unused filmcraft-color dependency (no source references).",
+    "Bundled font include paths rebased to package-local assets/fonts."
+  ],
+  "integration": "Not yet connected to backend effects; isolated compatibility qualification."
+}

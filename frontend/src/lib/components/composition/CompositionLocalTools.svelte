@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CaptionStylePanel from './CaptionStylePanel.svelte'
   import {
     MAX_COMPOSITION_TEMPLATE_BYTES,
     type CompositionTemplate,
@@ -18,6 +19,8 @@
     compositionState,
     applyCompositionTrackedAnimation,
     exportSelectedTextTrackSrt,
+    exportCompositionCaptions,
+    mergeSelectedCompositionCaptions,
     importSrtToComposition,
     relinkCompositionSource,
     replaceCompositionAutoBeatMarkers,
@@ -147,7 +150,7 @@
       const clip = findTemplateClip(template, slot.clipId)
       if (slot.kind === 'text') defaults[slot.id] = clip?.kind === 'text' ? clip.text : ''
       else {
-        const originalId = clip && clip.kind !== 'text' ? clip.sourceId : ''
+        const originalId = clip && clip.kind !== 'text' && clip.kind !== 'color' && clip.kind !== 'graphic' ? clip.sourceId : ''
         defaults[slot.id] = candidates.some(
           (candidate) => candidate.source.id === originalId && sourceCanReplaceTemplateSlot(template, slot, candidate.source),
         )
@@ -174,7 +177,7 @@
     input.value = ''
     if (!file) return
     try {
-      if (file.size > MAX_SRT_BYTES) throw new Error('SRT превышает лимит 2 МиБ')
+      if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
       const count = importSrtToComposition(await file.text(), targetTextTrackId || undefined)
       showSuccess(`Импортировано субтитров: ${count}`)
     } catch (error) {
@@ -187,6 +190,21 @@
       const result = exportSelectedTextTrackSrt()
       downloadText(result.filename, result.text, 'application/x-subrip;charset=utf-8')
       showSuccess(`SRT сохранён локально: ${result.filename}`)
+    } catch (error) {
+      showError(error)
+    }
+  }
+
+  function mergeCaptionSelection(): void {
+    try { mergeSelectedCompositionCaptions(); showSuccess('Субтитры объединены') }
+    catch (error) { showError(error) }
+  }
+
+  function exportAllCaptions(format: 'srt' | 'vtt'): void {
+    try {
+      const result = exportCompositionCaptions(format)
+      downloadText(result.filename, result.text, format === 'vtt' ? 'text/vtt;charset=utf-8' : 'application/x-subrip;charset=utf-8')
+      showSuccess(`${format.toUpperCase()} сохранён локально: ${result.filename}`)
     } catch (error) {
       showError(error)
     }
@@ -306,24 +324,28 @@
   />
   <MulticamPanel />
   <BrandKitPanel />
+  <CaptionStylePanel />
   <StockCatalogPanel />
   <details class="composition-tool-section">
-    <summary>Субтитры SRT / TXT</summary>
+    <summary>Субтитры SRT / VTT / ASS / TXT</summary>
     <div class="composition-tool-body">
-      <p>Импорт SRT и TXT с таймкодами выполняется локально в UTF-8, без сервера и распознавания речи.</p>
+      <p>Импорт SRT, VTT, ASS/SSA и TXT с таймкодами выполняется локально в UTF-8, без сервера и распознавания речи. VTT и ASS/SSA импортируют текст и время; оформление и анимация заменяются стилем text-дорожки. Пересекающиеся реплики распределяются по свободным дорожкам субтитров.</p>
       <label>
         Дорожка для импорта
         <select bind:value={targetTextTrackId}>
-          <option value="">Выбранная text-дорожка или новая</option>
+          <option value="">Свободные дорожки субтитров или новая</option>
           {#each compositionState.document.tracks.filter((track) => track.kind === 'text') as track (track.id)}
             <option value={track.id}>{track.name}{track.locked ? ' · locked' : ''}</option>
           {/each}
         </select>
       </label>
       <div class="composition-tool-actions">
-        <button class="btn ghost sm" type="button" onclick={() => srtPicker?.click()}>Импорт SRT / TXT</button>
-        <input bind:this={srtPicker} class="hidden-file" type="file" accept=".srt,.txt,application/x-subrip,text/plain" onchange={(event) => void importSrtFile(event)} />
+        <button class="btn ghost sm" type="button" onclick={() => srtPicker?.click()}>Импорт субтитров</button>
+        <input bind:this={srtPicker} class="hidden-file" type="file" accept=".srt,.vtt,.ass,.ssa,.txt,application/x-subrip,text/vtt,text/plain" onchange={(event) => void importSrtFile(event)} />
+        <button class="btn ghost sm" type="button" disabled={compositionState.ui.selectedClipIds.length < 2} onclick={mergeCaptionSelection}>Объединить выбранные субтитры</button>
         <button class="btn ghost sm" type="button" onclick={exportSrt}>Экспорт выбранной text-дорожки</button>
+        <button class="btn ghost sm" type="button" onclick={() => exportAllCaptions('srt')}>Все субтитры · SRT</button>
+        <button class="btn ghost sm" type="button" onclick={() => exportAllCaptions('vtt')}>Все субтитры · VTT</button>
       </div>
     </div>
   </details>

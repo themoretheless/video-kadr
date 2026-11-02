@@ -1,0 +1,9 @@
+
+ RUN  v4.1.10 /Users/themoretheless/Documents/Sources/video-kadr/frontend
+
+
+ Test Files  3 passed (3)
+      Tests  12 passed (12)
+   Start at  11:37:06
+   Duration  1.10s (transform 570ms, setup 0ms, import 774ms, tests 683ms, environment 515ms)
+

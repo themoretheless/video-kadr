@@ -1,0 +1,8 @@
+
+> video-kadr-frontend@0.1.0 typecheck
+> svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: /Users/themoretheless/Documents/Sources/video-kadr/frontend
+Getting Svelte diagnostics...
+
+svelte-check found 0 errors and 0 warnings

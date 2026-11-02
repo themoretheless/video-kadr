@@ -149,3 +149,11 @@ describe('composition source relink', () => {
       .toThrow(expect.objectContaining<Partial<CompositionRelinkError>>({ code: 'conflicting-source' }))
   })
 })
+
+it('clears old video-mask identities when relinking the missing source',()=>{
+ const binding={subject:'person' as const,sourceHash:'a'.repeat(64),modelHash:'88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',runtimeHash:'b'.repeat(64)},base=project()
+ const input={...base,tracks:base.tracks.map(track=>track.kind==='video'?{...track,clips:track.clips.map(clip=>clip.sourceId===oldVideo.id?{...clip,concatCutout:binding}:clip)}:track)}
+ const before=JSON.stringify(input),output=relinkCompositionSource(input,oldVideo.id,replacement)
+ for(const clip of allClips(output))if('sourceId'in clip&&clip.sourceId===replacement.id)expect(clip).not.toHaveProperty('concatCutout')
+ expect(JSON.stringify(input)).toBe(before)
+})

@@ -1,0 +1,13 @@
+
+> video-kadr-frontend@0.1.0 test
+> vitest run src/lib/components/composition/Insta360GyroImport.test.ts src/lib/components/composition/SphericalSemanticTracker.test.ts
+
+
+ RUN  v4.1.10 /Users/themoretheless/Documents/Sources/video-kadr/frontend
+
+
+ Test Files  2 passed (2)
+      Tests  16 passed (16)
+   Start at  02:44:49
+   Duration  3.48s (transform 2.93s, setup 0ms, import 3.65s, tests 837ms, environment 1.55s)
+

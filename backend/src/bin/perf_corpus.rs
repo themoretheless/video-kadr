@@ -133,6 +133,7 @@ async fn measure_library_list(
             storage_key: None,
             url: format!("/files/sources/source-{index:03}.mp4"),
             media_type: Some("video".into()),
+            original_filename: None,
             title: Some(format!("Fixture {index}")),
             duration: Some(10.0),
             width: Some(1920),

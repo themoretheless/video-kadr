@@ -1,0 +1,365 @@
+//! Native Filmcraft generator video, adapted from the pinned MIT source.
+//! See docs/licenses/filmcraft-MIT.txt. Source formulas and RGBA8 rounding retained.
+use super::{filmcraft_generator_audio::{Generator,DemoScene},group_surface::GroupSurface};
+use anyhow::{ensure,Context,Result};
+use filmcraft_time::{FrameRate,Tick,TICKS_PER_SECOND};
+use std::f32::consts::{PI,TAU};
+mod digits { include!("filmcraft_generator_digits.rs"); }
+use digits::{draw_text,text_width};
+#[derive(Debug)]
+pub struct GeneratorVideoFrame { pub surface:GroupSurface, pub pts:i64, pub frame:i64 }
+/// Mirrors GeneratorSource::video_frame: negative clocks clamp to zero and scales
+/// snap to 1/64 buckets before dimensions are rounded. Duration does not clamp video.
+pub fn video_frame(generator:&Generator,width:u32,height:u32,rate:FrameRate,time:i64,scale:f32,cancelled:impl Fn()->bool)->Result<GeneratorVideoFrame>{
+ ensure!(width>0&&width<=3840&&height>0&&height<=2160,"invalid generator dimensions");
+ ensure!(scale.is_finite(),"nonfinite generator scale");
+ ensure!(!matches!(generator,Generator::Tone{..}),"generator has no video stream");
+ if let Generator::ColorMatte{color}=generator{ensure!(color.iter().all(|c|c.is_finite()),"nonfinite generator color");}
+ let rate=rate.sane();let frame=i64::try_from((time.max(0) as i128*rate.num as i128).div_euclid(TICKS_PER_SECOND as i128*rate.den as i128)).context("generator frame overflow")?;
+ let pts=i64::try_from((frame as i128*TICKS_PER_SECOND as i128*rate.den as i128).div_euclid(rate.num as i128)).context("generator clock overflow")?;
+ let bucket=(scale.clamp(1.0/64.0,1.0)*64.0).round() as u16;let s=bucket as f32/64.0;
+ let (w,h)=(((width as f32*s).round() as u32).max(2),((height as f32*s).round() as u32).max(2));
+ let stopped=std::cell::Cell::new(false);let check=||{if cancelled(){stopped.set(true);}stopped.get()};ensure!(!check(),"generator rendering cancelled");
+ let rgba=render(generator,w,h,Tick(pts).seconds() as f32,frame,rate,&check);ensure!(!check(),"generator rendering cancelled");
+ Ok(GeneratorVideoFrame{surface:GroupSurface{width:w as usize,height:h as usize,rgba},pts,frame})
+}
+/// Resolve the source media through bounded subclip ancestry. This is source
+/// content only; timeline layers, nested sequences and file decoding are separate.
+pub fn source_frame(document:&super::filmcraft_project_file::SourceProjectDocument,item:u64,time:i64,scale:f32,cancelled:impl Fn()->bool)->Result<GeneratorVideoFrame>{
+ let index=super::filmcraft_project_index::ProjectIndex::new(document)?;
+ let source=index.resolve_media(item).context("source is not supported generator media")?;let media=source.media;
+ ensure!(media["offline"]!=true,"source media is offline");
+ let generator:Generator=serde_json::from_value(media.pointer("/media/Generator").context("file media preview is not connected")?.clone())?;
+ let info=media.pointer("/info/video").filter(|v|!v.is_null()).context("source has no video stream")?;
+ let width=u32::try_from(info["width"].as_u64().context("missing source width")?)?;let height=u32::try_from(info["height"].as_u64().context("missing source height")?)?;
+ let rate=media.pointer("/interpret/frame_rate").filter(|v|!v.is_null()).or_else(||info.get("frame_rate"));let rate=rate.map(|r|serde_json::from_value::<FrameRate>(r.clone())).transpose()?.unwrap_or_default();
+ video_frame(&generator,width,height,rate,time,scale,cancelled)
+}
+fn hash(n: i64) -> f32 {
+    let mut x = n as u64 ^ 0x9E37_79B9_7F4A_7C15;
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^= x >> 31;
+    (x >> 40) as f32 / (1u64 << 24) as f32 * 2.0 - 1.0
+}
+
+fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+}
+
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn vnoise(x: f32, y: f32) -> f32 {
+    let (xi, yi) = (x.floor(), y.floor());
+    let (xf, yf) = (x - xi, y - yi);
+    let h = |a: f32, b: f32| hash((a as i64).wrapping_mul(73_856_093) ^ (b as i64).wrapping_mul(19_349_663));
+    let u = xf * xf * (3.0 - 2.0 * xf);
+    let v = yf * yf * (3.0 - 2.0 * yf);
+    let a = h(xi, yi);
+    let b = h(xi + 1.0, yi);
+    let c = h(xi, yi + 1.0);
+    let d = h(xi + 1.0, yi + 1.0);
+    (a + (b - a) * u) + ((c + (d - c) * u) - (a + (b - a) * u)) * v
+}
+
+fn fbm(x: f32, y: f32, oct: u32) -> f32 {
+    let mut s = 0.0;
+    let mut a = 0.5;
+    let (mut fx, mut fy) = (x, y);
+    for _ in 0..oct {
+        s += a * vnoise(fx, fy);
+        fx = fx * 2.03 + 1.7;
+        fy = fy * 2.01 + 9.2;
+        a *= 0.5;
+    }
+    s
+}
+
+fn to8(c: [f32; 3]) -> [u8; 4] {
+    [(c[0].clamp(0.0, 1.0) * 255.0) as u8, (c[1].clamp(0.0, 1.0) * 255.0) as u8, (c[2].clamp(0.0, 1.0) * 255.0) as u8, 255]
+}
+
+/// Render a generator frame as straight-alpha sRGB RGBA8.
+fn render(g: &Generator, w: u32, h: u32, t: f32, frame: i64, rate: FrameRate, cancelled: &impl Fn()->bool) -> Vec<u8> {
+    let (wu, hu) = (w as usize, h as usize);
+    let mut px = vec![0u8; wu * hu * 4];
+    match g {
+        Generator::BarsAndTone => bars(&mut px, wu, hu, cancelled),
+        Generator::ColorMatte { color } => {
+            let c = [(color[0] * 255.0) as u8, (color[1] * 255.0) as u8, (color[2] * 255.0) as u8, (color[3] * 255.0) as u8];
+            px.chunks_exact_mut(4).for_each(|p| p.copy_from_slice(&c));
+        }
+        Generator::BlackVideo => px.chunks_exact_mut(4).for_each(|p| p.copy_from_slice(&[0, 0, 0, 255])),
+        Generator::TransparentVideo | Generator::Tone { .. } => {}
+        Generator::CountingLeader => leader(&mut px, wu, hu, t, frame, rate, cancelled),
+        Generator::Demo(scene) => {
+            let scene = *scene;
+            px.chunks_mut(wu * 4).enumerate().for_each(|(y, row)| {
+                if cancelled() { return; }
+                let v = y as f32 / hu as f32;
+                for x in 0..wu {
+                    let u = x as f32 / wu as f32;
+                    let c = demo_pixel(scene, u, v, wu as f32 / hu as f32, t);
+                    row[x * 4..x * 4 + 4].copy_from_slice(&to8(c));
+                }
+            });
+        }
+    }
+    px
+}
+
+fn bars(px: &mut [u8], w: usize, h: usize, cancelled: &impl Fn()->bool) {
+    // SMPTE RP 219-style HD bars (75% bars, 40% grey side panels, ramp row, PLUGE row).
+    let g40 = [104, 104, 104, 255];
+    let bars75: [[u8; 4]; 7] =
+        [[191, 191, 191, 255], [191, 191, 0, 255], [0, 191, 191, 255], [0, 191, 0, 255], [191, 0, 191, 255], [191, 0, 0, 255], [0, 0, 191, 255]];
+    let side = w / 8;
+    let bw = (w - 2 * side) as f32 / 7.0;
+    let r1 = h * 7 / 12;
+    let r2 = r1 + h / 12;
+    let r3 = r2 + h / 12;
+    for y in 0..h {
+        if cancelled() { return; }
+        for x in 0..w {
+            let c: [u8; 4] = if y < r1 {
+                if x < side || x >= w - side { g40 } else { bars75[(((x - side) as f32 / bw) as usize).min(6)] }
+            } else if y < r2 {
+                if x < side {
+                    [0, 255, 255, 255]
+                } else if x >= w - side {
+                    [0, 0, 255, 255]
+                } else if x < side + bw as usize {
+                    [235, 235, 235, 255]
+                } else {
+                    [191, 191, 191, 255]
+                }
+            } else if y < r3 {
+                if x < side {
+                    [255, 255, 0, 255]
+                } else if x >= w - side {
+                    [255, 0, 0, 255]
+                } else {
+                    let v = ((x - side) as f32 / (w - 2 * side) as f32 * 255.0) as u8;
+                    [v, v, v, 255]
+                }
+            } else {
+                let fx = x as f32 / w as f32;
+                let v: u8 = if fx < 0.125 {
+                    38
+                } else if fx < 0.3 {
+                    0
+                } else if fx < 0.5 {
+                    255
+                } else if fx < 0.65 {
+                    0
+                } else if fx < 0.68 {
+                    5
+                } else if fx < 0.71 {
+                    0
+                } else if fx < 0.74 {
+                    10
+                } else if fx < 0.875 {
+                    0
+                } else {
+                    38
+                };
+                [v, v, v, 255]
+            };
+            px[(y * w + x) * 4..(y * w + x) * 4 + 4].copy_from_slice(&c);
+        }
+    }
+}
+
+fn leader(px: &mut [u8], w: usize, h: usize, t: f32, _frame: i64, _rate: FrameRate, cancelled: &impl Fn()->bool) {
+    // 8-second countdown: number = 8 - floor(t), sweep angle = fract(t).
+    let n = (8 - t.floor() as i64).clamp(2, 8);
+    let sweep = t.fract() * TAU;
+    let (cx, cy) = (w as f32 / 2.0, h as f32 / 2.0);
+    let r_out = h as f32 * 0.42;
+    px.chunks_mut(w * 4).enumerate().for_each(|(y, row)| {
+                if cancelled() { return; }
+        for x in 0..w {
+            let dx = x as f32 - cx;
+            let dy = y as f32 - cy;
+            let d = (dx * dx + dy * dy).sqrt();
+            let ang = (dx.atan2(-dy) + TAU) % TAU;
+            let mut c = if ang < sweep { [0.55, 0.55, 0.55] } else { [0.78, 0.78, 0.78] };
+            let ring = |r: f32, wdt: f32| (d - r).abs() < wdt;
+            if ring(r_out, 3.0) || ring(r_out * 0.86, 2.0) || dx.abs() < 1.5 || dy.abs() < 1.5 {
+                c = [0.1, 0.1, 0.1];
+            }
+            if d > r_out + 3.0 {
+                c = [0.2, 0.2, 0.2];
+            }
+            row[x * 4..x * 4 + 4].copy_from_slice(&to8(c));
+        }
+    });
+    let dh = (h as i32) / 3;
+    let s = n.to_string();
+    let tw = text_width(dh, &s);
+    draw_text(px, w, h, (w as i32 - tw) / 2, (h as i32 - dh) / 2, dh, &s, [20, 20, 20, 255]);
+}
+
+fn demo_pixel(scene: DemoScene, u: f32, v: f32, aspect: f32, t: f32) -> [f32; 3] {
+    match scene {
+        DemoScene::OceanSunset => {
+            let horizon = 0.58;
+            let sun = [0.5 + 0.02 * (t * 0.05).sin(), 0.42 + t * 0.006];
+            if v < horizon {
+                let k = v / horizon;
+                let mut c = lerp3([0.16, 0.10, 0.32], [0.98, 0.52, 0.28], k.powf(1.6));
+                c = lerp3(c, [1.0, 0.82, 0.55], smoothstep(0.75, 1.0, k) * 0.6);
+                let dx = (u - sun[0]) * aspect;
+                let dy = v - sun[1];
+                let d = (dx * dx + dy * dy).sqrt();
+                let glow = (-d * 9.0).exp();
+                c = lerp3(c, [1.0, 0.93, 0.75], glow * 0.8);
+                if d < 0.055 {
+                    c = [1.0, 0.95, 0.82];
+                }
+                // wispy clouds
+                let cl = fbm(u * 4.0 + t * 0.02, v * 14.0, 4);
+                let cm = smoothstep(0.15, 0.45, cl) * smoothstep(0.1, 0.45, v) * (1.0 - smoothstep(0.45, 0.55, v));
+                lerp3(c, [0.55, 0.28, 0.35], cm * 0.55)
+            } else {
+                let k = (v - horizon) / (1.0 - horizon);
+                let mut c = lerp3([0.35, 0.18, 0.28], [0.03, 0.05, 0.12], k.powf(0.7));
+                let wave = fbm(u * 18.0 * (1.0 - k * 0.6) + t * 0.3, (v - horizon) * 90.0 / (0.3 + k) - t * 1.4, 3);
+                let dx = (u - sun[0]) * aspect;
+                let path = (-dx * dx * 160.0 / (0.2 + k * 2.0)).exp();
+                let sparkle = smoothstep(0.05, 0.4, wave) * path;
+                c = lerp3(c, [1.0, 0.78, 0.5], sparkle * (1.0 - k * 0.5));
+                lerp3(c, [0.9, 0.5, 0.35], path * 0.25 * (1.0 - k))
+            }
+        }
+        DemoScene::Aurora => {
+            let mut c = lerp3([0.01, 0.02, 0.08], [0.02, 0.1, 0.18], v);
+            // stars
+            let sx = (u * 900.0).floor();
+            let sy = (v * 500.0).floor();
+            let st = hash((sx as i64) * 7919 + sy as i64 * 104_729);
+            if st > 0.994 && v < 0.7 {
+                let tw = 0.6 + 0.4 * (t * 3.0 + st * 100.0).sin();
+                c = lerp3(c, [0.9, 0.95, 1.0], tw);
+            }
+            // aurora curtains
+            for (i, col) in [[0.2, 1.0, 0.55], [0.55, 0.3, 1.0], [0.1, 0.9, 0.8]].iter().enumerate() {
+                let fi = i as f32;
+                let base = 0.28 + 0.08 * fi + 0.06 * (u * 3.0 + t * 0.15 + fi).sin() + 0.05 * fbm(u * 3.0 + t * 0.05, fi, 3);
+                let dy = v - base;
+                let ray = 0.5 + 0.5 * fbm(u * 40.0 + t * 0.4 + fi * 10.0, fi, 2);
+                let a = (-dy * dy * 90.0).exp() * if dy > 0.0 { 1.0 } else { (dy * 12.0).exp() } * ray;
+                c = lerp3(c, *col, (a * 0.8).min(1.0));
+            }
+            // mountains
+            let m = 0.72 + 0.08 * fbm(u * 3.0, 3.3, 5) + 0.05 * (u * 5.0).sin();
+            if v > m {
+                let snow = smoothstep(0.02, 0.0, v - m) * 0.3;
+                c = lerp3([0.02, 0.03, 0.05], [0.4, 0.5, 0.6], snow);
+            }
+            // reflection lake
+            if v > 0.9 {
+                c = lerp3(c, [0.05, 0.25, 0.2], 0.3 * (1.0 + (v * 400.0 + t * 4.0).sin()) * 0.5);
+            }
+            c
+        }
+        DemoScene::CityNight => {
+            let mut c = lerp3([0.05, 0.02, 0.15], [0.55, 0.2, 0.35], v.powf(2.2));
+            let layers = [(0.15, 0.55, [0.12, 0.08, 0.2], 0.02), (0.28, 0.62, [0.07, 0.05, 0.12], 0.05), (0.45, 0.7, [0.03, 0.02, 0.06], 0.12)];
+            for (li, (bw, base, col, speed)) in layers.iter().enumerate() {
+                let x = u * aspect / bw + t * speed;
+                let bi = x.floor();
+                let hgt = base - 0.32 * (0.5 + 0.5 * hash(bi as i64 * 31 + li as i64));
+                if v > hgt {
+                    c = *col;
+                    let wx = (x.fract() * 6.0).floor();
+                    let wy = ((v - hgt) * 70.0).floor();
+                    let lit = hash((bi as i64) * 1000 + wx as i64 * 37 + wy as i64 * 101 + li as i64);
+                    if (x.fract() * 6.0).fract() < 0.55 && ((v - hgt) * 70.0).fract() < 0.5 && lit > 0.35 && x.fract() > 0.08 && x.fract() < 0.92 {
+                        let warm = [1.0, 0.8 + 0.1 * lit, 0.45];
+                        c = lerp3(c, warm, 0.35 + 0.35 * (li as f32 / 2.0));
+                    }
+                }
+            }
+            // light trails on the road
+            if v > 0.86 {
+                c = [0.04, 0.03, 0.06];
+                for k in 0..6 {
+                    let lane = 0.88 + k as f32 * 0.02;
+                    let d = (v - lane).abs();
+                    let streak = (u * 6.0 - t * (1.5 + k as f32 * 0.4) + k as f32).fract();
+                    let col = if k % 2 == 0 { [1.0, 0.25, 0.2] } else { [1.0, 0.9, 0.7] };
+                    c = lerp3(c, col, (-d * 900.0).exp() * smoothstep(0.0, 0.8, streak));
+                }
+            }
+            c
+        }
+        DemoScene::Dunes => {
+            let mut c = lerp3([0.35, 0.6, 0.9], [0.98, 0.85, 0.65], smoothstep(0.0, 0.5, v));
+            let sun_d = ((u - 0.75) * aspect).hypot(v - 0.22);
+            c = lerp3(c, [1.0, 0.97, 0.85], (-sun_d * 14.0).exp());
+            for k in 0..4 {
+                let fk = k as f32;
+                let x = u * (1.0 + fk * 0.6) + t * 0.01 * (fk + 1.0);
+                let ridge = 0.45 + fk * 0.12 + 0.06 * (x * 6.0 + fk).sin() + 0.03 * fbm(x * 4.0, fk, 3);
+                if v > ridge {
+                    let shade = 0.5 + 0.5 * ((x * 6.0 + fk).cos());
+                    let base = lerp3([0.78, 0.45, 0.22], [0.98, 0.72, 0.45], shade);
+                    c = lerp3(base, [0.55, 0.28, 0.15], (v - ridge).min(0.2) * 2.0 * (fk / 3.0));
+                }
+            }
+            c
+        }
+        DemoScene::Plasma => {
+            let x = u * aspect * 3.0;
+            let y = v * 3.0;
+            let p = (x + t).sin() + (y * 1.3 - t * 0.7).sin() + ((x + y + t * 0.5).sin()) + ((x * x + y * y).sqrt() * 2.0 - t * 1.2).sin();
+            let h = p * 0.25 + t * 0.05;
+            [0.5 + 0.5 * (PI * h).sin(), 0.5 + 0.5 * (PI * h + 2.1).sin() * 0.6, 0.5 + 0.5 * (PI * h + 4.2).sin()]
+        }
+        DemoScene::Forest => {
+            let mut c = lerp3([0.75, 0.82, 0.8], [0.35, 0.45, 0.4], v);
+            // god rays
+            let ray = 0.5 + 0.5 * fbm(u * 8.0 - v * 3.0 + t * 0.05, 1.0, 2);
+            c = lerp3(c, [1.0, 0.97, 0.85], ray * (1.0 - v) * 0.35);
+            for k in 0..5 {
+                let fk = k as f32;
+                let depth = 1.0 - fk / 5.0;
+                let spacing = 0.12 + fk * 0.03;
+                let x = u / spacing + t * 0.03 * (fk + 1.0) + fk * 3.3;
+                let trunk_x = x.fract();
+                let tw = 0.08 + 0.05 * (1.0 - depth);
+                let id = x.floor();
+                if (trunk_x - 0.5).abs() < tw && hash(id as i64 * 13 + k) > -0.2 {
+                    let dark = lerp3([0.45, 0.5, 0.48], [0.05, 0.07, 0.05], 1.0 - depth * 0.8);
+                    c = lerp3(c, dark, 0.85);
+                }
+            }
+            let mist = smoothstep(0.55, 1.0, v) * (0.6 + 0.4 * fbm(u * 3.0 + t * 0.1, v * 5.0, 3));
+            lerp3(c, [0.85, 0.88, 0.86], mist * 0.6)
+        }
+    }
+}
+
+
+#[cfg(test)]mod tests{
+ use super::*;use serde_json::Value;
+ #[test]fn original_generator_sources_match_every_rgba_byte(){
+  let fixture:Value=serde_json::from_str(include_str!("../../tests/fixtures/filmcraft-generator-video.json")).unwrap();let cases=fixture["cases"].as_array().unwrap();assert_eq!(cases.len(),2925);
+  for (i,case) in cases.iter().enumerate(){let generator:Generator=serde_json::from_value(case["generator"].clone()).unwrap();let rate:FrameRate=serde_json::from_value(case["rate"].clone()).unwrap();let time=case["time"].as_i64().unwrap();let result=video_frame(&generator,case["width"].as_u64().unwrap() as u32,case["height"].as_u64().unwrap() as u32,rate,time,case["scale"].as_f64().unwrap() as f32,||false);
+   if case["noVideo"]==true{assert!(result.is_err(),"tone {i}");continue;}
+   let frame=result.unwrap();assert_eq!(frame.surface.width as u64,case["outputWidth"].as_u64().unwrap(),"width {i}");assert_eq!(frame.surface.height as u64,case["outputHeight"].as_u64().unwrap(),"height {i}");assert_eq!(frame.pts,case["pts"].as_i64().unwrap(),"pts {i}");assert_eq!(frame.frame,rate.frame_at(Tick(time.max(0))),"frame {i}");
+   let hex=case["rgbaHex"].as_str().unwrap();let expected:Vec<u8>=hex.as_bytes().chunks_exact(2).map(|pair|u8::from_str_radix(std::str::from_utf8(pair).unwrap(),16).unwrap()).collect();assert_eq!(frame.surface.rgba,expected,"pixels {i}: {}",case["generator"]);
+  }
+ }
+ #[test]fn admission_and_cancellation_do_not_publish_partial_frames(){
+  let render=|w,h,scale|video_frame(&Generator::BlackVideo,w,h,FrameRate::FPS_24,0,scale,||false);
+  for (w,h,s) in [(0,1,1.),(3841,2160,1.),(3840,2161,1.),(1,1,f32::NAN),(1,1,f32::INFINITY)]{assert!(render(w,h,s).is_err());}
+  assert!(video_frame(&Generator::ColorMatte{color:[0.,f32::NAN,0.,1.]},1,1,FrameRate::FPS_24,0,1.,||false).is_err());
+  let calls=std::cell::Cell::new(0);let result=video_frame(&Generator::Demo(DemoScene::Aurora),64,36,FrameRate::FPS_24,0,1.,||{calls.set(calls.get()+1);calls.get()>3});assert!(result.is_err());assert!(calls.get()>3);
+  let frame=render(1,1,1.).unwrap();assert_eq!((frame.surface.width,frame.surface.height),(2,2));
+ }
+}

@@ -1,3 +1,18 @@
+import { validSampleClock } from './keyframeClock'
+import {validateVideoRegion,videoRegionOrdinal} from '../video-region'
+import {validConcatClipAnimation} from './concatClipAnimation'
+import {validateVideoAttachment} from '../video-mask-recipe'
+import {cutoutMaskDimensions} from './types'
+import {proceduralTransitionReason} from './transitionCatalog'
+import {independentTransitionExportReason} from './transitionExport'
+import {transitionSourceSpan} from './transitionTimeline'
+import {captionMicrosecondsCeil} from './captionTime'
+import { validateCaptionTracks } from './captionTracks'
+import { normalizeColorAnimation } from './colorAnimation'
+import { isKeyframeTangents, segmentInterpolation } from './tangents'
+import { isBezierInterpolation } from './bezier'
+import { isElasticInterpolation } from './elastic'
+import { normalizeVisualScaleLink } from './scaleLink'
 import {
   COMPOSITION_SCHEMA_VERSION,
   COMPOSITION_TIME_BASE,
@@ -9,6 +24,7 @@ import {
   MAX_ACTIVE_VISUAL_KEYFRAMES,
   MAX_ACTIVE_SPEED_RAMP_SEGMENTS,
   MAX_KEYFRAMES_PER_VALUE,
+  MAX_COLOR_KEYFRAMES_PER_VALUE,
   MAX_TEXT_LENGTH,
   MAX_VISIBLE_VISUAL_TRACKS,
   COMPOSITION_BLEND_MODES,
@@ -55,11 +71,11 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const RESERVED_IDS = new Set(['__proto__', 'prototype', 'constructor'])
 const SAFE_COLOR = /^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/
 const SOURCE_KINDS = new Set(['video', 'audio', 'image'])
-const TRACK_KINDS = new Set(['video', 'audio', 'image', 'text'])
+const TRACK_KINDS = new Set(['video', 'audio', 'image', 'text', 'color', 'graphic'])
 const BLEND_MODES = new Set<string>(COMPOSITION_BLEND_MODES)
 const TRANSITION_KINDS = new Set<string>(COMPOSITION_TRANSITION_KINDS)
 const TEXT_FONTS = new Set(['Noto Sans', 'Arial Unicode MS', 'DejaVu Sans', 'Arial'])
-const INTERPOLATIONS = new Set(['hold', 'linear', 'ease_in', 'ease_out', 'ease_in_out', 'ease_in_out_cubic'])
+const INTERPOLATIONS = new Set(['hold', 'linear', 'ease_in', 'ease_out', 'ease_in_out', 'ease_in_out_cubic', 'bounce_in', 'bounce_out', 'bounce_in_out'])
 const MAX_AUTHORING_MARKERS = 256
 const MAX_AUTHORING_MARKER_LABEL = 128
 const MAX_AUTHORING_MULTICAM_GROUPS = MAX_COMPOSITION_TRACKS
@@ -106,6 +122,12 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
     add('time-base', 'timeBase', `timeBase must be ${COMPOSITION_TIME_BASE}`)
   }
 
+  if (value.audioRoles !== undefined) {
+    if (!isRecord(value.audioRoles)) add('audio-roles', 'audioRoles', 'Audio roles must be an object')
+    else for (const [role, mix] of Object.entries(value.audioRoles)) {
+      if (!['dialogue', 'music', 'sfx', 'voiceover'].includes(role) || !isRecord(mix) || !isFiniteNumber(mix.gainDb) || typeof mix.muted !== 'boolean' || typeof mix.solo !== 'boolean') add('audio-roles', `audioRoles.${role}`, 'Invalid audio role mix')
+    }
+  }
   validateCanvas(value.canvas, add)
   validateAuthoringMarkers(value.markers, add)
 
@@ -166,6 +188,9 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
     if (typeof candidate.name !== 'string' || !candidate.name.trim() || candidate.name.length > 128) {
       add('track-name', `${path}.name`, 'Track name must contain 1 to 128 characters')
     }
+    if (candidate.syncLock !== undefined && typeof candidate.syncLock !== 'boolean') {
+      add('track-sync-lock', `${path}.syncLock`, 'syncLock must be a boolean when provided')
+    }
     if (typeof candidate.locked !== 'boolean') {
       add('track-locked', `${path}.locked`, 'locked must be a boolean')
     }
@@ -202,6 +227,9 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
       }
       if (clipCandidate.kind !== candidate.kind) {
         add('clip-kind', `${clipPath}.kind`, 'Clip kind must match its track kind')
+      }
+      if (clipCandidate.scaleLinked !== undefined && (clipCandidate.kind === 'audio' || typeof clipCandidate.scaleLinked !== 'boolean')) {
+        add('scale-linked', `${clipPath}.scaleLinked`, 'Scale link must be a boolean on a visual clip')
       }
       validateClip(clipCandidate, clipPath, sources, add)
       if (clipCandidate.kind === 'video' && clipCandidate.frameInterpolation === 'optical_flow') {
@@ -254,6 +282,55 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
     }
   }
 
+  if (isRecord(value.metadata) && value.metadata.captionTextTracks !== undefined) {
+    const ids = value.metadata.captionTextTracks
+    if (!Array.isArray(ids) || ids.length > MAX_COMPOSITION_TRACKS ||
+      ids.some((id) => !isStableId(id)) || new Set(ids).size !== ids.length) {
+      add('caption-text-tracks', 'metadata.captionTextTracks', 'Subtitle lane roles must be unique stable track ids')
+    }
+  }
+
+  if (isRecord(value.metadata) && value.metadata.clipLinks !== undefined) {
+    const groups = value.metadata.clipLinks
+    const known = new Set(value.tracks.flatMap((track: unknown) => isRecord(track) && Array.isArray(track.clips) ? track.clips.filter(isRecord).map(clip => clip.id) : []))
+    const linked = new Set<unknown>()
+    if (!isRecord(groups) || Object.keys(groups).length > MAX_COMPOSITION_CLIPS) add('clip-links', 'metadata.clipLinks', 'Invalid clip links')
+    else for (const [id, members] of Object.entries(groups)) {
+      if (!isStableId(id) || !Array.isArray(members) || members.length < 2 || members.length > MAX_COMPOSITION_CLIPS) { add('clip-links', `metadata.clipLinks.${id}`, 'Invalid clip link group'); continue }
+      for (const member of members) { if (!isStableId(member) || !known.has(member) || linked.has(member)) add('clip-links', `metadata.clipLinks.${id}`, 'Linked clips must exist and belong to one group'); linked.add(member) }
+    }
+  }
+  if (isRecord(value.metadata) && value.metadata.mediaVersions !== undefined) {
+    const versions = value.metadata.mediaVersions
+    if (!isRecord(versions) || Object.keys(versions).length > MAX_COMPOSITION_CLIPS) add('media-versions', 'metadata.mediaVersions', 'Invalid media version map')
+    else for (const [id, pair] of Object.entries(versions)) {
+      const clip = value.tracks.flatMap((track: unknown) => isRecord(track) && Array.isArray(track.clips) ? track.clips : []).find((c: unknown) => isRecord(c) && c.id === id)
+      if (!isRecord(pair) || !isRecord(clip) || !('sourceId' in clip) || !isStableId(pair.originalSourceId) || !isStableId(pair.copySourceId) || !sources.has(pair.originalSourceId) || !sources.has(pair.copySourceId) || clip.sourceId !== pair.originalSourceId && clip.sourceId !== pair.copySourceId) add('media-versions', `metadata.mediaVersions.${id}`, 'Media versions must reference this clip and registered sources')
+      if(isRecord(pair)&&pair.videoCutout!==undefined){
+        const field=`metadata.mediaVersions.${id}.videoCutout`
+        try {
+          validateVideoAttachment(pair.videoCutout);const c=pair.videoCutout,original=(value.sources as Record<string,Record<string,unknown>>)[c.sourceId],mask=(value.sources as Record<string,Record<string,unknown>>)[c.maskSourceId],copy=(value.sources as Record<string,Record<string,unknown>>)[String(pair.copySourceId)],versionOriginal=(value.sources as Record<string,Record<string,unknown>>)[String(pair.originalSourceId)]
+          if(pair.cutout!==undefined||c.maskSourceId===pair.originalSourceId||copy?.kind!=='video'||versionOriginal?.kind!=='video'||copy.width!==c.width||copy.height!==c.height||!isStableId(c.sourceId)||!isStableId(c.maskSourceId)||c.sourceId===pair.copySourceId||c.maskSourceId===pair.copySourceId||!sources.has(c.sourceId)||!sources.has(c.maskSourceId)||!isRecord(clip)||!['video','audio'].includes(String(clip.kind))||original?.kind!=='video'||mask?.kind!=='video'||mask.hasAudio!==false||mask.width!==c.maskWidth||mask.height!==c.maskHeight||!((original.width===c.width&&original.height===c.height)||(original.width===c.height&&original.height===c.width)))throw new Error('Video masks require registered original and silent mask video sources')
+          for(const region of c.trackedRegions??[]){const input=(value.sources as Record<string,Record<string,unknown>>)[region.sourceId],mask=(value.sources as Record<string,Record<string,unknown>>)[region.maskSourceId];if(input?.kind!=='video'||!((input.width===c.width&&input.height===c.height)||(input.width===c.height&&input.height===c.width))||mask?.kind!=='video'||mask.hasAudio!==false||mask.width!==256||mask.height!==256||region.sourceId===pair.copySourceId||region.maskSourceId===pair.copySourceId)throw new Error('Retained regions require registered original and silent256 masks')}
+
+        }catch(reason){add('video-cutout',field,reason instanceof Error?reason.message:'Invalid video-mask attachment')}
+      }
+      if(isRecord(pair)&&pair.cutout!==undefined){
+        const c=pair.cutout,field=`metadata.mediaVersions.${id}.cutout`
+        if(isRecord(c)&&c.subject!==undefined&&!['auto','person','object'].includes(String(c.subject)))add('cutout',field,'Invalid captured cutout subject')
+        if(!isRecord(c)||!isStableId(c.sourceId)||!isStableId(c.maskSourceId)||c.sourceId===c.maskSourceId||c.sourceId===pair.copySourceId||c.maskSourceId===pair.copySourceId||!sources.has(c.sourceId)||!sources.has(c.maskSourceId)||!['sourceHash','maskHash','maskFileHash','modelHash','runtimeHash'].every(key=>typeof c[key]==='string'&&/^[a-f0-9]{64}$/.test(c[key] as string)))add('cutout',field,'Invalid cutout source/content identity')
+        else {
+          const original=(value.sources as Record<string,Record<string,unknown>>)[c.sourceId],mask=(value.sources as Record<string,Record<string,unknown>>)[c.maskSourceId]
+          if(!isRecord(clip)||clip.kind!=='image'||original?.kind!=='image'||mask?.kind!=='image'||mask.width!==cutoutMaskDimensions(c.modelHash as string,original?.width,original?.height)[0]||mask.height!==cutoutMaskDimensions(c.modelHash as string,original?.width,original?.height)[1])add('cutout',field,'Cutout requires an image and registered model-sized mask')
+          const settings=c.correction;let count=0
+          if(!isRecord(settings)||typeof settings.custom!=='boolean'||!(typeof settings.feather==='number'&&Number.isFinite(settings.feather))||settings.feather<0||settings.feather>0.1||!Array.isArray(settings.strokes)||settings.strokes.length>1024)add('cutout',field,'Invalid cutout settings')
+          else for(const raw of settings.strokes){if(!isRecord(raw)||!['brush','eraser','smartBrush','smartEraser'].includes(raw.tool as string)||!(typeof raw.size==='number'&&Number.isFinite(raw.size))||raw.size<0.005||raw.size>0.5||!Array.isArray(raw.points)||!raw.points.length||!raw.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(v=>(typeof v==='number'&&Number.isFinite(v))&&v>=-0.5&&v<=1.5))||(raw.at!=null&&(!(typeof raw.at==='number'&&Number.isFinite(raw.at))||raw.at<0)))add('cutout',field,'Invalid cutout stroke');else{count+=raw.points.length;if(count>65536)add('cutout',field,'Too many cutout points');if(raw.region!==undefined){const region=raw.region;if(!['smartBrush','smartEraser'].includes(raw.tool as string)||!isValidSamRegion(region,c.sourceId as string,c.sourceHash as string,raw.points))add('cutout',field,'Invalid learned region');else{const id=(region as Record<string,unknown>).maskSourceId as string,source=(value.sources as Record<string,Record<string,unknown>>)[id];if(!sources.has(id)||source?.kind!=='image'||source.width!==256||source.height!==256||id===pair.copySourceId)add('cutout',field,'Missing registered learned region')}}}}
+        }
+      }
+
+    }
+  }
+
   if (totalClips > MAX_COMPOSITION_CLIPS) {
     add('clip-limit', 'tracks', `A composition can contain at most ${MAX_COMPOSITION_CLIPS} clips`)
   }
@@ -280,6 +357,27 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
       `A composition can contain at most ${MAX_VISIBLE_VISUAL_TRACKS} visible visual tracks`,
     )
   }
+  if (value.shotReview !== undefined && value.shotReview !== null) {
+    const settings = value.shotReview
+    if (!isRecord(settings) || typeof settings.threshold !== 'number' || !Number.isFinite(settings.threshold) || settings.threshold < 0.05 || settings.threshold > 1 || typeof settings.minShotTicks !== 'number' || !Number.isSafeInteger(settings.minShotTicks) || settings.minShotTicks < 1 || settings.minShotTicks > 60_000_000) add('shot-review-settings', 'shotReview', 'Invalid shot review settings')
+  }
+  if (value.links !== undefined) {
+    if (!Array.isArray(value.links) || value.links.length > 256) add('links', 'links', 'Links must be an array of at most 256 entries')
+    else {
+      const linkedIds = new Set<string>()
+      const linkIds = new Set<string>()
+      for (const [index, link] of value.links.entries()) {
+        const path = `links[${index}]`
+        if (!isRecord(link) || !isStableId(link.id) || linkIds.has(link.id) || !Array.isArray(link.memberIds) || link.memberIds.length < 2 || link.memberIds.length > 512) { add('link', path, 'Link requires a unique stable id and 2–512 members'); continue }
+        linkIds.add(link.id)
+        for (const member of link.memberIds) {
+          if (typeof member !== 'string' || !clipIds.has(member) || linkedIds.has(member)) add('link-member', path, 'Each link member must resolve to one clip and belong to one link')
+          else linkedIds.add(member)
+        }
+      }
+    }
+  }
+  validateCaptionTracks(value.captionTracks, trackIds, clipIds, add)
   validateAuthoringMulticamGroups(value.multicamGroups, value.tracks, sources, add)
   return issues
 }
@@ -303,7 +401,7 @@ export function normalizeComposition(value: unknown): Composition {
         ? candidate.clips.map((clip) => normalizeClip(clip))
         : candidate.clips
       if (candidate.kind === 'video') {
-        return { ...candidate, clips, transitions: Array.isArray(candidate.transitions) ? candidate.transitions : [] }
+        return { ...candidate, clips, transitions: Array.isArray(candidate.transitions) ? candidate.transitions.map(value=>isRecord(value)&&value.timeline!==undefined?{...value,durationTicks:value.durationTicks??0,fromClipId:value.fromClipId??null,toClipId:value.toClipId??null}:value) : [] }
       }
       if (candidate.kind === 'audio') {
         return { ...candidate, clips, solo: candidate.solo ?? false }
@@ -312,7 +410,13 @@ export function normalizeComposition(value: unknown): Composition {
     })
   }
   assertValidComposition(cloned)
-  return cloned
+  return { ...cloned, tracks: cloned.tracks.map((track) => ({
+    ...track, clips: track.clips.map((clip) => {
+      if (clip.kind === 'audio') return clip
+      const normalized = normalizeVisualScaleLink(cloned,clip)
+      return (normalized.kind === 'text' || normalized.kind === 'color') && normalized.colorAnimation ? { ...normalized,colorAnimation: normalizeColorAnimation(normalized.colorAnimation) } : normalized
+    }),
+  })) as Composition['tracks'] }
 }
 
 function validateAuthoringMulticamGroups(
@@ -460,6 +564,9 @@ export function assertValidComposition(value: unknown): asserts value is Composi
 /** Useful for timeline math after a composition has passed validation. */
 export function compositionDurationTicks(composition: Composition): number {
   let duration = 0
+  for (const track of composition.captionTracks ?? []) {
+    for (const cue of track.clips) duration = Math.max(duration, captionMicrosecondsCeil(cue.timelineEndTick))
+  }
   for (const track of composition.tracks) {
     for (const clip of track.clips) duration = Math.max(duration, clipEndTicks(clip))
   }
@@ -467,11 +574,24 @@ export function compositionDurationTicks(composition: Composition): number {
 }
 
 export function compositionClipCount(composition: Composition): number {
-  return composition.tracks.reduce((count, track) => count + track.clips.length, 0)
+  return composition.tracks.reduce((count, track) => count + track.clips.length, 0) + (composition.captionTracks ?? []).reduce((count, track) => count + track.clips.length, 0)
 }
 
 /** Exact client-side mirror of the currently compiled composition render slice. */
 export function compositionRenderUnavailableReason(composition: Composition): string | null {
+  if (composition.tracks.some(track => track.kind === 'video' && track.clips.some(clip => clip.filmcraftMotion !== undefined))) {
+    return 'Motion Filmcraft сохранён в проекте; его публичный экспорт ещё не проверен.'
+  }
+
+  const authoredComposition = composition
+  const independentReason = independentTransitionExportReason(authoredComposition)
+  if (independentReason) return independentReason
+  // Authoring validation retains disabled content; render admission sees only active content.
+  composition = { ...composition, tracks: composition.tracks.map((track) => {
+    const clips = track.clips.filter((clip) => clip.enabled !== false)
+    return { ...track, clips, ...(track.kind === 'video' ? { transitions: (track.transitions ?? []).filter((transition) => transition.timeline !== undefined || (transition.fromClipId === null || clips.some((clip) => clip.id === transition.fromClipId)) && (transition.toClipId === null || clips.some((clip) => clip.id === transition.toClipId))) } : {}) } as CompositionTrack
+  }) }
+
   const unsupported = unsupportedAuthoredFeature(composition)
   if (unsupported) return unsupported
   const opticalFlowReason = compositionOpticalFlowUnavailableReason(composition)
@@ -480,28 +600,26 @@ export function compositionRenderUnavailableReason(composition: Composition): st
   if (stabilizationReason) return stabilizationReason
 
   const primary = primaryCompositionVideoTrack(composition)
-  if (!primary) {
-    const activeVisual = composition.tracks.filter((track) => track.kind !== 'audio' && !track.hidden && track.clips.length)
-    return activeVisual.length
-      ? 'Нижняя видимая visual-дорожка должна быть основной видеодорожкой.'
-      : 'Для экспорта нужна видимая основная видеодорожка.'
-  }
-  const clips = [...primary.clips].sort(compareClips)
-  let primaryEnd = 0
+  const clips = [...(primary?.clips ?? [])].sort(compareClips)
+  const authoredPrimary = authoredComposition.tracks.find((track) => track.id === primary?.id)
+  const authoredEnd = Math.max(0, ...(authoredPrimary?.clips.map(clipEndTicks) ?? []))
+
+  let primaryEnd = primary?.transitions?.some((transition) => transition.timeline) ? compositionDurationTicks(authoredComposition) : primary ? 0 : compositionDurationTicks(authoredComposition)
   for (const clip of clips) {
-    if (clip.timelineStartTicks !== primaryEnd) {
-      return 'Основная видеодорожка должна начинаться с 0 и не содержать gaps или overlaps.'
+    if (!primary?.transitions?.some((transition) => transition.timeline) && clip.timelineStartTicks < primaryEnd) {
+      return 'Основная видеодорожка не должна содержать overlaps.'
     }
     const visualReason = visualClipReason(composition, clip)
     if (visualReason) return visualReason
-    primaryEnd = clipEndTicks(clip)
+    primaryEnd = Math.max(primaryEnd, clipEndTicks(clip))
   }
-  if (!primaryEnd) return 'Основная видеодорожка пуста.'
+  if (!primaryEnd) return 'Для экспорта нужна композиция положительной длительности.'
 
-  const transitionReason = primaryTransitionReason(composition, primary, clips)
+  const transitionReason = primary ? primaryTransitionReason(composition, primary, clips) : null
   if (transitionReason) return transitionReason
 
-  const primaryIndex = composition.tracks.findIndex((track) => track.id === primary.id)
+  const primaryIndex = primary ? composition.tracks.findIndex((track) => track.id === primary.id) : composition.tracks.length
+  primaryEnd = Math.max(primaryEnd, authoredEnd)
   for (const track of composition.tracks.slice(0, primaryIndex)) {
     if (track.kind === 'audio' || track.hidden) continue
     for (const clip of track.clips) {
@@ -625,7 +743,7 @@ export function compositionOpticalFlowUnavailableReason(composition: Composition
 }
 
 export function primaryCompositionVideoTrack(composition: Composition): VideoTrack | null {
-  const active = composition.tracks.filter((track) => track.kind !== 'audio' && !track.hidden && track.clips.length)
+  const active = composition.tracks.filter((track) => track.kind !== 'audio' && !track.hidden && (track.clips.some((clip) => clip.enabled !== false) || (track.kind === 'video' && track.transitions?.some((transition) => transition.timeline))))
   const lowest = active.at(-1)
   return lowest?.kind === 'video' ? lowest : null
 }
@@ -647,12 +765,17 @@ function primaryTransitionReason(
   clips: readonly VideoTrack['clips'][number][],
 ): string | null {
   const transitions = track.transitions ?? []
+  if (transitions.some((transition) => transition.timeline)) {
+    return independentTransitionExportReason({...composition,tracks:composition.tracks.map((candidate)=>candidate.id===track.id?track:candidate)})
+  }
   const indexes = new Map(clips.map((clip, index) => [clip.id, index]))
   const fromIds = new Set<string>()
   const toIds = new Set<string>()
   const head = new Map<string, number>()
   const tail = new Map<string, number>()
   for (const transition of transitions) {
+    if (transition.timeline) return `Переход «${transition.id}» требует рендера независимого интервала.`
+    if (transition.fromClipId === null || transition.toClipId === null) return 'Legacy transition requires both endpoints'
     const fromIndex = indexes.get(transition.fromClipId)
     const toIndex = indexes.get(transition.toClipId)
     if (fromIndex === undefined || toIndex !== fromIndex + 1 || fromIds.has(transition.fromClipId) || toIds.has(transition.toClipId)) {
@@ -699,7 +822,7 @@ function visualClipReason(composition: Composition, clip: Exclude<CompositionCli
       Math.max(Math.abs(y.minimum), Math.abs(y.maximum)) > MAX_VISUAL_POSITION) {
     return `Transform clip «${clip.id}» выходит за безопасный диапазон позиции.`
   }
-  const source = clip.kind === 'text' ? null : composition.sources[clip.sourceId]
+  const source = (clip.kind === 'color' || clip.kind === 'graphic') ? { width: clip.width,height: clip.height } : clip.kind === 'text' ? null : composition.sources[clip.sourceId]
   const sourceWidth = source?.width ?? composition.canvas.width
   const sourceHeight = source?.height ?? composition.canvas.height
   const scaleX = animatableExtents(visualPropertyValue(composition, clip, 'scaleX'))
@@ -727,7 +850,7 @@ function visualClipReason(composition: Composition, clip: Exclude<CompositionCli
 }
 
 function visualKeyframeCount(clip: Exclude<CompositionClip, AudioClip>): number {
-  let count = COMPOSITION_VISUAL_PROPERTIES.reduce(
+  let count = (clip.position?.mode === 'path' ? keyframeCount(clip.position.progress) : clip.position?.mode === 'xy' ? keyframeCount(clip.position.x)+keyframeCount(clip.position.y) : 0) + COMPOSITION_VISUAL_PROPERTIES.reduce(
     (total, property) => total + keyframeCount(clip.animation?.[property]),
     0,
   )
@@ -772,19 +895,39 @@ function clipAudioKeyframeCount(clip: VideoTrack['clips'][number] | AudioClip): 
   )
 }
 
+function supportedImageEffect(effect: unknown): boolean {
+  if (!isRecord(effect)) return false
+  if(effect.kind==='native_bypass')return isRecord(effect.effect)&&effect.effect.kind!=='native_bypass'&&effect.effect.kind!=='concat_bypass'&&supportedImageEffect(effect.effect)
+  if(effect.kind==='concat_bypass'){
+    const link=effect.link;if(!isRecord(link)||link.enabled!==false||typeof link.id!=='string'||!link.id.length||link.id.length>128)return false
+    if(link.params!==undefined&&(!isRecord(link.params)||Object.keys(link.params).length>128||Object.values(link.params).some(value=>!isFiniteNumber(value))))return false
+    if(link.keys!==undefined){if(!isRecord(link.keys)||Object.keys(link.keys).length>128)return false;let total=0;for(const run of Object.values(link.keys)){if(!Array.isArray(run)||run.length>4096)return false;total+=run.length;if(run.some(key=>!isRecord(key)||!isFiniteNumber(key.at)||key.at<0||key.at>1||!isFiniteNumber(key.value)||key.ease!==undefined&&typeof key.ease!=='string'&&(!Array.isArray(key.ease)||key.ease.length!==4||key.ease.some((value:unknown)=>!isFiniteNumber(value))||key.ease[0]<0||key.ease[0]>1||key.ease[2]<0||key.ease[2]>1)))return false;}if(total>8192)return false}
+    return true
+  }
+  if (effect.kind === 'mask') return effect.shape === 'rectangle' || effect.shape === 'ellipse'
+  return ['concat_bypass','concat_bloom_pulse','concat_chromatic_aberration','concat_film_grain','concat_fisheye','concat_glow','concat_halftone','concat_motion_blur','concat_zoom_blur','concat_gaussian_blur','concat_posterize','concat_luma_key','concat_pixelate','concat_chroma_key','concat_golden_hour','concat_daydream','concat_cloudless_sky','concat_lagoon','concat_polaroid','concat_vintage','concat_fair','concat_peach','concat_rain','concat_umber','concat_soft_light','concat_moody','concat_fresh','concat_vivid','concat_bronze','concat_cool_blue','concat_ivory','concat_milk','concat_matcha','concat_sage','concat_clean','concat_vhs','concat_falling_dust','concat_film','concat_digicam','concat_mono','concat_midnight','concat_marquee','concat_retro_cartoon','concat_super8','concat_bleach_bypass','concat_autumn','concat_neon','concat_pink_fuzz','concat_night','concat_spooky','concat_cool','concat_warm','concat_teal_orange','concat_noir','concat_dreamy','concat_high_contrast_mono','concat_landscape_pop','concat_natural','concat_retro_70s','concat_silver','concat_tropical','concat_vaporwave','concat_winter_cool','concat_classic_chrome','concat_cyberpunk','concat_delicious','concat_rosy','concat_sci_fi','concat_contrast_pop','concat_sharpen','concat_vignette','concat_adjust','concat_curves','concat_color_wheels','concat_white_balance','concat_saturation','concat_vibrance','concat_exposure','concat_contrast','graphic_text','graphic_shape','track_matte','lightning','write_on','timecode','clip_name','metadata_burnin','simple_text','vr_plane_to_sphere','vr_glow','vr_fractal_noise','vr_digital_glitch','vr_color_gradients','vr_chromatic_aberrations','vr_denoise','vr_blur','vr_sharpen','spherical_video','vr_projection','vr_rotate_sphere','light_leaks', 'warp_stabilizer', 'auto_reframe', 'echo', 'posterize_time', 'volumetric_rays', 'glint', 'wonder_glow', 'echo_glow', 'edge_glow', 'rgb_split', 'logo_cutout', 'lighting_effects', 'compound_blur', 'bokeh_blur', 'focus_blur', 'edge_feather', 'crop', 'vignette', 'transform', 'asc_cdl', 'brightness_contrast', 'unsharp_mask', 'sharpen', 'reduce_interlace_flicker', 'channel_blur', 'turbulent_displace', 'auto_align', 'clone', 'rounded_crop', 'spacer', 'camera_shake', 'wiggle', 'move', 'spin', 'grow', 'shrink', 'rotate_3d', 'corner_pin', 'offset', 'mirror', 'spherize', 'magnify', 'linear_wipe', 'gradient_wipe', 'block_dissolve', 'alpha_glow', 'long_shadow', 'brush_strokes', 'roughen_edges', 'stroke', 'color_emboss', 'gradient', 'paint_bucket', 'ellipse', 'cell_pattern', 'checkerboard', 'lens_flare', 'grid', 'circle', 'ramp', 'four_color_gradient', 'bevel_alpha', 'drop_shadow', 'basic_3d', 'lens_distortion', 'wave_warp', 'twirl', 'twirl_legacy', 'noise', 'noise_legacy', 'strobe', 'replicate', 'emboss', 'find_edges', 'mosaic', 'mosaic_legacy', 'median', 'camera_blur', 'directional_blur', 'directional_blur_legacy', 'gaussian_blur', 'gaussian_blur_legacy', 'ultra_key', 'color_key', 'luma_key', 'alpha_adjust', 'channel_mix', 'color_replace', 'color_pass', 'change_to_color', 'leave_color', 'color_balance', 'color_tint', 'horizontal_flip', 'vertical_flip', 'black_white', 'color_extract', 'color_levels', 'color_invert', 'posterize', 'gamma_correction', 'proc_amp', 'cineon_converter', 'video_limiter', 'tone_curves', 'creative_grade', 'color_lut', 'color_sharpen', 'creative_adjust', 'basic_grade', 'color_vignette', 'lumetri', 'hsl_secondary', 'chroma_matte', 'linear_mask'].includes(String(effect.kind))
+}
+
 function unsupportedAuthoredFeature(composition: Composition): string | null {
   for (const track of composition.tracks) {
     for (const clip of track.clips) {
       const candidate = clip as unknown as Record<string, unknown>
-      if (Array.isArray(candidate.effects) && candidate.effects.length) {
+      if (candidate.effects !== undefined && !Array.isArray(candidate.effects)) return 'Неподдерживаемые clip effects: ожидается массив.'
+      if (Array.isArray(candidate.effects) && candidate.effects.length && !((clip.kind === 'image' || clip.kind === 'graphic' || clip.kind === 'video') && candidate.effects.every(supportedImageEffect))) {
         return 'Неподдерживаемые clip effects сохранены в проекте; используйте authoring chroma key и Rectangle/Ellipse/Linear masks.'
       }
       for (const [key, value] of Object.entries(candidate)) {
+        if(key==='concatAnimation'&&(clip.kind==='video'||clip.kind==='image'))continue
+        if (key === 'effects' && (clip.kind === 'image' || clip.kind === 'graphic' || clip.kind === 'video')) continue
+        if (key === 'graphic' && clip.kind === 'graphic') continue
+        if (key === 'colorAnimation' && (clip.kind === 'text' || clip.kind === 'color')) continue
+        if (key === 'position' && clip.kind !== 'audio') continue
         if (key === 'animation' && clip.kind !== 'audio') {
           const reason = unsupportedAnimationField(value)
           if (reason) return reason
           continue
         }
+        if((key==='dspEffects'||key==='concatGainKeys')&&(clip.kind==='audio'||clip.kind==='video'))continue
         if (key === 'audioAnimation' && (clip.kind === 'video' || clip.kind === 'audio')) {
           const reason = unsupportedAudioAnimationField(value)
           if (reason) return reason
@@ -889,6 +1032,8 @@ export function sourceSupportsClip(source: CompositionSource, clip: CompositionC
     case 'image':
       return source.kind === 'image'
     case 'text':
+    case 'color':
+    case 'graphic':
       return false
   }
 }
@@ -919,6 +1064,12 @@ function validateCanvas(
   }
   if (!isFiniteNumber(value.fps) || value.fps <= 0 || value.fps > MAX_CANVAS_FPS) {
     add('canvas-fps', 'canvas.fps', `Canvas fps must be greater than 0 and at most ${MAX_CANVAS_FPS}`)
+  }
+  if (value.fpsRate !== undefined) {
+    const rate = value.fpsRate
+    if (!isRecord(rate) || !Number.isSafeInteger(rate.numerator) || !Number.isSafeInteger(rate.denominator) || (rate.numerator as number) <= 0 || (rate.denominator as number) <= 0 || (rate.numerator as number) > 0xFFFFFFFF || (rate.denominator as number) > 0xFFFFFFFF || !isFiniteNumber(value.fps) || Math.abs((rate.numerator as number) / (rate.denominator as number) - value.fps) > 1e-9) {
+      add('canvas-fps-rate', 'canvas.fpsRate', 'Exact frame rate must contain positive 32-bit integers and match canvas fps')
+    }
   }
   validateColor(value.backgroundColor, 'canvas.backgroundColor', add)
   if (value.backgroundMode !== undefined && !['color', 'blur', 'checker'].includes(String(value.backgroundMode))) {
@@ -981,6 +1132,7 @@ function validateSourceMetadata(
   if (!isNonNegativeInteger(source.width) || !isNonNegativeInteger(source.height)) {
     add('source-dimensions', path, 'Source width and height must be non-negative integers')
   }
+  if (source.audioChannels !== undefined && (!source.hasAudio || typeof source.audioChannels !== 'number' || !Number.isInteger(source.audioChannels) || source.audioChannels < 1 || source.audioChannels > 64)) add('source-audio', `${path}.audioChannels`, 'Audio channel count must be an integer from 1 to 64 for an audible source')
   if (typeof source.hasAudio !== 'boolean') {
     add('source-audio', `${path}.hasAudio`, 'Source hasAudio must be a boolean')
   }
@@ -1028,6 +1180,14 @@ function validateClip(
   sources: ReadonlyMap<string, CompositionSource>,
   add: (code: string, path: string, message: string) => void,
 ): void {
+  if (clip.colorAnimation !== undefined) {
+    if (clip.kind !== 'text' && clip.kind !== 'color') add('color-animation-kind',`${path}.colorAnimation`,'Color animation is available only on text layers')
+    validateColorAnimation(clip.colorAnimation,`${path}.colorAnimation`,add)
+  }
+  if (clip.position !== undefined) validatePositionAnimation(clip.position,`${path}.position`,add)
+  if (clip.position !== undefined && clip.kind === 'audio') add('position-kind',`${path}.position`,'Position is available only on visual clips')
+  if (clip.locked !== undefined && typeof clip.locked !== 'boolean') add('clip-locked', `${path}.locked`, 'locked must be a boolean')
+  if (clip.enabled !== undefined && typeof clip.enabled !== 'boolean') add('clip-enabled', `${path}.enabled`, 'enabled must be a boolean')
   if (!isSafeTick(clip.timelineStartTicks)) {
     add('clip-start', `${path}.timelineStartTicks`, 'timelineStartTicks must be a non-negative safe integer')
   }
@@ -1037,9 +1197,31 @@ function validateClip(
       add('clip-speed', `${path}.speed`, `Speed must be from ${MIN_COMPOSITION_SPEED} to ${MAX_COMPOSITION_SPEED}`)
     }
     validateSpeedRamp(clip, path, add)
-  } else if (clip.kind === 'image') {
+  } else if (clip.kind === 'image' || clip.kind === 'color' || clip.kind === 'graphic') {
     validateDuration(clip.durationTicks, `${path}.durationTicks`, add)
-    validateSourceReference(clip, path, sources, add)
+    if (clip.kind === 'image') validateSourceReference(clip, path, sources, add)
+    else {
+      if (!Number.isInteger(clip.width) || Number(clip.width) < 1 || Number(clip.width) > 3840 || !Number.isInteger(clip.height) || Number(clip.height) < 1 || Number(clip.height) > 2160) add('solid-size',path,'Solid dimensions must be positive bounded integers')
+      if (clip.kind === 'color') validateColor(clip.color,`${path}.color`,add)
+      if (clip.blendMode !== undefined && clip.blendMode !== 'normal') add('solid-blend',path,'Solid blend mode must be normal')
+      if (clip.sourceId !== undefined) add('solid-source',path,'Solid clips have no source')
+    }
+    if (clip.kind === 'graphic') {
+      if (!Number.isSafeInteger(clip.animationOffsetUs ?? 0) || Number(clip.animationOffsetUs ?? 0) < 0) add('graphic-clock',path,'Graphic local offset must be a nonnegative safe integer')
+      if (!isRecord(clip.graphic) || !Array.isArray(clip.graphic.layers)) add('graphic-layers',path,'Graphic layers must be an array')
+      else {
+        const ids = new Set<number>()
+        clip.graphic.layers.forEach((layer: unknown, index: number) => {
+          const at = `${path}.graphic.layers[${index}]`
+          if (!isRecord(layer) || !Number.isSafeInteger(layer.uid) || Number(layer.uid) < 0 || typeof layer.enabled !== 'boolean' || !isRecord(layer.content) || !['text','shape'].includes(String(layer.content.kind)) || !isRecord(layer.content.parameters)) {
+            add('graphic-layer',at,'Graphic layer identity, enabled flag or content is invalid')
+            return
+          }
+          if (Number(layer.uid) !== 0 && ids.has(Number(layer.uid))) add('graphic-layer-id',at,'Graphic layer IDs must be unique')
+          ids.add(Number(layer.uid))
+        })
+      }
+    }
     validateTransform(clip.transform, `${path}.transform`, add)
     validateOpacity(clip.opacity, `${path}.opacity`, add)
     validateRotation(clip.rotationDegrees, `${path}.rotationDegrees`, add)
@@ -1061,6 +1243,90 @@ function validateClip(
     if (clip.speedRamp !== undefined) add('speed-ramp-kind', `${path}.speedRamp`, 'Speed ramp is available only for video/audio clips')
   }
 
+  if(clip.kind==='video') {
+    for(const [field,value] of [['audioFadeInTicks',clip.audioFadeInTicks],['audioFadeOutTicks',clip.audioFadeOutTicks]] as const) {
+      if(value!==undefined&&(!isSafeTick(value)||value>MAX_COMPOSITION_DURATION_TICKS))add('audio-fade',`${path}.${field}`,'Embedded audio fade must be within the 24-hour range')
+    }
+  }
+  if(clip.kind==='video'&&clip.concatCutout!==undefined){
+    const binding=clip.concatCutout
+    if(isRecord(binding)&&binding.correction!==undefined){
+      const c=binding.correction;let points=0
+      if(!isRecord(c)||typeof c.custom!=='boolean'||typeof c.feather!=='number'||!Number.isFinite(c.feather)||c.feather<0||c.feather>0.1||(binding.feather!==undefined&&binding.feather!==c.feather)||!Array.isArray(c.strokes)||c.strokes.length>1024)add('cutout',`${path}.concatCutout.correction`,'Invalid video correction')
+      else for(const stroke of c.strokes){
+        if(!isRecord(stroke)||!['brush','eraser','smartBrush','smartEraser'].includes(String(stroke.tool))||typeof stroke.size!=='number'||!Number.isFinite(stroke.size)||stroke.size<0.005||stroke.size>0.5||!Array.isArray(stroke.points)||!stroke.points.length||!stroke.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(v=>typeof v==='number'&&Number.isFinite(v)&&v>=-0.5&&v<=1.5))||stroke.region!=null||(stroke.at!=null&&(typeof stroke.at!=='number'||!Number.isFinite(stroke.at)||stroke.at<0)))add('cutout',`${path}.concatCutout.correction`,'Invalid video stroke')
+        else{points+=stroke.points.length;if(points>65536)add('cutout',`${path}.concatCutout.correction`,'Too many video correction points')}
+      }
+    }
+    if(isRecord(binding)){
+      const tracks=binding.regionTracks??[],correction=binding.correction,seen=new Set<number>()
+      try{
+        if(!Array.isArray(tracks)||tracks.length>1024)throw new Error('Invalid video tracks')
+        for(const track of tracks){
+          if(!isRecord(track)||Object.keys(track).some(k=>!['stroke','snapshot'].includes(k))||typeof track.stroke!=='number'||!Number.isSafeInteger(track.stroke)||track.stroke<0||seen.has(track.stroke)||!isRecord(correction)||!Array.isArray(correction.strokes))throw new Error('Invalid video track index')
+          seen.add(track.stroke);const r=track.snapshot;validateVideoRegion(r);const stroke=correction.strokes[track.stroke],mask=sources.get(r.maskSourceId)
+          if(!isRecord(stroke)||!['smartBrush','smartEraser'].includes(String(stroke.tool))||typeof stroke.at!=='number'||!Number.isSafeInteger(Math.round(stroke.at*1_000_000))||videoRegionOrdinal(r,Math.round(stroke.at*1_000_000))!==r.seedFrame||JSON.stringify(stroke.points)!==JSON.stringify(r.points)||r.sourceId!==clip.sourceId||r.sourceHash!==binding.sourceHash||mask?.kind!=='video'||mask.hasAudio!==false||mask.width!==256||mask.height!==256)throw new Error('Video track source/prompt/seed mismatch')
+        }
+        if(isRecord(correction)&&Array.isArray(correction.strokes))correction.strokes.forEach((stroke,index)=>{if(isRecord(stroke)&&['smartBrush','smartEraser'].includes(String(stroke.tool))&&stroke.at!=null&&!seen.has(index))throw new Error('Missing timed video track')})
+      }catch{add('cutout',`${path}.concatCutout.regionTracks`,'Invalid temporal video region binding')}
+    }
+    const personModel=isRecord(binding)&&['88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828','3241ac4ad8aa35bdaf33946776db29f7c283a413aa0b0dacb9483594b4531aad'].includes(String(binding.modelHash))
+    const objectModel=isRecord(binding)&&binding.modelHash==='60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a'
+    const compatible=isRecord(binding)&&(binding.subject==='auto'?(personModel||objectModel):binding.subject==='person'?personModel:binding.subject==='object'&&objectModel)
+    if(!isRecord(binding)||Object.keys(binding).length<4||Object.keys(binding).length>7||Object.keys(binding).some(key=>!['subject','sourceHash','modelHash','runtimeHash','feather','correction','regionTracks'].includes(key))||(binding.feather!==undefined&&(typeof binding.feather!=='number'||!Number.isFinite(binding.feather)||binding.feather<0||binding.feather>0.1))||!compatible||![binding.sourceHash,binding.modelHash,binding.runtimeHash].every(hash=>typeof hash==='string'&&/^[0-9a-f]{64}$/.test(hash)))add('cutout',`${path}.concatCutout`,'Invalid video cutout binding')
+  }
+  if(clip.kind==='video'&&clip.independentAudio!==undefined&&typeof clip.independentAudio!=='boolean')add('audio-dsp',`${path}.independentAudio`,'Independent embedded audio must be boolean')
+  if(clip.kind==='audio'){
+    if(clip.detachedFrom!==undefined&&!isStableId(clip.detachedFrom))add('audio-origin',`${path}.detachedFrom`,'Invalid detached video id')
+    if(clip.concatDetachedOrder!==undefined&&(!Number.isSafeInteger(clip.concatDetachedOrder)||Number(clip.concatDetachedOrder)<0||Number(clip.concatDetachedOrder)>4294967295))add('audio-origin',`${path}.concatDetachedOrder`,'Invalid source clip order')
+  }
+  if((clip.kind==='video'||clip.kind==='image')&&clip.concatAnimation!==undefined){
+    if(!validConcatClipAnimation(clip.concatAnimation))add('concat-animation',`${path}.concatAnimation`,'Invalid Concat source animation')
+    if(isRecord(clip.concatAnimation)&&clip.concatAnimation.durationTicks!==runtimeClipDuration(clip))add('concat-animation',`${path}.concatAnimation`,'Source pose duration must match the clip window')
+    if(clip.position||clip.animation&&Object.keys(clip.animation).length)add('concat-animation',`${path}.concatAnimation`,'Source pose and native visual animation are mutually exclusive')
+  }
+  if(clip.kind==='audio'||clip.kind==='video'){
+    if(clip.audioStream!==undefined&&(!Number.isSafeInteger(clip.audioStream)||Number(clip.audioStream)<0||Number(clip.audioStream)>4294967295))add('audio-stream',`${path}.audioStream`,'Audio stream must be an absolute unsigned index')
+    if(Array.isArray(clip.effects))clip.effects.forEach((effect,index)=>{if(isRecord(effect)&&(effect.kind==='concat_bypass'||effect.kind==='native_bypass')&&!supportedImageEffect(effect))add('video-effect',`${path}.effects[${index}]`,'Invalid disabled source effect')})
+    if(clip.concatGainKeys!==undefined){
+      const keys=clip.concatGainKeys
+      if(!Array.isArray(keys)||keys.length>4096||keys.some(k=>!k||!Number.isFinite(k.at)||k.at<0||k.at>1||!Number.isFinite(k.value)||(!k.derived&&k.value<0)||k.derived!==undefined&&typeof k.derived!=='boolean'||k.ease!==undefined&&typeof k.ease!=='string'&&(!Array.isArray(k.ease)||k.ease.length!==4||k.ease.some((v:unknown)=>!Number.isFinite(v))||k.ease[0]<0||k.ease[0]>1||k.ease[2]<0||k.ease[2]>1)))add('audio-gain-keys',`${path}.concatGainKeys`,'Invalid source volume keys')
+      if(Array.isArray(keys)&&keys.length&&clip.audioAnimation&&typeof clip.audioAnimation==='object'&&'gain'in clip.audioAnimation)add('audio-gain-keys',`${path}.concatGainKeys`,'Source volume keys and native gain animation are mutually exclusive')
+    }
+
+    if (clip.dspEffects !== undefined) {
+      if (!Array.isArray(clip.dspEffects) || clip.dspEffects.length > 16) {
+        add('audio-dsp', `${path}.dspEffects`, 'Audio DSP chain must contain at most 16 effects')
+      } else {
+        clip.dspEffects.forEach((effect, index) => {
+          if (!isRecord(effect) || typeof effect.id !== 'string' || effect.id.length === 0 || effect.id.length > 128 ||
+              (effect.bypass !== undefined && typeof effect.bypass !== 'boolean') ||
+              Object.keys(effect).some(key => !['id', 'params', 'bypass', 'animation', 'concatSourceKeys'].includes(key)) ||
+              (effect.params !== undefined && (!isRecord(effect.params) || Object.keys(effect.params).length > 128 ||
+                Object.entries(effect.params).some(([key, value]) => key.length === 0 || key.length > 128 || !isFiniteNumber(value))))) {
+            add('audio-dsp', `${path}.dspEffects[${index}]`, 'Invalid audio DSP configuration')
+          }
+          if(isRecord(effect)&&effect.concatSourceKeys!==undefined){
+            const keys=effect.concatSourceKeys
+            if(typeof effect.id!=='string'||!effect.id.startsWith('concat.')||!isRecord(keys)||Object.keys(keys).length>128){add('audio-dsp',`${path}.dspEffects[${index}].concatSourceKeys`,'Invalid source DSP metadata')}
+            else{let total=0;for(const [name,run]of Object.entries(keys)){
+              if(Array.isArray(run))total+=run.length
+              if(!name.length||name.length>128||!Array.isArray(run)||run.length>4096||run.some(key=>!isRecord(key)||!isFiniteNumber(key.at)||key.at<0||key.at>1||!isFiniteNumber(key.value)||key.ease!==undefined&&typeof key.ease!=='string'&&(!Array.isArray(key.ease)||key.ease.length!==4||key.ease.some((v:unknown)=>!isFiniteNumber(v))||key.ease[0]<0||key.ease[0]>1||key.ease[2]<0||key.ease[2]>1)))add('audio-dsp',`${path}.dspEffects[${index}].concatSourceKeys`,'Invalid source DSP keys')
+            }if(total>8192)add('audio-dsp',`${path}.dspEffects[${index}].concatSourceKeys`,'Source DSP key budget exceeded')}
+          }
+          if (isRecord(effect) && effect.animation !== undefined) {
+            if (!isRecord(effect.animation) || Object.keys(effect.animation).length > 128) {
+              add('audio-dsp', `${path}.dspEffects[${index}].animation`, 'Invalid DSP animation map')
+            } else for (const [id, curve] of Object.entries(effect.animation)) {
+              if (!id.length || id.length > 128) add('audio-dsp', `${path}.dspEffects[${index}].animation`, 'Invalid DSP parameter id')
+              validateAnimatableValue(curve, `${path}.dspEffects[${index}].animation.${id}`, null, -Number.MAX_VALUE, Number.MAX_VALUE, true, add, 8192)
+            }
+          }
+
+        })
+      }
+    }
+  }
   if (clip.kind === 'video') {
     validateTransform(clip.transform, `${path}.transform`, add)
     validateOpacity(clip.opacity, `${path}.opacity`, add)
@@ -1073,6 +1339,9 @@ function validateClip(
     validateMasks(clip.masks, `${path}.masks`, duration, add)
     if (clip.frameInterpolation !== undefined && clip.frameInterpolation !== 'duplicate' && clip.frameInterpolation !== 'optical_flow') {
       add('frame-interpolation', `${path}.frameInterpolation`, 'Frame interpolation must be duplicate or optical_flow')
+    }
+    if (clip.effectTiming !== undefined && (!isRecord(clip.effectTiming) || clip.effectTiming.mode !== 'filmcraft_source' || typeof clip.effectTiming.holdFilters !== 'boolean' || typeof clip.effectTiming.reverseWhileFrozen !== 'boolean')) {
+      add('effect-timing', `${path}.effectTiming`, 'Effect timing must specify the Filmcraft source clock and boolean hold options')
     }
     validatePlaybackMode(clip, path, add)
     validateStabilization(clip, path, add)
@@ -1094,6 +1363,7 @@ function validateClip(
       add('missing-source-audio', `${path}.sourceAudioEnabled`, 'Video source does not contain audio')
     }
   } else if (clip.kind === 'audio') {
+    if (clip.role !== undefined && !['dialogue', 'music', 'sfx', 'voiceover'].includes(String(clip.role))) add('audio-role', `${path}.role`, 'Unsupported audio role')
     validateGain(clip.gain, `${path}.gain`, add)
     if (clip.pan !== undefined && (!isFiniteNumber(clip.pan) || clip.pan < -1 || clip.pan > 1)) {
       add('audio-pan', `${path}.pan`, 'Audio pan must be from -1 to 1')
@@ -1109,8 +1379,12 @@ function validateClip(
     if (clip.pitchSemitones !== undefined && (!isFiniteNumber(clip.pitchSemitones) || clip.pitchSemitones < -12 || clip.pitchSemitones > 12)) {
       add('audio-pitch', `${path}.pitchSemitones`, 'Audio pitch must be from -12 to 12 semitones')
     }
+
     if (clip.toneDb !== undefined && (!isFiniteNumber(clip.toneDb) || clip.toneDb < -12 || clip.toneDb > 12)) {
       add('audio-tone', `${path}.toneDb`, 'Audio tone must be from -12 to 12 dB')
+    }
+    if (clip.crossfadeCurve !== undefined && (typeof clip.crossfadeCurve !== 'string' || !['constant_gain', 'constant_power', 'exponential_fade'].includes(clip.crossfadeCurve))) {
+      add('audio-crossfade', `${path}.crossfadeCurve`, 'Unknown audio transition curve')
     }
     if (clip.crossfadeInTicks !== undefined && (!isSafeTick(clip.crossfadeInTicks) || (duration !== null && clip.crossfadeInTicks > duration))) {
       add('audio-crossfade', `${path}.crossfadeInTicks`, 'Audio crossfade must be a safe tick within the clip duration')
@@ -1124,8 +1398,8 @@ function validateClip(
       }
     }
     for (const [field, value] of [['fadeInTicks', clip.fadeInTicks], ['fadeOutTicks', clip.fadeOutTicks]] as const) {
-      if (value !== undefined && (!isSafeTick(value) || (duration !== null && value > duration))) {
-        add('audio-fade', `${path}.${field}`, 'Audio fade must be a safe tick within the clip duration')
+      if (value !== undefined && (!isSafeTick(value) || value > MAX_COMPOSITION_DURATION_TICKS)) {
+        add('audio-fade', `${path}.${field}`, 'Audio fade must be within the 24-hour range')
       }
     }
   }
@@ -1269,6 +1543,9 @@ function validateSourceRange(
   sources: ReadonlyMap<string, CompositionSource>,
   add: (code: string, path: string, message: string) => void,
 ): void {
+  if (clip.timelineDurationTicks !== undefined && (!isSafeTick(clip.timelineDurationTicks) || clip.timelineDurationTicks <= 0)) {
+    add('timeline-duration', `${path}.timelineDurationTicks`, 'Authored media duration must be a positive safe tick')
+  }
   validateSourceReference(clip, path, sources, add)
   if (!isSafeTick(clip.sourceInTicks) || !isSafeTick(clip.sourceOutTicks) || clip.sourceOutTicks <= clip.sourceInTicks) {
     add('source-range', path, 'sourceInTicks/sourceOutTicks must form a positive safe range')
@@ -1378,21 +1655,36 @@ function validateTransitions(
     validateId(candidate.id, `${transitionPath}.id`, add)
     if (isStableId(candidate.id) && ids.has(candidate.id)) add('duplicate-transition-id', `${transitionPath}.id`, 'Transition id must be unique')
     else if (isStableId(candidate.id)) ids.add(candidate.id)
-    if (!isStableId(candidate.fromClipId) || !clipIds.has(candidate.fromClipId)) {
+    const explicit = candidate.timeline !== undefined
+    if ((candidate.kind === 'procedural') !== (candidate.kernel !== undefined) || (candidate.kernel !== undefined && (!explicit || proceduralTransitionReason(candidate.kernel)))) add('transition-kernel', transitionPath, 'Invalid procedural transition controls')
+    if ((!explicit || candidate.fromClipId !== null) && (!isStableId(candidate.fromClipId) || !clipIds.has(candidate.fromClipId))) {
       add('transition-from', `${transitionPath}.fromClipId`, 'Transition source clip must exist in the video track')
     }
-    if (!isStableId(candidate.toClipId) || !clipIds.has(candidate.toClipId) || candidate.toClipId === candidate.fromClipId) {
-      add('transition-to', `${transitionPath}.toClipId`, 'Transition target clip must be a different clip in the video track')
+    if ((!explicit || candidate.toClipId !== null) && (!isStableId(candidate.toClipId) || !clipIds.has(candidate.toClipId))) {
+      add('transition-to', `${transitionPath}.toClipId`, 'Transition target clip must exist in the video track')
     }
-    if (!isSafeTick(candidate.durationTicks) || candidate.durationTicks <= 0) {
+    if (candidate.fromClipId === candidate.toClipId) add('transition-endpoints', transitionPath, 'Transition needs distinct endpoints and at least one clip')
+    if (explicit) {
+      if (candidate.durationTicks !== 0) add('transition-clock', transitionPath, 'Explicit transition must use one clock authority')
+      try {
+        if (!isRecord(candidate.timeline) || !['number','string'].includes(typeof candidate.timeline.startTick) || !['number','string'].includes(typeof candidate.timeline.durationTick) || Object.keys(candidate.timeline).some(key=>key!=='startTick'&&key!=='durationTick')) throw new Error('Invalid transition timeline')
+        transitionSourceSpan(candidate.timeline as unknown as import('./transitionTimeline').TransitionTimeline)
+      } catch { add('transition-timeline', transitionPath, 'Invalid exact transition interval') }
+    } else if (!isSafeTick(candidate.durationTicks) || candidate.durationTicks <= 0) {
       add('transition-duration', `${transitionPath}.durationTicks`, 'Transition duration must be a positive safe tick')
     }
+    if (!explicit && ['concat_dissolve','concat_fade_black','concat_fade_white','film_dissolve','additive_dissolve','fade_white'].includes(String(candidate.kind))) add('transition-clock', transitionPath, 'This transition requires an explicit independent interval')
+    if(candidate.concatOverlap!==undefined){
+      const overlap=candidate.concatOverlap
+      if(!explicit||!isRecord(overlap)||!isSafeTick(overlap.leadTicks)||!isSafeTick(overlap.durationTicks)||overlap.durationTicks<=0||overlap.leadTicks>overlap.durationTicks||Object.keys(overlap).some(key=>!['leadTicks','durationTicks','holdOutgoing','authoredDurationTicks','legacy'].includes(key))||(overlap.holdOutgoing!==undefined&&typeof overlap.holdOutgoing!=='boolean')||(overlap.authoredDurationTicks!==undefined&&(!isSafeTick(overlap.authoredDurationTicks)||overlap.authoredDurationTicks<overlap.durationTicks))||(overlap.legacy!==undefined&&(!['cross-fade','push','zoom','wipe-left','wipe-right','fade-black','fade-white'].includes(String(overlap.legacy))||candidate.kind!=='concat_dissolve'||candidate.kernel!==undefined)))add('transition-concat-overlap',`${transitionPath}.concatOverlap`,'Invalid Concat source audio overlap')
+    }
+    if (candidate.reverse !== undefined && typeof candidate.reverse !== 'boolean') add('transition-reverse', transitionPath, 'Transition reverse must be boolean')
     if (typeof candidate.kind !== 'string' || !TRANSITION_KINDS.has(candidate.kind)) {
       add('transition-kind', `${transitionPath}.kind`, 'Transition kind is not supported')
     }
     const from = clips.find((clip) => isRecord(clip) && clip.id === candidate.fromClipId)
     const to = clips.find((clip) => isRecord(clip) && clip.id === candidate.toClipId)
-    if ((isRecord(from) && from.speedRamp !== undefined) || (isRecord(to) && to.speedRamp !== undefined)) {
+    if (!explicit && ((isRecord(from) && from.speedRamp !== undefined) || (isRecord(to) && to.speedRamp !== undefined))) {
       add('speed-ramp-transition', transitionPath, 'Transitions cannot touch speed-ramped endpoint clips')
     }
   }
@@ -1518,6 +1810,20 @@ function validateVisualAnimation(
   }
 }
 
+export function validateColorAnimation(value: unknown,path: string,add: (code: string,path: string,message: string) => void): void {
+  if (!isRecord(value)) { add('color-animation',path,'Animated color must be an object');return }
+  if (value.mode === 'constant') { validateColor(value.value,`${path}.value`,add);return }
+  if (value.mode !== 'keyframes' || !isRecord(value.track)) { add('color-animation-mode',path,'Color mode must be constant or keyframes');return }
+  if (value.track.sampleClock !== undefined) add('color-clock',`${path}.track.sampleClock`,'Rational color clocks are not supported')
+  const keys = value.track.keyframes
+  if (Array.isArray(keys)) keys.forEach((key,index) => {
+    if (isRecord(key)) validateColor(key.value,`${path}.track.keyframes[${index}].value`,add)
+  })
+  // Clock, ordering, count and temporal controls share scalar admission;
+  // colors themselves are validated above and are never numerically projected.
+  validateAnimatableValue({ ...value,track: { ...value.track,keyframes: Array.isArray(keys) ? keys.map(key => isRecord(key) ? { ...key,value: 0 } : key) : keys } },path,null,0,1,true,add,MAX_COLOR_KEYFRAMES_PER_VALUE)
+}
+
 function validateAudioAnimation(
   value: unknown,
   path: string,
@@ -1585,11 +1891,12 @@ function validateMasks(
 function validateAnimatableValue(
   value: unknown,
   path: string,
-  durationTicks: number | null,
+  _durationTicks: number | null,
   minimum: number,
   maximum: number,
   inclusiveMinimum: boolean,
   add: (code: string, path: string, message: string) => void,
+  maximumKeyframes = MAX_KEYFRAMES_PER_VALUE,
 ): void {
   if (!isRecord(value)) {
     add('animatable', path, 'Animatable value must be an object')
@@ -1606,38 +1913,39 @@ function validateAnimatableValue(
     return
   }
   const track = value.track
-  if (!Number.isSafeInteger(track.timeBase) || (track.timeBase as number) <= 0 || (track.timeBase as number) > 0xffff_ffff) {
-    add('keyframe-time-base', `${path}.track.timeBase`, 'Keyframe timeBase must be a positive u32 integer')
+  if (track.sampleClock !== undefined && (!validSampleClock(track.sampleClock) || !Number.isSafeInteger(track.timeBase) || (track.timeBase as number) > 100000000)) add('keyframe-clock', `${path}.track.sampleClock`, 'Invalid keyframe sample clock')
+  if (track.extrapolation !== undefined && (!isRecord(track.extrapolation) || !['hold', 'continue', 'loop', 'ping_pong', 'offset'].includes(String(track.extrapolation.before)) || !['hold', 'continue', 'loop', 'ping_pong', 'offset'].includes(String(track.extrapolation.after)))) add('keyframe-extrapolation', `${path}.track.extrapolation`, 'Unsupported extrapolation mode')
+  if (!Number.isSafeInteger(track.timeBase) || (track.timeBase as number) <= 0) {
+    add('keyframe-time-base', `${path}.track.timeBase`, 'Keyframe timeBase must be a positive safe integer')
   }
-  if (typeof track.interpolation !== 'string' || !INTERPOLATIONS.has(track.interpolation)) {
+  if (!isElasticInterpolation(track.interpolation) && !isBezierInterpolation(track.interpolation) && (typeof track.interpolation !== 'string' || !INTERPOLATIONS.has(track.interpolation))) {
     add('keyframe-interpolation', `${path}.track.interpolation`, 'Keyframe interpolation is not supported')
   }
-  if (!Array.isArray(track.keyframes) || !track.keyframes.length || track.keyframes.length > MAX_KEYFRAMES_PER_VALUE) {
-    add('keyframe-count', `${path}.track.keyframes`, `Keyframe track must contain 1 to ${MAX_KEYFRAMES_PER_VALUE} points`)
+  if (!Array.isArray(track.keyframes) || !track.keyframes.length || track.keyframes.length > maximumKeyframes) {
+    add('keyframe-count', `${path}.track.keyframes`, `Keyframe track must contain 1 to ${maximumKeyframes} points`)
     return
   }
-  let previousTick = -1
+  let previousTick = Number.NEGATIVE_INFINITY
   for (const [index, keyframe] of track.keyframes.entries()) {
     const keyframePath = `${path}.track.keyframes[${index}]`
-    if (!isRecord(keyframe) || !isSafeTick(keyframe.tick)) {
-      add('keyframe-tick', `${keyframePath}.tick`, 'Keyframe tick must be a non-negative safe integer')
+    if (!isRecord(keyframe) || typeof keyframe.tick !== 'number' || !Number.isSafeInteger(keyframe.tick)) {
+      add('keyframe-tick', `${keyframePath}.tick`, 'Keyframe tick must be a safe integer')
       continue
     }
     if (keyframe.tick <= previousTick) add('keyframe-order', `${keyframePath}.tick`, 'Keyframe ticks must be strictly increasing')
+    if (index > 0) {
+      const left = track.keyframes[index - 1]
+      if (isRecord(left) && (left.tangents === undefined || isKeyframeTangents(left.tangents)) && (keyframe.tangents === undefined || isKeyframeTangents(keyframe.tangents))) {
+        const mode = segmentInterpolation(left as unknown as import('./types').CompositionKeyframe, keyframe as unknown as import('./types').CompositionKeyframe, track.interpolation as import('./types').CompositionInterpolation)
+        if (mode && typeof mode === 'object' && mode.kind === 'bezier' && !isBezierInterpolation(mode)) add('keyframe-tangents', keyframePath, 'Resolved Bézier controls are invalid')
+      }
+    }
     previousTick = keyframe.tick
     if (!validValue(keyframe.value)) add('keyframe-value', `${keyframePath}.value`, `Keyframe value must be within ${minimum}..${maximum}`)
+    if (keyframe.tangents !== undefined && !isKeyframeTangents(keyframe.tangents)) add('keyframe-tangents', `${keyframePath}.tangents`, 'Keyframe tangents are not supported')
+    if (keyframe.interpolation !== undefined && (!isElasticInterpolation(keyframe.interpolation) && !isBezierInterpolation(keyframe.interpolation) && (typeof keyframe.interpolation !== 'string' || !INTERPOLATIONS.has(keyframe.interpolation)))) add('keyframe-interpolation', `${keyframePath}.interpolation`, 'Keyframe interpolation is not supported')
   }
-  const last = track.keyframes.at(-1)
-  if (
-    durationTicks !== null &&
-    isRecord(last) &&
-    isSafeTick(last.tick) &&
-    Number.isSafeInteger(track.timeBase) &&
-    (track.timeBase as number) > 0 &&
-    BigInt(last.tick) * BigInt(COMPOSITION_TIME_BASE) > BigInt(durationTicks) * BigInt(track.timeBase as number)
-  ) {
-    add('keyframe-duration', `${path}.track.keyframes`, 'Keyframes must stay within the clip-local duration')
-  }
+
 }
 
 function validateDuration(
@@ -1686,6 +1994,7 @@ function validateColor(
 
 function runtimeClipDuration(clip: Record<string, unknown>): number | null {
   if (clip.kind === 'video' || clip.kind === 'audio') {
+    if (clip.timelineDurationTicks !== undefined) return isSafeTick(clip.timelineDurationTicks) && clip.timelineDurationTicks > 0 ? clip.timelineDurationTicks : null
     if (!isSafeTick(clip.sourceInTicks) || !isSafeTick(clip.sourceOutTicks)) return null
     const speed = clip.speed === undefined ? 1 : clip.speed
     if (!isFiniteNumber(speed) || speed < MIN_COMPOSITION_SPEED || speed > MAX_COMPOSITION_SPEED) return null
@@ -1773,11 +2082,12 @@ function normalizeClip(value: unknown): unknown {
       pitchSemitones: value.pitchSemitones === undefined ? 0 : value.pitchSemitones,
       toneDb: value.toneDb === undefined ? 0 : value.toneDb,
       crossfadeInTicks: value.crossfadeInTicks === undefined ? 0 : value.crossfadeInTicks,
+      crossfadeCurve: value.crossfadeCurve === undefined ? 'constant_gain' : value.crossfadeCurve,
       ...(value.ducking === undefined ? {} : { ducking: value.ducking }),
       ...(value.audioAnimation === undefined ? {} : { audioAnimation: normalizeAnimation(value.audioAnimation, COMPOSITION_AUDIO_PROPERTIES) }),
     }
   }
-  if (value.kind === 'image') {
+  if (value.kind === 'image' || value.kind === 'color') {
     return {
       ...value,
       rotationDegrees: value.rotationDegrees === undefined ? 0 : value.rotationDegrees,
@@ -1884,4 +2194,34 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isIntegerBetween(value: unknown, min: number, max: number): value is number {
   return Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max
+}
+
+function validatePositionAnimation(value: unknown,path: string,add: (code: string,path: string,message: string) => void): void {
+  const bad = (message: string) => add('position-animation',path,message)
+  if (!isRecord(value)) { bad('Position must be an object'); return }
+  if (value.mode === 'xy') {
+    if (Object.keys(value).some(key => !['mode','x','y'].includes(key))) bad('XY position permits only x/y')
+    for (const key of ['x','y']) validateAnimatableValue(value[key],`${path}.${key}`,null,-1e7,1e7,true,add)
+    return
+  }
+  if (value.mode !== 'path' || Object.keys(value).some(key => !['mode','path','progress'].includes(key))) { bad('Position must have exactly one mode'); return }
+  validateAnimatableValue(value.progress,`${path}.progress`,null,-Number.MAX_VALUE,Number.MAX_VALUE,true,add)
+  if (!isRecord(value.path) || Object.keys(value.path).some(key => key !== 'nodes') || !Array.isArray(value.path.nodes) || value.path.nodes.length < 1 || value.path.nodes.length > 128) { bad('Path requires 1–128 nodes'); return }
+  const ids = new Set<string>()
+  for (const node of value.path.nodes) {
+    if (!isRecord(node)) { bad('Invalid path node'); continue }
+    if (typeof node.id !== 'string' || !node.id || ids.has(node.id)) bad('Path node ids must be unique and nonempty')
+    else ids.add(node.id)
+    if (!['line','cubic'].includes(String(node.segment)) || !['corner','smooth','auto'].includes(String(node.tangentMode))) bad('Invalid spatial node mode')
+    if (Object.keys(node).some(key => !['id','point','inHandle','outHandle','segment','tangentMode'].includes(key))) bad('Unknown path node field')
+    for (const key of ['point','inHandle','outHandle']) {
+      const point = node[key]
+      if (!isRecord(point) || Object.keys(point).some(key => !['x','y'].includes(key)) || !isFiniteNumber(point.x) || !isFiniteNumber(point.y) || Math.abs(point.x)>1e7 || Math.abs(point.y)>1e7) bad('Path coordinates must be finite and within ten million pixels')
+    }
+  }
+}
+
+export function isValidSamRegion(value:unknown,sourceId?:string,sourceHash?:string,points?:unknown):boolean {
+ if(!isRecord(value)||!isStableId(value.sourceId)||!isStableId(value.maskSourceId)||value.sourceId===value.maskSourceId||(sourceId!==undefined&&value.sourceId!==sourceId)||(sourceHash!==undefined&&value.sourceHash!==sourceHash)||!['sourceHash','maskHash','maskFileHash','encoderHash','decoderHash','runtimeHash','promptHash'].every(key=>typeof value[key]==='string'&&/^[a-f0-9]{64}$/.test(value[key] as string))||!Array.isArray(value.points)||!value.points.length||value.points.length>65536||!value.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(v=>typeof v==='number'&&Number.isFinite(v)&&v>=-0.5&&v<=1.5)))return false
+ return points===undefined||JSON.stringify(points)===JSON.stringify(value.points)
 }

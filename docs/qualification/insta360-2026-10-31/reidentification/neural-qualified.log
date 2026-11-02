@@ -1,0 +1,14 @@
+   Compiling video-kadr-vision-runtime v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vision-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.69s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 5 tests
+test sam_reidentification::tests::bad_masks_and_cancellation_do_not_change_identity ... ok
+test sam_reidentification::tests::lookalike_identity_is_ambiguous_and_color_distractor_is_rejected ... ok
+test sam_reidentification::tests::immutable_neural_identity_reacquires_after_occlusion_at_different_position ... ok
+photographic source-owned target recovery IoU=0.97472286; predicted=4423; expected=4483; intersection=4396
+test sam_reidentification::tests::actual_neural_reidentification_on_private_photographic_material ... ok
+test sam_reidentification::tests::actual_pinned_encoder_decoder_reacquires_a_returning_target ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 39.40s
+

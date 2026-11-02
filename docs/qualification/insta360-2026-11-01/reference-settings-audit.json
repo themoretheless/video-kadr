@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-01",
+  "scope": "owned temporary project snapshots only; no source media or personal metadata",
+  "references": [
+    {
+      "case": "x4",
+      "projectSha256": "4a5f0bfdd0d7cfedc5900cbd5d33145fa6ac0daea5a18a724a47039956f578b6",
+      "timelineClipSettings": {
+        "enableStab": true,
+        "enableAIStitching": true,
+        "enableOpticalFlowStitching": false,
+        "enableImageFusionStitching": true
+      },
+      "status": "conflicts_with_observed_media_preview_controls_effective_export_mode_unresolved"
+    },
+    {
+      "case": "x6-office",
+      "projectSha256": "50a6e280c91e982792b2ccf6159b63b04691144b33f879f6da8b769fa941159b",
+      "timelineClipSettings": {
+        "enableStab": true,
+        "enableAIStitching": true,
+        "enableOpticalFlowStitching": false,
+        "enableImageFusionStitching": true
+      },
+      "status": "conflicts_with_observed_media_preview_controls_effective_export_mode_unresolved"
+    }
+  ]
+}

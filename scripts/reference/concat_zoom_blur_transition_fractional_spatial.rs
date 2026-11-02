@@ -1,0 +1,25 @@
+//! Original GPU pipeline on full straight-HDR images, readback-only extension.
+use concat_effects::Catalogue;
+use concat_render::WgpuCompositor;
+use serde_json::json;
+use std::collections::BTreeMap;
+fn main(){
+ let output=std::env::args().nth(1).unwrap();let catalogue=Catalogue::builtin();let effect=std::env::args().nth(2).unwrap();let id=format!("concat.{}",effect.replace('_',"-"));
+ let(parameter,default,values)=("strength",70.,[0.125,19.875,75.25,99.875]);
+ let mut gpu=WgpuCompositor::new().unwrap();assert!(!gpu.on_software_adapter());let info=gpu.adapter_info();assert_eq!(format!("{:?}",info.backend),"Metal");
+ let mut cross_checks=0;
+ for side in [1u32,2,5]{for progress in [0.,0.25,0.5,1.]{
+  let pass=catalogue.transition_pass(&id,&BTreeMap::from([(parameter.into(),default)]),progress).unwrap();let a=[-0.25,0.5,2.,0.5];let b=[1.,-1.,0.25,0.25];
+  let pixels=gpu.qualification_transition_image(&pass,side,side,&vec![a;(side*side)as usize],&vec![b;(side*side)as usize]).unwrap();let point=gpu.probe_transition(&pass,a,b,side,0.).unwrap();assert_eq!(pixels[(side/2*side+side/2)as usize].map(f32::to_bits),point.map(f32::to_bits));cross_checks+=1;
+ }}
+ let mut cases=Vec::new();
+ for(width,height)in[(3u32,2u32),(5,9),(9,5),(17,11),(11,17),(7,7)]{for seed in 0u32..4{
+  let from:Vec<[f32;4]>=(0..width*height).map(|i|{let x=i%width;let y=i/width;[((x*3+y+seed)%13)as f32*0.5-0.5,((x+y*3+seed)%9)as f32*0.5,((x+y+seed)%11)as f32*0.5,[0.,0.25,0.5,1.][((x+y+seed)%4)as usize]]}).collect();
+  let to:Vec<[f32;4]>=(0..width*height).map(|i|{let x=i%width;let y=i/width;[((x+y*2+seed)%11)as f32*0.5,((x*2+y+seed)%13)as f32*0.5-0.5,((x*3+y+seed)%9)as f32*0.5,[1.,0.5,0.25,0.][((x+y+seed)%4)as usize]]}).collect();
+  for value in values{for progress in [0.001,0.271,0.619,0.999]{
+   let pass=catalogue.transition_pass(&id,&BTreeMap::from([(parameter.into(),value)]),progress).unwrap();let expected=gpu.qualification_transition_image(&pass,width,height,&from,&to).unwrap();assert!(expected.iter().flatten().all(|v|v.is_finite()));
+   cases.push(json!({"width":width,"height":height,"seed":seed,"parameter":parameter,"value":value,"progress":progress,"from":from,"to":to,"expected":expected}));
+  }}
+ }}
+ std::fs::write(output,serde_json::to_vec_pretty(&json!({"schemaVersion":1,"independentValidation":true,"effect":id,"upstreamProbes":cross_checks,"fullImage":true,"addedReadbackMethod":true,"scope":"Unmodified original shader and encode_transition in isolated renderer copy with appended upload/readback method; whole straight-HDR textures","adapter":{"name":info.name,"backend":format!("{:?}",info.backend)},"cases":cases})).unwrap()).unwrap();
+}

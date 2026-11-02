@@ -27,6 +27,11 @@ export default defineConfig({
     // those engines need; aggregate lazy-chunk budgets measure this output.
     target: 'esnext',
     minify: 'terser',
+    terserOptions: {
+      // Repeat safe compression to fold code exposed by preceding passes.
+      // Keep unsafe rewrites and public/property name mangling disabled.
+      compress: { passes: 3 },
+    },
     // All supported engines implement modulepreload; the legacy fetch shim is
     // pure startup overhead for the Playwright browser contract above.
     modulePreload: { polyfill: false },

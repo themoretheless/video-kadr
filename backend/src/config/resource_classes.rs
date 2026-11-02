@@ -20,9 +20,9 @@ impl ResourceClass {
 
     pub const fn for_job(kind: JobKind) -> Self {
         match kind {
-            JobKind::Import => Self::Ingest,
-            JobKind::Proxy => Self::Analysis,
-            JobKind::Edit | JobKind::Composition | JobKind::Publish => Self::Export,
+            JobKind::Import | JobKind::SpeechModelDownload | JobKind::TtsModelDownload | JobKind::EnhanceModelDownload | JobKind::CutoutModelDownload | JobKind::SamModelDownload => Self::Ingest,
+            JobKind::SamRegion | JobKind::CutoutEdit | JobKind::Cutout | JobKind::Selfie | JobKind::Enhance | JobKind::EnhanceVideo | JobKind::PersonVideo | JobKind::Proxy | JobKind::Speech | JobKind::Tts | JobKind::Stabilization => Self::Analysis,
+            JobKind::Edit | JobKind::Composition | JobKind::NestedExport | JobKind::FilmcraftVideo | JobKind::Publish => Self::Export,
         }
     }
 }

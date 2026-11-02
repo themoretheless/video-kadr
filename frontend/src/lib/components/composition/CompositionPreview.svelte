@@ -1,4 +1,22 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
+  import { NativeAudioPreview } from '$lib/audio/nativePreview'
+  import { buildNativeAudioPreviewProject, needsNativeAudioPreview } from '$lib/audio/nativePreviewProject'
+  import { buildIndependentTransitionPreviewProject } from '$lib/composition/transitionPreview'
+  import NestedCompositionPreview from './NestedCompositionPreview.svelte'
+  import { buildCompositionRenderRequest } from '$lib/composition/payload'
+  import { authState } from '$lib/state/auth.svelte.js'
+  import type { NativeNestedProject } from '$lib/api'
+  import { positionConversionPreview } from '$lib/state/positionConversionPreview.svelte'
+  import { colorCurvePreview } from '$lib/state/colorCurvePreview.svelte'
+  import CompositionMotionPathOverlay from './CompositionMotionPathOverlay.svelte'
+  import { evaluateMotionPath } from '$lib/api'
+  import { prepareColorPreview } from '$lib/native/colorPreview'
+  import { packColorAnimation,colorToNative,nativeColorToHex } from '$lib/composition/colorAnimation'
+  import type { CompositionPathPoint } from '$lib/composition/types'
+  import { audioFadeMultiplier, audioCrossfadeMultiplier } from '$lib/audio/fade'
+  import { resetMasterPeakHold } from '$lib/audio/mediaGain'
+  import { previewAudioState, previewAudioRoleGain } from '$lib/audio/previewAudio.svelte'
   import {
     clipDurationTicks,
     clipEndTicks,
@@ -8,6 +26,7 @@
     type CompositionTransition,
     type VideoClip,
     type VideoTrack,
+    type TextClip, type ColorClip,
     type VisualClip,
     type VisualTrack,
   } from '$lib/composition/types.js'
@@ -27,6 +46,7 @@
   import {
     compositionDuration,
     compositionState,
+    projectAutomationValues,
     setCompositionPlayhead,
     toggleCompositionPlayback,
   } from '$lib/state/composition.svelte.js'
@@ -59,28 +79,77 @@
     crossfadeRole?: 'from' | 'to'
     boundaryTicks?: number
     crossfadeTicks?: number
+    crossfadeCurve?: AudioClip['crossfadeCurve']
   }
 
   let frame: number | null = null
   let lastFrameTime: number | null = null
   let limitedTransitionId = $state<string | null>(null)
 
-  const primaryTrack = $derived(primaryCompositionVideoTrack(compositionState.document))
+  const draftDocument = $derived(colorCurvePreview.source === compositionState.document && colorCurvePreview.document ? colorCurvePreview.document : positionConversionPreview.source === compositionState.document && positionConversionPreview.document ? positionConversionPreview.document : compositionState.document)
+  const previewDocument = $derived(projectAutomationValues(draftDocument, compositionState.ui.keyframePreviews))
+  const nativeAudio = new NativeAudioPreview()
+  let nativeAudioReady = $state(false)
+  let nativeAudioError = $state('')
+  let lastNativePlayhead: number | null = null
+  const nativeAudioRequested = $derived(needsNativeAudioPreview(previewDocument))
+  const nativeAudioRequest = $derived.by(() => {
+    if (!nativeAudioRequested) return { project: null, error: '' }
+    try { return { project: buildNativeAudioPreviewProject(previewDocument, previewAudioState.roleGains, compositionDuration()), error: '' } }
+    catch (error) { return { project: null, error: error instanceof Error ? error.message : String(error) } }
+  })
+  $effect(() => {
+    const project = nativeAudioRequest.project
+    const playing = compositionState.transport.playing
+    const token = authState.token ?? undefined
+    nativeAudioReady = false
+    if (playing || !nativeAudioRequested) nativeAudioError = nativeAudioRequest.error
+    if (nativeAudioRequested && playing) {
+      if (project) {
+        const head = untrack(() => compositionState.transport.playheadTicks)
+        lastNativePlayhead = head
+        nativeAudio.start(project, head, untrack(compositionDuration), token)
+      } else untrack(toggleCompositionPlayback)
+    }
+    return () => nativeAudio.stop()
+  })
+  $effect(() => {
+    const head = compositionState.transport.playheadTicks
+    untrack(() => {
+      if (!nativeAudioRequested || !compositionState.transport.playing || !nativeAudioRequest.project || head === lastNativePlayhead) return
+      lastNativePlayhead = head
+      nativeAudioReady = false
+      nativeAudioError = ''
+      nativeAudio.start(nativeAudioRequest.project, head, compositionDuration(), authState.token ?? undefined)
+    })
+  })
+  const graphicPreviewRequest = $derived.by((): {project: NativeNestedProject | null;error: string} => {
+    try {
+      const independent = buildIndependentTransitionPreviewProject(previewDocument)
+      if (independent) return {project:independent,error:''}
+    } catch (reason) { return {project:null,error:reason instanceof Error ? reason.message : String(reason)} }
+    if (!previewDocument.tracks.some(track => track.kind === 'graphic' && !track.hidden && track.clips.some(clip => clip.enabled !== false)) && !previewDocument.captionTracks?.some(track => !track.hidden && track.clips.length > 0)) return {project:null,error:''}
+    try {
+      return {project:{ schemaVersion: 1, root: 'editor', compositions: { editor: { content: buildCompositionRenderRequest(previewDocument).composition, instances: [] } } },error:''}
+    } catch (reason) { return {project:null,error:reason instanceof Error ? reason.message : String(reason)} }
+  })
+  const graphicPreviewProject = $derived(graphicPreviewRequest.project)
+  const primaryTrack = $derived(primaryCompositionVideoTrack(previewDocument))
   const activeTransition = $derived.by(findActiveTransition)
   const activeVisuals = $derived.by(() => {
     const playhead = compositionState.transport.playheadTicks
-    const result = compositionState.document.tracks.flatMap((track, index): ActiveClip[] => {
+    const result = previewDocument.tracks.flatMap((track, index): ActiveClip[] => {
       if (track.kind === 'audio' || track.hidden) return []
       const visualTrack = track as VisualTrack
       if (activeTransition?.track.id === track.id) return []
       const clip = visualTrack.clips.find(
-        (candidate) => candidate.timelineStartTicks <= playhead && clipEndTicks(candidate) > playhead,
+        (candidate) => candidate.enabled !== false && candidate.timelineStartTicks <= playhead && clipEndTicks(candidate) > playhead,
       )
-      return clip ? [{ track: visualTrack, clip, z: compositionState.document.tracks.length - index }] : []
+      return clip ? [{ track: visualTrack, clip, z: previewDocument.tracks.length - index }] : []
     })
     if (activeTransition) {
-      const index = compositionState.document.tracks.findIndex((track) => track.id === activeTransition.track.id)
-      const z = compositionState.document.tracks.length - index
+      const index = previewDocument.tracks.findIndex((track) => track.id === activeTransition.track.id)
+      const z = previewDocument.tracks.length - index
       result.push(
         { track: activeTransition.track, clip: activeTransition.from, z, transitionRole: 'from', transitionProgress: activeTransition.progress },
         { track: activeTransition.track, clip: activeTransition.to, z: z + 1, transitionRole: 'to', transitionProgress: activeTransition.progress },
@@ -91,12 +160,12 @@
 
   const activeAudio = $derived.by(() => {
     const playhead = compositionState.transport.playheadTicks
-    const hasSolo = compositionState.document.tracks.some(
+    const hasSolo = previewDocument.tracks.some(
       (track) => track.kind === 'audio' && !track.muted && (track.solo ?? false),
     )
-    return compositionState.document.tracks.flatMap((track): ActiveAudioClip[] => {
+    return previewDocument.tracks.flatMap((track): ActiveAudioClip[] => {
       if (track.kind !== 'audio' || track.muted || (hasSolo && !(track.solo ?? false))) return []
-      const ordered = [...track.clips].sort((left, right) => left.timelineStartTicks - right.timelineStartTicks)
+      const ordered = track.clips.filter((clip) => clip.enabled !== false).sort((left, right) => left.timelineStartTicks - right.timelineStartTicks)
       for (let index = 1; index < ordered.length; index += 1) {
         const to = ordered[index]!
         const from = ordered[index - 1]!
@@ -106,13 +175,13 @@
         const boundary = to.timelineStartTicks
         if (duration > 0 && clipEndTicks(from) === boundary && playhead >= boundary - before && playhead < boundary + after) {
           return [
-            { clip: from, crossfadeRole: 'from', boundaryTicks: boundary, crossfadeTicks: duration },
-            { clip: to, crossfadeRole: 'to', boundaryTicks: boundary, crossfadeTicks: duration },
+            { clip: from, crossfadeRole: 'from', boundaryTicks: boundary, crossfadeTicks: duration, crossfadeCurve: to.crossfadeCurve },
+            { clip: to, crossfadeRole: 'to', boundaryTicks: boundary, crossfadeTicks: duration, crossfadeCurve: to.crossfadeCurve },
           ]
         }
       }
       const clip = track.clips.find(
-        (candidate) => candidate.timelineStartTicks <= playhead && clipEndTicks(candidate) > playhead,
+        (candidate) => candidate.enabled !== false && candidate.timelineStartTicks <= playhead && clipEndTicks(candidate) > playhead,
       )
       return clip && clip.speedRamp?.audioPolicy !== 'mute' ? [{ clip }] : []
     })
@@ -132,9 +201,9 @@
 
   const previewNotes = $derived.by(() => {
     const notes: string[] = []
-    if (activeTransition) notes.push(`Переход: ${activeTransition.transition.kind}`)
+    if (activeTransition) notes.push(`Переход: ${activeTransition.transition.concatOverlap?.legacy ?? activeTransition.transition.kind}`)
     if (activeAudio.some((active) => active.crossfadeRole)) notes.push('Audio crossfade')
-    if (activeAudio.some((active) => (active.clip.voiceEffect ?? 'none') !== 'none')) notes.push('Voice effect точен только в экспорте')
+    if (!nativeAudioRequested && activeAudio.some((active) => (active.clip.voiceEffect ?? 'none') !== 'none')) notes.push('Voice effect точен только в экспорте')
     if (activeTransition?.transition.id === limitedTransitionId) {
       notes.push('Browser seek не даёт показать source handle; экспорт остаётся точным')
     }
@@ -158,7 +227,7 @@
     if (activeVisuals.some((active) => active.clip.kind === 'video' && (active.clip.stabilization?.mode === 'deshake' || active.clip.stabilization?.mode === 'vidstab'))) {
       notes.push('Stabilization применяется точно только в экспорте')
     }
-    if (compositionState.document.tracks.some((track) => track.clips.some((clip) =>
+    if (previewDocument.tracks.some((track) => track.clips.some((clip) =>
       (clip.kind === 'video' || clip.kind === 'audio') &&
       clip.speedRamp !== undefined &&
       clip.timelineStartTicks <= compositionState.transport.playheadTicks &&
@@ -166,6 +235,7 @@
     ))) {
       notes.push('Speed ramp: source-time точен; browser playbackRate приблизительный, экспорт точный')
     }
+    if (previewDocument.tracks.some(track=>track.kind==='video'&&!track.hidden&&track.transitions?.some(transition=>transition.timeline))) notes.push(graphicPreviewRequest.error ? 'Нативный предпросмотр перехода недоступен' : 'Нативный предпросмотр переходов; звук browser playback приблизительный')
     const masks = activeVisuals.flatMap((active) => active.clip.kind === 'video' ? active.clip.masks ?? [] : [])
     if (masks.length) {
       notes.push('Mask preview — clip-path approximation')
@@ -177,16 +247,17 @@
 
   function findActiveTransition(): ActiveTransition | null {
     const playhead = compositionState.transport.playheadTicks
-    for (const candidate of compositionState.document.tracks) {
+    for (const candidate of previewDocument.tracks) {
       if (candidate.kind !== 'video' || candidate.hidden) continue
       const track = candidate
       const clips = [...track.clips].sort(
         (left, right) => left.timelineStartTicks - right.timelineStartTicks || left.id.localeCompare(right.id),
       )
       for (const transition of track.transitions ?? []) {
+        if (transition.timeline) continue
         const from = clips.find((clip) => clip.id === transition.fromClipId)
         const to = clips.find((clip) => clip.id === transition.toClipId)
-        if (!from || !to) continue
+        if (!from || !to || from.enabled === false || to.enabled === false) continue
         const before = Math.floor(transition.durationTicks / 2)
         const start = to.timelineStartTicks - before
         const end = start + transition.durationTicks
@@ -204,31 +275,131 @@
     return null
   }
 
+  type ColorSampler = ((time: number) => import('$lib/api').NativeColor) & { dispose?: () => void }
+  let colorSamplers = $state.raw<Record<string,{ key: string;sample: ColorSampler }>>({})
+  const colorTrackKey = (clip: TextClip | ColorClip) => JSON.stringify([clip.colorAnimation,(clip.kind === 'text' ? clip.style.color : clip.color)])
+  // Intentionally nonreactive: preparation must not subscribe to its own results.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const loadedColors = new Map<string,{ key: string;sample: ColorSampler }>()
+  // Promise cache participates in the same nonreactive preparation lifecycle.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const preparedColors = new Map<string,Promise<ColorSampler>>()
+  $effect(() => {
+    // Track preparation depends on authored data, never on the playhead.
+    const texts = previewDocument.tracks.flatMap<TextClip | ColorClip>(track => (track.kind === 'text' || track.kind === 'color') ? track.clips.filter(clip => clip.colorAnimation?.mode === 'keyframes') : [])
+    const wanted = new Set(texts.map(colorTrackKey))
+    for (const [key,pending] of preparedColors) if (!wanted.has(key)) {
+      void pending.then(sample => sample.dispose?.()).catch(() => {})
+      preparedColors.delete(key)
+    }
+    let live = true
+    const next: Record<string,{ key: string;sample: ColorSampler }> = {}
+    for (const clip of texts) {
+      const key = colorTrackKey(clip)
+      const prior = loadedColors.get(clip.id)
+      if (prior?.key === key) { next[clip.id] = prior;continue }
+      let preparation = preparedColors.get(key)
+      if (!preparation) {
+        preparation = prepareColorPreview(packColorAnimation(clip.colorAnimation!),colorToNative((clip.kind === 'text' ? clip.style.color : clip.color)))
+        preparedColors.set(key,preparation)
+      }
+      void preparation.then(sample => {
+        if (live) {
+          loadedColors.set(clip.id,{ key,sample })
+          colorSamplers = Object.fromEntries(loadedColors)
+        }
+      }).catch(error => {
+        if (preparedColors.get(key) === preparation) preparedColors.delete(key)
+        if (live) compositionState.ui.message = error instanceof Error ? error.message : String(error)
+      })
+    }
+    loadedColors.clear()
+    for (const [id,entry] of Object.entries(next)) loadedColors.set(id,entry)
+    colorSamplers = next
+    return () => { live = false }
+  })
+  $effect(() => () => {
+    for (const pending of preparedColors.values()) void pending.then(sample => sample.dispose?.()).catch(() => {})
+    preparedColors.clear()
+    loadedColors.clear()
+  })
+  function textColor(clip: TextClip | ColorClip,local: number): string | null {
+    if (!clip.colorAnimation) return (clip.kind === 'text' ? clip.style.color : clip.color)
+    if (clip.colorAnimation.mode === 'constant') return clip.colorAnimation.value
+    const entry = colorSamplers[clip.id]
+    if (entry?.key !== colorTrackKey(clip)) return null
+    return nativeColorToHex(entry.sample(local))
+  }
+
+  let nativePositions = $state<Record<string,{ key: string; point: CompositionPathPoint }>>({})
+  const nativePositionCache: Record<string,CompositionPathPoint> = {}
+  const nativePositionCacheKeys: string[] = []
+  function pathKey(clip: VisualClip,localTicks: number): string {
+    if (clip.position?.mode !== 'path') return ''
+    return JSON.stringify([clip.position.path,sampleAnimatableValue(clip.position.progress,localTicks)])
+  }
+  $effect(() => {
+    const playhead = compositionState.transport.playheadTicks
+    const requests = activeVisuals.filter(active => active.clip.position?.mode === 'path').map(({ clip }) => {
+      const local = Math.max(0,playhead-clip.timelineStartTicks)
+      return { clip,key: pathKey(clip,local),local }
+    })
+    const controller = new AbortController()
+    let live = true
+    for (const { clip,key,local } of requests) {
+      const cached = nativePositionCache[key]
+      if (cached) { nativePositions[clip.id] = { key,point: cached }; continue }
+      const position = clip.position
+      if (position?.mode !== 'path') continue
+      void evaluateMotionPath({ operation: 'sample',path: position.path,progresses: [sampleAnimatableValue(position.progress,local)] },controller.signal).then(response => {
+        if (!live || !response.points[0]) return
+        const point = response.points[0]
+        if (!Object.hasOwn(nativePositionCache,key)) nativePositionCacheKeys.push(key)
+        while (nativePositionCacheKeys.length > 256) delete nativePositionCache[nativePositionCacheKeys.shift()!]
+        nativePositionCache[key] = point
+        nativePositions[clip.id] = { key,point }
+      }).catch(error => {
+        if (live && !controller.signal.aborted) compositionState.ui.message = error instanceof Error ? error.message : String(error)
+      })
+    }
+    return () => { live = false; controller.abort() }
+  })
+  function positionPoint(clip: VisualClip,localTicks: number): CompositionPathPoint | null {
+    if (clip.position?.mode === 'xy') return { x: sampleAnimatableValue(clip.position.x,localTicks),y: sampleAnimatableValue(clip.position.y,localTicks) }
+    if (clip.position?.mode === 'path') {
+      const resolved = nativePositions[clip.id]
+      return resolved?.key === pathKey(clip,localTicks) ? resolved.point : null
+    }
+    return { x: sampleVisualProperty(previewDocument,clip,'x',localTicks),y: sampleVisualProperty(previewDocument,clip,'y',localTicks) }
+  }
   function visualStyle(active: ActiveClip): string {
-    const { canvas } = compositionState.document
+    const { canvas } = previewDocument
     const isPrimary = active.track.id === primaryTrack?.id
     const transition = transitionStyle(active)
     const localTicks = Math.max(0, compositionState.transport.playheadTicks - active.clip.timelineStartTicks)
-    if (active.clip.kind === 'video' || active.clip.kind === 'image') {
-      const source = compositionState.document.sources[active.clip.sourceId]
-      const x = sampleVisualProperty(compositionState.document, active.clip, 'x', localTicks)
-      const y = sampleVisualProperty(compositionState.document, active.clip, 'y', localTicks)
-      const scaleX = sampleVisualProperty(compositionState.document, active.clip, 'scaleX', localTicks)
-      const scaleY = sampleVisualProperty(compositionState.document, active.clip, 'scaleY', localTicks)
-      const rotation = sampleVisualProperty(compositionState.document, active.clip, 'rotationDegrees', localTicks)
-      const opacity = sampleVisualProperty(compositionState.document, active.clip, 'opacity', localTicks)
+    if (active.clip.kind === 'video' || active.clip.kind === 'image' || active.clip.kind === 'color') {
+      if (active.clip.kind === 'color' && textColor(active.clip,localTicks) === null) return 'visibility:hidden'
+      const source = active.clip.kind === 'color' ? null : previewDocument.sources[active.clip.sourceId]
+      const point = positionPoint(active.clip,localTicks)
+      if (!point) return 'visibility:hidden'
+      const { x,y } = point
+      const scaleX = sampleVisualProperty(previewDocument, active.clip, 'scaleX', localTicks)
+      const scaleY = sampleVisualProperty(previewDocument, active.clip, 'scaleY', localTicks)
+      const rotation = sampleVisualProperty(previewDocument, active.clip, 'rotationDegrees', localTicks)
+      const opacity = sampleVisualProperty(previewDocument, active.clip, 'opacity', localTicks)
       const blend = active.clip.blendMode === 'addition' ? 'plus-lighter' : active.clip.blendMode ?? 'normal'
       const placement = isPrimary
         ? ['left:0', 'top:0', 'width:100%', 'height:100%', 'transform:none']
         : [
             `left:${50 + (x / canvas.width) * 100}%`,
             `top:${50 + (y / canvas.height) * 100}%`,
-            `width:${(((source?.width ?? canvas.width) * scaleX) / canvas.width) * 100}%`,
-            `height:${(((source?.height ?? canvas.height) * scaleY) / canvas.height) * 100}%`,
+            `width:${(((source?.width ?? (active.clip.kind === 'color' ? active.clip.width : canvas.width)) * scaleX) / canvas.width) * 100}%`,
+            `height:${(((source?.height ?? (active.clip.kind === 'color' ? active.clip.height : canvas.height)) * scaleY) / canvas.height) * 100}%`,
             `transform:translate(-50%, -50%) rotate(${rotation}deg)`,
           ]
       return [
         ...placement,
+        ...(active.clip.kind === 'color' ? [`background-color:${textColor(active.clip,localTicks) ?? 'transparent'}`] : []),
         `object-fit:${isPrimary ? 'contain' : 'fill'}`,
         `opacity:${isPrimary ? 1 : opacity}`,
         `mix-blend-mode:${blend}`,
@@ -238,13 +409,17 @@
         transition,
       ].filter(Boolean).join(';')
     }
+    if (active.clip.kind === 'graphic') return 'visibility:hidden' // The native canvas paints the complete graphic composition.
     const style = active.clip.style
-    const x = sampleVisualProperty(compositionState.document, active.clip, 'x', localTicks)
-    const y = sampleVisualProperty(compositionState.document, active.clip, 'y', localTicks)
-    const scaleX = sampleVisualProperty(compositionState.document, active.clip, 'scaleX', localTicks)
-    const scaleY = sampleVisualProperty(compositionState.document, active.clip, 'scaleY', localTicks)
-    const rotation = sampleVisualProperty(compositionState.document, active.clip, 'rotationDegrees', localTicks)
-    const opacity = sampleVisualProperty(compositionState.document, active.clip, 'opacity', localTicks)
+    const color = textColor(active.clip,localTicks)
+    if (!color) return 'visibility:hidden'
+    const point = positionPoint(active.clip,localTicks)
+    if (!point) return 'visibility:hidden'
+    const { x,y } = point
+    const scaleX = sampleVisualProperty(previewDocument, active.clip, 'scaleX', localTicks)
+    const scaleY = sampleVisualProperty(previewDocument, active.clip, 'scaleY', localTicks)
+    const rotation = sampleVisualProperty(previewDocument, active.clip, 'rotationDegrees', localTicks)
+    const opacity = sampleVisualProperty(previewDocument, active.clip, 'opacity', localTicks)
     const shadow = style.shadowColor
       ? `${style.shadowX ?? 0}px ${style.shadowY ?? 0}px ${style.shadowColor}`
       : 'none'
@@ -253,7 +428,7 @@
       `top:${50 + (y / canvas.height) * 100}%`,
       `transform:translate(-50%, -50%) rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`,
       `opacity:${opacity}`,
-      `color:${style.color}`,
+      `color:${color}`,
       `background:${style.backgroundColor ?? 'transparent'}`,
       `font-family:${JSON.stringify(style.fontFamily ?? 'Noto Sans')},sans-serif`,
       `font-size:${Math.max(10, (style.fontSizePx / canvas.height) * 100)}cqh`,
@@ -273,7 +448,7 @@
   }
 
   function canvasStyle(): string {
-    const canvas = compositionState.document.canvas
+    const canvas = previewDocument.canvas
     if (canvas.backgroundMode !== 'checker') return `background:${canvas.backgroundColor}`
     return [
       `background-color:${canvas.backgroundColor}`,
@@ -290,7 +465,7 @@
       'width:112%',
       'height:112%',
       'object-fit:cover',
-      `filter:blur(${compositionState.document.canvas.backgroundBlur ?? 24}px)`,
+      `filter:blur(${previewDocument.canvas.backgroundBlur ?? 24}px)`,
       'z-index:0',
       transitionStyle(active),
     ].filter(Boolean).join(';')
@@ -373,6 +548,14 @@
     const incoming = active.transitionRole === 'to'
     const kind = activeTransition.transition.kind
     switch (kind) {
+      // These kinds require an independent window; that path displays the native-preview notice.
+      case 'concat_dissolve':
+      case 'concat_fade_black':
+      case 'concat_fade_white':
+      case 'procedural':
+      case 'film_dissolve':
+      case 'additive_dissolve':
+      case 'fade_white': return ''
       case 'dissolve': return `opacity:${incoming ? progress : 1 - progress}`
       case 'fade_black': return `opacity:${incoming ? Math.max(0, progress * 2 - 1) : Math.max(0, 1 - progress * 2)}`
       case 'wipe_left': return incoming ? `clip-path:inset(0 0 0 ${(1 - progress) * 100}%)` : ''
@@ -436,7 +619,7 @@
     const anchor = active.transitionRole === 'from' ? clip.sourceOutTicks : clip.sourceInTicks
     const mapped = anchor + (compositionState.transport.playheadTicks - activeTransition.to.timelineStartTicks) * speed
     const bounded = Math.max(anchor - before * speed, Math.min(anchor + after * speed, mapped))
-    const sourceDuration = compositionState.document.sources[clip.sourceId]?.durationTicks ?? bounded
+    const sourceDuration = previewDocument.sources[clip.sourceId]?.durationTicks ?? bounded
     return Math.max(0, Math.min(sourceDuration, bounded)) / COMPOSITION_TIME_BASE
   }
 
@@ -445,7 +628,7 @@
   }
 
   function videoMuted(active: ActiveClip): boolean {
-    if (active.clip.kind !== 'video' || active.track.kind !== 'video') return true
+    if (nativeAudioRequested || active.clip.kind !== 'video' || active.track.kind !== 'video') return true
     const playhead = compositionState.transport.playheadTicks
     return active.track.id !== primaryTrack?.id || active.track.muted || !active.clip.sourceAudioEnabled ||
       active.clip.speedRamp?.audioPolicy === 'mute' ||
@@ -470,21 +653,12 @@
     const clip = active.clip
     const playhead = compositionState.transport.playheadTicks
     const elapsed = playhead - clip.timelineStartTicks
-    const remaining = clipEndTicks(clip) - playhead
-    const fadeIn = clip.fadeInTicks ?? 0
-    const fadeOut = clip.fadeOutTicks ?? 0
-    const fadeFactor = Math.min(
-      1,
-      fadeIn > 0 ? Math.max(0, elapsed / fadeIn) : 1,
-      fadeOut > 0 ? Math.max(0, remaining / fadeOut) : 1,
-    )
+    const fadeFactor = audioFadeMultiplier(elapsed, clipDurationTicks(clip), clip.fadeInTicks, clip.fadeOutTicks)
     const localTicks = Math.max(0, Math.min(clipDurationTicks(clip), elapsed))
     const crossfadeFactor = active.crossfadeRole && active.boundaryTicks !== undefined && active.crossfadeTicks
-      ? active.crossfadeRole === 'to'
-        ? Math.max(0, Math.min(1, (playhead - (active.boundaryTicks - Math.floor(active.crossfadeTicks / 2))) / active.crossfadeTicks))
-        : 1 - Math.max(0, Math.min(1, (playhead - (active.boundaryTicks - Math.floor(active.crossfadeTicks / 2))) / active.crossfadeTicks))
+      ? audioCrossfadeMultiplier((playhead - (active.boundaryTicks - Math.floor(active.crossfadeTicks / 2))) / active.crossfadeTicks, active.crossfadeRole === 'to', active.crossfadeCurve)
       : 1
-    return sampleAudioProperty(clip, 'gain', localTicks) * fadeFactor * crossfadeFactor
+    return sampleAudioProperty(clip, 'gain', localTicks) * fadeFactor * crossfadeFactor * previewAudioRoleGain(previewDocument, clip.role)
   }
 
   function audioSourceTime(active: ActiveAudioClip): number {
@@ -504,7 +678,17 @@
       lastFrameTime = null
       return
     }
-    if (lastFrameTime !== null) {
+    if (nativeAudioRequested) {
+      nativeAudioReady = nativeAudio.ready
+      if (nativeAudio.error) {
+        nativeAudioError = nativeAudio.error
+        toggleCompositionPlayback()
+      } else {
+        const head = nativeAudio.finished ? compositionDuration() : nativeAudio.timeUs()
+        lastNativePlayhead = head
+        setCompositionPlayhead(head)
+      }
+    } else if (lastFrameTime !== null) {
       setCompositionPlayhead(
         compositionState.transport.playheadTicks + (now - lastFrameTime) * (COMPOSITION_TIME_BASE / 1000),
       )
@@ -525,6 +709,7 @@
   })
 
   $effect(() => () => {
+    resetMasterPeakHold()
     if (frame !== null) cancelAnimationFrame(frame)
     frame = null
     lastFrameTime = null
@@ -544,10 +729,10 @@
 <section class="composition-preview card" aria-label="Предпросмотр композиции">
   <div
     class="composition-stage"
-    style:aspect-ratio={`${compositionState.document.canvas.width} / ${compositionState.document.canvas.height}`}
+    style:aspect-ratio={`${previewDocument.canvas.width} / ${previewDocument.canvas.height}`}
     style={canvasStyle()}
   >
-    {#if compositionState.document.canvas.backgroundMode === 'blur'}
+    {#if previewDocument.canvas.backgroundMode === 'blur'}
       {#each activeVisuals.filter((active) => active.track.id === primaryTrack?.id && active.clip.kind === 'video') as active (`canvas-blur-${active.clip.id}-${active.transitionRole ?? 'active'}`)}
         {#if active.clip.kind === 'video'}
           {@const media = compositionState.media[active.clip.sourceId]}
@@ -558,7 +743,7 @@
             kind="video"
             url={proxySelection?.url ?? media.url}
             sourceTime={visualSourceTime(active)}
-            playing={compositionState.transport.playing && (active.clip.playbackMode?.mode ?? 'forward') === 'forward'}
+            playing={compositionState.transport.playing && (!nativeAudioRequested || nativeAudioReady) && (active.clip.playbackMode?.mode ?? 'forward') === 'forward'}
             muted
             playbackRate={(active.clip.playbackMode?.mode ?? 'forward') === 'forward'
               ? clipSpeedAtTimelineTick(active.clip, compositionState.transport.playheadTicks)
@@ -580,9 +765,10 @@
             kind="video"
             url={proxySelection?.url ?? media.url}
             sourceTime={visualSourceTime(active)}
-            playing={compositionState.transport.playing && (active.clip.playbackMode?.mode ?? 'forward') === 'forward'}
+            playing={compositionState.transport.playing && (!nativeAudioRequested || nativeAudioReady) && (active.clip.playbackMode?.mode ?? 'forward') === 'forward'}
             muted={videoMuted(active)}
-            volume={sampleAudioProperty(
+            pan={sampleAudioProperty(active.clip, 'pan', Math.max(0, Math.min(clipDurationTicks(active.clip), compositionState.transport.playheadTicks - active.clip.timelineStartTicks)))}
+            volume={nativeAudioRequested ? 0 : sampleAudioProperty(
               active.clip,
               'gain',
               Math.max(0, Math.min(
@@ -610,16 +796,29 @@
         {:else}
           <div class="composition-missing-media" style={visualStyle(active)}>Изображение недоступно</div>
         {/if}
+      {:else if active.clip.kind === 'color'}
+        <div data-color-clip={active.clip.id} class="composition-visual-media" style={visualStyle(active)}></div>
       {:else if active.clip.kind === 'text'}
         <div class="composition-text-layer" style={visualStyle(active)}>{active.clip.text}</div>
       {/if}
     {/each}
-    {#if activeVisuals.length === 0}
+    {#if graphicPreviewProject || graphicPreviewRequest.error}
+      <div class="graphic-native-preview">
+        {#if graphicPreviewProject}
+          <NestedCompositionPreview project={graphicPreviewProject} timeUs={compositionState.transport.playheadTicks} renderedOutputs={{}} token={authState.token ?? ''} label={previewDocument.tracks.some(track=>track.kind==='video'&&!track.hidden&&track.transitions?.some(transition=>transition.timeline)) ? "Нативный предпросмотр переходов" : "Предпросмотр графической композиции"} />
+        {:else}<p role="alert">{graphicPreviewRequest.error}</p>{/if}
+      </div>
+    {/if}
+    {#each activeVisuals.filter(active => active.clip.id === compositionState.ui.selectedClipId && active.clip.position?.mode === 'path' && active.track.id !== primaryTrack?.id) as active (active.clip.id)}
+      <CompositionMotionPathOverlay clip={active.clip} width={previewDocument.canvas.width} height={previewDocument.canvas.height} />
+    {/each}
+    {#if activeVisuals.length === 0 && !graphicPreviewProject && !graphicPreviewRequest.error}
       <p class="composition-empty-stage">Добавьте видео, изображение или текст</p>
     {/if}
     {#if previewNotes}<span class="composition-preview-badge">{previewNotes}</span>{/if}
   </div>
 
+  {#if !nativeAudioRequested}
   {#each activeAudio as active (`${active.clip.id}-${active.crossfadeRole ?? 'active'}`)}
     {@const media = compositionState.media[active.clip.sourceId]}
     {#if media}
@@ -629,10 +828,16 @@
         sourceTime={audioSourceTime(active)}
         playing={compositionState.transport.playing}
         volume={audioVolume(active)}
+        pan={sampleAudioProperty(active.clip, 'pan', Math.max(0, Math.min(clipDurationTicks(active.clip), compositionState.transport.playheadTicks - active.clip.timelineStartTicks)))}
+        audioRole={active.clip.role ?? 'dialogue'}
         playbackRate={clipSpeedAtTimelineTick(active.clip, compositionState.transport.playheadTicks)}
       />
     {/if}
   {/each}
+
+  {/if}
+  {#if nativeAudioError}<p role="alert">Аудиопредпросмотр: {nativeAudioError}</p>{/if}
+  {#if nativeAudioRequested && compositionState.transport.playing && !nativeAudioReady}<p role="status">Подготовка нативного звука…</p>{/if}
 
   {#each activeProxySources as source (source.sourceId)}
     <CompositionPreviewProxyStatus {source} adapter={proxyAdapter} />
@@ -654,3 +859,7 @@
     <output>{formatTime(compositionState.transport.playheadTicks)} / {formatTime(compositionDuration())}</output>
   </div>
 </section>
+
+<style>
+  .graphic-native-preview { position:absolute; inset:0; z-index:20; pointer-events:none; }
+</style>

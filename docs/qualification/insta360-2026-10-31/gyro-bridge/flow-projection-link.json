@@ -1,0 +1,13 @@
+{
+  "method": "Original source-bound LLVM assembly and portable Mach-O chained-pointer reads; not REA Evidence",
+  "source_sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "flowstate_render_initializer": "0x101b55624",
+  "std_function_assignment_constructor": "0x101b598ac",
+  "constructor_vtable_header": "0x1040b11c0",
+  "constructor_vtable_address_point": "0x1040b11d0",
+  "operator_slot_offset": "0x30",
+  "operator_slot_va": "0x1040b1200",
+  "operator_raw_chained_pointer": "0x10000001b59c70",
+  "operator_decoded_target": "0x101b59c70",
+  "interpretation": "Worker field +0x38 is a std::function capture wrapper, not directly the Omni GeometryWrapperBase. Its operator constructs a native Z-up sphere ray, applies supplied Eigen quaternion, then calls captured Omni GeometryWrapperBase projection slot +0x28. Native map motion/common quaternion frames remain a separate qualification obligation."
+}

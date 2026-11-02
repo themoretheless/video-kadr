@@ -1,0 +1,809 @@
+{
+  "schemaVersion": 1,
+  "package": "concat.echo",
+  "reference": {
+    "repository": "https://github.com/jub0t/concat",
+    "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+    "files": {
+      "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+      "src/crates/concat-effects/src/catalogue.rs": "b03e52127cedc87429487f95e088b7d7bedfcc792490e559b72dfbfdd5218bdb",
+      "src/crates/concat-effects/packages/concat.echo/effect.toml": "225a48851a75fc8bd22e493c17903762cc3075ff0de4c98ecee4f1c93a59c8d3",
+      "src/crates/concat-effects/packages/concat.echo/fixtures.toml": "015e50ff01ba6c792ff4f25dd07789ef59209c2e5c1d766faaa596abc1e18062"
+    },
+    "adapterSha256": "b3203a651f807f3c98e5fcb9013b943010d7bfe36eb2f55254eb16efc7666e7d"
+  },
+  "ffmpeg": {
+    "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "binarySha256": "768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e"
+  },
+  "aliasVerified": "echo",
+  "pcmBytes": 10755564,
+  "cases": [
+    {
+      "chain": "aecho=0.8:0.85:250:0.40",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 11017,
+      "offsetBytes": 0,
+      "byteLength": 44068,
+      "outputSha256": "2e89a8b94e72aac2c5e82619e726098699ceceb32e07ad0e7f6b727012fdc54f"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.10",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.10000000149011612,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 44068,
+      "byteLength": 37668,
+      "outputSha256": "9ae7025c27f640e556bd40b8a22fb60ddaf7367959e23008e2bebd64e45b9fcd"
+    },
+    {
+      "chain": "aecho=0.8:0.85:1000:0.90",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.8999999761581421,
+            "delay": 1.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 17017,
+      "offsetBytes": 81736,
+      "byteLength": 68068,
+      "outputSha256": "c7e29d32426cbf9cdca356cadd0e567a9497ddff7e82e2d4f0054f8f4fe65cd7"
+    },
+    {
+      "chain": "aecho=0.8:0.85:51:0.12",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05050000175833702
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9425,
+      "offsetBytes": 149804,
+      "byteLength": 37700,
+      "outputSha256": "070f88311ec0912ae53591b5944cea0c8853e9e7e27600547a8ee83709a83534"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aecho=0.8:0.85:375:0.75",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 12417,
+      "offsetBytes": 187504,
+      "byteLength": 49668,
+      "outputSha256": "6a9bc69fc72572690d61f79cdfa38ca15fe78545494747f17cc45c86b4e19df7"
+    },
+    {
+      "chain": "aecho=0.8:0.85:375:0.75,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 12417,
+      "offsetBytes": 237172,
+      "byteLength": 49668,
+      "outputSha256": "4b548038cfd8eac29d97d187d8e9ece920444adca6710f0df0affaf0b1587ba4"
+    },
+    {
+      "chain": "aecho=0.8:0.85:250:0.40",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {}
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 11017,
+      "offsetBytes": 286840,
+      "byteLength": 88136,
+      "outputSha256": "befb8a3370741f98795230c3ca479b9b88fd4d6d59f5559024dde4c7e1344ca1"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.10",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.10000000149011612,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 374976,
+      "byteLength": 75336,
+      "outputSha256": "284b7f0acf80b70db2648df6c6365b163cf2c7485b28ee7eae84d5459db046c4"
+    },
+    {
+      "chain": "aecho=0.8:0.85:1000:0.90",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.8999999761581421,
+            "delay": 1.0
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 17017,
+      "offsetBytes": 450312,
+      "byteLength": 136136,
+      "outputSha256": "832f08c5f1892ca87c0a7ab3c3f671d920439deed79ad16f565fb5c381dab23a"
+    },
+    {
+      "chain": "aecho=0.8:0.85:51:0.12",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05050000175833702
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9425,
+      "offsetBytes": 586448,
+      "byteLength": 75400,
+      "outputSha256": "a05bb9d959f6102a6d156227b23204269ab5949b0560f4e5c9d80ce70c9fc485"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aecho=0.8:0.85:375:0.75",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 12417,
+      "offsetBytes": 661848,
+      "byteLength": 99336,
+      "outputSha256": "1c484edaf6adf0ecf87d4290a08b811c84d69fe36a15d64743cc9568a09525ba"
+    },
+    {
+      "chain": "aecho=0.8:0.85:375:0.75,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 12417,
+      "offsetBytes": 761184,
+      "byteLength": 99336,
+      "outputSha256": "8b9f6341dcf7226f0e9b0bdf839903c957b9c55128a09c341c97f21d118c5d53"
+    },
+    {
+      "chain": "aecho=0.8:0.85:250:0.40",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 60654,
+      "offsetBytes": 860520,
+      "byteLength": 242616,
+      "outputSha256": "a78e60128e1ee3739137bdf4960568b96e7f6c0b859cc1550f11469881a7207c"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.10",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.10000000149011612,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 1103136,
+      "byteLength": 207336,
+      "outputSha256": "c06b9cb6805d1646dd6540a498d4c20b7598da2a5bd02b84f4852ff2a0cde742"
+    },
+    {
+      "chain": "aecho=0.8:0.85:1000:0.90",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.8999999761581421,
+            "delay": 1.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 93729,
+      "offsetBytes": 1310472,
+      "byteLength": 374916,
+      "outputSha256": "3ddbb610188177c4006eb9b6d2bac0b38af66dd7efa8ca53db04eaade545a877"
+    },
+    {
+      "chain": "aecho=0.8:0.85:51:0.12",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05050000175833702
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51878,
+      "offsetBytes": 1685388,
+      "byteLength": 207512,
+      "outputSha256": "4bbed5210b829839169f94c6724e428d5900aaf8739b33ceb00176e76510dc32"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aecho=0.8:0.85:375:0.75",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 68371,
+      "offsetBytes": 1892900,
+      "byteLength": 273484,
+      "outputSha256": "2fc626e839870fecba846965c02ed5f7bd5d786502829844a01a5daa26bed942"
+    },
+    {
+      "chain": "aecho=0.8:0.85:375:0.75,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 68371,
+      "offsetBytes": 2166384,
+      "byteLength": 273484,
+      "outputSha256": "8ab45b03a01535cf4f135ea2aca9d51d8a857547c1cdfda2f6f0d87955048b28"
+    },
+    {
+      "chain": "aecho=0.8:0.85:250:0.40",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {}
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 60654,
+      "offsetBytes": 2439868,
+      "byteLength": 485232,
+      "outputSha256": "e7a722925bdf4a3ac29dadcb1af4023ad8edad21e972f1af1a77af3e3b8bd1b7"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.10",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.10000000149011612,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 2925100,
+      "byteLength": 414672,
+      "outputSha256": "b6bb203cac6fe833543e1949bd88891b9ff993c5d68d974b63b42bc7a0cc8980"
+    },
+    {
+      "chain": "aecho=0.8:0.85:1000:0.90",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.8999999761581421,
+            "delay": 1.0
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 93729,
+      "offsetBytes": 3339772,
+      "byteLength": 749832,
+      "outputSha256": "66123e629df103300b5925d769939feedd571e0a7e34a1dc4ae8f5d7c35d130f"
+    },
+    {
+      "chain": "aecho=0.8:0.85:51:0.12",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05050000175833702
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51878,
+      "offsetBytes": 4089604,
+      "byteLength": 415024,
+      "outputSha256": "c5897b2372cc28eadc5f394091901c362667acdb598645894d2c80d837605a25"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aecho=0.8:0.85:375:0.75",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 68371,
+      "offsetBytes": 4504628,
+      "byteLength": 546968,
+      "outputSha256": "1bd4791ce935449848296a6965dce636a26e88ee07f56476eb1f6c83c8db7d5d"
+    },
+    {
+      "chain": "aecho=0.8:0.85:375:0.75,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 68371,
+      "offsetBytes": 5051596,
+      "byteLength": 546968,
+      "outputSha256": "8c92f1709580696a90d5e617dbe68c4e6c6f75712146a7704c0391d763acedad"
+    },
+    {
+      "chain": "aecho=0.8:0.85:250:0.40",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 66017,
+      "offsetBytes": 5598564,
+      "byteLength": 264068,
+      "outputSha256": "061673acd329718e48bc2facddf1ef7306592ba67cd8c0754cee396755c69f25"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.10",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.10000000149011612,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 5862632,
+      "byteLength": 225668,
+      "outputSha256": "3d160e2a2d3635a3512bd0c706b9eeb8b793ffd64ececc4eb4c4eecf734b2680"
+    },
+    {
+      "chain": "aecho=0.8:0.85:1000:0.90",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.8999999761581421,
+            "delay": 1.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 102017,
+      "offsetBytes": 6088300,
+      "byteLength": 408068,
+      "outputSha256": "b2c0dc3f305130eaf1d6a9d07706f1024c7cc904abb1755c2c0b67e1e1ad0b22"
+    },
+    {
+      "chain": "aecho=0.8:0.85:51:0.12",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05050000175833702
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56465,
+      "offsetBytes": 6496368,
+      "byteLength": 225860,
+      "outputSha256": "be9edec0cdc0f3b90fee1889d3108cb53eaac20797212ee5df2f0c89724e555c"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aecho=0.8:0.85:375:0.75",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 74417,
+      "offsetBytes": 6722228,
+      "byteLength": 297668,
+      "outputSha256": "343a4385572c7338a7f8afec06f1f39098b8dddb8dba364aa8b6ab009e0e8af8"
+    },
+    {
+      "chain": "aecho=0.8:0.85:375:0.75,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 74417,
+      "offsetBytes": 7019896,
+      "byteLength": 297668,
+      "outputSha256": "a397b2f0aeb64d794f624a05c0f177c610eb5affc42ae416aa635ecda7bef6fd"
+    },
+    {
+      "chain": "aecho=0.8:0.85:250:0.40",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {}
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 66017,
+      "offsetBytes": 7317564,
+      "byteLength": 528136,
+      "outputSha256": "8cb1f0b2d134501952cad2e1649398e797a2aff9a38f3b2f2a82d1a3e3a21167"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.10",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.10000000149011612,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 7845700,
+      "byteLength": 451336,
+      "outputSha256": "50ccc5d63bc23f3a3edf8cba451532163bdd2f0f18db951d6af8c3e46e798ac0"
+    },
+    {
+      "chain": "aecho=0.8:0.85:1000:0.90",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.8999999761581421,
+            "delay": 1.0
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 102017,
+      "offsetBytes": 8297036,
+      "byteLength": 816136,
+      "outputSha256": "4117668d0fd4db2b8d68854db933e1198fb0ff0ea4656a1e0d630a04ce6bf043"
+    },
+    {
+      "chain": "aecho=0.8:0.85:51:0.12",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.125,
+            "delay": 0.05050000175833702
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56465,
+      "offsetBytes": 9113172,
+      "byteLength": 451720,
+      "outputSha256": "3d8b35ea9c4110059ee2a787683ea8d4b42d64774e49ce26ca6e494553ea6535"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,aecho=0.8:0.85:375:0.75",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 74417,
+      "offsetBytes": 9564892,
+      "byteLength": 595336,
+      "outputSha256": "b97f2651e0436e19dafd889b3961f14cdebb16915c5676032f3269cbab135ada"
+    },
+    {
+      "chain": "aecho=0.8:0.85:375:0.75,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.75,
+            "delay": 0.375
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 74417,
+      "offsetBytes": 10160228,
+      "byteLength": 595336,
+      "outputSha256": "f3f8d003191b04df47c22699826eebddcf9c0222c98a430c6b46193fa6f8f460"
+    }
+  ]
+}

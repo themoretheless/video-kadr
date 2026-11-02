@@ -27,6 +27,9 @@ pub struct MediaEntry {
     pub media_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Original upload basename; independent of storage UUID and editable title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_filename: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -57,6 +60,7 @@ impl MediaEntry {
             storage_key: v["storageKey"].as_str().map(str::to_owned),
             url: v["url"].as_str().unwrap_or_default().to_string(),
             media_type: v["mediaType"].as_str().map(str::to_owned),
+            original_filename: v["originalFilename"].as_str().map(str::to_owned),
             title: v["title"].as_str().map(|s| s.to_string()),
             duration: v["duration"].as_f64(),
             width: v["width"].as_u64().map(|n| n as u32),
@@ -191,6 +195,12 @@ impl Library {
         }
         *guard = next;
         true
+    }
+
+    /// Read catalog metadata without opening or restoring any backing files.
+    /// Callers must authorize entries before resolving their storage paths.
+    pub async fn metadata_entries(&self) -> Vec<MediaEntry> {
+        self.entries.lock().await.clone()
     }
 
     /// Return entries newest-first, hiding any whose file is currently missing.
@@ -465,6 +475,7 @@ mod tests {
             storage_key: None,
             url: format!("/files/{sub}/{filename}"),
             media_type: (kind == "source").then(|| "video".into()),
+            original_filename: None,
             title: None,
             duration: None,
             width: None,

@@ -1,0 +1,47 @@
+{
+  "projectSha256": "ee71b2edd9868e2342d1e4cdbb89407acbbf086c5eae75b998a9b8fef76db680",
+  "enableStab": true,
+  "enableDirectionalLock": false,
+  "stitching": {
+    "enableAIStitching": true,
+    "enableDynamicStitching": false,
+    "enableImageFusionStitching": true,
+    "enableOpticalFlowStitching": false,
+    "ignoreDynamicStitching": false,
+    "ignoreImageFusionStitching": false,
+    "ignoreOpticalFlowStitching": false,
+    "optimizedOffset": "",
+    "supportAIStitching": true,
+    "supportDynamicStitching": true,
+    "supportImageFusionStitching": true,
+    "supportOpticalFlowStitching": true
+  },
+  "verification": "Own backed-up project explicitly serialized, reopened in Studio; UI FlowState ON, Direction Lock OFF and AI selected corroborated before export; JSON rechecked after export.",
+  "frameCaptureSeconds": [
+    0,
+    1,
+    3
+  ],
+  "frameOutputSeconds": [
+    0,
+    4,
+    12
+  ],
+  "frameSha256": {
+    "0": "d9c2a09812674144999397394a1a856c2f4dce4c01f49f967c400fe572b51f89",
+    "1": "e50edf73912b9d8f7347e281d5ba03a9b1b37aa8a6968417671b9ebdd2f6f03d",
+    "3": "34f0f0799d68009ec464a1ec0adad935f1b38a9101fa7395750612415976c615"
+  },
+  "actualVideoStream": {
+    "codec_name": "h264",
+    "width": 3840,
+    "height": 1920,
+    "r_frame_rate": "25/1",
+    "duration": "30.440000",
+    "nb_frames": "761",
+    "side_data_list": [
+      {},
+      {}
+    ]
+  }
+}

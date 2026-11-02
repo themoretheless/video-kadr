@@ -1,0 +1,161 @@
+{
+  "target_sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "provider": {
+    "id": "rea-workflow",
+    "name": "REA composed investigation workflow",
+    "version": "1"
+  },
+  "overview_evidence_id": "ev_6b30aff4b5c477de0e83e4462dfe29f41d5f6dcd16f6ef38aba48e96fc56a213",
+  "procedure_count": 133841,
+  "string_count": 288877,
+  "segments": 45,
+  "run": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9",
+  "profile": {
+    "provider": {
+      "id": "ghidra",
+      "name": "Ghidra",
+      "version": "12.1.4"
+    },
+    "parameters": {
+      "target_kind": "executable",
+      "target_format": "mach-o-universal",
+      "architecture": "arm64",
+      "available_architectures": [
+        "arm64"
+      ],
+      "import_mode": "ephemeral-source-immutable",
+      "annotation_policy": "atomic-function-entry-metadata-v1",
+      "load_image_observations": "source-mappings-entry-context-v2",
+      "function_body_evidence": "complete-inclusive-ranges-v1",
+      "function_references": "complete-body-and-entry-reference-manager-v2",
+      "call_relationship_coverage": "function-body-call-coverage-v5",
+      "function_dossier_coverage": "observed-facets-and-call-relationships-v1",
+      "string_inventory_evidence": "defined-data-coverage-v1",
+      "location_resolution": "explicit-address-exact-entry-symbol-first-v3",
+      "procedure_file_offset_resolution": "address-first-unique-target-source-mapping-v2",
+      "instruction_flow_evidence": "decoded-return-pcode-v1",
+      "instruction_references": "exact-address-incoming-without-synthetic-entry-v2",
+      "function_boundary_observations": "ghidra-function-boundary-limitations-v4",
+      "no_return_repair": "returning-imports-decoded-return-v2",
+      "process_launch": "inspected-jvm-launch-support-v1",
+      "jump_table_evidence": "typed-case-default-blocks-v1",
+      "decompiler_jump_loads": true,
+      "loader": "auto-from-header",
+      "language_id": "auto-from-header",
+      "compiler_spec_id": "auto-default",
+      "analyzer_preset": "ghidra-default+disabled:Decompiler Switch Analysis,Basic Constant Reference Analyzer,Objective-C Message Analyzer",
+      "analysis_options": {
+        "disabled_analyzers": [
+          "Decompiler Switch Analysis",
+          "Basic Constant Reference Analyzer",
+          "Objective-C Message Analyzer"
+        ]
+      }
+    },
+    "digest": "db0fc5a96abc1a9c527742a72b579de3c9862664869d1219120254068021463e"
+  },
+  "default_profile_completed": false,
+  "selected_decompilations": [
+    {
+      "address": "0x101b5d7e8",
+      "name": "__ZN10extra_info14GyroDataParser8ReadNextEPNS_11RawGyroItemE",
+      "evidence_id": "ev_e873a146654d39aa14d5760033f7365b454c806afb398dcf33ab53bb871dc205",
+      "characters": 759,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-0.json"
+    },
+    {
+      "address": "0x101b5d6bc",
+      "name": "__ZN10extra_info14GyroDataParser15ParseFromBufferEOKNSt3__16vectorIhNS1_9allocatorIhEEEE",
+      "evidence_id": "ev_979f146bc96c2acf87e3121685d62bedbbf91efca19116ac0d776176a83df225",
+      "characters": 1189,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-1.json"
+    },
+    {
+      "address": "0x101b5d508",
+      "name": "__ZN10extra_info14GyroDataParserC1Ebx",
+      "evidence_id": "ev_63ae7ff2d8d289c04c19ab56e0c054b7027acf6327b66b5596bc5fa877fa8b2c",
+      "characters": 681,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-2.json"
+    },
+    {
+      "address": "0x1008c9034",
+      "name": "__ZN3pro22DeepTrackRenderManager24CreateDeepTrackerOptionsERKNSt3__110shared_ptrINS_22DeepTrackConfigurationEEEbf",
+      "evidence_id": "ev_20a896c5bd191dd83d80e8c7b1a73578159535d48dafc614f7ae0cd2302d5029",
+      "characters": 4558,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-3.json"
+    },
+    {
+      "address": "0x1004793c4",
+      "name": "__ZN6studio20StabilizationService12GetGyroCacheEv",
+      "evidence_id": "ev_2db6b4176f0b26b41458e8c1ae862b7712c2130b48fdaf3ad2c5f375540a0ab8",
+      "characters": 1995,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-4.json"
+    },
+    {
+      "address": "0x1018437d8",
+      "name": "__ZN9arvrender23PrecomputeStabilization19ConverToInsGyroDataEPKhmRNSt3__16vectorIN3ins10Stabilizer8GyroDataENS3_9allocatorIS7_EEEEi",
+      "evidence_id": "ev_83baab164ae5414de566fc22ea7aa3e3eb8b3668ea3c3113fb5f06030265660d",
+      "characters": 5087,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-5.json"
+    },
+    {
+      "address": "0x10189b91c",
+      "name": "__ZNK9arvrender17GyroTimeConverter12ToGyroTimeMsEN3ins8IdxTimedEi",
+      "evidence_id": "ev_6632a9c2c59983fd3ae28be8421625a7121d32593938a410fc62d7c5cbf82fd3",
+      "characters": 4307,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-6.json"
+    },
+    {
+      "address": "0x101b5fda8",
+      "name": "__ZN10extra_info16OffsetSerializer18ParseBase64EncodedERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS_12CameraOffsetE",
+      "evidence_id": "ev_6b75338795f01f8e83ce43c8120907228c26341f5a3308d0fc36382eb94b22c0",
+      "characters": 696,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-7.json"
+    },
+    {
+      "address": "0x101b5f870",
+      "name": "__ZN10extra_info16OffsetSerializer5ParseERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS_12CameraOffsetE",
+      "evidence_id": "ev_376991911d7a53935bc3b4e3c84cb5b2dabb91839cdbb81d50801789eb0d2e47",
+      "characters": 6294,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-8.json"
+    },
+    {
+      "address": "0x1027a4bac",
+      "name": "__ZN12Insta360Lens12OffsetParser5ParseERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERN5Eigen6MatrixINS_12CameraParamsELin1ELi1ELi0ELin1ELi1EEE",
+      "evidence_id": "ev_bfe22fa0caa7d37d7b418b1fba6fc9e63a8ef3b1ebdb61d47d736f793250edd8",
+      "characters": 71819,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-9.json"
+    },
+    {
+      "address": "0x1027ab568",
+      "name": "__ZN3ins19GeometryWrapperBase16fromCameraParamsERKN12Insta360Lens12CameraParamsE",
+      "evidence_id": "ev_dbe9f09f23df4f278adf455698cd8358217a21512c4c3aa7d99be7a3ebf71c8b",
+      "characters": 5323,
+      "file": "docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/procedure-10.json"
+    }
+  ],
+  "export": {
+    "result": {
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/evidence.json",
+      "bytes": 218664,
+      "records": 19,
+      "unknowns": 0
+    }
+  },
+  "snapshot": {
+    "result": {
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/focused-rea/run-vvewc9c9/analysis.snapshot.json",
+      "bytes": 253032,
+      "primitive_entries": 1,
+      "workflow_entries": 1,
+      "evidence_records": 19
+    }
+  },
+  "limitations": [
+    "Main binary only; external shared-library code was not imported.",
+    "Decompiler Switch Analysis, Basic Constant Reference Analyzer and Objective-C Message Analyzer disabled in this explicit profile.",
+    "Defined function/string counts do not establish exhaustive discovery or feature parity.",
+    "Static pseudocode and inferred types do not establish execution or exact vendor source.",
+    "Function-only capsule results are separate derived subrange Evidence; outside context is omitted."
+  ]
+}

@@ -1,0 +1,70 @@
+    Blocking waiting for file lock on build directory
+src/services/concat_freeze_capture.rs:155:9: warning: variable does not need to be mutable
+src/jobs/runner.rs:225:13: warning: unused import: `crate::ports::RenderCache`
+src/domain/concat_chromatic_aberration.rs:74:17: warning: unused variable: `h`: help: if this is intentional, prefix it with an underscore: `_h`
+src/tools/args.rs:583:21: warning: unused variable: `cached_filters`: help: if this is intentional, prefix it with an underscore: `_cached_filters`
+src/domain/effect_context_sample.rs:8:8: warning: method `shifted` is never used
+src/domain/transition_auto_distortion_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_auto_layout_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_generator_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_distortion_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_layout_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_key_auto_move_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_generator_point_tests.rs:4:4: warning: function `picture` is never used
+src/domain/ordinary_key_auto_motion_tests.rs:4:4: warning: function `picture` is never used
+src/domain/transition_motion_import_tests.rs:4:4: warning: function `picture` is never used
+src/domain/graphic_clip.rs:142:19: warning: method `evaluated_layers` is never used
+src/domain/transition_kernel_pack/transitions/mod.rs:43:8: warning: function `apply` is never used
+src/domain/transition_kernel_pack/transitions/mod.rs:75:8: warning: function `audio_gains` is never used
+src/domain/filmcraft_source_effects.rs:175:15: warning: function `apply` is never used
+src/domain/filmcraft_source_effects.rs:179:15: warning: function `apply_with_project` is never used
+src/domain/concat_tempo.rs:427:19: warning: methods `push_packet` and `push` are never used
+src/domain/concat_pitch.rs:55:8: warning: associated function `silence` is never used
+src/domain/concat_pitch.rs:78:17: warning: type alias `Pitch` is never used
+src/domain/concat_pitch.rs:79:17: warning: type alias `FloatPitch` is never used
+src/domain/concat_pitch.rs:85:5: warning: field `packet_frames` is never read
+src/domain/concat_pitch.rs:91:19: warning: multiple associated items are never used
+src/domain/concat_enhance_voice.rs:47:19: warning: method `process_hop` is never used
+src/domain/concat_pitch_timeline.rs:7:17: warning: type alias `Timeline` is never used
+src/domain/concat_pitch_timeline.rs:8:17: warning: type alias `FloatTimeline` is never used
+src/domain/concat_pitch_timeline.rs:10:19: warning: struct `GraphTimeline` is never constructed
+src/domain/concat_pitch_timeline.rs:22:19: warning: associated items `new`, `new_with_source_planar`, `reset`, `pump`, and `render` are never used
+src/domain/concat_format_plan.rs:103:5: warning: variants `Denoise` and `Compressor` are never constructed
+src/domain/concat_format_plan.rs:112:19: warning: associated function `from_name` is never used
+src/domain/concat_format_plan.rs:159:9: warning: field `conversions` is never read
+src/domain/concat_ebur128.rs:26:19: warning: associated items `new` and `range` are never used
+src/tools/args.rs:29:7: warning: constant `MAX_CACHE_SIZE` is never used
+src/tools/args.rs:50:4: warning: function `cache_filter_graph` is never used
+src/tools/args.rs:61:4: warning: function `get_cached_filter_graph` is never used
+src/tools/packet_pitch.rs:7:19: warning: struct `Stream` is never constructed
+src/tools/packet_pitch.rs:12:8: warning: associated items `new` and `render` are never used
+src/tools/packet_pitch.rs:41:25: warning: enum `Reader` is never used
+src/tools/packet_pitch.rs:47:27: warning: associated items `new` and `render` are never used
+src/tools/packet_pitch.rs:64:7: warning: trait `FloatRead` is never used
+src/tools/packet_pitch.rs:72:8: warning: struct `FloatStream` is never constructed
+src/tools/packet_pitch.rs:77:8: warning: associated function `new` is never used
+src/tools/packet_pitch.rs:111:19: warning: struct `FloatReader` is never constructed
+src/tools/packet_pitch.rs:115:19: warning: associated items `new` and `render` are never used
+src/tools/packet_pitch.rs:136:6: warning: enum `Selected` is never used
+src/tools/packet_pitch.rs:143:19: warning: struct `PlannedReader` is never constructed
+src/tools/packet_pitch.rs:171:19: warning: associated items `new` and `render` are never used
+src/tools/packet_clip.rs:238:19: warning: method `reset` is never used
+warning: `video-kadr-backend` (lib) generated 50 warnings (run `cargo fix --lib -p video-kadr-backend` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 33s
+     Running tests/insta360_metadata.rs (target/debug/deps/insta360_metadata-073f212eeab83435)
+
+running 1 test
+
+thread 'insta360_metadata_local_footage' panicked at tests/insta360_metadata.rs:70:42:
+called `Result::unwrap()` on an `Err` value: Insta360 index/header mismatch
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test insta360_metadata_local_footage ... FAILED
+
+failures:
+
+failures:
+    insta360_metadata_local_footage
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test insta360_metadata`

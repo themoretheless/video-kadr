@@ -1,9 +1,11 @@
 import type {
   Composition,
   CompositionClip,
+  CompositionMetadata,
   CompositionSource,
   CompositionTrack,
 } from './types'
+import {mediaVersionSourceIds} from './types'
 import type { MulticamGroup } from './multicam'
 import { assertValidComposition, isStableId, normalizeComposition, sourceSupportsClip } from './validation'
 
@@ -70,6 +72,7 @@ export function instantiateCompositionTemplate(
   validateTemplate(template)
   const document = clone(template.composition) as MutableComposition
   const sources: Record<string, CompositionSource> = { ...document.sources }
+  const versions = { ...document.metadata?.mediaVersions }
   for (const slot of template.slots) {
     const replacement = replacements[slot.id]
     if (!replacement) throw new CompositionTemplateError(`Replacement is missing for slot ${slot.id}`)
@@ -85,14 +88,15 @@ export function instantiateCompositionTemplate(
     }
 
     const source = replacement.source
-    if (!source || located.clip.kind === 'text' || !sourceSupportsClip(source, located.clip)) {
+    if (!source || (located.clip.kind === 'text' || located.clip.kind === 'color' || located.clip.kind === 'graphic') || !sourceSupportsClip(source, located.clip)) {
       throw new CompositionTemplateError(`Slot ${slot.id} has an incompatible media source`)
     }
     located.track.clips[located.index] = { ...located.clip, sourceId: source.id }
+    delete versions[slot.clipId]
     sources[source.id] = clone(source)
   }
-  document.sources = removeUnusedSources(document.tracks, sources, document.multicamGroups)
-  return normalizeComposition(document)
+  document.sources = removeUnusedSources(document.tracks, sources, document.multicamGroups, versions)
+  return normalizeComposition({ ...document, ...(document.metadata?.mediaVersions ? { metadata: { ...document.metadata, mediaVersions: versions } } : {}) })
 }
 
 export function serializeCompositionTemplate(template: CompositionTemplate): string {
@@ -149,7 +153,7 @@ function validateSlots(composition: Composition, slots: readonly unknown[]): voi
     if (!located || clipIds.has(candidate.clipId)) {
       throw new CompositionTemplateError(`Template slot clip ${candidate.clipId} is missing or repeated`)
     }
-    if ((candidate.kind === 'text') !== (located.clip.kind === 'text')) {
+    if ((candidate.kind === 'text') !== ((located.clip.kind === 'text' || located.clip.kind === 'color' || located.clip.kind === 'graphic'))) {
       throw new CompositionTemplateError(`Template slot ${candidate.id} targets the wrong clip kind`)
     }
     ids.add(candidate.id)
@@ -176,13 +180,15 @@ function removeUnusedSources(
   tracks: readonly { readonly clips: readonly CompositionClip[] }[],
   sources: Readonly<Record<string, CompositionSource>>,
   multicamGroups: readonly MulticamGroup[] | undefined,
+  versions: CompositionMetadata['mediaVersions'],
 ): Record<string, CompositionSource> {
   const used = new Set<string>()
   for (const track of tracks) {
     for (const clip of track.clips) {
-      if (clip.kind !== 'text') used.add(clip.sourceId)
+      if (clip.kind !== 'text' && clip.kind !== 'color' && clip.kind !== 'graphic') used.add(clip.sourceId)
     }
   }
+  for (const pair of Object.values(versions ?? {})) { for(const id of mediaVersionSourceIds(pair))used.add(id) }
   for (const group of multicamGroups ?? []) {
     for (const angle of group.angles) used.add(angle.sourceId)
   }

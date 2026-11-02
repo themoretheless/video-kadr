@@ -1,3 +1,4 @@
+import { importPreferences } from '$lib/state/importPreferences.svelte.js'
 // @ts-expect-error Vitest's SSR condition exposes server-only mount; this test needs Svelte's client entry.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,11 +11,15 @@ import { createProxyController, type ProxyClient } from '$lib/proxy/state.svelte
 import type { ProxyList } from '$lib/proxy/types.js'
 import {
   addCompositionTrack,
+  addColorToComposition,
+  updateCompositionColorParams,
   addCompositionVideoMask,
   addMediaInfoToComposition,
   compositionState,
+  setCompositionClipsEnabled,
   resetCompositionForTests,
   updateCompositionBlendMode,
+  updateCompositionAudioMix,
   updateCompositionCanvas,
   updateCompositionChromaKey,
   updateCompositionClipOpacity,
@@ -44,6 +49,8 @@ function mountPreview() {
 }
 
 beforeEach(() => {
+  // Exercise embedded-audio authoring independently of the default import policy.
+  importPreferences.autoPairAudio = false
   resetCompositionForTests()
   addMediaInfoToComposition({
     id: 'preview-primary',
@@ -74,6 +81,20 @@ afterEach(() => {
 })
 
 describe('CompositionPreview static approximations', () => {
+  it('removes disabled visual media from preview and restores it when enabled', async () => {
+    const component = mountPreview()
+    await tick()
+    const clipId = compositionState.document.tracks[0]!.clips[0]!.id
+    expect(target.querySelector('video')).not.toBeNull()
+    setCompositionClipsEnabled([clipId], false)
+    await tick()
+    expect(target.querySelector('video')).toBeNull()
+    setCompositionClipsEnabled([clipId], true)
+    await tick()
+    expect(target.querySelector('video')).not.toBeNull()
+    await unmount(component)
+  })
+
   it('previews checker and source-derived blur canvas backgrounds', async () => {
     updateCompositionCanvas({ backgroundMode: 'checker', backgroundColor: '#123456' })
     let component = mountPreview()
@@ -277,6 +298,17 @@ describe('CompositionPreview static approximations', () => {
       .find((candidate) => candidate.getAttribute('src')?.includes('animated-overlay.mp4'))
     expect(overlay?.style.left).toBe('55%')
     expect(Number(overlay?.style.opacity)).toBeCloseTo(0.5)
+    const authored = JSON.stringify(compositionState.document)
+    const history = compositionState.history.past.length
+    compositionState.ui.keyframePreviews = [{ target: { kind: 'visual', clipId: overlayId }, property: 'opacity', ticks: [0], value: { mode: 'constant', value: 0.9 } }]
+    await tick()
+    expect(Number(overlay?.style.opacity)).toBeCloseTo(0.9)
+    expect(JSON.stringify(compositionState.document)).toBe(authored)
+    expect(compositionState.history.past).toHaveLength(history)
+    compositionState.ui.keyframePreviews = []
+    await tick()
+    expect(Number(overlay?.style.opacity)).toBeCloseTo(0.5)
+
     expect(overlay?.style.clipPath).toBe('ellipse(25% 20% at 50% 50%)')
     expect(target.textContent).toContain('Mask preview — clip-path approximation')
     expect(target.textContent).toContain('feather только в экспорте')
@@ -408,7 +440,7 @@ describe('CompositionPreview static approximations', () => {
     await unmount(component)
   })
 
-  it('previews both source handles at the midpoint of an audio crossfade', async () => {
+  it.each([['constant_gain', 0.5, 0.5], ['constant_power', Math.SQRT1_2, Math.SQRT1_2], ['exponential_fade', 0.125, 0.875]] as const)('previews both source handles at midpoint with %s curve', async (curve, outgoing, incoming) => {
     for (const [id, url] of [['crossfade-a', '/files/sources/a.wav'], ['crossfade-b', '/files/sources/b.wav']] as const) {
       addMediaInfoToComposition({ id, url, filename: `${id}.wav`, mediaType: 'audio', duration: 4, width: 0, height: 0, acodec: 'pcm_s16le' })
     }
@@ -421,7 +453,7 @@ describe('CompositionPreview static approximations', () => {
         ...compositionState.document.tracks.filter((candidate) => candidate.kind !== 'audio'),
         { ...track, clips: [
           { ...sourceClips[0]!, timelineStartTicks: 0, sourceInTicks: 500_000, sourceOutTicks: 2_000_000 },
-          { ...sourceClips[1]!, timelineStartTicks: 1_500_000, sourceInTicks: 2_000_000, sourceOutTicks: 3_500_000, crossfadeInTicks: 1_000_000 },
+          { ...sourceClips[1]!, timelineStartTicks: 1_500_000, sourceInTicks: 2_000_000, sourceOutTicks: 3_500_000, crossfadeInTicks: 1_000_000, crossfadeCurve: curve },
         ] },
       ],
     }
@@ -433,8 +465,8 @@ describe('CompositionPreview static approximations', () => {
     expect(audio).toHaveLength(2)
     expect(audio[0]!.currentTime).toBeCloseTo(2, 4)
     expect(audio[1]!.currentTime).toBeCloseTo(2, 4)
-    expect(audio[0]!.volume).toBeCloseTo(0.5, 2)
-    expect(audio[1]!.volume).toBeCloseTo(0.5, 2)
+    expect(audio[0]!.volume).toBeCloseTo(outgoing, 2)
+    expect(audio[1]!.volume).toBeCloseTo(incoming, 2)
     expect(target.textContent).toContain('Audio crossfade')
 
     await unmount(component)
@@ -603,4 +635,187 @@ describe('CompositionPreview static approximations', () => {
 
     await unmount(component)
   })
+})
+
+
+it('applies overlapping fades multiplicatively to the actual preview media volume', async () => {
+  const id = addMediaInfoToComposition({ id: 'fade-overlap', url: '/files/sources/fade.wav', filename: 'fade.wav', mediaType: 'audio', duration: 8, width: 0, height: 0, acodec: 'pcm_s16le' })
+  updateCompositionAudioMix(id, { fadeInTicks: 6_400_000, fadeOutTicks: 6_400_000 })
+  setCompositionPlayhead(4_000_000)
+  const before = JSON.stringify(compositionState.document)
+  const depth = compositionState.history.past.length
+  const component = mountPreview()
+  await tick()
+  const audio = target.querySelector<HTMLAudioElement>('audio[src*="fade.wav"]')!
+  expect(audio.volume).toBeCloseTo(0.390625)
+  expect(JSON.stringify(compositionState.document)).toBe(before)
+  expect(compositionState.history.past.length).toBe(depth)
+  await unmount(component)
+})
+
+it('uses native path positions and discards stale responses after a playhead change', async () => {
+  const api = await import('$lib/api')
+  const { addTrack,addClip } = await import('$lib/composition/commands')
+  const path = { nodes: [{ id: 'a',point: { x: 0,y: 0 },inHandle: { x: 0,y: 0 },outHandle: { x: 0,y: 0 },segment: 'line' as const,tangentMode: 'corner' as const },{ id: 'b',point: { x: 100,y: 0 },inHandle: { x: 0,y: 0 },outHandle: { x: 0,y: 0 },segment: 'line' as const,tangentMode: 'corner' as const }] }
+  const pending: ((response: import('$lib/api').NativeMotionPathResponse) => void)[] = []
+  const native = vi.spyOn(api,'evaluateMotionPath').mockImplementation(() => new Promise(resolve => pending.push(resolve)))
+  let document = addTrack(compositionState.document,{ id: 'path-text',kind: 'text',name: 'Path',hidden: false,locked: false,clips: [] },0)
+  document = addClip(document,'path-text',{ id: 'path-title',kind: 'text',timelineStartTicks: 0,durationTicks: 2_000_000,text: 'Path',x: 999,y: 999,opacity: 1,style: { fontSizePx: 24,color: '#FFFFFFFF',align: 'center' },position: { mode: 'path',path,progress: { mode: 'keyframes',track: { timeBase: 1000,interpolation: 'linear',keyframes: [{ tick: 0,value: 0 },{ tick: 1000,value: 1 }] } } } })
+  compositionState.document = document
+  const before = JSON.stringify(document)
+  const component = mountPreview()
+  await tick()
+  const layer = target.querySelector<HTMLElement>('.composition-text-layer')!
+  expect(layer.style.visibility).toBe('hidden')
+  compositionState.transport.playheadTicks = 500_000
+  await tick()
+  expect(native).toHaveBeenLastCalledWith({ operation: 'sample',path,progresses: [0.5] },expect.any(AbortSignal))
+  pending[0]!({ path,length: 100,points: [{ x: 0,y: 0 }] })
+  await tick()
+  expect(layer.style.visibility).toBe('hidden')
+  pending[1]!({ path,length: 100,points: [{ x: 50,y: 20 }] })
+  await tick(); await tick()
+  expect(layer.style.visibility).not.toBe('hidden')
+  expect(Number.parseFloat(layer.style.left)).toBeCloseTo(50+50/1280*100,10)
+  expect(Number.parseFloat(layer.style.top)).toBeCloseTo(50+20/720*100,10)
+  expect(JSON.stringify(compositionState.document)).toBe(before)
+  await unmount(component)
+  native.mockRestore()
+})
+
+it.each(['text','color'] as const)('prepares native %s color tracks once and samples synchronously after seeking', async (kind) => {
+  const api = await import('$lib/native/colorPreview')
+  const { addTrack,addClip } = await import('$lib/composition/commands')
+  const { configureTextColor } = await import('$lib/composition/colorCommands')
+  const { colorCurvePreview,clearColorCurvePreview } = await import('$lib/state/colorCurvePreview.svelte')
+  const pending: ((sample: (time: number) => import('$lib/api').NativeColor) => void)[] = []
+  const dispose = vi.fn()
+  const native = vi.spyOn(api,'prepareColorPreview').mockImplementation(() => new Promise(resolve => pending.push(sample => resolve(Object.assign(sample,{ dispose })))))
+  let document = addTrack(compositionState.document,{ id: 'color-text',kind,name: 'Color',hidden: false,locked: false,clips: [] },0)
+  document = addClip(document,'color-text',{ id: 'color-title',timelineStartTicks: 0,durationTicks: 2_000_000,opacity: 1,...(kind === 'text' ? { kind,text: 'Color',x: 0,y: 0,style: { fontSizePx: 24,color: '#FFFFFFFF',align: 'center' } } as const : { kind,width: 63,height: 31,color: '#FFFFFFFF',transform: { x: 0,y: 0,width: 63,height: 31,fit: 'contain' } } as const),colorAnimation: { mode: 'keyframes',track: { timeBase: 1000,interpolation: 'linear',keyframes: [{ tick: 0,value: '#FF0000FF' },{ tick: 1000,value: '#0000FFFF' }] } } })
+  compositionState.document = document
+  const before = JSON.stringify(document)
+  const component = mountPreview()
+  try {
+    await tick()
+    const layer = target.querySelector<HTMLElement>(kind === 'text' ? '.composition-text-layer' : '[data-color-clip="color-title"]')!
+    const displayedColor = () => kind === 'text' ? layer.style.color : layer.style.backgroundColor
+    expect(layer.style.visibility).toBe('hidden')
+    setCompositionPlayhead(500_000);await tick()
+    expect(native).toHaveBeenCalledTimes(1)
+    const sample = vi.fn((time: number) => time === 500_000 ? { r: 128,g: 0,b: 128,a: 128 } : { r: 255,g: 0,b: 0,a: 255 })
+    pending[0]!(sample);await tick();await tick()
+    expect(sample).toHaveBeenCalledWith(500_000)
+    expect(layer.style.visibility).not.toBe('hidden')
+    expect(displayedColor()).toBe('#80008080')
+    colorCurvePreview.owner = 1_000_000
+    colorCurvePreview.source = compositionState.document
+    colorCurvePreview.document = configureTextColor(compositionState.document,'color-title',{ interpolation: { kind: 'bezier',p1: [0.2,-0.1],p2: [0.8,1.1] } })
+    await tick()
+    expect(native.mock.calls.at(-1)![0].keys[0]!.out).toEqual([0.2,-0.1])
+    expect(layer.style.visibility).toBe('hidden')
+    pending[1]!(() => ({ r: 200,g: 0,b: 40,a: 255 }));await tick();await tick()
+    expect(displayedColor()).toBe('#c80028ff')
+    clearColorCurvePreview(1_000_000);await tick()
+    pending[2]!(sample);await tick();await tick()
+    expect(displayedColor()).toBe('#80008080')
+    setCompositionPlayhead(0);await tick()
+    expect(displayedColor()).toBe('#ff0000ff')
+    expect(native).toHaveBeenCalledTimes(3)
+    expect(dispose).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+  } finally { clearColorCurvePreview(1_000_000);await unmount(component);await tick();expect(dispose).toHaveBeenCalledTimes(3);native.mockRestore() }
+})
+
+it('previews source-free solid RGBA and intrinsic geometry with shared transforms', async () => {
+  const id = addColorToComposition()
+  updateCompositionColorParams(id,{ color: '#12345680',width: 63,height: 31 })
+  updateCompositionVisualTransform(id,{ x: 128,y: 72,width: 126,height: 62 })
+  updateCompositionClipOpacity(id,.5)
+  updateCompositionRotation(id,30)
+  const component = mountPreview()
+  await tick()
+  const layer = target.querySelector<HTMLElement>(`[data-color-clip="${id}"]`)!
+  expect(layer).toBeTruthy()
+  expect(layer.style.backgroundColor).toBe('#12345680')
+  expect(layer.style.opacity).toBe('0.5')
+  expect(layer.style.left).toBe('60%')
+  expect(layer.style.top).toBe('60%')
+  expect(parseFloat(layer.style.width)).toBeCloseTo(126/1280*100)
+  expect(parseFloat(layer.style.height)).toBeCloseTo(62/720*100)
+  expect(layer.style.transform).toContain('rotate(30deg)')
+  expect(target.textContent).not.toContain('Источник недоступен')
+  await unmount(component)
+})
+
+it('requests native composition pixels for graphics and aborts on disposal', async () => {
+  const api = await import('$lib/api')
+  const { addGraphicToComposition } = await import('$lib/state/composition.svelte.js')
+  const putImageData = vi.fn()
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ clearRect: vi.fn(), createImageData: () => ({ data: new Uint8ClampedArray(4) }), putImageData } as unknown as CanvasRenderingContext2D)
+  const native = vi.spyOn(api, 'renderNestedPreview').mockResolvedValue({ width: 1, height: 1, rgba: new Uint8ClampedArray([255, 0, 0, 255]) })
+  const clipId = addGraphicToComposition('shape')
+  const component = mountPreview()
+  await tick()
+  await vi.waitFor(() => expect(putImageData).toHaveBeenCalled())
+  const call = native.mock.calls[0]!
+  expect(call[0].compositions.editor!.content.tracks[0]).toMatchObject({ kind: 'graphic', clips: [{ id: clipId, graphic: { layers: [{ content: { kind: 'shape' } }] } }] })
+  expect(call[1]).toBe(compositionState.transport.playheadTicks)
+  expect(target.querySelector('[aria-label="Предпросмотр графической композиции"]')).not.toBeNull()
+  const signal = call[4]!
+  await unmount(component)
+  expect(signal.aborted).toBe(true)
+})
+
+it('paints independent procedural pixels and aborts the prior native frame when seeking',async()=>{
+ const api=await import('$lib/api')
+ const {defaultProceduralTransition}=await import('$lib/composition/transitionCatalog')
+ const putImageData=vi.fn()
+ vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue({clearRect:vi.fn(),createImageData:()=>({data:new Uint8ClampedArray(4)}),putImageData} as unknown as CanvasRenderingContext2D)
+ const native=vi.spyOn(api,'renderNestedPreview').mockResolvedValue({width:1,height:1,rgba:new Uint8ClampedArray([80,20,180,255])})
+ setCompositionPlayhead(4_000_000)
+ const incoming=splitSelectedCompositionClip()!
+ const track=compositionState.document.tracks.find(t=>t.kind==='video')!
+ const outgoing=track.clips[0]!
+ const kernel=defaultProceduralTransition('block_motion')
+ setCompositionTransition(track.id,outgoing.id,incoming,'procedural',2_000_000,'native-independent',{kernel})
+ setCompositionPlayhead(3_500_000)
+ const component=mountPreview()
+ await tick()
+ await vi.waitFor(()=>expect(putImageData).toHaveBeenCalled())
+ expect(target.querySelector('[aria-label="Нативный предпросмотр переходов"]')).not.toBeNull()
+ const first=native.mock.calls[0]!
+ expect(first[0].compositions.editor!.content.tracks[0]).toMatchObject({transitions:[{kind:'procedural',kernel}]})
+ expect(first[1]).toBe(3_500_000)
+ const previous=first[4]!
+ setCompositionPlayhead(4_500_000)
+ await tick()
+ await vi.waitFor(()=>expect(native.mock.calls.some(call=>call[1]===4_500_000)).toBe(true))
+ expect(previous.aborted).toBe(true)
+ expect(target.textContent).not.toContain('preview и экспорт ещё не поддерживаются')
+ const latest=native.mock.calls.at(-1)![4]!
+ await unmount(component)
+ expect(latest.aborted).toBe(true)
+})
+
+it('routes DSP through native preview, suppresses dry media and invalidates seeks/edits', async () => {
+  const { NativeAudioPreview } = await import('$lib/audio/nativePreview')
+  const start = vi.spyOn(NativeAudioPreview.prototype, 'start').mockImplementation(() => undefined)
+  const stop = vi.spyOn(NativeAudioPreview.prototype, 'stop').mockImplementation(() => undefined)
+  const audioId = addMediaInfoToComposition({ id: 'native-dsp', url: '/files/sources/dsp.wav', filename: 'dsp.wav', mediaType: 'audio', duration: 8, width: 0, height: 0, acodec: 'pcm_f32le' })
+  updateCompositionAudioMix(audioId, { dspEffects: [{ id: 'concat.echo', params: { delay: 0.25 } }] })
+  const component = mountPreview(); await tick()
+  expect(target.querySelector('audio')).toBeNull()
+  expect(target.querySelector('video')?.muted).toBe(true)
+  toggleCompositionPlayback(); await tick()
+  expect(start).toHaveBeenCalledTimes(1)
+  expect(target.textContent).toContain('Подготовка нативного звука')
+  setCompositionPlayhead(1234567); await tick()
+  expect(start).toHaveBeenCalledTimes(2)
+  expect(start.mock.calls[1][1]).toBe(1234567)
+  updateCompositionAudioMix(audioId, { dspEffects: [{ id: 'concat.echo', params: { delay: 0.5 } }] }); await tick()
+  expect(start).toHaveBeenCalledTimes(3)
+  expect(stop).toHaveBeenCalled()
+  toggleCompositionPlayback(); await tick()
+  await unmount(component)
 })

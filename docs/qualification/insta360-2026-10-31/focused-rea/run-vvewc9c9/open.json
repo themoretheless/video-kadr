@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "provenance": {
+      "untrusted_content": true,
+      "source": "analysis_target"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"result\":{\"path\":\"/Applications/Insta360 Studio.app/Contents/MacOS/studio-main\",\"format\":\"mach-o-universal\",\"kind\":\"executable\",\"sha256\":\"6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423\",\"architecture\":\"arm64\"}}"
+    }
+  ],
+  "structuredContent": {
+    "result": {
+      "path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main",
+      "format": "mach-o-universal",
+      "kind": "executable",
+      "sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+      "architecture": "arm64"
+    }
+  }
+}

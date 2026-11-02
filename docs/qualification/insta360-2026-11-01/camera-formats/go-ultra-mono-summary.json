@@ -1,0 +1,19 @@
+{
+  "cameraModel": "Insta360 GO Ultra",
+  "firmware": "v1.6.25_build1",
+  "privateExtractSha256": "f744898166ef8863b6606a236bf0151ac915ade6ca0c995bdab5b0137563d227",
+  "calibration": {
+    "field": 5,
+    "tokenCount": 10,
+    "lensCount": 1,
+    "referenceSize": [
+      8192,
+      6144
+    ],
+    "flags": 1156,
+    "lensType": 132,
+    "gyroType": 4,
+    "payloadSha256": "eea6075cec5e1c2497e7fac4d295ed1e4d67be378249d73e52a51049b5c024e5"
+  },
+  "admission": "recognized Insta360 metadata; mono legacy lens132 is not a two-lens360 input and remains rejected"
+}

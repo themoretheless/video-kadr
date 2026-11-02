@@ -1,0 +1,47 @@
+use filmcraft_project::{Param,ParamValue,EffectInstance};
+use filmcraft_render::{effects::{apply,FxCtx},image::Image,vfx::FxEnv};
+use filmcraft_geom::{Affine,Vec2};use serde_json::json;
+struct Env;
+impl FxEnv for Env {
+ fn frame(&self,_:f64,_:&EffectInstance)->Option<Image>{None}
+ fn source_frame(&self,_:f64,_:f32)->Option<Image>{None}
+ fn track(&self,_:usize)->Option<Image>{None}
+ fn layer_to_output(&self)->Affine{Affine::IDENTITY}
+ fn clip_seconds(&self)->f64{1.}
+ fn clip_offset(&self)->f64{0.}
+ fn frame_rate(&self)->f64{10.}
+ fn media_timecode(&self)->String{String::new()}
+ fn file_name(&self)->String{String::new()}
+ fn sequence_name(&self)->String{String::new()}
+ fn sequence_size(&self)->(u32,u32){(18,10)}
+ fn source_size(&self)->(u32,u32){(18,10)}
+ fn clip_key(&self)->u64{0}
+}
+fn main(){let mut cases=vec![];
+ for(w,h)in[(1,7),(7,1),(6,4),(18,10)]{for kind in["grow","shrink"]{for easing in 0..4{for progress in[0.,0.25,0.5,0.75,1.]{for authored in[false,true]{for scale in[0.5f32,1.]{
+ let(from,to)=if kind=="grow"{(25.,200.)}else{(200.,25.)};
+ let rgba:Vec<u8>=(0..w*h).flat_map(|i|[[64,128,192,128],[0,0,0,0],[0,255,0,255],[255,0,0,64],[128,64,255,1]][(i+i/w)%5]).collect();
+ let px=rgba.chunks_exact(4).flat_map(|p|{let a=p[3]as f32/255.;[filmcraft_color::srgb_to_linear(p[0]as f32/255.)*a,filmcraft_color::srgb_to_linear(p[1]as f32/255.)*a,filmcraft_color::srgb_to_linear(p[2]as f32/255.)*a,a]}).collect();let mut out=Image{w,h,px};
+ let mut e=filmcraft_project::effect_defs().iter().find(|d|d.id==kind).unwrap().instance();
+ for(n,v)in[("from",from),("to",to)]{e.params.insert(n.into(),Param::new(ParamValue::Float(v)));}
+ e.params.insert("easing".into(),Param::new(ParamValue::Choice(easing)));
+ if authored{e.params.insert("center".into(),Param::new(ParamValue::Vec2(Vec2::new(1.123456789012,f64::NAN))));}
+ let cx=FxCtx{t:filmcraft_time::Tick((progress*1000000.)as i64),px_scale:scale,seconds:progress,timecode:"",clip_name:"",project:None,env:Some(&Env),working:filmcraft_color::WorkingSpace::Rec709};apply(&mut out,&e,&cx);
+ cases.push(json!({"kind":kind,"parameters":{"from":from,"to":to,"easing":easing,"center":if authored{json!([1.123456789012,null])}else{json!(null)}},"progress":progress,"width":w,"height":h,"rgba":rgba,"scale":scale,"bits":out.px.iter().map(|v|v.to_bits()).collect::<Vec<_>>()}));
+ }}}}}}
+ let mut media=vec![];
+ for kind in["grow","shrink"]{for easing in 0..4{for tick in[0u64,250000,500000]{
+  let rgba:Vec<u8>=(0..256).flat_map(|i|{let v=if i%16<8&&i/16<12{255}else{32};[v,v,v,if i%16<8&&i/16<12{128}else{0}]}).collect();let mut frames=vec![];
+  for index in 0..(1000000-tick).div_ceil(100000){
+   let local=tick+index*100000;let t=local.min(500000)as f64/500000.;
+   let px=rgba.chunks_exact(4).flat_map(|p|{let a=p[3]as f32/255.;let v=filmcraft_color::srgb_to_linear(p[0]as f32/255.)*a;[v,v,v,a]}).collect();let mut frame=Image{w:16,h:16,px};
+   let mut e=filmcraft_project::effect_defs().iter().find(|e|e.id==kind).unwrap().instance();
+   let(from,to)=if kind=="grow"{(25.+t*75.,100.+t*100.)}else{(200.-t*100.,100.-t*75.)};
+   for(n,v)in[("from",from),("to",to)]{e.params.insert(n.into(),Param::new(ParamValue::Float(v)));}
+   e.params.insert("easing".into(),Param::new(ParamValue::Choice(easing)));
+   e.params.insert("center".into(),Param::new(ParamValue::Vec2(Vec2::new(4.+t*8.,4.+t*8.))));
+   let cx=FxCtx{t:filmcraft_time::Tick(local as i64),px_scale:1.,seconds:local as f64/1000000.,timecode:"",clip_name:"",project:None,env:Some(&Env),working:filmcraft_color::WorkingSpace::Rec709};apply(&mut frame,&e,&cx);frames.push(frame.px.iter().map(|v|v.to_bits()).collect::<Vec<_>>());
+  }
+  media.push(json!({"kind":kind,"easing":easing,"localTick":tick,"rgba":rgba,"bits":frames[0],"frames":frames}));
+ }}}
+ println!("{}",json!({"commit":"5231852443363f001c3f6b396dd9b1e6461ae2be","cases":cases,"media":media}));}

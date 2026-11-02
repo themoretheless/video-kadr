@@ -1,0 +1,19 @@
+   Compiling video-kadr-vision-runtime v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend/vision-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.71s
+     Running unittests src/lib.rs (backend/vision-runtime/target/debug/deps/video_kadr_vision_runtime-3b6e43282ecebf56)
+
+running 1 test
+
+thread 'sam_reidentification::tests::illumination_change_preserves_identity_without_accepting_green_distractor' panicked at src/sam_reidentification.rs:479:9:
+assertion failed: id.similarity(&moved, &darker, &mask, &cancel).unwrap().is_some()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test sam_reidentification::tests::illumination_change_preserves_identity_without_accepting_green_distractor ... FAILED
+
+failures:
+
+failures:
+    sam_reidentification::tests::illumination_change_preserves_identity_without_accepting_green_distractor
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.17s
+
+error: test failed, to rerun pass `--lib`

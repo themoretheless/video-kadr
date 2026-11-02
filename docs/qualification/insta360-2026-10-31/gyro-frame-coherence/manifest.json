@@ -1,0 +1,28 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "flowstate",
+      "address": "0x101081514",
+      "endAddress": "0x101081f30",
+      "sourceOffset": 17323284,
+      "sha256": "a177bc7fae6c13197f049d74248f66965d1272f03e53138e108f8535c93df765"
+    },
+    {
+      "name": "init",
+      "address": "0x101b53eb0",
+      "endAddress": "0x101b54854",
+      "sourceOffset": 28671664,
+      "sha256": "58064cecfb9f0dd7c4c10d36459d5b1ec0d137af7041a4eeb56304c98ea64223"
+    },
+    {
+      "name": "map",
+      "address": "0x101b55b8c",
+      "endAddress": "0x101b55edc",
+      "sourceOffset": 28679052,
+      "sha256": "bf3e34946448caec45ef4d5854d57243387f6b36844409674c427d88a8857278"
+    }
+  ]
+}

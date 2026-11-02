@@ -53,3 +53,27 @@ describe('keyboard shortcut domain', () => {
     }))).toThrow('конфликтуют')
   })
 })
+
+
+it('preserves saved custom shortcuts when a newly introduced default conflicts',()=>{
+ const saved:Record<string,string|null>={...defaultShortcutBindings()}
+ delete saved['composition.pasteInsert']
+ saved['composition.paste']='Mod+Shift+KeyV'
+ const restored=parseShortcutSettings(JSON.stringify({schemaVersion:1,bindings:saved}))
+ expect(restored['composition.paste']).toBe('Mod+Shift+KeyV')
+ expect(restored['composition.pasteInsert']).toBeNull()
+ expect(restored['composition.copy']).toBe(saved['composition.copy'])
+ expect(parseShortcutSettings(serializeShortcutSettings(restored))).toEqual(restored)
+})
+
+it('keeps native clipboard chords configurable and isolated from canonical composition commands',()=>{
+  const defaults=defaultShortcutBindings()
+  expect(findShortcutCommand('native',event('с',{code:'KeyC',metaKey:true}),defaults)).toBe('native.copy')
+  expect(findShortcutCommand('composition',event('с',{code:'KeyC',metaKey:true}),defaults)).toBe('composition.copy')
+  expect(findShortcutCommand('native',event('x',{ctrlKey:true}),defaults)).toBe('native.cut')
+  expect(assignShortcutBinding(defaults,'native.cut','Mod+KeyC').conflicts).toEqual(['native.copy'])
+  const custom=assignShortcutBinding(defaults,'native.copy','Alt+KeyY').bindings
+  const restored=parseShortcutSettings(serializeShortcutSettings(custom))
+  expect(findShortcutCommand('native',event('н',{code:'KeyY',altKey:true}),restored)).toBe('native.copy')
+  expect(findShortcutCommand('native',event('c',{ctrlKey:true}),restored)).toBeNull()
+})

@@ -1,0 +1,56 @@
+{
+  "scope": "Own local QA projects only; backups retained. Historical pre-correction exports keep unresolved mode attribution.",
+  "verification": "Explicit serialized timeline flags, reopen in Studio, UI corroboration, actual video export and post-export flags. Raw body orientation survives.",
+  "references": {
+    "office": {
+      "projectSha256": "5b1f5ed26f7f332fdb50c184fff13cf7d875f9d4887c7e48ddb956569743e4db",
+      "flags": {
+        "enableAIStitching": false,
+        "enableOpticalFlowStitching": true,
+        "enableImageFusionStitching": false
+      },
+      "enableStab": false,
+      "frameCaptureSeconds": [
+        0,
+        1,
+        3
+      ],
+      "frameOutputSeconds": [
+        0,
+        1,
+        3
+      ],
+      "verification": "Loaded backed-up own project in Studio; UI corroborated OFF and Optical Flow. Saved flags checked after actual export. Raw body orientation visibly survives.",
+      "frameSha256": {
+        "0": "6e096c8c3be41bf1e99698a7516c8e7fb8c1410e2dcd8746bade855aa2d0870a",
+        "1": "7669abe4606705e6ba15e58894b22576300cf99dcaf7d18932f60a4f6c91ce1e",
+        "3": "c55c52077ff3604449a258d2ccd4f53e51a244b1b589f1e5ffbaff40da2dd017"
+      }
+    },
+    "x4": {
+      "projectSha256": "a7754af6e7d40444a7084475034d3e06ad921cc2f90c65cc6eb1a865fde6d9d0",
+      "flags": {
+        "enableAIStitching": false,
+        "enableOpticalFlowStitching": true,
+        "enableImageFusionStitching": false
+      },
+      "enableStab": false,
+      "frameCaptureSeconds": [
+        0,
+        1,
+        3
+      ],
+      "frameOutputSeconds": [
+        0,
+        4,
+        12
+      ],
+      "verification": "Loaded backed-up own project in Studio; UI corroborated OFF and Optical Flow. Saved flags checked after actual export. Raw body orientation visibly survives.",
+      "frameSha256": {
+        "0": "fe4ac9d5087be32efe70ad7f79947a3bb5d257ba80394f8eea7491b0c1b97436",
+        "1": "4e8a2988c2704980124ba8444063f4df6edf58ff660879c7de5f0cf1aa73df87",
+        "3": "d2230d1bd1e331b812acd9c69d446930098ffcf84aae2fc371d2de61a0c67024"
+      }
+    }
+  }
+}

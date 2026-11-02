@@ -1,0 +1,8 @@
+
+running 3 tests
+test raw_dual_stream_panorama_identity_and_gyro_camera_following ... ok
+test saved_semantic_identity_reacquires_after_occlusion_with_actual_sam ... ok
+test stale_saved_exemplar_is_not_enrolled_as_an_identity ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 205.82s
+

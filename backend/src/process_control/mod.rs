@@ -22,5 +22,5 @@ pub use sandbox::{
 #[cfg(test)]
 pub(crate) use execution::test_timeout_error;
 pub(crate) use execution::{
-    capture_output, is_process_timeout, stream_with_progress, ProcessStatus,
+    capture_output, capture_output_cancellable, capture_lines_until, is_process_timeout, stream_with_progress, ProcessStatus,
 };

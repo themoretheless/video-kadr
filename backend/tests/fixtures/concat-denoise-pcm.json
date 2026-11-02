@@ -1,0 +1,5729 @@
+{
+  "schemaVersion": 1,
+  "package": "concat.denoise",
+  "reference": {
+    "repository": "https://github.com/jub0t/concat",
+    "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+    "files": {
+      "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+      "src/crates/concat-effects/src/catalogue.rs": "b03e52127cedc87429487f95e088b7d7bedfcc792490e559b72dfbfdd5218bdb",
+      "src/crates/concat-effects/packages/concat.echo/effect.toml": "225a48851a75fc8bd22e493c17903762cc3075ff0de4c98ecee4f1c93a59c8d3",
+      "src/crates/concat-effects/packages/concat.echo/fixtures.toml": "015e50ff01ba6c792ff4f25dd07789ef59209c2e5c1d766faaa596abc1e18062",
+      "src/crates/concat-effects/packages/concat.denoise/effect.toml": "f63f6a3c383ef75d19988f3cb160db9b066ab193e3bbd2e1ecff71dcbbc131f9",
+      "src/crates/concat-effects/packages/concat.denoise/fixtures.toml": "c7ba2dea0d4898e68714d62db7bf89e3e8b10765644ca39276346c9a8b72926b",
+      "src/crates/concat-effects/packages/concat.enhance-voice/effect.toml": "c4a589a1deeff6d5205d870b0e473b5b2ec0ad386dae16f15206655facfadf78",
+      "src/crates/concat-effects/packages/concat.enhance-voice/fixtures.toml": "d8b7b4593cda03e64f362612c2b69f384a4d03eaa1ad56d79a06a3eb718db553",
+      "src/crates/concat-effects/packages/concat.bass/effect.toml": "40fe2c41fd48ea0647435644849383fcd2bb1579bf764d21849e980109fe7f78",
+      "src/crates/concat-effects/packages/concat.bass/fixtures.toml": "5499ec696adab5ada3aa5755ca38d9a42ad78ec821425e45232d0c288dfbd4bb",
+      "src/crates/concat-effects/packages/concat.distorted/effect.toml": "3552510085f78dd4463ca3972c4d3ccdd00e36568a2c8ab9faebcbbe4b1f0fca",
+      "src/crates/concat-effects/packages/concat.distorted/fixtures.toml": "74b4c19977484dc90e2bfbe81d7cca6eaae42c5e9cbbab63fb1a7788edf840e0"
+    },
+    "adapterSha256": "353820913ec29e4af64615df7c44a96bb49559ba24aaaf9847acea7f600e91ad"
+  },
+  "ffmpeg": {
+    "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "binarySha256": "768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e"
+  },
+  "aliasVerified": {
+    "hasShortAlias": false
+  },
+  "pcmBytes": 119025840,
+  "cases": [
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 0,
+      "byteLength": 36068,
+      "outputSha256": "70fb182bdf0a9ffb77d256d96239ba8c27dc8f15583545116fb3482dcba62436"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 36068,
+      "byteLength": 36068,
+      "outputSha256": "454758770e5c4e6abace871d80322728bc95689172e23941facd45804a3b959a"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 72136,
+      "byteLength": 36068,
+      "outputSha256": "a9da893aa7b2a9cbe2cf723753840f0a25eac92a3fca7343060e345e9773c4bc"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 108204,
+      "byteLength": 36068,
+      "outputSha256": "202619d57df254ac9e9e559a105fcfd29c9bc0a5aeb636f24ec5e9f3b326dc93"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 144272,
+      "byteLength": 36068,
+      "outputSha256": "87b086ffc6ac57610f41179e8825cc6ce18f043a8259a81d835759a117c06d83"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 180340,
+      "byteLength": 36068,
+      "outputSha256": "11d64e13223bc479252ead18a74e1eed58927f6b9bdfbe2a6c428ec70ee67a37"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 216408,
+      "byteLength": 37668,
+      "outputSha256": "94587da00d51357a5c965507575154eda8b3dd05f413fcf168afca8245ce832b"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 254076,
+      "byteLength": 37668,
+      "outputSha256": "4349daa7cd725e46515bfabad3fb4b8b59ad95069032c4974b5f8821275f2e09"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 291744,
+      "byteLength": 36068,
+      "outputSha256": "5eb1d0a26f9731be7dc81a0333d5e42091dcc080c386eadceeba34b0718535ff"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 327812,
+      "byteLength": 36068,
+      "outputSha256": "14301e25b83712fa7462d64bb3d3a1a1ed178e7dbd95305bef876bd411088cf5"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 363880,
+      "byteLength": 36068,
+      "outputSha256": "8cb5f529bb758633f68896e5fa9256422b2e4b4bac6c073bc4e8f9707ed09c2e"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 399948,
+      "byteLength": 36068,
+      "outputSha256": "4ee901c9dfa6d6e037470aa2fadbb5d1d830f5c38453be0d2a9c4e025ccf1649"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 436016,
+      "byteLength": 36068,
+      "outputSha256": "5f4c38a8d158e7667cebdc42c1826cd519dcdfad9604f5c458cd7b1e369e284d"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 472084,
+      "byteLength": 36068,
+      "outputSha256": "96b6f6f9b67b64e93be805d1577611eb52c32f2a974ca4f2d2d7bdda438a2280"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 508152,
+      "byteLength": 36068,
+      "outputSha256": "b3ddb92f878a92412943583e0d51bed704d7c633b7988f35b7cb732b56090591"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 544220,
+      "byteLength": 36068,
+      "outputSha256": "fc18a773f92d73f05832d2d26f50d42aa5f3b5cedd8befc813ce69aa77c4ad1c"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 580288,
+      "byteLength": 36068,
+      "outputSha256": "22d897d3a2de91987387972f709b905b4a74428b4028d7561108d3feb1f06199"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 616356,
+      "byteLength": 36068,
+      "outputSha256": "c16f2eba84680d17616b3aac89bb43266d87a8aa3f890f9d2cbd0633453f8eb1"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 652424,
+      "byteLength": 36068,
+      "outputSha256": "0bbb4e44bc1447f65f2fb834c00f1f066dc30a15dafd237a56b1c7018f778dea"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 688492,
+      "byteLength": 36068,
+      "outputSha256": "2125750c665de6f71292b72ea8705c4038dabaf1e3d2aab9fff45bd0218396e0"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 724560,
+      "byteLength": 36068,
+      "outputSha256": "38e849f5c8aa42175a2b62b67c9083824e477b6e71386b140100e41da6cf2226"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 760628,
+      "byteLength": 37668,
+      "outputSha256": "38aa27e33282dfaa38a3eefb64dbb7be878f56e4e85d0348c753b6f5247b37d6"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 798296,
+      "byteLength": 37668,
+      "outputSha256": "fc5ba3cabbcf68018211b80b6a9bb4650665f72cb6742e4c878fafc0556df2f3"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 835964,
+      "byteLength": 36068,
+      "outputSha256": "6196a3ac7acbf7b43d7ff5dc513616d7c79fff52e76ff16d511e64d6ec568818"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 872032,
+      "byteLength": 36068,
+      "outputSha256": "4d1936ffe3d6a71d21fe20274b0124ce4449d05d76453102f784e545c6a92de8"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 908100,
+      "byteLength": 36068,
+      "outputSha256": "7d9f25b5a09d7b592d063f505f4bf04b8d95d3e089ec77818b63ed745bc930e3"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 944168,
+      "byteLength": 36068,
+      "outputSha256": "19557651481a3db0a036be79c207aef58773ec0ac42105e1027ec196cdb28570"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 980236,
+      "byteLength": 36068,
+      "outputSha256": "67ec92f30fb1bf37d13239c77fe181d9e2794754cb0e8421438b5cd2b41201da"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1016304,
+      "byteLength": 36068,
+      "outputSha256": "e236f3a20fd38b7aeebdf88a639bb5ebe4159270e123085c3c6f9ffd88fd0895"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1052372,
+      "byteLength": 36068,
+      "outputSha256": "df2d77ebd9ac98ef03f3b79004b1ac57a53d17848f2089e9887f2dc82dc65edc"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1088440,
+      "byteLength": 72136,
+      "outputSha256": "0a2735239180481f421b293bf0d509aef707e7f55311e632d54093b73f538c6a"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1160576,
+      "byteLength": 72136,
+      "outputSha256": "676434a1f3c2f0d93e6da997590266c6a5b8729a7034e9ca1b071cc2afd32783"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1232712,
+      "byteLength": 72136,
+      "outputSha256": "8c5c668652599ed1418eda8085d1c03795d55720df029ee89371720101bf6fe2"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1304848,
+      "byteLength": 72136,
+      "outputSha256": "00f14a0f155b64d474909f52c7424df257de78f7b46474d2714e235214a475be"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1376984,
+      "byteLength": 72136,
+      "outputSha256": "d4234f17495377abf50795d9041f5dda88f35a2564f3ff520a53565006891547"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1449120,
+      "byteLength": 72136,
+      "outputSha256": "51709202d75fe54b5f618d0a107ac863886606df3ea3e50fa7bd97b60af7a533"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 1521256,
+      "byteLength": 75336,
+      "outputSha256": "022c5a02e75098eccad60550f025fd46367cd72b9439da68bb5ede1a7eeb7f52"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 1596592,
+      "byteLength": 75336,
+      "outputSha256": "1caade88392f2758db65bc79a4583f0e4dff507d0913201ff4b8b95c099846f2"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1671928,
+      "byteLength": 72136,
+      "outputSha256": "2449bc956e9d002dfe92fd6563bd32b576a314637a12cbe4c8eb64374e757f10"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1744064,
+      "byteLength": 72136,
+      "outputSha256": "01eae611b8e2b040cc847b5ef9a6cd1668b3fa3d04ae6d79f41c684084d7ff85"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1816200,
+      "byteLength": 72136,
+      "outputSha256": "55c9996d2b7d9fb564eb24ecd2dea24b794659405506dfe004c2f49cb314cdc9"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1888336,
+      "byteLength": 72136,
+      "outputSha256": "e84e4f4a8fac1c0003a3fb99eb84eef92c988f7fdcc2109d5e868150a47c98a1"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1960472,
+      "byteLength": 72136,
+      "outputSha256": "15e2d91b10cedf8bb6055fab782b2884e280a059fa1d236a588cf284560b6bc9"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2032608,
+      "byteLength": 72136,
+      "outputSha256": "c0767cbe5b9d5a5cab6c2e22c92964566d78fa148640086948404530895eeb29"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2104744,
+      "byteLength": 72136,
+      "outputSha256": "5c92202eee2e086e90ab2fb2604c0e8bfefce4e35cce346e66346d7920f2fc60"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2176880,
+      "byteLength": 72136,
+      "outputSha256": "317a36528390796be175b7fc6eab07affc53ab39bc603b4b483f6c0b6498fb0b"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2249016,
+      "byteLength": 72136,
+      "outputSha256": "8502e2e02c9ed0bece30df15d891892d35d8349888c3f9a06be19389951cfa0d"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2321152,
+      "byteLength": 72136,
+      "outputSha256": "c2c51a9f2ddcce9c0730589492d4a90ea9bdb355cc3abcc53b08bb45acce7ca3"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2393288,
+      "byteLength": 72136,
+      "outputSha256": "edd0c0ec73dbb061973f4cdfbd03c8a63bd38440d3e0daf69ae067250555ea91"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2465424,
+      "byteLength": 72136,
+      "outputSha256": "7545ceb4061c035b5c0d4d13ff0ca4b8942b9c541460abcd1b994c975916c8ed"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2537560,
+      "byteLength": 72136,
+      "outputSha256": "051bc63774c06dcbc77f135d4bb86f804a90703c89db1f536c8c42505cc823f6"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 2609696,
+      "byteLength": 75336,
+      "outputSha256": "cc327df82aa9a470a0b8cae5e1d2631c149cb4a7b999f29e4c906e769a94a4c8"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 2685032,
+      "byteLength": 75336,
+      "outputSha256": "368a145064e804c475b4137048f97cd011955d5eb5ab6bfe519b13d2c33eb5af"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2760368,
+      "byteLength": 72136,
+      "outputSha256": "0bae851339320f1de62e5764698fc7229b4929d2c71470709ef632afcd52fb17"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2832504,
+      "byteLength": 72136,
+      "outputSha256": "69d7438e899d72bb9887c8ab018b82c872890e0d2513312a6634242964e80a5a"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2904640,
+      "byteLength": 72136,
+      "outputSha256": "d0901c835f6b1310806bfed59848b6425173d384ffd857970560da90680946ef"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2976776,
+      "byteLength": 72136,
+      "outputSha256": "07d58a15f22aa4fedd0442ab50265363292b911044fc6ba6282dbf8cc01bf62b"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3048912,
+      "byteLength": 72136,
+      "outputSha256": "3a8abc4519f834363e6c0282b0cd4756f23c948560c396f21155acf943c3a0cb"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3121048,
+      "byteLength": 72136,
+      "outputSha256": "930a9cc6312ca9e5875909b95ec18ab1f117e53d17a593d4d62015c858459e1c"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3193184,
+      "byteLength": 72136,
+      "outputSha256": "5ed271f107b09ab2c53659bfd18aace8291eef0770ee513a16909ff604e7adc1"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 3265320,
+      "byteLength": 198516,
+      "outputSha256": "69da8f0e6d8331d20dc6fb68b6e616394407a3503526ebdbd8086e90000c7961"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 3463836,
+      "byteLength": 198516,
+      "outputSha256": "c5a248d48a16097ba31aebed41c8c1b5f7e3e30ddbab95bc0348c36c6a5315c1"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 3662352,
+      "byteLength": 198516,
+      "outputSha256": "413f30b1a0b57cc0a3cf3af4573cbdb3e7f1a65aead26244966c93f2fbf893f8"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 3860868,
+      "byteLength": 198516,
+      "outputSha256": "081b0ebc0dbfa14de67fd23345b3660793bf739b11cc3e1e9891b73dbac205e3"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 4059384,
+      "byteLength": 198516,
+      "outputSha256": "5ca0a3728dd2fa8094254eb19d21b4a1d530e688986c0ea777b758527e273a57"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 4257900,
+      "byteLength": 198516,
+      "outputSha256": "c084560c7b0614d1a5c875571291a76665eb7cab898781afcdc31ca8bea6aba7"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 4456416,
+      "byteLength": 207336,
+      "outputSha256": "1e96ed5d6017a9426c01b809545b815e0f21cb6de5dd8f800daaff3f3211540a"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 4663752,
+      "byteLength": 207336,
+      "outputSha256": "60d54d035484dbd4d070471d43fac07f0a96de86bea939d471e1b3894b73a938"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 4871088,
+      "byteLength": 198516,
+      "outputSha256": "4962fee206634ea648ce7a88a9d73cd70663f60c541173fd332b14f46bca9ddb"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5069604,
+      "byteLength": 198516,
+      "outputSha256": "453ff9ac8b53027db097df57a69d1d5b63d3726623a93d5ba0a9684276ffb21d"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5268120,
+      "byteLength": 198516,
+      "outputSha256": "bde9f88f9cd8789ba6d777cd06287712a096f17b86c1c28c7f15facf6699ecae"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5466636,
+      "byteLength": 198516,
+      "outputSha256": "287069185e0dc7c5532d51d92ca8eb02fea02c4e1f5680d720240fa9a4ea1aaf"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5665152,
+      "byteLength": 198516,
+      "outputSha256": "e4032a0569e3d040c708deb5e425dae68a8044d5ca3f2c274e34b438dedb09ef"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5863668,
+      "byteLength": 198516,
+      "outputSha256": "365ecafffb338401899e70512055556a73fb4814f8476fbb36e39d7da61b2194"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 6062184,
+      "byteLength": 198516,
+      "outputSha256": "d603c06f958ee6b93a11089ace30383a9bab0867381fdbff19fc9033caaef7f1"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 6260700,
+      "byteLength": 198516,
+      "outputSha256": "cba0905bfbe796315add043b3425ab4165008ce90217b4ec748f0484aecd729a"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 6459216,
+      "byteLength": 198516,
+      "outputSha256": "b441f71dd857e430eeb39065315e5e7cb4ca0e08d04da30a39f246231e2a376a"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 6657732,
+      "byteLength": 198516,
+      "outputSha256": "1c7b06fc9afab3ab6617a3c16b1e6e549c3ae02cd8bbb5e86017c4c1204bcc0e"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 6856248,
+      "byteLength": 198516,
+      "outputSha256": "f5468962c6c54eab91ae4102259717c3242dd1b6255d267f4ac2c30d511d4c9e"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 7054764,
+      "byteLength": 198516,
+      "outputSha256": "5ca4848c4bc420db38f4c76aafe189a1232f2bbac65b2937e2e0fb7089b3467f"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 7253280,
+      "byteLength": 198516,
+      "outputSha256": "5f87751c9ba35dc8df83ce6ce341c8a7f99d11bf1ca4b6f159430d3051526ade"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 7451796,
+      "byteLength": 207336,
+      "outputSha256": "98c13c17f49f53dfa7aa1b5ad67c12eac0312ddbbdeabda600b98a58d6a4c706"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 7659132,
+      "byteLength": 207336,
+      "outputSha256": "2527d9651e3052a8837f56f63d62843e1ce43115c23f2b683bd88a93d786caa7"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 7866468,
+      "byteLength": 198516,
+      "outputSha256": "7f4d3c9ef073df1f7081fc9b5b131250376048850eb10e9a05858fd182fa2cdd"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8064984,
+      "byteLength": 198516,
+      "outputSha256": "1216509b419239fab1423694480447d575c03705701c8b7d9b0c4e3ddcea6a11"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8263500,
+      "byteLength": 198516,
+      "outputSha256": "9a02ca93e1ff56cd818aed971c2a135164659a8d37168ecf1704eb32d0572bfe"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8462016,
+      "byteLength": 198516,
+      "outputSha256": "c194f29ae7d8329a41ed937fe134aaebab57747d5d2dc42fd7a25c39071e8529"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8660532,
+      "byteLength": 198516,
+      "outputSha256": "765e4e9ad0ed15fb7ec803875b70a9a8613bef4e5bc896b137b03d736c0da647"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8859048,
+      "byteLength": 198516,
+      "outputSha256": "5eacccfb11cc8fa6f6e51ed50d7db137539806cfa551705f64e2cbffff71e32a"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 9057564,
+      "byteLength": 198516,
+      "outputSha256": "79b65797c84506c3f470363a6ab6a2dee3daf9d13d797fb5383c01c1f59a1af8"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 9256080,
+      "byteLength": 397032,
+      "outputSha256": "186264c759fe57bed4bbec9543bcf2cf3ca4d43bec6d2193f6c37cd6659005d7"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 9653112,
+      "byteLength": 397032,
+      "outputSha256": "a1e229381e7169b9a71d1d768d347cce6ea39beab05bb1c28862f40fc5b8c989"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 10050144,
+      "byteLength": 397032,
+      "outputSha256": "0c6aa4692d4502bd146046cf2b153de767fcabf863e5b5c29d82c3c19bd316d2"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 10447176,
+      "byteLength": 397032,
+      "outputSha256": "93a5d34228ed529e031ef0a1eddbcb2d64622c2d727dd71f6f3efff64939a935"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 10844208,
+      "byteLength": 397032,
+      "outputSha256": "b569170ecb447ff38e802eb5d5e24ad12d50e9caf7be70e4a7cdc3c804f31a48"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 11241240,
+      "byteLength": 397032,
+      "outputSha256": "f4802e197866aa7f5ec69ccf65e9b333fec9202347e4e7420ed44e5f2cf4bb4f"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 11638272,
+      "byteLength": 414672,
+      "outputSha256": "a2bf848032f87d72ff308a9eae413614efd910bef548528d95ca2d29de5e8f73"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 12052944,
+      "byteLength": 414672,
+      "outputSha256": "9dd175a0b3a1f9ac810564d37690db13b21825fb348667a63092ede7f0d4353e"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 12467616,
+      "byteLength": 397032,
+      "outputSha256": "f55f26a89f2228eea13e753f266eff83a5f5245d5b75f2bfaa008ab849f9277f"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 12864648,
+      "byteLength": 397032,
+      "outputSha256": "cbb98d683a21fff7909796a1dd37e5ad5751cf4414e788094dd32eda7b37f570"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 13261680,
+      "byteLength": 397032,
+      "outputSha256": "10e0c6c54210a0a0b9e3ac353f75e62e8c1cf0280fb2fcc5a10bd785f3d45267"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 13658712,
+      "byteLength": 397032,
+      "outputSha256": "ae819bbc355394404b52c5d82cee995f606f6d1a01ec48bbfad72bf0baf43fa3"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 14055744,
+      "byteLength": 397032,
+      "outputSha256": "7efcdef3fd90eca75be2e58e1a022e49269aa4fe1385030d1b2c842e46bf57ca"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 14452776,
+      "byteLength": 397032,
+      "outputSha256": "b7ecf1a9749ef11bf637bf32731fbcbba8d48d9c06cba9a182c262ce8d7feb98"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 14849808,
+      "byteLength": 397032,
+      "outputSha256": "31890022928428cb64afe7488f247cdcd676e1a49e8aeb7f8511dc49ea7739d4"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 15246840,
+      "byteLength": 397032,
+      "outputSha256": "3ccad28c1a7c69b169e0770ef75ebd68ddb54aeeaf9325b68f9720e92fc7bf1b"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 15643872,
+      "byteLength": 397032,
+      "outputSha256": "556113fea9b86cf1c27de7b3a1b2cf7852b6906005bdb13111429553fcb3be1b"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 16040904,
+      "byteLength": 397032,
+      "outputSha256": "2e5840cd01035f727efe6d7684d68b79c6b0aa766a72934c5db3dbf838ec925a"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 16437936,
+      "byteLength": 397032,
+      "outputSha256": "3c79478e7e7c25278f3bff102e88ecafff40e7323d5473322683931b685ed289"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 16834968,
+      "byteLength": 397032,
+      "outputSha256": "a4112bfbc1fb4f6c27c8832c0047a79fbcd0ff5e4906a18f11381e3a37cc16c8"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 17232000,
+      "byteLength": 397032,
+      "outputSha256": "6d7db8272cac518d467b134b05d06949065735caf6edc5a6471422e54fdc1e0b"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 17629032,
+      "byteLength": 414672,
+      "outputSha256": "15a661d274cf326b2aca57b164619b09d50c797ef192d1d3296a73cf2da64eb1"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 18043704,
+      "byteLength": 414672,
+      "outputSha256": "1d0dade06d314729a72572ad8fc98b84b0db7a3bcaf92fdcec31affe14f3cc43"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 18458376,
+      "byteLength": 397032,
+      "outputSha256": "b65ad12267fd5fa6bc2450ab2d271dc82eddc71fe0c94c07487f712386e9474d"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 18855408,
+      "byteLength": 397032,
+      "outputSha256": "07987398a6883b455ba43f10567d3c90b52800a53cb36a985b9acce45e53a5a3"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 19252440,
+      "byteLength": 397032,
+      "outputSha256": "f14d277dc71c9a5658d287e3e22d9eefb94c49b78835a978816b09bd197c802d"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 19649472,
+      "byteLength": 397032,
+      "outputSha256": "694003b9a220b788fdc560cb97cae299d45669f3f1918e19219abdce240ec001"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 20046504,
+      "byteLength": 397032,
+      "outputSha256": "5ba75affe7858f26e0a3d6a7852d98b2f7f508f91d634bd17131bc8a48ead91b"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 20443536,
+      "byteLength": 397032,
+      "outputSha256": "23112df87cf662e91e9485ac11b1531a0731df18d05d1670aace37ed18ab7ac9"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 20840568,
+      "byteLength": 397032,
+      "outputSha256": "4c6a22f57551f9dccde1ec764ae6edfe8d57783929d9d31ce2d7bd17a665eead"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 21237600,
+      "byteLength": 216068,
+      "outputSha256": "7a9ccb78e9eb6a1a8e44c709edb680711274d4854c4a08d14ac5ae1d0b98b5d9"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 21453668,
+      "byteLength": 216068,
+      "outputSha256": "6804af8ea5a6a6e1a1bfc871a21e4a2d0ee56a313de2bbe405e7f5590465e5f4"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 21669736,
+      "byteLength": 216068,
+      "outputSha256": "b70177e02025086f833e7e00ec6a99bf664dc62798b35b37355bc2a616fe91f2"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 21885804,
+      "byteLength": 216068,
+      "outputSha256": "db5bb83a44acfd64646f19562e5085b27e98034cf84e1085a1f0302fc45508e4"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 22101872,
+      "byteLength": 216068,
+      "outputSha256": "b081ecdd7d1cea537db9b7107fc0e5d244c76174c1c2c3f594ff6ef7fb95930c"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 22317940,
+      "byteLength": 216068,
+      "outputSha256": "2964688e34928ae18ad0ff2874c4b3cc0ee23b6467f4eac9ae967b7f3e5522d0"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 22534008,
+      "byteLength": 225668,
+      "outputSha256": "0ee66f972f094211da689bd34db3335dc0757dfab6d3b6a51c32081b7bf5933b"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 22759676,
+      "byteLength": 225668,
+      "outputSha256": "2eaafc9f8c055cfa06a85c357e5a168b12a4df016a53bc752f2357950e54cdfa"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 22985344,
+      "byteLength": 216068,
+      "outputSha256": "a6e267fe6a253ad439192f5b71b9f2edf7f462fa148ba0b8eb093f0747112def"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 23201412,
+      "byteLength": 216068,
+      "outputSha256": "fde735811edc89a08129eec1d32477487edb258f37e88b51168a708b34003d16"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 23417480,
+      "byteLength": 216068,
+      "outputSha256": "a0b9930f9dc7985d623d094cb7621dba0b58ebeb21f3d5d3e30fb772d0db1c52"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 23633548,
+      "byteLength": 216068,
+      "outputSha256": "d8b742cfbd3e233ed6af2cbc8a91c8ba153342223bacd292b6b098c974f7d136"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 23849616,
+      "byteLength": 216068,
+      "outputSha256": "d2e6fe0a04b262fa7b11f7c02e7f9aade3dd9a2fe3b6c7d5d661aaedc7bda6ae"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 24065684,
+      "byteLength": 216068,
+      "outputSha256": "3c0d27dd4ca492208416efec49b0b5d7efb9f67e9b9ac98daf3c1fb7a176d851"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 24281752,
+      "byteLength": 216068,
+      "outputSha256": "1f7de469e0567fe10377468818aa9cad63a16fca364dbd4bfe15f0522f00ce92"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 24497820,
+      "byteLength": 216068,
+      "outputSha256": "be0be71072554ed9d6cc35339e60660f1b7f3d8574ff9d358150c3b29bce459c"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 24713888,
+      "byteLength": 216068,
+      "outputSha256": "da06b927e2b19111316c8aca5a17b69ba0771cd3187c1fdfacee4bb50af69646"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 24929956,
+      "byteLength": 216068,
+      "outputSha256": "ba923a4ef85fb4135f01e5996a446bdbf2c612f33ec1fd053ae28a5180a66d58"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 25146024,
+      "byteLength": 216068,
+      "outputSha256": "6fc846cf9807a63ccbd8415428cd68590dac959fa9b2503227c84fdb971b981a"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 25362092,
+      "byteLength": 216068,
+      "outputSha256": "b3d3b810a21d92ea6af7299e3a4b9ef17f225f5cfb06572c718cf832cff1ebd1"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 25578160,
+      "byteLength": 216068,
+      "outputSha256": "94ff45ab8208b5c745d605842f23af19cdf90e33dda6479bbbbc8e8b14971562"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 25794228,
+      "byteLength": 225668,
+      "outputSha256": "7fa3bbf5fb1937284cb904e53466587fd4a7b947333bcb9a75dc756597fc4d12"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 26019896,
+      "byteLength": 225668,
+      "outputSha256": "b194fc62f2567b991c8ea4cce34dfa43312fba8899b27dd4765ebdc5b3c910f1"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 26245564,
+      "byteLength": 216068,
+      "outputSha256": "8d03836064993d9aa5e389f1df1990594bc1e0ed8d8af28b5c6568d5c09ceba4"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 26461632,
+      "byteLength": 216068,
+      "outputSha256": "35ac652ea922ca94868a90d0003c0d28f08b03e5c34e934ee32b80fa15079b2a"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 26677700,
+      "byteLength": 216068,
+      "outputSha256": "1d67857abec5b6e243406729baafd10bf925dea13c820be6f6f37772c48749ab"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 26893768,
+      "byteLength": 216068,
+      "outputSha256": "927a8951fea217b225817b759ae22cc1dd11266d88a7c920d98a24e9fd69c20a"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 27109836,
+      "byteLength": 216068,
+      "outputSha256": "d7a18517d9875e703c36199949009b03e9d7396beb54802ef066a35d5326bdfd"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 27325904,
+      "byteLength": 216068,
+      "outputSha256": "3ee5721abf3b9779c78fbecd800165550089be97cb9bd6983f69b6e25a5706ce"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 27541972,
+      "byteLength": 216068,
+      "outputSha256": "3b735b652915da100ed0036e51d3e4fbb7b442bbbce8c34d2c383a15b3fafd21"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 27758040,
+      "byteLength": 432136,
+      "outputSha256": "9dda92a1a010270f2cd339ec233cf28c6c1d9a78b222166f4412f78cef2af4a1"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 28190176,
+      "byteLength": 432136,
+      "outputSha256": "7b3a3e1e126b16f68ace2042edc79512d78f7d2f4512927eb50626e9aeedb5cd"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 28622312,
+      "byteLength": 432136,
+      "outputSha256": "a6f2dd56eee9f036dc2a8667f429ceb60d29dc8a0c593d50f3eff14550a8f8ba"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 29054448,
+      "byteLength": 432136,
+      "outputSha256": "0634e702c4bc466e9f7f7c00d4b055a65da0ac135f11f0d043ccbb25bf59df00"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 29486584,
+      "byteLength": 432136,
+      "outputSha256": "dd3a1ab6ff75249c2796a62116695ba7921d9d81a900aa24b2ae4b09fe22874a"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 29918720,
+      "byteLength": 432136,
+      "outputSha256": "07eeeb727bfba07daa89c8e0e92f98f49dc74fb3e3ec48a7883291ff25f862ed"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 30350856,
+      "byteLength": 451336,
+      "outputSha256": "851f6ff7fd2e700aa4d6c1974e6b78c861d7e035b62e194e7f2443993c161210"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 30802192,
+      "byteLength": 451336,
+      "outputSha256": "d9a91c7e512f4c3c10a30f0e5bc27827ea103b946a06a3e432ee47e660206df1"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 31253528,
+      "byteLength": 432136,
+      "outputSha256": "ecadb2b71aa18493aa0c2880c81408c0d11111532ea010df0b76d4e64f2b80b0"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 31685664,
+      "byteLength": 432136,
+      "outputSha256": "2e39ae55b5e93c8df937dc84d7f4df6f1cea6ce67f729c33be0ef439379b8f90"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 32117800,
+      "byteLength": 432136,
+      "outputSha256": "3c812e23935438eac0ec9b9aa7336292933018c9a103e9559f8dd7ae8a767bde"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 32549936,
+      "byteLength": 432136,
+      "outputSha256": "3f6c81cf9a81e7a978b405c5b1167c4ee43d250aeab895902cf521702865b832"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 32982072,
+      "byteLength": 432136,
+      "outputSha256": "94fcc521a8524102e447de1d88401169c0d192e0459bf9b8b74e7d586e57e47f"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 33414208,
+      "byteLength": 432136,
+      "outputSha256": "f0cdc1c3563d42edea53c5351d27e6e36b0343adc44955b152e57e045ce0a375"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 33846344,
+      "byteLength": 432136,
+      "outputSha256": "473a70b8e8fc435818d5595eb5f4af6a61e3cfd6b8517019c4eda583dce3b321"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 34278480,
+      "byteLength": 432136,
+      "outputSha256": "f1a90bbc608f254dec4c9a5f4d63ed0b904d5797331396c2e1fba71473960e08"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 34710616,
+      "byteLength": 432136,
+      "outputSha256": "3fbc028c3763ff88254341237e5a3a59645b0e4275eef0d3b27d54fa8e7aedb3"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 35142752,
+      "byteLength": 432136,
+      "outputSha256": "1fe55cec60a7f6e5cdb0bdff1782bc7d4dd3fdc0582d6d161507e798ce1d7510"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 35574888,
+      "byteLength": 432136,
+      "outputSha256": "29a40d3e76dfca93b007aa47b77cbc478ef2c4435a7b372b648d57e99236c3ff"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 36007024,
+      "byteLength": 432136,
+      "outputSha256": "0c3992f9b42c09237e68223790d4450351005501803675e530d344564a7c49b4"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 36439160,
+      "byteLength": 432136,
+      "outputSha256": "025ddca9d9113e9ce4efe55f6c4940401f3dcf6b435c12d26aa4221cb996bfa4"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 36871296,
+      "byteLength": 451336,
+      "outputSha256": "d0789a03d35a1a92c49dade604a6b74929d89fbaffa9d6fa218606c1efb12e44"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 37322632,
+      "byteLength": 451336,
+      "outputSha256": "9bc11ba2bb40319bd0e8def7893dfe08c792688ed2719c25ae488dd66fdd4976"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 37773968,
+      "byteLength": 432136,
+      "outputSha256": "15f0305c44d2055eb6c43b25b94974d126dfdb1f2e419742dee6a7ade2fc6d18"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 38206104,
+      "byteLength": 432136,
+      "outputSha256": "0bba4d74b19c91ff6e51b7b30b8cc7284f1ff69b5747ecb2208c9a058d051902"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 38638240,
+      "byteLength": 432136,
+      "outputSha256": "6d175189e653b9db6007867d89bff6919db3b2975e314c8defa1c8eba38a7427"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 39070376,
+      "byteLength": 432136,
+      "outputSha256": "b0c2cb76dd6ed08e4f81a94e675799710cc4e90b56907324ae27ff39d21fe1b9"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 39502512,
+      "byteLength": 432136,
+      "outputSha256": "01e1a5eb4cb8e5d22cd5252b28d202cae19f5529d3ee6c33b5cfbc479dc7fa78"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 39934648,
+      "byteLength": 432136,
+      "outputSha256": "9e919f9259cdd2fed27b56a5863c3c1cad8d0c85898d5d2a61a00512db45dd2d"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 40366784,
+      "byteLength": 432136,
+      "outputSha256": "3040cc112fa35f493f66accc2d511499e4e9caec0ea101df98517a8f8a075c98"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 40798920,
+      "byteLength": 864068,
+      "outputSha256": "3885c7d57907b010033eab226d0806e543996fda367cac1cb4b76448e2b00286"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 41662988,
+      "byteLength": 864068,
+      "outputSha256": "c3f14bf806e67e3c9e46f5e92486907a9336ff4bef4f8b3c05f9bb2f946b5615"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 42527056,
+      "byteLength": 864068,
+      "outputSha256": "d67227ba27ab5fea1abcae84936b2f20cd3b78e8f88a46e4982f9fcda97cfa68"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 43391124,
+      "byteLength": 864068,
+      "outputSha256": "750ee1392e5639f07369cb69c91b544d59bbd2dc6cf88c1ee9da63504fba7656"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 44255192,
+      "byteLength": 864068,
+      "outputSha256": "05f63b0cfa1b421b9b578d47c839e0de7f48a63c129dd0c7a587a93c3e3d98a3"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 45119260,
+      "byteLength": 864068,
+      "outputSha256": "a2dae8c2f7748a286bfd7c332b3dbdbd4e24f9a90d3f5459e680fbfd4e60e2f9"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 225617,
+      "offsetBytes": 45983328,
+      "byteLength": 902468,
+      "outputSha256": "e791a992c52d1ac830c5229483a31ed38848818315df6f2626b295a6b839a849"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 225617,
+      "offsetBytes": 46885796,
+      "byteLength": 902468,
+      "outputSha256": "9ec469ebea3f127b1ffbd3f8603bcda9f8f6a0d91c077a15057f3bfd4a5b7f4b"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 47788264,
+      "byteLength": 864068,
+      "outputSha256": "27262ac242e8ec50854210db3b44c69e4ee6d80b6466d711e492709a1c1927dc"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 48652332,
+      "byteLength": 864068,
+      "outputSha256": "e152806e1b2a2ba695039eb24fa777f664ac2844708794e45568f8c22647f52f"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 49516400,
+      "byteLength": 864068,
+      "outputSha256": "8a1e5d8234d6eb969e4c14221349bf6dc29d62210e5a1f63f62bd5e4169c1fc9"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 50380468,
+      "byteLength": 864068,
+      "outputSha256": "58b3ac0bb8d8a1f1fc87b8bb0324e231039a459e4aec1fdd2d6e3bed547d15e4"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 51244536,
+      "byteLength": 864068,
+      "outputSha256": "d081f67c116876869e2de8b9ab7cf282731ec950cc0f601067cb9a38b464a8c3"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 52108604,
+      "byteLength": 864068,
+      "outputSha256": "26fddb1df01e6e480f39f144c52f6c117708ab2b8500ef0ce5ba35e7fc958e09"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 52972672,
+      "byteLength": 864068,
+      "outputSha256": "9e2b7a5ed29daaffe205362bd57a6a4f617e2c4d5f2ee4c321038c80dcb2f40b"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 53836740,
+      "byteLength": 864068,
+      "outputSha256": "c98e63a292f13466309ba53bd8d88afe007974e9dd3f2ccffac5a8512d34680f"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 54700808,
+      "byteLength": 864068,
+      "outputSha256": "40ebd80917e6de19e4e14177bb78058899bda0daa51765396988222fbc4aecfa"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 55564876,
+      "byteLength": 864068,
+      "outputSha256": "249a22c037f72f946f141e86f53518740c39c5a8cec6d5ee37e04ccf11ac2310"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 56428944,
+      "byteLength": 864068,
+      "outputSha256": "3b2b2f7fe76e8d5468e3c395350f9f6bb25ad864dea13da7534688c21112e12a"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 57293012,
+      "byteLength": 864068,
+      "outputSha256": "d19f0608583498b4c13952e13a635513e297132d75b8e6cf7f809c6c4560a60a"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 58157080,
+      "byteLength": 864068,
+      "outputSha256": "52631ab5391bcfb0ea1e5b49d87d3b63e07fd0b3f9222be24cc1255dd65b6a4c"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 225617,
+      "offsetBytes": 59021148,
+      "byteLength": 902468,
+      "outputSha256": "013b0041a2e496ccbe1dc7e1aef17b2bc33b7786094cb9393adbaf9ba877e5db"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 225617,
+      "offsetBytes": 59923616,
+      "byteLength": 902468,
+      "outputSha256": "de9ce5dcda84491a2a705109776dc6b47a68410a134b9b77bfe53a02c7e982fa"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 60826084,
+      "byteLength": 864068,
+      "outputSha256": "07781f1d8b770dd300a50817dc7bc5c619c6d0984ffc150177593a78d450737a"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 61690152,
+      "byteLength": 864068,
+      "outputSha256": "e956209b7df297d9ed007c1eb859a86d2c397dc1d8704beb60b558ad754cea5b"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 62554220,
+      "byteLength": 864068,
+      "outputSha256": "287a04e2f0e6bc0852a86c4244f23c3dd95ffadaa006e545360d58e53ec1fa87"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 63418288,
+      "byteLength": 864068,
+      "outputSha256": "bc80f103ca00636601fa820f01a64a6e5379b74c33b32cc05b4dc4bc2f754b32"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 64282356,
+      "byteLength": 864068,
+      "outputSha256": "d205f4a5caef4f8e75c34a09c47680f53bdb275bc73c9a70e2adc4806e06fb52"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 65146424,
+      "byteLength": 864068,
+      "outputSha256": "f95a224320d86c6ac03fd3ebdb4876650229d59f5fbb6f499f13455af0d5f614"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 66010492,
+      "byteLength": 864068,
+      "outputSha256": "34995384d299af490c26b2f336974c692f8685ce5a66ba6e0331c586c2d41b62"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 66874560,
+      "byteLength": 1728136,
+      "outputSha256": "83d51bbedcb989b27eb73de579fe48843ce9c90d4e7db16d38225c0f5a5b6fd2"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 68602696,
+      "byteLength": 1728136,
+      "outputSha256": "728cdb1a20c55df822be3e771ce0b385351297af57d5907779a80be8eef2e6f9"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 70330832,
+      "byteLength": 1728136,
+      "outputSha256": "250d52ddce8eddd9ffc9673c9d4fd3ff5ba5286bc6ae1de284367c8e258e1f6d"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 72058968,
+      "byteLength": 1728136,
+      "outputSha256": "b94935e17df20a1d7ef1973b69b1b49f77aa1568cbbe49aa25c108095e58882d"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 73787104,
+      "byteLength": 1728136,
+      "outputSha256": "c7be17f2035829efb39e609fc311ec61814dc7cd11440b2df17241b53fa87e9a"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 75515240,
+      "byteLength": 1728136,
+      "outputSha256": "794d79c2a7985c21beed9b9740e1d8d0905831674dbc0b716963372a05c0a51f"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 225617,
+      "offsetBytes": 77243376,
+      "byteLength": 1804936,
+      "outputSha256": "daa7812dc68d24663dd632e3dd7ddc138116d4d78f3e57eb3efb482750c1da63"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 225617,
+      "offsetBytes": 79048312,
+      "byteLength": 1804936,
+      "outputSha256": "b060989a4805dbced58e21b6777ff79fe6d9a94104e597646777358e6822b5b4"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 80853248,
+      "byteLength": 1728136,
+      "outputSha256": "0789c62804cc519654480ed24ffe5002a84be583d1ae91252f745c71fb520575"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 82581384,
+      "byteLength": 1728136,
+      "outputSha256": "01604fc327dcab1fccdf2a3810c18484e620a8e08e96a92962879d20e00e1aa2"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 84309520,
+      "byteLength": 1728136,
+      "outputSha256": "562fdb42c4944cf74c2abd29c5cd5784afd2b41fa5b596b20a475a032a91cb0c"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 86037656,
+      "byteLength": 1728136,
+      "outputSha256": "eab052c18cfe9a4a4e78991cdceb0c7e50b4583934088e00e5276fcf4610534d"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 87765792,
+      "byteLength": 1728136,
+      "outputSha256": "5bccee139b3e3454aeff82be125d92822ad70fd8ad824a3a7a0b93e4122aa4e3"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 89493928,
+      "byteLength": 1728136,
+      "outputSha256": "0677bb6055eea50d6528aa0821d552046efbf53a19395917f4a4541aeefb094d"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 91222064,
+      "byteLength": 1728136,
+      "outputSha256": "7db0ec931c7fc75a5653d6af8e083a45e59d305293d9b0cf0c417eec378e3cbf"
+    },
+    {
+      "chain": "afftdn=nf=-20.0:nr=6.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 92950200,
+      "byteLength": 1728136,
+      "outputSha256": "ca5ee6d7bccb6c9e9b7a27f115b6562bd8266eb2a78afa899a598f3c17c7e4e9"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 94678336,
+      "byteLength": 1728136,
+      "outputSha256": "83bf840b5ef4a25faae4cd87f1c691685021fe8d3159183d4ec1200f5ef0b5c3"
+    },
+    {
+      "chain": "afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 96406472,
+      "byteLength": 1728136,
+      "outputSha256": "1c381cc0205011d9b2d2a62f338bd8e292e369c41ee4e66c56b30c2e6d5617e8"
+    },
+    {
+      "chain": "afftdn=nf=-22.0:nr=8.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 98134608,
+      "byteLength": 1728136,
+      "outputSha256": "638d34989218b7a7c5d63b71f9ad81820c6e7b20e9ed671457b80a5f69f108e6"
+    },
+    {
+      "chain": "afftdn=nf=-31.2:nr=17.2",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 99862744,
+      "byteLength": 1728136,
+      "outputSha256": "370086b6b545dc20be2a5cc2bfc5bec5fc56443e6cef61449f67e14c5dba5a5b"
+    },
+    {
+      "chain": "afftdn=nf=-38.0:nr=24.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 101590880,
+      "byteLength": 1728136,
+      "outputSha256": "0486d8cd5c2718c2d57367cd5a123b26a5297deb6d509610445bec934c4811ec"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 225617,
+      "offsetBytes": 103319016,
+      "byteLength": 1804936,
+      "outputSha256": "c2fda25697c8b63c14bc400359ead32e54cace24d47bb6a4fd4fb3fa1f673469"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 225617,
+      "offsetBytes": 105123952,
+      "byteLength": 1804936,
+      "outputSha256": "acbdd2f11bc7fa0aa5daa5de4aa6d2f94e910bf177cf61eacb051c052aae5b2f"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 106928888,
+      "byteLength": 1728136,
+      "outputSha256": "25a5cdd03d824faf51acdfdf70215c73156d60d1f9f73fcca0f574e4b1e301a2"
+    },
+    {
+      "chain": "bass=g=5.00:f=110:w=0.6,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.bass",
+          "params": {
+            "gain": 5.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 108657024,
+      "byteLength": 1728136,
+      "outputSha256": "bc67eee9ee877edc80a2b3a838840c517caf1276b67dc39e5197dd46c6729ef4"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,afftdn=nf=-50.0:nr=36.0",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 110385160,
+      "byteLength": 1728136,
+      "outputSha256": "3cfcfb631466c1d7fe03c7148e907776fdf5f7bd5a32f5100ba9a99ca3fb8177"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 112113296,
+      "byteLength": 1728136,
+      "outputSha256": "689ad7fe218915e3c811d8d406ee19b285dd94e3503c4340a9d5ed34d774c8c6"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 113841432,
+      "byteLength": 1728136,
+      "outputSha256": "38794f882b2781b712c4d61bb09ac5ea9377e439cec912eec71a5a50df9fda9e"
+    },
+    {
+      "chain": "afftdn=nf=-35.0:nr=21.0,highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95",
+      "settings": [
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        },
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 115569568,
+      "byteLength": 1728136,
+      "outputSha256": "b5b6ad26756d9f9ea632ab7dd3d10c2fca959960a05ca3c59d6c73b06c49168d"
+    },
+    {
+      "chain": "highpass=f=80,afftdn=nf=-37.0:nr=16.8,deesser=i=0.30,acompressor=threshold=0.32:ratio=3.2:attack=15:release=120,alimiter=limit=0.95,afftdn=nf=-35.0:nr=21.0",
+      "settings": [
+        {
+          "id": "concat.enhance-voice",
+          "params": {
+            "amount": 60.0
+          }
+        },
+        {
+          "id": "concat.denoise",
+          "params": {
+            "strength": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 117297704,
+      "byteLength": 1728136,
+      "outputSha256": "71d5bc094040a623065c72df286aa976c60d17373a10ec97735309bd34fd4927"
+    }
+  ]
+}

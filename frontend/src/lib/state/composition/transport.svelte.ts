@@ -1,3 +1,6 @@
+import {planHistoryJump} from '../../agent/historyNavigation'
+import {transferHistoryEntry} from '../../agent/historyProvenance'
+import { assertHistoryUnlocked, bumpAgentRevision } from '../../agent/session.svelte.js'
 import {
   findClipLocation
 } from '../../composition/commands.js'
@@ -64,14 +67,24 @@ export function toggleCompositionSnapping(): void {
 }
 
 
-export function undoComposition(): void {
+export function jumpCompositionHistory(entryId:string,side:'before'|'after'='after',owner?:string):number{
+ assertHistoryUnlocked(owner)
+ const plan=planHistoryJump(compositionState.history.past,compositionState.history.future,entryId,side)
+ for(let index=0;index<plan.steps;index++)if(plan.direction==='undo')undoComposition(owner);else redoComposition(owner)
+ return plan.steps
+}
+
+export function undoComposition(owner?: string): void {
+  assertHistoryUnlocked(owner)
   const previous = compositionState.history.past.pop()
   if (!previous) return
   const previousMedia = compositionState.history.pastMedia.pop() ?? cloneCompositionMedia(compositionState.media)
   const previousOutput = compositionState.history.pastOutput.pop() ?? compositionRenderOutput()
   compositionState.history.future.push(cloneComposition(compositionState.document))
+  transferHistoryEntry(previous,compositionState.history.future.at(-1)!)
   compositionState.history.futureMedia.push(cloneCompositionMedia(compositionState.media))
   compositionState.history.futureOutput.push(compositionRenderOutput())
+  bumpAgentRevision()
   compositionState.document = cloneComposition(previous)
   compositionState.media = previousMedia
   compositionState.export.profile = { ...previousOutput.profile }
@@ -84,14 +97,17 @@ export function undoComposition(): void {
 }
 
 
-export function redoComposition(): void {
+export function redoComposition(owner?: string): void {
+  assertHistoryUnlocked(owner)
   const next = compositionState.history.future.pop()
   if (!next) return
   const nextMedia = compositionState.history.futureMedia.pop() ?? cloneCompositionMedia(compositionState.media)
   const nextOutput = compositionState.history.futureOutput.pop() ?? compositionRenderOutput()
   compositionState.history.past.push(cloneComposition(compositionState.document))
+  transferHistoryEntry(next,compositionState.history.past.at(-1)!)
   compositionState.history.pastMedia.push(cloneCompositionMedia(compositionState.media))
   compositionState.history.pastOutput.push(compositionRenderOutput())
+  bumpAgentRevision()
   compositionState.document = cloneComposition(next)
   compositionState.media = nextMedia
   compositionState.export.profile = { ...nextOutput.profile }

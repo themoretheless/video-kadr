@@ -1,0 +1,21 @@
+{
+  "authority": "separate original-image LLVM disassembly supplement; not REA Evidence",
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "address": "0x10183b1a0",
+  "sourceOffset": 25424288,
+  "byteCount": 32,
+  "rangeSha256": "9cde4ba71afa845f3014a5f4a3aa01200f867256757b5a50d49d4dd238253fd4",
+  "constantBits": "0x3f50624dd2f1a9fc",
+  "constantDouble": 0.001,
+  "instructions": [
+    "10183b1a0:\t60 fa 41 fd\tldr\td0, [x19, #0x3f0]",
+    "10183b1a4:\t88 3f 95 d2\tmov\tx8, #0xa9fc",
+    "10183b1a8:\t28 5e ba f2\tmovk\tx8, #0xd2f1, lsl #16",
+    "10183b1ac:\ta8 49 cc f2\tmovk\tx8, #0x624d, lsl #32",
+    "10183b1b0:\t08 ea e7 f2\tmovk\tx8, #0x3f50, lsl #48",
+    "10183b1b4:\t01 01 67 9e\tfmov\td1, x8",
+    "10183b1b8:\t00 08 61 1e\tfmul\td0, d0, d1",
+    "10183b1bc:\t41 f0 3d 94\tbl\t__ZN3ins10Stabilizer14GyroStabilizer12SetSweepTimeEd"
+  ],
+  "interpretation": "Precompute call site converts configured milliseconds by0.001 before GyroStabilizer::SetSweepTime; scan directions are not established"
+}

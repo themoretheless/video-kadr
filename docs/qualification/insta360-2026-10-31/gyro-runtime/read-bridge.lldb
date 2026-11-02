@@ -1,0 +1,8 @@
+settings set show-progress false
+settings set show-statusline false
+target create "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main"
+settings set target.disable-aslr false
+breakpoint set --name main
+run
+script import lldb,struct; target=lldb.debugger.GetSelectedTarget(); process=target.GetProcess(); base=target.GetModuleAtIndex(0).GetObjectFileHeaderAddress().GetLoadAddress(target); error=lldb.SBError(); data=process.ReadMemory(base+0x4a63db0,32,error); print('BRIDGE_READ',hex(base),str(error),data.hex() if data else None); print('BRIDGE_FLOATS',struct.unpack('<8f',data) if data and len(data)==32 else None); print('OWNED_PID',process.GetProcessID(),'STATE',process.GetState()); print('OWNED_KILL',process.Kill())
+quit

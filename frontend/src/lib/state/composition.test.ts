@@ -1,11 +1,17 @@
+import { updateCompositionAudioStream, detachCompositionVideoAudio, reattachCompositionVideoAudio, updateCompositionClipGain } from './composition.svelte.js'
+import { nestedComposition, closeNestedComposition } from './nestedComposition.svelte.js'
+import { buildCompositionRenderRequest } from '../composition/payload'
+import { importPreferences } from '$lib/state/importPreferences.svelte.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../api'
 import { COMPOSITION_TIME_BASE, type Composition, type VideoTrack } from '../composition/types'
 import {
   addMediaInfoToComposition,
+  addLibraryEntryToComposition,
   applyCompositionTextStyleToTrack,
   addVoiceoverMediaInfoToComposition,
   addCompositionTrack,
+  insertCompositionPlacements,
   addCompositionMarkerAtPlayhead,
   addCompositionVideoMask,
   applyCompositionTrackedAnimation,
@@ -14,6 +20,8 @@ import {
   compositionSourceFromLibraryEntry,
   compositionMarkerList,
   compositionState,
+  commitDocument,
+  setCompositionClipLocked,
   createCompositionMulticamGroup,
   deleteCompositionAutomationKeyframe,
   estimateCompositionMulticamSync,
@@ -67,6 +75,8 @@ import {
   updateCompositionStabilization,
   updateCompositionTextStyle,
   updateCompositionVideoAudio,
+  updateCompositionAudioMix,
+  updateCompositionSourceGainKeys,
 } from './composition.svelte.js'
 import type { Capabilities, Job, MediaEntry, MediaInfo } from '../types'
 import { setAuthSessionForTests } from './auth.svelte.js'
@@ -81,6 +91,8 @@ vi.mock('../api', () => ({
   getCompositionProjectsIfChanged: vi.fn(),
   createCompositionProject: vi.fn(),
   updateCompositionProject: vi.fn(),
+  updateNestedCompositionProject: vi.fn(),
+  createNestedCompositionProject: vi.fn(),
   deleteCompositionProject: vi.fn(),
 }))
 
@@ -107,6 +119,9 @@ const video: MediaInfo = {
 }
 
 beforeEach(() => {
+  closeNestedComposition()
+  // Exercise embedded-audio authoring independently of the default import policy.
+  importPreferences.autoPairAudio = false
   setAuthSessionForTests({
     user: { id: 'user-1', username: 'alice', createdAt: 1 },
     token: 'session-token',
@@ -140,6 +155,45 @@ function activeStoredDraft<T = { document: Composition; exportSettings?: unknown
 }
 
 describe('composition editor state', () => {
+  it('uses the enabled import preference for ordinary media and library entrypoints', () => {
+    importPreferences.autoPairAudio = true
+    addMediaInfoToComposition(video)
+    expect(compositionState.document.links).toHaveLength(1)
+    resetCompositionForTests()
+    addLibraryEntryToComposition({ ...video, kind: 'source', createdAt: 1 } as MediaEntry)
+    expect(compositionState.document.links).toHaveLength(1)
+    resetCompositionForTests()
+    addMediaInfoToComposition({ ...video, acodec: null })
+    expect(compositionState.document.links ?? []).toHaveLength(0)
+    expect(compositionState.document.tracks.filter((track) => track.kind === 'audio')).toHaveLength(0)
+  })
+
+  it('imports a linked video/audio pair atomically with one audible audio owner and one Undo', () => {
+    const before = JSON.stringify(compositionState.document)
+    const depth = compositionState.history.past.length
+    const videoId = addMediaInfoToComposition(video, { pairAudio: true })
+    const videoClip = compositionState.document.tracks.flatMap((track) => track.clips.map((clip) => clip)).find((clip) => clip.id === videoId)!
+    const audioTrack = compositionState.document.tracks.find((track) => track.kind === 'audio')!
+    const audio = audioTrack.clips[0]!
+    expect(videoClip).toMatchObject({ kind: 'video', sourceAudioEnabled: false })
+    expect(audio).toMatchObject({ kind: 'audio', sourceId: video.id, timelineStartTicks: videoClip.timelineStartTicks, sourceInTicks: 0, sourceOutTicks: video.duration * COMPOSITION_TIME_BASE, gain: 1, pan: 0 })
+    expect(compositionState.document.links?.[0]?.memberIds).toEqual([videoId, audio.id])
+    expect(compositionState.ui.selectedClipIds).toEqual([videoId, audio.id])
+    expect(compositionState.history.past).toHaveLength(depth + 1)
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+    expect(compositionState.media[video.id]).toBeUndefined()
+  })
+
+  it('rejects rebinding a protected source without changing document, media or history', () => {
+    const clipId = addMediaInfoToComposition(video)
+    setCompositionClipLocked(clipId, true)
+    const before = JSON.stringify({ document: compositionState.document, media: compositionState.media, history: compositionState.history })
+    const replacement = { ...compositionState.media, [video.id]: { ...compositionState.media[video.id]!, url: '/files/sources/replaced.mp4' } }
+    expect(() => commitDocument(compositionState.document, replacement)).toThrow('media binding')
+    expect(JSON.stringify({ document: compositionState.document, media: compositionState.media, history: compositionState.history })).toBe(before)
+  })
+
   it('registers video/audio/image sources on compatible tracks without losing authoring data', () => {
     addMediaInfoToComposition(video)
     setCompositionPlayhead(5 * COMPOSITION_TIME_BASE)
@@ -1086,12 +1140,60 @@ describe('composition editor state', () => {
     expect(exported.text).toContain('00:00:02,000 --> 00:00:03,000')
 
     const before = JSON.stringify(compositionState.document)
-    expect(() =>
-      importSrtToComposition(
-        '1\n00:00:00,500 --> 00:00:01,000\nOverlap',
-        textTrack.id,
-      ),
-    ).toThrow()
+    expect(importSrtToComposition(
+      '1\n00:00:00,500 --> 00:00:01,000\nOverlap', textTrack.id,
+    )).toBe(1)
+    const lanes = compositionState.document.tracks.filter((track) => track.kind === 'text')
+    expect(lanes).toHaveLength(2)
+    expect(lanes[1]!.clips[0]).toMatchObject({ text: 'Overlap', timelineStartTicks: 500_000, durationTicks: 500_000 })
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+  })
+
+  it('keeps title tracks separate and skips locked subtitle lanes atomically', () => {
+    const titleId = addCompositionTrack('text')
+    importSrtToComposition('1\n00:00:00,000 --> 00:00:01,000\nCaption')
+    const captionId = compositionState.document.metadata!.captionTextTracks![0]!
+    expect(captionId).not.toBe(titleId)
+    expect(compositionState.document.tracks.find((track) => track.id === titleId)!.clips).toHaveLength(0)
+    toggleCompositionTrackFlag(captionId, 'locked')
+    const before = JSON.stringify(compositionState.document)
+    expect(() => importSrtToComposition('1\n00:00:02,000 --> 00:00:03,000\nLocked', captionId)).toThrow('заблокирована')
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+    importSrtToComposition('1\n00:00:02,000 --> 00:00:03,000\nNew lane')
+    expect(compositionState.document.metadata!.captionTextTracks).toHaveLength(2)
+    expect(compositionState.document.tracks.find((track) => track.id === captionId)!.clips).toHaveLength(1)
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+  })
+
+  it('packs nested and adjacent cues into existing caption gaps with one Undo', () => {
+    const before = JSON.stringify(compositionState.document)
+    importSrtToComposition('1\n00:00:00,000 --> 00:00:04,000\nLong\n\n2\n00:00:01,000 --> 00:00:02,000\nInner\n\n3\n00:00:02,000 --> 00:00:03,000\nAdjacent')
+    const lanes = compositionState.document.tracks.filter((track) => track.kind === 'text')
+    expect(lanes.map((track) => track.clips.map((clip) => clip.text))).toEqual([['Long'], ['Inner', 'Adjacent']])
+    expect(compositionState.document.metadata?.captionTextTracks).toEqual(lanes.map((track) => track.id))
+    const packed = JSON.stringify(compositionState.document)
+    importSrtToComposition('1\n00:00:04,000 --> 00:00:05,000\nReuse')
+    expect(compositionState.document.tracks.filter((track) => track.kind === 'text')).toHaveLength(2)
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(packed)
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+  })
+
+  it.each([
+    ['VTT', 'WEBVTT\n\n00:01.125 --> 00:02.500\nHello'],
+    ['ASS', '[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.12,0:00:02.50,Hello'],
+  ])('imports %s through the same atomic edit and Undo', (_format, body) => {
+    const before = JSON.stringify(compositionState.document)
+    expect(importSrtToComposition(body)).toBe(1)
+    expect(compositionState.document.tracks.find((track) => track.kind === 'text')?.clips[0])
+      .toMatchObject({ text: 'Hello', timelineStartTicks: _format === 'VTT' ? 1_125_000 : 1_120_000 })
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+    const invalid = _format === 'VTT' ? `${body}\n\ninvalid` : `${body}\nDialogue: 0:00:03.00,0:00:02.00,Invalid`
+    expect(() => importSrtToComposition(invalid)).toThrow()
     expect(JSON.stringify(compositionState.document)).toBe(before)
   })
 
@@ -1450,4 +1552,190 @@ describe('composition editor state', () => {
     expect(compositionState.projectId).toBe('project-b')
     expect(compositionState.save.error).toBe('offline')
   })
+})
+
+
+it('opens and saves nested projects without overwriting the local flat draft', async () => {
+  addMediaInfoToComposition(video)
+  setCompositionProjectName('Local draft')
+  const original = JSON.stringify(compositionState.document)
+  const originalId = compositionState.projectId
+  const document: api.NativeNestedProject = {
+    schemaVersion: 1, root: 'root', compositions: {
+      root: { content: buildCompositionRenderRequest(compositionState.document).composition, instances: [], durationUs: 1000000 },
+    },
+  }
+  const project: api.NestedCompositionProjectDto = { id: 'nested', name: 'Nested', schemaVersion: 2, mode: 'composition', document, sourceIds: [], revision: 7, createdAt: 1, updatedAt: 1 }
+  vi.mocked(api.getCompositionProject).mockResolvedValue(project as unknown as api.CompositionProjectDto)
+  await openCompositionProject('nested')
+  expect(nestedComposition.document).toEqual(document)
+  expect(compositionState.projectId).toBe(originalId)
+  expect(JSON.stringify(compositionState.document)).toBe(original)
+  nestedComposition.name = 'Renamed nested'
+  vi.mocked(api.updateNestedCompositionProject).mockResolvedValue({ ...project, name: 'Renamed nested', revision: 8 })
+  await saveCompositionProject()
+  expect(api.updateNestedCompositionProject).toHaveBeenCalledWith('nested', { document, name: 'Renamed nested', baseRevision: 7 }, 'session-token')
+  expect(api.updateCompositionProject).not.toHaveBeenCalled()
+  expect(api.createCompositionProject).not.toHaveBeenCalled()
+  expect(nestedComposition.revision).toBe(8)
+  vi.mocked(api.updateNestedCompositionProject).mockRejectedValueOnce(new Error('revision conflict'))
+  await saveCompositionProject()
+  expect(nestedComposition.revision).toBe(8)
+  expect(nestedComposition.document).toEqual(document)
+  expect(compositionState.save.error).toBe('revision conflict')
+  expect(compositionState.save.busy).toBe(false)
+  closeNestedComposition()
+  expect(JSON.stringify(compositionState.document)).toBe(original)
+})
+
+
+it('DSP chain edits clone parameters, undo/redo, reload draft and reject locked clips', () => {
+  setCompositionStorageForTests(memoryStorage(new Map<string, string>()))
+  const id = addMediaInfoToComposition({ id: 'dsp-audio', url: '/files/sources/dsp.wav', filename: 'dsp.wav', mediaType: 'audio', duration: 5, width: 0, height: 0, acodec: 'pcm_s16le' })
+  const current = () => compositionState.document.tracks.flatMap<import('../composition/types').CompositionClip>(track => track.clips).find(clip => clip.id === id) as import('../composition/types').AudioClip
+  const params = { gain: -6 }
+  updateCompositionAudioMix(id, { dspEffects: [{ id: 'amplify', params }, { id: 'invert', bypass: true }] })
+  params.gain = 12
+  expect(current().dspEffects).toEqual([{ id: 'amplify', params: { gain: -6 } }, { id: 'invert', bypass: true }])
+  undoComposition()
+  expect(current().dspEffects).toBeUndefined()
+  redoComposition()
+  expect(current().dspEffects?.[0]?.params?.gain).toBe(-6)
+  flushCompositionAutosaveForTests()
+  resetCompositionForTests(); reloadCompositionDraftForTests()
+  expect(current().dspEffects?.[0]?.params?.gain).toBe(-6)
+  setCompositionClipLocked(id, true)
+  const before = JSON.stringify(compositionState.document)
+  expect(() => updateCompositionAudioMix(id, { dspEffects: [] })).toThrow('заблокирован')
+  expect(JSON.stringify(compositionState.document)).toBe(before)
+})
+
+
+it('persists ordinary track sync-lock through history and draft reload without changing media', () => {
+  const values = new Map<string, string>()
+  setCompositionStorageForTests({
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => { values.set(key, value) },
+  })
+  addMediaInfoToComposition(video)
+  const track = compositionState.document.tracks[0]!
+  const clips = JSON.stringify(track.clips)
+  const depth = compositionState.history.past.length
+  expect(track.syncLock ?? true).toBe(true)
+  toggleCompositionTrackFlag(track.id, 'syncLock')
+  expect(compositionState.document.tracks[0]!.syncLock).toBe(false)
+  expect(compositionState.history.past.length).toBe(depth + 1)
+  expect(JSON.stringify(compositionState.document.tracks[0]!.clips)).toBe(clips)
+  undoComposition()
+  expect(compositionState.document.tracks[0]!.syncLock ?? true).toBe(true)
+  redoComposition()
+  expect(compositionState.document.tracks[0]!.syncLock).toBe(false)
+  flushCompositionAutosaveForTests()
+  resetCompositionForTests()
+  reloadCompositionDraftForTests()
+  expect(compositionState.document.tracks[0]!.syncLock).toBe(false)
+  expect(JSON.stringify(compositionState.document.tracks[0]!.clips)).toBe(clips)
+  toggleCompositionTrackFlag(track.id, 'syncLock')
+  expect(compositionState.document.tracks[0]!.syncLock).toBe(true)
+})
+
+
+it('commits global media/caption insertion once and restores both on Undo/Redo', () => {
+  addMediaInfoToComposition(video)
+  const track = compositionState.document.tracks[0]!
+  const original = track.clips[0]!
+  if (original.kind !== 'video') throw new Error('video fixture required')
+  commitDocument({...compositionState.document,captionTracks:[{id:'captions',name:'Subtitle',clips:[{id:'cue',text:'Retained',cueId:'file',timelineStartTick:1_000_000,timelineEndTick:6_000_000}]}]})
+  const before = JSON.stringify(compositionState.document)
+  const depth = compositionState.history.past.length
+  insertCompositionPlacements([{trackId:track.id,clip:{...original,id:'inserted',timelineStartTicks:3_000_000,sourceInTicks:0,sourceOutTicks:2_000_000}}])
+  expect(compositionState.history.past.length).toBe(depth + 1)
+  expect(compositionState.document.tracks[0]!.clips.map(clip=>clip.timelineStartTicks)).toEqual([0,3_000_000,5_000_000])
+  expect(compositionState.document.captionTracks![0]!.clips.map(cue=>[cue.timelineStartTick,cue.timelineEndTick])).toEqual([[1_000_000,3_000_000],[5_000_000,8_000_000]])
+  const after = JSON.stringify(compositionState.document)
+  undoComposition()
+  expect(JSON.stringify(compositionState.document)).toBe(before)
+  redoComposition()
+  expect(JSON.stringify(compositionState.document)).toBe(after)
+})
+
+it('detaches and rejoins audio atomically, retaining mix automation and undo/redo', () => {
+  const id = addMediaInfoToComposition(video, { pairAudio: false })
+  updateCompositionPlaybackMode(id, { mode: 'reverse' })
+  updateCompositionClipSpeed(id, 2)
+  setCompositionAutomationKeyframe({ kind: 'audio', clipId: id }, 'gain', 0.8, 1_000_000)
+  const original = JSON.stringify(compositionState.document)
+  const depth = compositionState.history.past.length
+  const soundId = detachCompositionVideoAudio(id)
+  expect(compositionState.document.links?.some(link => link.memberIds.includes(id) && link.memberIds.includes(soundId))).toBe(true)
+  updateCompositionClipGain(soundId, 0.6)
+  updateCompositionAudioMix(soundId, { pan: -0.25 })
+  setCompositionAutomationKeyframe({ kind: 'audio', clipId: soundId }, 'gain', 0.4, 1_000_000)
+  const detached: Composition = JSON.parse(JSON.stringify(compositionState.document))
+  const sound = detached.tracks.flatMap<import('../composition/types').CompositionClip>(t => t.clips).find(c => c.id === soundId)!
+  const beforeJoin = compositionState.history.past.length
+  reattachCompositionVideoAudio(soundId)
+  expect(compositionState.history.past).toHaveLength(beforeJoin + 1)
+  expect(compositionState.ui.selectedClipId).toBe(id)
+  const clips = compositionState.document.tracks.flatMap<import('../composition/types').CompositionClip>(t => t.clips)
+  expect(clips.find(c => c.id === soundId)).toBeUndefined()
+  expect(clips.find(c => c.id === id)).toMatchObject({ sourceAudioEnabled: true, audioGain: 0.6, audioPan: -0.25, audioAnimation: sound.kind === 'audio' ? sound.audioAnimation : undefined })
+  undoComposition(); expect(JSON.stringify(compositionState.document)).toBe(JSON.stringify(detached))
+  redoComposition(); expect(compositionState.document.tracks.flatMap<import('../composition/types').CompositionClip>(t => t.clips).some(c => c.id === soundId)).toBe(false)
+  while (compositionState.history.past.length > depth) undoComposition()
+  expect(JSON.stringify(compositionState.document)).toBe(original)
+})
+
+it('saves an unsaved imported nested project through createNested without writing the old flat document',async()=>{
+ const {authState}=await import('./auth.svelte');authState.token='session-token'
+ const document:api.NativeNestedProject={schemaVersion:1,root:'imported',compositions:{}}
+ nestedComposition.document=document;nestedComposition.projectId=null;nestedComposition.name='From Concat'
+ vi.mocked(api.createNestedCompositionProject).mockResolvedValue({id:'created-import',name:'From Concat',revision:1,document} as api.NestedCompositionProjectDto)
+ await saveCompositionProject();expect(api.createNestedCompositionProject).toHaveBeenCalledWith(expect.objectContaining({name:'From Concat',document}),'session-token');expect(api.createCompositionProject).not.toHaveBeenCalled();expect(api.updateCompositionProject).not.toHaveBeenCalled();expect(nestedComposition.projectId).toBe('created-import');expect(nestedComposition.revision).toBe(1);closeNestedComposition()
+})
+
+it('source volume-key edits clone input, survive draft reload and respect clip locking',()=>{
+ setCompositionStorageForTests(memoryStorage(new Map<string,string>()))
+ const id=addMediaInfoToComposition({id:'source-ride',url:'/files/sources/ride.wav',filename:'ride.wav',mediaType:'audio',duration:1,width:0,height:0,acodec:'pcm_s16le'})
+ const current=()=>compositionState.document.tracks.flatMap<import('../composition/types').CompositionClip>(track=>track.clips).find(clip=>clip.id===id) as import('../composition/types').AudioClip
+ const keys=[{at:0,value:0.25},{at:1,value:1,ease:[0.42,-0.5,0.58,1] as [number,number,number,number]}]
+ updateCompositionSourceGainKeys(id,keys);keys[1]!.ease![1]=7
+ expect(current().concatGainKeys?.[1]!.ease).toEqual([0.42,-0.5,0.58,1]);undoComposition();expect(current().concatGainKeys).toBeUndefined();redoComposition();expect(current().concatGainKeys).toHaveLength(2)
+ flushCompositionAutosaveForTests();resetCompositionForTests();reloadCompositionDraftForTests();expect(current().concatGainKeys).toHaveLength(2)
+ setCompositionClipLocked(id,true);expect(()=>updateCompositionSourceGainKeys(id,[])).toThrow('заблокирован')
+})
+
+it('manual detach and rejoin retain processed video audio and edits made while detached',()=>{
+ const id=addMediaInfoToComposition(video,{pairAudio:false})
+ compositionState.document={...compositionState.document,tracks:compositionState.document.tracks.map(track=>track.kind==='video'?{...track,clips:track.clips.map(clip=>clip.id===id?{...clip,dspEffects:[{id:'concat.echo',params:{delay:0.25}}],audioFadeInTicks:20000000,audioFadeOutTicks:20000000}:clip)}:track)}
+ updateCompositionSourceGainKeys(id,[{at:0,value:0.25},{at:1,value:1}])
+ const soundId=detachCompositionVideoAudio(id)
+ const clips=()=>compositionState.document.tracks.flatMap<import('../composition/types').CompositionClip>(track=>track.clips)
+ expect(clips().find(clip=>clip.id===soundId)).toMatchObject({dspEffects:[{id:'concat.echo',params:{delay:0.25}}],fadeInTicks:20000000,fadeOutTicks:20000000,concatGainKeys:[{value:0.25},{value:1}]})
+ updateCompositionAudioMix(soundId,{dspEffects:[{id:'concat.echo',params:{delay:0.5}}]});updateCompositionSourceGainKeys(soundId,[{at:0,value:0.5},{at:1,value:2}])
+ reattachCompositionVideoAudio(soundId)
+ expect(clips().find(clip=>clip.id===id)).toMatchObject({sourceAudioEnabled:true,dspEffects:[{id:'concat.echo',params:{delay:0.5}}],audioFadeInTicks:20000000,audioFadeOutTicks:20000000,concatGainKeys:[{value:0.5},{value:2}]})
+ undoComposition();expect(clips().find(clip=>clip.id===soundId)).toBeDefined();redoComposition();expect(clips().find(clip=>clip.id===soundId)).toBeUndefined()
+})
+
+it('edits absolute stream indices without clamping and retains choices on detached audio',()=>{
+ const id=addMediaInfoToComposition(video,{pairAudio:false})
+ updateCompositionAudioStream(id,2)
+ const clips=()=>compositionState.document.tracks.flatMap<import('../composition/types').CompositionClip>(track=>track.clips)
+ expect(clips().find(clip=>clip.id===id)).toMatchObject({audioStream:2})
+ for(const index of [-1,1.5,4294967296,NaN])expect(()=>updateCompositionAudioStream(id,index)).toThrow('индекс')
+ expect(clips().find(clip=>clip.id===id)).toMatchObject({audioStream:2})
+ const sound=detachCompositionVideoAudio(id)!;updateCompositionAudioStream(sound,1);expect(clips().find(clip=>clip.id===sound)).toMatchObject({audioStream:1});expect(clips().find(clip=>clip.id===id)).toMatchObject({audioStream:2})
+ setCompositionClipLocked(sound,true);expect(()=>updateCompositionAudioStream(sound,undefined)).toThrow('заблокирован');setCompositionClipLocked(sound,false);updateCompositionAudioStream(sound,undefined);expect(Object.hasOwn(clips().find(clip=>clip.id===sound)!,'audioStream')).toBe(false)
+})
+
+it('persists inactive DSP source keys through history, draft reload and native payload',()=>{
+ setCompositionStorageForTests(memoryStorage(new Map<string,string>()))
+ const id=addMediaInfoToComposition({id:'keyed-audio',url:'/files/sources/keyed.wav',filename:'keyed.wav',mediaType:'audio',duration:1,width:0,height:0,acodec:'pcm_f32le'})
+ const keys={semitones:[{at:0,value:-12,ease:[0.42,-0.5,0.58,1] as [number,number,number,number]},{at:1,value:12}]}
+ updateCompositionAudioMix(id,{dspEffects:[{id:'concat.pitch',params:{semitones:0},concatSourceKeys:keys}]});keys.semitones[0]!.value=7
+ const current=()=>compositionState.document.tracks.flatMap<import('../composition/types').CompositionClip>(track=>track.clips).find(clip=>clip.id===id) as import('../composition/types').AudioClip
+ expect(current().dspEffects?.[0]?.concatSourceKeys?.semitones?.[0]?.value).toBe(-12);undoComposition();expect(current().dspEffects?.length??0).toBe(0);redoComposition()
+ flushCompositionAutosaveForTests();resetCompositionForTests();reloadCompositionDraftForTests();expect(current().dspEffects?.[0]?.concatSourceKeys?.semitones?.[0]?.value).toBe(-12)
+ expect(buildCompositionRenderRequest(compositionState.document).composition.tracks.find(track=>track.kind==='audio')).toMatchObject({clips:[{dspEffects:[{params:{semitones:0},concatSourceKeys:{semitones:[{value:-12},{value:12}]}}]}]});expect(current().dspEffects?.[0]?.animation).toBeUndefined()
 })

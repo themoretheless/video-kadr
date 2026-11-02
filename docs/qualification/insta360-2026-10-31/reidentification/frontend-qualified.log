@@ -1,0 +1,13 @@
+
+> video-kadr-frontend@0.1.0 test
+> vitest run src/lib/components/composition/SphericalSemanticTracker.test.ts src/lib/motion/sphericalSemanticTracking.test.ts
+
+
+ RUN  v4.1.10 /Users/themoretheless/Documents/Sources/video-kadr/frontend
+
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
+   Start at  15:12:07
+   Duration  2.49s (transform 1.02s, setup 0ms, import 1.29s, tests 519ms, environment 1.11s)
+

@@ -1,0 +1,14 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "ray",
+      "address": "0x101b59c70",
+      "endAddress": "0x101b59db8",
+      "sourceOffset": 28695664,
+      "sha256": "61eb0dcf99be4dc9de29f71b8fc664409005f2cf160d94f9207a7a30e8b8b3b7"
+    }
+  ]
+}

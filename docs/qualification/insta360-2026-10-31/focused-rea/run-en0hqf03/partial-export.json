@@ -1,0 +1,16 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"result\":{\"path\":\"/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/focused-rea/run-en0hqf03/partial-evidence.json\",\"bytes\":105,\"records\":0,\"unknowns\":0}}"
+    }
+  ],
+  "structuredContent": {
+    "result": {
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/focused-rea/run-en0hqf03/partial-evidence.json",
+      "bytes": 105,
+      "records": 0,
+      "unknowns": 0
+    }
+  }
+}

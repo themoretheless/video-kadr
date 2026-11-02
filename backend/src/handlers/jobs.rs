@@ -106,6 +106,95 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
                     lease,
                 );
             }
+            JobKind::Stabilization => {
+                let work=serde_json::from_value::<super::stabilization_jobs::StabilizationWork>(envelope.payload)?;
+                anyhow::ensure!(work.schema_version==1,"unsupported stabilization work version");
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::stabilization_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::CutoutModelDownload => {
+                let work=serde_json::from_value::<super::cutout_model_downloads::DownloadWork>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::cutout_model_downloads::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::SamModelDownload => {
+                let work=serde_json::from_value::<super::sam_model_downloads::DownloadWork>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::sam_model_downloads::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::EnhanceModelDownload => {
+                let work=serde_json::from_value::<super::enhance_model_downloads::DownloadWork>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::enhance_model_downloads::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::TtsModelDownload => {
+                let work=serde_json::from_value::<super::tts_model_downloads::DownloadWork>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::tts_model_downloads::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::Tts => {
+                let work=serde_json::from_value::<super::tts_jobs::TtsWork>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::tts_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::SpeechModelDownload => {
+                let work=serde_json::from_value::<super::speech_model_downloads::DownloadWork>(envelope.payload)?;
+                work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::speech_model_downloads::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::PersonVideo => {
+                let work=serde_json::from_value::<super::person_video_jobs::Work>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::person_video_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::EnhanceVideo => {
+                let work=serde_json::from_value::<super::enhance_video_jobs::Work>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::enhance_video_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::SamRegion => {
+                let work=serde_json::from_value::<super::sam_jobs::Work>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::sam_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::CutoutEdit => {
+                let work=serde_json::from_value::<super::cutout_edit_jobs::Work>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::cutout_edit_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::Cutout => {
+                let work=serde_json::from_value::<super::cutout_jobs::Work>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::cutout_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::Selfie => {
+                let work=serde_json::from_value::<super::selfie_jobs::Work>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::selfie_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::Enhance => {
+                let work=serde_json::from_value::<super::enhance_jobs::Work>(envelope.payload)?;work.validate()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::enhance_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::Speech => {
+                let work = serde_json::from_value::<super::speech_jobs::SpeechWork>(envelope.payload)?;
+                anyhow::ensure!(work.schema_version == 1, "unsupported speech work version");
+                let lease = JobLeaseHeartbeat::start(state, job_id, envelope.attempt, lease_seconds);
+                super::speech_jobs::spawn_speech_job(state.clone(), job_id.into(), work, envelope.attempt, token, lease);
+            }
+            JobKind::FilmcraftVideo => {
+                let work=serde_json::from_value::<super::filmcraft_video_jobs::Work>(envelope.payload)?.upgraded()?;
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::filmcraft_video_jobs::spawn(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
+            JobKind::NestedExport => {
+                let work=serde_json::from_value::<super::nested_export::NestedExportWork>(envelope.payload)?;
+                anyhow::ensure!(work.schema_version==1,"unsupported native export work version");
+                let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
+                super::nested_export::spawn_nested_export_job(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+            }
             JobKind::Proxy => {
                 let work = serde_json::from_value::<ProxyWork>(envelope.payload)?;
                 let lease =
@@ -230,7 +319,23 @@ pub fn start_job_dispatcher(state: &AppState) {
 pub async fn job_status_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: axum::http::HeaderMap,
 ) -> AppResult<Json<Job>> {
+    super::speech_jobs::authorize_job(&state, &id, &headers, true).await?;
+    super::enhance_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::cutout_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::selfie_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::sam_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::enhance_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::person_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::tts_jobs::authorize_job(&state,&id,&headers).await?;
+    super::speech_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::tts_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::enhance_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::cutout_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::stabilization_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,true).await?;
     match state
         .get_job(&id)
         .await
@@ -245,7 +350,23 @@ pub async fn job_status_handler(
 pub async fn cancel_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: axum::http::HeaderMap,
 ) -> AppResult<Json<Value>> {
+    super::speech_jobs::authorize_job(&state, &id, &headers, false).await?;
+    super::enhance_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::cutout_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::selfie_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::sam_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::enhance_video_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::person_video_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::tts_jobs::authorize_job(&state,&id,&headers).await?;
+    super::speech_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::tts_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::enhance_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::cutout_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::stabilization_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,false).await?;
     match state
         .cancel_open_job(&id)
         .await
@@ -280,7 +401,24 @@ pub async fn job_registry_handler(State(state): State<AppState>) -> AppResult<Js
 pub async fn retry_job_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: axum::http::HeaderMap,
 ) -> AppResult<Json<Value>> {
+    super::speech_jobs::authorize_job(&state, &id, &headers, true).await?;
+    super::enhance_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::cutout_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::selfie_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::sam_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::enhance_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::person_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::tts_jobs::authorize_job(&state,&id,&headers).await?;
+    super::speech_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::tts_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::enhance_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::cutout_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::stabilization_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::filmcraft_export_queue::authorize_external_retry(&state,&id,&headers).await?;
     if state
         .get_job(&id)
         .await
@@ -302,7 +440,23 @@ pub async fn retry_job_handler(
 pub async fn discard_job_handler(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
+    headers: axum::http::HeaderMap,
 ) -> AppResult<Json<Value>> {
+    super::speech_jobs::authorize_job(&state, &id, &headers, true).await?;
+    super::enhance_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::cutout_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::selfie_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::sam_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::enhance_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::person_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::tts_jobs::authorize_job(&state,&id,&headers).await?;
+    super::speech_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::tts_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::enhance_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::cutout_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
+    super::stabilization_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,true).await?;
     let discarded = state
         .job_store
         .discard_failed(&id, "local-operator", None)

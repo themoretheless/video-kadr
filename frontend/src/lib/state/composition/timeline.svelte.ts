@@ -1,13 +1,50 @@
+import { restyleCaptions, type CaptionStylePatch } from '../../composition/restyleCaptions.js'
+import { mergeCaptions } from '../../composition/mergeCaptions.js'
+import { captionExportCues, formatSubtitleExport, type SubtitleExportFormat } from '../../subtitles/export.js'
+import {embeddedAudioMix} from '$lib/composition/embeddedAudioMix'
+import {cloneGainSourceKeys} from '$lib/composition/concatGainSourceKeys'
+import { replaceClipMedia, setClipMediaVersion } from '../../composition/replaceMedia.js'
+import { insertFreezeFrame } from '../../composition/freezeInsert.js'
+import { mergeClips } from '../../composition/mergeClips.js'
+import { cloneAudioAnimation } from '../../composition/keyframes.js'
+import { reattachAudio } from '../../composition/reattachAudio.js'
+import { createCompositionLink } from '../../composition/links.js'
+import { splitAllAtTick } from '../../composition/splitAll.js'
+import {boundaryTransition,type BoundaryTransitionOptions} from '../../composition/boundaryTransition.js'
+import { pasteInsertComposition } from '../../composition/clipboardInsert.js'
+import { setCompositionPlayhead } from './transport.svelte.js'
+import { insertCompositionClips, type InsertPlacement } from '../../composition/globalInsert.js'
+import { createGraphicClip, createGraphicTemplateClip, cloneGraphicValue } from '../../composition/graphicLayers.js'
+import type { GraphicContent, GraphicLayer } from '../../composition/types.js'
+import { cloneDspEffect } from '$lib/composition/dsp'
+import { createSolidColorClip,editSolidColorParams,type SolidColorParams } from '../../composition/solidColor.js'
+import { SvelteSet } from 'svelte/reactivity'
+import { copyColorKeys,pasteColorKeys } from '../../composition/colorClipboard.js'
+import { updateKeyframeTangents, editKeyframeTangent, setKeyframeTangentMode } from '../../composition/tangents.js'
+import { audioRoleMix } from '../../composition/audioRoles.js'
+import { COMPOSITION_VISUAL_PROPERTIES, COMPOSITION_AUDIO_PROPERTIES, COMPOSITION_MASK_PROPERTIES } from '../../composition/types.js'
+import { snapshotSelectedKeyframes, planKeyframePaste } from '../../composition/keyframeClipboard.js'
+import { updateSelectedKeyframeInterpolation } from '../../composition/keyframes.js'
+import { commitAutomationValues, linkedScaleAutomationPatches } from './core.svelte.js'
+import { canvasTimeGrid } from '../../composition/timeGrid.js'
+import { moveSelectedKeyframeTracks, scaleSelectedKeyframeTracks } from '../../composition/keyframeSelection.js'
+import { setClipLocked } from '../../composition/commands.js'
+import { moveClipsToNewTrack } from '../../composition/commands.js'
+import { setClipsEnabled } from '../../composition/commands.js'
+import { parseSubtitleDocument } from '../../subtitles/import.js'
+import { linkedClipIds } from '../../composition/links.js'
 import {
   findClipLocation,
   addTrack,
   addClip,
   moveClip,
+  moveClips,
+  moveClipsByTrackOffset,
   trimClip,
   slipClip,
   splitClip,
   deleteClip,
-  duplicateClip,
+  pasteClips,
   reorderTrack,
   upsertTransition,
   deleteTransition,
@@ -24,6 +61,7 @@ import {
 } from '../../composition/types.js'
 import {
   cloneAnimatableValue,
+  visualPropertyFallback,
   constantAnimatable,
   deleteKeyframe,
   keyframeTickAtLocalTime,
@@ -36,8 +74,10 @@ import {
   upsertKeyframe
 } from '../../composition/keyframes.js'
 import {
+  compositionGapAt,
+  rippleDeleteGap,
   magnetizeTrack,
-  rippleDeleteClip
+  rippleDeleteClips
 } from '../../composition/timelineProductivity.js'
 import {
   videoSourceTickAtTimelineTick
@@ -49,7 +89,6 @@ import {
 import {
   cuesToTextClips,
   formatSrt,
-  parseTimecodedText,
   textClipsToCues
 } from '../../subtitles/srt.js'
 import type {
@@ -85,6 +124,7 @@ import {
   clampTick,
   commitDocument,
   compositionState,
+  compositionSelectionEscapesLink,
   findAvailableTrack,
   firstFreeStart,
   makeId,
@@ -134,9 +174,65 @@ export function addTextToComposition(text = 'Текст'): string {
 }
 
 
+export function addGraphicToComposition(kind: GraphicContent['kind'] = 'text'): string {
+  let document = compositionState.document
+  const start = compositionState.transport.playheadTicks
+  const duration = Math.min(DEFAULT_TEXT_DURATION_TICKS, MAX_COMPOSITION_DURATION_TICKS - start)
+  if (duration <= 0) throw new Error('Плейхед находится за пределом композиции')
+  let trackId = findAvailableTrack(document, 'graphic', start, start + duration)?.id
+  if (!trackId) {
+    trackId = makeId('graphic-track')
+    document = addTrack(document, makeTrack('graphic', trackId, nextTrackName(document, 'Графика')), 0)
+  }
+  const clipId = makeId('graphic')
+  commitDocument(addClip(document, trackId, createGraphicClip(document.canvas, clipId, start, duration, kind)))
+  selectCompositionClip(trackId, clipId)
+  return clipId
+}
+
+export function updateCompositionGraphicLayers(clipId: string, layers: readonly GraphicLayer[]): void {
+  updateClip(clipId, clip => {
+    if (clip.kind !== 'graphic') throw new Error('Для изменения слоёв нужен графический клип')
+    return { ...clip, graphic: { layers: cloneGraphicValue(layers) } }
+  })
+}
+
+export function addColorToComposition(): string {
+  let document = compositionState.document
+  const start = compositionState.transport.playheadTicks
+  const duration = Math.min(DEFAULT_TEXT_DURATION_TICKS, MAX_COMPOSITION_DURATION_TICKS - start)
+  if (duration <= 0) throw new Error('Плейхед находится за пределом композиции')
+  let trackId = findAvailableTrack(document, 'color', start, start + duration)?.id
+  if (!trackId) {
+    trackId = makeId('color-track')
+    document = addTrack(document, makeTrack('color', trackId, nextTrackName(document, 'Цвет')), 0)
+  }
+  const clipId = makeId('color')
+  commitDocument(addClip(document, trackId, createSolidColorClip(document.canvas, clipId, start, duration)))
+  selectCompositionClip(trackId, clipId)
+  return clipId
+}
+
+export function updateCompositionColorParams(clipId: string, patch: Partial<SolidColorParams>): void {
+  updateClip(clipId, (clip) => {
+    if (clip.kind !== 'color') throw new Error('Для изменения цвета нужен цветовой слой')
+    return { ...clip, ...editSolidColorParams(clip, patch) }
+  })
+}
+
+/** Commit the complete media/caption insertion as one undoable edit. */
+export function insertCompositionPlacements(placements: readonly InsertPlacement[]): void {
+  const next = insertCompositionClips(compositionState.document, placements, () => makeId('insert'))
+  commitDocument(next)
+  const first = placements[0]!
+  selectCompositionClip(first.trackId, first.clip.id)
+}
+
 export function addCompositionTrack(kind: TrackKind): string {
   const labels: Record<TrackKind, string> = {
     video: 'Видео overlay',
+    color: 'Цвет',
+    graphic: 'Графика',
     audio: 'Аудио',
     image: 'Изображение',
     text: 'Текст',
@@ -154,7 +250,7 @@ export function addCompositionTrack(kind: TrackKind): string {
 
 
 export function importSrtToComposition(serialized: string, requestedTrackId?: string): number {
-  const cues = parseTimecodedText(serialized)
+  const cues = parseSubtitleDocument(serialized)
   if (!cues.length) throw new Error('Файл не содержит субтитров')
   let document = compositionState.document
   const candidateTrack = requestedTrackId
@@ -162,23 +258,66 @@ export function importSrtToComposition(serialized: string, requestedTrackId?: st
     : selectedCompositionTrack()
   if (requestedTrackId && !candidateTrack) throw new Error('Выбранная text-дорожка не найдена')
   const selectedTrack = candidateTrack?.kind === 'text' ? candidateTrack : undefined
-  if (requestedTrackId && !selectedTrack) throw new Error('Для SRT нужна text-дорожка')
-  let trackId: string
-  if (selectedTrack) {
-    if (selectedTrack.locked) throw new Error('Выбранная text-дорожка заблокирована')
-    trackId = selectedTrack.id
-  } else {
-    trackId = makeId('subtitle-track')
-    document = addTrack(document, makeTrack('text', trackId, nextTrackName(document, 'Субтитры')), 0)
+  if (requestedTrackId && !selectedTrack) throw new Error('Для субтитров нужна text-дорожка')
+  if (requestedTrackId && selectedTrack?.locked) throw new Error('Выбранная text-дорожка заблокирована')
+  const roles = new SvelteSet(document.metadata?.captionTextTracks ?? [])
+  if (requestedTrackId) roles.add(requestedTrackId)
+  const lanes = document.tracks.filter((track) => track.kind === 'text' && roles.has(track.id))
+  const candidates = lanes.filter((track) => !track.locked).map((track) => track.id)
+  if (requestedTrackId) {
+    candidates.splice(candidates.indexOf(requestedTrackId), 1)
+    candidates.unshift(requestedTrackId)
   }
-
-  const clips = cuesToTextClips(cues, (_cue, index) => makeId(`subtitle-${index + 1}`))
-  for (const clip of clips) document = addClip(document, trackId, clip)
+  const clips = cuesToTextClips(
+    [...cues].sort((a, b) => a.startTicks - b.startTicks),
+    (_cue, index) => makeId(`subtitle-${index + 1}`),
+  )
+  let firstTrackId = ''
+  for (const clip of clips) {
+    let trackId = candidates.find((id) => {
+      const track = document.tracks.find((track) => track.id === id)!
+      return track.clips.every((existing) =>
+        clip.timelineStartTicks >= clipEndTicks(existing) ||
+        existing.timelineStartTicks >= clipEndTicks(clip))
+    })
+    if (!trackId) {
+      trackId = makeId('subtitle-track')
+      const lastLane = document.tracks.reduce((last, track, index) => roles.has(track.id) ? index : last, -1)
+      document = addTrack(document, makeTrack('text', trackId, nextTrackName(document, 'Субтитры')), lastLane + 1)
+      roles.add(trackId)
+      candidates.push(trackId)
+    }
+    document = addClip(document, trackId, clip)
+    if (!firstTrackId) firstTrackId = trackId
+  }
+  document = { ...document, metadata: { ...document.metadata,
+    captionTextTracks: document.tracks.filter((track) => track.kind === 'text' && roles.has(track.id)).map((track) => track.id),
+  } }
   commitDocument(document)
-  selectCompositionClip(trackId, clips[0]!.id)
+  selectCompositionClip(firstTrackId, clips[0]!.id)
   return clips.length
 }
 
+
+/** Merge the current caption selection as one recorded edit. */
+export function restyleCompositionCaptions(patch: CaptionStylePatch, ids?: readonly string[] | null): void {
+  commitDocument(restyleCaptions(compositionState.document, patch, ids).document)
+}
+
+export function mergeSelectedCompositionCaptions(): void {
+  const result = mergeCaptions(compositionState.document, compositionState.ui.selectedClipIds)
+  commitDocument(result.document)
+  selectCompositionClip(result.trackId, result.record.layer_id)
+}
+
+/** Read-only caption-role export across every lane, or one explicitly requested lane. */
+export function exportCompositionCaptions(format: SubtitleExportFormat, trackId?: string): { filename: string; text: string } {
+  const cues = captionExportCues(compositionState.document, trackId)
+  if (!cues.length) throw new Error('В композиции нет субтитров для экспорта')
+  const base = (compositionState.projectName.trim() || 'subtitles')
+    .replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'subtitles'
+  return { filename: `${base}.${format}`, text: formatSubtitleExport(cues, format) }
+}
 
 export function exportSelectedTextTrackSrt(): { filename: string; text: string } {
   const selected = selectedCompositionTrack()
@@ -201,6 +340,20 @@ export function moveCompositionClip(
   proposedStartTicks: number,
   snap = compositionState.ui.snapEnabled,
 ): void {
+  const escapeLink = compositionSelectionEscapesLink(clipId)
+  const selection = compositionState.ui.selectedClipIds.includes(clipId) ? [...compositionState.ui.selectedClipIds] : null
+  commitDocument(planCompositionClipMove(clipId, targetTrackId, proposedStartTicks, snap))
+  selectCompositionClip(targetTrackId, clipId, { single: escapeLink })
+  if (selection) compositionState.ui.selectedClipIds = selection
+}
+
+/** Read-only rehearsal of exactly the move the visible editor will commit. */
+export function planCompositionClipMove(
+  clipId: string,
+  targetTrackId: string,
+  proposedStartTicks: number,
+  snap = compositionState.ui.snapEnabled,
+): Composition {
   const location = findClipLocation(compositionState.document, clipId)
   const start = Math.max(0, Math.round(proposedStartTicks))
   const snapped = snap
@@ -214,8 +367,15 @@ export function moveCompositionClip(
         snapThresholdTicks(),
       ).timelineStartTicks
     : start
-  commitDocument(moveClip(compositionState.document, clipId, targetTrackId, snapped))
-  selectCompositionClip(targetTrackId, clipId)
+  const escapeLink = compositionSelectionEscapesLink(clipId)
+  const selection = compositionState.ui.selectedClipIds.includes(clipId) ? [...compositionState.ui.selectedClipIds] : null
+  if (targetTrackId !== location.track.id) {
+    const subjects = selection ?? (escapeLink ? [clipId] : linkedClipIds(compositionState.document, clipId))
+    return moveClipsByTrackOffset(compositionState.document, subjects, clipId, targetTrackId, snapped, compositionState.document.tracks.map((track) => track.id))
+  }
+  return selection && selection.length > 1
+    ? moveClips(compositionState.document, [clipId, ...selection.filter((id) => id !== clipId)], targetTrackId, snapped)
+    : moveClip(compositionState.document, clipId, targetTrackId, snapped, escapeLink)
 }
 
 
@@ -235,7 +395,7 @@ export function trimCompositionClip(
     start = snapTick(start, targets, snapThresholdTicks()).valueTicks
     end = snapTick(end, targets, snapThresholdTicks()).valueTicks
   }
-  commitDocument(trimClip(compositionState.document, clipId, start, end))
+  commitDocument(trimClip(compositionState.document, clipId, start, end, compositionSelectionEscapesLink(clipId)))
 }
 
 
@@ -244,6 +404,37 @@ export function slipCompositionClip(clipId: string, sourceDeltaTicks: number): v
 }
 
 
+export function setCompositionClipMediaVersion(clipId: string, copy: boolean): void {
+  commitDocument(setClipMediaVersion(compositionState.document, clipId, copy))
+}
+
+export function replaceCompositionClipMedia(clipId: string, sourceId: string, sourceStart?: number, processed = false): void {
+  commitDocument(replaceClipMedia(compositionState.document, clipId, sourceId, sourceStart, processed))
+}
+
+export function insertCompositionFreezeFrame(durationTicks = COMPOSITION_TIME_BASE): string {
+  const id = compositionState.ui.selectedClipId
+  if (!id) throw new Error('Выберите видео или изображение')
+  const result = insertFreezeFrame(compositionState.document, id, compositionState.transport.playheadTicks, durationTicks, () => makeId('freeze'))
+  commitDocument(result.document)
+  selectCompositionClip(result.trackId, result.clipId)
+  return result.clipId
+}
+
+export function mergeSelectedCompositionClips(): void {
+  const result = mergeClips(compositionState.document, compositionState.ui.selectedClipIds)
+  commitDocument(result.document)
+  const id = result.survivors.find(id => findClipLocation(result.document, id).track.id === compositionState.ui.selectedTrackId) ?? result.survivors[0]!
+  const location = findClipLocation(result.document, id)
+  selectCompositionClip(location.track.id, id)
+}
+
+export function splitAllCompositionClips(): void {
+  const document = compositionState.document
+  const result = splitAllAtTick(document, compositionState.transport.playheadTicks, () => makeId('split-clip'))
+  if (result !== document) commitDocument(result)
+}
+
 export function splitSelectedCompositionClip(): string | null {
   const clipId = compositionState.ui.selectedClipId
   if (!clipId) return null
@@ -251,7 +442,7 @@ export function splitSelectedCompositionClip(): string | null {
   const at = compositionState.transport.playheadTicks
   if (at <= clip.timelineStartTicks || at >= clipEndTicks(clip)) return null
   const rightId = makeId(`${clip.kind}-clip`)
-  commitDocument(splitClip(compositionState.document, clipId, at, rightId))
+  commitDocument(splitClip(compositionState.document, clipId, at, rightId, compositionSelectionEscapesLink(clipId)))
   const location = findClipLocation(compositionState.document, rightId)
   selectCompositionClip(location.track.id, rightId)
   return rightId
@@ -259,9 +450,17 @@ export function splitSelectedCompositionClip(): string | null {
 
 
 export function deleteSelectedCompositionClip(): void {
+  if (compositionState.ui.selectedKeyframes.length) {
+    deleteCompositionKeyframeSelection(compositionState.ui.selectedKeyframes)
+    compositionState.ui.selectedKeyframes = []
+    return
+  }
   const clipId = compositionState.ui.selectedClipId
   if (!clipId) return
-  commitDocument(deleteClip(compositionState.document, clipId))
+  const ids = compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : [clipId]
+  let document = compositionState.document
+  for (const id of ids) document = deleteClip(document, id)
+  commitDocument(document)
   selectCompositionClip(null, null)
 }
 
@@ -269,7 +468,7 @@ export function deleteSelectedCompositionClip(): void {
 export function rippleDeleteSelectedCompositionClip(): void {
   const clipId = compositionState.ui.selectedClipId
   if (!clipId) return
-  commitDocument(rippleDeleteClip(compositionState.document, clipId))
+  commitDocument(rippleDeleteClips(compositionState.document, compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : [clipId]))
   selectCompositionClip(null, null)
 }
 
@@ -308,23 +507,37 @@ export function magnetizeCompositionTrack(trackId: string, anchorTicks = 0): voi
 }
 
 
-export function duplicateSelectedCompositionClip(): string | null {
+export function duplicateSelectedCompositionClip(destination?: { trackId: string; timelineStartTicks: number }): string | null {
   const clipId = compositionState.ui.selectedClipId
   if (!clipId) return null
   const location = findClipLocation(compositionState.document, clipId)
   const duration = clipDurationTicks(location.clip)
-  const start = firstFreeStart(location.track, clipEndTicks(location.clip), duration, clipId)
+  const selected = compositionState.ui.selectedClipIds.includes(clipId) ? compositionState.ui.selectedClipIds : compositionSelectionEscapesLink(clipId) ? [clipId] : linkedClipIds(compositionState.document, clipId)
+  const subjectIds = [clipId, ...selected.filter((id) => id !== clipId)]
+  const members = subjectIds.map((id) => findClipLocation(compositionState.document, id).clip)
+  const proposed = members.length > 1
+    ? location.clip.timelineStartTicks + Math.max(...members.map(clipEndTicks)) - Math.min(...members.map((clip) => clip.timelineStartTicks))
+    : clipEndTicks(location.clip)
+  const start = destination?.timelineStartTicks ?? firstFreeStart(location.track, proposed, duration, clipId)
   const duplicateId = makeId(`${location.clip.kind}-clip`)
+  const copies = subjectIds.map((id) => ({ clipId: id, id: id === clipId ? duplicateId : makeId('copy') }))
   commitDocument(
-    duplicateClip(compositionState.document, clipId, {
-      id: duplicateId,
-      timelineStartTicks: start,
-    }),
+    pasteClips(compositionState.document, copies, { timelineStartTicks: start, ...(destination ? { targetTrackId: destination.trackId } : {}) }),
   )
-  selectCompositionClip(location.track.id, duplicateId)
+  selectCompositionClip(destination?.trackId ?? location.track.id, duplicateId, { single: true })
+  compositionState.ui.selectedClipIds = copies.map((copy) => copy.id)
   return duplicateId
 }
 
+
+export function raiseSelectedCompositionClips(anchor?: { clipId: string; startTicks: number }): string | null {
+  const ids = compositionState.ui.selectedClipIds
+  if (!ids.length) return null
+  const trackId = makeId('track')
+  commitDocument(moveClipsToNewTrack(compositionState.document, ids, trackId, anchor))
+  compositionState.ui.selectedTrackId = trackId
+  return trackId
+}
 
 export function reorderCompositionTrack(trackId: string, toIndex: number): void {
   commitDocument(reorderTrack(compositionState.document, trackId, toIndex))
@@ -333,10 +546,12 @@ export function reorderCompositionTrack(trackId: string, toIndex: number): void 
 
 export function toggleCompositionTrackFlag(
   trackId: string,
-  flag: 'locked' | 'muted' | 'hidden' | 'solo',
+  flag: 'locked' | 'muted' | 'hidden' | 'solo' | 'syncLock',
 ): void {
   const tracks = compositionState.document.tracks.map((track) => {
-    if (track.id !== trackId || !(flag in track)) return track
+    if (track.id !== trackId) return track
+    if (flag === 'syncLock') return { ...track, syncLock: !(track.syncLock ?? true) }
+    if (!(flag in track)) return track
     return { ...track, [flag]: !track[flag as keyof typeof track] } as CompositionTrack
   })
   commitDocument({ ...compositionState.document, tracks })
@@ -359,7 +574,7 @@ export function updateCompositionText(clipId: string, text: string): void {
 
 export function updateCompositionClipOpacity(clipId: string, opacity: number): void {
   updateClip(clipId, (clip) => {
-    if (clip.kind !== 'video' && clip.kind !== 'image' && clip.kind !== 'text') return clip
+    if (clip.kind !== 'video' && clip.kind !== 'image' && clip.kind !== 'text' && clip.kind !== 'color') return clip
     return { ...clip, opacity: clampNumber(opacity, 0, 1) }
   })
 }
@@ -391,6 +606,13 @@ export function updateCompositionVideoAudio(
   })
 }
 
+
+export function reattachCompositionVideoAudio(clipId: string): void {
+  const result = reattachAudio(compositionState.document, clipId)
+  commitDocument(result.document)
+  const location = findClipLocation(result.document, result.videoId)
+  selectCompositionClip(location.track.id, result.videoId)
+}
 
 export function detachCompositionVideoAudio(clipId: string): string {
   const location = findClipLocation(compositionState.document, clipId)
@@ -425,20 +647,20 @@ export function detachCompositionVideoAudio(clipId: string): string {
   const audioClip: AudioClip = {
     id: audioId,
     kind: 'audio',
+    enabled: clip.enabled,
     sourceId: clip.sourceId,
     timelineStartTicks: clip.timelineStartTicks,
     sourceInTicks: clip.sourceInTicks,
     sourceOutTicks: clip.sourceOutTicks,
+    ...(clip.timelineDurationTicks !== undefined ? { timelineDurationTicks: clip.timelineDurationTicks } : {}),
     speed: clip.speed,
-    ...(clip.speedRamp ? { speedRamp: structuredClone(clip.speedRamp) } : {}),
-    gain: clip.audioGain,
-    pan: clip.audioPan ?? 0,
+    ...(clip.speedRamp ? { speedRamp: { ...clip.speedRamp, points: clip.speedRamp.points.map(point => ({ ...point })) } } : {}),
+    ...embeddedAudioMix(clip),
     reversed: clip.playbackMode?.mode === 'reverse',
-    ...(clip.audioAnimation ? { audioAnimation: structuredClone(clip.audioAnimation) } : {}),
-    fadeInTicks: 0,
-    fadeOutTicks: 0,
   }
   document = addClip(document, audioTrack.id, audioClip)
+  const members = linkedClipIds(document, clipId)
+  document = createCompositionLink(document, makeId('detached-audio-link'), [...members, audioId], members.length > 1)
   commitDocument(document)
   selectCompositionClip(audioTrack.id, audioId)
   return audioId
@@ -545,6 +767,12 @@ export function updateCompositionClipSpeed(clipId: string, speed: number): void 
       speed: normalized,
       ...(speedRamp ? { speedRamp } : {}),
     }
+    if (clip.timelineDurationTicks !== undefined) {
+      const oldDerived = clipDurationTicks({ ...clip, timelineDurationTicks: undefined })
+      const newDerived = clipDurationTicks({ ...updated, timelineDurationTicks: undefined })
+      const ratio = speedRamp ? newDerived / oldDerived : (clip.speed ?? 1) / normalized
+      updated.timelineDurationTicks = Math.max(1, Math.round(oldDuration * ratio))
+    }
     const duration = clipDurationTicks(updated)
     const retimed = {
       ...updated,
@@ -552,8 +780,8 @@ export function updateCompositionClipSpeed(clipId: string, speed: number): void 
         audioAnimation: sliceAudioAnimation(updated.audioAnimation, 0, duration, oldDuration),
       } : {}),
       ...(clip.kind === 'audio' ? {
-        fadeInTicks: Math.min(clip.fadeInTicks ?? 0, duration),
-        fadeOutTicks: Math.min(clip.fadeOutTicks ?? 0, duration),
+        fadeInTicks: clip.fadeInTicks ?? 0,
+        fadeOutTicks: clip.fadeOutTicks ?? 0,
       } : {}),
     }
     if (retimed.kind !== 'video') return retimed
@@ -612,8 +840,8 @@ export function updateCompositionSpeedRamp(
         ...(updated.audioAnimation ? {
           audioAnimation: sliceAudioAnimation(updated.audioAnimation, 0, duration, oldDuration),
         } : {}),
-        fadeInTicks: Math.min(updated.fadeInTicks ?? 0, duration),
-        fadeOutTicks: Math.min(updated.fadeOutTicks ?? 0, duration),
+        fadeInTicks: updated.fadeInTicks ?? 0,
+        fadeOutTicks: updated.fadeOutTicks ?? 0,
       }
     }
     return {
@@ -640,7 +868,7 @@ export function updateCompositionVisualTransform(
         y: patch.y === undefined ? clip.y : clampNumber(patch.y, -32_768, 32_768),
       }
     }
-    if (clip.kind !== 'video' && clip.kind !== 'image') return clip
+    if (clip.kind !== 'video' && clip.kind !== 'image' && clip.kind !== 'color') return clip
     return {
       ...clip,
       transform: {
@@ -657,7 +885,7 @@ export function updateCompositionVisualTransform(
 
 export function updateCompositionRotation(clipId: string, rotationDegrees: number): void {
   updateClip(clipId, (clip) => {
-    if (clip.kind !== 'video' && clip.kind !== 'image' && clip.kind !== 'text') return clip
+    if (clip.kind !== 'video' && clip.kind !== 'image' && clip.kind !== 'text' && clip.kind !== 'color') return clip
     return { ...clip, rotationDegrees: clampNumber(rotationDegrees, -3_600, 3_600) }
   })
 }
@@ -685,25 +913,44 @@ export function updateCompositionVideoEffects(clipId: string, videoEffects: read
 
 export type { CompositionAutomationTarget, CompositionAutomationProperty } from './core.svelte.js'
 
+/** Composite Scale UI writes both axes in one commit; raw parameter commands remain independent. */
+function writeAutomationEdit(
+  target: CompositionAutomationTarget,
+  property: CompositionAutomationProperty,
+  value: import('../../composition/types.js').CompositionAnimatableValue | undefined,
+  fanOutScale: boolean,
+): void {
+  const resolved = resolveAutomation(target, property)
+  const clip = resolved[0]
+  if (fanOutScale && target.kind === 'visual' && clip.kind !== 'audio' && clip.scaleLinked === true && (property === 'scaleX' || property === 'scaleY')) {
+    const next = value ?? constantAnimatable(visualPropertyFallback(compositionState.document, clip, 'scaleX'))
+    commitAutomationValues([
+      { target, property: 'scaleX', value: next },
+      { target, property: 'scaleY', value: cloneAnimatableValue(next) },
+    ])
+  } else resolved[5](value)
+}
+
 export function setCompositionAutomationKeyframe(
   target: CompositionAutomationTarget,
   property: CompositionAutomationProperty,
   value?: number,
   timelineTicks = compositionState.transport.playheadTicks,
+  fanOutScale = false,
 ): void {
   const resolved = resolveAutomation(target, property)
-  const [clip, current, fallback, minimum, maximum, write] = resolved
+  const [clip, current, fallback, minimum, maximum] = resolved
   const duration = clipDurationTicks(clip)
   const localTicks = Math.round(timelineTicks - clip.timelineStartTicks)
   if (localTicks < 0 || localTicks > duration) throw new Error('Плейхед должен находиться внутри выбранного clip')
   const sampled = value ?? sampleAnimatableValue(current ?? constantAnimatable(fallback), localTicks)
   const timeBase = current?.mode === 'keyframes' ? current.track.timeBase : COMPOSITION_TIME_BASE
-  write(upsertKeyframe(
+  writeAutomationEdit(target, property, upsertKeyframe(
     current,
-    keyframeTickAtLocalTime(localTicks, timeBase),
+    keyframeTickAtLocalTime(localTicks, timeBase, COMPOSITION_TIME_BASE, current?.mode === 'keyframes' ? current.track : undefined),
     clampNumber(sampled, minimum, maximum),
     fallback,
-  ))
+  ), fanOutScale)
 }
 
 
@@ -713,30 +960,119 @@ export function updateCompositionAutomationKeyframe(
   originalTick: number,
   tick: number,
   value: number,
+  fanOutScale = false,
 ): void {
   const resolved = resolveAutomation(target, property)
-  const [clip, current, , minimum, maximum, write] = resolved
+  const [, current, , minimum, maximum] = resolved
   if (!current || current.mode !== 'keyframes') throw new Error('У параметра нет keyframe track')
-  const maximumTick = Math.floor((clipDurationTicks(clip) * current.track.timeBase) / COMPOSITION_TIME_BASE)
-  write(updateKeyframe(
+  writeAutomationEdit(target, property, updateKeyframe(
     current,
     originalTick,
-    clampTick(tick, maximumTick),
+    tick,
     clampNumber(value, minimum, maximum),
-  ))
+  ), fanOutScale)
 }
 
+
+export interface CompositionKeyframeSubject {
+  readonly target: CompositionAutomationTarget
+  readonly property: CompositionAutomationProperty
+  readonly ticks: readonly number[]
+}
+
+export function moveCompositionKeyframeSelection(subjects: readonly CompositionKeyframeSubject[], delta: number): readonly CompositionKeyframeSubject[] {
+  const ids = subjects.map((subject) => JSON.stringify([subject.target.kind, subject.target.clipId, subject.target.kind === 'mask' ? subject.target.maskId : '', subject.property]))
+  const groups = subjects.map((subject, index) => {
+    const resolved = resolveAutomation(subject.target, subject.property)
+    if (!resolved[1]) throw new Error('У параметра нет keyframe track')
+    return { id: ids[index]!, value: resolved[1], durationTicks: clipDurationTicks(resolved[0]), selectedTicks: subject.ticks }
+  })
+  const result = moveSelectedKeyframeTracks(groups, delta, canvasTimeGrid(compositionState.document.canvas))
+  commitAutomationValues(linkedScaleAutomationPatches(subjects.map((subject, index) => ({ ...subject, value: result.groups[index]!.value }))))
+  return subjects.map((subject, index) => ({ ...subject, ticks: result.groups[index]!.selectedTicks }))
+}
+
+export function compositionKeyframeSelectionExtent(subjects: readonly CompositionKeyframeSubject[] = compositionState.ui.selectedKeyframes): { first: number; last: number; distinct: number } | null {
+  const times = subjects.flatMap((subject) => {
+    const resolved = resolveAutomation(subject.target, subject.property)
+    if (resolved[1]?.mode !== 'keyframes') return []
+    const timeBase = resolved[1].track.timeBase
+    return subject.ticks.map((tick) => resolved[0].timelineStartTicks + Math.round(tick * COMPOSITION_TIME_BASE / timeBase))
+  })
+  if (!times.length) return null
+  return { first: Math.min(...times), last: Math.max(...times), distinct: times.filter((tick, index) => times.indexOf(tick) === index).length }
+}
+
+export function scaleCompositionKeyframeSelection(subjects: readonly CompositionKeyframeSubject[], anchorTicks: number, factor: number): readonly CompositionKeyframeSubject[] {
+  const groups = subjects.map((subject) => {
+    const resolved = resolveAutomation(subject.target, subject.property)
+    if (!resolved[1]) throw new Error('У параметра нет keyframe track')
+    return { id: JSON.stringify([subject.target, subject.property]), value: resolved[1], durationTicks: clipDurationTicks(resolved[0]), timelineStartTicks: resolved[0].timelineStartTicks, selectedTicks: subject.ticks }
+  })
+  const result = scaleSelectedKeyframeTracks(groups, anchorTicks, factor, canvasTimeGrid(compositionState.document.canvas))
+  if (result.factor !== 1) commitAutomationValues(linkedScaleAutomationPatches(subjects.map((subject, index) => ({ ...subject, value: result.groups[index]!.value }))))
+  return subjects.map((subject, index) => ({ ...subject, ticks: result.groups[index]!.selectedTicks }))
+}
+
+export function moveCompositionAutomationKeyframes(target: CompositionAutomationTarget, property: CompositionAutomationProperty, ticks: readonly number[], delta: number): readonly number[] {
+  return moveCompositionKeyframeSelection([{ target, property, ticks }], delta)[0]!.ticks
+}
+
+export function setCompositionKeyframeSelectionTangentMode(mode: 'auto' | 'free', subjects: readonly CompositionKeyframeSubject[] = compositionState.ui.selectedKeyframes): void {
+  if (!subjects.length) throw new Error('Select keyframes before changing tangents')
+  const ids = subjects.map(subject => JSON.stringify([subject.target,subject.property]))
+  if (ids.some((id,index) => ids.indexOf(id) !== index)) throw new Error('Duplicate keyframe subjects')
+  const patches = subjects.map(subject => {
+    const current = resolveAutomation(subject.target,subject.property)[1]
+    if (!current) throw new Error('У параметра нет keyframe track')
+    return { ...subject, value: setKeyframeTangentMode(current,subject.ticks,mode) }
+  })
+  commitAutomationValues(linkedScaleAutomationPatches(patches))
+}
+
+export function setCompositionKeyframeSelectionInterpolation(interpolation: CompositionInterpolation, subjects: readonly CompositionKeyframeSubject[] = compositionState.ui.selectedKeyframes): void {
+  if (!subjects.length) throw new Error('Select keyframes before changing easing')
+  const ids = subjects.map((subject) => JSON.stringify([subject.target, subject.property]))
+  if (ids.some((id, index) => ids.indexOf(id) !== index)) throw new Error('Duplicate keyframe subjects')
+  const patches = subjects.map((subject) => {
+    const resolved = resolveAutomation(subject.target, subject.property)
+    if (!resolved[1]) throw new Error('У параметра нет keyframe track')
+    return { ...subject, value: updateSelectedKeyframeInterpolation(resolved[1], subject.ticks, interpolation) }
+  })
+  commitAutomationValues(linkedScaleAutomationPatches(patches))
+}
+
+export function deleteCompositionKeyframeSelection(subjects: readonly CompositionKeyframeSubject[]): void {
+  if (!subjects.length) throw new Error('Select keyframes before deleting')
+  const ids = subjects.map((subject) => JSON.stringify([subject.target.kind, subject.target.clipId, subject.target.kind === 'mask' ? subject.target.maskId : '', subject.property]))
+  if (ids.some((id, index) => ids.indexOf(id) !== index)) throw new Error('Duplicate keyframe subjects')
+  const patches = subjects.map(({ target, property, ticks }) => {
+    const resolved = resolveAutomation(target, property)
+    const current = resolved[1]
+    if (!current || current.mode !== 'keyframes' || !ticks.length || ticks.some((tick) => !current.track.keyframes.some((key) => key.tick === tick))) throw new Error('Selected keyframe no longer exists')
+    let next: typeof resolved[1] = current
+    if (current.track.keyframes.every((key) => ticks.includes(key.tick))) next = constantAnimatable(current.track.keyframes[current.track.keyframes.length - 1]!.value)
+    else for (const tick of ticks.filter((tick, index) => ticks.indexOf(tick) === index)) if (next) next = deleteKeyframe(next, tick)
+    return { target, property, value: next ?? (target.kind === 'mask' ? constantAnimatable(sampleAtPlayhead(resolved)) : undefined) }
+  })
+  commitAutomationValues(linkedScaleAutomationPatches(patches))
+}
+
+export function deleteCompositionAutomationKeyframes(target: CompositionAutomationTarget, property: CompositionAutomationProperty, ticks: readonly number[]): void {
+  deleteCompositionKeyframeSelection([{ target, property, ticks }])
+}
 
 export function deleteCompositionAutomationKeyframe(
   target: CompositionAutomationTarget,
   property: CompositionAutomationProperty,
   tick: number,
+  fanOutScale = false,
 ): void {
   const resolved = resolveAutomation(target, property)
   const current = resolved[1]
   if (!current) return
   const next = deleteKeyframe(current, tick)
-  resolved[5](next ?? (target.kind === 'mask' ? constantAnimatable(sampleAtPlayhead(resolved)) : undefined))
+  writeAutomationEdit(target, property, next ?? (target.kind === 'mask' ? constantAnimatable(sampleAtPlayhead(resolved)) : undefined), fanOutScale)
 }
 
 
@@ -744,22 +1080,56 @@ export function setCompositionAutomationInterpolation(
   target: CompositionAutomationTarget,
   property: CompositionAutomationProperty,
   interpolation: Exclude<CompositionInterpolation, 'ease_in_out_cubic'>,
+  fanOutScale = false,
 ): void {
   const resolved = resolveAutomation(target, property)
   const current = resolved[1]
   if (!current) throw new Error('Сначала добавьте ключевой кадр')
-  resolved[5](updateInterpolation(current, interpolation))
+  writeAutomationEdit(target, property, updateInterpolation(current, interpolation), fanOutScale)
 }
 
+
+export function editCompositionAutomationTangent(
+  target: CompositionAutomationTarget, property: CompositionAutomationProperty,
+  tick: number, side: 'incoming' | 'outgoing', x: number, y: number, fanOutScale = false,
+): void {
+  const current = resolveAutomation(target, property)[1]
+  if (!current) throw new Error('Сначала добавьте ключевой кадр')
+  writeAutomationEdit(target, property, editKeyframeTangent(current, tick, side, x, y), fanOutScale)
+}
+
+export function setCompositionAutomationTangents(
+  target: CompositionAutomationTarget,
+  property: CompositionAutomationProperty,
+  ticks: readonly number[],
+  patch: Partial<import('../../composition/types.js').CompositionKeyframeTangents>,
+  fanOutScale = false,
+): void {
+  const current = resolveAutomation(target, property)[1]
+  if (!current) throw new Error('Сначала добавьте ключевой кадр')
+  writeAutomationEdit(target, property, updateKeyframeTangents(current, ticks, patch), fanOutScale)
+}
+
+export function setCompositionAutomationExtrapolation(
+  target: CompositionAutomationTarget,
+  property: CompositionAutomationProperty,
+  side: 'before' | 'after',
+  mode: import('../../composition/types.js').CompositionExtrapolationMode,
+  fanOutScale = false,
+): void {
+  const current = resolveAutomation(target, property)[1]
+  if (current?.mode !== 'keyframes') throw new Error('Сначала добавьте ключевой кадр')
+  writeAutomationEdit(target, property, { ...current, track: { ...current.track, extrapolation: { before: 'hold', after: 'hold', ...current.track.extrapolation, [side]: mode } } }, fanOutScale)
+}
 
 export function clearCompositionAutomation(
   target: CompositionAutomationTarget,
   property: CompositionAutomationProperty,
+  fanOutScale = false,
 ): void {
   const resolved = resolveAutomation(target, property)
-  resolved[5](target.kind === 'mask' && resolved[1]
-    ? constantAnimatable(sampleAtPlayhead(resolved))
-    : undefined)
+  if (!resolved[1]) return
+  writeAutomationEdit(target, property, constantAnimatable(sampleAtPlayhead(resolved)), fanOutScale)
 }
 
 
@@ -893,7 +1263,7 @@ export function updateCompositionVideoMask(
     if (current.mode !== 'keyframes') return constantAnimatable(next)
     return upsertKeyframe(
       current,
-      keyframeTickAtLocalTime(localTicks, current.track.timeBase),
+      keyframeTickAtLocalTime(localTicks, current.track.timeBase, COMPOSITION_TIME_BASE, current.track),
       next,
       sampleAnimatableValue(current, 0),
     )
@@ -929,23 +1299,40 @@ export function deleteCompositionVideoMask(clipId: string, maskId: string): void
 }
 
 
+export function setCompositionRoleGain(role: import('../../composition/types.js').CompositionAudioRole, gainDb: number): void {
+  if (!['dialogue', 'music', 'sfx', 'voiceover'].includes(role) || !Number.isFinite(gainDb)) throw new Error('Invalid audio role gain')
+  const document = compositionState.document
+  commitDocument({ ...document, audioRoles: { ...document.audioRoles, [role]: { ...audioRoleMix(document, role), gainDb } } })
+}
+
+export function setCompositionAudioRole(clipId: string, role: import('../../composition/types.js').CompositionAudioRole): void {
+  if (!['dialogue', 'music', 'sfx', 'voiceover'].includes(role)) throw new Error('Unsupported audio role')
+  updateClip(clipId, clip => {
+    if (clip.kind !== 'audio') throw new Error('Audio role requires an audio clip')
+    return (clip.role ?? 'dialogue') === role ? clip : { ...clip, role }
+  })
+}
+
 export function updateCompositionAudioMix(
   clipId: string,
-  patch: Partial<{ pan: number; reversed: boolean; fadeInTicks: number; fadeOutTicks: number; voiceEffect: import('$lib/composition/types.js').CompositionVoiceEffect; pitchSemitones: number; toneDb: number; crossfadeInTicks: number; ducking: import('$lib/composition/types.js').CompositionAudioDucking | undefined }>,
+  patch: Partial<{ dspEffects: readonly import('$lib/composition/types.js').CompositionDspEffect[]; pan: number; reversed: boolean; fadeInTicks: number; fadeOutTicks: number; voiceEffect: import('$lib/composition/types.js').CompositionVoiceEffect; pitchSemitones: number; toneDb: number; crossfadeInTicks: number; crossfadeCurve: NonNullable<import('$lib/composition/types.js').AudioClip['crossfadeCurve']>; ducking: import('$lib/composition/types.js').CompositionAudioDucking | undefined }>,
 ): void {
   updateClip(clipId, (clip) => {
     if (clip.kind !== 'audio') return clip
+    if (patch.dspEffects !== undefined && clip.locked) throw new Error('Клип заблокирован')
     const duration = clipDurationTicks(clip)
     return {
       ...clip,
+      dspEffects: patch.dspEffects === undefined ? clip.dspEffects : patch.dspEffects.map(cloneDspEffect),
       pan: patch.pan === undefined ? clip.pan ?? 0 : clampNumber(patch.pan, -1, 1),
       reversed: patch.reversed ?? clip.reversed ?? false,
-      fadeInTicks: patch.fadeInTicks === undefined ? clip.fadeInTicks ?? 0 : clampTick(patch.fadeInTicks, duration),
-      fadeOutTicks: patch.fadeOutTicks === undefined ? clip.fadeOutTicks ?? 0 : clampTick(patch.fadeOutTicks, duration),
+      fadeInTicks: patch.fadeInTicks === undefined ? clip.fadeInTicks ?? 0 : clampTick(patch.fadeInTicks, MAX_COMPOSITION_DURATION_TICKS),
+      fadeOutTicks: patch.fadeOutTicks === undefined ? clip.fadeOutTicks ?? 0 : clampTick(patch.fadeOutTicks, MAX_COMPOSITION_DURATION_TICKS),
       voiceEffect: patch.voiceEffect ?? clip.voiceEffect ?? 'none',
       pitchSemitones: patch.pitchSemitones === undefined ? clip.pitchSemitones ?? 0 : clampNumber(patch.pitchSemitones, -12, 12),
       toneDb: patch.toneDb === undefined ? clip.toneDb ?? 0 : clampNumber(patch.toneDb, -12, 12),
       crossfadeInTicks: patch.crossfadeInTicks === undefined ? clip.crossfadeInTicks ?? 0 : clampTick(patch.crossfadeInTicks, duration),
+      crossfadeCurve: patch.crossfadeCurve ?? clip.crossfadeCurve ?? 'constant_gain',
       ducking: Object.hasOwn(patch, 'ducking') ? patch.ducking : clip.ducking,
     }
   })
@@ -980,14 +1367,14 @@ export function setCompositionTransition(
   kind: CompositionTransitionKind,
   durationTicks: number,
   transitionId?: string,
+  options?: BoundaryTransitionOptions,
 ): string {
-  const transition: CompositionTransition = {
-    id: transitionId ?? makeId('transition'),
-    fromClipId,
-    toClipId,
-    kind,
-    durationTicks: Math.max(1, Math.round(durationTicks)),
-  }
+  const track=compositionState.document.tracks.find(track=>track.id===trackId)
+  if(!track||track.kind!=='video')throw new Error('Переход требует видеодорожку')
+  const to=track.clips.find(clip=>clip.id===toClipId)
+  if(!to)throw new Error('Входящий клип не найден')
+  const existing=track.transitions?.find(transition=>transition.id===transitionId)
+  const transition=boundaryTransition(transitionId??makeId('transition'),fromClipId,toClipId,kind,durationTicks,to.timelineStartTicks,existing,options)
   commitDocument(upsertTransition(compositionState.document, trackId, transition))
   return transition.id
 }
@@ -997,3 +1384,235 @@ export function removeCompositionTransition(trackId: string, transitionId: strin
   commitDocument(deleteTransition(compositionState.document, trackId, transitionId))
 }
 
+export function closeCompositionGapAtPlayhead(trackId: string): void {
+  const document = compositionState.document
+  const track = document.tracks.find((item) => item.id === trackId)
+  if (!track) throw new Error('Дорожка не найдена')
+  const gap = compositionGapAt(track.clips, compositionState.transport.playheadTicks)
+  if (!gap) throw new Error('Установите плейхед в пробел между клипами')
+  commitDocument(rippleDeleteGap(document, trackId, gap.start, gap.end))
+}
+
+export function closeSelectedCompositionGap(): void {
+  const gap = compositionState.ui.selectedGap
+  if (!gap) return
+  commitDocument(rippleDeleteGap(compositionState.document, gap.trackId, gap.start, gap.end))
+}
+
+export function setCompositionClipsEnabled(clipIds: readonly string[], enabled: boolean): void {
+  commitDocument(setClipsEnabled(compositionState.document, clipIds, enabled))
+}
+
+export function toggleSelectedCompositionClipsEnabled(): void {
+  const ids = compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : compositionState.ui.selectedClipId ? [compositionState.ui.selectedClipId] : []
+  if (!ids.length) return
+  const enabled = ids.some((id) => findClipLocation(compositionState.document, id).clip.enabled === false)
+  setCompositionClipsEnabled(ids, enabled)
+}
+
+export function setCompositionClipLocked(clipId: string, locked: boolean): void {
+  commitDocument(setClipLocked(compositionState.document, clipId, locked))
+}
+
+export function copyCompositionKeyframeSelection(subjects: readonly CompositionKeyframeSubject[] = compositionState.ui.selectedKeyframes): boolean {
+  if (!subjects.length) return false
+  const groups = snapshotSelectedKeyframes(subjects.map((subject) => {
+    const resolved = resolveAutomation(subject.target, subject.property)
+    if (!resolved[1]) throw new Error('Selected keyframe no longer exists')
+    return { parameter: JSON.stringify([subject.target.kind, subject.property]), value: resolved[1], selectedTicks: subject.ticks, timelineStartTicks: resolved[0].timelineStartTicks }
+  }))
+  if (!groups.length) return false
+  compositionState.ui.clipboard = { kind: 'keyframes', groups }
+  return true
+}
+
+export function pasteCompositionKeyframeClipboard(): boolean {
+  const slot = compositionState.ui.clipboard
+  if (slot?.kind !== 'keyframes') return false
+  const ids = compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : compositionState.ui.selectedClipId ? [compositionState.ui.selectedClipId] : []
+  if (!ids.length) throw new Error('Select a clip to paste keyframes onto')
+  const addresses: { id: string; parameter: string; target: CompositionAutomationTarget; property: CompositionAutomationProperty; value: import('../../composition/types.js').CompositionAnimatableValue; timelineStartTicks: number }[] = []
+  for (const clipId of ids) {
+    const { clip } = findClipLocation(compositionState.document, clipId)
+    const append = (target: CompositionAutomationTarget, properties: readonly CompositionAutomationProperty[]) => {
+      for (const property of properties) {
+        const parameter = JSON.stringify([target.kind, property])
+        if (!slot.groups.some((group) => group.parameter === parameter)) continue
+        const resolved = resolveAutomation(target, property)
+        addresses.push({ id: JSON.stringify([target, property]), parameter, target, property, value: resolved[1] ?? constantAnimatable(resolved[2]), timelineStartTicks: clip.timelineStartTicks })
+      }
+    }
+    if (clip.kind !== 'audio') append({ kind: 'visual', clipId }, COMPOSITION_VISUAL_PROPERTIES)
+    if (clip.kind === 'audio' || clip.kind === 'video') append({ kind: 'audio', clipId }, COMPOSITION_AUDIO_PROPERTIES)
+    if (clip.kind === 'video') for (const mask of clip.masks ?? []) append({ kind: 'mask', clipId, maskId: mask.id }, COMPOSITION_MASK_PROPERTIES)
+  }
+  const result = planKeyframePaste(slot.groups, addresses, compositionState.transport.playheadTicks)
+  if (result.skipped.length) compositionState.ui.message = `Skipped ${result.skipped.join(', ')} — selected clips do not carry it`
+  if (!result.entries.length) return false
+  const patches = result.entries.map((entry) => {
+    const address = addresses.find((candidate) => candidate.id === entry.id)!
+    return { target: address.target, property: address.property, value: entry.value, ticks: entry.pastedTicks }
+  })
+  commitAutomationValues(linkedScaleAutomationPatches(patches))
+  const selected: CompositionKeyframeSubject[] = []
+  for (const { target, property, ticks: pastedTicks } of patches) {
+    const clip = findClipLocation(compositionState.document, target.clipId).clip
+    const visibleProperty = target.kind === 'visual' && clip.kind !== 'audio' && clip.scaleLinked && property === 'scaleY' ? 'scaleX' as const : property
+    const landed = resolveAutomation(target, visibleProperty)[1]
+    const ticks = landed?.mode === 'keyframes' ? pastedTicks.filter(tick => landed.track.keyframes.some(key => key.tick === tick)) : []
+    if (!ticks.length) continue
+    const previous = selected.find((subject) => JSON.stringify(subject.target) === JSON.stringify(target) && subject.property === visibleProperty)
+    if (previous) {
+      const combined = [...previous.ticks, ...ticks]
+      selected[selected.indexOf(previous)] = { ...previous, ticks: combined.filter((tick, index) => combined.indexOf(tick) === index).sort((a, b) => a - b) }
+    }
+    else selected.push({ target, property: visibleProperty, ticks })
+  }
+  compositionState.ui.selectedKeyframes = selected
+  return true
+}
+
+export function copyCompositionSelection(): boolean {
+  if (compositionState.ui.selectedColorKeys.length) {
+    const groups = copyColorKeys(compositionState.document,compositionState.ui.selectedColorKeys)
+    compositionState.ui.clipboard = { kind: 'color-keyframes',groups }
+    return true
+  }
+  if (copyCompositionKeyframeSelection()) return true
+  const clipId = compositionState.ui.selectedClipId
+  if (!clipId) return false
+  findClipLocation(compositionState.document, clipId)
+  compositionState.ui.clipboard = { kind: 'layer', clipId, insertSnapshot: { document: cloneGraphicValue(compositionState.document), clipIds: [...(compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : [clipId])] } }
+  return true
+}
+
+export function pasteInsertCompositionClipboard(): boolean {
+  const slot = compositionState.ui.clipboard
+  if (!slot || slot.kind !== 'layer') return false
+  const snapshot = slot.insertSnapshot ?? { document: compositionState.document, clipIds: [slot.clipId] }
+  const result = pasteInsertComposition(compositionState.document, snapshot.document, snapshot.clipIds, compositionState.transport.playheadTicks, () => makeId('paste-insert'))
+  commitDocument(result.document)
+  const first = result.placements[0]!
+  selectCompositionClip(first.trackId, first.clip.id, { single: true })
+  compositionState.ui.selectedClipIds = result.placements.map(({ clip }) => clip.id)
+  setCompositionPlayhead(result.end)
+  return true
+}
+
+export function pasteCompositionClipboard(): boolean {
+  const slot = compositionState.ui.clipboard
+  if (!slot) return false
+  if (slot.kind === 'color-keyframes') {
+    const ids = compositionState.ui.selectedColorKeys.length ? [...new SvelteSet(compositionState.ui.selectedColorKeys.map(subject => subject.clipId))] : compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : compositionState.ui.selectedClipId ? [compositionState.ui.selectedClipId] : []
+    const result = pasteColorKeys(compositionState.document,slot.groups,ids,compositionState.transport.playheadTicks)
+    commitDocument(result.document)
+    compositionState.ui.selectedColorKeys = result.subjects
+    return true
+  }
+  if (slot.kind === 'keyframes') return pasteCompositionKeyframeClipboard()
+  const location = findClipLocation(compositionState.document, slot.clipId)
+  const id = makeId(`${location.clip.kind}-clip`)
+  const trackId = makeId(`${location.clip.kind}-track`)
+  const draft = addTrack(compositionState.document, makeTrack(location.clip.kind, trackId, nextTrackName(compositionState.document, 'Вставка')), location.clip.kind === 'audio' ? compositionState.document.tracks.length : 0)
+  const onNewTrack = pasteClips(draft, [{ clipId: slot.clipId, id }], { allowLockedSource: true, timelineStartTicks: compositionState.transport.playheadTicks, targetTrackId: trackId })
+  const projected = findClipLocation(onNewTrack, id).clip
+  const destination = [...compositionState.document.tracks].reverse().find((track) => track.kind === location.clip.kind && !track.locked && !track.clips.some((clip) => clip.timelineStartTicks < clipEndTicks(projected) && clipEndTicks(clip) > projected.timelineStartTicks))
+  commitDocument(destination ? pasteClips(compositionState.document, [{ clipId: slot.clipId, id }], { allowLockedSource: true, timelineStartTicks: compositionState.transport.playheadTicks, targetTrackId: destination.id }) : onNewTrack)
+  selectCompositionClip(destination?.id ?? trackId, id, { single: true })
+  return true
+}
+
+export function updateCompositionGraphicResponsiveTime(clipId: string, responsiveTime: import('../../composition/types').GraphicResponsiveTime | undefined): void {
+  if (responsiveTime && (!Object.values(responsiveTime).every(Number.isSafeInteger) || responsiveTime.intro < 0 || responsiveTime.outro < 0 || responsiveTime.designDuration <= 0)) throw new Error('Некорректные защищённые интервалы')
+  updateClip(clipId, clip => {
+    if (clip.kind !== 'graphic') throw new Error('Нужен графический клип')
+    const {responsiveTime: previous, ...rest} = clip
+    return responsiveTime ? {...rest,responsiveTime:cloneGraphicValue(responsiveTime)} : rest
+  })
+}
+
+export function updateCompositionGraphicRoll(clipId: string, roll: import('../../composition/types').GraphicRoll | undefined): void {
+  if (roll && (![roll.preroll,roll.easeIn,roll.easeOut,roll.postroll].every(value => Number.isSafeInteger(value) && value >= 0) || !['off','roll','crawlLeft','crawlRight'].includes(roll.mode))) throw new Error('Некорректное движение титров')
+  updateClip(clipId, clip => {
+    if (clip.kind !== 'graphic') throw new Error('Нужен графический клип')
+    const {roll: previous, ...rest} = clip
+    return roll ? {...rest,roll:cloneGraphicValue(roll)} : rest
+  })
+}
+
+export function addGraphicTemplateToComposition(template: import('../../api').NativeGraphicTemplate): string {
+  let document=compositionState.document
+  const start=compositionState.transport.playheadTicks
+  if (start+template.durationUs>MAX_COMPOSITION_DURATION_TICKS) throw new Error('Шаблон выходит за пределы композиции')
+  let trackId=findAvailableTrack(document,'graphic',start,start+template.durationUs)?.id
+  if (!trackId) {trackId=makeId('graphic-track');document=addTrack(document,makeTrack('graphic',trackId,nextTrackName(document,'Графика')),0)}
+  const clipId=makeId('graphic')
+  commitDocument(addClip(document,trackId,createGraphicTemplateClip(document.canvas,template,clipId,start)))
+  selectCompositionClip(trackId,clipId)
+  return clipId
+}
+
+export function updateCompositionSourceGainKeys(clipId:string,keys:readonly import('$lib/composition/types').WireConcatParamKey[]):void {
+ const copied=cloneGainSourceKeys(keys)
+ updateClip(clipId,clip=>{
+  if(clip.kind!=='audio'&&clip.kind!=='video')throw new Error('У клипа нет звука')
+  if(clip.locked)throw new Error('Клип заблокирован')
+  if(copied.length&&clip.audioAnimation?.gain)throw new Error('Сначала отключите анимацию громкости по времени')
+  return {...clip,concatGainKeys:copied,...(clip.kind==='video'?{independentAudio:true}:{})}
+ })
+}
+
+
+export function updateCompositionAudioStream(clipId:string,stream:number|undefined):void{
+ if(stream!==undefined&&(!Number.isInteger(stream)||stream<0||stream>0xffffffff))throw new Error('Неверный индекс аудиопотока')
+ updateClip(clipId,clip=>{
+  if(clip.kind!=='audio'&&clip.kind!=='video')throw new Error('У клипа нет звука')
+  if(clip.locked)throw new Error('Клип заблокирован')
+  if(clip.audioStream===stream)return clip
+  const changed={...clip,audioStream:stream};if(stream===undefined)delete changed.audioStream
+  return changed
+ })
+}
+
+export async function reactivateCompositionSourceEffect(clipId:string,index:number,validateCommit?:()=>void):Promise<void>{
+ const before=compositionState.document,identity=JSON.stringify(before),projectId=compositionState.projectId,revision=compositionState.projectRevision
+ const location=findClipLocation(before,clipId)
+ if((location.clip.kind!=='video'&&location.clip.kind!=='image')||!Number.isInteger(index))throw new Error('Визуальный эффект не найден')
+ if(location.track.locked||location.clip.locked)throw new Error('Клип или дорожка заблокированы')
+ const effect=location.clip.effects?.[index];if(!effect)throw new Error('Визуальный эффект не найден')
+ const check=()=>{if(compositionState.document!==before||JSON.stringify(before)!==identity||compositionState.projectId!==projectId||compositionState.projectRevision!==revision)throw new Error('Проект изменился во время преобразования');if(compositionState.save.busy)throw new Error('Дождитесь сохранения проекта');validateCommit?.()}
+ check()
+ const {upgradeConcatEffectLinks,evaluateNestedFrame}=await import('$lib/api')
+ let native:import('$lib/composition/types').WireVideoEffect
+ if(effect.kind==='concat_bypass'){
+  const response=await upgradeConcatEffectLinks([{...effect.link,enabled:true}],undefined,true);check()
+  const converted=response.nativeEffects?.[0]
+  if(response.links.length!==1||!converted||converted.kind==='concat_bypass'||converted.kind==='native_bypass')throw new Error(`Эффект ${effect.link.id} пока нельзя включить: нативная реализация отсутствует`)
+  native=converted
+ }else if(effect.kind==='native_bypass')native=effect.effect
+ else native={kind:'native_bypass',effect}
+ const replace=<T extends {readonly id:string;readonly effects?:readonly import('$lib/composition/types').WireVideoEffect[]}>(clip:T):T=>clip.id===clipId?{...clip,effects:clip.effects!.map((effect,i)=>i===index?native:effect)}:clip
+ const tracks=before.tracks.map(track=>track.id===location.track.id&&(track.kind==='video'||track.kind==='image')?track.kind==='video'?{...track,clips:track.clips.map(replace)}:{...track,clips:track.clips.map(replace)}:track)
+ const candidate={...before,tracks}
+ const {buildCompositionWireDocument}=await import('$lib/composition/payload')
+ await evaluateNestedFrame({schemaVersion:1,root:'root',compositions:{root:{content:buildCompositionWireDocument(candidate),instances:[]}}},0);check()
+ commitDocument(candidate)
+}
+
+export async function editCompositionConcatClipKeys(clipId:string,property:string,keys:readonly import('$lib/composition/types').WireConcatParamKey[],validateCommit?:()=>void):Promise<void>{
+ const before=compositionState.document,identity=JSON.stringify(before),projectId=compositionState.projectId,revision=compositionState.projectRevision
+ const location=findClipLocation(before,clipId),clip=location.clip
+ if((clip.kind!=='video'&&clip.kind!=='image')||!clip.concatAnimation)throw new Error('Исходная анимация Concat не найдена')
+ if(location.track.locked||clip.locked)throw new Error('Клип или дорожка заблокированы')
+ const bounds:Record<string,readonly[number,number]>={scale:[0.05,8],offsetX:[-3,3],offsetY:[-3,3],rotation:[-Infinity,Infinity],opacity:[0,1]},range=bounds[property]
+ if(!range||keys.some(key=>!key.derived&&(key.value<range[0]||key.value>range[1])))throw new Error('Недопустимые ключи свойства Concat')
+ const animation={...clip.concatAnimation,keys:{...clip.concatAnimation.keys,[property]:keys.map(key=>({...key,...(Array.isArray(key.ease)?{ease:[...key.ease] as [number,number,number,number]}:{})}))}}
+ const {validConcatClipAnimation}=await import('$lib/composition/concatClipAnimation');if(!validConcatClipAnimation(animation))throw new Error('Недопустимые ключи свойства Concat')
+ const check=()=>{if(compositionState.document!==before||JSON.stringify(before)!==identity||compositionState.projectId!==projectId||compositionState.projectRevision!==revision)throw new Error('Проект изменился во время проверки');if(compositionState.save.busy)throw new Error('Дождитесь сохранения проекта');validateCommit?.()}
+ check()
+ const replace=<T extends {readonly id:string}>(candidate:T):T=>candidate.id===clipId?{...candidate,concatAnimation:animation}:candidate
+ const tracks=before.tracks.map(track=>track.id===location.track.id&&(track.kind==='video'||track.kind==='image')?track.kind==='video'?{...track,clips:track.clips.map(replace)}:{...track,clips:track.clips.map(replace)}:track)
+ const candidate={...before,tracks}
+ const {buildCompositionWireDocument}=await import('$lib/composition/payload'),{evaluateNestedFrame}=await import('$lib/api')
+ await evaluateNestedFrame({schemaVersion:1,root:'root',compositions:{root:{content:buildCompositionWireDocument(candidate),instances:[]}}},0);check();commitDocument(candidate)
+}

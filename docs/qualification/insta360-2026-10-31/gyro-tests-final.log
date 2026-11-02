@@ -1,0 +1,449 @@
+    Blocking waiting for file lock on build directory
+warning: variable does not need to be mutable
+   --> src/services/concat_freeze_capture.rs:155:9
+    |
+155 |     let mut directories = vec![prefix.join("lib")];
+    |         ----^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unused import: `crate::ports::RenderCache`
+   --> src/jobs/runner.rs:225:13
+    |
+225 |         use crate::ports::RenderCache;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: unused variable: `h`
+  --> src/domain/concat_chromatic_aberration.rs:74:17
+   |
+74 |         let (w, h) = frame.dimensions();
+   |                 ^ help: if this is intentional, prefix it with an underscore: `_h`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `cached_filters`
+   --> src/tools/args.rs:583:21
+    |
+583 |         if let Some(cached_filters) = cache.get(&plan_hash) {
+    |                     ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cached_filters`
+
+warning: method `shifted` is never used
+ --> src/domain/effect_context_sample.rs:8:8
+  |
+7 | impl EffectContextSample {
+  | ------------------------ method in this implementation
+8 |     fn shifted(self,dt:f64,input:super::effect_frame_clock::EffectClockInput)->Result<Self>{
+  |        ^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` on by default
+
+warning: function `picture` is never used
+ --> src/domain/transition_auto_distortion_point_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/transition_auto_layout_point_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/transition_key_auto_generator_point_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/transition_key_auto_distortion_point_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/transition_key_auto_layout_point_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/transition_key_auto_move_point_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/transition_generator_point_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/ordinary_key_auto_motion_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: function `picture` is never used
+ --> src/domain/transition_motion_import_tests.rs:4:4
+  |
+4 | fn picture(side: u64, time: u64) -> GroupSurface {
+  |    ^^^^^^^
+
+warning: method `evaluated_layers` is never used
+   --> src/domain/graphic_clip.rs:142:19
+    |
+101 | impl GraphicClip {
+    | ---------------- method in this implementation
+...
+142 |     pub(crate) fn evaluated_layers(
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: function `apply` is never used
+  --> src/domain/transition_kernel_pack/transitions/mod.rs:43:8
+   |
+43 | pub fn apply(e: &EffectInstance, a: &Image, b: &Image, p: f32) -> Image {
+   |        ^^^^^
+
+warning: function `audio_gains` is never used
+  --> src/domain/transition_kernel_pack/transitions/mod.rs:75:8
+   |
+75 | pub fn audio_gains(kind: &str, p: f32) -> (f32, f32) {
+   |        ^^^^^^^^^^^
+
+warning: function `apply` is never used
+   --> src/domain/filmcraft_source_effects.rs:175:15
+    |
+175 | pub(crate) fn apply(context:&RenderContext,raw:&Value,tick:i64,clock:SourceClock,source_width:u32,image:Image)->Result<Image>{
+    |               ^^^^^
+
+warning: function `apply_with_project` is never used
+   --> src/domain/filmcraft_source_effects.rs:179:15
+    |
+179 | pub(crate) fn apply_with_project(context:&RenderContext,raw:&Value,tick:i64,clock:SourceClock,source_width:u32,image:Image,project:&Value...
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: methods `push_packet` and `push` are never used
+   --> src/domain/concat_tempo.rs:427:19
+    |
+96  | impl<T: Sample> Tempo<T> {
+    | ------------------------ methods in this implementation
+...
+427 |     pub(crate) fn push_packet(&mut self, input: &[&[T]], end: bool) -> Vec<Vec<T>> {
+    |                   ^^^^^^^^^^^
+...
+437 |     pub(crate) fn push(&mut self, input: &[&[T]], end: bool) -> Vec<Vec<T>> {
+    |                   ^^^^
+
+warning: associated function `silence` is never used
+  --> src/domain/concat_pitch.rs:55:8
+   |
+51 | pub(crate) trait Sample: concat_tempo::Sample {
+   |                  ------ associated function in this trait
+...
+55 |     fn silence() -> Self {
+   |        ^^^^^^^
+
+warning: type alias `Pitch` is never used
+  --> src/domain/concat_pitch.rs:78:17
+   |
+78 | pub(crate) type Pitch<T> = Graph<T, T, <T as Sample>::Rate>;
+   |                 ^^^^^
+
+warning: type alias `FloatPitch` is never used
+  --> src/domain/concat_pitch.rs:79:17
+   |
+79 | pub(crate) type FloatPitch<I, O> = Graph<I, O, concat_resample::FloatOutputResampler<I, O>>;
+   |                 ^^^^^^^^^^
+
+warning: field `packet_frames` is never read
+  --> src/domain/concat_pitch.rs:85:5
+   |
+80 | pub(crate) struct Graph<I: Sample, O: Sample, R> {
+   |                   ----- field in this struct
+...
+85 |     packet_frames: usize,
+   |     ^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src/domain/concat_pitch.rs:91:19
+    |
+89  | impl<I: Sample, O: Sample, R: RateStream<I, O>> Graph<I, O, R> {
+    | -------------------------------------------------------------- associated items in this implementation
+90  |     /// Raw PCM profile: the source demuxer rounds sample_rate/10 down to a power of two.
+91  |     pub(crate) fn new(input_rate: u32, channels: usize, semitones: f32) -> Self {
+    |                   ^^^
+...
+99  |     pub(crate) fn new_with_source_planar(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+109 |     pub(crate) fn with_packet_size(
+    |                   ^^^^^^^^^^^^^^^^
+...
+162 |     pub(crate) fn output_rate(&self) -> u32 {
+    |                   ^^^^^^^^^^^
+...
+174 |     fn flatten(channels: usize, packets: Vec<Vec<Vec<O>>>) -> Vec<Vec<O>> {
+    |        ^^^^^^^
+...
+214 |     pub(crate) fn push_packet(&mut self, input: &[&[I]], end: bool) -> Vec<Vec<O>> {
+    |                   ^^^^^^^^^^^
+...
+218 |     pub(crate) fn push(&mut self, input: &[&[I]], end: bool) -> Vec<Vec<O>> {
+    |                   ^^^^
+...
+235 |     pub(crate) fn push_frames(&mut self, input: &[&[I]], end: bool) -> Vec<Vec<Vec<O>>> {
+    |                   ^^^^^^^^^^^
+
+warning: method `process_hop` is never used
+  --> src/domain/concat_enhance_voice.rs:47:19
+   |
+14 | impl EnhanceVoice {
+   | ----------------- method in this implementation
+...
+47 |     pub(crate) fn process_hop(&mut self, input: &[Vec<f64>], final_hop: bool) -> Vec<Vec<f64>> {
+   |                   ^^^^^^^^^^^
+
+warning: type alias `Timeline` is never used
+ --> src/domain/concat_pitch_timeline.rs:7:17
+  |
+7 | pub(crate) type Timeline<T> = GraphTimeline<T, T, <T as Sample>::Rate>;
+  |                 ^^^^^^^^
+
+warning: type alias `FloatTimeline` is never used
+ --> src/domain/concat_pitch_timeline.rs:8:17
+  |
+8 | pub(crate) type FloatTimeline<I, O> =
+  |                 ^^^^^^^^^^^^^
+
+warning: struct `GraphTimeline` is never constructed
+  --> src/domain/concat_pitch_timeline.rs:10:19
+   |
+10 | pub(crate) struct GraphTimeline<I: Sample, O: Sample, R> {
+   |                   ^^^^^^^^^^^^^
+
+warning: associated items `new`, `new_with_source_planar`, `reset`, `pump`, and `render` are never used
+   --> src/domain/concat_pitch_timeline.rs:22:19
+    |
+21  | impl<I: Sample, O: Sample, R: RateStream<I, O>> GraphTimeline<I, O, R> {
+    | ---------------------------------------------------------------------- associated items in this implementation
+22  |     pub(crate) fn new(
+    |                   ^^^
+...
+38  |     pub(crate) fn new_with_source_planar(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+75  |     fn reset(&mut self) {
+    |        ^^^^^
+...
+84  |     fn pump(
+    |        ^^^^
+...
+138 |     pub(crate) fn render(
+    |                   ^^^^^^
+
+warning: variants `Denoise` and `Compressor` are never constructed
+   --> src/domain/concat_format_plan.rs:103:5
+    |
+94  | pub(crate) enum Filter {
+    |                 ------ variants in this enum
+...
+103 |     Denoise,
+    |     ^^^^^^^
+104 |     Crusher,
+105 |     Compressor,
+    |     ^^^^^^^^^^
+    |
+    = note: `Filter` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: associated function `from_name` is never used
+   --> src/domain/concat_format_plan.rs:112:19
+    |
+111 | impl Filter {
+    | ----------- associated function in this implementation
+112 |     pub(crate) fn from_name(name: &str) -> Option<Self> {
+    |                   ^^^^^^^^^
+
+warning: field `conversions` is never read
+   --> src/domain/concat_format_plan.rs:159:9
+    |
+157 | pub(crate) struct Plan {
+    |                   ---- field in this struct
+158 |     pub stages: Vec<Stage>,
+159 |     pub conversions: Vec<Conversion>,
+    |         ^^^^^^^^^^^
+    |
+    = note: `Plan` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: associated items `new` and `range` are never used
+   --> src/domain/concat_ebur128.rs:26:19
+    |
+25  | impl Meter {
+    | ---------- associated items in this implementation
+26  |     pub(crate) fn new(rate: u32, channels: usize) -> Result<Self> {
+    |                   ^^^
+...
+272 |     pub(crate) fn range(&self) -> f64 {
+    |                   ^^^^^
+
+warning: constant `MAX_CACHE_SIZE` is never used
+  --> src/tools/args.rs:29:7
+   |
+29 | const MAX_CACHE_SIZE: usize = 1000; // Limit memory usage
+   |       ^^^^^^^^^^^^^^
+
+warning: function `cache_filter_graph` is never used
+  --> src/tools/args.rs:50:4
+   |
+50 | fn cache_filter_graph(plan_hash: u64, filters: String) {
+   |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `get_cached_filter_graph` is never used
+  --> src/tools/args.rs:61:4
+   |
+61 | fn get_cached_filter_graph(plan_hash: u64) -> Option<String> {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `Stream` is never constructed
+ --> src/tools/packet_pitch.rs:7:19
+  |
+7 | pub(crate) struct Stream<T: Scalar + Sample> {
+  |                   ^^^^^^
+
+warning: associated items `new` and `render` are never used
+  --> src/tools/packet_pitch.rs:12:8
+   |
+11 | impl<T: Scalar + Sample> Stream<T> {
+   | ---------------------------------- associated items in this implementation
+12 |     fn new(source: Frames<T>, semitones: f32, origin: i64) -> Result<Self> {
+   |        ^^^
+...
+24 |     fn render(
+   |        ^^^^^^
+
+warning: enum `Reader` is never used
+  --> src/tools/packet_pitch.rs:41:25
+   |
+41 |         pub(crate) enum Reader { $($variant(Stream<$scalar>)),+ }
+   |                         ^^^^^^
+...
+58 | bridge!(U8:u8, S16:i16, S32:i32, F32:f32, F64:f64);
+   | -------------------------------------------------- in this macro invocation
+   |
+   = note: this warning originates in the macro `bridge` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: associated items `new` and `render` are never used
+  --> src/tools/packet_pitch.rs:47:27
+   |
+46 |         impl Reader {
+   |         ----------- associated items in this implementation
+47 |             pub(crate) fn new(source: Decoded, semitones: f32, origin: i64) -> Result<Self> {
+   |                           ^^^
+...
+52 |             pub(crate) fn render(&mut self, start: i64, frames: usize, checkpoint: &mut dyn FnMut() -> Result<()>) -> Result<Block> {
+   |                           ^^^^^^
+...
+58 | bridge!(U8:u8, S16:i16, S32:i32, F32:f32, F64:f64);
+   | -------------------------------------------------- in this macro invocation
+   |
+   = note: this warning originates in the macro `bridge` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: trait `FloatRead` is never used
+  --> src/tools/packet_pitch.rs:64:7
+   |
+64 | trait FloatRead<O>: Send {
+   |       ^^^^^^^^^
+
+warning: struct `FloatStream` is never constructed
+  --> src/tools/packet_pitch.rs:72:8
+   |
+72 | struct FloatStream<I: Scalar + Sample, O: Sample> {
+   |        ^^^^^^^^^^^
+
+warning: associated function `new` is never used
+  --> src/tools/packet_pitch.rs:77:8
+   |
+76 | impl<I: Scalar + Sample + FloatInput, O: Sample + FloatOutput> FloatStream<I, O> {
+   | -------------------------------------------------------------------------------- associated function in this implementation
+77 |     fn new(source: Frames<I>, semitones: f32, origin: i64) -> Result<Self> {
+   |        ^^^
+
+warning: struct `FloatReader` is never constructed
+   --> src/tools/packet_pitch.rs:111:19
+    |
+111 | pub(crate) struct FloatReader<O> {
+    |                   ^^^^^^^^^^^
+
+warning: associated items `new` and `render` are never used
+   --> src/tools/packet_pitch.rs:115:19
+    |
+114 | impl<O: Sample + FloatOutput + 'static> FloatReader<O> {
+    | ------------------------------------------------------ associated items in this implementation
+115 |     pub(crate) fn new(source: Decoded, semitones: f32, origin: i64) -> Result<Self> {
+    |                   ^^^
+...
+125 |     pub(crate) fn render(
+    |                   ^^^^^^
+
+warning: enum `Selected` is never used
+   --> src/tools/packet_pitch.rs:136:6
+    |
+136 | enum Selected {
+    |      ^^^^^^^^
+
+warning: struct `PlannedReader` is never constructed
+   --> src/tools/packet_pitch.rs:143:19
+    |
+143 | pub(crate) struct PlannedReader {
+    |                   ^^^^^^^^^^^^^
+
+warning: associated items `new` and `render` are never used
+   --> src/tools/packet_pitch.rs:171:19
+    |
+170 | impl PlannedReader {
+    | ------------------ associated items in this implementation
+171 |     pub(crate) fn new(
+    |                   ^^^
+...
+192 |     pub(crate) fn render(
+    |                   ^^^^^^
+
+warning: method `reset` is never used
+   --> src/tools/packet_clip.rs:238:19
+    |
+110 | impl Processor {
+    | -------------- method in this implementation
+...
+238 |     pub(crate) fn reset(&mut self) {
+    |                   ^^^^^
+
+warning: `video-kadr-backend` (lib) generated 50 warnings (run `cargo fix --lib -p video-kadr-backend` to apply 1 suggestion)
+   Compiling video-kadr-backend v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 37s
+     Running tests/insta360_gyro.rs (backend/target/debug/deps/insta360_gyro-85f68c52a5516aa3)
+
+running 6 tests
+test read_real_x6_capture_gyro ... ignored, requires explicitly authorized local media inventory
+test fusion_initial_tilt_aligns_specific_force_to_world_up ... ok
+test embedded_exposure_midpoint_clock_samples_earlier_sensor_time ... ok
+test complementary_fusion_corrects_tilt_bias_but_rejects_dynamic_acceleration ... ok
+
+thread 'raw_offset_binary_capture_clock_and_explicit_sensor_axes' panicked at tests/insta360_gyro.rs:114:5:
+assertion failed: (q[0] - (expected / 2.).cos()).abs() < 1e-9
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test raw_offset_binary_capture_clock_and_explicit_sensor_axes ... FAILED
+test gyro_window_rejects_bounds_nonunit_and_time_discontinuity ... ok
+
+failures:
+
+failures:
+    raw_offset_binary_capture_clock_and_explicit_sensor_axes
+
+test result: FAILED. 4 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test insta360_gyro`

@@ -1,3 +1,5 @@
+import { compositionMarkers } from './markers'
+import {sampleAnimatableValue} from './keyframes'
 import { describe, expect, it } from 'vitest'
 import {
   CompositionCommandError,
@@ -8,6 +10,7 @@ import {
   deleteClip,
   duplicateClip,
   moveClip,
+  moveClipPlacements,
   registerSource,
   reorderTrack,
   snapClipStart,
@@ -15,12 +18,14 @@ import {
   slipClip,
   splitClip,
   trimClip,
+  withClipGridStart,
   upsertTransition,
 } from './commands'
 import {
   COMPOSITION_RENDER_ENDPOINT,
   CompositionPayloadError,
   buildCompositionRenderRequest,
+  buildCompositionWireDocument,
   normalizeCompositionRenderOutput,
   targetVideoBitrateKbps,
 } from './payload'
@@ -443,7 +448,7 @@ describe('composition validation', () => {
     ])
   })
 
-  it('validates keyframe ordering, count, clip-local duration, values, and masks', () => {
+  it('validates keyframe ordering, count, values, and masks', () => {
     const base = imageClip('animated-image', 0, seconds(2))
     const invalid: Composition = {
       ...emptyComposition(),
@@ -482,7 +487,6 @@ describe('composition validation', () => {
       'keyframe-order',
       'keyframe-value',
       'keyframe-count',
-      'keyframe-duration',
     ]))
 
     const invalidMask: Composition = {
@@ -520,7 +524,7 @@ describe('composition validation', () => {
         },
       }])],
     }
-    expect(issueCodes(invalidAudio)).toEqual(expect.arrayContaining(['animatable-value', 'keyframe-value', 'keyframe-duration']))
+    expect(issueCodes(invalidAudio)).toEqual(expect.arrayContaining(['animatable-value', 'keyframe-value']))
   })
 
   it('exports Linear masks and primary animation while gating the active visual keyframe budget exactly', () => {
@@ -668,6 +672,15 @@ describe('composition validation', () => {
     }
     delete raw.tracks[0]!.clips[0]!.frameInterpolation
     expect(normalizeComposition(raw).tracks[0]!.clips[0]).toMatchObject({ frameInterpolation: 'duplicate' })
+  })
+
+  it('retains imported effect timing through normalization and the render payload', () => {
+    const timing = { mode: 'filmcraft_source' as const, holdFilters: true, reverseWhileFrozen: false }
+    const composition: Composition = { ...emptyComposition(), tracks: [videoTrack('timed', [{ ...videoClip(), effectTiming: timing }])] }
+    expect(validateComposition(composition)).toEqual([])
+    const normalized = normalizeComposition(JSON.parse(JSON.stringify(composition)))
+    expect(buildCompositionRenderRequest(normalized).composition.tracks[0]).toMatchObject({ clips: [{ effectTiming: timing }] })
+    expect(issueCodes({ ...composition, tracks: [videoTrack('timed', [{ ...videoClip(), effectTiming: { ...timing, holdFilters: 'yes' } } as unknown as VideoClip])] })).toContain('effect-timing')
   })
 
   it('validates playback modes, freeze audio/optical constraints, and transition endpoints', () => {
@@ -867,8 +880,10 @@ describe('immutable composition commands', () => {
 
     expect(left).toMatchObject({ id: 'left-id', sourceInTicks: seconds(1), sourceOutTicks: seconds(3) })
     expect(right).toMatchObject({ id: 'right-id', timelineStartTicks: seconds(4), sourceInTicks: seconds(3) })
-    expect(left.animation?.x).toMatchObject({ track: { keyframes: [{ tick: 0, value: 0 }, { tick: seconds(2), value: 20 }] } })
-    expect(right.animation?.x).toMatchObject({ track: { keyframes: [{ tick: 0, value: 20 }, { tick: seconds(2), value: 40 }] } })
+    for (const at of [0, seconds(0.25), seconds(1), seconds(1.75)]) {
+      expect(sampleAnimatableValue(left.animation!.x!, at)).toBe(at / COMPOSITION_TIME_BASE * 10)
+      expect(sampleAnimatableValue(right.animation!.x!, at)).toBe((at / COMPOSITION_TIME_BASE + 2) * 10)
+    }
 
     let textComposition = emptyComposition()
     textComposition = addTrack(textComposition, textTrack('text-a'))
@@ -978,21 +993,19 @@ describe('immutable composition commands', () => {
     const trimmed = trimClip(composition, 'automation-video', seconds(2), seconds(6))
     const trimmedVideo = trimmed.tracks[0]!.clips[0] as VideoClip
     expect(trimmedVideo.audioAnimation?.gain).toMatchObject({
-      track: { keyframes: [{ tick: 0, value: 0.625 }, { tick: seconds(2), value: 1 }, { tick: seconds(4), value: 0.75 }] },
+      track: { keyframes: [{ tick: -seconds(2), value: 0.25 }, { tick: seconds(2), value: 1 }, { tick: seconds(6), value: 0.5 }] },
     })
     expect(trimmedVideo.masks?.[0]?.x).toMatchObject({
-      track: { keyframes: [{ tick: 0, value: 0.35 }, { tick: seconds(2), value: 0.5 }, { tick: seconds(4), value: 0.65 }] },
+      track: { keyframes: [{ tick: -seconds(2), value: 0.2 }, { tick: seconds(2), value: 0.5 }, { tick: seconds(6), value: 0.8 }] },
     })
     expect(trimmed.tracks[1]).toBe(composition.tracks[1])
 
     const split = splitClip(composition, 'automation-audio', seconds(4), 'automation-audio-right')
     const splitAudio = (split.tracks[1] as AudioTrack).clips
-    expect(splitAudio[0]!.audioAnimation?.pan).toMatchObject({
-      track: { keyframes: [{ tick: 0, value: -1 }, { tick: seconds(4), value: 0 }] },
-    })
-    expect(splitAudio[1]!.audioAnimation?.pan).toMatchObject({
-      track: { keyframes: [{ tick: 0, value: 0 }, { tick: seconds(4), value: 1 }] },
-    })
+    for (const at of [0, seconds(0.5), seconds(2), seconds(3.75)]) {
+      expect(sampleAnimatableValue(splitAudio[0]!.audioAnimation!.pan!, at)).toBe(-1 + at / seconds(4))
+      expect(sampleAnimatableValue(splitAudio[1]!.audioAnimation!.pan!, at)).toBe(at / seconds(4))
+    }
     expect(split.tracks[0]).toBe(composition.tracks[0])
 
     const duplicated = duplicateClip(composition, 'automation-video', {
@@ -1047,6 +1060,24 @@ describe('immutable composition commands', () => {
       playbackMode: { mode: 'freeze', sourceTick: seconds(3) },
       sourceAudioEnabled: false,
     })
+  })
+
+  it('moves a complete transition pair to one destination and refuses separated or occupied endpoints atomically', () => {
+    const transition: CompositionTransition = { id: 'moving-transition', fromClipId: 'clip-a', toClipId: 'clip-b', durationTicks: seconds(1), kind: 'dissolve' }
+    const primary = videoTrack('primary', [videoClip('clip-a', 0, 0, seconds(4)), videoClip('clip-b', seconds(4), seconds(2), seconds(6))])
+    const destination = videoTrack('destination', [])
+    const document = upsertTransition({ ...emptyComposition(), tracks: [primary, destination] }, 'primary', transition)
+    const before = JSON.stringify(document)
+    const placements = [{ clipId: 'clip-a', trackId: 'destination' }, { clipId: 'clip-b', trackId: 'destination' }]
+    const moved = moveClipPlacements(document, placements, 'clip-a', seconds(2))
+    expect((moved.tracks[0] as VideoTrack).transitions).toEqual([])
+    expect((moved.tracks[1] as VideoTrack).transitions).toEqual([transition])
+    expect(moved.tracks[1]!.clips.map((clip) => clip.timelineStartTicks)).toEqual([seconds(2), seconds(6)])
+    expect(compositionTransitionUnavailableReason(moved, 'destination', transition)).toBeNull()
+    expect(() => moveClipPlacements(document, [placements[0]!], 'clip-a', 0)).toThrow('together')
+    const occupied = { ...document, tracks: [document.tracks[0]!, videoTrack('destination', [videoClip('obstacle', seconds(2), 0, seconds(4))])] }
+    expect(() => moveClipPlacements(occupied, placements, 'clip-a', seconds(2))).toThrow()
+    expect(JSON.stringify(document)).toBe(before)
   })
 
   it('authors exact-handle adjacent transitions on primary and overlay tracks and cleans references on delete', () => {
@@ -1153,6 +1184,57 @@ describe('snapping helpers', () => {
 })
 
 describe('composition render payload', () => {
+  it('preserves supported ordered image masks and rejects unsupported shapes', () => {
+    const constant = (value: number) => ({ mode: 'constant' as const, value })
+    const effects = [
+      {kind:'mask' as const,shape:'ellipse' as const,x:constant(0),y:constant(0),width:constant(20),height:constant(10),rotationDegrees:constant(0),feather:0,inverted:false},
+      {kind:'linear_mask' as const,x:constant(0),y:constant(0),rotationDegrees:constant(45),feather:0,inverted:true},
+    ]
+    const base = populatedComposition()
+    const value: Composition = {...base,tracks:base.tracks.map(track=>track.kind==='image'?{...track,clips:track.clips.map(clip=>({...clip,effects}))}:track)}
+    const restored = normalizeComposition(JSON.parse(JSON.stringify(value)))
+    const wire=buildCompositionRenderRequest(restored).composition.tracks.find(track=>track.kind==='image')!
+    expect(wire.clips[0]).toMatchObject({effects})
+    const unsupported=JSON.parse(JSON.stringify(value))
+    unsupported.tracks.find((track:{kind:string})=>track.kind==='image').clips[0].effects[0].shape='polygon'
+    expect(()=>buildCompositionRenderRequest(unsupported)).toThrow('Неподдерживаемые clip effects')
+  })
+
+  it('retains authored image effects through render JSON', () => {
+    const effects = [{ kind: 'gamma_correction' as const, parameters: { gamma: 20 } }]
+    const value = populatedComposition()
+    const document: Composition = { ...value, tracks: value.tracks.map(track => track.kind === 'image'
+      ? { ...track, clips: track.clips.map(clip => ({ ...clip, effects })) } : track) }
+    const restored = normalizeComposition(JSON.parse(JSON.stringify(document)))
+    expect(restored.tracks.find(track => track.kind === 'image')!.clips[0]).toMatchObject({ effects })
+    const wire = JSON.parse(JSON.stringify(buildCompositionRenderRequest(document))).composition
+    const image = wire.tracks.find((track: {kind: string}) => track.kind === 'image')
+    expect(image.clips[0].effects).toEqual(effects)
+    const old = buildCompositionRenderRequest(value).composition.tracks.find(track => track.kind === 'image')!
+    expect(old.clips[0]).not.toHaveProperty('effects')
+    const unknown = { ...document, tracks: document.tracks.map(track => track.kind === 'image' ? { ...track, clips: track.clips.map(clip => ({ ...clip, effects: [{ kind: 'unknown_effect' }] })) } : track) } as unknown as Composition
+    expect(() => buildCompositionRenderRequest(unknown)).toThrow('Неподдерживаемые clip effects')
+  })
+
+  it('preserves disabled flags on all wire clip kinds without deleting authored content', () => {
+    const value = populatedComposition()
+    const document = { ...value, tracks: value.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => ({ ...clip, enabled: track.kind === 'video' })) })) } as Composition
+    const wire = buildCompositionRenderRequest(document).composition
+    expect(wire.tracks.map((track) => track.clips[0]!.enabled)).toEqual([false, false, true, false])
+    expect(document.tracks.reduce((sum, track) => sum + track.clips.length, 0)).toBe(4)
+    expect(buildCompositionRenderRequest(value).composition.tracks.every((track) => track.clips[0]!.enabled)).toBe(true)
+  })
+
+  it('omits render transitions with a disabled endpoint while retaining the authored transition', () => {
+    const primary: VideoTrack = { ...videoTrack('primary', [videoClip('a', 0, 0, seconds(4)), { ...videoClip('b', seconds(4), seconds(2), seconds(6)), enabled: false }]), transitions: [{ id: 'fade', fromClipId: 'a', toClipId: 'b', durationTicks: seconds(1), kind: 'dissolve' }] }
+    const document = { ...emptyComposition(), tracks: [primary] }
+    const wire = buildCompositionRenderRequest(document).composition.tracks[0]!
+    expect(wire.kind).toBe('video')
+    if (wire.kind === 'video') expect(wire.transitions).toEqual([])
+    expect(primary.transitions).toHaveLength(1)
+    expect(wire.clips).toHaveLength(2)
+  })
+
   it('uses the v1 endpoint/contract and strips paths, URLs, and framework metadata', () => {
     const clean = populatedComposition()
     const taintedSource = {
@@ -1252,6 +1334,9 @@ describe('composition render payload', () => {
     expect(serialized).not.toContain('/private/source.mp4')
     expect(serialized).not.toContain('selectedClipId')
     expect(serialized).not.toContain('"selected"')
+    expect(buildCompositionWireDocument(tainted).metadata?.markers).toEqual(compositionMarkers(tainted))
+    expect(compositionMarkers(tainted)[0]?.id).toBe('render-marker')
+    expect(payload.composition).not.toHaveProperty('metadata')
     expect(serialized).not.toContain('render-marker')
     expect(serialized).not.toContain('render-multicam')
     expect(serialized).not.toContain('multicamGroups')
@@ -1598,7 +1683,7 @@ describe('composition render payload', () => {
       ...clean,
       tracks: [...clean.tracks.slice(0, primaryIndex + 1), imageTrack('lower-image', [imageClip('lower-image-clip')]), ...clean.tracks.slice(primaryIndex + 1)],
     }
-    expect(compositionRenderUnavailableReason(lowestImage)).toContain('Нижняя видимая')
+    expect(compositionRenderUnavailableReason(lowestImage)).toBeNull()
 
     const gapped: Composition = {
       ...clean,
@@ -1606,7 +1691,7 @@ describe('composition render payload', () => {
         ? { ...track, clips: [{ ...track.clips[0]!, timelineStartTicks: 1 }] }
         : track) as CompositionTrack[],
     }
-    expect(compositionRenderUnavailableReason(gapped)).toContain('не содержать gaps')
+    expect(compositionRenderUnavailableReason(gapped)).toBeNull()
 
     const transformedPrimary: Composition = {
       ...clean,
@@ -1817,3 +1902,514 @@ describe('composition render payload', () => {
 // Compile-time coverage for every track/clip member used by the public unions.
 void ([] as CompositionClip[])
 void ([] as CompositionTrack[])
+
+it('duplicates independent style effects, mask tracks and per-key easing metadata', () => {
+  const base = populatedComposition()
+  const source: VideoClip = { ...videoClip(), videoEffects: [{ preset: 'blur', intensity: 0.5 }], masks: [{ id: 'copy-mask', shape: 'ellipse', x: { mode: 'keyframes', track: { timeBase: 1_000_000, interpolation: 'linear', keyframes: [{ tick: 0, value: 0.5, interpolation: 'ease_in' }] } }, y: { mode: 'constant', value: 0.5 }, width: { mode: 'constant', value: 0.5 }, height: { mode: 'constant', value: 0.5 }, feather: 0, inverted: false }] }
+  const document = { ...base, tracks: base.tracks.map((track) => track.id === 'video-track' ? videoTrack('video-track', [source]) : track) }
+  const before = JSON.stringify(document)
+  const result = duplicateClip(document, source.id, { id: 'isolated-copy', timelineStartTicks: seconds(6), escapeLink: true })
+  const copy = (result.tracks.find((track) => track.id === 'video-track') as VideoTrack).clips.find((clip) => clip.id === 'isolated-copy')!
+  expect(copy.videoEffects).toEqual(source.videoEffects)
+  expect(copy.videoEffects).not.toBe(source.videoEffects)
+  expect(copy.videoEffects![0]).not.toBe(source.videoEffects![0])
+  expect(copy.masks).toEqual(source.masks)
+  expect(copy.masks![0]).not.toBe(source.masks![0])
+  expect(copy.masks![0]!.x).not.toBe(source.masks![0]!.x)
+  expect(copy.masks![0]!.x).toMatchObject({ track: { keyframes: [{ interpolation: 'ease_in' }] } })
+  expect(JSON.stringify(document)).toBe(before)
+})
+
+it('preserves signed and trailing authored keys when moving a clip resnaps its extent', () => {
+  const document = emptyComposition()
+  const clip: VideoClip = { ...videoClip('resnap-keys', 0, 0, 1_020_000), animation: { x: { mode: 'keyframes', track: { timeBase: 1000, interpolation: 'ease_in', extrapolation: { before: 'loop', after: 'offset' }, keyframes: [{ tick: -500, value: 10, interpolation: 'hold' }, { tick: 1500, value: 20 }] } } } }
+  const before = JSON.stringify(clip)
+  const moved = withClipGridStart(document, clip, 33_333, true)
+  if (moved.kind !== 'video') throw new Error('video required')
+  expect(moved.timelineStartTicks).not.toBe(clip.timelineStartTicks)
+  expect(moved.timelineDurationTicks).toBeDefined()
+  expect(moved.timelineDurationTicks).not.toBe(1_020_000)
+  expect(moved.animation).toEqual(clip.animation)
+  expect(JSON.stringify(clip)).toBe(before)
+})
+
+
+describe('authored DSP chain persistence', () => {
+  it('retains ordered slots through JSON and clones payload parameter maps', () => {
+    const params = { gain: -6 }
+    const effects = [{ id: 'amplify', params }, { id: 'invert', bypass: true }]
+    const composition = { ...emptyComposition(), tracks: [audioTrack('audio', [{ ...audioClip(), dspEffects: effects }])] }
+    expect(validateComposition(JSON.parse(JSON.stringify(composition)))).toEqual([])
+    const request = buildCompositionRenderRequest(composition)
+    expect(request.composition.tracks[0]).toMatchObject({ clips: [{ dspEffects: effects }] })
+    params.gain = 12
+    expect(request.composition.tracks[0]).toMatchObject({ clips: [{ dspEffects: [{ params: { gain: -6 } }, { bypass: true }] }] })
+  })
+  it('rejects malformed chains and preserves legacy omission', () => {
+    const make = (effects: unknown) => ({ ...emptyComposition(), tracks: [audioTrack('audio', [{ ...audioClip(), dspEffects: effects } as AudioClip])] })
+    for (const invalid of [null, {}, Array(17).fill({ id: 'amplify' }), [{ id: 'amplify', params: { gain: NaN } }], [{ id: 'amplify', bypass: 1 }], [{ id: 'amplify', extra: true }]]) {
+      expect(issueCodes(make(invalid))).toContain('audio-dsp')
+    }
+    expect(validateComposition({ ...emptyComposition(), tracks: [audioTrack('audio', [audioClip()])] })).toEqual([])
+  })
+})
+
+it('retains and clones authored native DSP curves through JSON and payload', () => {
+  const curve = { mode: 'constant' as const, value: -6 }
+  const composition = { ...emptyComposition(), tracks: [audioTrack('audio', [{ ...audioClip(), dspEffects: [{ id: 'amplify', animation: { gain: curve } }] }])] }
+  expect(validateComposition(JSON.parse(JSON.stringify(composition)))).toEqual([])
+  const request = buildCompositionRenderRequest(composition)
+  curve.value = 3
+  expect(request.composition.tracks[0]).toMatchObject({ clips: [{ dspEffects: [{ animation: { gain: { mode: 'constant', value: -6 } } }] }] })
+  const invalid = { ...emptyComposition(), tracks: [audioTrack('audio', [{ ...audioClip(), dspEffects: [{ id: 'amplify', animation: { gain: { mode: 'constant', value: NaN } } }] }])] }
+  expect(validateComposition(invalid).length).toBeGreaterThan(0)
+})
+
+it('rebases DSP curves on audio split while retaining off-clip endpoint handles', () => {
+  const curve = { mode: 'keyframes' as const, track: { timeBase: 1000000, interpolation: 'linear' as const, keyframes: [{ tick: 0, value: -6 }, { tick: 4000000, value: 6 }] } }
+  const clip = { ...audioClip(), dspEffects: [{ id: 'amplify', animation: { gain: curve } }] }
+  const composition = { ...emptyComposition(), tracks: [audioTrack('audio', [clip])] }
+  const split = splitClip(composition, clip.id, 2000000, 'right')
+  const track = split.tracks[0] as AudioTrack
+  expect(track.clips[0]?.dspEffects?.[0]?.animation?.gain).toEqual(curve)
+  expect(track.clips[1]?.dspEffects?.[0]?.animation?.gain).toMatchObject({ track: { keyframes: [{ tick: -2000000, value: -6 }, { tick: 2000000, value: 6 }] } })
+  expect(validateComposition(split)).toEqual([])
+  expect(curve.track.keyframes[0]?.tick).toBe(0)
+})
+
+it('preserves native image effect curves across clip splitting',()=>{
+ const animation={mode:'keyframes' as const,track:{timeBase:1000000,interpolation:'linear' as const,keyframes:[{tick:0,value:10},{tick:2000000,value:20}]}}
+ const source=populatedComposition()
+ const value:Composition={...source,tracks:source.tracks.map(track=>track.kind==='image'?{...track,clips:track.clips.map(clip=>({...clip,effects:[{kind:'gamma_correction' as const,parameters:{},animation}]}))}:track)}
+ const result=splitClip(value,'image-clip',seconds(2),'image-right')
+ const image=result.tracks.find(track=>track.kind==='image')!
+ const left=image.clips[0]!.effects![0]!,right=image.clips[1]!.effects![0]!
+ if(left.kind!=='gamma_correction'||right.kind!=='gamma_correction')throw new Error('Gamma expected')
+ expect(right.animation).toMatchObject({track:{keyframes:[{tick:-1000000,value:10},{tick:1000000,value:20}]}})
+ for(const time of [0,250000,1000000,1500000])expect(sampleAnimatableValue(right.animation!,time)).toBe(sampleAnimatableValue(animation,time+1000000))
+ expect(left.animation).toEqual(animation)
+ expect(left.animation).not.toBe(animation)
+ expect(animation.track.keyframes).toEqual([{tick:0,value:10},{tick:2000000,value:20}])
+ buildCompositionRenderRequest(result)
+})
+
+it('keeps Auto Reframe animation continuous through split, trim and duplicate delivery payloads',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}})
+ const effect={kind:'auto_reframe' as const,parameters:{preset:2,aspect:1,zoom:175,offset:[1.123456789012,-.75] as const},animation:{zoom:make(100,400),offsetX:make(1.123456789012,2.123456789012),offsetY:make(-.75,.25)}}
+ const clip:ImageClip={...imageClip(),effects:[effect]}
+ const source:Composition={...emptyComposition(),tracks:[imageTrack('reframe',[clip])]}
+ const before=JSON.stringify(source)
+ const split=splitClip(source,clip.id,seconds(2),'reframe-right')
+ const trimmed=trimClip(source,clip.id,seconds(2),seconds(4))
+ const duplicated=duplicateClip(source,clip.id,{id:'reframe-copy',timelineStartTicks:seconds(5),escapeLink:true})
+ for(const [document,id,offset] of [[split,'reframe-right',1000000],[trimmed,clip.id,1000000],[duplicated,'reframe-copy',0]] as const){
+  expect(validateComposition(document)).toEqual([])
+  const track=document.tracks[0] as ImageTrack
+  const selected=track.clips.find(value=>value.id===id)!.effects![0]!
+  if(selected.kind!=='auto_reframe')throw new Error('Auto Reframe required')
+  expect(selected.parameters).toEqual(effect.parameters)
+  expect(selected.parameters).not.toBe(effect.parameters)
+  for(const channel of ['zoom','offsetX','offsetY'] as const){
+   const actual=selected.animation![channel]!
+   for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(actual,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12)
+   expect(actual).not.toBe(effect.animation[channel])
+  }
+  const payload=buildCompositionRenderRequest(document)
+  expect(JSON.stringify(payload)).toContain('1.123456789012')
+ }
+ expect(JSON.stringify(source)).toBe(before)
+})
+
+it('keeps Warp Stabilizer animation continuous through split, trim and duplicate delivery payloads',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}})
+ const effect={kind:'warp_stabilizer' as const,parameters:{result:1,method:3,framing:2,preserveScale:true,detailed:true,smoothness:75},animation:{smoothness:make(0,1000),maxScale:make(100,300),actionSafe:make(0,100),additionalScale:make(50,400),cropLess:make(0,100)}}
+ const clip:ImageClip={...imageClip(),effects:[effect]}
+ const source:Composition={...emptyComposition(),tracks:[imageTrack('reframe',[clip])]}
+ const before=JSON.stringify(source)
+ const split=splitClip(source,clip.id,seconds(2),'reframe-right')
+ const trimmed=trimClip(source,clip.id,seconds(2),seconds(4))
+ const duplicated=duplicateClip(source,clip.id,{id:'reframe-copy',timelineStartTicks:seconds(5),escapeLink:true})
+ for(const [document,id,offset] of [[split,'reframe-right',1000000],[trimmed,clip.id,1000000],[duplicated,'reframe-copy',0]] as const){
+  expect(validateComposition(document)).toEqual([])
+  const track=document.tracks[0] as ImageTrack
+  const selected=track.clips.find(value=>value.id===id)!.effects![0]!
+  if(selected.kind!=='warp_stabilizer')throw new Error('Warp Stabilizer required')
+  expect(selected.parameters).toEqual(effect.parameters)
+  expect(selected.parameters).not.toBe(effect.parameters)
+  for(const channel of ['smoothness','maxScale','actionSafe','additionalScale','cropLess'] as const){
+   const actual=selected.animation![channel]!
+   for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(actual,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12)
+   expect(actual).not.toBe(effect.animation[channel])
+  }
+  const payload=buildCompositionRenderRequest(document)
+  expect(JSON.stringify(payload)).toContain('"preserveScale":true');expect(JSON.stringify(payload)).toContain('"detailed":true')
+ }
+ expect(JSON.stringify(source)).toBe(before)
+})
+
+it('keeps Light Leaks animation continuous through split, trim and duplicate delivery payloads',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}})
+ const effect={kind:'light_leaks' as const,parameters:{mode:2,c1:[1,0.45,0.1,1] as const,c2:[1,0.15,0.35,1] as const},animation:{intensity:make(0,100),scale:make(10,1000),direction:make(-180,180),speed:make(0,20),seed:make(0,10000),c1Red:make(0,1),c1Green:make(0,1),c1Blue:make(0,1),c1Alpha:make(0,1),c2Red:make(0,1),c2Green:make(0,1),c2Blue:make(0,1),c2Alpha:make(0,1)}}
+ const clip:ImageClip={...imageClip(),effects:[effect]}
+ const source:Composition={...emptyComposition(),tracks:[imageTrack('reframe',[clip])]}
+ const before=JSON.stringify(source)
+ const split=splitClip(source,clip.id,seconds(2),'reframe-right')
+ const trimmed=trimClip(source,clip.id,seconds(2),seconds(4))
+ const duplicated=duplicateClip(source,clip.id,{id:'reframe-copy',timelineStartTicks:seconds(5),escapeLink:true})
+ for(const [document,id,offset] of [[split,'reframe-right',1000000],[trimmed,clip.id,1000000],[duplicated,'reframe-copy',0]] as const){
+  expect(validateComposition(document)).toEqual([])
+  const track=document.tracks[0] as ImageTrack
+  const selected=track.clips.find(value=>value.id===id)!.effects![0]!
+  if(selected.kind!=='light_leaks')throw new Error('Light Leaks required')
+  expect(selected.parameters).toEqual(effect.parameters)
+  expect(selected.parameters).not.toBe(effect.parameters)
+  for(const channel of ['intensity','scale','direction','speed','seed','c1Red','c1Green','c1Blue','c1Alpha','c2Red','c2Green','c2Blue','c2Alpha'] as const){
+   const actual=selected.animation![channel]!
+   for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(actual,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12)
+   expect(actual).not.toBe(effect.animation[channel])
+  }
+  const payload=buildCompositionRenderRequest(document)
+  expect(JSON.stringify(payload)).toContain('"mode":2');expect(JSON.stringify(payload)).toContain('"c2":[1,0.15,0.35,1]')
+ }
+ expect(JSON.stringify(source)).toBe(before)
+})
+
+it('keeps VR Projection animation continuous through split, trim and duplicate delivery payloads',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}})
+ const effect={kind:'vr_projection' as const,parameters:{frameLayout:2,tilt:12.5,pan:-37.25,roll:91.75,fov:270,stretch:false},animation:{tilt:make(-90,90),pan:make(-180,180),roll:make(-720,720),fov:make(10,360)}}
+ const clip:ImageClip={...imageClip(),effects:[effect]}
+ const source:Composition={...emptyComposition(),tracks:[imageTrack('reframe',[clip])]}
+ const before=JSON.stringify(source)
+ const split=splitClip(source,clip.id,seconds(2),'reframe-right')
+ const trimmed=trimClip(source,clip.id,seconds(2),seconds(4))
+ const duplicated=duplicateClip(source,clip.id,{id:'reframe-copy',timelineStartTicks:seconds(5),escapeLink:true})
+ for(const [document,id,offset] of [[split,'reframe-right',1000000],[trimmed,clip.id,1000000],[duplicated,'reframe-copy',0]] as const){
+  expect(validateComposition(document)).toEqual([])
+  const track=document.tracks[0] as ImageTrack
+  const selected=track.clips.find(value=>value.id===id)!.effects![0]!
+  if(selected.kind!=='vr_projection')throw new Error('VR Projection required')
+  expect(selected.parameters).toEqual(effect.parameters)
+  expect(selected.parameters).not.toBe(effect.parameters)
+  for(const channel of ['tilt','pan','roll','fov'] as const){
+   const actual=selected.animation![channel]!
+   for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(actual,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12)
+   expect(actual).not.toBe(effect.animation[channel])
+  }
+  const payload=buildCompositionRenderRequest(document)
+  expect(JSON.stringify(payload)).toContain('"frameLayout":2');expect(JSON.stringify(payload)).toContain('"stretch":false')
+ }
+ expect(JSON.stringify(source)).toBe(before)
+})
+
+it('keeps VR Rotate Sphere animation continuous through split, trim and duplicate delivery payloads',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}})
+ const effect={kind:'vr_rotate_sphere' as const,parameters:{frameLayout:2,tilt:12.5,pan:-37.25,roll:91.75},animation:{tilt:make(-90,90),pan:make(-180,180),roll:make(-720,720)}}
+ const clip:ImageClip={...imageClip(),effects:[effect]}
+ const source:Composition={...emptyComposition(),tracks:[imageTrack('reframe',[clip])]}
+ const before=JSON.stringify(source)
+ const split=splitClip(source,clip.id,seconds(2),'reframe-right')
+ const trimmed=trimClip(source,clip.id,seconds(2),seconds(4))
+ const duplicated=duplicateClip(source,clip.id,{id:'reframe-copy',timelineStartTicks:seconds(5),escapeLink:true})
+ for(const [document,id,offset] of [[split,'reframe-right',1000000],[trimmed,clip.id,1000000],[duplicated,'reframe-copy',0]] as const){
+  expect(validateComposition(document)).toEqual([])
+  const track=document.tracks[0] as ImageTrack
+  const selected=track.clips.find(value=>value.id===id)!.effects![0]!
+  if(selected.kind!=='vr_rotate_sphere')throw new Error('VR Rotate Sphere required')
+  expect(selected.parameters).toEqual(effect.parameters)
+  expect(selected.parameters).not.toBe(effect.parameters)
+  for(const channel of ['tilt','pan','roll'] as const){
+   const actual=selected.animation![channel]!
+   for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(actual,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12)
+   expect(actual).not.toBe(effect.animation[channel])
+  }
+  const payload=buildCompositionRenderRequest(document)
+  expect(JSON.stringify(payload)).toContain('"frameLayout":2');expect(JSON.stringify(payload)).not.toContain('"fov"')
+ }
+ expect(JSON.stringify(source)).toBe(before)
+})
+
+for(const[kind,channel]of [['vr_blur','blurriness'],['vr_sharpen','amount']]as const)it(`keeps ${kind} scalar animation continuous through split trim and duplicate`,()=>{
+ const curve={mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:0},{tick:3250,value:500}]}};
+ const effect=kind==='vr_blur'?{kind,parameters:{frameLayout:2,blurriness:17},animation:curve}:{kind,parameters:{frameLayout:2,amount:17},animation:curve};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('filter',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_blur'&&selected.kind!=='vr_sharpen')throw new Error('VR filter required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);expect(selected.animation).not.toBe(curve);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation!,tick)).toBeCloseTo(sampleAnimatableValue(curve,tick+offset),12);const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain(`"${channel}":17`);}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps VR De-Noise scalar animation and static modes through split trim and duplicate',()=>{
+ const curve={mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:0},{tick:3250,value:100}]}};
+ const effect={kind:'vr_denoise' as const,parameters:{frameLayout:2,amount:17,noiseType:1,showNoise:true},animation:curve};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('denoise',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_denoise')throw new Error('VR De-Noise required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);expect(selected.animation).not.toBe(curve);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation!,tick)).toBeCloseTo(sampleAnimatableValue(curve,tick+offset),12);const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain('"noiseType":1');expect(payload).toContain('"showNoise":true');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps six VR chromatic curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'vr_chromatic_aberrations' as const,parameters:{frameLayout:2,inverse:true,centerY:-47.75},animation:{red:make(-100,100),green:make(-50,50),blue:make(25,-25),centerX:make(-180,180),centerY:make(-90,90),falloff:make(0,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_chromatic_aberrations')throw new Error('VR Chromatic required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['red','green','blue','centerX','centerY','falloff']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain('"inverse":true');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps twenty VR gradient curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'vr_color_gradients' as const,parameters:{frameLayout:2,mode:4,c2:[.25,.5,.4,1] as const,p3Lat:-47.75},animation:{c1R:make(0,1),c1G:make(0,1),c1B:make(0,1),c1A:make(0,1),c2R:make(0,1),c2G:make(0,1),c2B:make(0,1),c2A:make(0,1),c3R:make(0,1),c3G:make(0,1),c3B:make(0,1),c3A:make(0,1),p1Lon:make(-180,180),p1Lat:make(-90,90),p2Lon:make(-180,180),p2Lat:make(-90,90),p3Lon:make(-180,180),p3Lat:make(-90,90),blend:make(1,100),opacity:make(0,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_color_gradients')throw new Error('VR Gradients required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['c1R','c1G','c1B','c1A','c2R','c2G','c2B','c2A','c3R','c3G','c3B','c3A','p1Lon','p1Lat','p2Lon','p2Lat','p3Lon','p3Lat','blend','opacity']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain('"mode":4');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps six VR glitch curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'vr_digital_glitch' as const,parameters:{frameLayout:2,seed:17.75},animation:{amplitude:make(0,100),distortion:make(1,100),rate:make(0,60),color:make(0,100),scanlines:make(0,100),seed:make(0,10000)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_digital_glitch')throw new Error('VR Glitch required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['amplitude','distortion','rate','color','scanlines','seed']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain('"seed":17.75');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps six VR fractal curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'vr_fractal_noise' as const,parameters:{frameLayout:2,fractalType:2,mode:4,invert:true,evolution:123.75},animation:{contrast:make(0,1000),brightness:make(-200,200),scale:make(10,10000),complexity:make(1,10),evolution:make(-720,720),opacity:make(0,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_fractal_noise')throw new Error('VR Fractal required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['contrast','brightness','scale','complexity','evolution','opacity']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain('"invert":true');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps eight VR glow curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'vr_glow' as const,parameters:{frameLayout:2,useTint:true,tint:[.2,.7,.4,.25] as const},animation:{threshold:make(0,100),radius:make(0,1000),brightness:make(0,10),saturation:make(0,4),tintR:make(0,1),tintG:make(0,1),tintB:make(0,1),tintA:make(0,1)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_glow')throw new Error('VR Glow required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['threshold','radius','brightness','saturation','tintR','tintG','tintB','tintA']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain('"useTint":true');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps five VR plane curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'vr_plane_to_sphere' as const,parameters:{frameLayout:2,roll:123.75},animation:{scale:make(1,180),pan:make(-180,180),tilt:make(-90,90),roll:make(-720,720),feather:make(0,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='vr_plane_to_sphere')throw new Error('VR Plane required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['scale','pan','tilt','roll','feather']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"frameLayout":2');expect(payload).toContain('"roll":123.75');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps eight Simple Text curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'simple_text' as const,parameters:{text:'Привет\nעולם',position:[null,12.25] as const,font:1,alignment:2,color:[.2,.7,.4,.5] as const},animation:{positionX:make(-100,100),positionY:make(-50,50),size:make(1,1000),colorR:make(0,1),colorG:make(.1,.9),colorB:make(.2,.8),colorA:make(.3,.7),bgOpacity:make(0,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='simple_text')throw new Error('Simple Text required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['positionX','positionY','size','colorR','colorG','colorB','colorA','bgOpacity']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"font":1');expect(payload).toContain('"position":[null,12.25]');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('retains authored burn-in metadata in render payload without sharing maps',()=>{
+ const metadata={sequenceName:'Seq Привет',clipNames:{clip:'Clip'},sourceNames:{source:'A001.mov'},dropFrame:true,sequenceStartFrame:107892};
+ const plain={...emptyComposition(),tracks:[imageTrack('metadata',[imageClip()])]};const source={...plain,metadata:{...metadata,markers:[{id:'editor-marker',tick:1,label:'Cut'}]}};const before=JSON.stringify(source);const wire=buildCompositionRenderRequest(source).composition;
+ expect(buildCompositionWireDocument(source).metadata?.markers).toEqual(source.metadata.markers);
+ expect(wire.metadata).toEqual(metadata);expect(wire.metadata).not.toBe(metadata);expect(wire.metadata!.clipNames).not.toBe(metadata.clipNames);expect(wire.metadata!.sourceNames).not.toBe(metadata.sourceNames);expect(JSON.stringify(source)).toBe(before);
+ expect(buildCompositionRenderRequest(plain).composition).not.toHaveProperty('metadata');
+ expect(()=>buildCompositionRenderRequest({...plain,metadata:{sequenceStartFrame:0.5}})).toThrow('safe integer');
+})
+
+it('keeps eight Metadata Burn-in curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'metadata_burnin' as const,parameters:{prefix:'FILE Привет',position:[null,12.25] as const,source:5,alignment:6,color:[.2,.7,.4,.5] as const},animation:{positionX:make(-100,100),positionY:make(-50,50),size:make(1,100),colorR:make(0,1),colorG:make(.1,.9),colorB:make(.2,.8),colorA:make(.3,.7),opacity:make(0,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='metadata_burnin')throw new Error('Metadata Burn-in required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['positionX','positionY','size','colorR','colorG','colorB','colorA','opacity']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"source":5');expect(payload).toContain('"position":[null,12.25]');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps Timecode curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'timecode' as const,parameters:{position:[null,12.25] as const},animation:{positionX:make(-100,100),positionY:make(-50,50),size:make(1,100),opacity:make(0,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='timecode')throw new Error('Timecode required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['positionX','positionY','size','opacity']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"kind":"timecode"');expect(payload).toContain('"position":[null,12.25]');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps Clip Name curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'clip_name' as const,parameters:{position:[null,12.25] as const},animation:{positionX:make(-100,100),positionY:make(-50,50),size:make(1,100)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='clip_name')throw new Error('Clip Name required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['positionX','positionY','size']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"kind":"clip_name"');expect(payload).toContain('"position":[null,12.25]');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps eleven Write-on curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'write_on' as const,parameters:{brush:[null,12.25] as const,style:2,color:[.2,.7,.4,.5] as const},animation:{brushX:make(-100,100),brushY:make(-50,50),size:make(0,500),colorR:make(0,1),colorG:make(.1,.9),colorB:make(.2,.8),colorA:make(.3,.7),hardness:make(0,100),opacity:make(0,100),strokeLength:make(0,30),spacing:make(.001,1)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='write_on')throw new Error('Write-on required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['brushX','brushY','size','colorR','colorG','colorB','colorA','hardness','opacity','strokeLength','spacing']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"style":2');expect(payload).toContain('"brush":[null,12.25]');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('keeps twenty-one Lightning curves and static choices through split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:3250,value:b}]}});
+ const effect={kind:'lightning' as const,parameters:{start:[null,12.25] as const,end:[128,null] as const,mode:4,outside:[.2,.7,.4,.5] as const},animation:{startX:make(-100,100),startY:make(-50,50),endX:make(10,200),endY:make(20,100),segments:make(1,100),amplitude:make(0,100),detail:make(0,10),detailAmplitude:make(0,1),branching:make(0,1),speed:make(0,100),width:make(0,200),core:make(0,1),seed:make(0,10000),outsideR:make(0,1),outsideG:make(0,1),outsideB:make(0,1),outsideA:make(0,1),insideR:make(0,1),insideG:make(0,1),insideB:make(0,1),insideA:make(0,1)}};
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('chroma',[clip])]};const before=JSON.stringify(source);
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='lightning')throw new Error('Lightning required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters);for(const channel of ['startX','startY','endX','endY','segments','amplitude','detail','detailAmplitude','branching','speed','width','core','seed','outsideR','outsideG','outsideB','outsideA','insideR','insideG','insideB','insideA']as const){expect(selected.animation![channel]).not.toBe(effect.animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(effect.animation[channel],tick+offset),12);}const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"mode":4');expect(payload).toContain('"start":[null,12.25]');}
+ expect(JSON.stringify(source)).toBe(before);
+})
+
+it('preserves all GraphicShape curves and authored path across split trim and duplicate',()=>{
+ const make=(a:number,b:number)=>({mode:'keyframes' as const,track:{timeBase:1000,interpolation:'linear' as const,keyframes:[{tick:-250,value:a},{tick:2250,value:b}]}})
+ const channels=['sizeX','sizeY','positionX','positionY','anchorX','anchorY','fillR','fillG','fillB','fillA','strokeR','strokeG','strokeB','strokeA','stroke2R','stroke2G','stroke2B','stroke2A','backgroundR','backgroundG','backgroundB','backgroundA','shadowR','shadowG','shadowB','shadowA','sides','cornerRadius','strokeWidth','stroke2Width','backgroundOpacity','backgroundSize','backgroundRadius','shadowOpacity','shadowAngle','shadowDistance','shadowSize','shadowBlur','scale','scaleWidth','rotation','opacity']as const
+ const animation=Object.fromEntries(channels.map(channel=>[channel,channel==='sides'?make(3,64):make(0.25,0.75)]))
+ const effect={kind:'graphic_shape' as const,parameters:{shape:3,points:[[0,0],[12,0],[0,12]]as const,uniformScale:false,stroke:true,strokeType:2,position:[1.23456789012345,24]as const},animation}
+ const clip:ImageClip={...imageClip(),effects:[effect]};const source:Composition={...emptyComposition(),tracks:[imageTrack('graphics',[clip])]};const before=JSON.stringify(source)
+ for(const[document,id,offset]of [[splitClip(source,clip.id,seconds(2),'right'),'right',1000000],[trimClip(source,clip.id,seconds(2),seconds(4)),clip.id,1000000],[duplicateClip(source,clip.id,{id:'copy',timelineStartTicks:seconds(5),escapeLink:true}),'copy',0]]as const){
+  expect(validateComposition(document)).toEqual([]);const selected=(document.tracks[0]as ImageTrack).clips.find(c=>c.id===id)!.effects![0]!;if(selected.kind!=='graphic_shape')throw new Error('GraphicShape required');expect(selected.parameters).toEqual(effect.parameters);expect(selected.parameters).not.toBe(effect.parameters)
+  for(const channel of channels){expect(selected.animation![channel]).not.toBe(animation[channel]);for(const tick of [0,250000,500000,1000000,2000000])expect(sampleAnimatableValue(selected.animation![channel]!,tick)).toBeCloseTo(sampleAnimatableValue(animation[channel]!,tick+offset),12)}
+  const payload=JSON.stringify(buildCompositionRenderRequest(document));expect(payload).toContain('"points":[[0,0],[12,0],[0,12]]');expect(payload).toContain('"uniformScale":false')
+ }
+ expect(JSON.stringify(source)).toBe(before)
+})
+
+describe('Filmcraft authored keyframe clock preservation', () => {
+  it('retains a 254016000000 Hz curve through normalization and render payloads', () => {
+    const rate = 254_016_000_000
+    const curve: CompositionAnimatableValue = {
+      mode: 'keyframes',
+      track: { timeBase: rate, interpolation: 'linear', keyframes: [
+        { tick: rate + 1, value: 0.2 }, { tick: 2 * rate - 1, value: 0.8 },
+      ] },
+    }
+    const composition: Composition = { ...emptyComposition(), tracks: [
+      videoTrack('precise-video', [{ ...videoClip(), animation: { opacity: curve } }]),
+    ] }
+    expect(validateComposition(composition)).toEqual([])
+    const restored = normalizeComposition(JSON.parse(JSON.stringify(composition)))
+    expect(restored.tracks[0]).toMatchObject({ clips: [{ animation: { opacity: curve } }] })
+    expect(buildCompositionRenderRequest(restored).composition.tracks[0]).toMatchObject({ clips: [{ opacity: curve }] })
+    expect(sampleAnimatableValue(curve, rate + 1, rate)).toBe(0.2)
+    expect(sampleAnimatableValue(curve, rate * 1.5, rate)).toBe(0.5)
+    for (const timeBase of [0, Number.MAX_SAFE_INTEGER + 1]) {
+      const invalid = JSON.parse(JSON.stringify(composition))
+      invalid.tracks[0].clips[0].animation.opacity.track.timeBase = timeBase
+      expect(issueCodes(invalid)).toContain('keyframe-time-base')
+    }
+  })
+})
+
+it('retains Lumetri split-tone alpha through public video effect export', () => {
+  const curve = {mode: 'constant' as const, value: 0.375}
+  const effect = {kind: 'lumetri' as const, parameters: {
+    creative: {shadowAlpha: 0.25, highlightAlpha: 0.75},
+    animation: {creative: {shadowAlpha: curve, highlightAlpha: curve}},
+  }}
+  const composition = normalizeComposition({...emptyComposition(), tracks: [{...videoTrack('split-tone', []), clips: [{...videoClip(), effects: [effect]}]}]})
+  expect(validateComposition(composition)).toEqual([])
+  const restored = normalizeComposition(JSON.parse(JSON.stringify(composition)))
+  expect(restored.tracks[0]).toMatchObject({clips: [{effects: [effect]}]})
+  expect(buildCompositionRenderRequest(restored).composition.tracks[0]).toMatchObject({clips:[{effects:[effect]}]})
+})
+
+
+it('retains imported Motion curves while public export explicitly refuses them', () => {
+  const constant = (value: number) => ({mode: 'constant' as const, value})
+  const filmcraftMotion = {enabled: true, scaleToFrame: false, parameters: {
+    position: [constant(1.25), constant(-2.75)] as const,
+    anchor: [constant(-4), constant(12)] as const,
+    scale: constant(73.25), scaleWidth: constant(123.75), rotation: constant(31.5),
+    uniformScale: false, antiFlicker: constant(0),
+  }}
+  const composition: Composition = {...emptyComposition(), tracks: [videoTrack('motion', [{...videoClip(), filmcraftMotion, effectTiming: {mode: 'filmcraft_source', holdFilters: false, reverseWhileFrozen: false}}])]}
+  const restored = normalizeComposition(JSON.parse(JSON.stringify(composition)))
+  expect(restored.tracks[0]).toMatchObject({clips: [{filmcraftMotion}]})
+  expect(compositionRenderUnavailableReason(restored)).toContain('Motion Filmcraft')
+  expect(() => buildCompositionRenderRequest(restored)).toThrow(CompositionPayloadError)
+})
+
+it('preserves overlong audio fades through payload, split and trim',()=>{
+ const c={...emptyComposition(),tracks:[audioTrack('long-fades',[{...audioClip('sound',0,0,seconds(1)),fadeInTicks:seconds(2),fadeOutTicks:seconds(3)}])]}
+ expect(buildCompositionRenderRequest(c).composition.tracks[0]).toMatchObject({clips:[{fadeInTicks:seconds(2),fadeOutTicks:seconds(3)}]})
+ const parts=splitClip(c,'sound',seconds(0.5),'tail').tracks[0]!.clips
+ expect(parts[0]).toMatchObject({fadeInTicks:seconds(2),fadeOutTicks:0});expect(parts[1]).toMatchObject({fadeInTicks:0,fadeOutTicks:seconds(3)})
+ expect(trimClip(c,'sound',seconds(0.25),seconds(0.75)).tracks[0]!.clips[0]).toMatchObject({fadeInTicks:seconds(2),fadeOutTicks:seconds(3)})
+})
+
+it('preserves original normalized audio volume keys through payload and source-window editing',()=>{
+ const keys=[{at:0,value:0,ease:'linear'},{at:1,value:1,ease:[0.42,-0.5,0.58,1] as const}]
+ const c={...emptyComposition(),tracks:[audioTrack('ride',[{...audioClip('sound',0,0,seconds(1)),gain:0.9,concatGainKeys:keys}])]}
+ expect(buildCompositionRenderRequest(c).composition.tracks[0]).toMatchObject({clips:[{concatGainKeys:keys,gain:{mode:'constant',value:0.9}}]})
+ const parts=splitClip(c,'sound',seconds(0.5),'tail').tracks[0]!.clips
+ expect(parts[0]).toMatchObject({concatGainKeys:[{at:0,value:0},{at:1,value:0.3125,derived:true}]})
+ expect(parts[1]).toMatchObject({concatGainKeys:[{at:0,value:0.3125,derived:true},{at:1,value:1}]})
+ const copy=duplicateClip(c,'sound',{id:'copy'}).tracks[0]!.clips[1]!
+ expect('concatGainKeys'in copy&&copy.concatGainKeys).not.toBe(keys)
+ const curve={mode:'constant' as const,value:1}
+ expect(()=>buildCompositionRenderRequest({...c,tracks:[audioTrack('invalid',[{...audioClip(),concatGainKeys:keys,audioAnimation:{gain:curve}}])]})).toThrow()
+})
+
+it('retains absolute audio stream selection through payload and clip editing',()=>{
+ const c={...emptyComposition(),tracks:[audioTrack('streams',[{...audioClip('sound',0,0,seconds(1)),audioStream:2}])]}
+ expect(buildCompositionRenderRequest(c).composition.tracks[0]).toMatchObject({clips:[{audioStream:2}]})
+ expect(splitClip(c,'sound',seconds(0.5),'tail').tracks[0]!.clips).toMatchObject([{audioStream:2},{audioStream:2}])
+ expect(trimClip(c,'sound',seconds(0.1),seconds(0.9)).tracks[0]!.clips[0]).toMatchObject({audioStream:2})
+ for(const audioStream of [-1,1.5,NaN,4294967296])expect(()=>buildCompositionRenderRequest({...c,tracks:[audioTrack('bad',[{...audioClip(),audioStream}])]})).toThrow()
+})
+
+it('preserves source-pose animation in ordinary video/image payloads, copies and cut windows',()=>{
+ const animation:import('./types').WireConcatClipAnimation={durationTicks:seconds(1),keys:{opacity:[{at:0,value:0},{at:1,value:1}]},rest:{scaleX:1,scaleY:1,x:0,y:0,rotationDegrees:0,opacity:0},stretch:[1,1],canvas:[1920,1080]}
+ for(const kind of ['video','image']as const){
+  const c={...emptyComposition(),tracks:kind==='video'?[videoTrack('picture',[{...videoClip('picture',0,0,seconds(1)),concatAnimation:animation}])]:[imageTrack('picture',[{...imageClip('picture',0,seconds(1)),concatAnimation:animation}])]}
+  const payload=buildCompositionRenderRequest(c);expect(payload.composition.tracks[0]).toMatchObject({clips:[{transform:{concatAnimation:animation}}]})
+  const parts=splitClip(c,'picture',seconds(0.5),'tail').tracks[0]!.clips
+  expect(parts[0]).toMatchObject({concatAnimation:{durationTicks:seconds(0.5),keys:{opacity:[{at:0,value:0},{at:1,value:0.5}]}}})
+  expect(parts[1]).toMatchObject({concatAnimation:{durationTicks:seconds(0.5),keys:{opacity:[{at:0,value:0.5},{at:1,value:1}]}}})
+  expect(trimClip(c,'picture',seconds(0.25),seconds(0.75)).tracks[0]!.clips[0]).toMatchObject({concatAnimation:{durationTicks:seconds(0.5),keys:{opacity:[{at:0,value:0.25},{at:1,value:0.75}]}}})
+  const copy=duplicateClip(c,'picture',{id:'copy'}).tracks[0]!.clips[1]!
+  expect('concatAnimation'in copy&&copy.concatAnimation).not.toBe(animation)
+  expect(()=>buildCompositionRenderRequest({...c,tracks:kind==='video'?[videoTrack('picture',[{...videoClip(),concatAnimation:{...animation,durationTicks:0}}])]:[imageTrack('picture',[{...imageClip(),concatAnimation:{...animation,durationTicks:0}}])]})).toThrow()
+ }
+})
+
+it('preserves portable per-clip Concat video cutout identity in render payloads',()=>{
+ const binding={subject:'person' as const,sourceHash:'a'.repeat(64),modelHash:'88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',runtimeHash:'b'.repeat(64)}
+ const document={...emptyComposition(),tracks:[videoTrack('video',[{...videoClip(),concatCutout:binding}])]}
+ expect(buildCompositionRenderRequest(document).composition.tracks[0]).toMatchObject({clips:[{concatCutout:binding}]})
+ expect(()=>buildCompositionRenderRequest({...document,tracks:[videoTrack('video',[{...videoClip(),concatCutout:{...binding,runtimeHash:'broken'}}])]})).toThrow()
+})
+
+it('preserves each supported video cutout family and refuses incompatible subjects',()=>{
+ const person='88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',selfie='3241ac4ad8aa35bdaf33946776db29f7c283a413aa0b0dacb9483594b4531aad',object='60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a'
+ const request=(subject:'auto'|'person'|'object',modelHash:string)=>buildCompositionRenderRequest({...emptyComposition(),tracks:[videoTrack('video',[{...videoClip(),concatCutout:{subject,modelHash,sourceHash:'a'.repeat(64),runtimeHash:'b'.repeat(64)}}])]})
+ for(const model of [person,selfie,object])expect(request('auto',model).composition.tracks[0]).toMatchObject({clips:[{concatCutout:{subject:'auto',modelHash:model}}]})
+ for(const model of [person,selfie])expect(request('person',model).composition.tracks[0]).toMatchObject({clips:[{concatCutout:{subject:'person',modelHash:model}}]})
+ expect(request('object',object).composition.tracks[0]).toMatchObject({clips:[{concatCutout:{subject:'object',modelHash:object}}]})
+ for(const model of [person,selfie])expect(()=>request('object',model)).toThrow()
+ expect(()=>request('person',object)).toThrow()
+ expect(()=>request('auto','f'.repeat(64))).toThrow()
+})
+
+it('preserves bounded per-clip video softness while retaining legacy bindings',()=>{
+ const binding={subject:'person' as const,sourceHash:'a'.repeat(64),modelHash:'88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',runtimeHash:'b'.repeat(64)}
+ for(const feather of [undefined,0,0.01,0.1]){const cutout={...binding,...(feather===undefined?{}:{feather})};expect(buildCompositionRenderRequest({...emptyComposition(),tracks:[videoTrack('video',[{...videoClip(),concatCutout:cutout}])]}).composition.tracks[0]).toMatchObject({clips:[{concatCutout:cutout}]})}
+ for(const feather of [-0.001,0.101,Number.NaN,Number.POSITIVE_INFINITY])expect(()=>buildCompositionRenderRequest({...emptyComposition(),tracks:[videoTrack('video',[{...videoClip(),concatCutout:{...binding,feather}}])]})).toThrow()
+})
+
+it('preserves source-bound temporal smart regions and rejects mismatched tracks',()=>{
+ const base=registerSource(emptyComposition(),{id:'region-video',kind:'video',durationTicks:seconds(20),width:256,height:256,hasAudio:false})
+ const snapshot={sourceId:videoSource.id,maskSourceId:'region-video',sourceHash:'a'.repeat(64),maskHash:'b'.repeat(64),maskFileHash:'c'.repeat(64),encoderHash:'d'.repeat(64),decoderHash:'e'.repeat(64),runtimeHash:'f'.repeat(64),promptHash:'0'.repeat(64),points:[[0.25,0.5] as [number,number]],width:1920,height:1080,frames:600,frameRate:{numerator:30,denominator:1},seedFrame:0,trackedFrames:600,forwardLostAt:null,backwardLostAt:null}
+ const binding={subject:'person' as const,sourceHash:'a'.repeat(64),modelHash:'88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',runtimeHash:'b'.repeat(64),correction:{custom:true,feather:0,strokes:[{tool:'smartBrush' as const,size:0.1,points:snapshot.points,at:0}]},regionTracks:[{stroke:0,snapshot}]}
+ const payload=(value:typeof binding)=>buildCompositionRenderRequest({...base,tracks:[videoTrack('video',[{...videoClip(),concatCutout:value}])]})
+ expect(payload(binding).composition.tracks[0]).toMatchObject({clips:[{concatCutout:binding}]})
+ for(const changed of [{...binding,regionTracks:[]},{...binding,regionTracks:[...binding.regionTracks,...binding.regionTracks]},{...binding,regionTracks:[{stroke:0,snapshot:{...snapshot,sourceHash:'c'.repeat(64)}}]},{...binding,regionTracks:[{stroke:0,snapshot:{...snapshot,sourceId:'other'}}]}])expect(()=>payload(changed)).toThrow()
+})
+
+it('preserves VFR smart provenance and validates the seed by held source PTS',()=>{
+ const base=registerSource(emptyComposition(),{id:'vfr-region',kind:'video',durationTicks:seconds(.5),width:256,height:256,hasAudio:false})
+ const region={sourceId:videoSource.id,maskSourceId:'vfr-region',sourceHash:'a'.repeat(64),maskHash:'b'.repeat(64),maskFileHash:'c'.repeat(64),encoderHash:'d'.repeat(64),decoderHash:'e'.repeat(64),runtimeHash:'f'.repeat(64),promptHash:'0'.repeat(64),points:[[.25,.5] as [number,number]],width:1920,height:1080,frames:3,frameRate:{numerator:10,denominator:1},frameTimesUs:[0,100000,400000,500000],seedFrame:1,trackedFrames:3,forwardLostAt:null,backwardLostAt:null}
+ const binding={subject:'person' as const,sourceHash:'a'.repeat(64),modelHash:'88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',runtimeHash:'b'.repeat(64),correction:{custom:true,feather:0,strokes:[{tool:'smartBrush' as const,size:.1,points:region.points,at:.25}]},regionTracks:[{stroke:0,snapshot:region}]}
+ const payload=(value:typeof binding)=>buildCompositionRenderRequest({...base,tracks:[videoTrack('video',[{...videoClip(),concatCutout:value}])]})
+ expect(payload(binding).composition.tracks[0]).toMatchObject({clips:[{concatCutout:binding}]})
+ expect(()=>payload({...binding,correction:{...binding.correction,strokes:[{...binding.correction.strokes[0]!,at:.4}]}})).toThrow()
+})
+
+
+it('validates persisted subtitle lane roles without requiring stale advisory ids to exist', () => {
+  const document = emptyComposition()
+  for (const ids of ['track', null, [42], ['bad id'], ['lane', 'lane'], Array.from({length: MAX_COMPOSITION_TRACKS + 1}, (_, i) => `lane-${i}`)]) {
+    expect(validateComposition({...document, metadata: {captionTextTracks: ids}} as unknown as Composition)
+      .some(issue => issue.code === 'caption-text-tracks')).toBe(true)
+  }
+  expect(validateComposition({...document, metadata: {captionTextTracks: ['previous-lane']}})).toEqual([])
+})

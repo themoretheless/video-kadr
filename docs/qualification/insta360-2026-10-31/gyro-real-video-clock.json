@@ -1,0 +1,37 @@
+{
+  "method": "Read-only MP4 mdhd/stts inventory on globally-smallest nonempty authorized source; source path omitted",
+  "tracks": [
+    {
+      "timescale": 5000,
+      "stts": [
+        [
+          37,
+          100
+        ]
+      ],
+      "optional": [],
+      "trackEdits": [
+        [
+          "edts",
+          28
+        ]
+      ]
+    },
+    {
+      "timescale": 5000,
+      "stts": [
+        [
+          37,
+          100
+        ]
+      ],
+      "optional": [],
+      "trackEdits": [
+        [
+          "edts",
+          28
+        ]
+      ]
+    }
+  ]
+}

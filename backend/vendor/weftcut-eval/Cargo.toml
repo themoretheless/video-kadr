@@ -1,0 +1,32 @@
+[package]
+name = "weftcut-eval"
+version = "0.0.0"
+license = "MIT"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# A std/allocator-owning Wasm host links the math without the standalone ABI.
+hosted = []
+# `Interpolation`'s serde wire shape (`{kind: ...}`), enabled by the napi crate so
+# `Keyframe<T>` stays Serialize/Deserialize. The wasm build leaves it OFF (it
+# passes an i32 interp code across the boundary, not serde).
+serde = ["dep:serde"]
+
+[dependencies]
+# `db_to_linear` needs 10^(db/20); `f64::powf` is std-only, so the no_std wasm
+# build uses libm. Using it natively too keeps native + wasm bit-identical.
+libm = "0.2"
+# `Rational` (the only schemars-carrying type) stays in the napi crate, so the
+# leaf never needs schemars.
+serde = { version = "1", features = ["derive"], optional = true }
+
+# Test-only: the cross-language golden tests deserialize the shared fixtures.
+# Not part of the shipped native/wasm artifact.
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -1,0 +1,366 @@
+{
+  "sourceCommit": "5231852443363f001c3f6b396dd9b1e6461ae2be",
+  "scope": "Actual serialized Filmcraft Color Param to native effect animation; does not qualify whole effect, complete project import or delivery.",
+  "controls": [
+    {
+      "effect": "tint",
+      "parameter": "black",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "tint",
+      "parameter": "white",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "leave_color",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "change_to_color",
+      "parameter": "from",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "change_to_color",
+      "parameter": "to",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lumetri",
+      "parameter": "shadow_tint",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lumetri",
+      "parameter": "highlight_tint",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "color_pass",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "strobe",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "drop_shadow",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "bevel_alpha",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "ultra_key",
+      "parameter": "key_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "color_key",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "four_color_gradient",
+      "parameter": "c1",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "four_color_gradient",
+      "parameter": "c2",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "four_color_gradient",
+      "parameter": "c3",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "four_color_gradient",
+      "parameter": "c4",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "ramp",
+      "parameter": "start_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "ramp",
+      "parameter": "end_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "circle",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "grid",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lens_flare",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "simple_text",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l1_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l2_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l3_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l4_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l5_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "ambient_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "video_limiter",
+      "parameter": "warning_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "vignette",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "gradient",
+      "parameter": "start_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "gradient",
+      "parameter": "end_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "color_replace",
+      "parameter": "target",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "color_replace",
+      "parameter": "replace",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "rounded_crop",
+      "parameter": "border_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "logo_cutout",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "echo_glow",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "edge_glow",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "glint",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "light_leaks",
+      "parameter": "c1",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "light_leaks",
+      "parameter": "c2",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "volumetric_rays",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "wonder_glow",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "long_shadow",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "roughen_edges",
+      "parameter": "edge_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "spacer",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "stroke",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "metadata_burnin",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lightning",
+      "parameter": "outside",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "lightning",
+      "parameter": "inside",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "checkerboard",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "ellipse",
+      "parameter": "inside",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "ellipse",
+      "parameter": "outside",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "paint_bucket",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "write_on",
+      "parameter": "color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "alpha_glow",
+      "parameter": "start_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "alpha_glow",
+      "parameter": "end_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "vr_color_gradients",
+      "parameter": "c1",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "vr_color_gradients",
+      "parameter": "c2",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "vr_color_gradients",
+      "parameter": "c3",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "vr_glow",
+      "parameter": "tint",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_text",
+      "parameter": "fill_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_text",
+      "parameter": "stroke_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_text",
+      "parameter": "stroke2_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_text",
+      "parameter": "background_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_text",
+      "parameter": "shadow_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "fill_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "stroke_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "stroke2_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "background_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "shadow_color",
+      "sourceParamBinding": "qualified-bounded-scenes"
+    }
+  ]
+}

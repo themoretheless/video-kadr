@@ -1,0 +1,49 @@
+{
+  "model": "Insta360 X4",
+  "firmware": "v0.3.11_build1",
+  "profileFlags": 1095,
+  "productionMount": "embedded_legacy_145",
+  "productionSync": "exposure_midpoint_trim_map",
+  "sourceVideoFrame": 0,
+  "sourceVideoOffsetMs": 21000,
+  "actualProductionQuaternion": [
+    0.6638599286392189,
+    0.7476469648205337,
+    -6.342582747443613e-18,
+    -0.017720359527243202
+  ],
+  "actualSourceFrameClock": {
+    "denominator": 1,
+    "numerator": 100,
+    "sourceStartSeconds": 0.0
+  },
+  "gravityAlignment": {
+    "initializationSamples": 52,
+    "observedPrerollSeconds": 0.7312900864923222,
+    "requestedForceNormG": 1.2396182259194755,
+    "status": "aligned_observed_preroll",
+    "warning": null
+  },
+  "firstRawAccelerationG": [
+    0.2570782939303053,
+    -1.2119069257212212,
+    0.042961613221221176
+  ],
+  "firstCameraSpecificForceG": [
+    0.042961613221221176,
+    -0.2570782939303053,
+    -1.2119069257212212
+  ],
+  "captureClockEndpoints": [
+    {
+      "captureSeconds": 20.997882086492325,
+      "timeSeconds": 0.0
+    },
+    {
+      "captureSeconds": 21.497888980623255,
+      "timeSeconds": 0.5
+    }
+  ],
+  "imageArtifact": "/Users/themoretheless/.codex/visualizations/2026/10/30/01a18e98-3987-7a42-8c20-af0016c55942/x4-gyro-production-frame0-preroll/contact.png",
+  "scope": "Read-only actual X4 first frame; bounded observed IMU seed, actual source-module fusion, source-owned lens projection with nearest QA sampling. Not a Studio or production blended-export quality comparison."
+}

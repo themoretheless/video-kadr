@@ -1,0 +1,19 @@
+# Selected optical-flow artifact observations
+
+**2026-11-01 reference-mode audit:** settings selected in Studio UI did not establish effective export settings. Saved OWN timeline snapshots retain FlowState enabled, AI Stitching enabled and Optical Flow Stitching disabled. Later physical toggle/selected-timeline/exit-and-reopen checks still showed OFF in UI without changing the saved snapshot. Export mode remains unresolved; previous mode labels below describe UI observations only. Frame-zero fixed-rotation measurements remain renderer diagnostics, not a certified Optical Flow/Stab-OFF comparison. See `reference-settings-audit.json`.
+
+Target remains installed Studio6.0.2 arm64 executable SHA256 `6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423`. `manifest.json` records four original LC_FUNCTION_STARTS ranges and their byte hashes. Capsules are generic-arm64 views, omit outside data/calls and do not replay Studio execution.
+
+- Temporal-filter setter at0x102751654: REA Evidence `ev_e82b826ca9a1fb234f3d04e27ddaa9729dfa4c2463117b7e454f34c3b7a660ee` writes a supplied value to object offset0x330. This observes a setting, not filtering behavior.
+- OpticalFlow::calc at0x10274dcb0: retry Evidence `ev_7869f96a67c86f2457583dfdb95090c8eac28316cb124021520061b8d579bbd1`. The capsule includes preprocessing and dispatch through an external byte table when a member is below5; that table is outside the image. Ghidra reports truncated/indirect control flow. Branch contents and actual selected clip behavior remain unknown.
+- Init and low-texture setter did not complete. Errors report Java ownership-preparation timeout on macOS. The read-only doctor probe separately accepted Ghidra12.1.4 and the existing64-bit JDK27. Failed calls were retried once after that healthy probe; remaining failures are retained rather than repeated or represented as successful analysis. No installation, signing, client/security setting or source binary was changed.
+
+The supplementary `xcrun nm` inventory in `symbol-candidates.json` is source-hash bound, but is not REA Evidence. It exposes DISOpticalFlowImpl, AI-flow, motion-pyramid, temporal median and low-texture setting names. Names establish candidate interfaces, not execution, numerical results or quality equivalence. The implemented bounded Rust patch-flow algorithm is independent, with its own image-based qualification; it does not reproduce all of these vendor algorithms.
+
+## Local reference export
+
+The existing updater initially blocked local commands, then disappeared. Studio 6.0.2 and the executable SHA256 above were rechecked unchanged after both exports. CUA created an ephemeral local 2:1 panorama project in the private QA folder and imported the small real X6 garage source read-only. Existing projects were not modified; no cloud upload, sharing, login, agreement or security setting was submitted.
+
+Two real H.265 exports completed: each 7680x3840, 50 fps, 38 frames and 0.76 seconds. The first used observed defaults AI Stitching plus FlowState on; the second explicitly selected Optical Flow Stitching and switched FlowState off. Lens Guards and Dive Case were off; Chromatic Calibration was on; Stitch Fusion Angle, Direction Lock, Tilt Recovery and Jitter restoration were off. Both exported videos and decoded inspection frames remain outside the repository in the private `insta360-studio-reference` folder. The first snapshot attempt produced a black JPEG and was rejected as comparison evidence. The valid video frames were inspected separately.
+
+Even with the FlowState UI toggle off, the second output has a different static panorama orientation from the native raw fixture. An unaligned pixel comparison therefore cannot measure stitching quality. CUA observations and ordinary ffprobe/decode checks are runtime observations, not REA Evidence identifiers. No equivalence of vendor algorithms is established.

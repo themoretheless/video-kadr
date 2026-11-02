@@ -1,0 +1,13 @@
+
+> video-kadr-frontend@0.1.0 test
+> vitest run src/lib/components/composition/NestedImageEffects.test.ts -t authors image effects
+
+
+ RUN  v4.1.10 /Users/themoretheless/Documents/Sources/video-kadr/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  127 passed | 99 skipped (226)
+   Start at  01:51:29
+   Duration  16.40s (transform 7.46s, setup 0ms, import 8.42s, tests 7.51s, environment 298ms)
+

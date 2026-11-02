@@ -65,8 +65,14 @@ function spawnBounded(command, args, options, timeoutMs) {
     child.stdout.on('data', append)
     child.stderr.on('data', append)
     const timer = setTimeout(() => {
-      stopChild(child, 'SIGKILL')
-      reject(new Error(`${command} timed out after ${timeoutMs}ms\n${output}`))
+      const timeoutError = new Error(`${command} timed out after ${timeoutMs}ms\n${output}`)
+      try {
+        stopChild(child, 'SIGKILL')
+      } catch (terminationError) {
+        reject(new AggregateError([timeoutError, terminationError], 'Timed out process could not be stopped'))
+        return
+      }
+      reject(timeoutError)
     }, timeoutMs)
     timer.unref()
     child.once('error', (error) => {
@@ -109,7 +115,7 @@ function spawnServer(command, args, options) {
 }
 
 function stopChild(child, signal = 'SIGTERM') {
-  if (!child.pid || child.exitCode !== null) return
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return
   try {
     if (process.platform === 'win32') child.kill(signal)
     else process.kill(-child.pid, signal)
@@ -171,6 +177,7 @@ if (!hasCommand('ffmpeg') || !hasCommand('ffprobe')) {
   process.exit(0)
 }
 
+let runFailure
 try {
   temporaryRoot = await mkdtemp(join(tmpdir(), 'video-kadr-real-e2e-'))
   const storageDir = join(temporaryRoot, 'storage')
@@ -196,7 +203,7 @@ try {
     'cargo',
     ['build', '--bin', 'video-kadr-backend'],
     { cwd: backendRoot, env: process.env },
-    240_000,
+    Number(process.env.REAL_COMPOSITION_BUILD_TIMEOUT_MS ?? 240_000),
   )
 
   const backend = spawnServer(backendBinary, [], {
@@ -217,7 +224,7 @@ try {
 
   const vite = spawnServer(
     join(frontendRoot, 'node_modules', '.bin', 'vite'),
-    ['--config', 'vite.real.config.ts', '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'],
+    ['--config', 'vite.real.config.ts', '--configLoader', 'runner', '--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'],
     {
       cwd: frontendRoot,
       env: { ...process.env, REAL_COMPOSITION_BACKEND_URL: backendUrl },
@@ -227,17 +234,25 @@ try {
 
   await spawnBounded(
     join(frontendRoot, 'node_modules', '.bin', 'playwright'),
-    ['test', 'real-composition.spec.ts', '--config', 'playwright.real.config.ts', '--project', 'chromium-real'],
+    ['test', process.env.REAL_COMPOSITION_SPEC ?? 'real-composition.spec.ts', '--config', 'playwright.real.config.ts', '--project', 'chromium-real'],
     {
       cwd: frontendRoot,
       env: {
         ...process.env,
         REAL_COMPOSITION_BASE_URL: frontendUrl,
+        REAL_COMPOSITION_BACKEND_URL: backendUrl,
         REAL_COMPOSITION_FIXTURE: fixturePath,
+        REAL_COMPOSITION_STORAGE: storageDir,
       },
     },
     150_000,
   ).then((output) => process.stdout.write(output))
+} catch (error) {
+  runFailure = error
+  throw error
 } finally {
-  await cleanup()
+  try { await cleanup() } catch (cleanupError) {
+    if (runFailure) throw new AggregateError([runFailure, cleanupError], 'Real composition E2E run and cleanup failed')
+    throw cleanupError
+  }
 }

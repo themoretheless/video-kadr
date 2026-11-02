@@ -175,6 +175,7 @@ pub async fn composition_project_archive_export_handler(
             source_id: source_id.clone(),
             filename: entry.filename.clone(),
             media_type,
+            original_filename: entry.original_filename.clone(),
             title,
             duration: entry.duration,
             width: entry.width,
@@ -338,6 +339,7 @@ async fn import_parsed_archive(
             storage_key: None,
             url: format!("/files/sources/{destination_filename}"),
             media_type: Some(probed_media_type.into()),
+            original_filename: archived.original_filename.clone(),
             title: archived.title.clone(),
             duration: Some(probe.duration),
             width: (probe.width > 0).then_some(probe.width),
@@ -359,13 +361,8 @@ async fn import_parsed_archive(
     }
 
     let document = rewrite_document_source_ids(project.document, &source_mapping)?;
-    let source_ids = document
-        .get("sources")
-        .and_then(Value::as_object)
-        .expect("archive validation and rewrite preserve sources")
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>();
+    let source_ids = crate::db::extract_document_source_ids(&document)
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
     let project = publish_with_rollback(
         &state,
         &prepared,
@@ -565,6 +562,18 @@ fn rewrite_document_source_ids(
     mut document: Value,
     source_mapping: &BTreeMap<String, String>,
 ) -> AppResult<Value> {
+    if document.get("compositions").is_some() {
+        let ids = crate::db::extract_document_source_ids(&document).map_err(|error| AppError::bad_request(error.to_string()))?;
+        if ids != source_mapping.keys().cloned().collect::<Vec<_>>() || source_mapping.values().collect::<std::collections::BTreeSet<_>>().len() != source_mapping.len() {
+            return Err(AppError::bad_request("Nested source mapping must be complete and unique"));
+        }
+        for composition in document["compositions"].as_object_mut().unwrap().values_mut() {
+            let local = composition["content"]["sources"].as_object().unwrap().keys().map(|id| (id.clone(),source_mapping[id].clone())).collect();
+            composition["content"] = rewrite_document_source_ids(composition["content"].take(), &local)?;
+        }
+        crate::db::extract_document_source_ids(&document).map_err(|error| AppError::bad_request(error.to_string()))?;
+        return Ok(document);
+    }
     let root = document
         .as_object_mut()
         .ok_or_else(|| AppError::bad_request("Документ композиции не является объектом"))?;
@@ -610,7 +619,7 @@ fn rewrite_source_id_fields(
     match value {
         Value::Object(object) => {
             for (key, child) in object {
-                if key == "sourceId" {
+                if matches!(key.as_str(), "sourceId" | "maskSourceId" | "originalSourceId" | "copySourceId") {
                     let old_id = child
                         .as_str()
                         .ok_or_else(|| AppError::bad_request("sourceId не является строкой"))?;
@@ -845,6 +854,24 @@ mod tests {
     use crate::state::ToolInfo;
 
     #[test]
+    fn nested_relink_rewrites_shared_sources_in_every_child() {
+        let mut content = serde_json::to_value(crate::domain::composition::Composition::new(crate::domain::composition::CanvasSpec::default())).unwrap();
+        content["sources"] = json!({ "old-image": { "id": "old-image", "kind": "image", "durationTicks": 0, "width": 32, "height": 32, "hasAudio": false } });
+        let document = json!({ "schemaVersion": 1, "root": "root", "compositions": {
+            "root": { "content": content, "instances": [] },
+            "child": { "content": content, "instances": [] }
+        } });
+        let mapping = BTreeMap::from([("old-image".into(),"new-image".into())]);
+        let rewritten = rewrite_document_source_ids(document.clone(), &mapping).unwrap();
+        assert_eq!(rewritten["root"], "root");
+        for id in ["root","child"] {
+            assert_eq!(rewritten["compositions"][id]["content"]["sources"]["new-image"]["id"], "new-image");
+            assert!(rewritten["compositions"][id]["content"]["sources"].get("old-image").is_none());
+        }
+        assert!(rewrite_document_source_ids(document, &BTreeMap::new()).is_err());
+    }
+
+    #[test]
     fn relink_rewrites_source_keys_embedded_ids_and_every_clip_reference() {
         let document = json!({
             "schemaVersion": 1,
@@ -856,6 +883,7 @@ mod tests {
                 {"clips": [{"sourceId": "old-a"}]},
                 {"clips": [{"sourceId": "old-b"}, {"sourceId": "old-a"}]}
             ],
+            "metadata": {"mediaVersions": {"clip": {"originalSourceId": "old-a", "copySourceId": "old-b"}}},
             "unrelated": {"id": "old-a"}
         });
         let mapping = BTreeMap::from([
@@ -876,8 +904,12 @@ mod tests {
         assert_eq!(rewritten["tracks"][0]["clips"][0]["sourceId"], "new-a");
         assert_eq!(rewritten["tracks"][1]["clips"][0]["sourceId"], "new-b");
         assert_eq!(rewritten["tracks"][1]["clips"][1]["sourceId"], "new-a");
+        assert_eq!(rewritten["metadata"]["mediaVersions"]["clip"], json!({"originalSourceId":"new-a","copySourceId":"new-b"}));
         assert_eq!(rewritten["unrelated"]["id"], "old-a");
     }
+
+    #[test]
+    fn portable_cutout_rewrites_both_original_and_probability_sources(){let document=json!({"sources":{"old-a":{"id":"old-a"},"old-mask":{"id":"old-mask"}},"metadata":{"mediaVersions":{"clip":{"originalSourceId":"old-a","copySourceId":"old-a","cutout":{"sourceId":"old-a","maskSourceId":"old-mask"}}}}});let mapping=BTreeMap::from([("old-a".into(),"new-a".into()),("old-mask".into(),"new-mask".into())]);let out=rewrite_document_source_ids(document,&mapping).unwrap();assert_eq!(out["metadata"]["mediaVersions"]["clip"]["cutout"],json!({"sourceId":"new-a","maskSourceId":"new-mask"}));}
 
     #[test]
     fn download_filename_is_ascii_header_safe_and_bounded() {
@@ -928,6 +960,7 @@ mod tests {
                 source_id: "old-source".into(),
                 filename: "old-source.wav".into(),
                 media_type: "audio".into(),
+                original_filename: None,
                 title: Some("Rollback".into()),
                 duration: Some(1.0),
                 width: None,
@@ -947,6 +980,7 @@ mod tests {
                 storage_key: None,
                 url: format!("/files/sources/{destination_filename}"),
                 media_type: Some("audio".into()),
+                original_filename: None,
                 title: Some("Rollback".into()),
                 duration: Some(1.0),
                 width: None,

@@ -1,0 +1,13 @@
+
+> video-kadr-frontend@0.1.0 test
+> vitest run src/lib/motion/sphericalVideo.test.ts src/lib/motion/sphericalTracking.test.ts
+
+
+ RUN  v4.1.10 /Users/themoretheless/Documents/Sources/video-kadr/frontend
+
+
+ Test Files  2 passed (2)
+      Tests  5 passed (5)
+   Start at  01:31:20
+   Duration  283ms (transform 55ms, setup 0ms, import 78ms, tests 8ms, environment 243ms)
+

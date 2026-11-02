@@ -1,0 +1,6 @@
+{
+  "time": 1793398073.024887,
+  "worker_pid": 35526,
+  "reason": "Read-only Ghidra worker was still in ConstantPropagationAnalyzer after more than 11 minutes; moving to explicit exported functions without automatic constant-reference analysis. No completed native primitive Evidence was returned.",
+  "target_unchanged": true
+}

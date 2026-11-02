@@ -1,0 +1,62 @@
+{
+  "model": "Insta360 X4",
+  "firmware": "v0.3.11_build1",
+  "hardwareGyroType": 1,
+  "profileFlags": 1095,
+  "lensTypes": [
+    71,
+    71
+  ],
+  "sourceClock": {
+    "denominator": 1,
+    "numerator": 100,
+    "sampleCount": 762
+  },
+  "sourceVideoFrame": 225,
+  "sourceVideoOffsetMs": 21000,
+  "firstFrameExposureIndex": 2332,
+  "firstFrameTimestampUs": 459333934,
+  "firstShutterSeconds": 0.00034847890492528677,
+  "captureMidpointUs": 482581690.7605475,
+  "firstRawAccelerationG": [
+    0.09040007438197073,
+    -1.00089366492366,
+    -0.15808476829859233
+  ],
+  "firstCameraSpecificForceG": [
+    -0.15808476829859233,
+    -0.09040007438197073,
+    -1.00089366492366
+  ],
+  "actualProductionQuaternion": [
+    0.6749590636750247,
+    0.7288205284305511,
+    0.0,
+    -0.11511255231792178
+  ],
+  "worldGravityUpCheck": [
+    -5.551115123125783e-17,
+    1.0,
+    0.0
+  ],
+  "productionMount": "embedded_legacy_145",
+  "productionSync": "exposure_midpoint_trim_map",
+  "actualSourceFrameClock": {
+    "denominator": 1,
+    "numerator": 100,
+    "sourceStartSeconds": 2.25
+  },
+  "scope": "Actual source-module gyro/profile integration, real public X4 source; QA images use actual profile geometry with nearest sampling, not production blended-render/export or Studio equivalence.",
+  "actualClockEndpoints": [
+    {
+      "captureSeconds": 23.24775676054754,
+      "timeSeconds": 0.0
+    },
+    {
+      "captureSeconds": 23.747703426294272,
+      "timeSeconds": 0.5
+    }
+  ],
+  "sourceSha256": "f3274d265e03f4f23ff5990df06b758a75129f19fe43b949d96edd9f8eb50009",
+  "imageArtifact": "/Users/themoretheless/.codex/visualizations/2026/10/30/01a18e98-3987-7a42-8c20-af0016c55942/x4-gyro-production-frame225/contact.png"
+}

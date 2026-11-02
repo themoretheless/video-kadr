@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use rayon::ThreadPool;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +35,45 @@ impl CpuPoolConfig {
 #[derive(Clone)]
 pub struct CpuPool {
     inner: Arc<CpuPoolInner>,
+    scope: Option<CpuScope>,
+}
+
+#[derive(Clone, Default)]
+pub struct CpuScope {
+    inner: Arc<CpuScopeInner>,
+}
+#[derive(Default)]
+struct CpuScopeInner {
+    active: AtomicUsize,
+    idle: Notify,
+}
+impl CpuScope {
+    pub fn is_idle(&self) -> bool {
+        self.inner.active.load(Ordering::Acquire) == 0
+    }
+    pub async fn wait_idle(&self) {
+        loop {
+            let notified = self.inner.idle.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.is_idle() {
+                return;
+            }
+            notified.await;
+        }
+    }
+    fn enter(&self) -> CpuScopeGuard {
+        self.inner.active.fetch_add(1, Ordering::AcqRel);
+        CpuScopeGuard(self.clone())
+    }
+}
+struct CpuScopeGuard(CpuScope);
+impl Drop for CpuScopeGuard {
+    fn drop(&mut self) {
+        if self.0.inner.active.fetch_sub(1, Ordering::AcqRel) == 1 {
+            self.0.inner.idle.notify_waiters();
+        }
+    }
 }
 
 struct CpuPoolInner {
@@ -56,6 +95,7 @@ impl CpuPool {
             .build()
             .map_err(CpuPoolBuildError::Rayon)?;
         Ok(Self {
+            scope: None,
             inner: Arc::new(CpuPoolInner {
                 pool,
                 admission: Arc::new(Semaphore::new(admitted)),
@@ -93,7 +133,9 @@ impl CpuPool {
         let (sender, receiver) = oneshot::channel();
         let inner = self.inner.clone();
         let worker_cancellation = cancellation.clone();
+        let scope = self.scope.as_ref().map(CpuScope::enter);
         self.inner.pool.spawn_fifo(move || {
+            let _scope = scope;
             inner.metrics.queued.fetch_sub(1, Ordering::Relaxed);
             inner.metrics.running.fetch_add(1, Ordering::Relaxed);
             let result = if worker_cancellation.is_cancelled() {
@@ -138,6 +180,18 @@ impl CpuPool {
 
     pub fn snapshot(&self) -> CpuPoolSnapshot {
         self.inner.metrics.snapshot()
+    }
+    /// A facade over the same bounded pool, tracking only this execution group.
+    /// Cancellation can return before a closure; the scope drains physical work.
+    pub fn scoped(&self) -> (Self, CpuScope) {
+        let scope = CpuScope::default();
+        (
+            Self {
+                inner: self.inner.clone(),
+                scope: Some(scope.clone()),
+            },
+            scope,
+        )
     }
 }
 
@@ -231,6 +285,62 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn scoped_cancellation_waits_for_physical_exit_only_in_its_group() {
+        let pool = CpuPool::new(CpuPoolConfig {
+            threads: 2,
+            queue_capacity: 0,
+        })
+        .unwrap();
+        let (scoped, scope) = pool.scoped();
+        let (release, blocked) = std::sync::mpsc::channel();
+        let (started, ready) = oneshot::channel();
+        let cancel = CancellationToken::new();
+        let token = cancel.clone();
+        let task = tokio::spawn(async move {
+            scoped
+                .execute(token, move |_| {
+                    let _ = started.send(());
+                    blocked.recv().unwrap();
+                    Ok(())
+                })
+                .await
+        });
+        ready.await.unwrap();
+        cancel.cancel();
+        assert!(matches!(task.await.unwrap(), Err(CpuTaskError::Cancelled)));
+        assert!(!scope.is_idle());
+        let (other_release, other_blocked) = std::sync::mpsc::channel();
+        let (other_started, other_ready) = oneshot::channel();
+        let other = tokio::spawn(async move {
+            pool.execute(CancellationToken::new(), move |_| {
+                let _ = other_started.send(());
+                other_blocked.recv().unwrap();
+                Ok(())
+            })
+            .await
+        });
+        other_ready.await.unwrap();
+        let a = scope.clone();
+        let b = scope.clone();
+        let first = tokio::spawn(async move { a.wait_idle().await });
+        let second = tokio::spawn(async move { b.wait_idle().await });
+        tokio::task::yield_now().await;
+        assert!(!first.is_finished());
+        assert!(!second.is_finished());
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            first.await.unwrap();
+            second.await.unwrap();
+        })
+        .await
+        .unwrap();
+        assert!(scope.is_idle());
+        assert!(!other.is_finished());
+        other_release.send(()).unwrap();
+        other.await.unwrap().unwrap();
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn closure_runs_on_named_cpu_worker() {

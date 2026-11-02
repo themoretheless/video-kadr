@@ -9,16 +9,16 @@ where
     D: Deserializer<'de>,
 {
     use serde::de::Visitor;
-    
+
     struct FiniteFloatVisitor;
-    
+
     impl<'de> Visitor<'de> for FiniteFloatVisitor {
         type Value = f64;
-        
+
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("a finite floating-point number")
         }
-        
+
         fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -29,7 +29,7 @@ where
             Ok(value)
         }
     }
-    
+
     deserializer.deserialize_f64(FiniteFloatVisitor)
 }
 
@@ -59,7 +59,9 @@ where
         {
             let value = f64::deserialize(deserializer)?;
             if !value.is_finite() {
-                return Err(D::Error::custom("value must be finite (no NaN or Infinity)"));
+                return Err(D::Error::custom(
+                    "value must be finite (no NaN or Infinity)",
+                ));
             }
             Ok(Some(value))
         }
@@ -247,9 +249,9 @@ pub struct EditRequest {
     #[serde(default = "default_one", deserialize_with = "validate_finite_float")]
     pub volume: f64,
     /// Fade in/out durations in seconds (0 = none), applied to video and audio.
-    #[serde(deserialize_with = "validate_finite_float")]
+    #[serde(default, deserialize_with = "validate_finite_float")]
     pub fade_in: f64,
-    #[serde(deserialize_with = "validate_finite_float")]
+    #[serde(default, deserialize_with = "validate_finite_float")]
     pub fade_out: f64,
     /// Normalize loudness to a streaming target (EBU R128 via loudnorm).
     #[serde(default)]
@@ -258,7 +260,7 @@ pub struct EditRequest {
     #[serde(default)]
     pub highpass: bool,
     /// Stereo balance, -1 = left and +1 = right.
-    #[serde(deserialize_with = "validate_finite_float")]
+    #[serde(default, deserialize_with = "validate_finite_float")]
     pub pan: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_eq: Option<AudioEqSelection>,
@@ -267,7 +269,7 @@ pub struct EditRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limiter: Option<AudioLimiterSelection>,
     /// eq filter params: brightness -1..1, contrast/saturation around 1.0.
-    #[serde(deserialize_with = "validate_finite_float")]
+    #[serde(default, deserialize_with = "validate_finite_float")]
     pub brightness: f64,
     #[serde(default = "default_one", deserialize_with = "validate_finite_float")]
     pub contrast: f64,
@@ -294,7 +296,7 @@ pub struct EditRequest {
     #[serde(default)]
     pub boomerang: bool,
     /// Output frame rate override.
-    #[serde(deserialize_with = "validate_optional_finite_float")]
+    #[serde(default, deserialize_with = "validate_optional_finite_float")]
     pub fps: Option<f64>,
     /// Hide a rectangular region with a filled box (privacy / censor).
     #[serde(default)]
@@ -308,10 +310,10 @@ pub struct EditRequest {
     #[serde(default)]
     pub denoise: bool,
     /// Sharpen amount (0 = off, ~0..3 luma_amount for unsharp).
-    #[serde(deserialize_with = "validate_finite_float")]
+    #[serde(default, deserialize_with = "validate_finite_float")]
     pub sharpen: f64,
     /// Film grain amount (0 = off, ~0..100 noise strength).
-    #[serde(deserialize_with = "validate_finite_float")]
+    #[serde(default, deserialize_with = "validate_finite_float")]
     pub grain: f64,
     /// Optional immutable LUT asset selected by id. The HTTP adapter resolves
     /// the id to a private filesystem path before the FFmpeg adapter runs.
@@ -618,12 +620,24 @@ mod tests {
         assert_eq!(e.contrast, 1.0);
         assert_eq!(e.saturation, 1.0);
         assert_eq!(e.brightness, 0.0);
+        assert_eq!([e.fade_in,e.fade_out,e.pan,e.sharpen,e.grain], [0.0;5]);
         assert_eq!(e.rotate, 0);
         assert!(!e.mute);
         assert!(!e.flip_h);
         assert!(e.trim.is_none());
         assert!(e.segments.is_none());
         assert!(e.format.is_none());
+    }
+
+    #[test]
+    fn optional_effect_defaults_do_not_admit_invalid_explicit_values() {
+        for field in ["fadeIn", "fadeOut", "pan", "brightness", "sharpen", "grain"] {
+            for value in [serde_json::Value::Null, json!("NaN"), json!({})] {
+                let mut input = json!({ "videoId": "legacy" });
+                input[field] = value;
+                assert!(serde_json::from_value::<EditRequest>(input).is_err(), "{field}");
+            }
+        }
     }
 
     #[test]

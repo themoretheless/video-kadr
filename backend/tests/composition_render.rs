@@ -171,7 +171,9 @@ async fn channel_rms(path: &Path, start_seconds: f64, duration_seconds: f64) -> 
 }
 
 async fn band_rms(path: &Path, start_seconds: f64, frequency: u32) -> f64 {
-    let filter = format!("bandpass=f={frequency}:width_type=h:w=80,aformat=sample_fmts=flt:sample_rates=48000:channel_layouts=mono");
+    let filter = format!(
+        "bandpass=f={frequency}:width_type=h:w=80,aformat=sample_fmts=flt:sample_rates=48000:channel_layouts=mono"
+    );
     let output = tokio::process::Command::new("ffmpeg")
         .args(["-v", "error", "-ss", &format!("{start_seconds:.3}"), "-i"])
         .arg(path)
@@ -404,6 +406,8 @@ fn source_id(value: &str) -> SourceId {
 
 fn placement(timeline_start_tick: u64, source_out_tick: u64) -> ClipPlacement {
     ClipPlacement {
+        source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+        timeline_duration_tick: None,
         timeline_start_tick,
         source_in_tick: 0,
         source_out_tick,
@@ -413,7 +417,9 @@ fn placement(timeline_start_tick: u64, source_out_tick: u64) -> ClipPlacement {
 }
 
 fn video_clip(value: &str, source: &str, placement: ClipPlacement) -> VideoClip {
-    VideoClip {
+    VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
         id: CompositionClipId::parse(value).unwrap(),
         source_id: source_id(source),
         placement,
@@ -438,10 +444,14 @@ fn animated(interpolation: Interpolation, from: f64, to: f64) -> AnimatableValue
             interpolation,
             vec![
                 Keyframe {
+                    tangents: None,
+                    interpolation: None,
                     tick: 0,
                     value: from,
                 },
                 Keyframe {
+                    tangents: None,
+                    interpolation: None,
                     tick: 1_000_000,
                     value: to,
                 },
@@ -519,6 +529,7 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
             width: 64,
             height: 48,
             fps_milli: 20_000,
+            fps_rate: None,
             background: Rgba {
                 red: 0.0,
                 green: 0.0,
@@ -529,6 +540,7 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
         });
         for source in [
             CompositionSource {
+                audio_channels: None,
                 id: source_id("primary-gray"),
                 kind: SourceKind::Video,
                 duration_ticks: 1_600_000,
@@ -537,6 +549,7 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
                 has_audio: false,
             },
             CompositionSource {
+                audio_channels: None,
                 id: source_id("overlay-red"),
                 kind: SourceKind::Video,
                 duration_ticks: 1_200_000,
@@ -545,6 +558,7 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
                 has_audio: false,
             },
             CompositionSource {
+                audio_channels: None,
                 id: source_id("overlay-blue"),
                 kind: SourceKind::Video,
                 duration_ticks: 1_200_000,
@@ -559,6 +573,8 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
             "overlay-red-clip",
             "overlay-red",
             ClipPlacement {
+                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                timeline_duration_tick: None,
                 timeline_start_tick: 0,
                 source_in_tick: 100_000,
                 source_out_tick: 900_000,
@@ -570,6 +586,8 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
             "overlay-blue-clip",
             "overlay-blue",
             ClipPlacement {
+                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                timeline_duration_tick: None,
                 timeline_start_tick: 800_000,
                 source_in_tick: 100_000,
                 source_out_tick: 900_000,
@@ -587,10 +605,12 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
                 muted: true,
                 locked: false,
                 clips: vec![red_clip, blue_clip],
-                transitions: vec![ClipTransition {
+                transitions: vec![ClipTransition { concat_overlap: None,
+                    kernel: None, reverse: false,
+timeline: None,
                     id: TransitionId::parse("overlay-transition").unwrap(),
-                    from_clip_id: CompositionClipId::parse("overlay-red-clip").unwrap(),
-                    to_clip_id: CompositionClipId::parse("overlay-blue-clip").unwrap(),
+                    from_clip_id: Some(CompositionClipId::parse("overlay-red-clip").unwrap()),
+                    to_clip_id: Some(CompositionClipId::parse("overlay-blue-clip").unwrap()),
                     duration_ticks: 200_000,
                     kind,
                 }],
@@ -618,6 +638,7 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
         ]);
         let command = FfmpegCompositionExportCompiler
             .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
                 vidstab_transforms: &BTreeMap::new(),
@@ -711,6 +732,11 @@ async fn real_overlay_transitions_use_exact_handles_and_preserve_primary_timelin
                 assert_dominant(sample_pixel(&output, 0.80, 32, 24).await, 0);
                 assert_dominant(sample_pixel(&output, 0.80, 32, 4).await, 2);
             }
+            TransitionKind::ConcatDissolve | TransitionKind::ConcatFadeBlack | TransitionKind::ConcatFadeWhite
+            | TransitionKind::Procedural | TransitionKind::FilmDissolve
+            | TransitionKind::AdditiveDissolve | TransitionKind::FadeWhite => {
+                unreachable!("independent-window transitions are outside this legacy transition table");
+            }
         }
         let rendered = probe_video(&runtime, &output).await.unwrap();
         assert!(
@@ -755,6 +781,7 @@ async fn real_blur_and_checker_canvas_backgrounds_fill_primary_letterbox() {
     ] {
         let destination = directory.path().join(filename);
         let source = CompositionSource {
+            audio_channels: None,
             id: source_id("portrait"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -770,6 +797,7 @@ async fn real_blur_and_checker_canvas_backgrounds_fill_primary_letterbox() {
             fps_milli: 20_000,
             background: Rgba::BLACK,
             background_mode: mode,
+            fps_rate: None,
             background_blur: 18.0,
         });
         composition.sources.insert(source.id.clone(), source);
@@ -785,6 +813,7 @@ async fn real_blur_and_checker_canvas_backgrounds_fill_primary_letterbox() {
         let inputs = BTreeMap::from([(source_id("portrait"), source_path.clone())]);
         let command = FfmpegCompositionExportCompiler
             .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
                 vidstab_transforms: &BTreeMap::new(),
@@ -882,6 +911,7 @@ async fn real_style_effect_presets_change_pixels_and_preserve_contract() {
         });
         let destination = directory.path().join(format!("{label}.mp4"));
         let source = CompositionSource {
+            audio_channels: None,
             id: source_id("effect-source"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -916,6 +946,7 @@ async fn real_style_effect_presets_change_pixels_and_preserve_contract() {
         let inputs = BTreeMap::from([(source_id("effect-source"), source_path.clone())]);
         let command = FfmpegCompositionExportCompiler
             .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
                 vidstab_transforms: &BTreeMap::new(),
@@ -1053,6 +1084,7 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
     });
     for source in [
         CompositionSource {
+            audio_channels: None,
             id: source_id("red"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -1061,6 +1093,7 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
             has_audio: true,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("blue"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -1069,6 +1102,7 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("music"),
             kind: SourceKind::Audio,
             duration_ticks: 1_000_000,
@@ -1126,6 +1160,8 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("music-clip").unwrap(),
                 source_id: source_id("music"),
                 placement: placement(0, 1_000_000),
@@ -1138,6 +1174,7 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -1151,6 +1188,7 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
     ]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -1184,10 +1222,7 @@ async fn real_multi_source_composition_concats_video_and_mixes_audio() {
     assert!((rendered.duration - 1.0).abs() < 0.15, "{rendered:?}");
     let faded_red = sample_pixel(&output, 0.25, 68, 32).await;
     assert!(
-        faded_red[0] > 80
-            && faded_red[1] > 180
-            && faded_red[2] < 40
-            && faded_red[1] > faded_red[0],
+        faded_red[0] > 80 && faded_red[1] > 180 && faded_red[2] < 40 && faded_red[1] > faded_red[0],
         "primary screen blend/transform/opacity did not composite over the green canvas: {faded_red:?}"
     );
     assert_dominant(sample_pixel(&output, 0.25, 58, 32).await, 1);
@@ -1294,6 +1329,7 @@ async fn real_source_and_independent_audio_gain_pan_automation_is_clip_local() {
     });
     for source in [
         CompositionSource {
+            audio_channels: None,
             id: source_id("source-tone"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -1302,6 +1338,7 @@ async fn real_source_and_independent_audio_gain_pan_automation_is_clip_local() {
             has_audio: true,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("silent-video"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -1310,6 +1347,7 @@ async fn real_source_and_independent_audio_gain_pan_automation_is_clip_local() {
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("independent-tone"),
             kind: SourceKind::Audio,
             duration_ticks: 1_000_000,
@@ -1347,6 +1385,8 @@ async fn real_source_and_independent_audio_gain_pan_automation_is_clip_local() {
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("independent-tone-clip").unwrap(),
                 source_id: source_id("independent-tone"),
                 placement: placement(1_000_000, 1_000_000),
@@ -1359,6 +1399,7 @@ async fn real_source_and_independent_audio_gain_pan_automation_is_clip_local() {
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -1372,6 +1413,7 @@ async fn real_source_and_independent_audio_gain_pan_automation_is_clip_local() {
     ]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -1499,6 +1541,7 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
     });
     for source in [
         CompositionSource {
+            audio_channels: None,
             id: source_id("silent"),
             kind: SourceKind::Video,
             duration_ticks: 3_000_000,
@@ -1507,6 +1550,7 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("tone-a"),
             kind: SourceKind::Audio,
             duration_ticks: 4_000_000,
@@ -1515,6 +1559,7 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
             has_audio: true,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("tone-b"),
             kind: SourceKind::Audio,
             duration_ticks: 4_000_000,
@@ -1528,9 +1573,13 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
     let audio =
         |id: &str, source: &str, start: u64, source_in: u64, source_out: u64, crossfade: u64| {
             AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse(id).unwrap(),
                 source_id: source_id(source),
                 placement: ClipPlacement {
+                    source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                    timeline_duration_tick: None,
                     timeline_start_tick: start,
                     source_in_tick: source_in,
                     source_out_tick: source_out,
@@ -1546,6 +1595,7 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: crossfade,
+                crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }
@@ -1587,6 +1637,7 @@ async fn real_audio_crossfade_mixes_both_handle_backed_tones_and_preserves_durat
     ]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -1679,6 +1730,7 @@ async fn real_auto_ducking_reduces_background_band_only_while_primary_voice_is_a
     });
     for source in [
         CompositionSource {
+            audio_channels: None,
             id: source_id("voice"),
             kind: SourceKind::Video,
             duration_ticks: 3_000_000,
@@ -1687,6 +1739,7 @@ async fn real_auto_ducking_reduces_background_band_only_while_primary_voice_is_a
             has_audio: true,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("music"),
             kind: SourceKind::Audio,
             duration_ticks: 3_000_000,
@@ -1714,6 +1767,8 @@ async fn real_auto_ducking_reduces_background_band_only_while_primary_voice_is_a
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("music-clip").unwrap(),
                 source_id: source_id("music"),
                 placement: placement(0, 3_000_000),
@@ -1726,6 +1781,7 @@ async fn real_auto_ducking_reduces_background_band_only_while_primary_voice_is_a
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: Some(AudioDucking {
                     threshold_db: -40.0,
                     ratio: 20.0,
@@ -1740,6 +1796,7 @@ async fn real_auto_ducking_reduces_background_band_only_while_primary_voice_is_a
     let inputs = BTreeMap::from([(source_id("voice"), video), (source_id("music"), music)]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -1864,6 +1921,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
     });
     for source in [
         CompositionSource {
+            audio_channels: None,
             id: source_id("black"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -1872,6 +1930,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("pulse"),
             kind: SourceKind::Audio,
             duration_ticks: 1_000_000,
@@ -1880,6 +1939,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
             has_audio: true,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("tone"),
             kind: SourceKind::Audio,
             duration_ticks: 1_000_000,
@@ -1888,6 +1948,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
             has_audio: true,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("tone-mix"),
             kind: SourceKind::Audio,
             duration_ticks: 1_000_000,
@@ -1915,6 +1976,8 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("pulse-clip").unwrap(),
                 source_id: source_id("pulse"),
                 placement: placement(0, 1_000_000),
@@ -1927,6 +1990,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -1941,6 +2005,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
     ]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -1980,6 +2045,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
     composition.validate().unwrap();
     let robot_command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2017,6 +2083,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
     clips[0].voice_effect = AudioVoiceEffect::Chipmunk;
     let chipmunk_command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2055,6 +2122,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
     clips[0].pitch_semitones = -12.0;
     let custom_pitch_command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2094,6 +2162,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
     clips[0].tone_db = 12.0;
     let tone_command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2133,6 +2202,7 @@ async fn real_voice_effects_tone_pitch_and_reverse_preserve_clip_duration() {
     clips[0].reversed = true;
     let reverse_command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2232,6 +2302,7 @@ async fn real_optical_flow_slow_motion_has_exact_frames_motion_and_av_duration()
     composition.sources.insert(
         source_id.clone(),
         CompositionSource {
+            audio_channels: None,
             id: source_id.clone(),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -2255,6 +2326,7 @@ async fn real_optical_flow_slow_motion_has_exact_frames_motion_and_av_duration()
     let inputs = BTreeMap::from([(source_id, source)]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2383,6 +2455,7 @@ async fn real_reverse_optical_and_freeze_preserve_order_duration_and_av_sync() {
     composition.sources.insert(
         source.clone(),
         CompositionSource {
+            audio_channels: None,
             id: source.clone(),
             kind: SourceKind::Video,
             duration_ticks: 3_000_000,
@@ -2407,6 +2480,7 @@ async fn real_reverse_optical_and_freeze_preserve_order_duration_and_av_sync() {
     let inputs = BTreeMap::from([(source.clone(), source_path.clone())]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2466,6 +2540,7 @@ async fn real_reverse_optical_and_freeze_preserve_order_duration_and_av_sync() {
     clips[0].frame_interpolation = FrameInterpolation::Duplicate;
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2587,6 +2662,7 @@ async fn real_deshake_lowers_central_temporal_jitter_with_reverse_optical_and_ke
     composition.sources.insert(
         source.clone(),
         CompositionSource {
+            audio_channels: None,
             id: source.clone(),
             kind: SourceKind::Video,
             duration_ticks: 3_000_000,
@@ -2612,6 +2688,7 @@ async fn real_deshake_lowers_central_temporal_jitter_with_reverse_optical_and_ke
 
     let baseline = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2645,6 +2722,7 @@ async fn real_deshake_lowers_central_temporal_jitter_with_reverse_optical_and_ke
     };
     let stabilized = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -2776,6 +2854,7 @@ async fn real_vidstab_two_pass_writes_trf_and_renders_when_filters_present() {
     composition.sources.insert(
         source.clone(),
         CompositionSource {
+            audio_channels: None,
             id: source.clone(),
             kind: SourceKind::Video,
             duration_ticks: 2_000_000,
@@ -2805,7 +2884,7 @@ async fn real_vidstab_two_pass_writes_trf_and_renders_when_filters_present() {
         &source_path,
         &transform_path,
         &clip,
-        composition.canvas.fps_milli,
+        composition.canvas.frame_rate(),
         composition.time_base,
     )
     .unwrap();
@@ -2832,6 +2911,7 @@ async fn real_vidstab_two_pass_writes_trf_and_renders_when_filters_present() {
     let transforms = BTreeMap::from([(clip.id.clone(), transform_path.clone())]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &transforms,
@@ -2974,6 +3054,7 @@ async fn real_linear_speed_ramp_preserves_reverse_order_exact_frames_and_av_sync
     composition.sources.insert(
         source.clone(),
         CompositionSource {
+            audio_channels: None,
             id: source.clone(),
             kind: SourceKind::Video,
             duration_ticks: 3_000_000,
@@ -2985,6 +3066,7 @@ async fn real_linear_speed_ramp_preserves_reverse_order_exact_frames_and_av_sync
     composition.sources.insert(
         music.clone(),
         CompositionSource {
+            audio_channels: None,
             id: music.clone(),
             kind: SourceKind::Audio,
             duration_ticks: 3_000_000,
@@ -3040,9 +3122,13 @@ async fn real_linear_speed_ramp_preserves_reverse_order_exact_frames_and_av_sync
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("speed-ramp-audio-clip").unwrap(),
                 source_id: music.clone(),
                 placement: ClipPlacement {
+                    source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                    timeline_duration_tick: None,
                     timeline_start_tick: 0,
                     source_in_tick: 0,
                     source_out_tick: 3_000_000,
@@ -3075,6 +3161,7 @@ async fn real_linear_speed_ramp_preserves_reverse_order_exact_frames_and_av_sync
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -3090,6 +3177,7 @@ async fn real_linear_speed_ramp_preserves_reverse_order_exact_frames_and_av_sync
     let inputs = BTreeMap::from([(source, source_path), (music, music_path)]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -3239,6 +3327,7 @@ async fn real_visual_layers_preserve_z_order_opacity_chroma_and_image_timing() {
     });
     for source in [
         CompositionSource {
+            audio_channels: None,
             id: source_id("base"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -3247,6 +3336,7 @@ async fn real_visual_layers_preserve_z_order_opacity_chroma_and_image_timing() {
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("keyed"),
             kind: SourceKind::Video,
             duration_ticks: 1_000_000,
@@ -3255,6 +3345,7 @@ async fn real_visual_layers_preserve_z_order_opacity_chroma_and_image_timing() {
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("image"),
             kind: SourceKind::Image,
             duration_ticks: 0,
@@ -3293,6 +3384,7 @@ async fn real_visual_layers_preserve_z_order_opacity_chroma_and_image_timing() {
             hidden: false,
             locked: false,
             clips: vec![ImageClip {
+                    effects: Vec::new(),
                 id: CompositionClipId::parse("image-clip").unwrap(),
                 source_id: source_id("image"),
                 timeline_start_tick: 250_000,
@@ -3330,6 +3422,7 @@ async fn real_visual_layers_preserve_z_order_opacity_chroma_and_image_timing() {
     ]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -3483,6 +3576,7 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
     });
     for source in [
         CompositionSource {
+            audio_channels: None,
             id: source_id("mask-base"),
             kind: SourceKind::Video,
             duration_ticks: 3_000_000,
@@ -3491,6 +3585,7 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("mask-red"),
             kind: SourceKind::Video,
             duration_ticks: 3_000_000,
@@ -3499,6 +3594,7 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
             has_audio: false,
         },
         CompositionSource {
+            audio_channels: None,
             id: source_id("animated-yellow"),
             kind: SourceKind::Image,
             duration_ticks: 0,
@@ -3525,6 +3621,8 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
         "inverted-mask",
         "mask-red",
         ClipPlacement {
+            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            timeline_duration_tick: None,
             timeline_start_tick: 1_250_000,
             source_in_tick: 1_000_000,
             source_out_tick: 1_750_000,
@@ -3546,6 +3644,8 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
         "linear-mask",
         "mask-red",
         ClipPlacement {
+            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            timeline_duration_tick: None,
             timeline_start_tick: 2_000_000,
             source_in_tick: 2_000_000,
             source_out_tick: 3_000_000,
@@ -3562,6 +3662,7 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
     });
 
     let animated_image = ImageClip {
+                    effects: Vec::new(),
         id: CompositionClipId::parse("animated-image").unwrap(),
         source_id: source_id("animated-yellow"),
         timeline_start_tick: 0,
@@ -3574,6 +3675,8 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
             rotation_degrees: animated(Interpolation::EaseInOut, 0.0, 90.0),
             anchor_x: 0.5,
             anchor_y: 0.5,
+            concat_animation:None,concat_preparation:None,
+            position: None,
         },
         opacity: animated(Interpolation::Linear, 0.25, 1.0),
         blend_mode: BlendMode::Normal,
@@ -3618,6 +3721,7 @@ async fn real_keyframes_and_shape_masks_move_pixels_with_feather_and_inversion()
     ]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -3754,6 +3858,7 @@ async fn real_dissolve_preserves_timeline_with_exact_handles_and_no_black_frames
     });
     for id in ["transition-red", "transition-blue"] {
         let source = CompositionSource {
+            audio_channels: None,
             id: source_id(id),
             kind: SourceKind::Video,
             duration_ticks: 2_000_000,
@@ -3763,10 +3868,14 @@ async fn real_dissolve_preserves_timeline_with_exact_handles_and_no_black_frames
         };
         composition.sources.insert(source.id.clone(), source);
     }
-    let clip = |id: &str, source: &str, timeline_start_tick| VideoClip {
+    let clip = |id: &str, source: &str, timeline_start_tick| VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
         id: CompositionClipId::parse(id).unwrap(),
         source_id: source_id(source),
         placement: ClipPlacement {
+            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            timeline_duration_tick: None,
             timeline_start_tick,
             source_in_tick: 250_000,
             source_out_tick: 1_000_000,
@@ -3794,10 +3903,12 @@ async fn real_dissolve_preserves_timeline_with_exact_handles_and_no_black_frames
         muted: false,
         locked: false,
         clips: vec![first.clone(), second.clone()],
-        transitions: vec![ClipTransition {
+        transitions: vec![ClipTransition { concat_overlap: None,
+            kernel: None, reverse: false,
+timeline: None,
             id: TransitionId::parse("transition-red-blue").unwrap(),
-            from_clip_id: first.id,
-            to_clip_id: second.id,
+            from_clip_id: Some(first.id),
+            to_clip_id: Some(second.id),
             duration_ticks: 400_000,
             kind: TransitionKind::Dissolve,
         }],
@@ -3808,6 +3919,7 @@ async fn real_dissolve_preserves_timeline_with_exact_handles_and_no_black_frames
     ]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -3922,6 +4034,7 @@ async fn real_unicode_textfile_and_dissolve_use_exact_handles_without_black_fram
     });
     for id in ["red", "blue"] {
         let source = CompositionSource {
+            audio_channels: None,
             id: source_id(id),
             kind: SourceKind::Video,
             duration_ticks: 2_000_000,
@@ -3931,10 +4044,14 @@ async fn real_unicode_textfile_and_dissolve_use_exact_handles_without_black_fram
         };
         composition.sources.insert(source.id.clone(), source);
     }
-    let clip = |id: &str, source: &str, timeline_start_tick| VideoClip {
+    let clip = |id: &str, source: &str, timeline_start_tick| VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
         id: CompositionClipId::parse(id).unwrap(),
         source_id: source_id(source),
         placement: ClipPlacement {
+            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            timeline_duration_tick: None,
             timeline_start_tick,
             source_in_tick: 250_000,
             source_out_tick: 1_000_000,
@@ -3963,11 +4080,16 @@ async fn real_unicode_textfile_and_dissolve_use_exact_handles_without_black_fram
             hidden: false,
             locked: false,
             clips: vec![TextClip {
+                effects: vec![],
+                blend_mode: None,
+                concat_title: None,
+                color_animation: None,
                 id: text_id.clone(),
                 timeline_start_tick: 100_000,
                 timeline_end_tick: 600_000,
                 text: "Привет, мир!\n字幕テスト".to_owned(),
                 style: TextStyle {
+                    align: None,
                     font_family: "Noto Sans".to_owned(),
                     font_size: 22.0,
                     color: Rgba {
@@ -4000,10 +4122,12 @@ async fn real_unicode_textfile_and_dissolve_use_exact_handles_without_black_fram
             muted: false,
             locked: false,
             clips: vec![first.clone(), second.clone()],
-            transitions: vec![ClipTransition {
+            transitions: vec![ClipTransition { concat_overlap: None,
+                kernel: None, reverse: false,
+timeline: None,
                 id: TransitionId::parse("red-blue").unwrap(),
-                from_clip_id: first.id,
-                to_clip_id: second.id,
+                from_clip_id: Some(first.id),
+                to_clip_id: Some(second.id),
                 duration_ticks: 400_000,
                 kind: TransitionKind::Dissolve,
             }],
@@ -4013,12 +4137,14 @@ async fn real_unicode_textfile_and_dissolve_use_exact_handles_without_black_fram
     let text_resources = BTreeMap::from([(
         text_id,
         CompositionTextResource {
+            color_commands_file: None,
             text_file: text_file.clone(),
             font_file: font_file.clone(),
         },
     )]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &text_resources,
             vidstab_transforms: &BTreeMap::new(),
@@ -4213,6 +4339,7 @@ async fn real_delivery_profiles_probe_truthful_container_codecs_timing_and_dimen
     .await;
 
     let source = CompositionSource {
+        audio_channels: None,
         id: source_id("delivery-source"),
         kind: SourceKind::Video,
         duration_ticks: 1_000_000,
@@ -4250,6 +4377,7 @@ async fn real_delivery_profiles_probe_truthful_container_codecs_timing_and_dimen
         ));
         let command = FfmpegCompositionExportCompiler
             .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
                 vidstab_transforms: &BTreeMap::new(),
@@ -4400,6 +4528,7 @@ async fn real_composition_audio_only_profiles_have_no_video_stream_and_exact_clo
     )
     .await;
     let source = CompositionSource {
+        audio_channels: None,
         id: source_id("audio-delivery-source"),
         kind: SourceKind::Video,
         duration_ticks: 1_000_000,
@@ -4457,6 +4586,7 @@ async fn real_composition_audio_only_profiles_have_no_video_stream_and_exact_clo
             .join(format!("composition-audio.{extension}"));
         let command = FfmpegCompositionExportCompiler
             .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
                 inputs: &inputs,
                 text_resources: &BTreeMap::new(),
                 vidstab_transforms: &BTreeMap::new(),
@@ -4514,7 +4644,9 @@ async fn real_target_size_export_lands_near_the_requested_bytes() {
 
     let runtime = ProcessRuntime::local_default();
     if !tools_available(&runtime).await {
-        eprintln!("skipping real_target_size_export_lands_near_the_requested_bytes: ffmpeg/ffprobe not on PATH");
+        eprintln!(
+            "skipping real_target_size_export_lands_near_the_requested_bytes: ffmpeg/ffprobe not on PATH"
+        );
         return;
     }
 
@@ -4549,6 +4681,7 @@ async fn real_target_size_export_lands_near_the_requested_bytes() {
     .await;
 
     let source = CompositionSource {
+        audio_channels: None,
         id: source_id("sized-source"),
         kind: SourceKind::Video,
         duration_ticks: 4_000_000,
@@ -4604,6 +4737,7 @@ async fn real_target_size_export_lands_near_the_requested_bytes() {
     let inputs = BTreeMap::from([(source_id("sized-source"), source_path)]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -4645,7 +4779,9 @@ async fn real_av1_target_size_render_opens_the_encoder_and_writes_output() {
 
     let runtime = ProcessRuntime::local_default();
     if !tools_available(&runtime).await {
-        eprintln!("skipping real_av1_target_size_render_opens_the_encoder_and_writes_output: ffmpeg/ffprobe not on PATH");
+        eprintln!(
+            "skipping real_av1_target_size_render_opens_the_encoder_and_writes_output: ffmpeg/ffprobe not on PATH"
+        );
         return;
     }
     let (encoders, muxers, _) = inspect_ffmpeg_support(&runtime).await;
@@ -4686,6 +4822,7 @@ async fn real_av1_target_size_render_opens_the_encoder_and_writes_output() {
     .await;
 
     let source = CompositionSource {
+        audio_channels: None,
         id: source_id("av1-source"),
         kind: SourceKind::Video,
         duration_ticks: 2_000_000,
@@ -4737,6 +4874,7 @@ async fn real_av1_target_size_render_opens_the_encoder_and_writes_output() {
     let inputs = BTreeMap::from([(source_id("av1-source"), source_path)]);
     let command = FfmpegCompositionExportCompiler
         .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
             inputs: &inputs,
             text_resources: &BTreeMap::new(),
             vidstab_transforms: &BTreeMap::new(),
@@ -4765,4 +4903,1656 @@ async fn real_av1_target_size_render_opens_the_encoder_and_writes_output() {
     let _ = drain.await;
     assert!(matches!(done, Done::Completed));
     assert!(tokio::fs::metadata(&output).await.unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn real_disabled_overlay_and_audio_change_pixels_and_sound_without_changing_clock() {
+    let runtime = ProcessRuntime::local_default();
+    assert!(tools_available(&runtime).await, "FFmpeg/ffprobe required");
+    let directory = tempfile::tempdir().unwrap();
+    let mut inputs = BTreeMap::new();
+    let mut composition = Composition::new(CanvasSpec {
+        width: 64,
+        height: 48,
+        fps_milli: 20_000,
+        ..CanvasSpec::default()
+    });
+    for (id, filter, kind) in [
+        (
+            "red",
+            "color=c=red:size=64x48:rate=20:duration=1",
+            SourceKind::Video,
+        ),
+        (
+            "blue",
+            "color=c=blue:size=64x48:rate=20:duration=1",
+            SourceKind::Video,
+        ),
+        (
+            "tone",
+            "sine=frequency=440:sample_rate=48000:duration=1",
+            SourceKind::Audio,
+        ),
+    ] {
+        let audio = kind == SourceKind::Audio;
+        let path = directory
+            .path()
+            .join(format!("{id}.{}", if audio { "wav" } else { "mp4" }));
+        let codec = if audio {
+            vec!["-c:a", "pcm_s16le"]
+        } else {
+            vec!["-an", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
+        };
+        let mut args = vec!["-v", "error", "-y", "-f", "lavfi", "-i", filter];
+        args.extend(codec);
+        generate(&args, &path).await;
+        inputs.insert(source_id(id), path);
+        let source = CompositionSource {
+            audio_channels: None,
+            id: source_id(id),
+            kind,
+            duration_ticks: 1_000_000,
+            width: if audio { 0 } else { 64 },
+            height: if audio { 0 } else { 48 },
+            has_audio: audio,
+        };
+        composition.sources.insert(source.id.clone(), source);
+    }
+    for (id, source) in [("overlay", "blue"), ("primary", "red")] {
+        composition.tracks.push(CompositionTrack::Video {
+            id: TrackId::parse(id).unwrap(),
+            name: id.into(),
+            hidden: false,
+            muted: true,
+            locked: false,
+            clips: vec![video_clip(
+                &format!("{id}-clip"),
+                source,
+                placement(0, 1_000_000),
+            )],
+            transitions: vec![],
+        });
+    }
+    composition.tracks.push(CompositionTrack::Audio {
+        id: TrackId::parse("audio").unwrap(),
+        name: "Audio".into(),
+        muted: false,
+        solo: false,
+        locked: false,
+        clips: vec![AudioClip {
+            audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+            role_gain: 1.0,
+            id: CompositionClipId::parse("tone-clip").unwrap(),
+            source_id: source_id("tone"),
+            placement: placement(0, 1_000_000),
+            gain: AnimatableValue::constant(1.0),
+            pan: AnimatableValue::constant(0.0),
+            reversed: false,
+            fade_in_ticks: 0,
+            fade_out_ticks: 0,
+            voice_effect: Default::default(),
+            pitch_semitones: 0.0,
+            tone_db: 0.0,
+            crossfade_in_ticks: 0,
+            crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
+            ducking: None,
+            enabled: true,
+        }],
+    });
+    for enabled in [true, false] {
+        if let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] {
+            clips[0].enabled = enabled;
+        }
+        if let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[2] {
+            clips[0].enabled = enabled;
+        }
+        let destination = directory.path().join(format!("enabled-{enabled}.mp4"));
+        let command = FfmpegCompositionExportCompiler
+            .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
+                inputs: &inputs,
+                text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
+                destination: &destination,
+                parallel_jobs: 1,
+                composition: &composition,
+                output: mp4_h264_output(18),
+            })
+            .unwrap();
+        let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+        let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+        let done = run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(30),
+        )
+        .await
+        .unwrap();
+        drop(progress);
+        drain.await.unwrap();
+        assert!(matches!(done, Done::Completed));
+        let probe = probe_video(&runtime, &destination).await.unwrap();
+        assert!((probe.duration - 1.0).abs() < 0.08, "{probe:?}");
+        assert_dominant(
+            sample_rgb(&destination, 0.5).await,
+            if enabled { 2 } else { 0 },
+        );
+        let rms = channel_rms(&destination, 0.2, 0.4).await;
+        eprintln!(
+            "enabled={enabled}: duration={:.6}s stereo_rms={rms:?}",
+            probe.duration
+        );
+        if enabled {
+            assert!(rms[0] > 0.02 && rms[1] > 0.02, "{rms:?}");
+        } else {
+            assert!(rms[0] < 0.0001 && rms[1] < 0.0001, "{rms:?}");
+        }
+    }
+
+    // Leading, middle and authored disabled tail all retain their absolute clock.
+    let mut clips = Vec::new();
+    for (index, enabled) in [(1, true), (2, false), (3, true), (4, false)] {
+        let mut clip = video_clip(
+            &format!("gap-clip-{index}"),
+            "red",
+            placement(index * 1_000_000, 1_000_000),
+        );
+        clip.enabled = enabled;
+        clip.source_audio_enabled = false;
+        clips.push(clip);
+    }
+    composition.tracks = vec![CompositionTrack::Video {
+        id: TrackId::parse("gapped").unwrap(),
+        name: "Gapped".into(),
+        hidden: false,
+        muted: true,
+        locked: false,
+        clips,
+        transitions: vec![],
+    }];
+    let destination = directory.path().join("gaps.mp4");
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
+            destination: &destination,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: mp4_h264_output(18),
+        })
+        .unwrap();
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    assert!(matches!(
+        run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(30)
+        )
+        .await
+        .unwrap(),
+        Done::Completed
+    ));
+    drop(progress);
+    drain.await.unwrap();
+    let probe = probe_video(&runtime, &destination).await.unwrap();
+    assert!((probe.duration - 5.0).abs() < 0.08, "{probe:?}");
+    for at in [0.5, 2.5, 4.5] {
+        let rgb = sample_rgb(&destination, at).await;
+        assert!(rgb.iter().all(|value| *value < 8), "gap at {at}: {rgb:?}");
+        assert!(channel_rms(&destination, at, 0.2)
+            .await
+            .iter()
+            .all(|value| *value < 0.0001));
+    }
+    for at in [1.5, 3.5] {
+        assert_dominant(sample_rgb(&destination, at).await, 0);
+    }
+    eprintln!("leading/middle/tail gaps: duration={:.6}s", probe.duration);
+
+    let mut from = video_clip("gap-transition-from", "red", placement(500_000, 750_000));
+    from.placement.source_in_tick = 250_000;
+    let mut to = video_clip("gap-transition-to", "blue", placement(1_000_000, 750_000));
+    to.placement.source_in_tick = 250_000;
+    let after = video_clip("gap-after", "red", placement(2_000_000, 500_000));
+    let mut tail = video_clip("gap-tail", "red", placement(2_500_000, 500_000));
+    tail.enabled = false;
+    composition.tracks = vec![CompositionTrack::Video {
+        id: TrackId::parse("transition-gaps").unwrap(),
+        name: "Transition gaps".into(),
+        hidden: false,
+        muted: true,
+        locked: false,
+        clips: vec![from, to, after, tail],
+        transitions: vec![ClipTransition { concat_overlap: None,
+            kernel: None, reverse: false,
+timeline: None,
+            id: TransitionId::parse("gap-fade").unwrap(),
+            from_clip_id: Some(CompositionClipId::parse("gap-transition-from").unwrap()),
+            to_clip_id: Some(CompositionClipId::parse("gap-transition-to").unwrap()),
+            duration_ticks: 200_000,
+            kind: TransitionKind::Dissolve,
+        }],
+    }];
+    let destination = directory.path().join("transition-gaps.mp4");
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
+            destination: &destination,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: mp4_h264_output(18),
+        })
+        .unwrap();
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    assert!(matches!(
+        run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(30)
+        )
+        .await
+        .unwrap(),
+        Done::Completed
+    ));
+    drop(progress);
+    drain.await.unwrap();
+    let probe = probe_video(&runtime, &destination).await.unwrap();
+    assert!((probe.duration - 3.0).abs() < 0.08, "{probe:?}");
+    for at in [0.25, 1.75, 2.75] {
+        assert!(sample_rgb(&destination, at)
+            .await
+            .iter()
+            .all(|value| *value < 8));
+    }
+    assert_dominant(sample_rgb(&destination, 0.75).await, 0);
+    assert_dominant(sample_rgb(&destination, 1.25).await, 2);
+    assert_dominant(sample_rgb(&destination, 2.25).await, 0);
+    let mixed = sample_rgb(&destination, 1.0).await;
+    assert!(
+        mixed[0] > 30 && mixed[2] > 30,
+        "transition at absolute 1s: {mixed:?}"
+    );
+    eprintln!(
+        "transition with leading/middle/tail gaps: duration={:.6}s RGB@1s={mixed:?}",
+        probe.duration
+    );
+
+    composition.canvas.width = 128;
+    composition.canvas.height = 64;
+    composition.canvas.background_mode = CanvasBackgroundMode::Checker;
+    let destination = directory.path().join("checker-gaps.mp4");
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
+            destination: &destination,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: mp4_h264_output(18),
+        })
+        .unwrap();
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    assert!(matches!(
+        run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(30)
+        )
+        .await
+        .unwrap(),
+        Done::Completed
+    ));
+    drop(progress);
+    drain.await.unwrap();
+    for at in [0.25, 1.75, 2.75] {
+        let light = sample_pixel(&destination, at, 8, 8).await;
+        let dark = sample_pixel(&destination, at, 72, 8).await;
+        assert!(
+            light
+                .iter()
+                .zip(dark)
+                .all(|(a, b)| *a > b.saturating_add(15)),
+            "checker gap {at}: {light:?} vs {dark:?}"
+        );
+    }
+    let probe = probe_video(&runtime, &destination).await.unwrap();
+    assert!((probe.duration - 3.0).abs() < 0.08, "{probe:?}");
+    eprintln!("checker gaps: duration={:.6}s", probe.duration);
+}
+
+#[tokio::test]
+async fn real_imported_audio_pair_has_one_audio_owner_and_preserves_offset() {
+    let runtime = ProcessRuntime::local_default();
+    assert!(tools_available(&runtime).await, "FFmpeg/ffprobe required");
+    let directory = tempfile::tempdir().unwrap();
+    let source_path = directory.path().join("av.mp4");
+    generate(
+        &[
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:size=64x48:rate=20:duration=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=40:sample_rate=48000:duration=2",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-shortest",
+        ],
+        &source_path,
+    )
+    .await;
+    let inputs = BTreeMap::from([(source_id("av"), source_path)]);
+    let mut composition = Composition::new(CanvasSpec {
+        width: 64,
+        height: 48,
+        fps_milli: 29_970,
+        fps_rate: Some(video_kadr_backend::domain::composition::FrameRateRatio {
+            numerator: 30_000,
+            denominator: 1001,
+        }),
+        ..CanvasSpec::default()
+    });
+    composition.sources.insert(
+        source_id("av"),
+        CompositionSource {
+            audio_channels: None,
+            id: source_id("av"),
+            kind: SourceKind::Video,
+            duration_ticks: 2_000_000,
+            width: 64,
+            height: 48,
+            has_audio: true,
+        },
+    );
+    let mut span = placement(500_000, 1_500_000);
+    span.source_in_tick = 500_000;
+    let mut picture = video_clip("picture", "av", span.clone());
+    picture.source_audio_enabled = true;
+    composition.tracks.push(CompositionTrack::Video {
+        id: TrackId::parse("video").unwrap(),
+        name: "Video".into(),
+        hidden: false,
+        muted: false,
+        locked: false,
+        clips: vec![picture],
+        transitions: vec![],
+    });
+    let audio = AudioClip {
+        audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+        role_gain: 1.0,
+        id: CompositionClipId::parse("sound").unwrap(),
+        source_id: source_id("av"),
+        placement: span,
+        gain: AnimatableValue::constant(1.0),
+        pan: AnimatableValue::constant(0.0),
+        reversed: false,
+        fade_in_ticks: 0,
+        fade_out_ticks: 0,
+        voice_effect: Default::default(),
+        pitch_semitones: 0.0,
+        tone_db: 0.0,
+        crossfade_in_ticks: 0,
+        crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
+        ducking: None,
+        enabled: true,
+    };
+    let mut measured = Vec::new();
+    for mode in [
+        "embedded",
+        "paired",
+        "double",
+        "extent-short",
+        "extent-long",
+    ] {
+        if mode == "paired" {
+            composition.tracks.push(CompositionTrack::Audio {
+                id: TrackId::parse("audio").unwrap(),
+                name: "Audio".into(),
+                muted: false,
+                solo: false,
+                locked: false,
+                clips: vec![audio.clone()],
+            });
+        }
+        if let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] {
+            clips[0].source_audio_enabled = mode != "paired" && !mode.starts_with("extent-");
+        }
+        let authored_extent = match mode {
+            "extent-short" => Some(500_000),
+            "extent-long" => Some(1_500_000),
+            _ => None,
+        };
+        if authored_extent.is_some() {
+            for track in &mut composition.tracks {
+                match track {
+                    CompositionTrack::Video { clips, .. } => {
+                        clips[0].placement.timeline_duration_tick = authored_extent
+                    }
+                    CompositionTrack::Audio { clips, .. } => {
+                        clips[0].placement.timeline_duration_tick = authored_extent
+                    }
+                    _ => {}
+                }
+            }
+            if let CompositionTrack::Video { clips, .. } = &composition.tracks[0] {
+                assert_eq!(clips[0].placement.source_in_tick, 500_000);
+                assert_eq!(clips[0].placement.source_out_tick, 1_500_000);
+            }
+        }
+        let destination = directory.path().join(format!("{mode}.mp4"));
+        let command = FfmpegCompositionExportCompiler
+            .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
+                inputs: &inputs,
+                text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
+                destination: &destination,
+                parallel_jobs: 1,
+                composition: &composition,
+                output: mp4_h264_output(18),
+            })
+            .unwrap();
+        let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+        let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+        let done = run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(30),
+        )
+        .await
+        .unwrap();
+        drop(progress);
+        drain.await.unwrap();
+        assert!(matches!(done, Done::Completed));
+        let exact_probe = tokio::process::Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=r_frame_rate",
+                "-of",
+                "json",
+            ])
+            .arg(&destination)
+            .output()
+            .await
+            .unwrap();
+        assert!(exact_probe.status.success());
+        let metadata: serde_json::Value = serde_json::from_slice(&exact_probe.stdout).unwrap();
+        assert_eq!(
+            metadata["streams"][0]["r_frame_rate"], "30000/1001",
+            "{mode}: {metadata}"
+        );
+        let probe = probe_video(&runtime, &destination).await.unwrap();
+        let expected_duration = 0.5 + authored_extent.unwrap_or(1_000_000) as f64 / 1_000_000.0;
+        assert!(
+            (probe.duration - expected_duration).abs() < 0.08,
+            "{mode}: {probe:?}"
+        );
+        if mode == "extent-long" {
+            assert_dominant(sample_rgb(&destination, 1.8).await, 0);
+            assert!(channel_rms(&destination, 1.7, 0.2)
+                .await
+                .iter()
+                .all(|value| *value < 0.001));
+        }
+        assert!(channel_rms(&destination, 0.1, 0.2)
+            .await
+            .iter()
+            .all(|value| *value < 0.001));
+        assert_dominant(sample_rgb(&destination, 0.8).await, 0);
+        let rms = channel_rms(&destination, 0.7, 0.4).await;
+        eprintln!("{mode}: duration={} RMS={rms:?}", probe.duration);
+        measured.push(rms[0]);
+    }
+    assert!(measured[0] > 0.02);
+    assert!(
+        (measured[1] / measured[0] - 1.0).abs() < 0.08,
+        "{measured:?}"
+    );
+    assert!(
+        measured[2] / measured[1] > 1.8,
+        "double-owner control must detect duplicated sound: {measured:?}"
+    );
+}
+
+#[tokio::test]
+async fn real_signed_and_trailing_keys_render_without_extending_the_clip() {
+    let runtime = ProcessRuntime::local_default();
+    assert!(
+        tools_available(&runtime).await,
+        "signed-key export qualification requires ffmpeg/ffprobe"
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("signed-white.mp4");
+    let output = directory.path().join("signed-result.mp4");
+    generate(
+        &[
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=white:s=64x64:r=10:d=1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        &input,
+    )
+    .await;
+    let mut composition = Composition::new(CanvasSpec {
+        width: 64,
+        height: 64,
+        fps_milli: 10_000,
+        ..CanvasSpec::default()
+    });
+    let id = source_id("signed-white");
+    composition.sources.insert(
+        id.clone(),
+        CompositionSource {
+            audio_channels: None,
+            id: id.clone(),
+            kind: SourceKind::Video,
+            duration_ticks: 1_000_000,
+            width: 64,
+            height: 64,
+            has_audio: false,
+        },
+    );
+    let mut clip = video_clip("signed-clip", "signed-white", placement(0, 1_000_000));
+    clip.source_audio_enabled = false;
+    let track = KeyframeTrack::new(
+        1_000_000,
+        Interpolation::Linear,
+        vec![
+            Keyframe {
+                tangents: None,
+                tick: -1_000_000,
+                value: 0.0,
+                interpolation: None,
+            },
+            Keyframe {
+                tangents: None,
+                tick: 2_000_000,
+                value: 1.0,
+                interpolation: None,
+            },
+        ],
+    )
+    .unwrap();
+    clip.opacity = AnimatableValue::Keyframes {
+        track: track.clone(),
+    };
+    composition.tracks = vec![CompositionTrack::Video {
+        id: TrackId::parse("signed-track").unwrap(),
+        name: "Signed".into(),
+        hidden: false,
+        muted: false,
+        locked: false,
+        clips: vec![clip],
+        transitions: vec![],
+    }];
+    let inputs = BTreeMap::from([(id, input)]);
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
+            destination: &output,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: mp4_h264_output(18),
+        })
+        .unwrap();
+    assert_eq!(command.expected_duration_seconds, 1.0);
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_compiled_ffmpeg(
+        &runtime,
+        &command,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    drop(progress);
+    drain.await.unwrap();
+    assert!(matches!(done, Done::Completed));
+    let rendered = probe_video(&runtime, &output).await.unwrap();
+    assert!((rendered.duration - 1.0).abs() < 0.12, "{rendered:?}");
+    for time in [0.0, 0.4, 0.8] {
+        let rgb = sample_rgb(&output, time).await;
+        let expected = track.sample_seconds(time).unwrap() * 255.0;
+        assert!(
+            rgb.iter()
+                .all(|value| (f64::from(*value) - expected).abs() < 7.0),
+            "at {time}s: {rgb:?}, expected {expected}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn real_periodic_and_continued_opacity_matches_exported_frames() {
+    use video_kadr_backend::domain::keyframes::{Extrapolation, ExtrapolationMode};
+    let runtime = ProcessRuntime::local_default();
+    assert!(
+        tools_available(&runtime).await,
+        "periodic export qualification requires ffmpeg/ffprobe"
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("periodic-white.mp4");
+
+    generate(
+        &[
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=white:s=64x64:r=10:d=5",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        &input,
+    )
+    .await;
+    for (mode, expected) in [
+        (
+            ExtrapolationMode::Loop,
+            [0.2, 0.28, 0.28, 0.4, 0.28, 0.28, 0.36],
+        ),
+        (
+            ExtrapolationMode::PingPong,
+            [0.4, 0.32, 0.28, 0.4, 0.32, 0.28, 0.24],
+        ),
+        (
+            ExtrapolationMode::Offset,
+            [0.0, 0.08, 0.28, 0.4, 0.48, 0.68, 0.96],
+        ),
+        (
+            ExtrapolationMode::Continue,
+            [0.0, 0.08, 0.28, 0.4, 0.48, 0.68, 0.96],
+        ),
+    ] {
+        let output = directory.path().join(format!("periodic-{mode:?}.mp4"));
+        let mut composition = Composition::new(CanvasSpec {
+            width: 64,
+            height: 64,
+            fps_milli: 10_000,
+            ..CanvasSpec::default()
+        });
+        let id = source_id("periodic-white");
+        composition.sources.insert(
+            id.clone(),
+            CompositionSource {
+                audio_channels: None,
+                id: id.clone(),
+                kind: SourceKind::Video,
+                duration_ticks: 5_000_000,
+                width: 64,
+                height: 64,
+                has_audio: false,
+            },
+        );
+        let mut clip = video_clip("periodic-clip", "periodic-white", placement(0, 5_000_000));
+        clip.source_audio_enabled = false;
+        let mut track = KeyframeTrack::new(
+            1_000_000,
+            Interpolation::Linear,
+            vec![
+                Keyframe {
+                    tangents: None,
+                    tick: 1_000_000,
+                    value: 0.2,
+                    interpolation: None,
+                },
+                Keyframe {
+                    tangents: None,
+                    tick: 2_000_000,
+                    value: 0.4,
+                    interpolation: None,
+                },
+            ],
+        )
+        .unwrap();
+        track.extrapolation = Some(Extrapolation {
+            before: mode,
+            after: mode,
+        });
+        clip.opacity = AnimatableValue::Keyframes {
+            track: track.clone(),
+        };
+        composition.tracks = vec![CompositionTrack::Video {
+            id: TrackId::parse("periodic-track").unwrap(),
+            name: "Periodic".into(),
+            hidden: false,
+            muted: false,
+            locked: false,
+            clips: vec![clip],
+            transitions: vec![],
+        }];
+        let inputs = BTreeMap::from([(id, input.clone())]);
+        let command = FfmpegCompositionExportCompiler
+            .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
+                inputs: &inputs,
+                text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
+                destination: &output,
+                parallel_jobs: 1,
+                composition: &composition,
+                output: mp4_h264_output(18),
+            })
+            .unwrap();
+        assert_eq!(command.expected_duration_seconds, 5.0);
+        let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+        let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+        let done = run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+        drop(progress);
+        drain.await.unwrap();
+        assert!(matches!(done, Done::Completed));
+        let rendered = probe_video(&runtime, &output).await.unwrap();
+        assert!((rendered.duration - 5.0).abs() < 0.12, "{rendered:?}");
+        for (time, expected_value) in [0.0, 0.4, 1.4, 2.0, 2.4, 3.4, 4.8]
+            .into_iter()
+            .zip(expected)
+        {
+            let rgb = sample_rgb(&output, time).await;
+            let expected = expected_value * 255.0;
+            assert!(
+                rgb.iter()
+                    .all(|value| (f64::from(*value) - expected).abs() < 7.0),
+                "{mode:?} at {time}s: {rgb:?}, expected {expected}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn real_bounce_opacity_matches_full_composition_export() {
+    let runtime = ProcessRuntime::local_default();
+    assert!(
+        tools_available(&runtime).await,
+        "bounce export qualification requires ffmpeg/ffprobe"
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("bounce-white.mp4");
+
+    generate(
+        &[
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=white:s=64x64:r=10:d=5",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        &input,
+    )
+    .await;
+    for (mode, expected) in [
+        (
+            Interpolation::BounceOut,
+            [0.0, 0.3025, 0.91, 0.7725, 0.94, 1.0, 1.0],
+        ),
+        (
+            Interpolation::BounceIn,
+            [0.0, 0.06, 0.2275, 0.09, 0.6975, 1.0, 1.0],
+        ),
+        (
+            Interpolation::BounceInOut,
+            [0.0, 0.11375, 0.34875, 0.65125, 0.88625, 1.0, 1.0],
+        ),
+    ] {
+        let output = directory.path().join(format!("bounce-{mode:?}.mp4"));
+        let mut composition = Composition::new(CanvasSpec {
+            width: 64,
+            height: 64,
+            fps_milli: 10_000,
+            ..CanvasSpec::default()
+        });
+        let id = source_id("bounce-white");
+        composition.sources.insert(
+            id.clone(),
+            CompositionSource {
+                audio_channels: None,
+                id: id.clone(),
+                kind: SourceKind::Video,
+                duration_ticks: 5_000_000,
+                width: 64,
+                height: 64,
+                has_audio: false,
+            },
+        );
+        let mut clip = video_clip("bounce-clip", "bounce-white", placement(0, 5_000_000));
+        clip.source_audio_enabled = false;
+        let track = KeyframeTrack::new(
+            1_000_000,
+            mode,
+            vec![
+                Keyframe {
+                    tangents: None,
+                    tick: 1_000_000,
+                    value: 0.0,
+                    interpolation: None,
+                },
+                Keyframe {
+                    tangents: None,
+                    tick: 2_000_000,
+                    value: 1.0,
+                    interpolation: None,
+                },
+            ],
+        )
+        .unwrap();
+        clip.opacity = AnimatableValue::Keyframes {
+            track: track.clone(),
+        };
+        composition.tracks = vec![CompositionTrack::Video {
+            id: TrackId::parse("bounce-track").unwrap(),
+            name: "Periodic".into(),
+            hidden: false,
+            muted: false,
+            locked: false,
+            clips: vec![clip],
+            transitions: vec![],
+        }];
+        let inputs = BTreeMap::from([(id, input.clone())]);
+        let command = FfmpegCompositionExportCompiler
+            .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
+                inputs: &inputs,
+                text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
+                destination: &output,
+                parallel_jobs: 1,
+                composition: &composition,
+                output: mp4_h264_output(18),
+            })
+            .unwrap();
+        assert_eq!(command.expected_duration_seconds, 5.0);
+        let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+        let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+        let done = run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+        drop(progress);
+        drain.await.unwrap();
+        assert!(matches!(done, Done::Completed));
+        let rendered = probe_video(&runtime, &output).await.unwrap();
+        assert!((rendered.duration - 5.0).abs() < 0.12, "{rendered:?}");
+        for (time, expected_value) in [0.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.4]
+            .into_iter()
+            .zip(expected)
+        {
+            let rgb = sample_rgb(&output, time).await;
+            let expected = expected_value * 255.0;
+            assert!(
+                rgb.iter()
+                    .all(|value| (f64::from(*value) - expected).abs() < 7.0),
+                "{mode:?} at {time}s: {rgb:?}, expected {expected}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn real_projected_role_gain_and_mute_match_wav_amplitude() {
+    let runtime = ProcessRuntime::local_default();
+    assert!(
+        tools_available(&runtime).await,
+        "role gain qualification requires ffmpeg/ffprobe"
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let source_path = directory.path().join("audio-delivery-source.mp4");
+    generate(
+        &[
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:size=64x48:rate=20:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=1,volume=0.01",
+            "-shortest",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+        ],
+        &source_path,
+    )
+    .await;
+    let source = CompositionSource {
+        audio_channels: None,
+        id: source_id("audio-delivery-source"),
+        kind: SourceKind::Video,
+        duration_ticks: 1_000_000,
+        width: 64,
+        height: 48,
+        has_audio: true,
+    };
+    let mut composition = Composition::new(CanvasSpec {
+        width: 64,
+        height: 48,
+        fps_milli: 20_000,
+        ..CanvasSpec::default()
+    });
+    composition.sources.insert(source.id.clone(), source);
+    composition.tracks.push(CompositionTrack::Video {
+        id: TrackId::parse("audio-delivery-track").unwrap(),
+        name: "Audio delivery".to_owned(),
+        hidden: false,
+        muted: false,
+        locked: false,
+        clips: vec![video_clip(
+            "audio-delivery-clip",
+            "audio-delivery-source",
+            placement(0, 1_000_000),
+        )],
+        transitions: Vec::new(),
+    });
+    let inputs = BTreeMap::from([(source_id("audio-delivery-source"), source_path)]);
+
+    if let CompositionTrack::Video { clips, .. } = &mut composition.tracks[0] {
+        clips[0].source_audio_enabled = false;
+    }
+    composition.tracks.push(CompositionTrack::Audio {
+        id: TrackId::parse("role-audio").unwrap(),
+        name: "Role audio".into(),
+        muted: false,
+        solo: false,
+        locked: false,
+        clips: vec![AudioClip {
+            audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+            role_gain: 1.0,
+            id: CompositionClipId::parse("role-tone").unwrap(),
+            source_id: source_id("audio-delivery-source"),
+            placement: placement(0, 1_000_000),
+            gain: AnimatableValue::constant(16.),
+            pan: AnimatableValue::constant(0.),
+            reversed: false,
+            fade_in_ticks: 0,
+            fade_out_ticks: 0,
+            voice_effect: Default::default(),
+            pitch_semitones: 0.,
+            tone_db: 0.,
+            crossfade_in_ticks: 0,
+            crossfade_curve: video_kadr_backend::domain::audio_transition::AudioTransitionCurve::ConstantGain,
+            ducking: None,
+            enabled: true,
+        }],
+    });
+    let mut baseline = [0.; 2];
+    for (index, gain) in [1., 10_f64.powf(6. / 20.), 10_f64.powf(-6. / 20.), 0., 10.]
+        .into_iter()
+        .enumerate()
+    {
+        if let CompositionTrack::Audio { clips, .. } = &mut composition.tracks[1] {
+            clips[0].role_gain = gain;
+        }
+        let output = directory.path().join(format!("role-{index}.wav"));
+        let command = FfmpegCompositionExportCompiler
+            .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
+                inputs: &inputs,
+                text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
+                destination: &output,
+                parallel_jobs: 1,
+                composition: &composition,
+                output: CompositionExportSpec {
+                    profile: CompositionExportProfile::Audio {
+                        codec: CompositionAudioCodec::Wav,
+                    },
+                    video_quality: 0,
+                    video_bitrate_kbps: None,
+                    av1_encoder: None,
+                    range: None,
+                },
+            })
+            .unwrap();
+        assert_eq!(command.expected_duration_seconds, 1.);
+        let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+        let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+        let done = run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+        drop(progress);
+        drain.await.unwrap();
+        assert!(matches!(done, Done::Completed));
+        let rms = channel_rms(&output, 0.2, 0.5).await;
+        if index == 0 {
+            baseline = rms;
+            assert!(baseline.iter().all(|value| *value > 0.001));
+        }
+        for channel in 0..2 {
+            if gain == 0. {
+                assert!(rms[channel] < 1e-7);
+            } else {
+                assert!(
+                    (rms[channel] / baseline[channel] - gain).abs() < 0.01,
+                    "gain {gain}, rms {rms:?}, baseline {baseline:?}"
+                );
+            }
+        }
+        let probe = probe_video(&runtime, &output).await.unwrap();
+        assert!((probe.duration - 1.).abs() < 0.02);
+        eprintln!("clip gain16, role multiplier={gain}, RMS={rms:?}");
+    }
+}
+
+#[tokio::test]
+async fn real_parameterized_elastic_opacity_matches_full_composition_export() {
+    let runtime = ProcessRuntime::local_default();
+    assert!(
+        tools_available(&runtime).await,
+        "elastic export qualification requires ffmpeg/ffprobe"
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("elastic-white.mp4");
+
+    generate(
+        &[
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=white:s=64x64:r=10:d=5",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        &input,
+    )
+    .await;
+    use video_kadr_backend::domain::elastic::ElasticDirection;
+    use video_kadr_backend::domain::keyframes::ProceduralInterpolation;
+    for (dir, expected) in [
+        (
+            ElasticDirection::In,
+            [
+                0.45000000000000001,
+                0.44924234614372266,
+                0.44796681781186176,
+                0.45487232341615852,
+                0.49990516643685223,
+                0.55000000000000004,
+                0.55000000000000004,
+            ],
+        ),
+        (
+            ElasticDirection::Out,
+            [
+                0.45000000000000001,
+                0.57761824864802536,
+                0.56240525637089922,
+                0.55103860874837396,
+                0.54945614535471643,
+                0.55000000000000004,
+                0.55000000000000004,
+            ],
+        ),
+        (
+            ElasticDirection::InOut,
+            [
+                0.45000000000000001,
+                0.44898340890593091,
+                0.47495258321842615,
+                0.56380912432401264,
+                0.55051930437418695,
+                0.55000000000000004,
+                0.55000000000000004,
+            ],
+        ),
+    ] {
+        let mode = Interpolation::Procedural(ProceduralInterpolation::Elastic {
+            dir,
+            amplitude: 2.0,
+            period: 0.17,
+        });
+        let output = directory.path().join(format!("elastic-{dir:?}.mp4"));
+        let mut composition = Composition::new(CanvasSpec {
+            width: 64,
+            height: 64,
+            fps_milli: 10_000,
+            ..CanvasSpec::default()
+        });
+        let id = source_id("elastic-white");
+        composition.sources.insert(
+            id.clone(),
+            CompositionSource {
+                audio_channels: None,
+                id: id.clone(),
+                kind: SourceKind::Video,
+                duration_ticks: 5_000_000,
+                width: 64,
+                height: 64,
+                has_audio: false,
+            },
+        );
+        let mut clip = video_clip("elastic-clip", "elastic-white", placement(0, 5_000_000));
+        clip.source_audio_enabled = false;
+        let track = KeyframeTrack::new(
+            1_000_000,
+            mode,
+            vec![
+                Keyframe {
+                    tangents: None,
+                    tick: 1_000_000,
+                    value: 0.45,
+                    interpolation: None,
+                },
+                Keyframe {
+                    tangents: None,
+                    tick: 2_000_000,
+                    value: 0.55,
+                    interpolation: None,
+                },
+            ],
+        )
+        .unwrap();
+        clip.opacity = AnimatableValue::Keyframes {
+            track: track.clone(),
+        };
+        composition.tracks = vec![CompositionTrack::Video {
+            id: TrackId::parse("elastic-track").unwrap(),
+            name: "Periodic".into(),
+            hidden: false,
+            muted: false,
+            locked: false,
+            clips: vec![clip],
+            transitions: vec![],
+        }];
+        let inputs = BTreeMap::from([(id, input.clone())]);
+        let command = FfmpegCompositionExportCompiler
+            .compile(CompositionExportCompileRequest {
+                color_commands: &BTreeMap::new(),
+                inputs: &inputs,
+                text_resources: &BTreeMap::new(),
+                vidstab_transforms: &BTreeMap::new(),
+                destination: &output,
+                parallel_jobs: 1,
+                composition: &composition,
+                output: mp4_h264_output(18),
+            })
+            .unwrap();
+        assert_eq!(command.expected_duration_seconds, 5.0);
+        let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+        let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+        let done = run_compiled_ffmpeg(
+            &runtime,
+            &command,
+            &progress,
+            &CancellationToken::new(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+        drop(progress);
+        drain.await.unwrap();
+        assert!(matches!(done, Done::Completed));
+        let rendered = probe_video(&runtime, &output).await.unwrap();
+        assert!((rendered.duration - 5.0).abs() < 0.12, "{rendered:?}");
+        for (time, expected_value) in [0.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.4]
+            .into_iter()
+            .zip(expected)
+        {
+            let rgb = sample_rgb(&output, time).await;
+            let expected = expected_value * 255.0;
+            assert!(
+                rgb.iter()
+                    .all(|value| (f64::from(*value) - expected).abs() < 7.0),
+                "{mode:?} at {time}s: {rgb:?}, expected {expected}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn real_arbitrary_bezier_opacity_matches_full_composition_export() {
+    let runtime = ProcessRuntime::local_default();
+    assert!(
+        tools_available(&runtime).await,
+        "bezier export qualification requires ffmpeg/ffprobe"
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("bezier-white.mp4");
+
+    generate(
+        &[
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=white:s=64x64:r=10:d=5",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        &input,
+    )
+    .await;
+    use video_kadr_backend::domain::keyframes::ProceduralInterpolation;
+    for per_key in [false, true] {
+        for (points, expected) in [
+            (
+                [[0.25, 0.1], [0.25, 1.0]],
+                [
+                    0.45000000000000001,
+                    0.47952443342678225,
+                    0.51825405059781393,
+                    0.53852293098761206,
+                    0.54756253556235668,
+                    0.55000000000000004,
+                    0.55000000000000004,
+                ],
+            ),
+            (
+                [[0.1, -2.0], [0.9, 3.0]],
+                [
+                    0.45000000000000001,
+                    0.41224032517530418,
+                    0.46705263963148447,
+                    0.53294736036851553,
+                    0.58775967482469582,
+                    0.55000000000000004,
+                    0.55000000000000004,
+                ],
+            ),
+            (
+                [[0.0, 0.0], [0.0, 1.0]],
+                [
+                    0.45000000000000001,
+                    0.51259855680060185,
+                    0.53286505699569442,
+                    0.54341359826940383,
+                    0.548532162803826,
+                    0.55000000000000004,
+                    0.55000000000000004,
+                ],
+            ),
+        ] {
+            let mode = Interpolation::Procedural(ProceduralInterpolation::Bezier {
+                p1: if per_key {
+                    [1.0 / 3.0, 1.0 / 3.0]
+                } else {
+                    points[0]
+                },
+                p2: if per_key {
+                    [2.0 / 3.0, 2.0 / 3.0]
+                } else {
+                    points[1]
+                },
+            });
+            let output = directory
+                .path()
+                .join(format!("bezier-{per_key}-{points:?}.mp4"));
+            let mut composition = Composition::new(CanvasSpec {
+                width: 64,
+                height: 64,
+                fps_milli: 10_000,
+                ..CanvasSpec::default()
+            });
+            let id = source_id("bezier-white");
+            composition.sources.insert(
+                id.clone(),
+                CompositionSource {
+                    audio_channels: None,
+                    id: id.clone(),
+                    kind: SourceKind::Video,
+                    duration_ticks: 5_000_000,
+                    width: 64,
+                    height: 64,
+                    has_audio: false,
+                },
+            );
+            let mut clip = video_clip("bezier-clip", "bezier-white", placement(0, 5_000_000));
+            clip.source_audio_enabled = false;
+            use video_kadr_backend::domain::keyframes::KeyframeTangents;
+            use video_kadr_backend::domain::tangents::{Continuity, Tangent, TangentMode};
+            let record = |incoming: [f64; 2], outgoing: [f64; 2]| {
+                per_key.then_some(KeyframeTangents {
+                    incoming: Tangent {
+                        x: incoming[0],
+                        y: incoming[1],
+                        mode: TangentMode::Free,
+                    },
+                    outgoing: Tangent {
+                        x: outgoing[0],
+                        y: outgoing[1],
+                        mode: TangentMode::Free,
+                    },
+                    continuity: Continuity::Broken,
+                })
+            };
+            let track = KeyframeTrack::new(
+                1_000_000,
+                mode,
+                vec![
+                    Keyframe {
+                        tangents: record([0.4, -9.0], points[0]),
+                        tick: 1_000_000,
+                        value: 0.45,
+                        interpolation: None,
+                    },
+                    Keyframe {
+                        tangents: record(points[1], [0.6, 9.0]),
+                        tick: 2_000_000,
+                        value: 0.55,
+                        interpolation: None,
+                    },
+                ],
+            )
+            .unwrap();
+            clip.opacity = AnimatableValue::Keyframes {
+                track: track.clone(),
+            };
+            composition.tracks = vec![CompositionTrack::Video {
+                id: TrackId::parse("bezier-track").unwrap(),
+                name: "Periodic".into(),
+                hidden: false,
+                muted: false,
+                locked: false,
+                clips: vec![clip],
+                transitions: vec![],
+            }];
+            let inputs = BTreeMap::from([(id, input.clone())]);
+            let command = FfmpegCompositionExportCompiler
+                .compile(CompositionExportCompileRequest {
+                    color_commands: &BTreeMap::new(),
+                    inputs: &inputs,
+                    text_resources: &BTreeMap::new(),
+                    vidstab_transforms: &BTreeMap::new(),
+                    destination: &output,
+                    parallel_jobs: 1,
+                    composition: &composition,
+                    output: mp4_h264_output(18),
+                })
+                .unwrap();
+            assert_eq!(command.expected_duration_seconds, 5.0);
+            let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+            let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+            let done = run_compiled_ffmpeg(
+                &runtime,
+                &command,
+                &progress,
+                &CancellationToken::new(),
+                Duration::from_secs(60),
+            )
+            .await
+            .unwrap();
+            drop(progress);
+            drain.await.unwrap();
+            assert!(matches!(done, Done::Completed));
+            let rendered = probe_video(&runtime, &output).await.unwrap();
+            assert!((rendered.duration - 5.0).abs() < 0.12, "{rendered:?}");
+            for (time, expected_value) in [0.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.4]
+                .into_iter()
+                .zip(expected)
+            {
+                let rgb = sample_rgb(&output, time).await;
+                let expected = expected_value * 255.0;
+                assert!(
+                    rgb.iter()
+                        .all(|value| (f64::from(*value) - expected).abs() < 7.0),
+                    "{mode:?} at {time}s: {rgb:?}, expected {expected}"
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn real_motion_path_image_position_matches_distance_and_clip_clock() {
+    use video_kadr_backend::domain::motion_path::{
+        MotionPath, PathNode, PathSegment, Point, PositionAnimation, SpatialTangentMode,
+    };
+    let runtime = ProcessRuntime::local_default();
+    if !tools_available(&runtime).await {
+        return;
+    }
+    let directory =
+        std::env::temp_dir().join(format!("video-kadr-motion-path-{}", uuid::Uuid::new_v4()));
+    tokio::fs::create_dir_all(&directory).await.unwrap();
+    let base = directory.join("base.mp4");
+    let image = directory.join("image.png");
+    let output = directory.join("output.mp4");
+    generate(
+        &[
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=black:s=128x128:r=20:d=2",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        &base,
+    )
+    .await;
+    generate(
+        &[
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=white:s=8x8",
+            "-frames:v",
+            "1",
+            "-update",
+            "1",
+        ],
+        &image,
+    )
+    .await;
+    let mut composition = Composition::new(CanvasSpec {
+        width: 128,
+        height: 128,
+        fps_milli: 20_000,
+        ..CanvasSpec::default()
+    });
+    for (id, kind, width, height, duration) in [
+        ("base", SourceKind::Video, 128, 128, 2_000_000),
+        ("image", SourceKind::Image, 8, 8, 0),
+    ] {
+        let source = CompositionSource {
+            id: source_id(id),
+            kind,
+            width,
+            height,
+            duration_ticks: duration,
+            has_audio: false,
+            audio_channels: None,
+        };
+        composition.sources.insert(source.id.clone(), source);
+    }
+    let path = MotionPath {
+        nodes: [("a", -32.0, -24.0), ("b", 0.0, -24.0), ("c", 0.0, 24.0)]
+            .into_iter()
+            .map(|(id, x, y)| PathNode {
+                id: id.into(),
+                point: Point { x, y },
+                in_handle: Point::ZERO,
+                out_handle: Point::ZERO,
+                segment: PathSegment::Line,
+                tangent_mode: SpatialTangentMode::Corner,
+            })
+            .collect(),
+    };
+    let progress = KeyframeTrack::new(
+        1000,
+        Interpolation::Linear,
+        vec![
+            Keyframe {
+                tick: 0,
+                value: 0.0,
+                interpolation: None,
+                tangents: None,
+            },
+            Keyframe {
+                tick: 1000,
+                value: 1.0,
+                interpolation: None,
+                tangents: None,
+            },
+        ],
+    )
+    .unwrap();
+    composition.tracks = vec![
+        CompositionTrack::Image {
+            id: TrackId::parse("image-track").unwrap(),
+            name: "Path".into(),
+            hidden: false,
+            locked: false,
+            clips: vec![ImageClip {
+                    effects: Vec::new(),
+                id: CompositionClipId::parse("image-clip").unwrap(),
+                source_id: source_id("image"),
+                timeline_start_tick: 250_000,
+                duration_ticks: 1_000_000,
+                transform: TransformSpec {
+                    position: Some(PositionAnimation::Path {
+                        path,
+                        progress: AnimatableValue::Keyframes { track: progress },
+                    }),
+                    ..TransformSpec::default()
+                },
+                opacity: AnimatableValue::constant(1.0),
+                blend_mode: BlendMode::Normal,
+                enabled: true,
+            }],
+        },
+        CompositionTrack::Video {
+            id: TrackId::parse("base-track").unwrap(),
+            name: "Base".into(),
+            hidden: false,
+            muted: false,
+            locked: false,
+            clips: vec![video_clip("base-clip", "base", placement(0, 2_000_000))],
+            transitions: vec![],
+        },
+    ];
+    let inputs = BTreeMap::from([(source_id("base"), base), (source_id("image"), image)]);
+    let command = FfmpegCompositionExportCompiler
+        .compile(CompositionExportCompileRequest {
+            color_commands: &BTreeMap::new(),
+            inputs: &inputs,
+            text_resources: &BTreeMap::new(),
+            vidstab_transforms: &BTreeMap::new(),
+            destination: &output,
+            parallel_jobs: 1,
+            composition: &composition,
+            output: mp4_h264_output(18),
+        })
+        .unwrap();
+    let (progress, mut updates) = mpsc::unbounded_channel::<f64>();
+    let drain = tokio::spawn(async move { while updates.recv().await.is_some() {} });
+    let done = run_compiled_ffmpeg(
+        &runtime,
+        &command,
+        &progress,
+        &CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    drop(progress);
+    drain.await.unwrap();
+    assert!(matches!(done, Done::Completed));
+    for (time, x, y) in [(0.25, 32, 40), (0.5, 52, 40), (0.75, 64, 48), (1.0, 64, 68)] {
+        let pixel = sample_pixel(&output, time, x, y).await;
+        assert!(
+            pixel.iter().all(|channel| *channel > 220),
+            "path at {time}: {pixel:?}"
+        );
+    }
+    for time in [0.1, 1.5] {
+        assert!(sample_pixel(&output, time, 32, 40)
+            .await
+            .iter()
+            .all(|channel| *channel < 15));
+    }
+    let rendered = probe_video(&runtime, &output).await.unwrap();
+    assert!((rendered.duration - 2.0).abs() < 0.1);
+    tokio::fs::remove_dir_all(directory).await.unwrap();
 }

@@ -1,0 +1,7 @@
+Exact function and existing test module extracted from current source. Original sourceSHA256 d21e0687424cd7f7c9c871c998c1acce89adeb6ee44a703d6e6348ac512dfa9a
+
+running 1 test
+test tests::full_advertised_neural_workload_fits_cancellable_adapter_deadline ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

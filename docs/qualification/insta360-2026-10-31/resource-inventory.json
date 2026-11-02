@@ -1,0 +1,3983 @@
+{
+  "method": "Independent read-only Qt RCC v3 directory parser; not REA Evidence",
+  "resources": [
+    {
+      "file": "/Applications/Insta360 Studio.app/Contents/Resources/resource.rcc",
+      "sha256": "48c3ef8d4e0dbff13f7852ea25f8bf6d04c3e538b002ec4faed910d42963fdf9",
+      "files": [
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag_l.png",
+          "offset": 561097,
+          "length": 19291,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag_l.svg",
+          "offset": 3877243,
+          "length": 15856,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag_c.png",
+          "offset": 486341,
+          "length": 19452,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag_c.svg",
+          "offset": 3659231,
+          "length": 15913,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/table1_old.json",
+          "offset": 40694,
+          "length": 2224,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/table2_old.json",
+          "offset": 3107709,
+          "length": 8912,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag_r.png",
+          "offset": 2278253,
+          "length": 19271,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag_r.svg",
+          "offset": 860963,
+          "length": 15846,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_0_ag.svg",
+          "offset": 79334,
+          "length": 12773,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_0_ag.png",
+          "offset": 1104980,
+          "length": 222148,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/denoise_param_encrypted.txt",
+          "offset": 1708341,
+          "length": 69312,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/zh_logo.svg",
+          "offset": 1033673,
+          "length": 11659,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/zh_logo.png",
+          "offset": 2297528,
+          "length": 236038,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/en_logo.svg",
+          "offset": 3644882,
+          "length": 11659,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/en_logo.png",
+          "offset": 250299,
+          "length": 236038,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag_r.png",
+          "offset": 3861541,
+          "length": 15698,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag_r.svg",
+          "offset": 3093089,
+          "length": 14616,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag_l.png",
+          "offset": 2262002,
+          "length": 15575,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag_l.svg",
+          "offset": 843723,
+          "length": 14555,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag_c.png",
+          "offset": 1789320,
+          "length": 15585,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag_c.svg",
+          "offset": 580392,
+          "length": 14623,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/onboarding.json",
+          "offset": 1804909,
+          "length": 601,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table1_a3.json",
+          "offset": 876813,
+          "length": 720,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table2_a3.json",
+          "offset": 4095649,
+          "length": 2533,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/default_logo_8.svg",
+          "offset": 3056623,
+          "length": 35682,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_8.png",
+          "offset": 3691787,
+          "length": 169750,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_6.svg",
+          "offset": 3598729,
+          "length": 46149,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_6.png",
+          "offset": 92111,
+          "length": 158184,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_9.svg",
+          "offset": 2211773,
+          "length": 50225,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_9.png",
+          "offset": 3420098,
+          "length": 174771,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_7.svg",
+          "offset": 3134487,
+          "length": 33645,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_7.png",
+          "offset": 3942018,
+          "length": 153627,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_0.svg",
+          "offset": 1777657,
+          "length": 11659,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_0.png",
+          "offset": 3168136,
+          "length": 236038,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_1.svg",
+          "offset": 1045336,
+          "length": 21792,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_1.png",
+          "offset": 2574394,
+          "length": 246771,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_4.svg",
+          "offset": 28,
+          "length": 40662,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_4.png",
+          "offset": 877537,
+          "length": 156132,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_2.svg",
+          "offset": 767347,
+          "length": 47326,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_2.png",
+          "offset": 1806868,
+          "length": 155700,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_5.svg",
+          "offset": 3893103,
+          "length": 48911,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_5.png",
+          "offset": 595019,
+          "length": 172324,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_3.svg",
+          "offset": 505797,
+          "length": 29306,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_3.png",
+          "offset": 1327132,
+          "length": 155300,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/fov_distance_table2_other.json",
+          "offset": 64616,
+          "length": 14714,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table1_other.json",
+          "offset": 1067132,
+          "length": 4284,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table1_b2.json",
+          "offset": 3092309,
+          "length": 776,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table2_b2.json",
+          "offset": 3656545,
+          "length": 2682,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table1_c9.json",
+          "offset": 2277581,
+          "length": 668,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table2_c9.json",
+          "offset": 858282,
+          "length": 2677,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag.svg",
+          "offset": 2559775,
+          "length": 14615,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_ag.png",
+          "offset": 3676198,
+          "length": 15585,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag.svg",
+          "offset": 3404178,
+          "length": 15916,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_flat_logo_0_cn_ag.png",
+          "offset": 42922,
+          "length": 19452,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/fov_distance_table1_tc4.json",
+          "offset": 3675148,
+          "length": 1046,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/fov_distance_table2_tc4.json",
+          "offset": 1805514,
+          "length": 1350,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/default_logo_12.svg",
+          "offset": 535107,
+          "length": 25986,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_12.png",
+          "offset": 1482436,
+          "length": 225901,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_10.svg",
+          "offset": 1071420,
+          "length": 33556,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_10.png",
+          "offset": 2821169,
+          "length": 235450,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_11.svg",
+          "offset": 814677,
+          "length": 29042,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/default_logo_11.png",
+          "offset": 1962572,
+          "length": 249197,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/video_water_mark_table.json",
+          "offset": 2533570,
+          "length": 26201,
+          "flags": 1
+        },
+        {
+          "path": "resource/resource/error_cover.jpg",
+          "offset": 3594873,
+          "length": 3852,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/win_dsa_pub.pem",
+          "offset": 62378,
+          "length": 2234,
+          "flags": 0
+        },
+        {
+          "path": "resource/resource/defaut_time_logo.svg",
+          "offset": 3116625,
+          "length": 17858,
+          "flags": 0
+        }
+      ]
+    },
+    {
+      "file": "/Applications/Insta360 Studio.app/Contents/Resources/insta360.rcc",
+      "sha256": "da60846c2404cbbbbe7c233304b3d26f5381846221efb264aa4f4b730c6a52c1",
+      "files": [
+        {
+          "path": "app/app/font/Roboto-Medium.ttf",
+          "offset": 25504574,
+          "length": 168644,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/image-icon-16.png",
+          "offset": 25496504,
+          "length": 491,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/image-icon-32.png",
+          "offset": 25503528,
+          "length": 1042,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/image-icon-48.png",
+          "offset": 25492883,
+          "length": 1643,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/video-icon-16.png",
+          "offset": 25496999,
+          "length": 525,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/video-icon-32.png",
+          "offset": 25485131,
+          "length": 1210,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/video-icon-48.png",
+          "offset": 25494530,
+          "length": 1970,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/image-icon-128.png",
+          "offset": 25497528,
+          "length": 5996,
+          "flags": 0
+        },
+        {
+          "path": "app/app/image/app/video-icon-128.png",
+          "offset": 25486345,
+          "length": 6534,
+          "flags": 0
+        },
+        {
+          "path": "app/app/step2arrow",
+          "offset": 23422735,
+          "length": 10441,
+          "flags": 0
+        },
+        {
+          "path": "app/app/beta_app_win",
+          "offset": 21949661,
+          "length": 758621,
+          "flags": 0
+        },
+        {
+          "path": "app/app/beta_app_svg",
+          "offset": 23417360,
+          "length": 5371,
+          "flags": 0
+        },
+        {
+          "path": "app/app/beta_app_logo",
+          "offset": 21440187,
+          "length": 509470,
+          "flags": 0
+        },
+        {
+          "path": "app/app/rc_app_logo",
+          "offset": 23437175,
+          "length": 546482,
+          "flags": 0
+        },
+        {
+          "path": "app/app/rc_app_svg",
+          "offset": 25480149,
+          "length": 4978,
+          "flags": 0
+        },
+        {
+          "path": "app/app/rc_app_win",
+          "offset": 23983661,
+          "length": 743967,
+          "flags": 0
+        },
+        {
+          "path": "app/app/adjustview",
+          "offset": 23433180,
+          "length": 3991,
+          "flags": 0
+        },
+        {
+          "path": "app/app/rc_app_macos",
+          "offset": 24727632,
+          "length": 752513,
+          "flags": 0
+        },
+        {
+          "path": "app/app/beta_app_macos",
+          "offset": 22708286,
+          "length": 709070,
+          "flags": 0
+        },
+        {
+          "path": "app/base/down",
+          "offset": 5222536,
+          "length": 1005,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radio_button_checked_normal",
+          "offset": 5222328,
+          "length": 204,
+          "flags": 0
+        },
+        {
+          "path": "app/base/image/base/solid_arrow_up.svg",
+          "offset": 5232242,
+          "length": 365,
+          "flags": 0
+        },
+        {
+          "path": "app/base/image/base/reset.svg",
+          "offset": 5228100,
+          "length": 1095,
+          "flags": 0
+        },
+        {
+          "path": "app/base/image/base/rest_p.svg",
+          "offset": 5226424,
+          "length": 1095,
+          "flags": 0
+        },
+        {
+          "path": "app/base/image/base/reset_d.svg",
+          "offset": 5229199,
+          "length": 1115,
+          "flags": 0
+        },
+        {
+          "path": "app/base/image/base/reset_h.svg",
+          "offset": 5230318,
+          "length": 1095,
+          "flags": 0
+        },
+        {
+          "path": "app/base/image/base/black_placeholder.jpg",
+          "offset": 5231417,
+          "length": 821,
+          "flags": 0
+        },
+        {
+          "path": "app/base/image/base/rectangle_background.svg",
+          "offset": 5227523,
+          "length": 573,
+          "flags": 0
+        },
+        {
+          "path": "app/base/drop_down_arrow",
+          "offset": 5217556,
+          "length": 2837,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radio_button_unchecked_normal",
+          "offset": 5222148,
+          "length": 176,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radiobox_normal",
+          "offset": 5214233,
+          "length": 864,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radiobox_check",
+          "offset": 5216675,
+          "length": 877,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radiobox_hover",
+          "offset": 5213381,
+          "length": 848,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_down",
+          "offset": 5221216,
+          "length": 240,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_fold",
+          "offset": 5216029,
+          "length": 642,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radio_button_unchecked_disabled",
+          "offset": 5215849,
+          "length": 176,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radio_button_hovered",
+          "offset": 5215101,
+          "length": 211,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_uph",
+          "offset": 5215591,
+          "length": 254,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_upp",
+          "offset": 5221816,
+          "length": 328,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_up",
+          "offset": 5223545,
+          "length": 232,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radio_button_checked_disabled",
+          "offset": 5223781,
+          "length": 227,
+          "flags": 0
+        },
+        {
+          "path": "app/base/menu_check",
+          "offset": 5224012,
+          "length": 2408,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radiobox_disable",
+          "offset": 5212701,
+          "length": 676,
+          "flags": 0
+        },
+        {
+          "path": "app/base/radiobox_uncheck",
+          "offset": 5220397,
+          "length": 815,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_downh",
+          "offset": 5215316,
+          "length": 271,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_downp",
+          "offset": 5221460,
+          "length": 352,
+          "flags": 0
+        },
+        {
+          "path": "app/base/arrow_enter",
+          "offset": 5210306,
+          "length": 2391,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/fovd",
+          "offset": 4966016,
+          "length": 2792,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/keyframe_edit",
+          "offset": 4959674,
+          "length": 1257,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/reset",
+          "offset": 5135005,
+          "length": 1503,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/perspective_normal",
+          "offset": 5199023,
+          "length": 2478,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/wide_hot.svg",
+          "offset": 5156221,
+          "length": 5728,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/fisheye_press",
+          "offset": 5010607,
+          "length": 3033,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/keyframe_deletep",
+          "offset": 5163460,
+          "length": 529,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/keyframe_deleted",
+          "offset": 5124468,
+          "length": 551,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/keyframe_deleteh",
+          "offset": 5136512,
+          "length": 529,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/linear_normal.svg",
+          "offset": 5013644,
+          "length": 6959,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/asteroid_disable",
+          "offset": 5026867,
+          "length": 2335,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/keyframe_guide",
+          "offset": 5168569,
+          "length": 1006,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/max_normal.svg",
+          "offset": 5058502,
+          "length": 5075,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/ultrawide_press.svg",
+          "offset": 5142581,
+          "length": 5161,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/delete_disable",
+          "offset": 5020607,
+          "length": 3136,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/linearplus_hot",
+          "offset": 5102129,
+          "length": 4032,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/perspective_hot",
+          "offset": 5106165,
+          "length": 2478,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/asteroid_normal",
+          "offset": 5195348,
+          "length": 1786,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/dewarp_normal",
+          "offset": 5147746,
+          "length": 8471,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/delete_normal",
+          "offset": 5073650,
+          "length": 3116,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/wide_press.svg",
+          "offset": 5044431,
+          "length": 5728,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/projection_pitch",
+          "offset": 5029206,
+          "length": 2550,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/perspective_disable",
+          "offset": 5137045,
+          "length": 2498,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/wide_normal.svg",
+          "offset": 5096397,
+          "length": 5728,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/delete_press",
+          "offset": 5108647,
+          "length": 3116,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/hide_normal",
+          "offset": 5035072,
+          "length": 1153,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/mega_normal",
+          "offset": 5171369,
+          "length": 5303,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/linearplus_normal",
+          "offset": 5054466,
+          "length": 4032,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/hide_disable",
+          "offset": 4971294,
+          "length": 1173,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/motion_blur",
+          "offset": 5197138,
+          "length": 1881,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/mega_press",
+          "offset": 4989286,
+          "length": 5303,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/fisheye_normal",
+          "offset": 5041394,
+          "length": 3033,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/reset2",
+          "offset": 5050163,
+          "length": 1503,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/resetd",
+          "offset": 5139547,
+          "length": 1523,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/reseth",
+          "offset": 5161953,
+          "length": 1503,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/resetp",
+          "offset": 5176676,
+          "length": 1503,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/perspective_press",
+          "offset": 4968812,
+          "length": 2478,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/dewarp_hot",
+          "offset": 5080957,
+          "length": 8471,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/reset2d",
+          "offset": 5111767,
+          "length": 1523,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/reset2h",
+          "offset": 5125023,
+          "length": 1503,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/reset2p",
+          "offset": 5141074,
+          "length": 1503,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/fisheye_disable",
+          "offset": 5186984,
+          "length": 3053,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/asteroid_hot",
+          "offset": 5169579,
+          "length": 1786,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/ultrawide_normal.svg",
+          "offset": 5036229,
+          "length": 5161,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/action_hot.svg",
+          "offset": 5006031,
+          "length": 4572,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/keyframe_delete",
+          "offset": 5005498,
+          "length": 529,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/projection_roll",
+          "offset": 5031760,
+          "length": 3308,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/distanced",
+          "offset": 4977636,
+          "length": 2369,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/dewarp_press",
+          "offset": 5126530,
+          "length": 8471,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/hide_press",
+          "offset": 4988129,
+          "length": 1153,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/projection_distance",
+          "offset": 5122095,
+          "length": 2369,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/linear_press.svg",
+          "offset": 5089432,
+          "length": 6961,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/max_press.svg",
+          "offset": 4960935,
+          "length": 5077,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/mega_hot",
+          "offset": 5190041,
+          "length": 5303,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/fisheye_hot",
+          "offset": 5070613,
+          "length": 3033,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/action_press.svg",
+          "offset": 5066037,
+          "length": 4572,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/delete_hot",
+          "offset": 5023747,
+          "length": 3116,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/action_normal.svg",
+          "offset": 5163993,
+          "length": 4572,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/narrow_hot.svg",
+          "offset": 5113294,
+          "length": 8797,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/narrow_press.svg",
+          "offset": 5201505,
+          "length": 8797,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/linearplus_press",
+          "offset": 4994593,
+          "length": 4032,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/projection_yaw",
+          "offset": 5063581,
+          "length": 2452,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/projection_fov",
+          "offset": 5051670,
+          "length": 2792,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/motion_blurc",
+          "offset": 5076770,
+          "length": 4183,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/narrow_normal.svg",
+          "offset": 5178183,
+          "length": 8797,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/ultrawide_hot.svg",
+          "offset": 4972471,
+          "length": 5161,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/asteroid_press",
+          "offset": 5003708,
+          "length": 1786,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/max_hot.svg",
+          "offset": 4998629,
+          "length": 5075,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/hide_hot",
+          "offset": 4986972,
+          "length": 1153,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/svg/linear_hot.svg",
+          "offset": 4980009,
+          "length": 6959,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_siqo_hot",
+          "offset": 4901981,
+          "length": 337,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_qiqo_hot",
+          "offset": 4902322,
+          "length": 273,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_siso_hot",
+          "offset": 4893054,
+          "length": 366,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_qiso_hot",
+          "offset": 4894036,
+          "length": 337,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/thumbnai_overlay.svg",
+          "offset": 4897955,
+          "length": 1485,
+          "flags": 1
+        },
+        {
+          "path": "app/timeline/animation_smooth_normal",
+          "offset": 4894377,
+          "length": 442,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_smooth_hot",
+          "offset": 4903446,
+          "length": 234,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_none_hot",
+          "offset": 4896596,
+          "length": 678,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/back_press",
+          "offset": 4939214,
+          "length": 2764,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/head_tracking_hot",
+          "offset": 4947548,
+          "length": 1462,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/top_normal",
+          "offset": 4949014,
+          "length": 2604,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/front_hot",
+          "offset": 4934818,
+          "length": 2906,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/top_press",
+          "offset": 4957086,
+          "length": 2584,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/back_normal",
+          "offset": 4951622,
+          "length": 2784,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/free_normal",
+          "offset": 4904532,
+          "length": 3310,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/left_normal",
+          "offset": 4954410,
+          "length": 2672,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/head_tracking_press",
+          "offset": 4924456,
+          "length": 1462,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/back_hot",
+          "offset": 4918394,
+          "length": 2764,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/free_hot",
+          "offset": 4921162,
+          "length": 3290,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/head_tracking_normal",
+          "offset": 4937728,
+          "length": 1482,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/left_press",
+          "offset": 4944892,
+          "length": 2652,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/right_press",
+          "offset": 4913086,
+          "length": 2648,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/front_press",
+          "offset": 4941982,
+          "length": 2906,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/top_hot",
+          "offset": 4907846,
+          "length": 2584,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/free_press",
+          "offset": 4931524,
+          "length": 3290,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/left_hot",
+          "offset": 4915738,
+          "length": 2652,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/front_normal",
+          "offset": 4925922,
+          "length": 2926,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/right_normal",
+          "offset": 4928852,
+          "length": 2668,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/view_type/right_hot",
+          "offset": 4910434,
+          "length": 2648,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/keyframe_x",
+          "offset": 4893424,
+          "length": 608,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/keyframe_o",
+          "offset": 4901196,
+          "length": 781,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_siso_normal",
+          "offset": 4899444,
+          "length": 1748,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_siqo_normal",
+          "offset": 4903684,
+          "length": 844,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_qiso_normal",
+          "offset": 4902599,
+          "length": 843,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_qiqo_normal",
+          "offset": 4894823,
+          "length": 1769,
+          "flags": 0
+        },
+        {
+          "path": "app/timeline/animation_none_normal",
+          "offset": 4897278,
+          "length": 673,
+          "flags": 0
+        },
+        {
+          "path": "app/audio/complete.wav",
+          "offset": 21279823,
+          "length": 160360,
+          "flags": 0
+        },
+        {
+          "path": "app/image/animation/underwater_recognize.webp",
+          "offset": 20750788,
+          "length": 490396,
+          "flags": 0
+        },
+        {
+          "path": "app/image/timeline/trim_right_disable.svg",
+          "offset": 20728499,
+          "length": 2012,
+          "flags": 0
+        },
+        {
+          "path": "app/image/timeline/audiotape.png",
+          "offset": 20734545,
+          "length": 16239,
+          "flags": 0
+        },
+        {
+          "path": "app/image/timeline/trim_left.svg",
+          "offset": 20732531,
+          "length": 2010,
+          "flags": 0
+        },
+        {
+          "path": "app/image/timeline/trim_left_disable.svg",
+          "offset": 20730515,
+          "length": 2012,
+          "flags": 0
+        },
+        {
+          "path": "app/image/timeline/trim_right.svg",
+          "offset": 20726483,
+          "length": 2012,
+          "flags": 0
+        },
+        {
+          "path": "app/image/other/export_bitrate_star_hover_or_press.svg",
+          "offset": 20567120,
+          "length": 319,
+          "flags": 0
+        },
+        {
+          "path": "app/image/other/right_narrow.png",
+          "offset": 20566860,
+          "length": 256,
+          "flags": 0
+        },
+        {
+          "path": "app/image/other/export_bitrate_star_normal.svg",
+          "offset": 20567443,
+          "length": 320,
+          "flags": 0
+        },
+        {
+          "path": "app/image/other/douyin_logo.png",
+          "offset": 20566088,
+          "length": 768,
+          "flags": 0
+        },
+        {
+          "path": "app/image/task_center/exclamation_point.png",
+          "offset": 5639047,
+          "length": 816,
+          "flags": 0
+        },
+        {
+          "path": "app/image/task_center/folder.png",
+          "offset": 5640917,
+          "length": 1704,
+          "flags": 0
+        },
+        {
+          "path": "app/image/task_center/success.png",
+          "offset": 5639867,
+          "length": 1046,
+          "flags": 0
+        },
+        {
+          "path": "app/image/onboarding/tab1_win",
+          "offset": 5666759,
+          "length": 306037,
+          "flags": 0
+        },
+        {
+          "path": "app/image/onboarding/tab1_mac",
+          "offset": 20350782,
+          "length": 215302,
+          "flags": 0
+        },
+        {
+          "path": "app/image/onboarding/tab2_en.webp",
+          "offset": 5972800,
+          "length": 7207098,
+          "flags": 0
+        },
+        {
+          "path": "app/image/onboarding/tab2_zh.webp",
+          "offset": 13179902,
+          "length": 7170876,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/camera_transform_hover.svg",
+          "offset": 21266207,
+          "length": 1153,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/close_hand_mac.svg",
+          "offset": 21248365,
+          "length": 1530,
+          "flags": 1
+        },
+        {
+          "path": "app/image/cursor/CursorID-16.png",
+          "offset": 21259835,
+          "length": 421,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-18.png",
+          "offset": 21264050,
+          "length": 395,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-15.png",
+          "offset": 21259436,
+          "length": 395,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-15@3to2x.png",
+          "offset": 21267963,
+          "length": 604,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-16@3to2x.png",
+          "offset": 21247794,
+          "length": 567,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-18@3to2x.png",
+          "offset": 21251910,
+          "length": 937,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/pano_project_edit_normal.svg",
+          "offset": 21246098,
+          "length": 1692,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/open_hand_win.svg",
+          "offset": 21268571,
+          "length": 4091,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/open_hand_mac.svg",
+          "offset": 21257650,
+          "length": 1782,
+          "flags": 1
+        },
+        {
+          "path": "app/image/cursor/CursorID-18@2x.png",
+          "offset": 21264449,
+          "length": 1106,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-16@2x.png",
+          "offset": 21267364,
+          "length": 595,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-15@2x.png",
+          "offset": 21265559,
+          "length": 644,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-18@3x.png",
+          "offset": 21255923,
+          "length": 1723,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-16@3x.png",
+          "offset": 21263134,
+          "length": 912,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/CursorID-15@3x.png",
+          "offset": 21260260,
+          "length": 866,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/close_hand_win.svg",
+          "offset": 21252851,
+          "length": 3068,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/trim_left.svg",
+          "offset": 21261130,
+          "length": 2000,
+          "flags": 0
+        },
+        {
+          "path": "app/image/cursor/trim_right.svg",
+          "offset": 21249899,
+          "length": 2007,
+          "flags": 0
+        },
+        {
+          "path": "app/image/player/detected_point.webp",
+          "offset": 20567767,
+          "length": 158712,
+          "flags": 0
+        },
+        {
+          "path": "app/image/project/sort.svg",
+          "offset": 21241188,
+          "length": 1463,
+          "flags": 0
+        },
+        {
+          "path": "app/image/project/close.png",
+          "offset": 21242655,
+          "length": 246,
+          "flags": 0
+        },
+        {
+          "path": "app/image/project/thumbnail_view.svg",
+          "offset": 21242905,
+          "length": 850,
+          "flags": 0
+        },
+        {
+          "path": "app/image/project/list_view.svg",
+          "offset": 21243759,
+          "length": 2335,
+          "flags": 0
+        },
+        {
+          "path": "app/image/account/douyin.png",
+          "offset": 21276833,
+          "length": 2189,
+          "flags": 0
+        },
+        {
+          "path": "app/image/account/cloudSpace.png",
+          "offset": 21273852,
+          "length": 692,
+          "flags": 0
+        },
+        {
+          "path": "app/image/account/douyinIcon.svg",
+          "offset": 21274548,
+          "length": 168,
+          "flags": 0
+        },
+        {
+          "path": "app/image/account/avatarDefaultBig.png",
+          "offset": 21274720,
+          "length": 2109,
+          "flags": 0
+        },
+        {
+          "path": "app/image/account/avatarDefaultSmall.png",
+          "offset": 21279026,
+          "length": 793,
+          "flags": 0
+        },
+        {
+          "path": "app/image/window/close.svg",
+          "offset": 5636209,
+          "length": 669,
+          "flags": 0
+        },
+        {
+          "path": "app/image/window/restore_win.svg",
+          "offset": 5635261,
+          "length": 944,
+          "flags": 0
+        },
+        {
+          "path": "app/image/window/close_win.svg",
+          "offset": 5637566,
+          "length": 769,
+          "flags": 0
+        },
+        {
+          "path": "app/image/window/minimize_win.svg",
+          "offset": 5638339,
+          "length": 704,
+          "flags": 0
+        },
+        {
+          "path": "app/image/window/maximize_win.svg",
+          "offset": 5636882,
+          "length": 680,
+          "flags": 0
+        },
+        {
+          "path": "app/image/window/full_screen.svg",
+          "offset": 5634007,
+          "length": 778,
+          "flags": 0
+        },
+        {
+          "path": "app/image/window/minimize.svg",
+          "offset": 5634789,
+          "length": 468,
+          "flags": 0
+        },
+        {
+          "path": "app/image/tooltip/tooltip_arrow_up.svg",
+          "offset": 21272666,
+          "length": 596,
+          "flags": 0
+        },
+        {
+          "path": "app/image/tooltip/tooltip_arrow_down.svg",
+          "offset": 21273266,
+          "length": 582,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/union.svg",
+          "offset": 5665336,
+          "length": 1419,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/export.svg",
+          "offset": 5653838,
+          "length": 8398,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/close_tips.svg",
+          "offset": 5642625,
+          "length": 674,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/share.svg",
+          "offset": 5662240,
+          "length": 2345,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/mask.png",
+          "offset": 5664589,
+          "length": 743,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/buy.svg",
+          "offset": 5649910,
+          "length": 2479,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/no_network.png",
+          "offset": 5643303,
+          "length": 6603,
+          "flags": 0
+        },
+        {
+          "path": "app/image/footage/player.svg",
+          "offset": 5652393,
+          "length": 1441,
+          "flags": 0
+        },
+        {
+          "path": "app/style/insta360.qss",
+          "offset": 4488522,
+          "length": 3054,
+          "flags": 1
+        },
+        {
+          "path": "app/cursor/pano_project_edit_modified",
+          "offset": 5626326,
+          "length": 1694,
+          "flags": 0
+        },
+        {
+          "path": "app/cursor/player_edit_mac",
+          "offset": 5625443,
+          "length": 879,
+          "flags": 0
+        },
+        {
+          "path": "app/cursor/player_edit_win",
+          "offset": 5629655,
+          "length": 879,
+          "flags": 0
+        },
+        {
+          "path": "app/cursor/add_hand_win",
+          "offset": 5630538,
+          "length": 3465,
+          "flags": 0
+        },
+        {
+          "path": "app/cursor/add_hand_mac",
+          "offset": 5628024,
+          "length": 1627,
+          "flags": 1
+        },
+        {
+          "path": "app/dialog/edit",
+          "offset": 4873992,
+          "length": 16937,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/close",
+          "offset": 4869560,
+          "length": 745,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/edit_location",
+          "offset": 4872451,
+          "length": 1537,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/part_select",
+          "offset": 4872251,
+          "length": 196,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/choose",
+          "offset": 4868968,
+          "length": 588,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/stabilize",
+          "offset": 4846323,
+          "length": 22641,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/stitch",
+          "offset": 4820217,
+          "length": 24561,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/bigboom_example",
+          "offset": 4890933,
+          "length": 1371,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/switchp",
+          "offset": 4871850,
+          "length": 397,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/select_1",
+          "offset": 4892308,
+          "length": 742,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/edit_locationd",
+          "offset": 4818656,
+          "length": 1557,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/edit_locationh",
+          "offset": 4844782,
+          "length": 1537,
+          "flags": 0
+        },
+        {
+          "path": "app/dialog/edit_locationp",
+          "offset": 4870309,
+          "length": 1537,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/fcpx",
+          "offset": 4270235,
+          "length": 9490,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/none",
+          "offset": 4202807,
+          "length": 1138,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_resume_hovered",
+          "offset": 4393285,
+          "length": 463,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_pause_normal",
+          "offset": 3661519,
+          "length": 683,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_clear_hovered",
+          "offset": 4261416,
+          "length": 1160,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/del_h",
+          "offset": 3656027,
+          "length": 3111,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/del_n",
+          "offset": 3672883,
+          "length": 3131,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/image/panels/cloud/cloud_empty_footage_4x.png",
+          "offset": 4451244,
+          "length": 37274,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/logon",
+          "offset": 3909240,
+          "length": 2883,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/logop",
+          "offset": 3912127,
+          "length": 2883,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/stabn",
+          "offset": 3677909,
+          "length": 1727,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/stabp",
+          "offset": 3681162,
+          "length": 1727,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_add_footaged",
+          "offset": 4201811,
+          "length": 992,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_add_footageh",
+          "offset": 4208140,
+          "length": 972,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_add_footagep",
+          "offset": 4214370,
+          "length": 972,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_file_propertyd",
+          "offset": 3682893,
+          "length": 1482,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_file_propertyh",
+          "offset": 3689413,
+          "length": 1462,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_file_propertyp",
+          "offset": 3870284,
+          "length": 1462,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_download_btnd",
+          "offset": 3679640,
+          "length": 918,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_download_btnh",
+          "offset": 3686083,
+          "length": 898,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_download_btnp",
+          "offset": 3803164,
+          "length": 918,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_footagesp",
+          "offset": 3897381,
+          "length": 587,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_file_property",
+          "offset": 3543523,
+          "length": 1462,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_share_link",
+          "offset": 4379182,
+          "length": 1327,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/batch_edit_empty_4x",
+          "offset": 3561948,
+          "length": 53778,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_topping_hovered",
+          "offset": 4107134,
+          "length": 460,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/5.7k_plus_footage",
+          "offset": 4097655,
+          "length": 2022,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_exclamation_markh",
+          "offset": 4010852,
+          "length": 452,
+          "flags": 1
+        },
+        {
+          "path": "app/panels/svg_share_linkp",
+          "offset": 4291388,
+          "length": 1327,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_share_linkd",
+          "offset": 4255298,
+          "length": 1327,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_share_linkh",
+          "offset": 4279729,
+          "length": 1327,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_open_folderd",
+          "offset": 4402838,
+          "length": 2306,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_open_folderh",
+          "offset": 4421229,
+          "length": 2286,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_open_folderp",
+          "offset": 3532316,
+          "length": 2286,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_fav_files",
+          "offset": 4008552,
+          "length": 2296,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/logo_increase",
+          "offset": 4111835,
+          "length": 267,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_thumbnail_placeholder_4x",
+          "offset": 3645196,
+          "length": 2633,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_audit_succes_4x",
+          "offset": 3631479,
+          "length": 1772,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/superbaby_video",
+          "offset": 4099681,
+          "length": 1859,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/collapseh",
+          "offset": 4184144,
+          "length": 1306,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/collapsen",
+          "offset": 4189359,
+          "length": 1306,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_recycle_video_4x",
+          "offset": 4113892,
+          "length": 53738,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_alld",
+          "offset": 4199562,
+          "length": 1907,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_allh",
+          "offset": 4206249,
+          "length": 1887,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_allp",
+          "offset": 4209877,
+          "length": 1887,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_list",
+          "offset": 4047795,
+          "length": 5029,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/logo_bg",
+          "offset": 3937998,
+          "length": 4839,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_preview_thumb",
+          "offset": 3924787,
+          "length": 1254,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_checkbox_h",
+          "offset": 3549853,
+          "length": 8244,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/fav_list_head",
+          "offset": 4282640,
+          "length": 1724,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_clear_disabled",
+          "offset": 3887177,
+          "length": 1280,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_wait_downloadd",
+          "offset": 4371361,
+          "length": 1095,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_wait_downloadh",
+          "offset": 4378083,
+          "length": 1095,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_wait_downloadp",
+          "offset": 4393752,
+          "length": 1095,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/interval_footage",
+          "offset": 4290432,
+          "length": 952,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_thumbc",
+          "offset": 4079520,
+          "length": 2033,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_thumbd",
+          "offset": 4082539,
+          "length": 1939,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_thumbh",
+          "offset": 4092543,
+          "length": 2033,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_thumbp",
+          "offset": 4103311,
+          "length": 2033,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_start",
+          "offset": 3561036,
+          "length": 908,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_clear",
+          "offset": 4081557,
+          "length": 978,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_recycle_btn",
+          "offset": 4171925,
+          "length": 1576,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_retry_btn",
+          "offset": 4096311,
+          "length": 1340,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/selfie_footage",
+          "offset": 3948639,
+          "length": 1804,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/1080p_footage",
+          "offset": 3888461,
+          "length": 7577,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading1",
+          "offset": 4223569,
+          "length": 1581,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading2",
+          "offset": 4227281,
+          "length": 1588,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading3",
+          "offset": 4236500,
+          "length": 1589,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading4",
+          "offset": 4240616,
+          "length": 1590,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading5",
+          "offset": 4242210,
+          "length": 1589,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading6",
+          "offset": 4247571,
+          "length": 1590,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading7",
+          "offset": 4256629,
+          "length": 1589,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loading8",
+          "offset": 4259822,
+          "length": 1590,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_ascend",
+          "offset": 4102953,
+          "length": 354,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_descend",
+          "offset": 3928115,
+          "length": 334,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_download_pause",
+          "offset": 4397514,
+          "length": 277,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_delete",
+          "offset": 3648823,
+          "length": 3116,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_topping_disabled",
+          "offset": 3618914,
+          "length": 461,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/add_circle",
+          "offset": 3695932,
+          "length": 5320,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/loop_recording_footage",
+          "offset": 3897972,
+          "length": 2225,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_download_normal",
+          "offset": 4289723,
+          "length": 705,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/1440p_footage",
+          "offset": 3926045,
+          "length": 2066,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/dog_clip",
+          "offset": 4011308,
+          "length": 776,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_listd",
+          "offset": 3690879,
+          "length": 5049,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_listh",
+          "offset": 3798131,
+          "length": 5029,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_listp",
+          "offset": 3880805,
+          "length": 5029,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_shared_empty_4x",
+          "offset": 3953919,
+          "length": 53653,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_exclamation_mark",
+          "offset": 3671759,
+          "length": 1120,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_network_error_4x",
+          "offset": 3804086,
+          "length": 64588,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/file_propertyn",
+          "offset": 3876732,
+          "length": 782,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/file_propertyp",
+          "offset": 3879681,
+          "length": 782,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_thumb",
+          "offset": 3615730,
+          "length": 2030,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_pending",
+          "offset": 4374205,
+          "length": 1709,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/vir_ptz_video",
+          "offset": 4231874,
+          "length": 4622,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_resume_disabled",
+          "offset": 4111366,
+          "length": 465,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_listc",
+          "offset": 4105348,
+          "length": 1782,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_listd",
+          "offset": 4108991,
+          "length": 1688,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_listh",
+          "offset": 4112106,
+          "length": 1782,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_listp",
+          "offset": 4185454,
+          "length": 1782,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/audion",
+          "offset": 4398413,
+          "length": 4421,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/audiop",
+          "offset": 4407706,
+          "length": 4421,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_camera_filesd",
+          "offset": 4412131,
+          "length": 1476,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_camera_filesh",
+          "offset": 4446653,
+          "length": 1456,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_camera_filesp",
+          "offset": 3534606,
+          "length": 1456,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/copy_h",
+          "offset": 4450085,
+          "length": 1155,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/copy_n",
+          "offset": 3536066,
+          "length": 1175,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cancel_export",
+          "offset": 3916952,
+          "length": 1528,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/imagen",
+          "offset": 4076950,
+          "length": 2566,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/imagep",
+          "offset": 4084482,
+          "length": 2566,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_pause_disabled",
+          "offset": 4392945,
+          "length": 336,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/clip_placeholder",
+          "offset": 4188299,
+          "length": 591,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/bullet_time_footage",
+          "offset": 4267708,
+          "length": 2523,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_wait_download",
+          "offset": 3662206,
+          "length": 1095,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/building_clip",
+          "offset": 4073439,
+          "length": 719,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/add_project",
+          "offset": 3767869,
+          "length": 1052,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_export_empty",
+          "offset": 3701256,
+          "length": 66609,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_ascendd",
+          "offset": 4183793,
+          "length": 347,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_ascendh",
+          "offset": 4187941,
+          "length": 354,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_ascendp",
+          "offset": 4198535,
+          "length": 354,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_open_path_pressd",
+          "offset": 4198893,
+          "length": 665,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_open_path_hovered",
+          "offset": 4215346,
+          "length": 630,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_successed",
+          "offset": 3647833,
+          "length": 986,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/auto_frame_pending",
+          "offset": 4448113,
+          "length": 1968,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_add_footage",
+          "offset": 4007576,
+          "length": 972,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/vr180_footage",
+          "offset": 4413611,
+          "length": 6385,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_export_empty_record",
+          "offset": 4294319,
+          "length": 69960,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/human_clip",
+          "offset": 4209116,
+          "length": 757,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_descendd",
+          "offset": 3880467,
+          "length": 334,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_descendh",
+          "offset": 3900718,
+          "length": 334,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/sort_descendp",
+          "offset": 3906117,
+          "length": 334,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_empty_download",
+          "offset": 4018351,
+          "length": 19135,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_simple_list",
+          "offset": 4016568,
+          "length": 1779,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/car_clip",
+          "offset": 4046217,
+          "length": 760,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/footage_placeholder",
+          "offset": 4074828,
+          "length": 1126,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_recycle_delete_h",
+          "offset": 3921624,
+          "length": 2573,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_clear_pressed",
+          "offset": 4107598,
+          "length": 1389,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/premiere",
+          "offset": 4094580,
+          "length": 1727,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_advertising_error_cloud_export_4x",
+          "offset": 4053767,
+          "length": 18549,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/slow_motion_footage",
+          "offset": 3544989,
+          "length": 3690,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_advertising_cloud_export",
+          "offset": 4088416,
+          "length": 4123,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_pause_hovered",
+          "offset": 3558101,
+          "length": 321,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_network_error",
+          "offset": 3651943,
+          "length": 1865,
+          "flags": 1
+        },
+        {
+          "path": "app/panels/png_cloud_open_path_disabled",
+          "offset": 4110683,
+          "length": 679,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_preview_thumbc",
+          "offset": 3686985,
+          "length": 1257,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_preview_thumbd",
+          "offset": 3688246,
+          "length": 1163,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_preview_thumbh",
+          "offset": 3768925,
+          "length": 1257,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_preview_thumbp",
+          "offset": 3877518,
+          "length": 1257,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_local_filesd",
+          "offset": 3548683,
+          "length": 1166,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_local_filesh",
+          "offset": 3558426,
+          "length": 1146,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_local_filesp",
+          "offset": 3617764,
+          "length": 1146,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/starlapse_footage",
+          "offset": 3665921,
+          "length": 3477,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/timelapse_footage",
+          "offset": 4072320,
+          "length": 1115,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_download_succeed",
+          "offset": 3903959,
+          "length": 1096,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_download_gray",
+          "offset": 4015192,
+          "length": 837,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/5.7k_footage",
+          "offset": 4012088,
+          "length": 3100,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/5.2k_footage",
+          "offset": 3932273,
+          "length": 2601,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/5.3k_footage",
+          "offset": 3942841,
+          "length": 5794,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_topping_normal",
+          "offset": 4366570,
+          "length": 988,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_deleted",
+          "offset": 3918484,
+          "length": 3136,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_deleteh",
+          "offset": 3928648,
+          "length": 3116,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_deletep",
+          "offset": 3934878,
+          "length": 3116,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/6.1k_footage",
+          "offset": 4211768,
+          "length": 2598,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/6.4k_footage",
+          "offset": 4238093,
+          "length": 2519,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_downloading",
+          "offset": 4052828,
+          "length": 935,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/stitchingn",
+          "offset": 3885838,
+          "length": 1335,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/stitchingp",
+          "offset": 3896042,
+          "length": 1335,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_download_cloud_512",
+          "offset": 4173505,
+          "length": 10284,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_download_cloud",
+          "offset": 4397795,
+          "length": 614,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_fav",
+          "offset": 3663564,
+          "length": 2353,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_advertising_cloud_high_definition",
+          "offset": 3770186,
+          "length": 3751,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/panel_export",
+          "offset": 4405148,
+          "length": 2554,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/free_frame",
+          "offset": 4194282,
+          "length": 656,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/pure_video",
+          "offset": 3905059,
+          "length": 1054,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_advertising_cloud",
+          "offset": 4423519,
+          "length": 23130,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/guide_tooltip_arrow_down",
+          "offset": 3663305,
+          "length": 255,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/3.6k_footage",
+          "offset": 4167634,
+          "length": 4287,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_recycle_close",
+          "offset": 4046981,
+          "length": 810,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_empty_downloaded",
+          "offset": 3779140,
+          "length": 18987,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/2.7k_footage",
+          "offset": 3901056,
+          "length": 2483,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_pause_pressd",
+          "offset": 4201473,
+          "length": 334,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_recycle_delete",
+          "offset": 3629059,
+          "length": 2416,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_fav_filesp",
+          "offset": 4203949,
+          "length": 2296,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_fav_filesd",
+          "offset": 4190669,
+          "length": 2316,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_fav_filesh",
+          "offset": 4196235,
+          "length": 2296,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_camera_files",
+          "offset": 3559576,
+          "length": 1456,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_tooltip_arrow_down",
+          "offset": 3924201,
+          "length": 582,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_resume_pressd",
+          "offset": 4188894,
+          "length": 461,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/Widescreen",
+          "offset": 3653812,
+          "length": 2211,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_local_files",
+          "offset": 3542373,
+          "length": 1146,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/watermarkn",
+          "offset": 3619379,
+          "length": 9676,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/watermarkp",
+          "offset": 3633255,
+          "length": 9676,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_topping_pressd",
+          "offset": 3931768,
+          "length": 501,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_favd",
+          "offset": 3659142,
+          "length": 2373,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_favh",
+          "offset": 3669402,
+          "length": 2353,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_favp",
+          "offset": 3684379,
+          "length": 1700,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_sort",
+          "offset": 3537245,
+          "length": 2123,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_auto_frame",
+          "offset": 3539372,
+          "length": 2997,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/logo_decrease",
+          "offset": 3928453,
+          "length": 191,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/interval_video",
+          "offset": 3773941,
+          "length": 4120,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/16k_footage",
+          "offset": 4385965,
+          "length": 2647,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/6k_footage",
+          "offset": 4383693,
+          "length": 2268,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/5k_footage",
+          "offset": 4375918,
+          "length": 1838,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/8k_footage",
+          "offset": 4394851,
+          "length": 2659,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/2k_footage",
+          "offset": 4364283,
+          "length": 2283,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/4k_footage",
+          "offset": 4372460,
+          "length": 1281,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/3k_footage",
+          "offset": 4367562,
+          "length": 3795,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/night_shot_footage",
+          "offset": 4286629,
+          "length": 3090,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_warning_4x",
+          "offset": 3868678,
+          "length": 1602,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_sortd",
+          "offset": 4215980,
+          "length": 2163,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_sorth",
+          "offset": 4225154,
+          "length": 2123,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_sortp",
+          "offset": 4262580,
+          "length": 2123,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/aeb_footage",
+          "offset": 4221168,
+          "length": 2397,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_tooltip_arrow_up",
+          "offset": 3680562,
+          "length": 596,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/insta_pano_footage",
+          "offset": 4420000,
+          "length": 1225,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/hdr_footage",
+          "offset": 4041783,
+          "length": 4430,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/fpv_footage",
+          "offset": 4388616,
+          "length": 4325,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/log_footage",
+          "offset": 3871750,
+          "length": 4978,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_failed",
+          "offset": 4016033,
+          "length": 531,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/pro_footage",
+          "offset": 4249165,
+          "length": 6129,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_resume",
+          "offset": 4373745,
+          "length": 456,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/raw_footage",
+          "offset": 3950447,
+          "length": 3468,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_download",
+          "offset": 4187240,
+          "length": 697,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_down_arrow",
+          "offset": 4377760,
+          "length": 319,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_download_btn",
+          "offset": 3878779,
+          "length": 898,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_footages",
+          "offset": 4074162,
+          "length": 662,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_downloadd",
+          "offset": 3900201,
+          "length": 513,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_downloadh",
+          "offset": 3903543,
+          "length": 412,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/png_cloud_downloadp",
+          "offset": 3908753,
+          "length": 483,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_download_normal",
+          "offset": 4075958,
+          "length": 988,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/file_type_list_head",
+          "offset": 4101544,
+          "length": 1405,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_open_path",
+          "offset": 3778065,
+          "length": 1071,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/dashboardn",
+          "offset": 3915014,
+          "length": 965,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/dashboardp",
+          "offset": 3915983,
+          "length": 965,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/dashcam_footage",
+          "offset": 3906455,
+          "length": 2294,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_cloud_cancel",
+          "offset": 4382803,
+          "length": 886,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/project_managementn",
+          "offset": 4192989,
+          "length": 1289,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/project_managementp",
+          "offset": 4194942,
+          "length": 1289,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/player_placeholder",
+          "offset": 4037490,
+          "length": 4289,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/burst_footage",
+          "offset": 3642935,
+          "length": 2257,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_open_folder",
+          "offset": 4380513,
+          "length": 2286,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_restore_n",
+          "offset": 4087052,
+          "length": 1360,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_export_all",
+          "offset": 3676018,
+          "length": 1887,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/burst_footageh",
+          "offset": 4284368,
+          "length": 2257,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_auto_framed",
+          "offset": 4218147,
+          "length": 3017,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_auto_frameh",
+          "offset": 4228873,
+          "length": 2997,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_auto_framep",
+          "offset": 4264707,
+          "length": 2997,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/timeshift_footage",
+          "offset": 4243803,
+          "length": 3764,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_recycle_btnd",
+          "offset": 4258222,
+          "length": 1596,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_recycle_btnh",
+          "offset": 4281060,
+          "length": 1576,
+          "flags": 0
+        },
+        {
+          "path": "app/panels/svg_recycle_btnp",
+          "offset": 4292719,
+          "length": 1596,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_panomodep",
+          "offset": 4734184,
+          "length": 1581,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_panomoded",
+          "offset": 4714121,
+          "length": 1601,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_panomodeh",
+          "offset": 4718242,
+          "length": 1581,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_panomoden",
+          "offset": 4732599,
+          "length": 1581,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_play_stream_hdh",
+          "offset": 4491580,
+          "length": 2123,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_play_stream_hdn",
+          "offset": 4498558,
+          "length": 2123,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_play_stream_sdh",
+          "offset": 4763158,
+          "length": 3054,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_play_stream_sdn",
+          "offset": 4778075,
+          "length": 3054,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_recordmodep",
+          "offset": 4676444,
+          "length": 1537,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_recordmoded",
+          "offset": 4667275,
+          "length": 1557,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_recordmodeh",
+          "offset": 4671049,
+          "length": 1537,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_recordmoden",
+          "offset": 4674903,
+          "length": 1537,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_pure_shoth",
+          "offset": 4759961,
+          "length": 2657,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_pure_shotn",
+          "offset": 4771773,
+          "length": 2657,
+          "flags": 0
+        },
+        {
+          "path": "app/player/detected_point",
+          "offset": 4507231,
+          "length": 158712,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_airlineh",
+          "offset": 4504031,
+          "length": 2209,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_airlinen",
+          "offset": 4668836,
+          "length": 2209,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_enter_fullscreenh",
+          "offset": 4693947,
+          "length": 1640,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_enter_fullscreenn",
+          "offset": 4708178,
+          "length": 1640,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_horizon_calibrationh",
+          "offset": 4758587,
+          "length": 1370,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_horizon_calibrationn",
+          "offset": 4774434,
+          "length": 1371,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_head_trackh",
+          "offset": 4776742,
+          "length": 1329,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_head_trackn",
+          "offset": 4794244,
+          "length": 1329,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_equirectangularh",
+          "offset": 4715726,
+          "length": 642,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_equirectangularn",
+          "offset": 4719827,
+          "length": 640,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_show_footage_panelh",
+          "offset": 4789452,
+          "length": 1094,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_show_footage_paneln",
+          "offset": 4797300,
+          "length": 1094,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_crystal_viewh",
+          "offset": 4749122,
+          "length": 858,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_crystal_viewn",
+          "offset": 4753079,
+          "length": 856,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_perspectiveh",
+          "offset": 4665947,
+          "length": 1324,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_perspectiven",
+          "offset": 4673577,
+          "length": 1322,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_head_trackingh",
+          "offset": 4495210,
+          "length": 1456,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_head_trackingn",
+          "offset": 4500685,
+          "length": 1456,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_toph",
+          "offset": 4691351,
+          "length": 2592,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_topn",
+          "offset": 4705582,
+          "length": 2592,
+          "flags": 0
+        },
+        {
+          "path": "app/player/deeptrackn",
+          "offset": 4753939,
+          "length": 535,
+          "flags": 0
+        },
+        {
+          "path": "app/player/deeptrackp",
+          "offset": 4754478,
+          "length": 535,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_megaviewh",
+          "offset": 4766216,
+          "length": 5553,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_megaviewn",
+          "offset": 4783897,
+          "length": 5551,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_backh",
+          "offset": 4781133,
+          "length": 2760,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_backn",
+          "offset": 4791480,
+          "length": 2760,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_freeh",
+          "offset": 4506244,
+          "length": 983,
+          "flags": 1
+        },
+        {
+          "path": "app/player/svg_view_type_freen",
+          "offset": 4672590,
+          "length": 983,
+          "flags": 1
+        },
+        {
+          "path": "app/player/unchecked",
+          "offset": 4762622,
+          "length": 532,
+          "flags": 0
+        },
+        {
+          "path": "app/player/checked",
+          "offset": 4680626,
+          "length": 2386,
+          "flags": 0
+        },
+        {
+          "path": "app/player/shrinkp",
+          "offset": 4801384,
+          "length": 1279,
+          "flags": 0
+        },
+        {
+          "path": "app/player/shrinkn",
+          "offset": 4800101,
+          "length": 1279,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_lefth",
+          "offset": 4695591,
+          "length": 2639,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_leftn",
+          "offset": 4709822,
+          "length": 2639,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_dewarph",
+          "offset": 4721755,
+          "length": 8970,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_dewarpn",
+          "offset": 4740150,
+          "length": 8968,
+          "flags": 0
+        },
+        {
+          "path": "app/player/select_alld",
+          "offset": 4795577,
+          "length": 1719,
+          "flags": 0
+        },
+        {
+          "path": "app/player/select_allh",
+          "offset": 4798398,
+          "length": 1699,
+          "flags": 0
+        },
+        {
+          "path": "app/player/select_alln",
+          "offset": 4802667,
+          "length": 1699,
+          "flags": 0
+        },
+        {
+          "path": "app/player/select_allp",
+          "offset": 4804370,
+          "length": 1699,
+          "flags": 0
+        },
+        {
+          "path": "app/player/headtrack1h",
+          "offset": 4738458,
+          "length": 404,
+          "flags": 0
+        },
+        {
+          "path": "app/player/headtrack1n",
+          "offset": 4752671,
+          "length": 404,
+          "flags": 0
+        },
+        {
+          "path": "app/player/headtrack2h",
+          "offset": 4775809,
+          "length": 929,
+          "flags": 0
+        },
+        {
+          "path": "app/player/headtrack2n",
+          "offset": 4790550,
+          "length": 926,
+          "flags": 0
+        },
+        {
+          "path": "app/player/headtrack3h",
+          "offset": 4811913,
+          "length": 1513,
+          "flags": 0
+        },
+        {
+          "path": "app/player/headtrack3n",
+          "offset": 4493707,
+          "length": 1499,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_extendh",
+          "offset": 4720471,
+          "length": 1280,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_extendn",
+          "offset": 4738866,
+          "length": 1280,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_fronth",
+          "offset": 4806073,
+          "length": 2916,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_frontn",
+          "offset": 4808993,
+          "length": 2916,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_custom_view_modeh",
+          "offset": 4735769,
+          "length": 1167,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_custom_view_moden",
+          "offset": 4749984,
+          "length": 1165,
+          "flags": 0
+        },
+        {
+          "path": "app/player/view_type/reset_view",
+          "offset": 4813430,
+          "length": 2551,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_ultra_viewh",
+          "offset": 4683016,
+          "length": 5690,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_ultra_viewn",
+          "offset": 4698234,
+          "length": 5688,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_snapshoth",
+          "offset": 4716372,
+          "length": 1866,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_snapshotn",
+          "offset": 4730729,
+          "length": 1866,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_exit_fullscreenh",
+          "offset": 4703926,
+          "length": 1652,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_exit_fullscreenn",
+          "offset": 4712465,
+          "length": 1652,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_rotationh",
+          "offset": 4736940,
+          "length": 1514,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_rotationn",
+          "offset": 4751153,
+          "length": 1514,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_righth",
+          "offset": 4677985,
+          "length": 2637,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_view_type_rightn",
+          "offset": 4688710,
+          "length": 2637,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_asteroidh",
+          "offset": 4755017,
+          "length": 1782,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_asteroidn",
+          "offset": 4756803,
+          "length": 1780,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_fisheyeh",
+          "offset": 4496670,
+          "length": 1884,
+          "flags": 0
+        },
+        {
+          "path": "app/player/svg_fisheyen",
+          "offset": 4502145,
+          "length": 1882,
+          "flags": 0
+        },
+        {
+          "path": "app/project/startup_storage_camera",
+          "offset": 5622637,
+          "length": 2802,
+          "flags": 0
+        },
+        {
+          "path": "app/project/startup_cloud_person",
+          "offset": 5237865,
+          "length": 2305,
+          "flags": 0
+        },
+        {
+          "path": "app/project/startup_home_title",
+          "offset": 5232611,
+          "length": 5250,
+          "flags": 0
+        },
+        {
+          "path": "app/project/startup_home_bg",
+          "offset": 5240174,
+          "length": 382459,
+          "flags": 0
+        },
+        {
+          "path": "app/shader/draw_texture.vert",
+          "offset": 4816160,
+          "length": 208,
+          "flags": 0
+        },
+        {
+          "path": "app/shader/draw_texture.frag",
+          "offset": 4815985,
+          "length": 171,
+          "flags": 0
+        },
+        {
+          "path": "app/window/help",
+          "offset": 8559,
+          "length": 2253,
+          "flags": 0
+        },
+        {
+          "path": "app/window/feedback_form_h",
+          "offset": 1376,
+          "length": 590,
+          "flags": 0
+        },
+        {
+          "path": "app/window/feedback_form",
+          "offset": 3165,
+          "length": 590,
+          "flags": 0
+        },
+        {
+          "path": "app/window/help_h",
+          "offset": 6302,
+          "length": 2253,
+          "flags": 0
+        },
+        {
+          "path": "app/window/keyboard_h",
+          "offset": 28,
+          "length": 1344,
+          "flags": 0
+        },
+        {
+          "path": "app/window/feedback_h",
+          "offset": 1970,
+          "length": 1191,
+          "flags": 0
+        },
+        {
+          "path": "app/window/feedback",
+          "offset": 5107,
+          "length": 1191,
+          "flags": 0
+        },
+        {
+          "path": "app/window/keyboard",
+          "offset": 3759,
+          "length": 1344,
+          "flags": 0
+        },
+        {
+          "path": "app/messagebox/checkbox_icon",
+          "offset": 4817415,
+          "length": 491,
+          "flags": 0
+        },
+        {
+          "path": "app/messagebox/yellow_warning",
+          "offset": 4816372,
+          "length": 1039,
+          "flags": 0
+        },
+        {
+          "path": "app/messagebox/warning",
+          "offset": 4817910,
+          "length": 742,
+          "flags": 0
+        },
+        {
+          "path": "app/dashboard/close",
+          "offset": 18526,
+          "length": 1306,
+          "flags": 0
+        },
+        {
+          "path": "app/dashboard/garmin",
+          "offset": 12126,
+          "length": 6396,
+          "flags": 0
+        },
+        {
+          "path": "app/dashboard/local_source",
+          "offset": 19836,
+          "length": 1688,
+          "flags": 0
+        },
+        {
+          "path": "app/dashboard/close_hover",
+          "offset": 10816,
+          "length": 1306,
+          "flags": 0
+        },
+        {
+          "path": "app/dashboard/warning",
+          "offset": 21528,
+          "length": 742,
+          "flags": 0
+        },
+        {
+          "path": "app/keyframe/transition_selected",
+          "offset": 25490,
+          "length": 336,
+          "flags": 0
+        },
+        {
+          "path": "app/keyframe/keyframe_guide_gif",
+          "offset": 25830,
+          "length": 3506482,
+          "flags": 0
+        },
+        {
+          "path": "app/footage/music",
+          "offset": 24266,
+          "length": 1220,
+          "flags": 0
+        },
+        {
+          "path": "app/footage/quickaddbtn",
+          "offset": 22274,
+          "length": 1988,
+          "flags": 0
+        }
+      ]
+    }
+  ]
+}

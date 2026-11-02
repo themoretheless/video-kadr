@@ -1,0 +1,9 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { startFilmcraftAnalysis, listFilmcraftAnalysis, getFilmcraftAnalysis, cancelFilmcraftAnalysis } from '$lib/api'
+afterEach(()=>vi.unstubAllGlobals())
+it('uses authenticated durable endpoints with exact snapshot and encoded cursor/id',async()=>{
+ const fetch=vi.fn().mockImplementation(()=>Promise.resolve(new Response(JSON.stringify({jobId:'job',jobs:[],nextCursor:null}),{status:200,headers:{'Content-Type':'application/json'}})));vi.stubGlobal('fetch',fetch);const signal=new AbortController().signal;const input={document:'{"project":{}}',sequenceId:'18446744073709551615',timeFrames:'9007199254740993',sources:{'1':'video'}};
+ await startFilmcraftAnalysis('owner',input,signal);expect(fetch).toHaveBeenLastCalledWith('/api/compositions/filmcraft/analysis-jobs',expect.objectContaining({method:'POST',body:JSON.stringify(input),headers:expect.objectContaining({Authorization:'Bearer owner'}),signal}));
+ await listFilmcraftAnalysis('owner','a/b',signal);expect(fetch).toHaveBeenLastCalledWith('/api/compositions/filmcraft/analysis-jobs?cursor=a%2Fb',expect.objectContaining({signal}));await getFilmcraftAnalysis('owner','a/b',signal);expect(fetch).toHaveBeenLastCalledWith('/api/jobs/a%2Fb',expect.objectContaining({headers:expect.objectContaining({Authorization:'Bearer owner'}),signal}));await cancelFilmcraftAnalysis('owner','a/b',signal);expect(fetch).toHaveBeenLastCalledWith('/api/jobs/a%2Fb/cancel',expect.objectContaining({method:'POST',headers:expect.objectContaining({Authorization:'Bearer owner'}),signal}));
+})
+it('surfaces cancellation permission failure',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({error:'forbidden'}),{status:403})));await expect(cancelFilmcraftAnalysis('owner','job')).rejects.toThrow()})

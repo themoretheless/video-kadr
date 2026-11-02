@@ -1,0 +1,16 @@
+[package]
+name = "video-kadr-vt"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+
+[dependencies]
+filmcraft-isobmff = { path = "../filmcraft-isobmff" }
+video-kadr-hevc-frame = { path = "../../hevc-frame" }
+
+[workspace]
+
+[dev-dependencies]
+filmcraft-aac = { path = "../filmcraft-aac", default-features = false }

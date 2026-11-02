@@ -1,0 +1,6 @@
+use filmcraft_project::TrackItem;use filmcraft_time::{Tick,FrameRate};use serde_json::{Value,json};
+fn main(){let input:Value=serde_json::from_slice(&std::fs::read(std::env::args().nth(1).unwrap()).unwrap()).unwrap();let base=&input["cases"][0]["document"]["project"]["items"]["6"]["kind"]["Sequence"]["video_tracks"][0]["items"][0];let mut cases=vec![];const T:i64=254016000000;
+ for mode in ["frameSampling","frameBlending","opticalFlow"]{for speed in [-2.,-0.5,0.,0.5,1.,2.5]{for reverse in [false,true]{for hold in [false,true]{for(num,den)in [(24,1),(24000,1001),(120000,1001),(0,0)]{for at in [0,T-1,T,T+T/13,2*T,3*T+17,-T,9007199254740993,10*T]{
+  let mut raw=base.clone();raw["time_interpolation"]=json!(mode);raw["speed"]=json!(speed);raw["reverse"]=json!(reverse);raw["start"]=json!(T);raw["duration"]=json!(10*T);raw["source_in"]=json!(-T/3);raw["frame_hold"]=if hold{json!(5*T/13)}else{Value::Null};let item:TrackItem=serde_json::from_value(raw.clone()).unwrap();let result=filmcraft_render::interpolation_blend(&item,Tick(at),FrameRate::new(num,den)).map(|(next,w)|json!({"next":next.0,"weightBits":w.to_bits()}));cases.push(json!({"item":raw,"at":at,"rate":{"num":num,"den":den},"result":result}));
+ }}}}}}
+ println!("{}",json!({"commit":"5231852443363f001c3f6b396dd9b1e6461ae2be","cases":cases}));}

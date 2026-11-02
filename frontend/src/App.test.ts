@@ -1,6 +1,9 @@
+import { importPreferences } from '$lib/state/importPreferences.svelte.js'
 // @ts-expect-error Vitest's SSR condition exposes server-only mount; this test needs Svelte's client entry.
 import { mount, tick, unmount } from '../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// Preload the lazy workspace: these tests exercise keyboard routing, not module-load latency.
+import './lib/components/composition/CompositionWorkspace.svelte'
 import App from './App.svelte'
 import {
   addMediaInfoToComposition,
@@ -30,6 +33,8 @@ class MemoryStorage implements Storage {
 let target: HTMLDivElement
 
 beforeEach(() => {
+  // Exercise embedded-audio authoring independently of the default import policy.
+  importPreferences.autoPairAudio = false
   setShortcutStorageForTests(new MemoryStorage())
   resetShortcutBindings()
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -105,7 +110,7 @@ describe('composition keyboard shortcuts', () => {
 
     await vi.waitFor(() => {
       expect(target.querySelector('[aria-label="Название композиции"]')).not.toBeNull()
-    })
+    }, { timeout: 10_000 })
     const projectName = target.querySelector<HTMLInputElement>('[aria-label="Название композиции"]')!
     projectName.focus()
     key(projectName, 'n')
@@ -128,7 +133,7 @@ describe('composition keyboard shortcuts', () => {
     expect(compositionState.transport.playing).toBe(false)
 
     await unmount(component)
-  })
+  }, 15_000)
 
   it('dispatches a customized mapping and keeps frame step equal to one canvas frame', async () => {
     const component = mount(App, { target })
@@ -219,4 +224,17 @@ describe('composition keyboard shortcuts', () => {
     await tick()
     await unmount(component)
   })
+})
+
+it('does not route native timeline focus into the canonical editor shortcut handler',async()=>{
+  const component=mount(App,{target});await tick()
+  const scope=document.createElement('fieldset');scope.setAttribute('data-native-clipboard','')
+  const button=document.createElement('button');scope.append(button);target.append(scope)
+  try {
+    setCompositionPlayhead(2000000)
+    const before=JSON.stringify(compositionState.document)
+    key(button,'b');expect(JSON.stringify(compositionState.document)).toBe(before)
+    key(button,'ArrowRight');expect(compositionState.transport.playheadTicks).toBe(2000000)
+    key(window,'ArrowRight');expect(compositionState.transport.playheadTicks).toBe(2100000)
+  } finally {scope.remove();await unmount(component)}
 })

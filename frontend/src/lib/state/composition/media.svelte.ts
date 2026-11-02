@@ -1,3 +1,10 @@
+import {attachCompositionVideoRegion} from '../../composition/videoRegionAttach'
+import {replaceVideoCutoutMedia} from '../../composition/videoCutoutMedia'
+import {replaceCutoutMedia} from '../../composition/cutoutMedia'
+import {replaceEnhancedVideo,switchEnhancedVideo} from '../../composition/enhancedVideoReplace'
+import { replaceClipMedia } from '../../composition/replaceMedia.js'
+import { importPreferences } from '../importPreferences.svelte.js'
+import { pairImportedVideoAudio } from '../../composition/importPair.js'
 import {
   registerSource,
   findClipLocation
@@ -35,18 +42,17 @@ import {
   isMediaEntry,
   positiveInteger,
   positiveNumber,
-  rememberMedia,
+  makeId,
   scheduleAutosave,
   selectCompositionClip,
   validFps
 } from './core.svelte.js'
 
-export function addMediaInfoToComposition(media: MediaInfo): string {
+export function addMediaInfoToComposition(media: MediaInfo, options: { pairAudio?: boolean } = {}): string {
   const kind = inferMediaType(media)
   const source = compositionSourceFromMediaInfo(media, kind)
   let document = compositionState.document
   if (!Object.hasOwn(document.sources, source.id)) document = registerSource(document, source)
-  rememberMedia(media, kind)
 
   let clipId: string
   if (kind === 'video') {
@@ -61,6 +67,7 @@ export function addMediaInfoToComposition(media: MediaInfo): string {
           width: evenDimension(media.width, DEFAULT_CANVAS.width, 3840),
           height: evenDimension(media.height, DEFAULT_CANVAS.height, 2160),
           fps: validFps(media.fps),
+          fpsRate: undefined,
         },
       }
       assertValidComposition(document)
@@ -68,6 +75,7 @@ export function addMediaInfoToComposition(media: MediaInfo): string {
     const result = addVideo(document, source)
     document = result.document
     clipId = result.clipId
+    if ((options.pairAudio ?? importPreferences.autoPairAudio) && source.hasAudio) document = pairImportedVideoAudio(document, clipId, { audioTrackId: makeId('audio-track'), audioClipId: makeId('audio-clip'), linkId: makeId('link') })
   } else if (kind === 'audio') {
     const result = addAudio(document, source)
     document = result.document
@@ -78,7 +86,8 @@ export function addMediaInfoToComposition(media: MediaInfo): string {
     clipId = result.clipId
   }
 
-  commitDocument(document)
+  const mediaBinding: CompositionMedia = { id: media.id, url: media.url, filename: media.filename, mediaType: kind, duration: media.duration, width: media.width, height: media.height, fps: media.fps ?? null, vcodec: media.vcodec ?? null, acodec: media.acodec ?? null }
+  commitDocument(document, { ...compositionState.media, [media.id]: mediaBinding })
   const location = findClipLocation(compositionState.document, clipId)
   selectCompositionClip(location.track.id, clipId)
   setEditorMode('composition')
@@ -228,6 +237,32 @@ export function relinkCompositionSource(
 }
 
 
+/** Stage source registration and clip replacement without changing the live editor. */
+function prepareClipLibraryReplacement(clipId: string, entry: MediaEntry, processed = false) {
+  if (entry.kind !== 'source') throw new Error('Выберите исходный файл из медиатеки')
+  if (!entry.url || !entry.filename) throw new Error('У файла нет доступной привязки')
+  const source = compositionSourceFromLibraryEntry(entry)
+  const existing = compositionState.document.sources[source.id]
+  if (existing && (existing.kind !== source.kind || existing.durationTicks !== source.durationTicks || existing.width !== source.width || existing.height !== source.height || existing.hasAudio !== source.hasAudio)) throw new Error('Метаданные файла отличаются от зарегистрированного источника')
+  const staged = existing ? compositionState.document : registerSource(compositionState.document, source)
+  return { document: replaceClipMedia(staged, clipId, source.id, undefined, processed), source }
+}
+
+export function replaceClipLibraryMediaReason(clipId: string, entry: MediaEntry): string | null {
+  try { prepareClipLibraryReplacement(clipId, entry); return null }
+  catch (error) { return error instanceof Error ? error.message : 'Не удалось заменить медиа' }
+}
+
+export function replaceCompositionClipFromLibrary(clipId: string, entry: MediaEntry, processed = false): void {
+  const { document, source } = prepareClipLibraryReplacement(clipId, entry, processed)
+  const binding: CompositionMedia = {
+    id: source.id, url: entry.url, filename: entry.filename, mediaType: source.kind,
+    duration: source.durationTicks / COMPOSITION_TIME_BASE, width: source.width, height: source.height,
+    fps: source.fps, vcodec: source.vcodec, acodec: source.acodec,
+  }
+  commitDocument(document, { ...compositionState.media, [source.id]: binding })
+}
+
 export function compositionSourceFromMediaInfo(media: MediaInfo, kind = inferMediaType(media)): CompositionSource {
   const durationTicks = kind === 'image' ? 0 : Math.round(positiveNumber(media.duration) * COMPOSITION_TIME_BASE)
   if (kind !== 'image' && durationTicks <= 0) throw new Error('У файла нет корректной длительности')
@@ -281,3 +316,42 @@ export function inferMediaType(media: {
   return (media.width ?? 0) > 0 && (media.height ?? 0) > 0 ? 'video' : 'audio'
 }
 
+
+/** One authoring commit for the learned video and its linked source-audio group. */
+export function replaceCompositionEnhancedVideoFromLibrary(clipId:string,entry:MediaEntry):void{
+ if(entry.kind!=='source'||!entry.url||!entry.filename)throw new Error('Выберите исходное видео из медиатеки')
+ const source=compositionSourceFromLibraryEntry(entry)
+ const document=replaceEnhancedVideo(compositionState.document,clipId,source)
+ const binding:CompositionMedia={id:source.id,url:entry.url,filename:entry.filename,mediaType:source.kind,duration:source.durationTicks/COMPOSITION_TIME_BASE,width:source.width,height:source.height,fps:source.fps,vcodec:source.vcodec,acodec:source.acodec}
+ commitDocument(document,{...compositionState.media,[source.id]:binding})
+}
+export function setCompositionEnhancedVideoVersion(clipId:string,copy:boolean):void{
+ commitDocument(switchEnhancedVideo(compositionState.document,clipId,copy))
+}
+
+/** Retain all editable cutout sources and the recipe in one authoring transaction. */
+export function replaceCompositionCutoutFromLibrary(clipId:string,entry:import('$lib/api').CutoutAcceptedMedia):void{
+ if(!entry.cutout){replaceCompositionClipFromLibrary(clipId,entry,true);return}
+ const copy=compositionSourceFromLibraryEntry(entry),source=compositionSourceFromLibraryEntry(entry.cutout.source),mask=compositionSourceFromLibraryEntry(entry.cutout.mask)
+ const document=replaceCutoutMedia(compositionState.document,clipId,{copy,source,mask,regions:entry.cutout.regions?.map(compositionSourceFromLibraryEntry)},entry.cutout.snapshot)
+ const bindings={...compositionState.media}
+ for(const data of [entry,entry.cutout.source,entry.cutout.mask,...(entry.cutout.regions??[])]){const value=compositionSourceFromLibraryEntry(data);bindings[value.id]={id:value.id,url:data.url,filename:data.filename,mediaType:value.kind,duration:value.durationTicks/COMPOSITION_TIME_BASE,width:value.width,height:value.height,fps:value.fps,vcodec:value.vcodec,acodec:value.acodec}}
+ commitDocument(document,bindings)
+}
+
+export function replaceCompositionVideoCutoutFromLibrary(clipId:string,entry:import('$lib/api').SavedPersonVideo):void{
+ if(!entry.videoCutout){replaceCompositionEnhancedVideoFromLibrary(clipId,entry);return}
+ const copy=compositionSourceFromLibraryEntry(entry),source=compositionSourceFromLibraryEntry(entry.videoCutout.source),mask=compositionSourceFromLibraryEntry(entry.videoCutout.mask)
+ const document=replaceVideoCutoutMedia(compositionState.document,clipId,{copy,source,mask},entry.videoCutout.snapshot),bindings={...compositionState.media}
+ for(const data of [entry,entry.videoCutout.source,entry.videoCutout.mask]){const value=compositionSourceFromLibraryEntry(data);bindings[value.id]={id:value.id,url:data.url,filename:data.filename,mediaType:value.kind,duration:value.durationTicks/COMPOSITION_TIME_BASE,width:value.width,height:value.height,fps:value.fps,vcodec:value.vcodec,acodec:value.acodec}}
+ commitDocument(document,bindings)
+}
+
+
+export function attachCompositionVideoRegionFromLibrary(clipId:string,expected:import('$lib/composition/types').VideoMaskAttachment,entry:import('$lib/api').SavedSamVideoRegion):void{
+ const document=attachCompositionVideoRegion(compositionState.document,clipId,expected,compositionSourceFromLibraryEntry(entry.source),compositionSourceFromLibraryEntry(entry.mask),entry.snapshot)
+ if(document===compositionState.document)return
+ const bindings={...compositionState.media}
+ for(const data of [entry.source,entry.mask]){const value=compositionSourceFromLibraryEntry(data);bindings[value.id]={id:value.id,url:data.url,filename:data.filename,mediaType:value.kind,duration:value.durationTicks/COMPOSITION_TIME_BASE,width:value.width,height:value.height,fps:value.fps,vcodec:value.vcodec,acodec:value.acodec}}
+ commitDocument(document,bindings)
+}

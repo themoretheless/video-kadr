@@ -1,0 +1,33 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "observation": "supplemental original-byte static read; not runtime or new REA Evidence",
+  "tableVirtualAddress": "0x103c11b48",
+  "tableOriginalFileOffset": "0x3c15b48",
+  "tableHex": "06002d54000086",
+  "branchBase": "0x1027aa840",
+  "versionTargets": {
+    "0": "0x1027aa858",
+    "1": "0x1027aa840",
+    "2": "0x1027aa8f4",
+    "3": "0x1027aa990",
+    "4": "0x1027aa840",
+    "5": "0x1027aa840",
+    "6": "0x1027aaa58"
+  },
+  "lens71": {
+    "coefficientBranch": "0x1027a8090",
+    "degreePolynomial": [
+      0.0,
+      0.02249,
+      -5.79e-05,
+      1.932e-06,
+      -1.295e-08
+    ],
+    "coefficientDataAddress": "0x103917e00",
+    "coefficientImmediateBits": "0xbe4bcf56796544f4",
+    "parserFovBranch": "0x1027aa30c",
+    "staticMapFovBranch": "0x101b55448",
+    "fovDegrees": 200.0
+  },
+  "qualification": "v6 lens193 and legacy dual flags1095/lens71; other branches remain unqualified"
+}

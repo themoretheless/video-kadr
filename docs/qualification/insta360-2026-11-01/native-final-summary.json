@@ -1,0 +1,9 @@
+{
+  "suites": 13,
+  "passed": 81,
+  "failed": 0,
+  "ignored": 12,
+  "actualX4SelectedOriginalTests": 3,
+  "additionalActualX6OpticalRun": "14 tests passed; overlaps normal optical suite; not added to unique total",
+  "scope": "current source frozen coherent backend library; budget unit and neural HTTP tracked separately"
+}

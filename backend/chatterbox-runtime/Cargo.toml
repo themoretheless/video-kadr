@@ -1,0 +1,18 @@
+[package]
+name = "video-kadr-chatterbox"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-27"] }
+tokenizers = { version = "=0.23.2", default-features = false, features = ["fancy-regex"] }
+[dev-dependencies]
+hound = "3.5"
+
+# Keep bulk model integrity checks usable in local development builds.
+[profile.dev.package.sha2]
+opt-level = 3

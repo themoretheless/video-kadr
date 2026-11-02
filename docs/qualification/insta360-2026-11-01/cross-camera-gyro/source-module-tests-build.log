@@ -1,0 +1,24 @@
+/Users/themoretheless/.rustup/toolchains/1.89.0-aarch64-apple-darwin/bin/rustc --edition=2021 --test /Users/themoretheless/.codex/visualizations/2026/10/30/01a18e98-3987-7a42-8c20-af0016c55942/x4-gyro-source-tests.rs -L dependency=/Users/themoretheless/Documents/Sources/video-kadr/backend/target/debug/deps -o /Users/themoretheless/.codex/visualizations/2026/10/30/01a18e98-3987-7a42-8c20-af0016c55942/x4-gyro-source-tests --extern serde=/Users/themoretheless/Documents/Sources/video-kadr/backend/target/debug/deps/libserde-b735f1a1957163ea.rlib --extern serde_json=/Users/themoretheless/Documents/Sources/video-kadr/backend/target/debug/deps/libserde_json-c79750080b2fcddc.rlib --extern anyhow=/Users/themoretheless/Documents/Sources/video-kadr/backend/target/debug/deps/libanyhow-269d548801d75567.rlib
+error: an inner attribute is not permitted in this context
+  --> /Users/themoretheless/.codex/visualizations/2026/10/30/01a18e98-3987-7a42-8c20-af0016c55942/x4-gyro-source-tests.rs:2:1
+   |
+2  |   #![allow(dead_code)]
+   |   ^^^^^^^^^^^^^^^^^^^^
+3  | / mod domain {
+4  | |  pub mod spherical_video {#[derive(Clone,Copy,Debug,PartialEq,serde::Serialize,serde::Deserialize)] #[serde(rename_all="camelCase")] pub ...
+5  | |  #[path="/Users/themoretheless/Documents/Sources/video-kadr/backend/src/domain/insta360_metadata.rs"] pub mod insta360_metadata;
+6  | |  #[path="/Users/themoretheless/Documents/Sources/video-kadr/backend/src/domain/insta360_camera_profile.rs"] pub mod insta360_camera_profile;
+...  |
+12 | |  #[path="/Users/themoretheless/Documents/Sources/video-kadr/backend/src/domain/rolling_shutter.rs"] pub mod rolling_shutter;
+13 | | }
+   | |_- the inner attribute doesn't annotate this module
+   |
+   = note: inner attributes, like `#![no_std]`, annotate the item enclosing them, and are usually found at the beginning of source files
+help: to annotate the module, change the attribute from inner to outer style
+   |
+2  - #![allow(dead_code)]
+2  + #[allow(dead_code)]
+   |
+
+error: aborting due to 1 previous error
+

@@ -14,12 +14,34 @@ output-format = "terse"
 
 [features]
 default = []
+# Small integration harnesses for original Concat GPU comparisons; no HTTP surface.
+concat-qualification = []
 tokio-console = ["dep:console-subscriber"]
 # Contract-only / research ports not wired into HTTP handlers.
 # Enable for property_contracts chunk tests and self-tests of ghost modules.
 spec-contracts = []
 
 [dependencies]
+video-kadr-motion-kernels = { path = "motion-kernels" }
+zip = { version = "2", default-features = false }
+tempfile = "3"
+base64 = "0.22"
+concat-text = { path = "vendor/concat-text" }
+video-kadr-mask-core = { path = "mask-core" }
+filmcraft-color = { path = "vendor/filmcraft-color" }
+filmcraft-text = { path = "vendor/filmcraft-text" }
+filmcraft-time = { path = "vendor/filmcraft-time" }
+filmcraft-dnx = { path = "vendor/filmcraft-dnx", default-features = false }
+filmcraft-h264enc = { path = "vendor/filmcraft-h264enc", default-features = false }
+filmcraft-aac = { path = "vendor/filmcraft-aac", default-features = false }
+filmcraft-mxf = { path = "vendor/filmcraft-mxf" }
+filmcraft-apv = { path = "vendor/filmcraft-apv", default-features = false }
+filmcraft-prores = { path = "vendor/filmcraft-prores", default-features = false }
+filmcraft-isobmff = { path = "vendor/filmcraft-isobmff" }
+filmcraft-captions = { path = "vendor/filmcraft-captions" }
+filmcraft-audio-dsp = { path = "vendor/filmcraft-audio-dsp" }
+weftcut-conversion = { path = "vendor/weftcut-conversion" }
+weftcut-eval = { path = "vendor/weftcut-eval", features = ["serde", "hosted"] }
 axum = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io", "rt"] }
@@ -30,6 +52,8 @@ serde = { version = "1", features = ["derive"] }
 # parsing keeps serde round-trips bit-stable instead of using the smaller,
 # approximate default float parser.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# Concat format-2 effect passes use RGBA16F working-texture boundaries.
+half = "2.7"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
@@ -41,10 +65,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 console-subscriber = { version = "0.4", optional = true }
 libc = "0.2"
+libloading = "0.8"
 # Embedded SQLite (statically bundled) for persistent projects / jobs.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros"] }
 # Hashing the (source + edit) into a render-cache key.
 sha2 = "0.10"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
+image-compare = "0.5"
 # Caching and memoization for performance optimization
 lazy_static = "1.4"
 # Local accounts use memory-hard password hashing.
@@ -60,6 +87,7 @@ reqwest = { version = "0.13.4", default-features = false, features = ["form", "j
 ring = "0.17"
 
 [dev-dependencies]
+flate2 = "1"
 # `util` brings `tower::ServiceExt::oneshot`, used to drive the router in tests
 # without binding a socket. `tempfile` gives each test an isolated storage dir.
 tower = { version = "0.5", features = ["util"] }
@@ -78,3 +106,20 @@ harness = false
 inherits = "release"
 debug = 1
 strip = false
+
+# Keep bulk model integrity checks usable in local development builds.
+[profile.dev.package.sha2]
+opt-level = 3
+
+# Native 4K motion/intra analysis must remain usable in development exports.
+[profile.dev.package.filmcraft-h264enc]
+opt-level = 3
+
+# Optimize only measured CV kernels; preserve renderer warp-math golden bits.
+[profile.dev.package.video-kadr-motion-kernels]
+opt-level = 1
+debug-assertions = true
+overflow-checks = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+video-kadr-vt = { path = "vendor/video-kadr-vt" }

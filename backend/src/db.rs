@@ -35,10 +35,13 @@ pub(crate) fn is_lut_quota_exceeded(error: &anyhow::Error) -> bool {
 
 mod auth;
 mod composition_projects;
+pub(crate) use composition_projects::extract_document_source_ids;
 mod library_metadata;
 mod output_access;
 mod project_migration;
+mod project_narration;
 mod project_reviews;
+mod filmcraft_export_presets;
 mod publish_connections;
 mod publish_oauth;
 mod publish_uploads;
@@ -52,6 +55,7 @@ pub(crate) use composition_projects::valid_source_id as valid_composition_source
 // SQLite adapter, so clients never guess a different project envelope size.
 pub use composition_projects::{
     CompositionProject, COMPOSITION_PROJECT_MODE, COMPOSITION_PROJECT_SCHEMA_VERSION,
+    composition_document_byte_limit, MAX_LUT_PROJECT_DOCUMENT_BYTES, MAX_VIDEO_CUTOUT_SETTINGS_BYTES, MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES,
     MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES, MAX_COMPOSITION_PROJECT_NAME_BYTES,
     MAX_COMPOSITION_PROJECT_SOURCES,
 };
@@ -67,6 +71,85 @@ pub use space_templates::{SpaceTemplate, MAX_SPACE_TEMPLATES, MAX_SPACE_TEMPLATE
 pub use spaces::{Space, SpaceInviteCreated, SpaceMember, SpaceRole};
 
 const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS enhance_video_job_assets(job_id TEXT NOT NULL,project_id TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(job_id,project_id));
+CREATE TABLE IF NOT EXISTS person_video_job_corrections(job_id TEXT PRIMARY KEY,base_job_id TEXT NOT NULL,mask_hash TEXT NOT NULL,corrections_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS person_video_project_origins(job_id TEXT PRIMARY KEY,origin_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS person_video_project_resources(project_id TEXT NOT NULL,role TEXT NOT NULL,file_hash TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(project_id,role,file_hash));
+CREATE TABLE IF NOT EXISTS person_video_job_assets(job_id TEXT NOT NULL,project_id TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(job_id,project_id));
+CREATE TABLE IF NOT EXISTS person_video_job_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,source_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS person_video_job_owner ON person_video_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS enhance_video_job_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,source_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS enhance_video_job_owner ON enhance_video_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS enhance_video_job_settings(job_id TEXT PRIMARY KEY,factor INTEGER NOT NULL CHECK(factor IN(1,2,4)));
+CREATE TABLE IF NOT EXISTS cutout_models(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,bytes INTEGER NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS cutout_model_selection(owner TEXT PRIMARY KEY,model_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cutout_model_removals(owner TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS cutout_model_epochs(owner TEXT NOT NULL,id TEXT NOT NULL,epoch INTEGER NOT NULL CHECK(typeof(epoch)='integer' AND epoch>=0),PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS cutout_model_download_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,catalog_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS cutout_model_download_owner ON cutout_model_download_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS sam_models(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,bytes INTEGER NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS sam_model_selection(owner TEXT PRIMARY KEY,model_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sam_model_removals(owner TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS sam_model_epochs(owner TEXT NOT NULL,id TEXT NOT NULL,epoch INTEGER NOT NULL CHECK(typeof(epoch)='integer' AND epoch>=0),PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS sam_model_download_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,catalog_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS sam_model_download_owner ON sam_model_download_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS enhance_models(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,bytes INTEGER NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS enhance_model_selection(owner TEXT PRIMARY KEY,model_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS enhance_model_removals(owner TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS enhance_model_epochs(owner TEXT NOT NULL,id TEXT NOT NULL,epoch INTEGER NOT NULL CHECK(typeof(epoch)='integer' AND epoch>=0),PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS enhance_model_download_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,catalog_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS enhance_model_download_owner ON enhance_model_download_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS tts_model_download_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,catalog_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS tts_model_download_owner ON tts_model_download_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS tts_model_epochs(owner TEXT NOT NULL,id TEXT NOT NULL,epoch INTEGER NOT NULL CHECK(typeof(epoch)='integer' AND epoch>=0),PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS tts_model_removals(owner TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(owner,id));
+INSERT OR IGNORE INTO tts_model_epochs(owner,id,epoch) SELECT owner,id,1 FROM tts_model_removals;
+CREATE TABLE IF NOT EXISTS tts_models(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,bytes INTEGER NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS tts_model_selection(owner TEXT PRIMARY KEY,model_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS tts_references(id TEXT PRIMARY KEY,owner TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS tts_reference_removals(reference_id TEXT PRIMARY KEY REFERENCES tts_references(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS tts_reference_sources(reference_id TEXT PRIMARY KEY REFERENCES tts_references(id) ON DELETE CASCADE,source_id TEXT NOT NULL,source_hash TEXT NOT NULL,start_us INTEGER NOT NULL,end_us INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS sam_job_assets(job_id TEXT NOT NULL,project_id TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(job_id,project_id));
+CREATE TABLE IF NOT EXISTS sam_job_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,source_id TEXT NOT NULL,points_json TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS sam_job_owner ON sam_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS concat_video_smart_operations(owner TEXT NOT NULL,project_id TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT,job_id TEXT NOT NULL UNIQUE,source_id TEXT,source_hash TEXT,accepted_json TEXT,cancelled INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,PRIMARY KEY(owner,project_id,operation_id),FOREIGN KEY(project_id) REFERENCES composition_projects(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS cutout_job_edits(job_id TEXT PRIMARY KEY,base_job_id TEXT NOT NULL,settings_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cutout_job_subjects(job_id TEXT PRIMARY KEY,subject_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS concat_video_project_caches(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,source_id TEXT NOT NULL,video_hash TEXT NOT NULL,model_hash TEXT NOT NULL DEFAULT '88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',runtime_hash TEXT NOT NULL,manifest_hash TEXT NOT NULL,generation TEXT NOT NULL,FOREIGN KEY(project_id) REFERENCES composition_projects(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS concat_video_project_cache_lookup ON concat_video_project_caches(project_id,source_id,video_hash,runtime_hash);
+CREATE TABLE IF NOT EXISTS concat_video_model_choices(project_id TEXT NOT NULL,source_id TEXT NOT NULL,video_hash TEXT NOT NULL,model_hash TEXT NOT NULL,runtime_hash TEXT NOT NULL,PRIMARY KEY(project_id,source_id,video_hash),FOREIGN KEY(project_id) REFERENCES composition_projects(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS cutout_project_regions(project_id TEXT NOT NULL,mask_file_hash TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(project_id,mask_file_hash));
+CREATE TABLE IF NOT EXISTS cutout_project_masks(project_id TEXT NOT NULL,mask_file_hash TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(project_id,mask_file_hash));
+CREATE TABLE IF NOT EXISTS cutout_job_assets(job_id TEXT NOT NULL,project_id TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(job_id,project_id));
+CREATE TABLE IF NOT EXISTS cutout_job_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,source_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS cutout_job_owner ON cutout_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS selfie_job_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,source_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS selfie_job_owner ON selfie_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS enhance_job_settings(job_id TEXT PRIMARY KEY,factor INTEGER NOT NULL CHECK(factor IN(1,2,4)));
+CREATE TABLE IF NOT EXISTS enhance_job_assets(job_id TEXT NOT NULL,project_id TEXT NOT NULL,source_id TEXT NOT NULL UNIQUE,PRIMARY KEY(job_id,project_id));
+CREATE TABLE IF NOT EXISTS enhance_job_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,source_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS enhance_job_owner ON enhance_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS tts_job_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,voice_id INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS tts_job_access_owner ON tts_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS tts_job_audio(job_id TEXT PRIMARY KEY,metadata_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS speech_model_download_access(job_id TEXT PRIMARY KEY,owner TEXT NOT NULL,catalog_id TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS speech_model_removals(owner TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(owner,id));
+
+CREATE TABLE IF NOT EXISTS speech_models(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,bytes INTEGER NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS speech_model_selection(owner TEXT PRIMARY KEY,model_id TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS stabilization_checkpoints(job_id TEXT PRIMARY KEY, cache_key BLOB NOT NULL, state_json BLOB NOT NULL);
+
+CREATE TABLE IF NOT EXISTS filmcraft_video_job_access (job_id TEXT PRIMARY KEY, owner TEXT NOT NULL, sources_json TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_filmcraft_video_job_owner ON filmcraft_video_job_access(owner,job_id);
+CREATE TABLE IF NOT EXISTS stabilization_job_access (job_id TEXT PRIMARY KEY, owner TEXT NOT NULL, sources_json TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_stabilization_job_owner ON stabilization_job_access(owner,job_id);
+
+CREATE TABLE IF NOT EXISTS speech_job_access (
+    job_id TEXT PRIMARY KEY, owner TEXT NOT NULL, source_id TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_speech_job_owner ON speech_job_access(owner, job_id);
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -144,6 +227,15 @@ impl Db {
             .connect_with(opts)
             .await?;
         sqlx::query(SCHEMA).execute(&pool).await?;
+        // Serialize the additive model-key migration with other opening processes.
+        let mut migration=pool.begin_with("BEGIN IMMEDIATE").await?;
+        let columns=sqlx::query("PRAGMA table_info(concat_video_project_caches)").fetch_all(&mut *migration).await?;
+        if !columns.iter().any(|row|row.get::<String,_>("name")=="model_hash"){
+            sqlx::query("ALTER TABLE concat_video_project_caches ADD COLUMN model_hash TEXT NOT NULL DEFAULT '88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828'").execute(&mut *migration).await?;
+        }
+        sqlx::query("CREATE INDEX IF NOT EXISTS concat_video_project_cache_model_lookup ON concat_video_project_caches(project_id,source_id,video_hash,model_hash,runtime_hash)").execute(&mut *migration).await?;
+        migration.commit().await?;
+
         // Existing DBs created before error_kind still need the column.
         let _ = sqlx::query("ALTER TABLE jobs ADD COLUMN error_kind TEXT")
             .execute(&pool)
@@ -152,7 +244,9 @@ impl Db {
         composition_projects::migrate(&pool).await?;
         auth::migrate(&pool).await?;
         project_reviews::migrate(&pool).await?;
+        filmcraft_export_presets::migrate(&pool).await?;
         spaces::migrate(&pool).await?;
+        project_narration::migrate(&pool).await?;
         space_brand::migrate(&pool).await?;
         space_templates::migrate(&pool).await?;
         library_metadata::migrate(&pool).await?;

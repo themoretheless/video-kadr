@@ -1,0 +1,32 @@
+import {readFile} from 'node:fs/promises'
+import {spawnSync} from 'node:child_process'
+import {expect,test} from '@playwright/test'
+if(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE)test.use({launchOptions:{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}})
+for(const background of [0,1,2])for(const unmultiply of [false,true])for(const invert of [false,true])test(`real Logo Cutout background${background} fringe${unmultiply} invert${invert} six keys undo and original preview`,async({page,request})=>{
+ const fixture=JSON.parse(await readFile('../backend/tests/fixtures/filmcraft-logo-cutout.json','utf8'))
+ const original=fixture.cases.find((c:any)=>c.width===18&&c.height===10&&c.parameters.background===background&&c.parameters.unmultiply===unmultiply&&c.parameters.invert===invert&&c.parameters.threshold===5&&c.parameters.softness===10&&c.parameters.color[0]===.25)
+ expect(original).toBeTruthy()
+ const png=spawnSync('ffmpeg',['-v','error','-f','rawvideo','-pixel_format','rgba','-video_size','18x10','-i','pipe:0','-frames:v','1','-f','image2pipe','-vcodec','png','pipe:1'],{input:Buffer.from(original.rgba)});expect(png.status).toBe(0)
+ const registered=await request.post('/api/auth/register',{data:{username:`logo-cutout-browser-${background}-${unmultiply}-${invert}`,password:'scope-browser-test-password'}});expect(registered.status()).toBe(201)
+ const {token}=await registered.json() as {token:string};const uploaded=await request.post('/api/upload',{headers:{Authorization:`Bearer ${token}`},multipart:{file:{name:'logo-cutout.png',mimeType:'image/png',buffer:png.stdout}}});expect(uploaded.ok()).toBe(true)
+ const {id}=await uploaded.json() as {id:string}
+ const constant=(value:number)=>({mode:'constant',value})
+ const content={schemaVersion:1,timeBase:1000000,canvas:{width:18,height:10,fpsMilli:10000,background:{red:0,green:0,blue:0,alpha:1}},sources:{[id]:{id,kind:'image',durationTicks:0,width:18,height:10,hasAudio:false}},tracks:[{kind:'image',id:'main',name:'Image',hidden:false,locked:false,clips:[{id:'clip',sourceId:id,timelineStartTick:0,durationTicks:1000000,transform:{x:constant(0),y:constant(0),scaleX:constant(1),scaleY:constant(1),rotationDegrees:constant(0),anchorX:0.5,anchorY:0.5},opacity:constant(1),blendMode:'normal',effects:[{kind:"logo_cutout",parameters:original.parameters}],enabled:true}]}]}
+
+ const props={token,project:{schemaVersion:1,root:'root',compositions:{root:{durationUs:1000000,content,instances:[]}}}}
+ await page.addInitScript(value=>localStorage.setItem('video-kadr.live-logo-cutout-test',JSON.stringify(value)),props)
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await page.goto('/e2e/fixtures/live-logo-cutout.html')
+ const history=page.getByLabel('Logo Cutout history');await expect(history).toHaveText('0')
+ const channels=['threshold','softness','colorRed','colorGreen','colorBlue','colorAlpha'] as const
+ for(const[i,channel]of channels.entries()){await page.getByLabel(`clip Logo Cutout ${channel} key`,{exact:true}).click();await expect(history).toHaveText(String(i+1))}
+ const saved=JSON.parse(await page.getByLabel('Logo Cutout document').innerText());const effect=saved.compositions.root.content.tracks[0].clips[0].effects[0];expect(effect.kind).toBe('logo_cutout');expect(Object.keys(effect.animation)).toHaveLength(6);expect(effect.parameters).toEqual(original.parameters)
+ const key=page.getByLabel('clip Logo Cutout threshold 500000 value',{exact:true});await key.locator('xpath=ancestor::details[1]').locator('summary').click();await key.evaluate(element=>{(element as HTMLInputElement).value='3';element.dispatchEvent(new Event('change',{bubbles:true}))});await expect(history).toHaveText('7');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('6');expect(JSON.parse(await page.getByLabel('Logo Cutout document').innerText())).toEqual(saved)
+ const color=page.getByLabel('clip Logo Cutout colorRed',{exact:true});await color.evaluate(element=>{(element as HTMLInputElement).value='0.125';element.dispatchEvent(new Event('change',{bubbles:true}))});await expect(history).toHaveText('7');expect(JSON.parse(await page.getByLabel('Logo Cutout document').innerText()).compositions.root.content.tracks[0].clips[0].effects[0].animation).toEqual(effect.animation);await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('6');expect(JSON.parse(await page.getByLabel('Logo Cutout document').innerText())).toEqual(saved)
+ await page.getByLabel('clip Logo Cutout background',{exact:true}).selectOption(String((background+1)%3));await expect(history).toHaveText('7');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('6');expect(JSON.parse(await page.getByLabel('Logo Cutout document').innerText())).toEqual(saved)
+ for(const name of ['unmultiply','invert'] as const){await page.getByLabel(`clip Logo Cutout ${name}`,{exact:true}).setChecked(!original.parameters[name]);await expect(history).toHaveText('7');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(history).toHaveText('6');expect(JSON.parse(await page.getByLabel('Logo Cutout document').innerText())).toEqual(saved)}
+ const preview=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/compositions/nested-preview');await page.getByRole('button',{name:'Native Preview',exact:true}).click();expect((await preview).status()).toBe(200)
+ const bits=original.bits as number[];const f=(bit:number)=>{const buffer=new ArrayBuffer(4);new Uint32Array(buffer)[0]=bit;return new Float32Array(buffer)[0]!}
+ const expected:number[]=[];for(let i=0;i<bits.length;i+=4){const alpha=f(bits[i+3]!);const a=Math.max(0,Math.min(255,Math.round(alpha*255+1e-4)));for(let c=0;c<3;c++){const v=alpha>1e-6?Math.max(0,f(bits[i+c]!)/alpha):0;const d=v<=.0031308?v*12.92:1.055*Math.pow(v,1/2.4)-.055;expected.push(Math.round(Math.max(0,Math.min(255,Math.round(d*255+1e-4)))*a/255))}expected.push(255)}
+ await expect.poll(()=>page.getByLabel('Logo Cutout preview',{exact:true}).evaluate((element,expected)=>{const canvas=element as HTMLCanvasElement;if(canvas.width!==18||canvas.height!==10)return false;const pixels=canvas.getContext('2d')!.getImageData(0,0,18,10).data;for(let i=0;i<pixels.length;i++)if(Math.abs(pixels[i]!-expected[i]!)>1)return false;return true},expected)).toBe(true)
+ await expect(page.getByLabel('Logo Cutout error')).toHaveText('');expect(errors).toEqual([])
+})

@@ -348,7 +348,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.composition-inspector { display: grid; gap: 14px; padding: 14px; }
+.composition-inspector { display: grid; min-width: 0; gap: 14px; padding: 14px; }
+.composition-inspector-head { flex-wrap: wrap; }
 .composition-inspector h2 { margin: 0; font-size: 16px; }
 .composition-inspector-head,
 .composition-inspector-section,
@@ -361,7 +362,7 @@
 .composition-inspector-section { align-items: flex-start; }
 .composition-inspector-section strong { min-width: 0; overflow-wrap: anywhere; }
 .composition-inspector-empty { margin: 0; color: var(--muted); font-size: 13px; }
-.composition-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.composition-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .composition-form-grid label:first-child { grid-column: 1 / -1; }
 .composition-grid-wide { grid-column: 1 / -1; }
 .composition-form-grid label,
@@ -529,12 +530,14 @@
 .composition-markers-table input[type='color'] { width: 32px; height: 28px; padding: 2px; }
 .composition-marker-actions { display: flex; gap: 4px; }
 .composition-timeline-scroll {
+  position: relative;
   min-width: 0;
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel-3);
 }
+.composition-marquee { position: absolute; border: 1px solid var(--accent); background: var(--accent-soft); pointer-events: none; z-index: 5; }
 .composition-ruler-row,
 .composition-track-row {
   display: grid;
@@ -652,7 +655,14 @@
 }
 .mini-icon:hover:not(:disabled), .mini-icon.active { border-color: var(--accent); color: var(--text); }
 .mini-icon:disabled { opacity: .3; cursor: default; }
-.composition-track-lane { position: relative; height: 64px; overflow: hidden; cursor: crosshair; }
+.composition-track-lane, .composition-new-track-lane { position: relative; height: 64px; overflow: hidden; cursor: crosshair; }
+.composition-new-track-drop { min-height: 28px; outline: 1px dashed var(--border); outline-offset: -1px; }
+.composition-new-track-drop.active { outline-color: var(--accent); background: var(--accent-soft); }
+.composition-new-track-drop .composition-new-track-lane { height: 28px; }
+.composition-new-track-drop .composition-copy-ghost { top: 3px; height: 22px; }
+.composition-new-track-drop.invalid { outline-color: var(--danger); }
+.composition-copy-ghost { position: absolute; top: 7px; height: 50px; border: 1px dashed var(--accent); background: var(--accent-soft); border-radius: 4px; pointer-events: none; z-index: 2; }
+.composition-copy-ghost.invalid { border-color: var(--danger); }
 .composition-clip {
   position: absolute;
   top: 7px;
@@ -956,3 +966,37 @@
   .shortcut-dialog-actions p { flex-basis: 100%; }
   .shortcut-table tbody td:first-child { display: none; }
 }
+
+.composition-selected-gap { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent) 20%, transparent); outline: 1px solid var(--accent); outline-offset: -1px; pointer-events: none; }
+
+.composition-clip.disabled-clip { opacity: 0.45; }
+
+.composition-clip-menu { position: fixed; z-index: 100; display: grid; min-width: 210px; padding: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+.composition-clip-menu button { padding: 6px 8px; text-align: left; background: transparent; border: 0; color: var(--text); }
+.composition-clip-menu button:focus-visible { background: var(--accent-soft); }
+.composition-clip-menu button[aria-disabled="true"] { opacity: 0.5; }
+
+.composition-clip-controls { border: 0; padding: 0; margin: 0; min-width: 0; }
+.composition-clip-lock { position: absolute; right: 4px; top: 2px; pointer-events: none; color: var(--warning); }
+
+.composition-transition-ghost { pointer-events: none; }
+
+.composition-keyframe-row .composition-track-head { min-height: 24px; padding-block: 0; }
+.composition-keyframe-lane { position: relative; flex-shrink: 0; background: var(--surface); }
+.composition-keyframe-diamond { position: absolute; width: 16px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--text-muted); transform: translate(-50%, -50%); font-size: 12px; }
+.composition-keyframe-diamond.selected { color: var(--accent); }
+.composition-keyframe-diamond:focus-visible { outline: 2px solid var(--accent); }
+
+.composition-track-row.composition-keyframe-row { min-height: 24px; }
+
+.composition-keyframe-curve { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.composition-keyframe-curve polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.composition-keyframe-curve .composition-keyframe-tail { stroke-dasharray: 3 3; opacity: .5; }
+.composition-keyframe-ranges { display: grid; gap: 2px; max-height: 92px; overflow: auto; font-variant-numeric: tabular-nums; }
+.composition-keyframe-ranges small { color: var(--muted); }
+
+.composition-keyframe-diamond { z-index: 1; }
+
+.composition-keyframe-menu { position: fixed; z-index: 1000; display: grid; min-width: 160px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
+
+.composition-keyframe-curve .composition-keyframe-segment-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: context-menu; }

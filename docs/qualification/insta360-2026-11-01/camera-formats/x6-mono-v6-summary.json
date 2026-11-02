@@ -1,0 +1,33 @@
+{
+  "observation": "Authorized Media MP4 embedded metadata; not a second camera model or dual-track qualification",
+  "cameraModel": "Insta360 X6",
+  "firmware": "v1.0.20",
+  "privateExtractSha256": "f82bfc1ce299a01f1f64cb457ec53ccb2f29d5542f73093b65845d2cf97263ba",
+  "calibrations": [
+    {
+      "field": 111,
+      "tokenCount": 29,
+      "lensCount": 1,
+      "referenceSize": [
+        7744,
+        7744
+      ],
+      "lensType": 193,
+      "flags": 393216,
+      "payloadSha256": "2fbf3f052e95dd8268e89de58a77be877b03dcb36217a5262e9cace5f6a30dc2"
+    },
+    {
+      "field": 112,
+      "tokenCount": 29,
+      "lensCount": 1,
+      "referenceSize": [
+        7744,
+        7744
+      ],
+      "lensType": 193,
+      "flags": 393216,
+      "payloadSha256": "2fbf3f052e95dd8268e89de58a77be877b03dcb36217a5262e9cace5f6a30dc2"
+    }
+  ],
+  "admission": "rejected: single-lens square v6 is outside the qualified dual-fisheye contract"
+}

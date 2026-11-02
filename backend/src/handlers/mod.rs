@@ -37,7 +37,7 @@ pub use jobs::{
 };
 
 pub use library::{
-    library_cropdetect_handler, library_delete_handler, library_filmstrip_handler,
+    library_audio_streams_handler, library_cropdetect_handler, library_delete_handler, library_filmstrip_handler,
     library_filmstrip_version_handler, library_list_handler, library_metadata_patch_handler,
     library_metadata_put_handler, library_search_handler, library_thumbnail_handler,
     library_thumbnail_version_handler, source_file_handler,
@@ -314,3 +314,162 @@ mod tests {
         );
     }
 }
+
+mod shots;
+pub use shots::{
+    library_analysis_frame_handler, library_compare_frames_handler, library_shot_measure_handler,
+    library_shot_scan_handler,
+};
+
+mod motion_path;
+pub use motion_path::motion_path_handler;
+
+pub mod position_conversion;
+pub mod animated_color;
+
+pub mod nested_composition;
+
+pub mod tone_curves;
+
+pub mod nested_export;
+
+pub mod color_lut;
+
+pub mod color_match;
+
+pub mod scopes;
+
+pub mod audio_dsp;
+
+pub mod graphic_text_edit;
+
+pub mod graphic_pin;
+
+pub mod graphic_clock;
+
+pub mod graphic_templates;
+
+pub mod graphic_template_library;
+
+pub mod composition_captions;
+
+pub mod caption_edit;
+
+pub mod caption_files;
+
+pub mod caption_file_import;
+
+mod filmcraft_image_sequence;
+pub mod filmcraft_project;
+pub mod filmcraft_video_export;
+mod filmcraft_export_audio;
+pub mod filmcraft_video_jobs;
+pub mod filmcraft_export_presets;
+pub mod filmcraft_quick_export;
+pub mod filmcraft_export_queue;
+
+pub mod speech;
+
+pub mod speech_jobs;
+
+pub mod stabilization_jobs;
+
+pub mod speech_models;
+
+pub mod speech_model_downloads;
+
+pub mod tts;
+
+pub mod tts_assets;
+
+pub mod tts_jobs;
+
+pub mod tts_models;
+
+pub mod tts_model_downloads;
+pub mod enhance_models;
+pub mod enhance_video_jobs;
+pub mod enhance_video_assets;
+pub mod enhance_model_downloads;
+
+pub mod tts_references;
+
+pub mod tts_reference_sources;
+
+pub mod enhance_jobs;
+
+pub mod enhance_assets;
+
+pub mod cutout_jobs;
+
+pub mod cutout_assets;
+
+pub mod cutout_models;
+pub mod cutout_model_downloads;
+
+pub mod cutout_edit_jobs;
+
+pub mod sam_jobs;
+
+pub mod sam_assets;
+
+pub mod sam_models;
+pub mod sam_model_downloads;
+
+pub mod selfie_jobs;
+
+pub mod person_video_jobs;
+
+pub mod person_video_assets;
+
+pub mod person_video_project_assets;
+
+pub mod person_video_project;
+
+pub mod sam_video_assets;
+
+pub mod person_video_region_frames;
+
+pub mod composition_audio_preview;
+
+pub mod concat_effect_upgrade;
+
+pub mod concat_project_import;
+
+pub mod concat_cutout_access;
+pub mod concat_cutout_publish;
+pub mod concat_cutout_analyse;
+pub mod concat_smart_region;
+
+pub mod concat_video_cache;
+
+pub mod concat_video_analyse;
+
+pub mod concat_video_preview;
+
+pub mod concat_video_binding;
+
+pub mod concat_video_bound;
+
+pub(crate) mod concat_video_run;
+pub mod concat_video_cancel;
+
+pub mod concat_video_region_cache;
+
+pub mod concat_video_smart;
+
+pub mod concat_video_operation;
+
+pub mod concat_freeze;
+
+pub mod insta360;
+
+pub use library::output_file_handler;
+
+pub mod spherical_tracking;
+
+mod spherical_reidentify;
+
+pub mod filmcraft_commands;
+
+pub(crate) mod filmcraft_tracking_jobs;

@@ -1,0 +1,20 @@
+[
+  {
+    "name": "init",
+    "exitCode": 1,
+    "success": false,
+    "evidenceId": null
+  },
+  {
+    "name": "calc",
+    "exitCode": 0,
+    "success": true,
+    "evidenceId": "ev_7869f96a67c86f2457583dfdb95090c8eac28316cb124021520061b8d579bbd1"
+  },
+  {
+    "name": "lowtexture",
+    "exitCode": 1,
+    "success": false,
+    "evidenceId": null
+  }
+]

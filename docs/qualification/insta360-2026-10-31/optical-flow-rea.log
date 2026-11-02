@@ -1,0 +1,4 @@
+{'name': 'init', 'exitCode': 1, 'success': False, 'evidenceId': None}
+{'name': 'calc', 'exitCode': 1, 'success': False, 'evidenceId': None}
+{'name': 'temporal', 'exitCode': 0, 'success': True, 'evidenceId': 'ev_e82b826ca9a1fb234f3d04e27ddaa9729dfa4c2463117b7e454f34c3b7a660ee'}
+{'name': 'lowtexture', 'exitCode': 1, 'success': False, 'evidenceId': None}

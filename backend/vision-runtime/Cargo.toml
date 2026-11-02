@@ -1,0 +1,15 @@
+[package]
+name = "video-kadr-vision-runtime"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+[dependencies]
+video-kadr-mask-core = { path = "../mask-core" }
+anyhow = "1"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-27"] }
+[profile.dev.package.sha2]
+opt-level = 3

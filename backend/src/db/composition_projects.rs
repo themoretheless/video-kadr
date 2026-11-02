@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
@@ -13,6 +13,54 @@ use crate::library::now_secs;
 pub const COMPOSITION_PROJECT_SCHEMA_VERSION: u32 = 2;
 pub const COMPOSITION_PROJECT_MODE: &str = "composition";
 pub const MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_LUT_PROJECT_DOCUMENT_BYTES: usize = 96 * 1024 * 1024;
+/// Authored video strokes/portable tracks have a bounded independent allowance.
+pub const MAX_VIDEO_CUTOUT_SETTINGS_BYTES:usize=16*1024*1024;
+pub const MAX_SPHERICAL_SETTINGS_BYTES:usize=16*1024*1024;
+pub const MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES:usize=MAX_LUT_PROJECT_DOCUMENT_BYTES+MAX_VIDEO_CUTOUT_SETTINGS_BYTES+MAX_SPHERICAL_SETTINGS_BYTES;
+/// Ordinary project metadata retains 2MiB; only validated LUT/font/cutout/spherical tracks add allowance.
+pub fn composition_document_byte_limit(document: &Value) -> Result<usize> {
+    let mut limit=MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES;
+    if document.get("compositions").is_some() {
+        if let Some(luts)=document.get("luts").and_then(Value::as_array).filter(|luts|!luts.is_empty()){
+            limit=limit.saturating_add(serde_json::to_vec(luts)?.len()).min(MAX_LUT_PROJECT_DOCUMENT_BYTES);
+        }
+    }
+    if document.get("compositions").is_some(){
+        if let Some(value)=document.get("fonts").filter(|value|!value.is_null()){
+            let fonts:Vec<crate::domain::concat_project_fonts::FontResource>=serde_json::from_value(value.clone())?;
+            crate::domain::concat_project_fonts::bank(&fonts)?;
+            limit=limit.saturating_add(serde_json::to_vec(value)?.len()).min(MAX_LUT_PROJECT_DOCUMENT_BYTES);
+        }
+    }
+    let contents:Vec<&Value>=if let Some(nodes)=document.get("compositions").and_then(Value::as_object){nodes.values().filter_map(|node|node.get("content")).collect()}else{vec![document]};
+    let mut cutout_bytes=0usize;
+    let mut spherical_bytes=0usize;
+    for content in contents{
+        if let Some(tracks)=content.get("tracks").and_then(Value::as_array){for track in tracks{
+            if track.get("kind").and_then(Value::as_str)!=Some("video"){continue}
+            if let Some(clips)=track.get("clips").and_then(Value::as_array){for clip in clips{
+                if let Some(effects)=clip.get("effects").and_then(Value::as_array){for effect in effects{
+                    if effect.get("kind").and_then(Value::as_str)!=Some("spherical_video"){continue}
+                    if let Some(parameters)=effect.get("parameters"){
+                        let spherical:crate::domain::spherical_video::SphericalVideo=serde_json::from_value(parameters.clone())?;spherical.validate()?;
+                        for samples in [parameters.get("orientation"),parameters.get("rollingShutter").and_then(|v|v.get("captureClock"))].into_iter().flatten(){
+                            spherical_bytes=spherical_bytes.checked_add(serde_json::to_vec(samples)?.len()).context("spherical settings byte count overflow")?;
+                            ensure!(spherical_bytes<=MAX_SPHERICAL_SETTINGS_BYTES,"spherical timing tracks exceed saved document budget");
+                        }
+                    }
+                }}
+                if let Some(value)=clip.get("concatCutout").filter(|v|!v.is_null()){
+                    let binding:crate::domain::concat_video_binding::Binding=serde_json::from_value(value.clone())?;binding.validate()?;
+                    cutout_bytes=cutout_bytes.checked_add(serde_json::to_vec(value)?.len()).context("video cutout byte count overflow")?;
+                    ensure!(cutout_bytes<=MAX_VIDEO_CUTOUT_SETTINGS_BYTES,"video cutout settings exceed saved document budget");
+                }
+            }}
+        }}
+    }
+    Ok(limit.saturating_add(cutout_bytes).saturating_add(spherical_bytes).min(MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES))
+}
+
 pub const MAX_COMPOSITION_PROJECT_SOURCES: usize = 32;
 pub const MAX_COMPOSITION_PROJECT_NAME_BYTES: usize = 256;
 const COMPOSITION_DOCUMENT_SCHEMA_VERSION: u64 = 1;
@@ -168,9 +216,7 @@ impl Db {
         let id = Uuid::new_v4().to_string();
         let now = now_secs() as i64;
         let mut transaction = self.pool.begin().await?;
-        if owner.is_some() {
-            claim_project_sources(&mut transaction, None, source_ids, owner.unwrap()).await?;
-        }
+        claim_project_sources(&mut transaction, None, source_ids, owner.unwrap_or("project-create"), &id).await?;
         let row = sqlx::query(
             "INSERT INTO composition_projects \
                (id, name, document_json, schema_version, mode, created_at, updated_at, updated_order) \
@@ -217,7 +263,7 @@ impl Db {
         let id = Uuid::new_v4().to_string();
         let now = now_secs() as i64;
         let mut transaction = self.pool.begin().await?;
-        claim_project_sources(&mut transaction, Some(space_id), source_ids, owner).await?;
+        claim_project_sources(&mut transaction, Some(space_id), source_ids, owner, &id).await?;
         let row = sqlx::query(
             "INSERT INTO composition_projects (id, space_id, name, document_json, schema_version, mode, created_at, updated_at, updated_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(updated_order) + 1 FROM composition_projects), 1)) RETURNING id, space_id, name, document_json, schema_version, mode, revision, created_at, updated_at",
         )
@@ -310,6 +356,7 @@ impl Db {
             document,
             source_ids,
             Some(expected_revision),
+            Some(actor),
         )
         .await
     }
@@ -337,7 +384,7 @@ impl Db {
         document: &Value,
         source_ids: &[String],
     ) -> Result<Option<CompositionProject>> {
-        self.update_composition_project_at_revision(id, name, document, source_ids, None)
+        self.update_composition_project_at_revision(id, name, document, source_ids, None, None)
             .await
     }
 
@@ -348,10 +395,15 @@ impl Db {
         document: &Value,
         source_ids: &[String],
         expected_revision: Option<u64>,
+        editor: Option<&str>,
     ) -> Result<Option<CompositionProject>> {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let now = now_secs() as i64;
         let mut transaction = self.pool.begin().await?;
+        if let Some(actor)=editor{
+            let role:Option<String>=sqlx::query_scalar("SELECT role FROM composition_project_members WHERE project_id=? AND actor=?").bind(id).bind(actor).fetch_optional(&mut *transaction).await?;
+            ensure!(matches!(role.as_deref(),Some("owner"|"editor")),"role cannot edit composition project");
+        }
         let project_space: Option<Option<String>> =
             sqlx::query_scalar("SELECT space_id FROM composition_projects WHERE id = ?")
                 .bind(id)
@@ -363,6 +415,7 @@ impl Db {
                 space_id.as_deref(),
                 source_ids,
                 "project-update",
+                id,
             )
             .await?;
         }
@@ -478,8 +531,12 @@ async fn claim_project_sources(
     space_id: Option<&str>,
     source_ids: &[String],
     actor: &str,
+    project_id: &str,
 ) -> Result<()> {
     for source_id in source_ids {
+        let retired: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_retired_media WHERE source_id=?)")
+            .bind(source_id).fetch_one(&mut **transaction).await?;
+        ensure!(!retired, "generated source has been retired");
         let existing: Option<String> = sqlx::query_scalar(
             "SELECT space_id FROM collaboration_space_media WHERE source_id = ?",
         )
@@ -491,8 +548,9 @@ async fn claim_project_sources(
                 expected == actual,
                 "source belongs to another collaboration space"
             ),
-            (None, Some(_)) => {
-                anyhow::bail!("scoped source cannot be used by an unscoped project")
+            (None, Some(space)) => {
+                let own_narration:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_narration_spaces WHERE project_id=? AND space_id=?)").bind(project_id).bind(space).fetch_one(&mut **transaction).await?;
+                ensure!(own_narration,"scoped source cannot be used by an unscoped project");
             }
             (Some(space_id), None) => {
                 sqlx::query("INSERT INTO collaboration_space_media (space_id, source_id, created_by, created_at) VALUES (?, ?, ?, ?)")
@@ -548,13 +606,30 @@ fn validate_storage_input(name: &str, document: &Value, source_ids: &[String]) -
     }
     let document_json = serde_json::to_string(document)?;
     ensure!(
-        document_json.len() <= MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES,
+        document_json.len() <= composition_document_byte_limit(document)?,
         "composition project document is too large"
     );
     Ok(document_json)
 }
 
-fn extract_document_source_ids(document: &Value) -> Result<Vec<String>> {
+pub(crate) fn extract_document_source_ids(document: &Value) -> Result<Vec<String>> {
+    if document.get("compositions").is_some() {
+        let project: crate::domain::nested_composition::NestedCompositionProject = serde_json::from_value(document.clone())?;
+        project.dependency_order()?;
+        let mut sources = BTreeMap::new();
+        for composition in project.compositions.values() {
+            for (id, source) in &composition.content.sources {
+                let id = id.as_str().to_owned();
+                ensure!(valid_source_id(&id), "invalid nested composition source id");
+                if let Some(existing) = sources.insert(id, source) {
+                    ensure!(existing == source, "conflicting nested source metadata");
+                }
+            }
+        }
+        ensure!(sources.len() <= MAX_COMPOSITION_PROJECT_SOURCES, "nested project has too many sources");
+        return Ok(sources.into_keys().collect());
+    }
+
     let document = document
         .as_object()
         .context("composition document is not an object")?;
@@ -672,6 +747,20 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let db = Db::open(directory.path()).await.unwrap();
         (db, directory)
+    }
+
+    #[tokio::test]
+    async fn nested_document_storage_roundtrips_and_rejects_dangling_root() {
+        let (db, _directory) = db().await;
+        let content = crate::domain::composition::Composition::new(crate::domain::composition::CanvasSpec::default());
+        let document = json!({ "schemaVersion": 1, "root": "root", "compositions": { "root": { "content": content, "instances": [] } } });
+        let saved = db.create_composition_project("Nested", &document, &[]).await.unwrap();
+        let restored = db.get_composition_project(&saved.id).await.unwrap().unwrap();
+        assert_eq!(restored.document, document);
+        assert!(restored.source_ids.is_empty());
+        let mut invalid = document;
+        invalid["root"] = json!("missing");
+        assert!(db.create_composition_project("Invalid", &invalid, &[]).await.is_err());
     }
 
     #[tokio::test]

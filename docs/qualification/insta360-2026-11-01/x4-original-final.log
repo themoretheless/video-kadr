@@ -1,0 +1,18 @@
+CURRENT COHERENT TEST BINARY insta360_camera_profile-08f2a76385011677
+
+running 1 test
+source-owned X4 legacy2/lens71 profile; corrected active reference11520x5760; field5; flags1095
+test legacy_x4_original_metadata_selects_source_owned_profile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+CURRENT COHERENT TEST BINARY insta360_gyro-d0651aa38ae9ae21
+
+running 2 tests
+real X4 strict145/trim21sec: sourceClock100fps at2.25sec; originalCapture23.247756761sec; 506 IMU records; 150 orientation samples
+test real_x4_trim_map_and_auto_mount_keep_clip_frame_clock_separate_from_original_capture ... ok
+real X4 dynamic first frame: observed pre-roll0.731290s/52samples, source0sec/capture20.997882086sec unchanged; initialization unavailable is explicit when disabled
+test real_x4_dynamic_first_frame_uses_bounded_observed_preroll_and_warns_when_disabled ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.03s
+

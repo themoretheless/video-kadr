@@ -1,0 +1,450 @@
+[
+  {
+    "address": "0x101b5fe2c",
+    "name": "__ZN10extra_info16OffsetSerializer9SerializeERKNS_12CameraOffsetEi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "extra_info::OffsetSerializer::Serialize(extra_info::CameraOffset const&, int)"
+  },
+  {
+    "address": "0x102e6d3ac",
+    "name": "__ZN18dng_camera_profile13ReadHueSatMapER10dng_streamR15dng_hue_sat_mapjjjb",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "dng_camera_profile::ReadHueSatMap(dng_stream&, dng_hue_sat_map&, unsigned int, unsigned int, unsigned int, bool)"
+  },
+  {
+    "address": "0x102e6d4a8",
+    "name": "__ZN18dng_camera_profile5ParseER10dng_streamR23dng_camera_profile_info",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "dng_camera_profile::Parse(dng_stream&, dng_camera_profile_info&)"
+  },
+  {
+    "address": "0x1003ccfac",
+    "name": "__ZN22CameraAccessoryFactory12NameFromTypeEN15CameraAccessory4TypeE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "CameraAccessoryFactory::NameFromType(CameraAccessory::Type)"
+  },
+  {
+    "address": "0x102ed70c0",
+    "name": "__ZN23dng_camera_profile_info13ParseExtendedER10dng_stream",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "dng_camera_profile_info::ParseExtended(dng_stream&)"
+  },
+  {
+    "address": "0x102ed65cc",
+    "name": "__ZN23dng_camera_profile_info8ParseTagER10dng_streamjjjjy",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "dng_camera_profile_info::ParseTag(dng_stream&, unsigned int, unsigned int, unsigned int, unsigned int, unsigned long long)"
+  },
+  {
+    "address": "0x101666ee0",
+    "name": "__ZN3fcp11basic_trans16CreateModelStateEPKNS_10basic_info10CameraInfoERNS_10ModelStateEi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "fcp::basic_trans::CreateModelState(fcp::basic_info::CameraInfo const*, fcp::ModelState&, int)"
+  },
+  {
+    "address": "0x1027ab568",
+    "name": "__ZN3ins19GeometryWrapperBase16fromCameraParamsERKN12Insta360Lens12CameraParamsE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "ins::GeometryWrapperBase::fromCameraParams(Insta360Lens::CameraParams const&)"
+  },
+  {
+    "address": "0x100be9450",
+    "name": "__ZN3pro10DewarpType20GetDewarpTypeFromKeyERK7QStringPKN9arvrender11InstaCameraE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::DewarpType::GetDewarpTypeFromKey(QString const&, arvrender::InstaCamera const*)"
+  },
+  {
+    "address": "0x10096956c",
+    "name": "__ZN3pro13KeyFrameTrack17CreateNewKeyFrameExxRKNS_18CameraTransformProE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::KeyFrameTrack::CreateNewKeyFrame(long long, long long, pro::CameraTransformPro const&)"
+  },
+  {
+    "address": "0x1008c2a90",
+    "name": "__ZN3pro14DeepTrackModel26GetCameraTransformFromListEx",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::DeepTrackModel::GetCameraTransformFromList(long long)"
+  },
+  {
+    "address": "0x100c3e5cc",
+    "name": "__ZN3pro16ViewFinderLoader25UpdateClipCameraTransformEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::ViewFinderLoader::UpdateClipCameraTransform()"
+  },
+  {
+    "address": "0x100bcaa34",
+    "name": "__ZN3pro18CameraTransformPro8FromJsonERK11QJsonObject",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CameraTransformPro::FromJson(QJsonObject const&)"
+  },
+  {
+    "address": "0x100853414",
+    "name": "__ZN3pro19CameraMovementModel8CopyFromEPN6studio9BaseModelE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CameraMovementModel::CopyFrom(studio::BaseModel*)"
+  },
+  {
+    "address": "0x1008534b0",
+    "name": "__ZN3pro19CameraMovementModel8FromJsonERK11QJsonObject",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CameraMovementModel::FromJson(QJsonObject const&)"
+  },
+  {
+    "address": "0x100856db0",
+    "name": "__ZN3pro19CameraMovementTrack8CopyFromEPN6studio9BaseModelE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CameraMovementTrack::CopyFrom(studio::BaseModel*)"
+  },
+  {
+    "address": "0x1008552c0",
+    "name": "__ZN3pro19CameraMovementTrack8FromJsonERK11QJsonObject",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CameraMovementTrack::FromJson(QJsonObject const&)"
+  },
+  {
+    "address": "0x1009e0d6c",
+    "name": "__ZN3pro21CameraControllerParam34GetNormalCameraTransformFromShadowExxx",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CameraControllerParam::GetNormalCameraTransformFromShadow(long long, long long, long long)"
+  },
+  {
+    "address": "0x1009df6e4",
+    "name": "__ZN3pro21CameraControllerParam38GetViewFinderCameraTransformFromShadowExxx",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CameraControllerParam::GetViewFinderCameraTransformFromShadow(long long, long long, long long)"
+  },
+  {
+    "address": "0x100bbadb8",
+    "name": "__ZN3pro26AddMovementTemplateCommand21CreateKeyframesByJsonERK7QStringxxRKNS_18CameraTransformProEd",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::AddMovementTemplateCommand::CreateKeyframesByJson(QString const&, long long, long long, pro::CameraTransformPro const&, double)"
+  },
+  {
+    "address": "0x100e4f450",
+    "name": "__ZN3pro30BottomCameraTransformViewModel26syncClipFromActiveTimelineEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::BottomCameraTransformViewModel::syncClipFromActiveTimeline()"
+  },
+  {
+    "address": "0x100e4f40c",
+    "name": "__ZN3pro30BottomCameraTransformViewModel30onFootageTimelineLoadCompletedEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::BottomCameraTransformViewModel::onFootageTimelineLoadCompleted()"
+  },
+  {
+    "address": "0x100aaa66c",
+    "name": "__ZN3pro38CreateEogTemplateCameraMovementServiceEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "pro::CreateEogTemplateCameraMovementService()"
+  },
+  {
+    "address": "0x100744430",
+    "name": "__ZN6studio13EventReporter22CameraTypeFromMetadataERK7QString",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::EventReporter::CameraTypeFromMetadata(QString const&)"
+  },
+  {
+    "address": "0x10049b398",
+    "name": "__ZN6studio16StitchingService23ResolveConvertedOffset2ERK7QStringS3_N15CameraAccessory4TypeE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::StitchingService::ResolveConvertedOffset2(QString const&, QString const&, CameraAccessory::Type)"
+  },
+  {
+    "address": "0x10038e0a4",
+    "name": "__ZN6studio20RendererThreadObject19GetCameraControllerEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::GetCameraController()"
+  },
+  {
+    "address": "0x10038f38c",
+    "name": "__ZN6studio20RendererThreadObject21GetCurrentCameraStateEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::GetCurrentCameraState()"
+  },
+  {
+    "address": "0x10038d83c",
+    "name": "__ZN6studio20RendererThreadObject22SaveCurrentCameraStateEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::SaveCurrentCameraState()"
+  },
+  {
+    "address": "0x10004ac18",
+    "name": "__ZN6studio20RendererThreadObject22cameraTransformChangedERKNS_15CameraTransformEb",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::cameraTransformChanged(studio::CameraTransform const&, bool)"
+  },
+  {
+    "address": "0x10004ae0c",
+    "name": "__ZN6studio20RendererThreadObject26updateClickedDeepTrackAreaERKNS_15CameraTransformE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::updateClickedDeepTrackArea(studio::CameraTransform const&)"
+  },
+  {
+    "address": "0x10004ae68",
+    "name": "__ZN6studio20RendererThreadObject26updateClickedHeadTrackAreaERKNS_15CameraTransformE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::updateClickedHeadTrackArea(studio::CameraTransform const&)"
+  },
+  {
+    "address": "0x10004aec4",
+    "name": "__ZN6studio20RendererThreadObject26userCameraTransformChangedERKNS_15CameraTransformEx",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::userCameraTransformChanged(studio::CameraTransform const&, long long)"
+  },
+  {
+    "address": "0x10038e58c",
+    "name": "__ZN6studio20RendererThreadObject28ProcessCameraControllerEventEPN9arvrender16CameraControllerENS1_15TransformReasonE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::RendererThreadObject::ProcessCameraControllerEvent(arvrender::CameraController*, arvrender::TransformReason)"
+  },
+  {
+    "address": "0x1004a4e88",
+    "name": "__ZN8constant10DewarpType20GetDewarpTypeFromKeyERK7QStringPKN9arvrender11InstaCameraE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "constant::DewarpType::GetDewarpTypeFromKey(QString const&, arvrender::InstaCamera const*)"
+  },
+  {
+    "address": "0x101649080",
+    "name": "__ZN8insta3608messages10CameraInfo9MergeFromERKS1_",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::CameraInfo::MergeFrom(insta360::messages::CameraInfo const&)"
+  },
+  {
+    "address": "0x101bbf0f0",
+    "name": "__ZN8insta3608messages22ExtraMetadata_MagCalib9MergeFromERKS1_",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_MagCalib::MergeFrom(insta360::messages::ExtraMetadata_MagCalib const&)"
+  },
+  {
+    "address": "0x101bc0a5c",
+    "name": "__ZN8insta3608messages31ExtraMetadata_CameraOffsetCalib10SharedDtorEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::SharedDtor()"
+  },
+  {
+    "address": "0x101bc0d80",
+    "name": "__ZN8insta3608messages31ExtraMetadata_CameraOffsetCalib5ClearEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::Clear()"
+  },
+  {
+    "address": "0x101bc1d84",
+    "name": "__ZN8insta3608messages31ExtraMetadata_CameraOffsetCalib9MergeFromERKS1_",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::MergeFrom(insta360::messages::ExtraMetadata_CameraOffsetCalib const&)"
+  },
+  {
+    "address": "0x101bb1d40",
+    "name": "__ZN8insta3608messages31ExtraMetadata_CameraOffsetCalibC1Ev",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::ExtraMetadata_CameraOffsetCalib()"
+  },
+  {
+    "address": "0x101bc0cbc",
+    "name": "__ZN8insta3608messages31ExtraMetadata_CameraOffsetCalibD0Ev",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::~ExtraMetadata_CameraOffsetCalib()"
+  },
+  {
+    "address": "0x101bc0c50",
+    "name": "__ZN8insta3608messages31ExtraMetadata_CameraOffsetCalibD1Ev",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::~ExtraMetadata_CameraOffsetCalib()"
+  },
+  {
+    "address": "0x104d41778",
+    "name": "__ZN8insta3608messages50_ExtraMetadata_CameraOffsetCalib_default_instance_E",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::_ExtraMetadata_CameraOffsetCalib_default_instance_"
+  },
+  {
+    "address": "0x1018b6070",
+    "name": "__ZN9arvrender10OffsetUtil15GetCameraFacingEii",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "arvrender::OffsetUtil::GetCameraFacing(int, int)"
+  },
+  {
+    "address": "0x101b566f4",
+    "name": "__ZN9flowstate20MultiFlowstateSystem21createStaticDewarpMapERKN5Eigen6MatrixIN12Insta360Lens12CameraParamsELin1ELi1ELi0ELin1ELi1EEENS2_IiLi2ELi1ELi0ELi2ELi1EEES8_RKNS1_10QuaternionIdLi0EEENS1_3RefINS2_INS2_IfLi2ELi1ELi0ELi2ELi1EEELin1ELin1ELi1ELin1ELin1EEELi0ENS1_11OuterStrideILin1EEEEEbb",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "flowstate::MultiFlowstateSystem::createStaticDewarpMap(Eigen::Matrix<Insta360Lens::CameraParams, -1, 1, 0, -1, 1> const&, Eigen::Matrix<int, 2, 1, 0, 2, 1>, Eigen::Matrix<int, 2, 1, 0, 2, 1>, Eigen::Quaternion<double, 0> const&, Eigen::Ref<Eigen::Matrix<Eigen::Matrix<float, 2, 1, 0, 2, 1>, -1, -1, 1, -1, -1>, 0, Eigen::OuterStride<-1>>, bool, bool)"
+  },
+  {
+    "address": "0x101b57d8c",
+    "name": "__ZN9flowstate20MultiFlowstateSystem31createStaticDewarpMapWithBigFOVERKN5Eigen6MatrixIN12Insta360Lens12CameraParamsELin1ELi1ELi0ELin1ELi1EEENS2_IiLi2ELi1ELi0ELi2ELi1EEES8_RKNS1_10QuaternionIdLi0EEENS1_3RefINS2_INS2_IfLi2ELi1ELi0ELi2ELi1EEELin1ELin1ELi1ELin1ELin1EEELi0ENS1_11OuterStrideILin1EEEEEbf",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "flowstate::MultiFlowstateSystem::createStaticDewarpMapWithBigFOV(Eigen::Matrix<Insta360Lens::CameraParams, -1, 1, 0, -1, 1> const&, Eigen::Matrix<int, 2, 1, 0, 2, 1>, Eigen::Matrix<int, 2, 1, 0, 2, 1>, Eigen::Quaternion<double, 0> const&, Eigen::Ref<Eigen::Matrix<Eigen::Matrix<float, 2, 1, 0, 2, 1>, -1, -1, 1, -1, -1>, 0, Eigen::OuterStride<-1>>, bool, float)"
+  },
+  {
+    "address": "0x10022806c",
+    "name": "__ZNK6studio13VideoMetaData26ResolveCameraTypeFromAssetEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::VideoMetaData::ResolveCameraTypeFromAsset() const"
+  },
+  {
+    "address": "0x100254278",
+    "name": "__ZNK6studio14GlobalSettings27GetCameraCreationTimeOffsetEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::GlobalSettings::GetCameraCreationTimeOffset() const"
+  },
+  {
+    "address": "0x10013d254",
+    "name": "__ZNK6studio19CloudMetadataParser17IsLowResVideoNameERK7QStringPKN9arvrender11InstaCameraE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::CloudMetadataParser::IsLowResVideoName(QString const&, arvrender::InstaCamera const*) const"
+  },
+  {
+    "address": "0x10013d5c8",
+    "name": "__ZNK6studio19CloudMetadataParser17IsMasterVideoFileERK7QStringPKN9arvrender11InstaCameraE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::CloudMetadataParser::IsMasterVideoFile(QString const&, arvrender::InstaCamera const*) const"
+  },
+  {
+    "address": "0x10013d138",
+    "name": "__ZNK6studio19CloudMetadataParser18FilterMasterStreamERK5QListI7QStringERS3_PKN9arvrender11InstaCameraE",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "studio::CloudMetadataParser::FilterMasterStream(QList<QString> const&, QList<QString>&, arvrender::InstaCamera const*) const"
+  },
+  {
+    "address": "0x101bc2174",
+    "name": "__ZNK8insta3608messages31ExtraMetadata_CameraOffsetCalib11GetMetadataEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::GetMetadata() const"
+  },
+  {
+    "address": "0x101bc19cc",
+    "name": "__ZNK8insta3608messages31ExtraMetadata_CameraOffsetCalib12ByteSizeLongEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::ByteSizeLong() const"
+  },
+  {
+    "address": "0x101bc216c",
+    "name": "__ZNK8insta3608messages31ExtraMetadata_CameraOffsetCalib13IsInitializedEv",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::IsInitialized() const"
+  },
+  {
+    "address": "0x101bc0d24",
+    "name": "__ZNK8insta3608messages31ExtraMetadata_CameraOffsetCalib13SetCachedSizeEi",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::SetCachedSize(int) const"
+  },
+  {
+    "address": "0x101bc16d0",
+    "name": "__ZNK8insta3608messages31ExtraMetadata_CameraOffsetCalib39InternalSerializeWithCachedSizesToArrayEbPh",
+    "reexport": false,
+    "source": null,
+    "weak": null,
+    "demangled": "insta360::messages::ExtraMetadata_CameraOffsetCalib::InternalSerializeWithCachedSizesToArray(bool, unsigned char*) const"
+  }
+]

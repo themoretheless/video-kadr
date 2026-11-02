@@ -1,0 +1,472 @@
+{
+  "sourceCommit": "5231852443363f001c3f6b396dd9b1e6461ae2be",
+  "scope": "Finite Vec2 bindings, original loader automatic baselines and 51 effect/Motion/graphic bindings with automatic keyed coordinates at fixed import geometry; graphic automatic anchors, changing geometry and full project import remain separate requirements.",
+  "controls": [
+    {
+      "effect": "motion",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-valid-original-matrices",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticKeyCoordinates": "qualified-bounded-2268-matrices-432-frames"
+    },
+    {
+      "effect": "motion",
+      "parameter": "anchor",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-valid-original-matrices",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticKeyCoordinates": "qualified-bounded-2268-matrices-432-frames"
+    },
+    {
+      "effect": "transform",
+      "parameter": "anchor",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "transform",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "mirror",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "offset",
+      "parameter": "shift",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "twirl",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "ramp",
+      "parameter": "start",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "ramp",
+      "parameter": "end",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "circle",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lens_flare",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "timecode",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "clip_name",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "simple_text",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l1_center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l2_center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l3_center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l4_center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lighting_effects",
+      "parameter": "l5_center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "focus_blur",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "corner_pin",
+      "parameter": "upper_left",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "corner_pin",
+      "parameter": "upper_right",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "corner_pin",
+      "parameter": "lower_left",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "corner_pin",
+      "parameter": "lower_right",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "magnify",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "spherize",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "turbulent_displace",
+      "parameter": "offset",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "gradient",
+      "parameter": "start",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "gradient",
+      "parameter": "end",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "rgb_split",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "volumetric_rays",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "roughen_edges",
+      "parameter": "offset",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "auto_reframe",
+      "parameter": "offset",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "grow",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "shrink",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "move",
+      "parameter": "from",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticKeyCoordinates": "qualified-bounded-432-frames-with-motion-blur"
+    },
+    {
+      "effect": "move",
+      "parameter": "to",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticKeyCoordinates": "qualified-bounded-432-frames-with-motion-blur"
+    },
+    {
+      "effect": "spin",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "metadata_burnin",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lightning",
+      "parameter": "start",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "lightning",
+      "parameter": "end",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "cell_pattern",
+      "parameter": "offset",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "checkerboard",
+      "parameter": "anchor",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "ellipse",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "paint_bucket",
+      "parameter": "point",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "write_on",
+      "parameter": "brush",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "magnify_legacy",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "twirl_legacy",
+      "parameter": "center",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticBaselineScenes": "qualified-bounded-4752-frame-suite",
+      "automaticKeyCoordinates": "qualified-bounded-4752-frame-suite"
+    },
+    {
+      "effect": "graphic_text",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticKeyCoordinates": "qualified-bounded-252-graphic-raster-suite"
+    },
+    {
+      "effect": "graphic_text",
+      "parameter": "anchor",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "automatic-key-coordinates-remain-open",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "size",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticKeyCoordinates": "qualified-bounded-252-graphic-raster-suite"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "position",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "qualified-fixed-import-geometry-bounded-scenes",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases",
+      "automaticKeyCoordinates": "qualified-bounded-252-graphic-raster-suite"
+    },
+    {
+      "effect": "graphic_shape",
+      "parameter": "anchor",
+      "explicitPointBinding": "qualified-bounded-scenes",
+      "automaticCoordinates": "automatic-key-coordinates-remain-open",
+      "automaticBaselineImport": "qualified-original-loader-1272-typed-cases"
+    }
+  ]
+}

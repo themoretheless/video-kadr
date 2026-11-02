@@ -4,11 +4,12 @@
   interface Props {
     tracks: readonly CompositionTrack[]
     selectedClipId: string | null
+    selectedClipIds?: readonly string[]
     clipLabel: (clip: CompositionTrack['clips'][number]) => string
-    onselect: (trackId: string, clipId: string) => void
+    onselect: (trackId: string, clipId: string, options?: { single?: boolean; toggle?: boolean }) => void
   }
 
-  let { tracks, selectedClipId, clipLabel, onselect }: Props = $props()
+  let { tracks, selectedClipId, selectedClipIds = [], clipLabel, onselect }: Props = $props()
 </script>
 
 <section class="timeline-semantic-list" aria-label="Список клипов монтажной линии">
@@ -22,7 +23,8 @@
           <button
             type="button"
             aria-current={selectedClipId === clip.id ? 'true' : undefined}
-            onclick={() => onselect(track.id, clip.id)}
+            aria-pressed={selectedClipIds.includes(clip.id) || selectedClipId === clip.id}
+            onclick={(event) => event.altKey || event.shiftKey ? onselect(track.id, clip.id, { single: event.altKey, toggle: event.shiftKey }) : onselect(track.id, clip.id)}
           >
             {clipLabel(clip)} — {(clip.timelineStartTicks / COMPOSITION_TIME_BASE).toFixed(2)}s,
             длительность {(clipDurationTicks(clip) / COMPOSITION_TIME_BASE).toFixed(2)}s

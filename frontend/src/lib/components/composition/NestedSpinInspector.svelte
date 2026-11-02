@@ -1,0 +1,94 @@
+<script lang="ts">
+  import { nestedComposition, nestedHistory, editNestedVideoEffects } from '$lib/state/nestedComposition.svelte'
+  import type { WireVideoEffect } from '$lib/composition/types'
+  let { disabled = false }: { disabled?: boolean } = $props()
+  type Spin = Extract<WireVideoEffect, { kind: 'spin' }>
+  type Channel = 'amount'|'scale'|'centerX'|'centerY'
+  const channels: readonly (readonly [Channel,string,number,number,number])[] = [['amount','Угол вращения, °',-36000,36000,360],['scale','Масштаб, %',1,1000,100],['centerX','Центр X, px',-Number.MAX_VALUE,Number.MAX_VALUE,0],['centerY','Центр Y, px',-Number.MAX_VALUE,Number.MAX_VALUE,0]]
+  function sourceCenter(sourceId: string): [number,number] {
+    const source = nestedComposition.document?.compositions[compositionId]?.content.sources[sourceId]
+    if (!source) throw new Error('Не найдены размеры исходного кадра')
+    return [source.width / 2, source.height / 2]
+  }
+  function value(effect: Spin, channel: Channel, base: number, sourceId: string): number | undefined {
+    if (channel === 'amount' || channel === 'scale') return effect.parameters[channel] ?? base
+    return effect.parameters.center?.[channel === 'centerX' ? 0 : 1] ?? undefined
+  }
+  function baseValue(channel: Channel): number { return channel==='amount'?360:channel==='scale'?100:0 }
+  function setValue(effect: Spin, channel: Channel, number: number | null, sourceId: string): Spin {
+    if (channel === 'amount' || channel === 'scale') return { ...effect, parameters: { ...effect.parameters, [channel]: number ?? baseValue(channel) } }
+    const center: [number|null,number|null] = [...(effect.parameters.center ?? [null,null])]
+    center[channel === 'centerX' ? 0 : 1] = number
+    return { ...effect, parameters: { ...effect.parameters, center } }
+  }
+
+  let compositionId = $derived(nestedComposition.activeCompositionId ?? nestedComposition.document?.root ?? '')
+  let tracks = $derived(nestedComposition.document?.compositions[compositionId]?.content.tracks ?? [])
+  function edit(track: string, clip: string, index: number, change: (effect: Spin) => Spin): void {
+    void editNestedVideoEffects(compositionId, track, clip, effects => effects.map((effect, i) => i === index && effect.kind === 'spin' ? change(effect) : effect))
+  }
+  function keyframe(effect: Spin, channel: Channel, base: number, start: number, sourceId: string): Spin {
+    const time = nestedComposition.timeUs - start
+    if (!Number.isSafeInteger(time) || time < 0) throw new Error('Курсор должен находиться после начала клипа')
+    const previous = effect.animation?.[channel]
+    if (previous?.mode === 'keyframes' && previous.track.timeBase !== 1000000) throw new Error('Шкала канала должна быть в микросекундах')
+    const keys = previous?.mode === 'keyframes' ? previous.track.keyframes : []
+    const keyframes = [...keys.filter(key => key.tick !== time), { ...keys.find(key => key.tick === time), tick: time, value: value(effect, channel, base, sourceId) ?? sourceCenter(sourceId)[channel === 'centerX' ? 0 : 1] }].sort((a, b) => a.tick - b.tick)
+    return { ...effect, animation: { ...effect.animation, [channel]: { mode: 'keyframes', track: previous?.mode === 'keyframes' ? { ...previous.track, keyframes } : { timeBase: 1000000, interpolation: 'linear', keyframes } } } }
+  }
+  function editKey(effect: Spin, channel: Channel, tick: number, patch: { tick?: number; value?: number } | null): Spin {
+    const previous = effect.animation?.[channel]
+    if (previous?.mode !== 'keyframes') return effect
+    const animation = { ...effect.animation }
+    const keyframes = previous.track.keyframes.flatMap(key => key.tick === tick ? patch ? [{ ...key, ...patch }] : [] : [key]).sort((a, b) => a.tick - b.tick)
+    if (keyframes.length) animation[channel] = { ...previous, track: { ...previous.track, keyframes } }
+    else delete animation[channel]
+    return { ...effect, animation: Object.keys(animation).length ? animation : undefined }
+  }
+</script>
+<section aria-label="Spin">
+  {#each tracks as track (track.id)}
+    {#if track.kind === 'video' || track.kind === 'image'}
+      {#each track.clips as clip (clip.id)}
+        <div class="row"><span>{track.name} · {clip.id}</span><button class="btn ghost sm" disabled={disabled || nestedHistory.busy || track.locked} onclick={() => void editNestedVideoEffects(compositionId, track.id, clip.id, effects => [...effects, { kind: 'spin', parameters: {} }])}>Добавить Spin</button></div>
+        {#each (clip.effects ?? []) as effect, index}
+          {#if effect.kind === 'spin'}
+            <fieldset disabled={disabled || nestedHistory.busy || track.locked}>
+              <legend>Spin {index + 1}</legend>
+              <label>Плавность<select aria-label={`${clip.id} Spin easing`} onchange={event=>edit(track.id,clip.id,index,current=>({...current,parameters:{...current.parameters,easing:Number(event.currentTarget.value)}}))}><option value="0" selected={(effect.parameters.easing??3)===0}>Линейная</option><option value="1" selected={(effect.parameters.easing??3)===1}>Ускорение</option><option value="2" selected={(effect.parameters.easing??3)===2}>Замедление</option><option value="3" selected={(effect.parameters.easing??3)===3}>Плавное начало и конец</option></select></label>
+              {#each channels as [channel, label, min, max, base]}
+                {@const animation = effect.animation?.[channel]}
+                <div class="row">
+                  <label>{label}<input aria-label={`${clip.id} Spin ${channel}`} type="number" {min} {max} step="0.1" placeholder="Авто" value={value(effect, channel, base, clip.sourceId)} onchange={event => edit(track.id, clip.id, index, current => setValue(current, channel, event.currentTarget.value === '' ? null : Number(event.currentTarget.value), clip.sourceId))} /></label>
+                  <button class="btn ghost sm" aria-label={`${clip.id} Spin ${channel} key`} disabled={nestedComposition.timeUs < ('placement' in clip ? clip.placement.timelineStartTick : clip.timelineStartTick)} onclick={() => edit(track.id, clip.id, index, current => keyframe(current, channel, base, ('placement' in clip ? clip.placement.timelineStartTick : clip.timelineStartTick), clip.sourceId))}>Ключ у курсора</button>
+                  {#if animation}<button class="btn ghost sm" aria-label={`${clip.id} Spin ${channel} clear`} onclick={() => edit(track.id, clip.id, index, current => { const animation = { ...current.animation }; delete animation[channel]; return { ...current, animation: Object.keys(animation).length ? animation : undefined } })}>Очистить ключи</button>{/if}
+                </div>
+                {#if animation?.mode === 'keyframes'}
+                  <details><summary>{label} · {animation.track.keyframes.length} ключей</summary>
+                    {#each animation.track.keyframes as key (key.tick)}
+                      <div class="row">
+                        <label>Время, с<input aria-label={`${clip.id} Spin ${channel} ${key.tick} time`} type="number" min="0" step="0.001" value={key.tick / animation.track.timeBase} onchange={event => edit(track.id, clip.id, index, current => editKey(current, channel, key.tick, { tick: Math.round(Number(event.currentTarget.value) * animation.track.timeBase) }))} /></label>
+                        <label>Значение<input aria-label={`${clip.id} Spin ${channel} ${key.tick} value`} type="number" {min} {max} step="0.01" value={key.value} onchange={event => edit(track.id, clip.id, index, current => editKey(current, channel, key.tick, { value: Number(event.currentTarget.value) }))} /></label>
+                        <button class="btn ghost sm" aria-label={`${clip.id} Spin ${channel} ${key.tick} delete`} onclick={() => edit(track.id, clip.id, index, current => editKey(current, channel, key.tick, null))}>Удалить ключ</button>
+                      </div>
+                    {/each}
+                  </details>
+                {/if}
+              {/each}
+              <button class="btn ghost sm" onclick={() => edit(track.id, clip.id, index, current => ({ ...current, parameters: { ...current.parameters, center: null } }))}>Автоматический центр Spin</button>
+              <small>Пустая координата центра — автоматическая для этой оси. Поля задают базовые значения и значения новых ключей.</small>
+              <div class="row"><button class="btn ghost sm" onclick={() => edit(track.id, clip.id, index, () => ({ kind: 'spin', parameters: {} }))}>Сбросить Spin</button><button class="btn ghost sm" onclick={() => void editNestedVideoEffects(compositionId, track.id, clip.id, effects => effects.filter((_, i) => i !== index))}>Удалить Spin</button></div>
+            </fieldset>
+          {/if}
+        {/each}
+      {/each}
+    {/if}
+  {/each}
+</section>
+<style>
+  section, fieldset { display: grid; gap: 6px; }
+  fieldset { border: 0; padding: 0; margin: 0; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  label { display: flex; gap: 6px; align-items: center; }
+  input[type=number] { width: 5.5rem; }
+</style>

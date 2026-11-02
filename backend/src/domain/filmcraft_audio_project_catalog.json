@@ -1,0 +1,7468 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5231852443363f001c3f6b396dd9b1e6461ae2be",
+  "effects": [
+    {
+      "accelerated": false,
+      "category": [],
+      "float32": true,
+      "id": "volume",
+      "intrinsic": true,
+      "kind": "Audio",
+      "name": "Volume",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "bypass",
+          "kind": "Bool",
+          "label": "Bypass"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "level",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 15.0,
+              "min": -287.5,
+              "soft_max": 15.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Level"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [],
+      "float32": true,
+      "id": "channel_volume",
+      "intrinsic": true,
+      "kind": "Audio",
+      "name": "Channel Volume",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "bypass",
+          "kind": "Bool",
+          "label": "Bypass"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "left",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 6.0,
+              "min": -287.5,
+              "soft_max": 6.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Left"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "right",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 6.0,
+              "min": -287.5,
+              "soft_max": 6.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Right"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [],
+      "float32": true,
+      "id": "panner",
+      "intrinsic": true,
+      "kind": "Audio",
+      "name": "Panner",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "balance",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": ""
+            }
+          },
+          "label": "Balance"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "amplify",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Amplify",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -96.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "channel_mixer_a",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Channel Mixer",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "l_from_l",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": "%"
+            }
+          },
+          "label": "Left - Left"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "l_from_r",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": "%"
+            }
+          },
+          "label": "Left - Right"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "invert_l",
+          "kind": "Bool",
+          "label": "Invert Left"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "r_from_l",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": "%"
+            }
+          },
+          "label": "Right - Left"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "r_from_r",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": "%"
+            }
+          },
+          "label": "Right - Right"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "invert_r",
+          "kind": "Bool",
+          "label": "Invert Right"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "channel_volume_a",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Channel Volume",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "left",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -96.0,
+              "soft_max": 6.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Left"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "right",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -96.0,
+              "soft_max": 6.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Right"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "deesser",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "DeEsser",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 6000.0
+          },
+          "group": null,
+          "id": "frequency",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 12000.0,
+              "min": 2000.0,
+              "soft_max": 12000.0,
+              "soft_min": 2000.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -12.0
+          },
+          "group": null,
+          "id": "threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -40.0,
+              "soft_max": 0.0,
+              "soft_min": -40.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 8.0
+          },
+          "group": null,
+          "id": "reduction",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": 0.0,
+              "soft_max": 24.0,
+              "soft_min": 0.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Maximum Reduction"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "dynamics_rack",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Dynamics",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Auto Gate",
+          "id": "gate_on",
+          "kind": "Bool",
+          "label": "Auto Gate"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -50.0
+          },
+          "group": "Auto Gate",
+          "id": "gate_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -80.0,
+              "soft_max": 0.0,
+              "soft_min": -80.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 2.0
+          },
+          "group": "Auto Gate",
+          "id": "gate_attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.1,
+              "soft_max": 100.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Auto Gate",
+          "id": "gate_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 3000.0,
+              "min": 1.0,
+              "soft_max": 3000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": "Auto Gate",
+          "id": "gate_hold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 1000.0,
+              "min": 0.0,
+              "soft_max": 1000.0,
+              "soft_min": 0.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Hold"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Compressor",
+          "id": "comp_on",
+          "kind": "Bool",
+          "label": "Compressor"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -20.0
+          },
+          "group": "Compressor",
+          "id": "comp_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 2.0
+          },
+          "group": "Compressor",
+          "id": "comp_ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": "Compressor",
+          "id": "comp_attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 300.0,
+              "min": 0.1,
+              "soft_max": 300.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Compressor",
+          "id": "comp_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 3000.0,
+              "min": 1.0,
+              "soft_max": 3000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Compressor",
+          "id": "comp_auto",
+          "kind": "Bool",
+          "label": "Auto Makeup"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Compressor",
+          "id": "comp_makeup",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 0.0,
+              "soft_max": 30.0,
+              "soft_min": 0.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Makeup"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Expander",
+          "id": "exp_on",
+          "kind": "Bool",
+          "label": "Expander"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -60.0
+          },
+          "group": "Expander",
+          "id": "exp_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -80.0,
+              "soft_max": 0.0,
+              "soft_min": -80.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 2.0
+          },
+          "group": "Expander",
+          "id": "exp_ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Limiter",
+          "id": "lim_on",
+          "kind": "Bool",
+          "label": "Limiter"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -1.0
+          },
+          "group": "Limiter",
+          "id": "lim_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -30.0,
+              "soft_max": 0.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": "Limiter",
+          "id": "lim_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 1000.0,
+              "min": 1.0,
+              "soft_max": 1000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Limiter",
+          "id": "soft_clip",
+          "kind": "Bool",
+          "label": "Soft Clip"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "dynamics",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Dynamics Processing",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": -20.0
+          },
+          "group": null,
+          "id": "threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 4.0
+          },
+          "group": null,
+          "id": "ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": null,
+          "id": "attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 500.0,
+              "min": 0.1,
+              "soft_max": 500.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "release",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 5000.0,
+              "min": 1.0,
+              "soft_max": 5000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "hard_limiter",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Hard Limiter",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": -0.1
+          },
+          "group": null,
+          "id": "max",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -30.0,
+              "soft_max": 0.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Maximum Amplitude"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "boost",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Input Boost"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 7.0
+          },
+          "group": null,
+          "id": "lookahead",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 0.0,
+              "soft_max": 30.0,
+              "soft_min": 0.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Look-Ahead Time"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "release",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 1000.0,
+              "min": 1.0,
+              "soft_max": 1000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release Time"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "multiband_compressor",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Multiband Compressor",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 120.0
+          },
+          "group": "Crossovers",
+          "id": "xo1",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 1000.0,
+              "min": 20.0,
+              "soft_max": 1000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Low"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 2000.0
+          },
+          "group": "Crossovers",
+          "id": "xo2",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 8000.0,
+              "min": 100.0,
+              "soft_max": 8000.0,
+              "soft_min": 100.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Mid"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10000.0
+          },
+          "group": "Crossovers",
+          "id": "xo3",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 1000.0,
+              "soft_max": 20000.0,
+              "soft_min": 1000.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "High"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -18.0
+          },
+          "group": "Band 1",
+          "id": "b1_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 3.0
+          },
+          "group": "Band 1",
+          "id": "b1_ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": "Band 1",
+          "id": "b1_attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 500.0,
+              "min": 0.1,
+              "soft_max": 500.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Band 1",
+          "id": "b1_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 5000.0,
+              "min": 1.0,
+              "soft_max": 5000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 1",
+          "id": "b1_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 18.0,
+              "min": -18.0,
+              "soft_max": 18.0,
+              "soft_min": -18.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 1",
+          "id": "b1_solo",
+          "kind": "Bool",
+          "label": "Solo"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 1",
+          "id": "b1_bypass",
+          "kind": "Bool",
+          "label": "Bypass"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -18.0
+          },
+          "group": "Band 2",
+          "id": "b2_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 3.0
+          },
+          "group": "Band 2",
+          "id": "b2_ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": "Band 2",
+          "id": "b2_attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 500.0,
+              "min": 0.1,
+              "soft_max": 500.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Band 2",
+          "id": "b2_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 5000.0,
+              "min": 1.0,
+              "soft_max": 5000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 2",
+          "id": "b2_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 18.0,
+              "min": -18.0,
+              "soft_max": 18.0,
+              "soft_min": -18.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 2",
+          "id": "b2_solo",
+          "kind": "Bool",
+          "label": "Solo"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 2",
+          "id": "b2_bypass",
+          "kind": "Bool",
+          "label": "Bypass"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -18.0
+          },
+          "group": "Band 3",
+          "id": "b3_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 3.0
+          },
+          "group": "Band 3",
+          "id": "b3_ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": "Band 3",
+          "id": "b3_attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 500.0,
+              "min": 0.1,
+              "soft_max": 500.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Band 3",
+          "id": "b3_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 5000.0,
+              "min": 1.0,
+              "soft_max": 5000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 3",
+          "id": "b3_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 18.0,
+              "min": -18.0,
+              "soft_max": 18.0,
+              "soft_min": -18.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 3",
+          "id": "b3_solo",
+          "kind": "Bool",
+          "label": "Solo"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 3",
+          "id": "b3_bypass",
+          "kind": "Bool",
+          "label": "Bypass"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -18.0
+          },
+          "group": "Band 4",
+          "id": "b4_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 3.0
+          },
+          "group": "Band 4",
+          "id": "b4_ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": "Band 4",
+          "id": "b4_attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 500.0,
+              "min": 0.1,
+              "soft_max": 500.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Band 4",
+          "id": "b4_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 5000.0,
+              "min": 1.0,
+              "soft_max": 5000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 4",
+          "id": "b4_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 18.0,
+              "min": -18.0,
+              "soft_max": 18.0,
+              "soft_min": -18.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 4",
+          "id": "b4_solo",
+          "kind": "Bool",
+          "label": "Solo"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Band 4",
+          "id": "b4_bypass",
+          "kind": "Bool",
+          "label": "Bypass"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Output",
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 18.0,
+              "min": -18.0,
+              "soft_max": 18.0,
+              "soft_min": -18.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Output",
+          "id": "lim_on",
+          "kind": "Bool",
+          "label": "Limiter"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -0.1
+          },
+          "group": "Output",
+          "id": "lim_threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -30.0,
+              "soft_max": 0.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Limiter Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": "Output",
+          "id": "lim_release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 1000.0,
+              "min": 1.0,
+              "soft_max": 1000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Limiter Release"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Output",
+          "id": "link",
+          "kind": "Bool",
+          "label": "Link Channels"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "single_band_compressor",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Single-band Compressor",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": -20.0
+          },
+          "group": null,
+          "id": "threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 4.0
+          },
+          "group": null,
+          "id": "ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": null,
+          "id": "attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 300.0,
+              "min": 0.1,
+              "soft_max": 300.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 3000.0,
+              "min": 1.0,
+              "soft_max": 3000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Amplitude and Compression"
+      ],
+      "float32": true,
+      "id": "tube_compressor",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Tube-modeled Compressor",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": -20.0
+          },
+          "group": null,
+          "id": "threshold",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -60.0,
+              "soft_max": 0.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 4.0
+          },
+          "group": null,
+          "id": "ratio",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": 1.0,
+              "soft_max": 30.0,
+              "soft_min": 1.0,
+              "unit": ":1"
+            }
+          },
+          "label": "Ratio"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": null,
+          "id": "attack",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 500.0,
+              "min": 0.1,
+              "soft_max": 500.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Attack"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "release",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 5000.0,
+              "min": 1.0,
+              "soft_max": 5000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Release"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Delay and Echo"
+      ],
+      "float32": true,
+      "id": "analog_delay",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Analog Delay",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "mode",
+          "kind": {
+            "Choice": [
+              "Tape",
+              "Tape/Tube",
+              "Analog"
+            ]
+          },
+          "label": "Mode"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "dry",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Dry Out"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 40.0
+          },
+          "group": null,
+          "id": "wet",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Wet Out"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 250.0
+          },
+          "group": null,
+          "id": "delay",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 8000.0,
+              "min": 5.0,
+              "soft_max": 8000.0,
+              "soft_min": 5.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Delay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 40.0
+          },
+          "group": null,
+          "id": "feedback",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 200.0,
+              "min": 0.0,
+              "soft_max": 200.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "trash",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 200.0,
+              "min": 0.0,
+              "soft_max": 200.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Trash"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "spread",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 200.0,
+              "min": 0.0,
+              "soft_max": 200.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Spread"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Delay and Echo"
+      ],
+      "float32": true,
+      "id": "delay",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Delay",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": null,
+          "id": "delay",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 2.0,
+              "min": 0.0,
+              "soft_max": 2.0,
+              "soft_min": 0.0,
+              "unit": "s"
+            }
+          },
+          "label": "Delay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "feedback",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Delay and Echo"
+      ],
+      "float32": true,
+      "id": "multitap_delay",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Multitap Delay",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 250.0
+          },
+          "group": null,
+          "id": "delay1",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 4000.0,
+              "min": 1.0,
+              "soft_max": 4000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Delay 1"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "feedback1",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 95.0,
+              "min": 0.0,
+              "soft_max": 95.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback 1"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -6.0
+          },
+          "group": null,
+          "id": "level1",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -96.0,
+              "soft_max": 0.0,
+              "soft_min": -96.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Level 1"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 500.0
+          },
+          "group": null,
+          "id": "delay2",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 4000.0,
+              "min": 1.0,
+              "soft_max": 4000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Delay 2"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "feedback2",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 95.0,
+              "min": 0.0,
+              "soft_max": 95.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback 2"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -9.0
+          },
+          "group": null,
+          "id": "level2",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -96.0,
+              "soft_max": 0.0,
+              "soft_min": -96.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Level 2"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 750.0
+          },
+          "group": null,
+          "id": "delay3",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 4000.0,
+              "min": 1.0,
+              "soft_max": 4000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Delay 3"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "feedback3",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 95.0,
+              "min": 0.0,
+              "soft_max": 95.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback 3"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -12.0
+          },
+          "group": null,
+          "id": "level3",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -96.0,
+              "soft_max": 0.0,
+              "soft_min": -96.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Level 3"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1000.0
+          },
+          "group": null,
+          "id": "delay4",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 4000.0,
+              "min": 1.0,
+              "soft_max": 4000.0,
+              "soft_min": 1.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Delay 4"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "feedback4",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 95.0,
+              "min": 0.0,
+              "soft_max": 95.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback 4"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -15.0
+          },
+          "group": null,
+          "id": "level4",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -96.0,
+              "soft_max": 0.0,
+              "soft_min": -96.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Level 4"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "bandpass",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Bandpass",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1000.0
+          },
+          "group": null,
+          "id": "center",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Center"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": null,
+          "id": "q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 20.0,
+              "min": 0.1,
+              "soft_max": 20.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "bass",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Bass",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "boost",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Boost"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "fft_filter",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "FFT Filter",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 40.0
+          },
+          "group": "Point 1",
+          "id": "p1_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 1",
+          "id": "p1_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Point 2",
+          "id": "p2_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 2",
+          "id": "p2_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 250.0
+          },
+          "group": "Point 3",
+          "id": "p3_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 3",
+          "id": "p3_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 600.0
+          },
+          "group": "Point 4",
+          "id": "p4_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 4",
+          "id": "p4_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1500.0
+          },
+          "group": "Point 5",
+          "id": "p5_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 5",
+          "id": "p5_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 4000.0
+          },
+          "group": "Point 6",
+          "id": "p6_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 6",
+          "id": "p6_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 9000.0
+          },
+          "group": "Point 7",
+          "id": "p7_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 7",
+          "id": "p7_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 16000.0
+          },
+          "group": "Point 8",
+          "id": "p8_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Point 8",
+          "id": "p8_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": -60.0,
+              "soft_max": 20.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 1
+          },
+          "group": null,
+          "id": "interp",
+          "kind": {
+            "Choice": [
+              "Linear",
+              "Smooth"
+            ]
+          },
+          "label": "Interpolation"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "graphic_eq",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Graphic Equalizer (10 Bands)",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b1",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "31.5 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b2",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "63 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b3",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "125 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b4",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "250 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b5",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "500 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b6",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "1 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b7",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "2 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b8",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "4 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b9",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "8 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b10",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "16 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Master Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "graphic_eq_20",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Graphic Equalizer (20 Bands)",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b1",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "31.5 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b2",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "44 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b3",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "63 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b4",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "88 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b5",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "125 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b6",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "177 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b7",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "250 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b8",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "355 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b9",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "500 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b10",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "710 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b11",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "1 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b12",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "1.4 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b13",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "2 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b14",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "2.8 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b15",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "4 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b16",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "5.6 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b17",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "8 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b18",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "11.2 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b19",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "16 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b20",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "22.4 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Master Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "graphic_eq_30",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Graphic Equalizer (30 Bands)",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b1",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "25 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b2",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "31.5 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b3",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "40 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b4",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "50 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b5",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "63 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b6",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "80 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b7",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "100 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b8",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "125 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b9",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "160 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b10",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "200 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b11",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "250 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b12",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "315 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b13",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "400 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b14",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "500 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b15",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "630 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b16",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "800 Hz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b17",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "1 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b18",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "1.25 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b19",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "1.6 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b20",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "2 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b21",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "2.5 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b22",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "3.15 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b23",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "4 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b24",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "5 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b25",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "6.3 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b26",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "8 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b27",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "10 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b28",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "12.5 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b29",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "16 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "b30",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "20 kHz"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Master Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "highpass",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Highpass",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 80.0
+          },
+          "group": null,
+          "id": "cutoff",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 2000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Cutoff"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "lowpass",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Lowpass",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 8000.0
+          },
+          "group": null,
+          "id": "cutoff",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 500.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Cutoff"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "notch",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Notch Filter",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Notch 1",
+          "id": "n1_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 60.0
+          },
+          "group": "Notch 1",
+          "id": "n1_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -30.0
+          },
+          "group": "Notch 1",
+          "id": "n1_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -90.0,
+              "soft_max": 0.0,
+              "soft_min": -90.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Notch 2",
+          "id": "n2_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 120.0
+          },
+          "group": "Notch 2",
+          "id": "n2_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -30.0
+          },
+          "group": "Notch 2",
+          "id": "n2_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -90.0,
+              "soft_max": 0.0,
+              "soft_min": -90.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Notch 3",
+          "id": "n3_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 180.0
+          },
+          "group": "Notch 3",
+          "id": "n3_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -30.0
+          },
+          "group": "Notch 3",
+          "id": "n3_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -90.0,
+              "soft_max": 0.0,
+              "soft_min": -90.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Notch 4",
+          "id": "n4_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 240.0
+          },
+          "group": "Notch 4",
+          "id": "n4_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -30.0
+          },
+          "group": "Notch 4",
+          "id": "n4_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -90.0,
+              "soft_max": 0.0,
+              "soft_min": -90.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Notch 5",
+          "id": "n5_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 300.0
+          },
+          "group": "Notch 5",
+          "id": "n5_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -30.0
+          },
+          "group": "Notch 5",
+          "id": "n5_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -90.0,
+              "soft_max": 0.0,
+              "soft_min": -90.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Notch 6",
+          "id": "n6_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 360.0
+          },
+          "group": "Notch 6",
+          "id": "n6_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -30.0
+          },
+          "group": "Notch 6",
+          "id": "n6_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -90.0,
+              "soft_max": 0.0,
+              "soft_min": -90.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "width",
+          "kind": {
+            "Choice": [
+              "Narrow",
+              "Very Narrow",
+              "Super Narrow"
+            ]
+          },
+          "label": "Notch Width"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "parametric_eq",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Parametric Equalizer",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "master_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Master Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "High Pass",
+          "id": "hp_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": "High Pass",
+          "id": "hp_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 10.0,
+              "soft_max": 20000.0,
+              "soft_min": 10.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": "High Pass",
+          "id": "hp_slope",
+          "kind": {
+            "Choice": [
+              "12 dB/oct",
+              "24 dB/oct",
+              "36 dB/oct",
+              "48 dB/oct"
+            ]
+          },
+          "label": "Slope"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Low Shelf",
+          "id": "low_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": "Low Shelf",
+          "id": "low_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Low Shelf",
+          "id": "low_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.71
+          },
+          "group": "Low Shelf",
+          "id": "low_q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 30.0,
+              "min": 0.1,
+              "soft_max": 30.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Band 1",
+          "id": "b1_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 200.0
+          },
+          "group": "Band 1",
+          "id": "b1_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 1",
+          "id": "b1_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": "Band 1",
+          "id": "b1_q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 30.0,
+              "min": 0.1,
+              "soft_max": 30.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Band 2",
+          "id": "b2_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 500.0
+          },
+          "group": "Band 2",
+          "id": "b2_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 2",
+          "id": "b2_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": "Band 2",
+          "id": "b2_q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 30.0,
+              "min": 0.1,
+              "soft_max": 30.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Band 3",
+          "id": "mid_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1000.0
+          },
+          "group": "Band 3",
+          "id": "mid_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 3",
+          "id": "mid_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": "Band 3",
+          "id": "mid_q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 30.0,
+              "min": 0.1,
+              "soft_max": 30.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Band 4",
+          "id": "b4_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 2000.0
+          },
+          "group": "Band 4",
+          "id": "b4_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 4",
+          "id": "b4_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": "Band 4",
+          "id": "b4_q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 30.0,
+              "min": 0.1,
+              "soft_max": 30.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "Band 5",
+          "id": "b5_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 5000.0
+          },
+          "group": "Band 5",
+          "id": "b5_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "Band 5",
+          "id": "b5_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": "Band 5",
+          "id": "b5_q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 30.0,
+              "min": 0.1,
+              "soft_max": 30.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": "High Shelf",
+          "id": "high_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 8000.0
+          },
+          "group": "High Shelf",
+          "id": "high_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": "High Shelf",
+          "id": "high_gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.71
+          },
+          "group": "High Shelf",
+          "id": "high_q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 30.0,
+              "min": 0.1,
+              "soft_max": 30.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": "Low Pass",
+          "id": "lp_on",
+          "kind": "Bool",
+          "label": "On"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 18000.0
+          },
+          "group": "Low Pass",
+          "id": "lp_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 22000.0,
+              "min": 20.0,
+              "soft_max": 22000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": "Low Pass",
+          "id": "lp_slope",
+          "kind": {
+            "Choice": [
+              "12 dB/oct",
+              "24 dB/oct",
+              "36 dB/oct",
+              "48 dB/oct"
+            ]
+          },
+          "label": "Slope"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "scientific_filter",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Scientific Filter",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 1
+          },
+          "group": null,
+          "id": "type",
+          "kind": {
+            "Choice": [
+              "Bessel",
+              "Butterworth",
+              "Chebyshev",
+              "Elliptical"
+            ]
+          },
+          "label": "Type"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "mode",
+          "kind": {
+            "Choice": [
+              "Low Pass",
+              "High Pass",
+              "Band Pass",
+              "Band Stop"
+            ]
+          },
+          "label": "Mode"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Float": 6.0
+          },
+          "group": null,
+          "id": "order",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 12.0,
+              "min": 1.0,
+              "soft_max": 12.0,
+              "soft_min": 1.0,
+              "unit": ""
+            }
+          },
+          "label": "Order"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1000.0
+          },
+          "group": null,
+          "id": "cutoff",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Cutoff"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 4000.0
+          },
+          "group": null,
+          "id": "high_cutoff",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "High Cutoff"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Float": 1.0
+          },
+          "group": null,
+          "id": "ripple",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 6.0,
+              "min": 0.01,
+              "soft_max": 6.0,
+              "soft_min": 0.01,
+              "unit": "dB"
+            }
+          },
+          "label": "Passband Ripple"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Float": 60.0
+          },
+          "group": null,
+          "id": "stop_atten",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 120.0,
+              "min": 20.0,
+              "soft_max": 120.0,
+              "soft_min": 20.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Stopband Attenuation"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 30.0,
+              "min": -30.0,
+              "soft_max": 30.0,
+              "soft_min": -30.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Master Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "simple_notch",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Simple Notch Filter",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1000.0
+          },
+          "group": null,
+          "id": "center",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Center"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 10.0
+          },
+          "group": null,
+          "id": "q",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.1,
+              "soft_max": 100.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "simple_eq",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Simple Parametric EQ",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1000.0
+          },
+          "group": null,
+          "id": "center",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 20.0,
+              "soft_max": 20000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Center"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": null,
+          "id": "q",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 20.0,
+              "min": 0.1,
+              "soft_max": 20.0,
+              "soft_min": 0.1,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "boost",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Boost"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Filter and EQ"
+      ],
+      "float32": true,
+      "id": "treble",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Treble",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "boost",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Boost"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Modulation"
+      ],
+      "float32": true,
+      "id": "chorus_flanger",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Chorus/Flanger",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "mode",
+          "kind": {
+            "Choice": [
+              "Chorus",
+              "Flanger"
+            ]
+          },
+          "label": "Mode"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.8
+          },
+          "group": null,
+          "id": "speed",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 10.0,
+              "min": 0.05,
+              "soft_max": 10.0,
+              "soft_min": 0.05,
+              "unit": "Hz"
+            }
+          },
+          "label": "Speed"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "width",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Width"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": null,
+          "id": "intensity",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Intensity"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "transience",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Transience"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Modulation"
+      ],
+      "float32": true,
+      "id": "flanger",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Flanger",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.0
+          },
+          "group": null,
+          "id": "initial_delay",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": 0.1,
+              "soft_max": 20.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Initial Delay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 5.0
+          },
+          "group": null,
+          "id": "final_delay",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 20.0,
+              "min": 0.1,
+              "soft_max": 20.0,
+              "soft_min": 0.1,
+              "unit": "ms"
+            }
+          },
+          "label": "Final Delay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 90.0
+          },
+          "group": null,
+          "id": "stereo_phasing",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 180.0,
+              "min": 0.0,
+              "soft_max": 180.0,
+              "soft_min": 0.0,
+              "unit": "°"
+            }
+          },
+          "label": "Stereo Phasing"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "feedback",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.5
+          },
+          "group": null,
+          "id": "rate",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 10.0,
+              "min": 0.01,
+              "soft_max": 10.0,
+              "soft_min": 0.01,
+              "unit": "Hz"
+            }
+          },
+          "label": "Modulation Rate"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "inverted",
+          "kind": "Bool",
+          "label": "Inverted"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "special",
+          "kind": "Bool",
+          "label": "Special Effects"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Bool": true
+          },
+          "group": null,
+          "id": "sinusoidal",
+          "kind": "Bool",
+          "label": "Sinusoidal"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Modulation"
+      ],
+      "float32": true,
+      "id": "phaser",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Phaser",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Float": 4.0
+          },
+          "group": null,
+          "id": "stages",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 12.0,
+              "min": 2.0,
+              "soft_max": 12.0,
+              "soft_min": 2.0,
+              "unit": ""
+            }
+          },
+          "label": "Stages"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "intensity",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Intensity"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 70.0
+          },
+          "group": null,
+          "id": "depth",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Depth"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.5
+          },
+          "group": null,
+          "id": "rate",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 10.0,
+              "min": 0.01,
+              "soft_max": 10.0,
+              "soft_min": 0.01,
+              "unit": "Hz"
+            }
+          },
+          "label": "Modulation Rate"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 90.0
+          },
+          "group": null,
+          "id": "phase_diff",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 180.0,
+              "min": 0.0,
+              "soft_max": 180.0,
+              "soft_min": 0.0,
+              "unit": "°"
+            }
+          },
+          "label": "Phase Difference"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 2500.0
+          },
+          "group": null,
+          "id": "upper_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 100.0,
+              "soft_max": 20000.0,
+              "soft_min": 100.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Upper Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "feedback",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": "%"
+            }
+          },
+          "label": "Feedback"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": -24.0,
+              "soft_max": 24.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Noise Reduction/Restoration"
+      ],
+      "float32": true,
+      "id": "declicker",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Automatic Click Remover",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": null,
+          "id": "threshold",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 1.0,
+              "soft_max": 100.0,
+              "soft_min": 1.0,
+              "unit": ""
+            }
+          },
+          "label": "Threshold"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 16.0
+          },
+          "group": null,
+          "id": "complexity",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 1.0,
+              "soft_max": 100.0,
+              "soft_min": 1.0,
+              "unit": ""
+            }
+          },
+          "label": "Complexity"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Noise Reduction/Restoration"
+      ],
+      "float32": true,
+      "id": "dehummer",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "DeHummer",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 1
+          },
+          "group": null,
+          "id": "freq",
+          "kind": {
+            "Choice": [
+              "50 Hz",
+              "60 Hz"
+            ]
+          },
+          "label": "Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": -40.0
+          },
+          "group": null,
+          "id": "gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 0.0,
+              "min": -80.0,
+              "soft_max": 0.0,
+              "soft_min": -80.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Float": 5.0
+          },
+          "group": null,
+          "id": "harmonics",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 10.0,
+              "min": 1.0,
+              "soft_max": 10.0,
+              "soft_min": 1.0,
+              "unit": ""
+            }
+          },
+          "label": "Number of Harmonics"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": null,
+          "id": "q",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 1.0,
+              "soft_max": 100.0,
+              "soft_min": 1.0,
+              "unit": ""
+            }
+          },
+          "label": "Q"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Noise Reduction/Restoration"
+      ],
+      "float32": true,
+      "id": "denoise",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "DeNoise",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 40.0
+          },
+          "group": null,
+          "id": "amount",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Amount"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Noise Reduction/Restoration"
+      ],
+      "float32": true,
+      "id": "dereverb",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "DeReverb",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "amount",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Amount"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.8
+          },
+          "group": null,
+          "id": "rt60",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 5.0,
+              "min": 0.1,
+              "soft_max": 3.0,
+              "soft_min": 0.1,
+              "unit": "s"
+            }
+          },
+          "label": "Decay Time (RT60)"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Noise Reduction/Restoration"
+      ],
+      "float32": true,
+      "id": "speech_enhance",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Enhance Speech",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "tone",
+          "kind": {
+            "Choice": [
+              "Low Tone",
+              "High Tone"
+            ]
+          },
+          "label": "Voice"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Reverb"
+      ],
+      "float32": true,
+      "id": "convolution_reverb",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Convolution Reverb",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 1
+          },
+          "group": null,
+          "id": "impulse",
+          "kind": {
+            "Choice": [
+              "Small Room",
+              "Medium Room",
+              "Large Hall",
+              "Cathedral",
+              "Plate",
+              "Ambience",
+              "Vocal Booth"
+            ]
+          },
+          "label": "Impulse"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "room_size",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 10.0,
+              "soft_max": 100.0,
+              "soft_min": 10.0,
+              "unit": "%"
+            }
+          },
+          "label": "Room Size"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Float": 10.0
+          },
+          "group": null,
+          "id": "damping_lf",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 1000.0,
+              "min": 10.0,
+              "soft_max": 1000.0,
+              "soft_min": 10.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Damping LF"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Float": 20000.0
+          },
+          "group": null,
+          "id": "damping_hf",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 1000.0,
+              "soft_max": 20000.0,
+              "soft_min": 1000.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Damping HF"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "predelay",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 500.0,
+              "min": 0.0,
+              "soft_max": 500.0,
+              "soft_min": 0.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Pre-Delay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "width",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Width"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "gain",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 12.0,
+              "min": -24.0,
+              "soft_max": 12.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Reverb"
+      ],
+      "float32": true,
+      "id": "studio_reverb",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Studio Reverb",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "room",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Room Size"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "decay",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Decay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "damping",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "High Frequency Damping"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 90.0
+          },
+          "group": null,
+          "id": "dry",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Dry"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 35.0
+          },
+          "group": null,
+          "id": "wet",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Wet"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Reverb"
+      ],
+      "float32": true,
+      "id": "surround_reverb",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Surround Reverb",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "center_input",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Center Input"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 50.0
+          },
+          "group": null,
+          "id": "room_size",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Room Size"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1.5
+          },
+          "group": null,
+          "id": "decay",
+          "kind": {
+            "Float": {
+              "decimals": 2,
+              "max": 20.0,
+              "min": 0.1,
+              "soft_max": 20.0,
+              "soft_min": 0.1,
+              "unit": "s"
+            }
+          },
+          "label": "Decay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 20.0
+          },
+          "group": null,
+          "id": "predelay",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 200.0,
+              "min": 0.0,
+              "soft_max": 200.0,
+              "soft_min": 0.0,
+              "unit": "ms"
+            }
+          },
+          "label": "Pre-Delay"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 40.0
+          },
+          "group": null,
+          "id": "damping",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Damping"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 40.0
+          },
+          "group": null,
+          "id": "early",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Early Reflections"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 20.0
+          },
+          "group": null,
+          "id": "low_cut",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 1000.0,
+              "min": 20.0,
+              "soft_max": 1000.0,
+              "soft_min": 20.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Low Frequency Cut"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 12000.0
+          },
+          "group": null,
+          "id": "high_cut",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 1000.0,
+              "soft_max": 20000.0,
+              "soft_min": 1000.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "High Frequency Cut"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "width",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Width"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 80.0
+          },
+          "group": null,
+          "id": "dry",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Dry"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": null,
+          "id": "wet",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Wet"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "binauralizer",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Binauralizer - Ambisonics",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": null,
+          "id": "angle",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 90.0,
+              "min": 0.0,
+              "soft_max": 90.0,
+              "soft_min": 0.0,
+              "unit": "°"
+            }
+          },
+          "label": "Speaker Angle"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 17.5
+          },
+          "group": null,
+          "id": "head_size",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 24.0,
+              "min": 12.0,
+              "soft_max": 24.0,
+              "soft_min": 12.0,
+              "unit": "cm"
+            }
+          },
+          "label": "Head Size"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "distortion",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Distortion",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 12.0
+          },
+          "group": null,
+          "id": "drive",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 48.0,
+              "min": 0.0,
+              "soft_max": 48.0,
+              "soft_min": 0.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Drive"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "curve",
+          "kind": {
+            "Choice": [
+              "Soft Clip",
+              "Hard Clip",
+              "Tube",
+              "Foldback"
+            ]
+          },
+          "label": "Curve"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "symmetry",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": "%"
+            }
+          },
+          "label": "Asymmetry"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 20000.0
+          },
+          "group": null,
+          "id": "tone",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 20000.0,
+              "min": 500.0,
+              "soft_max": 20000.0,
+              "soft_min": 500.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Tone"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 12.0,
+              "min": -48.0,
+              "soft_max": 12.0,
+              "soft_min": -48.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "fill_left",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Fill Left with Right",
+      "params": [],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "fill_right",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Fill Right with Left",
+      "params": [],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "guitar_suite",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "GuitarSuite",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 30.0
+          },
+          "group": null,
+          "id": "compressor",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Compressor"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 40.0
+          },
+          "group": null,
+          "id": "distortion",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Distortion"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "dist_type",
+          "kind": {
+            "Choice": [
+              "Soft",
+              "Hard",
+              "Fuzz"
+            ]
+          },
+          "label": "Distortion Type"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 1
+          },
+          "group": null,
+          "id": "amp",
+          "kind": {
+            "Choice": [
+              "None",
+              "Clean Combo",
+              "British Stack",
+              "Tweed",
+              "Modern High Gain"
+            ]
+          },
+          "label": "Amplifier"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "filter",
+          "kind": {
+            "Choice": [
+              "None",
+              "Low Pass",
+              "High Pass",
+              "Band Pass"
+            ]
+          },
+          "label": "Filter"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 2000.0
+          },
+          "group": null,
+          "id": "filter_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 10000.0,
+              "min": 100.0,
+              "soft_max": 10000.0,
+              "soft_min": 100.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Filter Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 20.0
+          },
+          "group": null,
+          "id": "filter_res",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Filter Resonance"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "mix",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Mix"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 12.0,
+              "min": -24.0,
+              "soft_max": 12.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "invert_a",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Invert",
+      "params": [],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "loudness_radar",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Loudness Meter",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": -23.0
+          },
+          "group": null,
+          "id": "target",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": -5.0,
+              "min": -36.0,
+              "soft_max": -5.0,
+              "soft_min": -36.0,
+              "unit": "LUFS"
+            }
+          },
+          "label": "Target Loudness"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "mastering",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Mastering",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "eq_low",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 12.0,
+              "min": -12.0,
+              "soft_max": 12.0,
+              "soft_min": -12.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Low Shelf Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 1000.0
+          },
+          "group": null,
+          "id": "eq_mid_freq",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 10000.0,
+              "min": 100.0,
+              "soft_max": 10000.0,
+              "soft_min": 100.0,
+              "unit": "Hz"
+            }
+          },
+          "label": "Peak Frequency"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "eq_mid",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 12.0,
+              "min": -12.0,
+              "soft_max": 12.0,
+              "soft_min": -12.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Peak Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "eq_high",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 12.0,
+              "min": -12.0,
+              "soft_max": 12.0,
+              "soft_min": -12.0,
+              "unit": "dB"
+            }
+          },
+          "label": "High Shelf Gain"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "reverb",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Reverb Amount"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "exciter",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Exciter Amount"
+        },
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 1
+          },
+          "group": null,
+          "id": "exciter_mode",
+          "kind": {
+            "Choice": [
+              "Retro",
+              "Tape",
+              "Tube"
+            ]
+          },
+          "label": "Exciter Mode"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "widener",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 200.0,
+              "min": 0.0,
+              "soft_max": 200.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Widener"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "loudness",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": 0.0,
+              "soft_max": 100.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Loudness Maximizer"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "output",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 12.0,
+              "min": -24.0,
+              "soft_max": 12.0,
+              "soft_min": -24.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Output Gain"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "panner_ambisonics",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Panner - Ambisonics",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "pan",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 180.0,
+              "min": -180.0,
+              "soft_max": 180.0,
+              "soft_min": -180.0,
+              "unit": "°"
+            }
+          },
+          "label": "Pan"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "tilt",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 90.0,
+              "min": -90.0,
+              "soft_max": 90.0,
+              "soft_min": -90.0,
+              "unit": "°"
+            }
+          },
+          "label": "Tilt"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "roll",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 180.0,
+              "min": -180.0,
+              "soft_max": 180.0,
+              "soft_min": -180.0,
+              "unit": "°"
+            }
+          },
+          "label": "Roll"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "swap_channels",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Swap Channels",
+      "params": [],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Special"
+      ],
+      "float32": true,
+      "id": "vocal_enhancer",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Vocal Enhancer",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Choice": 0
+          },
+          "group": null,
+          "id": "mode",
+          "kind": {
+            "Choice": [
+              "Male",
+              "Female",
+              "Music"
+            ]
+          },
+          "label": "Mode"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Stereo Imagery"
+      ],
+      "float32": true,
+      "id": "stereo_expander",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Stereo Expander",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "center_pan",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": ""
+            }
+          },
+          "label": "Center Channel Pan"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "expand",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 300.0,
+              "min": 0.0,
+              "soft_max": 300.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Stereo Expand"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Stereo Imagery"
+      ],
+      "float32": true,
+      "id": "stereo_width",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Stereo Width",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 100.0
+          },
+          "group": null,
+          "id": "width",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 200.0,
+              "min": 0.0,
+              "soft_max": 200.0,
+              "soft_min": 0.0,
+              "unit": "%"
+            }
+          },
+          "label": "Width"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects",
+        "Time and Pitch"
+      ],
+      "float32": true,
+      "id": "pitch_shifter",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Pitch Shifter",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "semitones",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 12.0,
+              "min": -12.0,
+              "soft_max": 12.0,
+              "soft_min": -12.0,
+              "unit": ""
+            }
+          },
+          "label": "Semi-tones"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "cents",
+          "kind": {
+            "Float": {
+              "decimals": 0,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": ""
+            }
+          },
+          "label": "Cents"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects"
+      ],
+      "float32": true,
+      "id": "balance_a",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Balance",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "balance",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 100.0,
+              "min": -100.0,
+              "soft_max": 100.0,
+              "soft_min": -100.0,
+              "unit": ""
+            }
+          },
+          "label": "Balance"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects"
+      ],
+      "float32": true,
+      "id": "mute",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Mute",
+      "params": [
+        {
+          "animatable": true,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "mute",
+          "kind": "Bool",
+          "label": "Mute"
+        }
+      ],
+      "yuv": false
+    },
+    {
+      "accelerated": false,
+      "category": [
+        "Audio Effects"
+      ],
+      "float32": true,
+      "id": "volume_a",
+      "intrinsic": false,
+      "kind": "Audio",
+      "name": "Volume",
+      "params": [
+        {
+          "animatable": false,
+          "default": {
+            "Bool": false
+          },
+          "group": null,
+          "id": "bypass",
+          "kind": "Bool",
+          "label": "Bypass"
+        },
+        {
+          "animatable": true,
+          "default": {
+            "Float": 0.0
+          },
+          "group": null,
+          "id": "level",
+          "kind": {
+            "Float": {
+              "decimals": 1,
+              "max": 15.0,
+              "min": -96.0,
+              "soft_max": 15.0,
+              "soft_min": -60.0,
+              "unit": "dB"
+            }
+          },
+          "label": "Level"
+        }
+      ],
+      "yuv": false
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import {buildCompositionWireDocument} from './payload'
 import { describe, expect, it } from 'vitest'
 
 import { createComposition } from './commands'
@@ -108,4 +109,11 @@ describe('composition markers', () => {
     } as Composition
     expect(() => upsertCompositionMarker(full, { id: 'overflow-marker', tick: 0, label: 'Overflow' })).toThrow('limit')
   })
+})
+
+it('retains authored markers in the native wire metadata',()=>{
+ const document=createComposition({width:16,height:16,fps:10,backgroundColor:'#000000FF'})
+ const authored=upsertCompositionMarker(document,{id:'scene',tick:1000000,label:'Scene',color:'#aabbcc'})
+ expect(buildCompositionWireDocument(authored).metadata?.markers).toEqual([{id:'scene',tick:1000000,label:'Scene',color:'#aabbcc'}])
+ expect(buildCompositionWireDocument(document).metadata?.markers).toBeUndefined()
 })

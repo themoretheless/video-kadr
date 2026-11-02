@@ -1,0 +1,29 @@
+{
+  "method": "Independent bounded indexed metadata read; no serial numbers or GPS retained",
+  "total": 203,
+  "empty": 9,
+  "parsed": 193,
+  "errors": 1,
+  "model_firmware_counts": [
+    {
+      "model": "Insta360 X6",
+      "firmware": "v1.0.20",
+      "files": 88
+    },
+    {
+      "model": "Insta360 X6",
+      "firmware": "v1.1.7",
+      "files": 35
+    },
+    {
+      "model": "Insta360 X6",
+      "firmware": "v1.2.35",
+      "files": 58
+    },
+    {
+      "model": "Insta360 X6",
+      "firmware": "v1.2.36",
+      "files": 12
+    }
+  ]
+}

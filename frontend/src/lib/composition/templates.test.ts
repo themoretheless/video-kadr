@@ -223,3 +223,20 @@ describe('deterministic composition templates', () => {
     ).toThrow('incompatible')
   })
 })
+
+import { replaceClipMedia, setClipMediaVersion } from './replaceMedia'
+it('retains both versions of fixed clips and clears versions when filling a media slot', () => {
+  const base = fixture()
+  const withCopy = { ...base, sources: { ...base.sources, copy: { ...base.sources.original!, id: 'copy' } } }
+  const document = replaceClipMedia(withCopy, 'video-slot-clip', 'copy', undefined, true)
+  const fixed = createCompositionTemplate('fixed', 'Fixed versions', document, [])
+  const retained = instantiateCompositionTemplate(parseCompositionTemplate(serializeCompositionTemplate(fixed)), {})
+  expect(retained.sources.original).toEqual(document.sources.original)
+  expect(retained.sources.copy).toEqual(document.sources.copy)
+  expect(setClipMediaVersion(retained, 'video-slot-clip', false).tracks[0]!.clips[0]).toMatchObject({ sourceId: 'original' })
+  const slotted = createCompositionTemplate('slotted', 'Media slot', document, [{ id: 'hero', kind: 'media', label: 'Hero', clipId: 'video-slot-clip' }])
+  const replaced = instantiateCompositionTemplate(slotted, { hero: { source: { ...base.sources.original!, id: 'replacement' } } })
+  expect(replaced.metadata?.mediaVersions?.['video-slot-clip']).toBeUndefined()
+  expect(Object.keys(replaced.sources)).toEqual(['replacement'])
+  expect(document.metadata?.mediaVersions?.['video-slot-clip']).toEqual({ originalSourceId: 'original', copySourceId: 'copy' })
+})

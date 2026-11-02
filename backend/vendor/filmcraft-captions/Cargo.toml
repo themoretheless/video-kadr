@@ -1,0 +1,13 @@
+[package]
+name = "filmcraft-captions"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+[dependencies]
+filmcraft-time = {path = "../filmcraft-time"}
+thiserror = "2"
+roxmltree = "0.21"
+[dev-dependencies]
+proptest = "1"
+[workspace]

@@ -1,0 +1,19 @@
+<script lang="ts">
+ import {untrack} from 'svelte'
+ import {listLocalTtsReferences,removeLocalTtsReference,type SavedTtsReference} from '$lib/api'
+ let {token,selectedId,disabled=false,onselect,onremoved}:{token:string;selectedId:string;disabled?:boolean;onselect:(reference:SavedTtsReference)=>void;onremoved:(id:string)=>void}=$props()
+ let references=$state<SavedTtsReference[]>([]),cursor=$state<string|null>(null),busy=$state(false),error=$state(''),notice=$state('')
+ let request:AbortController|undefined
+ $effect(()=>{const owner=token;untrack(()=>{request?.abort();references=[];cursor=null;busy=false;error='';notice=''});return()=>{void owner;request?.abort()}})
+ async function load(more=false){if(busy||disabled)return;request?.abort();const controller=new AbortController(),owner=token;request=controller;busy=true;error='';notice='';try{const page=await listLocalTtsReferences(owner,more?cursor??undefined:undefined,controller.signal);if(controller.signal.aborted||owner!==token)return;if(!Array.isArray(page.references)||page.references.some(r=>!r.id||!Number.isFinite(r.durationUs)||r.durationUs<500000||r.durationUs>10000000||typeof r.available!=='boolean'))throw new Error('Сервер вернул некорректные образцы');references=more?[...references,...page.references.filter(r=>!references.some(old=>old.id===r.id))]:page.references;cursor=page.nextCursor}catch(reason){if(!controller.signal.aborted&&owner===token)error=reason instanceof Error?reason.message:String(reason)}finally{if(!controller.signal.aborted&&owner===token)busy=false}}
+ async function remove(id=selectedId){if(busy||disabled||!references.some(r=>r.id===id))return;request?.abort();const controller=new AbortController(),owner=token;request=controller;busy=true;error='';notice='';try{const result=await removeLocalTtsReference(owner,id,controller.signal);if(controller.signal.aborted||owner!==token)return;if(!result.removed)throw new Error('Сервер не подтвердил удаление');references=references.filter(r=>r.id!==id);onremoved(id);notice=result.filesRetained?'Образец убран из библиотеки. Файлы сохранены для ранее принятых заданий.':'Образец удалён.'}catch(reason){if(!controller.signal.aborted&&owner===token)error=reason instanceof Error?reason.message:String(reason)}finally{if(!controller.signal.aborted&&owner===token)busy=false}}
+</script>
+<details><summary>Сохранённые образцы голоса</summary>
+ <button type="button" class="btn ghost sm" disabled={busy||disabled} onclick={()=>load()}>Обновить образцы голоса</button>
+ <label>Образец<select aria-label="Сохранённый образец голоса" value={selectedId} disabled={busy||disabled} onchange={event=>{const reference=references.find(r=>r.id===event.currentTarget.value);if(reference?.available)onselect(reference)}}><option value="">Выберите сохранённый образец</option>{#each references as reference(reference.id)}<option value={reference.id} disabled={!reference.available}>{reference.origin==='clip'?'Из клипа':'Из WAV'} · {(reference.durationUs/1000000).toFixed(1)} с · {reference.id.slice(0,8)}{reference.available?'':' — исходник недоступен'}</option>{/each}</select></label>
+ <button type="button" class="btn ghost sm" disabled={busy||disabled||!references.some(r=>r.id===selectedId)} onclick={()=>remove()}>Убрать образец из библиотеки</button>
+ {#each references.filter(r=>!r.available) as reference(reference.id)}<button type="button" class="btn ghost sm" disabled={busy||disabled} onclick={()=>remove(reference.id)}>Убрать недоступный образец {reference.id.slice(0,8)}</button>{/each}
+ {#if cursor}<button type="button" class="btn ghost sm" disabled={busy||disabled} onclick={()=>load(true)}>Ещё образцы голоса</button>{/if}
+ {#if busy}<progress aria-label="Библиотека образцов голоса"></progress>{/if}
+ {#if notice}<p role="status">{notice}</p>{/if}{#if error}<p role="alert">{error}</p>{/if}
+</details>

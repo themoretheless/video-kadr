@@ -1,0 +1,1704 @@
+
+> video-kadr-frontend@0.1.0 test
+> vitest run src/lib/components/composition/NestedImageEffects.test.ts -t authors image effects
+
+
+ RUN  v4.1.10 /Users/themoretheless/Documents/Sources/video-kadr/frontend
+
+ ❯ src/lib/components/composition/NestedImageEffects.test.ts (226 tests | 1 failed | 99 skipped) 7143ms
+   × authors image effects through function NestedSphericalVideoInspector($$anchor, $$props) {
+	__vite_ssr_import_1__.check_target(new.target);
+	__vite_ssr_import_1__.push($$props, true, NestedSphericalVideoInspector);
+
+	let disabled = __vite_ssr_import_1__.prop($$props, 'disabled', 3, false),
+		media = __vite_ssr_import_1__.prop($$props, 'media', 19, () => []),
+		token = __vite_ssr_import_1__.prop($$props, 'token', 3, "");
+
+	const channels = [
+		[
+			"tilt",
+			"Наклон X, °",
+			-3.4028234663852886e+38,
+			3.4028234663852886e+38,
+			0
+		],
+
+		[
+			"pan",
+			"Поворот Y, °",
+			-3.4028234663852886e+38,
+			3.4028234663852886e+38,
+			0
+		],
+
+		[
+			"roll",
+			"Вращение Z, °",
+			-3.4028234663852886e+38,
+			3.4028234663852886e+38,
+			0
+		],
+		["fov", "Поле зрения, °", 10, 179, 90]
+	];
+
+	function value(effect, channel, base) {
+		return effect.parameters[channel] ?? base;
+	}
+
+	function setValue(effect, channel, number) {
+		return {
+			...effect,
+			parameters: {
+				...effect.parameters,
+				[channel]: number ?? channels.find(([name]) => __vite_ssr_import_1__.strict_equals(name, channel))[4]
+			}
+		};
+	}
+
+	let error = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.state(''), 'error');
+	let cameraInfo = __vite_ssr_import_1__.tag_proxy(__vite_ssr_import_1__.proxy({}), 'cameraInfo');
+	let readingSource = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.state(''), 'readingSource');
+	let cameraController;
+
+	(0,__vite_ssr_import_2__.onDestroy)(() => cameraController?.abort());
+
+	async function readCamera(id) {
+		if (__vite_ssr_import_1__.get(readingSource)) return;
+
+		const active = new AbortController();
+
+		cameraController = active;
+		__vite_ssr_import_1__.set(readingSource, id, true);
+		__vite_ssr_import_1__.set(error, '');
+
+		try {
+			cameraInfo[id] = (await __vite_ssr_import_1__.track_reactivity_loss((0,__vite_ssr_import_3__.inspectInsta360Source)(id, token(), active.signal)))();
+		} catch(cause) {
+			if (!active.signal.aborted) __vite_ssr_import_1__.set(error, cause instanceof Error ? cause.message : String(cause), true);
+		} finally {
+			if (__vite_ssr_import_1__.strict_equals(cameraController, active)) {
+				cameraController = undefined;
+				__vite_ssr_import_1__.set(readingSource, '');
+			}
+		}
+	}
+
+	async function importOrientation(file, track, clip, index) {
+		if (!file) return;
+
+		try {
+			if (file.size > 4 * 1024 * 1024) throw new Error('Файл ориентации должен быть меньше 4 МБ');
+
+			const orientation = (0,__vite_ssr_import_6__.parseOrientationSidecar)(JSON.parse((await __vite_ssr_import_1__.track_reactivity_loss(file.text()))()));
+
+			edit(track, clip, index, (current) => ({
+				...current,
+				parameters: { ...current.parameters, orientation }
+			}));
+
+			__vite_ssr_import_1__.set(error, '');
+		} catch(cause) {
+			__vite_ssr_import_1__.set(error, cause instanceof Error ? cause.message : String(cause), true);
+		}
+	}
+
+	function calibration(text, track, clip, index) {
+		try {
+			const lenses = (0,__vite_ssr_import_6__.parseLensCalibration)(JSON.parse(text));
+
+			edit(track, clip, index, (current) => ({ ...current, parameters: { ...current.parameters, lenses } }));
+			__vite_ssr_import_1__.set(error, '');
+		} catch(cause) {
+			__vite_ssr_import_1__.set(error, cause instanceof Error ? cause.message : String(cause), true);
+		}
+	}
+
+	let compositionId = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => __vite_ssr_import_5__.nestedComposition.activeCompositionId ?? __vite_ssr_import_5__.nestedComposition.document?.root ?? ''), 'compositionId');
+	let tracks = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => __vite_ssr_import_5__.nestedComposition.document?.compositions[__vite_ssr_import_1__.get(compositionId)]?.content.tracks ?? []), 'tracks');
+
+	function edit(track, clip, index, change) {
+		void (0,__vite_ssr_import_5__.editNestedVideoEffects)(__vite_ssr_import_1__.get(compositionId), track, clip, (effects) => effects.map((effect, i) => __vite_ssr_import_1__.strict_equals(i, index) && __vite_ssr_import_1__.strict_equals(effect.kind, 'spherical_video') ? change(effect) : effect));
+	}
+
+	function keyframe(effect, channel, base, start) {
+		const time = __vite_ssr_import_5__.nestedComposition.timeUs - start;
+
+		if (!Number.isSafeInteger(time) || time < 0) throw new Error('Курсор должен находиться после начала клипа');
+
+		const previous = effect.animation?.[channel];
+
+		if (__vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes') && __vite_ssr_import_1__.strict_equals(previous.track.timeBase, 1000000, false)) throw new Error('Шкала канала должна быть в микросекундах');
+
+		const keys = __vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes') ? previous.track.keyframes : [];
+
+		const keyframes = [
+			...keys.filter((key) => __vite_ssr_import_1__.strict_equals(key.tick, time, false)),
+			{
+				...keys.find((key) => __vite_ssr_import_1__.strict_equals(key.tick, time)),
+				tick: time,
+				value: value(effect, channel, base)
+			}
+		].sort((a, b) => a.tick - b.tick);
+
+		return {
+			...effect,
+			animation: {
+				...effect.animation,
+				[channel]: {
+					mode: 'keyframes',
+					track: __vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes')
+						? { ...previous.track, keyframes }
+						: { timeBase: 1000000, interpolation: 'linear', keyframes }
+				}
+			}
+		};
+	}
+
+	function editKey(effect, channel, tick, patch) {
+		const previous = effect.animation?.[channel];
+
+		if (__vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes', false)) return effect;
+
+		const animation = { ...effect.animation };
+		const keyframes = previous.track.keyframes.flatMap((key) => __vite_ssr_import_1__.strict_equals(key.tick, tick) ? patch ? [{ ...key, ...patch }] : [] : [key]).sort((a, b) => a.tick - b.tick);
+
+		if (keyframes.length) animation[channel] = { ...previous, track: { ...previous.track, keyframes } }; else delete animation[channel];
+
+		return {
+			...effect,
+			animation: Object.keys(animation).length ? animation : undefined
+		};
+	}
+
+	var $$exports = { ...__vite_ssr_import_1__.legacy_api() };
+	var section = root_12();
+	var node = __vite_ssr_import_1__.child(section);
+
+	{
+		var consequent = ($$anchor) => {
+			var p = root();
+			var text_1 = __vite_ssr_import_1__.child(p, true);
+
+			__vite_ssr_import_1__.reset(p);
+			__vite_ssr_import_1__.template_effect(() => __vite_ssr_import_1__.set_text(text_1, __vite_ssr_import_1__.get(error)));
+			__vite_ssr_import_1__.append($$anchor, p);
+		};
+
+		__vite_ssr_import_1__.add_svelte_meta(
+			() => __vite_ssr_import_1__.if(node, ($$render) => {
+				if (__vite_ssr_import_1__.get(error)) $$render(consequent);
+			}),
+			'if',
+			NestedSphericalVideoInspector,
+			53,
+			2
+		);
+	}
+
+	var node_1 = __vite_ssr_import_1__.sibling(node, 2);
+
+	__vite_ssr_import_1__.add_svelte_meta(
+		() => __vite_ssr_import_1__.each(node_1, 17, () => __vite_ssr_import_1__.get(tracks), (track) => track.id, ($$anchor, track) => {
+			var fragment = __vite_ssr_import_1__.comment();
+			var node_2 = __vite_ssr_import_1__.first_child(fragment);
+
+			{
+				var consequent_11 = ($$anchor) => {
+					var fragment_1 = __vite_ssr_import_1__.comment();
+					var node_3 = __vite_ssr_import_1__.first_child(fragment_1);
+
+					__vite_ssr_import_1__.add_svelte_meta(
+						() => __vite_ssr_import_1__.each(node_3, 17, () => __vite_ssr_import_1__.get(track).clips, (clip) => clip.id, ($$anchor, clip) => {
+							var fragment_2 = root_11();
+							var div = __vite_ssr_import_1__.first_child(fragment_2);
+							var span = __vite_ssr_import_1__.child(div);
+							var text_2 = __vite_ssr_import_1__.child(span);
+
+							__vite_ssr_import_1__.reset(span);
+
+							var button = __vite_ssr_import_1__.sibling(span);
+
+							__vite_ssr_import_1__.reset(div);
+
+							var node_4 = __vite_ssr_import_1__.sibling(div, 2);
+
+							__vite_ssr_import_1__.add_svelte_meta(
+								() => __vite_ssr_import_1__.each(node_4, 17, () => __vite_ssr_import_1__.get(clip).effects ?? [], __vite_ssr_import_1__.index, ($$anchor, effect, index) => {
+									var fragment_3 = __vite_ssr_import_1__.comment();
+									var node_5 = __vite_ssr_import_1__.first_child(fragment_3);
+
+									{
+										var consequent_10 = ($$anchor) => {
+											var fieldset = root_10();
+											var legend = __vite_ssr_import_1__.child(fieldset);
+
+											legend.textContent = `360° видео ${index + 1}`;
+
+											var node_6 = __vite_ssr_import_1__.sibling(legend, 2);
+
+											__vite_ssr_import_1__.add_svelte_meta(
+												() => __vite_ssr_import_1__.each(node_6, 17, () => channels, ([channel, label, min, max, base]) => channel, ($$anchor, $$item) => {
+													var $$array = __vite_ssr_import_1__.derived(() => __vite_ssr_import_1__.to_array(__vite_ssr_import_1__.get($$item), 5));
+													let channel = () => __vite_ssr_import_1__.get($$array)[0];
+
+													channel();
+
+													let label = () => __vite_ssr_import_1__.get($$array)[1];
+
+													label();
+
+													let min = () => __vite_ssr_import_1__.get($$array)[2];
+
+													min();
+
+													let max = () => __vite_ssr_import_1__.get($$array)[3];
+
+													max();
+
+													let base = () => __vite_ssr_import_1__.get($$array)[4];
+
+													base();
+
+													const animation = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => __vite_ssr_import_1__.get(effect).animation?.[channel()]), 'animation');
+
+													__vite_ssr_import_1__.get(animation);
+
+													var fragment_4 = root_4();
+													var div_1 = __vite_ssr_import_1__.first_child(fragment_4);
+													var label_1 = __vite_ssr_import_1__.child(div_1);
+													var text_3 = __vite_ssr_import_1__.child(label_1, true);
+													var input = __vite_ssr_import_1__.sibling(text_3);
+
+													__vite_ssr_import_1__.remove_input_defaults(input);
+													__vite_ssr_import_1__.reset(label_1);
+
+													var button_1 = __vite_ssr_import_1__.sibling(label_1, 2);
+													var node_7 = __vite_ssr_import_1__.sibling(button_1, 2);
+
+													{
+														var consequent_1 = ($$anchor) => {
+															var button_2 = root_1();
+
+															__vite_ssr_import_1__.template_effect(() => __vite_ssr_import_1__.set_attribute(button_2, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} clear`));
+
+															__vite_ssr_import_1__.delegated('click', button_2, function click_2() {
+																return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => {
+																	const animation = { ...current.animation };
+
+																	delete animation[channel()];
+
+																	return {
+																		...current,
+																		animation: Object.keys(animation).length ? animation : undefined
+																	};
+																});
+															});
+
+															__vite_ssr_import_1__.append($$anchor, button_2);
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_7, ($$render) => {
+																if (__vite_ssr_import_1__.get(animation)) $$render(consequent_1);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															67,
+															18
+														);
+													}
+
+													__vite_ssr_import_1__.reset(div_1);
+
+													var node_8 = __vite_ssr_import_1__.sibling(div_1, 2);
+
+													{
+														var consequent_2 = ($$anchor) => {
+															var details = root_3();
+															var summary = __vite_ssr_import_1__.child(details);
+															var text_4 = __vite_ssr_import_1__.child(summary);
+
+															__vite_ssr_import_1__.reset(summary);
+
+															var node_9 = __vite_ssr_import_1__.sibling(summary, 2);
+
+															__vite_ssr_import_1__.add_svelte_meta(
+																() => __vite_ssr_import_1__.each(node_9, 17, () => __vite_ssr_import_1__.get(animation).track.keyframes, (key) => key.tick, ($$anchor, key) => {
+																	var div_2 = root_2();
+																	var label_2 = __vite_ssr_import_1__.child(div_2);
+																	var input_1 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_2));
+
+																	__vite_ssr_import_1__.remove_input_defaults(input_1);
+																	__vite_ssr_import_1__.reset(label_2);
+
+																	var label_3 = __vite_ssr_import_1__.sibling(label_2, 2);
+																	var input_2 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_3));
+
+																	__vite_ssr_import_1__.remove_input_defaults(input_2);
+																	__vite_ssr_import_1__.reset(label_3);
+
+																	var button_3 = __vite_ssr_import_1__.sibling(label_3, 2);
+
+																	__vite_ssr_import_1__.reset(div_2);
+
+																	__vite_ssr_import_1__.template_effect(() => {
+																		__vite_ssr_import_1__.set_attribute(input_1, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} ${__vite_ssr_import_1__.get(key).tick} time`);
+																		__vite_ssr_import_1__.set_value(input_1, __vite_ssr_import_1__.get(key).tick / __vite_ssr_import_1__.get(animation).track.timeBase);
+																		__vite_ssr_import_1__.set_attribute(input_2, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} ${__vite_ssr_import_1__.get(key).tick} value`);
+																		__vite_ssr_import_1__.set_attribute(input_2, 'min', min());
+																		__vite_ssr_import_1__.set_attribute(input_2, 'max', max());
+																		__vite_ssr_import_1__.set_value(input_2, __vite_ssr_import_1__.get(key).value);
+																		__vite_ssr_import_1__.set_attribute(button_3, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} ${__vite_ssr_import_1__.get(key).tick} delete`);
+																	});
+
+																	__vite_ssr_import_1__.delegated('change', input_1, function change_2(event) {
+																		return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => editKey(current, channel(), __vite_ssr_import_1__.get(key).tick, {
+																			tick: Math.round(Number(event.currentTarget.value) * __vite_ssr_import_1__.get(animation).track.timeBase)
+																		}));
+																	});
+
+																	__vite_ssr_import_1__.delegated('change', input_2, function change_3(event) {
+																		return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => editKey(current, channel(), __vite_ssr_import_1__.get(key).tick, { value: Number(event.currentTarget.value) }));
+																	});
+
+																	__vite_ssr_import_1__.delegated('click', button_3, function click_3() {
+																		return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => editKey(current, channel(), __vite_ssr_import_1__.get(key).tick, null));
+																	});
+
+																	__vite_ssr_import_1__.append($$anchor, div_2);
+																}),
+																'each',
+																NestedSphericalVideoInspector,
+																71,
+																20
+															);
+
+															__vite_ssr_import_1__.reset(details);
+															__vite_ssr_import_1__.template_effect(() => __vite_ssr_import_1__.set_text(text_4, `${label() ?? ''} · ${__vite_ssr_import_1__.get(animation).track.keyframes.length ?? ''} ключей`));
+															__vite_ssr_import_1__.append($$anchor, details);
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_8, ($$render) => {
+																if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(animation)?.mode, 'keyframes')) $$render(consequent_2);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															69,
+															16
+														);
+													}
+
+													__vite_ssr_import_1__.template_effect(
+														($0) => {
+															__vite_ssr_import_1__.set_text(text_3, label());
+															__vite_ssr_import_1__.set_attribute(input, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()}`);
+															__vite_ssr_import_1__.set_attribute(input, 'min', min());
+															__vite_ssr_import_1__.set_attribute(input, 'max', max());
+															__vite_ssr_import_1__.set_value(input, $0);
+															__vite_ssr_import_1__.set_attribute(button_1, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} key`);
+
+															button_1.disabled = __vite_ssr_import_5__.nestedComposition.timeUs < ('placement' in __vite_ssr_import_1__.get(clip)
+																? __vite_ssr_import_1__.get(clip).placement.timelineStartTick
+																: __vite_ssr_import_1__.get(clip).timelineStartTick);
+														},
+														[() => value(__vite_ssr_import_1__.get(effect), channel(), base())]
+													);
+
+													__vite_ssr_import_1__.delegated('change', input, function change_1(event) {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => setValue(current, channel(), __vite_ssr_import_1__.strict_equals(event.currentTarget.value, '') ? null : Number(event.currentTarget.value)));
+													});
+
+													__vite_ssr_import_1__.delegated('click', button_1, function click_1() {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => keyframe(current, channel(), base(), 'placement' in __vite_ssr_import_1__.get(clip)
+															? __vite_ssr_import_1__.get(clip).placement.timelineStartTick
+															: __vite_ssr_import_1__.get(clip).timelineStartTick));
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_4);
+												}),
+												'each',
+												NestedSphericalVideoInspector,
+												62,
+												14
+											);
+
+											var label_4 = __vite_ssr_import_1__.sibling(node_6, 2);
+											var select = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_4));
+											var option = __vite_ssr_import_1__.child(select);
+
+											option.value = option.__value = 'equirectangular';
+
+											var option_1 = __vite_ssr_import_1__.sibling(option);
+
+											option_1.value = option_1.__value = 'dual_fisheye';
+											__vite_ssr_import_1__.reset(select);
+
+											var select_value;
+
+											__vite_ssr_import_1__.init_select(select);
+											__vite_ssr_import_1__.reset(label_4);
+
+											var label_5 = __vite_ssr_import_1__.sibling(label_4, 2);
+											var select_1 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_5));
+											var option_2 = __vite_ssr_import_1__.child(select_1);
+
+											option_2.value = option_2.__value = 'perspective';
+
+											var option_3 = __vite_ssr_import_1__.sibling(option_2);
+
+											option_3.value = option_3.__value = 'equirectangular';
+
+											var option_4 = __vite_ssr_import_1__.sibling(option_3);
+
+											option_4.value = option_4.__value = 'tiny_planet';
+											__vite_ssr_import_1__.reset(select_1);
+
+											var select_1_value;
+
+											__vite_ssr_import_1__.init_select(select_1);
+											__vite_ssr_import_1__.reset(label_5);
+
+											var node_10 = __vite_ssr_import_1__.sibling(label_5, 2);
+
+											{
+												var consequent_3 = ($$anchor) => {
+													var fragment_5 = root_5();
+													var label_6 = __vite_ssr_import_1__.first_child(fragment_5);
+													var textarea = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_6));
+
+													__vite_ssr_import_1__.remove_textarea_child(textarea);
+													__vite_ssr_import_1__.reset(label_6);
+													__vite_ssr_import_1__.next(2);
+
+													__vite_ssr_import_1__.template_effect(
+														($0) => {
+															__vite_ssr_import_1__.set_attribute(textarea, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical lenses`);
+															__vite_ssr_import_1__.set_value(textarea, $0);
+														},
+														[
+															() => JSON.stringify(__vite_ssr_import_1__.get(effect).parameters.lenses ?? __vite_ssr_import_6__.defaultLenses)
+														]
+													);
+
+													__vite_ssr_import_1__.delegated('change', textarea, function change_6(event) {
+														return calibration(event.currentTarget.value, __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index);
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_5);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_10, ($$render) => {
+														if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(effect).parameters.input, 'dual_fisheye')) $$render(consequent_3);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													83,
+													14
+												);
+											}
+
+											var node_11 = __vite_ssr_import_1__.sibling(node_10, 2);
+
+											{
+												var consequent_5 = ($$anchor) => {
+													const source = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => media().find((entry) => __vite_ssr_import_1__.strict_equals(entry.id, __vite_ssr_import_1__.get(clip).sourceId))), 'source');
+
+													__vite_ssr_import_1__.get(source);
+
+													var fragment_6 = __vite_ssr_import_1__.comment();
+													var node_12 = __vite_ssr_import_1__.first_child(fragment_6);
+
+													{
+														var consequent_4 = ($$anchor) => {
+															{
+																let $0 = __vite_ssr_import_1__.derived(() => __vite_ssr_import_1__.get(clip).placement.sourceInTick / 1000000);
+																let $1 = __vite_ssr_import_1__.derived(() => (__vite_ssr_import_1__.get(clip).placement.sourceOutTick - __vite_ssr_import_1__.get(clip).placement.sourceInTick) / 1000000);
+
+																__vite_ssr_import_1__.add_svelte_meta(
+																	() => (0,__vite_ssr_import_4__.default)($$anchor, {
+																		get url() {
+																			return __vite_ssr_import_1__.get(source).url;
+																		},
+
+																		get binding() {
+																			return __vite_ssr_import_1__.get(clip);
+																		},
+
+																		get sourceInSeconds() {
+																			return __vite_ssr_import_1__.get($0);
+																		},
+
+																		get duration() {
+																			return __vite_ssr_import_1__.get($1);
+																		},
+
+																		get disabled() {
+																			return disabled();
+																		},
+
+																		onapply: (animation) => edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+																			...current,
+																			animation: { ...current.animation, ...animation }
+																		}))
+																	}),
+																	'component',
+																	NestedSphericalVideoInspector,
+																	89,
+																	28,
+																	{ componentTag: 'SphericalSubjectTracker' }
+																);
+															}
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_12, ($$render) => {
+																if (__vite_ssr_import_1__.get(source)) $$render(consequent_4);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															89,
+															16
+														);
+													}
+
+													__vite_ssr_import_1__.append($$anchor, fragment_6);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_11, ($$render) => {
+														if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(track).kind, 'video') && 'placement' in __vite_ssr_import_1__.get(clip) && __vite_ssr_import_1__.strict_equals(index, 0) && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular', 'equirectangular') && !__vite_ssr_import_1__.get(effect).parameters.orientation?.length && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(clip).placement.speed, 1) && !__vite_ssr_import_1__.get(clip).placement.speedRamp && !__vite_ssr_import_1__.get(clip).placement.concatRetime && !__vite_ssr_import_1__.get(clip).effectTiming && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(clip).playbackMode?.mode ?? 'forward', 'forward') && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(clip).stabilization?.mode ?? 'disabled', 'disabled')) $$render(consequent_5);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													87,
+													14
+												);
+											}
+
+											var node_13 = __vite_ssr_import_1__.sibling(node_11, 2);
+
+											{
+												var consequent_8 = ($$anchor) => {
+													var fragment_8 = root_8();
+													var button_4 = __vite_ssr_import_1__.first_child(fragment_8);
+													var node_14 = __vite_ssr_import_1__.sibling(button_4, 2);
+
+													{
+														var consequent_7 = ($$anchor) => {
+															const info = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => cameraInfo[__vite_ssr_import_1__.get(clip).sourceId]), 'info');
+
+															__vite_ssr_import_1__.get(info);
+
+															var fragment_9 = __vite_ssr_import_1__.comment();
+															var node_15 = __vite_ssr_import_1__.first_child(fragment_9);
+
+															{
+																var consequent_6 = ($$anchor) => {
+																	var fragment_10 = root_6();
+																	var p_1 = __vite_ssr_import_1__.first_child(fragment_10);
+																	var text_5 = __vite_ssr_import_1__.child(p_1);
+
+																	__vite_ssr_import_1__.reset(p_1);
+
+																	var p_2 = __vite_ssr_import_1__.sibling(p_1);
+																	var text_6 = __vite_ssr_import_1__.child(p_2);
+
+																	__vite_ssr_import_1__.reset(p_2);
+
+																	__vite_ssr_import_1__.template_effect(() => {
+																		__vite_ssr_import_1__.set_text(text_5, `${__vite_ssr_import_1__.get(info).cameraModel ?? 'Insta360' ?? ''} · ${__vite_ssr_import_1__.get(info).firmware ?? 'версия не указана' ?? ''}${__vite_ssr_import_1__.get(info).frameRate ? ` · ${__vite_ssr_import_1__.get(info).frameRate} fps` : ''}`);
+																		__vite_ssr_import_1__.set_text(text_6, `Полей калибровки: ${__vite_ssr_import_1__.get(info).calibrations.length ?? ''}. Автоматическое применение камерного профиля пока не поддерживается.`);
+																	});
+
+																	__vite_ssr_import_1__.append($$anchor, fragment_10);
+																};
+
+																var alternate = ($$anchor) => {
+																	var p_3 = root_7();
+
+																	__vite_ssr_import_1__.append($$anchor, p_3);
+																};
+
+																__vite_ssr_import_1__.add_svelte_meta(
+																	() => __vite_ssr_import_1__.if(node_15, ($$render) => {
+																		if (__vite_ssr_import_1__.get(info)) $$render(consequent_6); else $$render(alternate, -1);
+																	}),
+																	'if',
+																	NestedSphericalVideoInspector,
+																	95,
+																	18
+																);
+															}
+
+															__vite_ssr_import_1__.append($$anchor, fragment_9);
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_14, ($$render) => {
+																if (__vite_ssr_import_1__.get(clip).sourceId in cameraInfo) $$render(consequent_7);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															93,
+															16
+														);
+													}
+
+													__vite_ssr_import_1__.template_effect(($0) => button_4.disabled = $0, [() => Boolean(__vite_ssr_import_1__.get(readingSource))]);
+
+													__vite_ssr_import_1__.delegated('click', button_4, function click_4() {
+														return void readCamera(__vite_ssr_import_1__.get(clip).sourceId);
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_8);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_13, ($$render) => {
+														if ('sourceId' in __vite_ssr_import_1__.get(clip) && token()) $$render(consequent_8);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													91,
+													14
+												);
+											}
+
+											var label_7 = __vite_ssr_import_1__.sibling(node_13, 2);
+											var input_3 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_7));
+
+											__vite_ssr_import_1__.reset(label_7);
+
+											var node_16 = __vite_ssr_import_1__.sibling(label_7, 4);
+
+											{
+												var consequent_9 = ($$anchor) => {
+													var fragment_11 = root_9();
+													var label_8 = __vite_ssr_import_1__.first_child(fragment_11);
+													var input_4 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_8));
+
+													__vite_ssr_import_1__.remove_input_defaults(input_4);
+													__vite_ssr_import_1__.reset(label_8);
+
+													var button_5 = __vite_ssr_import_1__.sibling(label_8, 2);
+
+													__vite_ssr_import_1__.template_effect(() => {
+														__vite_ssr_import_1__.set_attribute(input_4, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical orientation offset`);
+														__vite_ssr_import_1__.set_value(input_4, __vite_ssr_import_1__.get(effect).parameters.orientationOffsetSeconds ?? 0);
+													});
+
+													__vite_ssr_import_1__.delegated('change', input_4, function change_8(event) {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+															...current,
+															parameters: {
+																...current.parameters,
+																orientationOffsetSeconds: Number(event.currentTarget.value)
+															}
+														}));
+													});
+
+													__vite_ssr_import_1__.delegated('click', button_5, function click_5() {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+															...current,
+															parameters: { ...current.parameters, orientation: [] }
+														}));
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_11);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_16, ($$render) => {
+														if (__vite_ssr_import_1__.get(effect).parameters.orientation?.length) $$render(consequent_9);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													100,
+													14
+												);
+											}
+
+											var div_3 = __vite_ssr_import_1__.sibling(node_16, 2);
+											var button_6 = __vite_ssr_import_1__.child(div_3);
+											var button_7 = __vite_ssr_import_1__.sibling(button_6);
+
+											__vite_ssr_import_1__.reset(div_3);
+											__vite_ssr_import_1__.reset(fieldset);
+
+											__vite_ssr_import_1__.template_effect(() => {
+												fieldset.disabled = disabled() || __vite_ssr_import_5__.nestedHistory.busy || __vite_ssr_import_1__.get(track).locked;
+												__vite_ssr_import_1__.set_attribute(select, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical input`);
+
+												if (select_value !== (select_value = __vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular')) {
+													(
+														select.value = (select.__value = __vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular') ?? '',
+														__vite_ssr_import_1__.select_option(select, __vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular')
+													);
+												};
+
+												__vite_ssr_import_1__.set_attribute(select_1, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical output`);
+
+												if (select_1_value !== (select_1_value = __vite_ssr_import_1__.get(effect).parameters.output ?? 'perspective')) {
+													(
+														select_1.value = (select_1.__value = __vite_ssr_import_1__.get(effect).parameters.output ?? 'perspective') ?? '',
+														__vite_ssr_import_1__.select_option(select_1, __vite_ssr_import_1__.get(effect).parameters.output ?? 'perspective')
+													);
+												};
+
+												__vite_ssr_import_1__.set_attribute(input_3, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical orientation`);
+											});
+
+											__vite_ssr_import_1__.delegated('change', select, function change_4(event) {
+												return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+													...current,
+													parameters: { ...current.parameters, input: event.currentTarget.value }
+												}));
+											});
+
+											__vite_ssr_import_1__.delegated('change', select_1, function change_5(event) {
+												return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+													...current,
+													parameters: { ...current.parameters, output: event.currentTarget.value }
+												}));
+											});
+
+											__vite_ssr_import_1__.delegated('change', input_3, function change_7(event) {
+												return void importOrientation(event.currentTarget.files?.[0], __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index);
+											});
+
+											__vite_ssr_import_1__.delegated('click', button_6, function click_6() {
+												return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, () => ({ kind: 'spherical_video', parameters: {} }));
+											});
+
+											__vite_ssr_import_1__.delegated('click', button_7, function click_7() {
+												return void (0,__vite_ssr_import_5__.editNestedVideoEffects)(__vite_ssr_import_1__.get(compositionId), __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, (effects) => effects.filter((_, i) => __vite_ssr_import_1__.strict_equals(i, index, false)));
+											});
+
+											__vite_ssr_import_1__.append($$anchor, fieldset);
+										};
+
+										__vite_ssr_import_1__.add_svelte_meta(
+											() => __vite_ssr_import_1__.if(node_5, ($$render) => {
+												if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(effect).kind, 'spherical_video')) $$render(consequent_10);
+											}),
+											'if',
+											NestedSphericalVideoInspector,
+											59,
+											10
+										);
+									}
+
+									__vite_ssr_import_1__.append($$anchor, fragment_3);
+								}),
+								'each',
+								NestedSphericalVideoInspector,
+								58,
+								8
+							);
+
+							__vite_ssr_import_1__.template_effect(() => {
+								__vite_ssr_import_1__.set_text(text_2, `${__vite_ssr_import_1__.get(track).name ?? ''} · ${__vite_ssr_import_1__.get(clip).id ?? ''}`);
+								button.disabled = disabled() || __vite_ssr_import_5__.nestedHistory.busy || __vite_ssr_import_1__.get(track).locked;
+							});
+
+							__vite_ssr_import_1__.delegated('click', button, function click() {
+								return void (0,__vite_ssr_import_5__.editNestedVideoEffects)(__vite_ssr_import_1__.get(compositionId), __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, (effects) => [...effects, { kind: 'spherical_video', parameters: {} }]);
+							});
+
+							__vite_ssr_import_1__.append($$anchor, fragment_2);
+						}),
+						'each',
+						NestedSphericalVideoInspector,
+						56,
+						6
+					);
+
+					__vite_ssr_import_1__.append($$anchor, fragment_1);
+				};
+
+				__vite_ssr_import_1__.add_svelte_meta(
+					() => __vite_ssr_import_1__.if(node_2, ($$render) => {
+						if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(track).kind, 'video') || __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(track).kind, 'image')) $$render(consequent_11);
+					}),
+					'if',
+					NestedSphericalVideoInspector,
+					55,
+					4
+				);
+			}
+
+			__vite_ssr_import_1__.append($$anchor, fragment);
+		}),
+		'each',
+		NestedSphericalVideoInspector,
+		54,
+		2
+	);
+
+	__vite_ssr_import_1__.reset(section);
+	__vite_ssr_import_1__.append($$anchor, section);
+
+	return __vite_ssr_import_1__.pop($$exports);
+} 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/components/composition/NestedImageEffects.test.ts > authors image effects through function NestedSphericalVideoInspector($$anchor, $$props) {
+	__vite_ssr_import_1__.check_target(new.target);
+	__vite_ssr_import_1__.push($$props, true, NestedSphericalVideoInspector);
+
+	let disabled = __vite_ssr_import_1__.prop($$props, 'disabled', 3, false),
+		media = __vite_ssr_import_1__.prop($$props, 'media', 19, () => []),
+		token = __vite_ssr_import_1__.prop($$props, 'token', 3, "");
+
+	const channels = [
+		[
+			"tilt",
+			"Наклон X, °",
+			-3.4028234663852886e+38,
+			3.4028234663852886e+38,
+			0
+		],
+
+		[
+			"pan",
+			"Поворот Y, °",
+			-3.4028234663852886e+38,
+			3.4028234663852886e+38,
+			0
+		],
+
+		[
+			"roll",
+			"Вращение Z, °",
+			-3.4028234663852886e+38,
+			3.4028234663852886e+38,
+			0
+		],
+		["fov", "Поле зрения, °", 10, 179, 90]
+	];
+
+	function value(effect, channel, base) {
+		return effect.parameters[channel] ?? base;
+	}
+
+	function setValue(effect, channel, number) {
+		return {
+			...effect,
+			parameters: {
+				...effect.parameters,
+				[channel]: number ?? channels.find(([name]) => __vite_ssr_import_1__.strict_equals(name, channel))[4]
+			}
+		};
+	}
+
+	let error = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.state(''), 'error');
+	let cameraInfo = __vite_ssr_import_1__.tag_proxy(__vite_ssr_import_1__.proxy({}), 'cameraInfo');
+	let readingSource = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.state(''), 'readingSource');
+	let cameraController;
+
+	(0,__vite_ssr_import_2__.onDestroy)(() => cameraController?.abort());
+
+	async function readCamera(id) {
+		if (__vite_ssr_import_1__.get(readingSource)) return;
+
+		const active = new AbortController();
+
+		cameraController = active;
+		__vite_ssr_import_1__.set(readingSource, id, true);
+		__vite_ssr_import_1__.set(error, '');
+
+		try {
+			cameraInfo[id] = (await __vite_ssr_import_1__.track_reactivity_loss((0,__vite_ssr_import_3__.inspectInsta360Source)(id, token(), active.signal)))();
+		} catch(cause) {
+			if (!active.signal.aborted) __vite_ssr_import_1__.set(error, cause instanceof Error ? cause.message : String(cause), true);
+		} finally {
+			if (__vite_ssr_import_1__.strict_equals(cameraController, active)) {
+				cameraController = undefined;
+				__vite_ssr_import_1__.set(readingSource, '');
+			}
+		}
+	}
+
+	async function importOrientation(file, track, clip, index) {
+		if (!file) return;
+
+		try {
+			if (file.size > 4 * 1024 * 1024) throw new Error('Файл ориентации должен быть меньше 4 МБ');
+
+			const orientation = (0,__vite_ssr_import_6__.parseOrientationSidecar)(JSON.parse((await __vite_ssr_import_1__.track_reactivity_loss(file.text()))()));
+
+			edit(track, clip, index, (current) => ({
+				...current,
+				parameters: { ...current.parameters, orientation }
+			}));
+
+			__vite_ssr_import_1__.set(error, '');
+		} catch(cause) {
+			__vite_ssr_import_1__.set(error, cause instanceof Error ? cause.message : String(cause), true);
+		}
+	}
+
+	function calibration(text, track, clip, index) {
+		try {
+			const lenses = (0,__vite_ssr_import_6__.parseLensCalibration)(JSON.parse(text));
+
+			edit(track, clip, index, (current) => ({ ...current, parameters: { ...current.parameters, lenses } }));
+			__vite_ssr_import_1__.set(error, '');
+		} catch(cause) {
+			__vite_ssr_import_1__.set(error, cause instanceof Error ? cause.message : String(cause), true);
+		}
+	}
+
+	let compositionId = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => __vite_ssr_import_5__.nestedComposition.activeCompositionId ?? __vite_ssr_import_5__.nestedComposition.document?.root ?? ''), 'compositionId');
+	let tracks = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => __vite_ssr_import_5__.nestedComposition.document?.compositions[__vite_ssr_import_1__.get(compositionId)]?.content.tracks ?? []), 'tracks');
+
+	function edit(track, clip, index, change) {
+		void (0,__vite_ssr_import_5__.editNestedVideoEffects)(__vite_ssr_import_1__.get(compositionId), track, clip, (effects) => effects.map((effect, i) => __vite_ssr_import_1__.strict_equals(i, index) && __vite_ssr_import_1__.strict_equals(effect.kind, 'spherical_video') ? change(effect) : effect));
+	}
+
+	function keyframe(effect, channel, base, start) {
+		const time = __vite_ssr_import_5__.nestedComposition.timeUs - start;
+
+		if (!Number.isSafeInteger(time) || time < 0) throw new Error('Курсор должен находиться после начала клипа');
+
+		const previous = effect.animation?.[channel];
+
+		if (__vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes') && __vite_ssr_import_1__.strict_equals(previous.track.timeBase, 1000000, false)) throw new Error('Шкала канала должна быть в микросекундах');
+
+		const keys = __vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes') ? previous.track.keyframes : [];
+
+		const keyframes = [
+			...keys.filter((key) => __vite_ssr_import_1__.strict_equals(key.tick, time, false)),
+			{
+				...keys.find((key) => __vite_ssr_import_1__.strict_equals(key.tick, time)),
+				tick: time,
+				value: value(effect, channel, base)
+			}
+		].sort((a, b) => a.tick - b.tick);
+
+		return {
+			...effect,
+			animation: {
+				...effect.animation,
+				[channel]: {
+					mode: 'keyframes',
+					track: __vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes')
+						? { ...previous.track, keyframes }
+						: { timeBase: 1000000, interpolation: 'linear', keyframes }
+				}
+			}
+		};
+	}
+
+	function editKey(effect, channel, tick, patch) {
+		const previous = effect.animation?.[channel];
+
+		if (__vite_ssr_import_1__.strict_equals(previous?.mode, 'keyframes', false)) return effect;
+
+		const animation = { ...effect.animation };
+		const keyframes = previous.track.keyframes.flatMap((key) => __vite_ssr_import_1__.strict_equals(key.tick, tick) ? patch ? [{ ...key, ...patch }] : [] : [key]).sort((a, b) => a.tick - b.tick);
+
+		if (keyframes.length) animation[channel] = { ...previous, track: { ...previous.track, keyframes } }; else delete animation[channel];
+
+		return {
+			...effect,
+			animation: Object.keys(animation).length ? animation : undefined
+		};
+	}
+
+	var $$exports = { ...__vite_ssr_import_1__.legacy_api() };
+	var section = root_12();
+	var node = __vite_ssr_import_1__.child(section);
+
+	{
+		var consequent = ($$anchor) => {
+			var p = root();
+			var text_1 = __vite_ssr_import_1__.child(p, true);
+
+			__vite_ssr_import_1__.reset(p);
+			__vite_ssr_import_1__.template_effect(() => __vite_ssr_import_1__.set_text(text_1, __vite_ssr_import_1__.get(error)));
+			__vite_ssr_import_1__.append($$anchor, p);
+		};
+
+		__vite_ssr_import_1__.add_svelte_meta(
+			() => __vite_ssr_import_1__.if(node, ($$render) => {
+				if (__vite_ssr_import_1__.get(error)) $$render(consequent);
+			}),
+			'if',
+			NestedSphericalVideoInspector,
+			53,
+			2
+		);
+	}
+
+	var node_1 = __vite_ssr_import_1__.sibling(node, 2);
+
+	__vite_ssr_import_1__.add_svelte_meta(
+		() => __vite_ssr_import_1__.each(node_1, 17, () => __vite_ssr_import_1__.get(tracks), (track) => track.id, ($$anchor, track) => {
+			var fragment = __vite_ssr_import_1__.comment();
+			var node_2 = __vite_ssr_import_1__.first_child(fragment);
+
+			{
+				var consequent_11 = ($$anchor) => {
+					var fragment_1 = __vite_ssr_import_1__.comment();
+					var node_3 = __vite_ssr_import_1__.first_child(fragment_1);
+
+					__vite_ssr_import_1__.add_svelte_meta(
+						() => __vite_ssr_import_1__.each(node_3, 17, () => __vite_ssr_import_1__.get(track).clips, (clip) => clip.id, ($$anchor, clip) => {
+							var fragment_2 = root_11();
+							var div = __vite_ssr_import_1__.first_child(fragment_2);
+							var span = __vite_ssr_import_1__.child(div);
+							var text_2 = __vite_ssr_import_1__.child(span);
+
+							__vite_ssr_import_1__.reset(span);
+
+							var button = __vite_ssr_import_1__.sibling(span);
+
+							__vite_ssr_import_1__.reset(div);
+
+							var node_4 = __vite_ssr_import_1__.sibling(div, 2);
+
+							__vite_ssr_import_1__.add_svelte_meta(
+								() => __vite_ssr_import_1__.each(node_4, 17, () => __vite_ssr_import_1__.get(clip).effects ?? [], __vite_ssr_import_1__.index, ($$anchor, effect, index) => {
+									var fragment_3 = __vite_ssr_import_1__.comment();
+									var node_5 = __vite_ssr_import_1__.first_child(fragment_3);
+
+									{
+										var consequent_10 = ($$anchor) => {
+											var fieldset = root_10();
+											var legend = __vite_ssr_import_1__.child(fieldset);
+
+											legend.textContent = `360° видео ${index + 1}`;
+
+											var node_6 = __vite_ssr_import_1__.sibling(legend, 2);
+
+											__vite_ssr_import_1__.add_svelte_meta(
+												() => __vite_ssr_import_1__.each(node_6, 17, () => channels, ([channel, label, min, max, base]) => channel, ($$anchor, $$item) => {
+													var $$array = __vite_ssr_import_1__.derived(() => __vite_ssr_import_1__.to_array(__vite_ssr_import_1__.get($$item), 5));
+													let channel = () => __vite_ssr_import_1__.get($$array)[0];
+
+													channel();
+
+													let label = () => __vite_ssr_import_1__.get($$array)[1];
+
+													label();
+
+													let min = () => __vite_ssr_import_1__.get($$array)[2];
+
+													min();
+
+													let max = () => __vite_ssr_import_1__.get($$array)[3];
+
+													max();
+
+													let base = () => __vite_ssr_import_1__.get($$array)[4];
+
+													base();
+
+													const animation = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => __vite_ssr_import_1__.get(effect).animation?.[channel()]), 'animation');
+
+													__vite_ssr_import_1__.get(animation);
+
+													var fragment_4 = root_4();
+													var div_1 = __vite_ssr_import_1__.first_child(fragment_4);
+													var label_1 = __vite_ssr_import_1__.child(div_1);
+													var text_3 = __vite_ssr_import_1__.child(label_1, true);
+													var input = __vite_ssr_import_1__.sibling(text_3);
+
+													__vite_ssr_import_1__.remove_input_defaults(input);
+													__vite_ssr_import_1__.reset(label_1);
+
+													var button_1 = __vite_ssr_import_1__.sibling(label_1, 2);
+													var node_7 = __vite_ssr_import_1__.sibling(button_1, 2);
+
+													{
+														var consequent_1 = ($$anchor) => {
+															var button_2 = root_1();
+
+															__vite_ssr_import_1__.template_effect(() => __vite_ssr_import_1__.set_attribute(button_2, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} clear`));
+
+															__vite_ssr_import_1__.delegated('click', button_2, function click_2() {
+																return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => {
+																	const animation = { ...current.animation };
+
+																	delete animation[channel()];
+
+																	return {
+																		...current,
+																		animation: Object.keys(animation).length ? animation : undefined
+																	};
+																});
+															});
+
+															__vite_ssr_import_1__.append($$anchor, button_2);
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_7, ($$render) => {
+																if (__vite_ssr_import_1__.get(animation)) $$render(consequent_1);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															67,
+															18
+														);
+													}
+
+													__vite_ssr_import_1__.reset(div_1);
+
+													var node_8 = __vite_ssr_import_1__.sibling(div_1, 2);
+
+													{
+														var consequent_2 = ($$anchor) => {
+															var details = root_3();
+															var summary = __vite_ssr_import_1__.child(details);
+															var text_4 = __vite_ssr_import_1__.child(summary);
+
+															__vite_ssr_import_1__.reset(summary);
+
+															var node_9 = __vite_ssr_import_1__.sibling(summary, 2);
+
+															__vite_ssr_import_1__.add_svelte_meta(
+																() => __vite_ssr_import_1__.each(node_9, 17, () => __vite_ssr_import_1__.get(animation).track.keyframes, (key) => key.tick, ($$anchor, key) => {
+																	var div_2 = root_2();
+																	var label_2 = __vite_ssr_import_1__.child(div_2);
+																	var input_1 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_2));
+
+																	__vite_ssr_import_1__.remove_input_defaults(input_1);
+																	__vite_ssr_import_1__.reset(label_2);
+
+																	var label_3 = __vite_ssr_import_1__.sibling(label_2, 2);
+																	var input_2 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_3));
+
+																	__vite_ssr_import_1__.remove_input_defaults(input_2);
+																	__vite_ssr_import_1__.reset(label_3);
+
+																	var button_3 = __vite_ssr_import_1__.sibling(label_3, 2);
+
+																	__vite_ssr_import_1__.reset(div_2);
+
+																	__vite_ssr_import_1__.template_effect(() => {
+																		__vite_ssr_import_1__.set_attribute(input_1, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} ${__vite_ssr_import_1__.get(key).tick} time`);
+																		__vite_ssr_import_1__.set_value(input_1, __vite_ssr_import_1__.get(key).tick / __vite_ssr_import_1__.get(animation).track.timeBase);
+																		__vite_ssr_import_1__.set_attribute(input_2, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} ${__vite_ssr_import_1__.get(key).tick} value`);
+																		__vite_ssr_import_1__.set_attribute(input_2, 'min', min());
+																		__vite_ssr_import_1__.set_attribute(input_2, 'max', max());
+																		__vite_ssr_import_1__.set_value(input_2, __vite_ssr_import_1__.get(key).value);
+																		__vite_ssr_import_1__.set_attribute(button_3, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} ${__vite_ssr_import_1__.get(key).tick} delete`);
+																	});
+
+																	__vite_ssr_import_1__.delegated('change', input_1, function change_2(event) {
+																		return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => editKey(current, channel(), __vite_ssr_import_1__.get(key).tick, {
+																			tick: Math.round(Number(event.currentTarget.value) * __vite_ssr_import_1__.get(animation).track.timeBase)
+																		}));
+																	});
+
+																	__vite_ssr_import_1__.delegated('change', input_2, function change_3(event) {
+																		return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => editKey(current, channel(), __vite_ssr_import_1__.get(key).tick, { value: Number(event.currentTarget.value) }));
+																	});
+
+																	__vite_ssr_import_1__.delegated('click', button_3, function click_3() {
+																		return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => editKey(current, channel(), __vite_ssr_import_1__.get(key).tick, null));
+																	});
+
+																	__vite_ssr_import_1__.append($$anchor, div_2);
+																}),
+																'each',
+																NestedSphericalVideoInspector,
+																71,
+																20
+															);
+
+															__vite_ssr_import_1__.reset(details);
+															__vite_ssr_import_1__.template_effect(() => __vite_ssr_import_1__.set_text(text_4, `${label() ?? ''} · ${__vite_ssr_import_1__.get(animation).track.keyframes.length ?? ''} ключей`));
+															__vite_ssr_import_1__.append($$anchor, details);
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_8, ($$render) => {
+																if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(animation)?.mode, 'keyframes')) $$render(consequent_2);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															69,
+															16
+														);
+													}
+
+													__vite_ssr_import_1__.template_effect(
+														($0) => {
+															__vite_ssr_import_1__.set_text(text_3, label());
+															__vite_ssr_import_1__.set_attribute(input, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()}`);
+															__vite_ssr_import_1__.set_attribute(input, 'min', min());
+															__vite_ssr_import_1__.set_attribute(input, 'max', max());
+															__vite_ssr_import_1__.set_value(input, $0);
+															__vite_ssr_import_1__.set_attribute(button_1, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} 360° видео ${channel()} key`);
+
+															button_1.disabled = __vite_ssr_import_5__.nestedComposition.timeUs < ('placement' in __vite_ssr_import_1__.get(clip)
+																? __vite_ssr_import_1__.get(clip).placement.timelineStartTick
+																: __vite_ssr_import_1__.get(clip).timelineStartTick);
+														},
+														[() => value(__vite_ssr_import_1__.get(effect), channel(), base())]
+													);
+
+													__vite_ssr_import_1__.delegated('change', input, function change_1(event) {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => setValue(current, channel(), __vite_ssr_import_1__.strict_equals(event.currentTarget.value, '') ? null : Number(event.currentTarget.value)));
+													});
+
+													__vite_ssr_import_1__.delegated('click', button_1, function click_1() {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => keyframe(current, channel(), base(), 'placement' in __vite_ssr_import_1__.get(clip)
+															? __vite_ssr_import_1__.get(clip).placement.timelineStartTick
+															: __vite_ssr_import_1__.get(clip).timelineStartTick));
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_4);
+												}),
+												'each',
+												NestedSphericalVideoInspector,
+												62,
+												14
+											);
+
+											var label_4 = __vite_ssr_import_1__.sibling(node_6, 2);
+											var select = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_4));
+											var option = __vite_ssr_import_1__.child(select);
+
+											option.value = option.__value = 'equirectangular';
+
+											var option_1 = __vite_ssr_import_1__.sibling(option);
+
+											option_1.value = option_1.__value = 'dual_fisheye';
+											__vite_ssr_import_1__.reset(select);
+
+											var select_value;
+
+											__vite_ssr_import_1__.init_select(select);
+											__vite_ssr_import_1__.reset(label_4);
+
+											var label_5 = __vite_ssr_import_1__.sibling(label_4, 2);
+											var select_1 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_5));
+											var option_2 = __vite_ssr_import_1__.child(select_1);
+
+											option_2.value = option_2.__value = 'perspective';
+
+											var option_3 = __vite_ssr_import_1__.sibling(option_2);
+
+											option_3.value = option_3.__value = 'equirectangular';
+
+											var option_4 = __vite_ssr_import_1__.sibling(option_3);
+
+											option_4.value = option_4.__value = 'tiny_planet';
+											__vite_ssr_import_1__.reset(select_1);
+
+											var select_1_value;
+
+											__vite_ssr_import_1__.init_select(select_1);
+											__vite_ssr_import_1__.reset(label_5);
+
+											var node_10 = __vite_ssr_import_1__.sibling(label_5, 2);
+
+											{
+												var consequent_3 = ($$anchor) => {
+													var fragment_5 = root_5();
+													var label_6 = __vite_ssr_import_1__.first_child(fragment_5);
+													var textarea = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_6));
+
+													__vite_ssr_import_1__.remove_textarea_child(textarea);
+													__vite_ssr_import_1__.reset(label_6);
+													__vite_ssr_import_1__.next(2);
+
+													__vite_ssr_import_1__.template_effect(
+														($0) => {
+															__vite_ssr_import_1__.set_attribute(textarea, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical lenses`);
+															__vite_ssr_import_1__.set_value(textarea, $0);
+														},
+														[
+															() => JSON.stringify(__vite_ssr_import_1__.get(effect).parameters.lenses ?? __vite_ssr_import_6__.defaultLenses)
+														]
+													);
+
+													__vite_ssr_import_1__.delegated('change', textarea, function change_6(event) {
+														return calibration(event.currentTarget.value, __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index);
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_5);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_10, ($$render) => {
+														if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(effect).parameters.input, 'dual_fisheye')) $$render(consequent_3);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													83,
+													14
+												);
+											}
+
+											var node_11 = __vite_ssr_import_1__.sibling(node_10, 2);
+
+											{
+												var consequent_5 = ($$anchor) => {
+													const source = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => media().find((entry) => __vite_ssr_import_1__.strict_equals(entry.id, __vite_ssr_import_1__.get(clip).sourceId))), 'source');
+
+													__vite_ssr_import_1__.get(source);
+
+													var fragment_6 = __vite_ssr_import_1__.comment();
+													var node_12 = __vite_ssr_import_1__.first_child(fragment_6);
+
+													{
+														var consequent_4 = ($$anchor) => {
+															{
+																let $0 = __vite_ssr_import_1__.derived(() => __vite_ssr_import_1__.get(clip).placement.sourceInTick / 1000000);
+																let $1 = __vite_ssr_import_1__.derived(() => (__vite_ssr_import_1__.get(clip).placement.sourceOutTick - __vite_ssr_import_1__.get(clip).placement.sourceInTick) / 1000000);
+
+																__vite_ssr_import_1__.add_svelte_meta(
+																	() => (0,__vite_ssr_import_4__.default)($$anchor, {
+																		get url() {
+																			return __vite_ssr_import_1__.get(source).url;
+																		},
+
+																		get binding() {
+																			return __vite_ssr_import_1__.get(clip);
+																		},
+
+																		get sourceInSeconds() {
+																			return __vite_ssr_import_1__.get($0);
+																		},
+
+																		get duration() {
+																			return __vite_ssr_import_1__.get($1);
+																		},
+
+																		get disabled() {
+																			return disabled();
+																		},
+
+																		onapply: (animation) => edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+																			...current,
+																			animation: { ...current.animation, ...animation }
+																		}))
+																	}),
+																	'component',
+																	NestedSphericalVideoInspector,
+																	89,
+																	28,
+																	{ componentTag: 'SphericalSubjectTracker' }
+																);
+															}
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_12, ($$render) => {
+																if (__vite_ssr_import_1__.get(source)) $$render(consequent_4);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															89,
+															16
+														);
+													}
+
+													__vite_ssr_import_1__.append($$anchor, fragment_6);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_11, ($$render) => {
+														if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(track).kind, 'video') && 'placement' in __vite_ssr_import_1__.get(clip) && __vite_ssr_import_1__.strict_equals(index, 0) && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular', 'equirectangular') && !__vite_ssr_import_1__.get(effect).parameters.orientation?.length && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(clip).placement.speed, 1) && !__vite_ssr_import_1__.get(clip).placement.speedRamp && !__vite_ssr_import_1__.get(clip).placement.concatRetime && !__vite_ssr_import_1__.get(clip).effectTiming && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(clip).playbackMode?.mode ?? 'forward', 'forward') && __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(clip).stabilization?.mode ?? 'disabled', 'disabled')) $$render(consequent_5);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													87,
+													14
+												);
+											}
+
+											var node_13 = __vite_ssr_import_1__.sibling(node_11, 2);
+
+											{
+												var consequent_8 = ($$anchor) => {
+													var fragment_8 = root_8();
+													var button_4 = __vite_ssr_import_1__.first_child(fragment_8);
+													var node_14 = __vite_ssr_import_1__.sibling(button_4, 2);
+
+													{
+														var consequent_7 = ($$anchor) => {
+															const info = __vite_ssr_import_1__.tag(__vite_ssr_import_1__.derived(() => cameraInfo[__vite_ssr_import_1__.get(clip).sourceId]), 'info');
+
+															__vite_ssr_import_1__.get(info);
+
+															var fragment_9 = __vite_ssr_import_1__.comment();
+															var node_15 = __vite_ssr_import_1__.first_child(fragment_9);
+
+															{
+																var consequent_6 = ($$anchor) => {
+																	var fragment_10 = root_6();
+																	var p_1 = __vite_ssr_import_1__.first_child(fragment_10);
+																	var text_5 = __vite_ssr_import_1__.child(p_1);
+
+																	__vite_ssr_import_1__.reset(p_1);
+
+																	var p_2 = __vite_ssr_import_1__.sibling(p_1);
+																	var text_6 = __vite_ssr_import_1__.child(p_2);
+
+																	__vite_ssr_import_1__.reset(p_2);
+
+																	__vite_ssr_import_1__.template_effect(() => {
+																		__vite_ssr_import_1__.set_text(text_5, `${__vite_ssr_import_1__.get(info).cameraModel ?? 'Insta360' ?? ''} · ${__vite_ssr_import_1__.get(info).firmware ?? 'версия не указана' ?? ''}${__vite_ssr_import_1__.get(info).frameRate ? ` · ${__vite_ssr_import_1__.get(info).frameRate} fps` : ''}`);
+																		__vite_ssr_import_1__.set_text(text_6, `Полей калибровки: ${__vite_ssr_import_1__.get(info).calibrations.length ?? ''}. Автоматическое применение камерного профиля пока не поддерживается.`);
+																	});
+
+																	__vite_ssr_import_1__.append($$anchor, fragment_10);
+																};
+
+																var alternate = ($$anchor) => {
+																	var p_3 = root_7();
+
+																	__vite_ssr_import_1__.append($$anchor, p_3);
+																};
+
+																__vite_ssr_import_1__.add_svelte_meta(
+																	() => __vite_ssr_import_1__.if(node_15, ($$render) => {
+																		if (__vite_ssr_import_1__.get(info)) $$render(consequent_6); else $$render(alternate, -1);
+																	}),
+																	'if',
+																	NestedSphericalVideoInspector,
+																	95,
+																	18
+																);
+															}
+
+															__vite_ssr_import_1__.append($$anchor, fragment_9);
+														};
+
+														__vite_ssr_import_1__.add_svelte_meta(
+															() => __vite_ssr_import_1__.if(node_14, ($$render) => {
+																if (__vite_ssr_import_1__.get(clip).sourceId in cameraInfo) $$render(consequent_7);
+															}),
+															'if',
+															NestedSphericalVideoInspector,
+															93,
+															16
+														);
+													}
+
+													__vite_ssr_import_1__.template_effect(($0) => button_4.disabled = $0, [() => Boolean(__vite_ssr_import_1__.get(readingSource))]);
+
+													__vite_ssr_import_1__.delegated('click', button_4, function click_4() {
+														return void readCamera(__vite_ssr_import_1__.get(clip).sourceId);
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_8);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_13, ($$render) => {
+														if ('sourceId' in __vite_ssr_import_1__.get(clip) && token()) $$render(consequent_8);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													91,
+													14
+												);
+											}
+
+											var label_7 = __vite_ssr_import_1__.sibling(node_13, 2);
+											var input_3 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_7));
+
+											__vite_ssr_import_1__.reset(label_7);
+
+											var node_16 = __vite_ssr_import_1__.sibling(label_7, 4);
+
+											{
+												var consequent_9 = ($$anchor) => {
+													var fragment_11 = root_9();
+													var label_8 = __vite_ssr_import_1__.first_child(fragment_11);
+													var input_4 = __vite_ssr_import_1__.sibling(__vite_ssr_import_1__.child(label_8));
+
+													__vite_ssr_import_1__.remove_input_defaults(input_4);
+													__vite_ssr_import_1__.reset(label_8);
+
+													var button_5 = __vite_ssr_import_1__.sibling(label_8, 2);
+
+													__vite_ssr_import_1__.template_effect(() => {
+														__vite_ssr_import_1__.set_attribute(input_4, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical orientation offset`);
+														__vite_ssr_import_1__.set_value(input_4, __vite_ssr_import_1__.get(effect).parameters.orientationOffsetSeconds ?? 0);
+													});
+
+													__vite_ssr_import_1__.delegated('change', input_4, function change_8(event) {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+															...current,
+															parameters: {
+																...current.parameters,
+																orientationOffsetSeconds: Number(event.currentTarget.value)
+															}
+														}));
+													});
+
+													__vite_ssr_import_1__.delegated('click', button_5, function click_5() {
+														return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+															...current,
+															parameters: { ...current.parameters, orientation: [] }
+														}));
+													});
+
+													__vite_ssr_import_1__.append($$anchor, fragment_11);
+												};
+
+												__vite_ssr_import_1__.add_svelte_meta(
+													() => __vite_ssr_import_1__.if(node_16, ($$render) => {
+														if (__vite_ssr_import_1__.get(effect).parameters.orientation?.length) $$render(consequent_9);
+													}),
+													'if',
+													NestedSphericalVideoInspector,
+													100,
+													14
+												);
+											}
+
+											var div_3 = __vite_ssr_import_1__.sibling(node_16, 2);
+											var button_6 = __vite_ssr_import_1__.child(div_3);
+											var button_7 = __vite_ssr_import_1__.sibling(button_6);
+
+											__vite_ssr_import_1__.reset(div_3);
+											__vite_ssr_import_1__.reset(fieldset);
+
+											__vite_ssr_import_1__.template_effect(() => {
+												fieldset.disabled = disabled() || __vite_ssr_import_5__.nestedHistory.busy || __vite_ssr_import_1__.get(track).locked;
+												__vite_ssr_import_1__.set_attribute(select, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical input`);
+
+												if (select_value !== (select_value = __vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular')) {
+													(
+														select.value = (select.__value = __vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular') ?? '',
+														__vite_ssr_import_1__.select_option(select, __vite_ssr_import_1__.get(effect).parameters.input ?? 'equirectangular')
+													);
+												};
+
+												__vite_ssr_import_1__.set_attribute(select_1, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical output`);
+
+												if (select_1_value !== (select_1_value = __vite_ssr_import_1__.get(effect).parameters.output ?? 'perspective')) {
+													(
+														select_1.value = (select_1.__value = __vite_ssr_import_1__.get(effect).parameters.output ?? 'perspective') ?? '',
+														__vite_ssr_import_1__.select_option(select_1, __vite_ssr_import_1__.get(effect).parameters.output ?? 'perspective')
+													);
+												};
+
+												__vite_ssr_import_1__.set_attribute(input_3, 'aria-label', `${__vite_ssr_import_1__.get(clip).id} spherical orientation`);
+											});
+
+											__vite_ssr_import_1__.delegated('change', select, function change_4(event) {
+												return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+													...current,
+													parameters: { ...current.parameters, input: event.currentTarget.value }
+												}));
+											});
+
+											__vite_ssr_import_1__.delegated('change', select_1, function change_5(event) {
+												return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, (current) => ({
+													...current,
+													parameters: { ...current.parameters, output: event.currentTarget.value }
+												}));
+											});
+
+											__vite_ssr_import_1__.delegated('change', input_3, function change_7(event) {
+												return void importOrientation(event.currentTarget.files?.[0], __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index);
+											});
+
+											__vite_ssr_import_1__.delegated('click', button_6, function click_6() {
+												return edit(__vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, index, () => ({ kind: 'spherical_video', parameters: {} }));
+											});
+
+											__vite_ssr_import_1__.delegated('click', button_7, function click_7() {
+												return void (0,__vite_ssr_import_5__.editNestedVideoEffects)(__vite_ssr_import_1__.get(compositionId), __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, (effects) => effects.filter((_, i) => __vite_ssr_import_1__.strict_equals(i, index, false)));
+											});
+
+											__vite_ssr_import_1__.append($$anchor, fieldset);
+										};
+
+										__vite_ssr_import_1__.add_svelte_meta(
+											() => __vite_ssr_import_1__.if(node_5, ($$render) => {
+												if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(effect).kind, 'spherical_video')) $$render(consequent_10);
+											}),
+											'if',
+											NestedSphericalVideoInspector,
+											59,
+											10
+										);
+									}
+
+									__vite_ssr_import_1__.append($$anchor, fragment_3);
+								}),
+								'each',
+								NestedSphericalVideoInspector,
+								58,
+								8
+							);
+
+							__vite_ssr_import_1__.template_effect(() => {
+								__vite_ssr_import_1__.set_text(text_2, `${__vite_ssr_import_1__.get(track).name ?? ''} · ${__vite_ssr_import_1__.get(clip).id ?? ''}`);
+								button.disabled = disabled() || __vite_ssr_import_5__.nestedHistory.busy || __vite_ssr_import_1__.get(track).locked;
+							});
+
+							__vite_ssr_import_1__.delegated('click', button, function click() {
+								return void (0,__vite_ssr_import_5__.editNestedVideoEffects)(__vite_ssr_import_1__.get(compositionId), __vite_ssr_import_1__.get(track).id, __vite_ssr_import_1__.get(clip).id, (effects) => [...effects, { kind: 'spherical_video', parameters: {} }]);
+							});
+
+							__vite_ssr_import_1__.append($$anchor, fragment_2);
+						}),
+						'each',
+						NestedSphericalVideoInspector,
+						56,
+						6
+					);
+
+					__vite_ssr_import_1__.append($$anchor, fragment_1);
+				};
+
+				__vite_ssr_import_1__.add_svelte_meta(
+					() => __vite_ssr_import_1__.if(node_2, ($$render) => {
+						if (__vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(track).kind, 'video') || __vite_ssr_import_1__.strict_equals(__vite_ssr_import_1__.get(track).kind, 'image')) $$render(consequent_11);
+					}),
+					'if',
+					NestedSphericalVideoInspector,
+					55,
+					4
+				);
+			}
+
+			__vite_ssr_import_1__.append($$anchor, fragment);
+		}),
+		'each',
+		NestedSphericalVideoInspector,
+		54,
+		2
+	);
+
+	__vite_ssr_import_1__.reset(section);
+	__vite_ssr_import_1__.append($$anchor, section);
+
+	return __vite_ssr_import_1__.pop($$exports);
+}
+TypeError: Cannot read properties of null (reading 'r')
+
+	in <unknown>
+
+ ❯ onDestroy node_modules/svelte/src/index-server.js:9:67
+      7| /** @param {() => void} fn */
+      8| export function onDestroy(fn) {
+      9|  /** @type {Renderer} */ (/** @type {SSRContext} */ (ssr_context).r).o…
+       |                                                                   ^
+     10| }
+     11|
+ ❯ NestedSphericalVideoInspector src/lib/components/composition/NestedSphericalVideoInspector.svelte:17:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 126 passed | 99 skipped (226)
+   Start at  01:49:06
+   Duration  13.76s (transform 5.59s, setup 0ms, import 6.25s, tests 7.14s, environment 201ms)
+

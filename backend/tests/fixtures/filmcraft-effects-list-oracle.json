@@ -1,0 +1,171 @@
+{
+  "cases": [
+    {
+      "count": 303,
+      "params": {},
+      "sha256": "7074001f3b1dc60d4a83983bfc6ef17e30cf299cf4e978bff0efeefd966e1f17"
+    },
+    {
+      "count": 303,
+      "params": {
+        "detail": true
+      },
+      "sha256": "42762dc6e35b62786b678e28826c67747495d112215fc5316aa3c95939e1337c"
+    },
+    {
+      "count": 303,
+      "params": {
+        "detail": "true",
+        "folder": 42,
+        "kind": true,
+        "unknown": true
+      },
+      "sha256": "7074001f3b1dc60d4a83983bfc6ef17e30cf299cf4e978bff0efeefd966e1f17"
+    },
+    {
+      "count": 0,
+      "params": {
+        "kind": "unknown"
+      },
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "count": 0,
+      "params": {
+        "folder": "video transitions"
+      },
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "count": 303,
+      "params": {
+        "folder": ""
+      },
+      "sha256": "7074001f3b1dc60d4a83983bfc6ef17e30cf299cf4e978bff0efeefd966e1f17"
+    },
+    {
+      "count": 130,
+      "params": {
+        "detail": false,
+        "kind": "Video"
+      },
+      "sha256": "3d00ad6d2cf21aa78c43d4436afe512a9ceb4dce4486e8bb3bf1e0393982682b"
+    },
+    {
+      "count": 130,
+      "params": {
+        "detail": true,
+        "kind": "Video"
+      },
+      "sha256": "02492e2e9692906323f19e783b3b0f862f9efc5a62c6f86d28654d66d5dbc058"
+    },
+    {
+      "count": 58,
+      "params": {
+        "detail": false,
+        "kind": "Audio"
+      },
+      "sha256": "a18b50b866644e833bd4b8d9cf9a768e8619f5695db7e5f57a2086beed59db9e"
+    },
+    {
+      "count": 58,
+      "params": {
+        "detail": true,
+        "kind": "Audio"
+      },
+      "sha256": "76d7534391052fb2fefed26aa98ea5ea21accb1aee0313735c93134e0fa8d79f"
+    },
+    {
+      "count": 112,
+      "params": {
+        "detail": false,
+        "kind": "VideoTransition"
+      },
+      "sha256": "7dffffc25b524060d650a33612f2d1b04655a2ef05f7e863fbb9c183f21ec24b"
+    },
+    {
+      "count": 112,
+      "params": {
+        "detail": true,
+        "kind": "VideoTransition"
+      },
+      "sha256": "719917d0f59b27ae884fcad55df6174862832355596e332ffc602a28fde19854"
+    },
+    {
+      "count": 3,
+      "params": {
+        "detail": false,
+        "kind": "AudioTransition"
+      },
+      "sha256": "e783dbbcfe6970289e1544d8cb1cebbe688aaea0318e209f27a09d62b84a606f"
+    },
+    {
+      "count": 3,
+      "params": {
+        "detail": true,
+        "kind": "AudioTransition"
+      },
+      "sha256": "aece7ff733af188f28773772659edf1238f572f9a71f05768237eebeb7d86343"
+    },
+    {
+      "count": 112,
+      "params": {
+        "detail": false,
+        "kind": "vIdEoTrAnSiTiOn"
+      },
+      "sha256": "7dffffc25b524060d650a33612f2d1b04655a2ef05f7e863fbb9c183f21ec24b"
+    },
+    {
+      "count": 112,
+      "params": {
+        "detail": true,
+        "kind": "vIdEoTrAnSiTiOn"
+      },
+      "sha256": "719917d0f59b27ae884fcad55df6174862832355596e332ffc602a28fde19854"
+    },
+    {
+      "count": 9,
+      "params": {
+        "detail": true,
+        "folder": "Video Transitions/Wipe"
+      },
+      "sha256": "8083e024edb064346b241a26e31c98b0fbf3ba8eea1b0d229689bb79045042a3"
+    },
+    {
+      "count": 84,
+      "params": {
+        "detail": true,
+        "folder": "Video Transitions"
+      },
+      "sha256": "498842822cf1ccaac17416f4d9df94271a156381603ed1c17a515ebe405dd6f2"
+    },
+    {
+      "count": 6,
+      "params": {
+        "detail": true,
+        "folder": "Video Effects/Color Correction"
+      },
+      "sha256": "11d137e6f60f5555bd32608b5c9087b8b0c89c88d9cfc17c88d85a5fcb8453a7"
+    },
+    {
+      "count": 55,
+      "params": {
+        "detail": true,
+        "folder": "Audio Effects"
+      },
+      "sha256": "a22c8b341dc70b9c27cf415ba19cd423edf7fedfd952c127c5c105b5a8fb6649"
+    },
+    {
+      "count": 0,
+      "params": {
+        "detail": true,
+        "folder": "does-not-exist"
+      },
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  ],
+  "definitionCount": 303,
+  "definitionsSha256": "ecdcd5c8431c31596758f2842512aa050d6040442bae577c2e13a5b94db71f03",
+  "schemaVersion": 1,
+  "sourceCommit": "5231852443363f001c3f6b396dd9b1e6461ae2be"
+}

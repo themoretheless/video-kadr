@@ -1,0 +1,8 @@
+{"time": 1793397334.339587, "stage": "start", "tool": "open_binary", "output": "open.json"}
+{"time": 1793397337.60553, "stage": "finish", "tool": "open_binary", "is_error": false}
+{"time": 1793397337.6056309, "stage": "start", "tool": "binary_overview", "output": "overview.json"}
+{"time": 1793398073.777828, "stage": "finish", "tool": "binary_overview", "is_error": true}
+{"time": 1793398073.778125, "stage": "start", "tool": "export_evidence_bundle", "output": "partial-export.json"}
+{"time": 1793398073.792773, "stage": "finish", "tool": "export_evidence_bundle", "is_error": false}
+{"time": 1793398073.792898, "stage": "start", "tool": "close_binary", "output": "cleanup.json"}
+{"time": 1793398073.794629, "stage": "finish", "tool": "close_binary", "is_error": false}

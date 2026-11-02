@@ -1,0 +1,37 @@
+import { expect, it } from 'vitest'
+import { createMeterDisplay } from './meterDisplay'
+it('holds RMS for 300ms and peak for a second, with separate release rates', () => {
+  const display = createMeterDisplay()
+  display.receive({ rmsDb: -10, peakDb: -3 }, 0)
+  display.receive({ rmsDb: -40, peakDb: -30 }, 100)
+  display.advance(300)
+  expect(display.value.rmsDb).toBe(-10)
+  expect(display.value.levelDb).toBeCloseTo(-10.2)
+  expect(display.value.peakDb).toBe(-3)
+  display.advance(500)
+  expect(display.value.rmsDb).toBeCloseTo(-14.8)
+  expect(display.value.peakDb).toBe(-3)
+  display.advance(1100)
+  expect(display.value.peakDb).toBeCloseTo(-4.8)
+})
+it('silence cancels hold, releases quickly and stops at true silence', () => {
+  const display = createMeterDisplay()
+  display.receive({ rmsDb: -10, peakDb: 0 }, 0)
+  display.receive({ rmsDb: -Infinity, peakDb: -Infinity }, 100)
+  display.advance(200)
+  expect(display.value.rmsDb).toBe(-34)
+  expect(display.value.peakDb).toBe(-24)
+  display.advance(400)
+  expect(display.value).toEqual({ rmsDb: -120, levelDb: -120, peakDb: -120 })
+  expect(display.settled).toBe(true)
+})
+it('reset drops the held marker to current level without changing RMS or raw signal', () => {
+  const display = createMeterDisplay()
+  display.receive({ rmsDb: -10, peakDb: 0 }, 0)
+  display.receive({ rmsDb: -40, peakDb: -30 }, 100)
+  display.advance(500)
+  const before = display.value
+  display.resetPeak(500)
+  expect(display.value.peakDb).toBe(before.levelDb)
+  expect(display.value.rmsDb).toBe(before.rmsDb)
+})

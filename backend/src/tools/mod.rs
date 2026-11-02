@@ -5,11 +5,17 @@
 
 mod args;
 mod composition_args;
+pub(crate) use composition_args::native_tempo_source_filter;
+pub mod composition_native_audio;
+pub mod composition_native_video;
 mod egress_proxy;
 pub(crate) mod ffmpeg_filters;
 pub(crate) mod looks;
 mod net;
 pub mod proxy;
+pub mod native_rgba_export;
+pub mod native_pcm_export;
+pub mod native_loudness_export;
 pub mod thumbnail;
 
 pub use args::{
@@ -426,8 +432,8 @@ fn ffmpeg_filesystem_scope(args: &[String]) -> Result<(Vec<PathBuf>, PathBuf)> {
         .filter(|value| !value.is_empty() && !value.starts_with("pipe:"))
         .map(PathBuf::from)
         .ok_or_else(|| anyhow!("ffmpeg command requires a filesystem output"))?;
-    if inputs.is_empty() {
-        return Err(anyhow!("ffmpeg command requires at least one input"));
+    if inputs.is_empty() && !args.windows(2).any(|pair| pair[0] == "-filter_complex" && pair[1].split(';').any(|chain| chain.trim_start().starts_with("color=") && chain.ends_with("[primary_gap_0]"))) {
+        return Err(anyhow!("ffmpeg command requires an input or generated composition canvas"));
     }
     Ok((inputs, output))
 }
@@ -499,6 +505,18 @@ mod tests {
             parse_ffmpeg_component_list(output),
             ["aac", "hue", "libx264", "mp4", "palettegen"]
         );
+    }
+
+    #[test]
+    fn ffmpeg_scope_admits_generated_canvas_without_media_inputs() {
+        let args = vec!["-filter_complex".into(), "color=s=64x64:d=1[primary_gap_0]".into(), "/tmp/canvas.mp4".into()];
+        let (inputs, output) = ffmpeg_filesystem_scope(&args).unwrap();
+        assert!(inputs.is_empty());
+        assert_eq!(output, PathBuf::from("/tmp/canvas.mp4"));
+        assert!(ffmpeg_filesystem_scope(&["/tmp/canvas.mp4".into()]).is_err());
+        for graph in ["[0:v]null[primary_gap_0]", "nullsrc=s=64x64[primary_gap_0]", "color=s=64x64[other]"] {
+            assert!(ffmpeg_filesystem_scope(&["-filter_complex".into(), graph.into(), "/tmp/canvas.mp4".into()]).is_err());
+        }
     }
 
     #[test]
@@ -691,3 +709,61 @@ mod tests {
         assert!(map_ytdlp_error("HTTP Error 403: Forbidden", false).starts_with("yt-dlp:"));
     }
 }
+
+pub mod pcm_conform;
+
+pub mod native_audio_export;
+
+#[cfg(test)]
+mod graphic_native_export_tests;
+
+#[cfg(test)]
+mod transition_native_export_tests;
+
+pub(crate) mod packet_pcm;
+
+pub(crate) mod packet_pitch;
+
+pub(crate) mod packet_echo;
+
+pub(crate) mod packet_pitch_frames;
+
+pub(crate) mod packet_biquad;
+
+pub(crate) mod packet_limiter;
+pub(crate) mod packet_modulation;
+
+pub(crate) mod packet_voice;
+
+pub(crate) mod packet_timeline;
+
+pub(crate) mod packet_clip;
+
+pub(crate) mod packet_pitch_node;
+
+pub(crate) mod packet_voice_chain;
+
+pub(crate) mod packet_dynamics;
+
+pub(crate) mod packet_rate_frames;
+
+pub(crate) mod packet_loudness;
+
+pub(crate) mod packet_double_rate;
+
+pub(crate) mod packet_typed_rate;
+
+pub(crate) mod packet_pitch_loudness_chain;
+
+pub mod concat_audio_frames;
+
+pub mod concat_retime_audio;
+
+pub mod audio_packet_spool;
+
+mod concat_curve_effects;
+
+mod native_intra_export;
+mod native_image_sequence_export;
+
+pub(crate) mod native_hevc_capability;

@@ -1,0 +1,11 @@
+
+running 1 test
+real dual-track frame: 524288/524288 opaque; 524288/524288 nonblack pixels
+qualified MP4 video clock=Some(VideoClock { numerator: 50, denominator: 1, sample_count: 213 })
+synchronization=exposure_midpoint_linear; first orientation=Some([0.991867243708948, 0.05546068233381548, 0.0, -0.11455777394957592]); first sensor acceleration=[-0.9563485290442519, -0.108739797977874, -0.224609375]
+source specific-force/world-up agreement=0.9999999999999999
+embedded gyro auto mounting, capture synchronization and horizon render passed
+test v6_real_dual_track_panorama ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 4.54s
+

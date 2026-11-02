@@ -1,0 +1,6058 @@
+{
+  "schemaVersion": 1,
+  "package": "concat.crunch",
+  "reference": {
+    "repository": "https://github.com/jub0t/concat",
+    "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+    "files": {
+      "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+      "src/crates/concat-effects/src/catalogue.rs": "b03e52127cedc87429487f95e088b7d7bedfcc792490e559b72dfbfdd5218bdb",
+      "src/crates/concat-effects/packages/concat.echo/effect.toml": "225a48851a75fc8bd22e493c17903762cc3075ff0de4c98ecee4f1c93a59c8d3",
+      "src/crates/concat-effects/packages/concat.echo/fixtures.toml": "015e50ff01ba6c792ff4f25dd07789ef59209c2e5c1d766faaa596abc1e18062",
+      "src/crates/concat-effects/packages/concat.radio/effect.toml": "fa5184f71867ed1915d1e210ca24bd0afd206163b67cd5358a8d2c69f58e6d72",
+      "src/crates/concat-effects/packages/concat.radio/fixtures.toml": "9db9147da8e261e7ac728c87a99f9945704f495774bfffc52d3b646c28007cd3",
+      "src/crates/concat-effects/packages/concat.lofi/effect.toml": "4bc462ce98cf89bbb8df96e1f0c94cb36e8be16646c071e21e8574de1d370a83",
+      "src/crates/concat-effects/packages/concat.lofi/fixtures.toml": "91a2d4e15831b197dcefa715f8e0d3b0b0821f145e4a3bff8d0d08809e609bce",
+      "src/crates/concat-effects/packages/concat.distorted/effect.toml": "3552510085f78dd4463ca3972c4d3ccdd00e36568a2c8ab9faebcbbe4b1f0fca",
+      "src/crates/concat-effects/packages/concat.distorted/fixtures.toml": "74b4c19977484dc90e2bfbe81d7cca6eaae42c5e9cbbab63fb1a7788edf840e0",
+      "src/crates/concat-effects/packages/concat.telephone/effect.toml": "cde43f6a45426ae5308e333aa24c00dee12259b9b2d429b478c1672093e66f07",
+      "src/crates/concat-effects/packages/concat.telephone/fixtures.toml": "224528e5c13f38adb0c917b0ebeabcbbd412362470c3663f30193cb4f4a5914f"
+    },
+    "adapterSha256": "3dfccbd70183581d1981ac55cfa700857176cfb3dc6834732ed8436424ef452b"
+  },
+  "ffmpeg": {
+    "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "binarySha256": "768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e"
+  },
+  "aliasVerified": {
+    "lofiHasShortAlias": false,
+    "radio": "concat.radio"
+  },
+  "pcmBytes": 85424928,
+  "cases": [
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 0,
+      "byteLength": 36068,
+      "outputSha256": "900f559870bd953f11d51672962d7b00084b66c3cdf9dd46729fa938ebb7dc11"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 36068,
+      "byteLength": 36068,
+      "outputSha256": "f45c281b531a76e5abeecd5562dc0c6c0be4f73876f0328928097da6e03b257a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 72136,
+      "byteLength": 36068,
+      "outputSha256": "6b87d302ae843f2aed9c897dbc7c135f42951001191bb1fc732aef924cf0ffd2"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 108204,
+      "byteLength": 36068,
+      "outputSha256": "f45c281b531a76e5abeecd5562dc0c6c0be4f73876f0328928097da6e03b257a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 144272,
+      "byteLength": 36068,
+      "outputSha256": "b16607af59dbf8e1ac22eca1e0abecedf774cbb02476cb9561776d193e94c179"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 180340,
+      "byteLength": 36068,
+      "outputSha256": "8dcb277104291055dbe2c9982e3722759dedad046444ea7f723f70dbeaa08dc2"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 216408,
+      "byteLength": 36068,
+      "outputSha256": "af88ea29b242641ed98b3ba6e04908162876690151e91bc3422bece96cdf6999"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 252476,
+      "byteLength": 36068,
+      "outputSha256": "ae4ff098b5806e732f2b117f3af895589847ce822c7b9c1e28a4b21d82e2fc90"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 288544,
+      "byteLength": 36068,
+      "outputSha256": "704d017d12656e2f1d86d9710b0b99b38924925c32a4d1e652f29f203de11bca"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 324612,
+      "byteLength": 36068,
+      "outputSha256": "33138c60d562c4e738d5a8475d8ab5c2ccb1c8f98260532ecaa9c8a7c58c9f25"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 360680,
+      "byteLength": 36068,
+      "outputSha256": "5a01e529198fec5192bede9fc34ad88e7c9fc59ddeb7c1c080874b5f86af0ead"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 396748,
+      "byteLength": 36068,
+      "outputSha256": "e2f479a2765f3150d95f60ff99d795f7bc47f484f612393eba8d08f0536313f4"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 432816,
+      "byteLength": 37668,
+      "outputSha256": "2b4694106ae85c1a4c54dbbd149152c83fba2bb95638e85e37abb1b6fb1fba2a"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9417,
+      "offsetBytes": 470484,
+      "byteLength": 37668,
+      "outputSha256": "6ec842e4a39286ee3da7a8bd13718e4631bc351e13b0e7e1e523496d03528f2c"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 508152,
+      "byteLength": 36068,
+      "outputSha256": "95c0796c3caea027871625dbcf45243b7d133d28bfe92545f223fe947b60c70a"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 544220,
+      "byteLength": 36068,
+      "outputSha256": "bc809d897bcd75776f6ffa0cd55f415a3bc5daa72327a3e58655f1743bcb528e"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 580288,
+      "byteLength": 36068,
+      "outputSha256": "8ebe390bd3900734edb66b72f3cdd77d1e6dd7dae70c412e67badd7e67131c4b"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 616356,
+      "byteLength": 36068,
+      "outputSha256": "7c6c301fd1f9094fd8d6329b5a5886aa246306c07b3093c9bbba3cf1dc6eebe9"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 652424,
+      "byteLength": 36068,
+      "outputSha256": "32fcec3e4cff1effa035c56428402db637dfd3765e81b2713b1ce9266443f6db"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 9017,
+      "offsetBytes": 688492,
+      "byteLength": 36068,
+      "outputSha256": "f1810be85819a160c80519ec9a8ffb02b21abe2011d44e55e9f9007631f259e4"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 724560,
+      "byteLength": 36068,
+      "outputSha256": "d432f80b98c58b157469af1e2e46414abb85b5ce2e51469ea6c18008905cc28d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 760628,
+      "byteLength": 36068,
+      "outputSha256": "b26591a8b73893faa054dc22bdc9d3afe30a80ff9df1d29b330c9af68069c63b"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 796696,
+      "byteLength": 36068,
+      "outputSha256": "1733c85eb98efc47e3b2c8e5ac5342699a4ee17bf0043313646ec6f60f75b133"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 832764,
+      "byteLength": 36068,
+      "outputSha256": "b26591a8b73893faa054dc22bdc9d3afe30a80ff9df1d29b330c9af68069c63b"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 868832,
+      "byteLength": 36068,
+      "outputSha256": "61f927851c2f66307d572760154a5e9d9da36e8961383770c55715591a759a89"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 904900,
+      "byteLength": 36068,
+      "outputSha256": "403f4885faa9e184cfdee800ac9ec79dbe62d517845cd2da2c095af2211d10a3"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 940968,
+      "byteLength": 36068,
+      "outputSha256": "6c3a229df43602a276d3ec55b975fe225633e037a81cafe85eeaf637f725cbfb"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 977036,
+      "byteLength": 36068,
+      "outputSha256": "a206d36bdbdfc3e64996aca135f27b0e3610390baf45974ce320220476e7ea5c"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1013104,
+      "byteLength": 36068,
+      "outputSha256": "56644a242f95ebc9c6c089b1f1d85916f88761313912828b00714796c795c221"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1049172,
+      "byteLength": 36068,
+      "outputSha256": "b2dbf240ae3ea3157279b26d64b5fe6886b2e8a157d0cfc62dfc2213af5df4aa"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1085240,
+      "byteLength": 36068,
+      "outputSha256": "774016f14b91099656761a54dfc95f35b56e0629f021c0d460451a702a575e15"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1121308,
+      "byteLength": 36068,
+      "outputSha256": "6fcbe06cb0f466bd96cfa264dbf48dce26d019c127b0405d3003710705e0c5d0"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 1157376,
+      "byteLength": 37668,
+      "outputSha256": "db8e5ab32f03f38d5b3f449ad1c26afbc00dc19d8840f14f74bdd2ac59adb09d"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9417,
+      "offsetBytes": 1195044,
+      "byteLength": 37668,
+      "outputSha256": "1d29e4d67036c048278688860edc337228ec874b674f7274e46b1da6d6847c92"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1232712,
+      "byteLength": 36068,
+      "outputSha256": "46cee70d9b576b3da4d73b24d9a34a0d562393e2b18d206f2c6a0f8e548f3eb1"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1268780,
+      "byteLength": 36068,
+      "outputSha256": "87b47ef056beab1ba101cc2f923580e077c45f9848f347ce4ef3f14056804221"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1304848,
+      "byteLength": 36068,
+      "outputSha256": "7f221bd1202dc04d8d1b495e84e246850c7ff3506dc84f36e886c8041aba6d73"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1340916,
+      "byteLength": 36068,
+      "outputSha256": "2fd848d23ab9c2feddb34bee0e4aea6eb2f81c6949e8fa3def7fcf352df27eb4"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1376984,
+      "byteLength": 36068,
+      "outputSha256": "8475c5b2b77d2c6595f6e79e7dbb85a1d074765eb64019f3ebe845ef6f01dc3a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 9017,
+      "offsetBytes": 1413052,
+      "byteLength": 36068,
+      "outputSha256": "8a98b1c313f9924ecff1477c96fbfef97904e0db932cc7d0881ce734baf69389"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1449120,
+      "byteLength": 72136,
+      "outputSha256": "0ec0623e9ef4ab88b59a803108c9a86fbc6bd0d443ff64d673c3b82e73c981a9"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1521256,
+      "byteLength": 72136,
+      "outputSha256": "959924b4151e4cd1975dfc51edb76a519333bc51da1a35305e4a3e55638d3ad9"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1593392,
+      "byteLength": 72136,
+      "outputSha256": "84c9277d5d2d2ebb6f017346c3ea8daee0a2e154d8eb1e2973f1833f74604f9d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1665528,
+      "byteLength": 72136,
+      "outputSha256": "959924b4151e4cd1975dfc51edb76a519333bc51da1a35305e4a3e55638d3ad9"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1737664,
+      "byteLength": 72136,
+      "outputSha256": "bd1643810067fd0aa26f1dfaa0125f3b0ca940cc92c05e2dc198bdbd7383facd"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1809800,
+      "byteLength": 72136,
+      "outputSha256": "6f8bcce68398a981176359258e6a9854902c67bb1d0a8b6b38be80621a2a39b6"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1881936,
+      "byteLength": 72136,
+      "outputSha256": "1a6c683002968498e73270f1a09f62abbba79ab85762fbfbbf88be5f1a9639bb"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 1954072,
+      "byteLength": 72136,
+      "outputSha256": "7883ca446ba7b37a426c9e6c1b7835992075d11a4aed4c3638db7d8b42af3904"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2026208,
+      "byteLength": 72136,
+      "outputSha256": "4ebc20fb22a2bb34eef6add4d2f5b842ae0dcb58618fabf6450075c81c234871"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2098344,
+      "byteLength": 72136,
+      "outputSha256": "291c23780e4ecf345bf96d25343e325a33fa089ba6b23f4f1c444ed5be2a17be"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2170480,
+      "byteLength": 72136,
+      "outputSha256": "49d64932555f20029f6c1bebc7e7fc5e4565e5ce573ccd1109c959cb6b3569c4"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2242616,
+      "byteLength": 72136,
+      "outputSha256": "c013fccb34e7ae74023c645b7385167be34d1a2eeaefa3c0be24e84cb5303724"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 2314752,
+      "byteLength": 75336,
+      "outputSha256": "c63965e90996a988da9e03c210f9c1e372274dd62e4de3060e29c8949743961c"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9417,
+      "offsetBytes": 2390088,
+      "byteLength": 75336,
+      "outputSha256": "f7c49095e2e64cb73cf2864ccec6f3218c477eb062ce504b9d329b575467bdb8"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2465424,
+      "byteLength": 72136,
+      "outputSha256": "a271e507521fefcc1e37e04e98571d0236c591d8957f248fd6e040c68f5955f9"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2537560,
+      "byteLength": 72136,
+      "outputSha256": "455136ea8340bd1c5a8ebcede6bb91ece9debb2a0fba9391d0457c1e8d97a080"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2609696,
+      "byteLength": 72136,
+      "outputSha256": "98ce767881731e20e57296634c7011ad57715b6031e2876e62511ecf0c1617f6"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2681832,
+      "byteLength": 72136,
+      "outputSha256": "2083a28bcccba18bfbe7e4c0130be898e83aaaf80f155fd2af6d6adb1c48f22b"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2753968,
+      "byteLength": 72136,
+      "outputSha256": "9676172889099a036de1a34ad5433aa1a143c19b80cc395176d10866788424e1"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 9017,
+      "offsetBytes": 2826104,
+      "byteLength": 72136,
+      "outputSha256": "39bc6fe9a0b57f626963b4fa46480292d8a89fbb1c60b2b5ba3d1dba7da03a41"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2898240,
+      "byteLength": 72136,
+      "outputSha256": "4d1778e4a1d0d872a3a13b490f18fa6157c48ce8189bfe2e5d2ca44c8c1f3df9"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 2970376,
+      "byteLength": 72136,
+      "outputSha256": "d2a0724f6d8a83398088a1e18be87288ecd7f9f75330caf037d777a8890c66ff"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3042512,
+      "byteLength": 72136,
+      "outputSha256": "ad0dae954c44e0743e6ee4c3483718690b0d6f881c6797875bd34f05f243de5b"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3114648,
+      "byteLength": 72136,
+      "outputSha256": "d2a0724f6d8a83398088a1e18be87288ecd7f9f75330caf037d777a8890c66ff"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3186784,
+      "byteLength": 72136,
+      "outputSha256": "f2c0b94d28d027e147f87b5e622a3e0a81931c1b185c863882e46ab3f92cce35"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3258920,
+      "byteLength": 72136,
+      "outputSha256": "674902b3d7bc7edcc145c9c28eb359ba6d88955c23941817018fa685c12618f5"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3331056,
+      "byteLength": 72136,
+      "outputSha256": "77a547740b4d585ba3fb515c2fd8d334ebf533cf45ec04777861bb54c00073fd"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3403192,
+      "byteLength": 72136,
+      "outputSha256": "4172b4c88c983b83b6551e0786691e00649ec76a42e50b6eebd8367b408029e2"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3475328,
+      "byteLength": 72136,
+      "outputSha256": "c0b4c046bbfeacedc5aa985667e5e87364c3c398e412231a4d039326feeaf2fd"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3547464,
+      "byteLength": 72136,
+      "outputSha256": "5970583db8aa10d06e1f704a4b6ba6f375302fc375ad5da0d5025a2d80f819ea"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3619600,
+      "byteLength": 72136,
+      "outputSha256": "dd670d448c28d4b66a42277e95fb42f160a0073286b799fac0dc8a5555d28aa7"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3691736,
+      "byteLength": 72136,
+      "outputSha256": "af6bc0a9ea78b756f0b46ef07a1650359a50f49ed7069b355bf7ead6d9a47cdf"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 3763872,
+      "byteLength": 75336,
+      "outputSha256": "c0d0b1808dc2a6e6f5cb98bb17f59e1af03b530c772179d1ad021e8c23fbc5bc"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9417,
+      "offsetBytes": 3839208,
+      "byteLength": 75336,
+      "outputSha256": "83b3bfa437a6a2b28ea2d889457ee55a201c4d27e49f15e6a4de5c2323fdeb90"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3914544,
+      "byteLength": 72136,
+      "outputSha256": "ca84a232beeda2c24d737a0fea614e7f2c7e8618df5428c086563b91b1663ae5"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 3986680,
+      "byteLength": 72136,
+      "outputSha256": "334e75eb0040f99ba9ef2e2e38e8ad7bf1d91d7d756dbbfb4c7f5af59c691320"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 4058816,
+      "byteLength": 72136,
+      "outputSha256": "465c81e0d7cda1bd7babdd767fcca86fa3979ba9b5efa69ac3d2a5130f4ab5d7"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 4130952,
+      "byteLength": 72136,
+      "outputSha256": "5c47233fb66dd6b8c64dbdd78485b5885fdd8aa6276169f07a1462af2289913e"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 4203088,
+      "byteLength": 72136,
+      "outputSha256": "b281b73284835cb818bd5e146f1bece30d5c7a1d24b7dd09db1931b531c8d3f8"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 9017,
+      "offsetBytes": 4275224,
+      "byteLength": 72136,
+      "outputSha256": "31161f75d403341a4b8511bca7f7c47f39b0ca97c8d94a4dac9b1f4e2e24130e"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 4347360,
+      "byteLength": 198516,
+      "outputSha256": "0c1494036261787e911b849dd478fa3fd91b818754e3ba94fc0b5c6d0a182a0a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 4545876,
+      "byteLength": 198516,
+      "outputSha256": "ff348fb7127465c44939c2ff1f6e7e2ff4973c20309bf77c919237de9f8fb14d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 4744392,
+      "byteLength": 198516,
+      "outputSha256": "500b3adfb18c1ebe150a67a03cee5b91c37e59451dc6ae59eefbf4fa6157c04c"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 4942908,
+      "byteLength": 198516,
+      "outputSha256": "ff348fb7127465c44939c2ff1f6e7e2ff4973c20309bf77c919237de9f8fb14d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5141424,
+      "byteLength": 198516,
+      "outputSha256": "e51b0733409eb845db63fb896ec4585d975c5f5bdc7c5c0199d9d051ffaa9cd7"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5339940,
+      "byteLength": 198516,
+      "outputSha256": "8305d1ea018d15e6bd1a72ca6a9db434117d998857ee882b4e593ec25b6cbfb5"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5538456,
+      "byteLength": 198516,
+      "outputSha256": "9e0e0f0cc4114db3f5678f126e44627794912aa6faead251827307f75ae162c0"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5736972,
+      "byteLength": 198516,
+      "outputSha256": "fb41136ec4c7ecc5d65820064eba12c874772542407119ebc2e488bce8d7c6ec"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 5935488,
+      "byteLength": 198516,
+      "outputSha256": "5304422036e332b943520d3f824e765418747eadf69aa14e24e5fdb4cd05dc2c"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 6134004,
+      "byteLength": 198516,
+      "outputSha256": "1f3e486e673b723a411252f75006bc7d59cdf5966dd2b2b3c46b3f1336dcbf3d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 6332520,
+      "byteLength": 198516,
+      "outputSha256": "7e54fce23f1c8b954340d003164da361b02cb9a9edaf8691e2016f2d0f2eeff0"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 6531036,
+      "byteLength": 198516,
+      "outputSha256": "cadf9e2196eab1195080261788bef901efebfd112ab53d418e2b165777ba548d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 6729552,
+      "byteLength": 207336,
+      "outputSha256": "58d2a3f1271754b9973752d64e9b8579c685aef742737d38eb69927d8c60b981"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 51834,
+      "offsetBytes": 6936888,
+      "byteLength": 207336,
+      "outputSha256": "d610463b96dd719e1de33b5d4805a6117ac11a270c176268fe600e504495e2b4"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 7144224,
+      "byteLength": 198516,
+      "outputSha256": "35f502a4558ad9c4869b7cc2537c858cf324e40332830ac6af6917966318aee6"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 7342740,
+      "byteLength": 198516,
+      "outputSha256": "194df97585a12e44f8c7160434bc4f74be5c545edcf2cc5abc032c9edb199ebd"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 7541256,
+      "byteLength": 198516,
+      "outputSha256": "def5666d2fb08a832bb99199f9f771c1119e28f5aed9ab76374114c252679db3"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 7739772,
+      "byteLength": 198516,
+      "outputSha256": "f42c81c86077ca6af60f255e417d8771a1a0d83e8bd1b1807b02ca9a1585b31a"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 7938288,
+      "byteLength": 198516,
+      "outputSha256": "241e38f71c5c7c4d3e4db8d76975e2a74293c1c394c734ab50f5980fd449a375"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 49629,
+      "offsetBytes": 8136804,
+      "byteLength": 198516,
+      "outputSha256": "c1b17180d3dc87952a776910f230fe62243b88fc99a40a915269adcef395139d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8335320,
+      "byteLength": 198516,
+      "outputSha256": "419c51ed33bafc041417d46f7477e0a83644c4b70083d45ba55d742f8a8ce295"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8533836,
+      "byteLength": 198516,
+      "outputSha256": "9f74417097e3a422e8826f2a6fb681c853bd31b63f673b7d251a64721484f8f8"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8732352,
+      "byteLength": 198516,
+      "outputSha256": "ac473eec47475cb0fb7657452437ae6405aee9925ddb8c2382217a08e493aa6f"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 8930868,
+      "byteLength": 198516,
+      "outputSha256": "9f74417097e3a422e8826f2a6fb681c853bd31b63f673b7d251a64721484f8f8"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 9129384,
+      "byteLength": 198516,
+      "outputSha256": "fcf68c630d2c8f49e4b3afa016607a2129d513428615e5a14056130e1c380330"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 9327900,
+      "byteLength": 198516,
+      "outputSha256": "286b02ea262757389304e8a8d3b9f9ccbd2dd6e02213b7f93dcb34135852cc9a"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 9526416,
+      "byteLength": 198516,
+      "outputSha256": "79361966a351a237eadfef4b9ab0062e36439458980ca147ee4f13ca43f70a1d"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 9724932,
+      "byteLength": 198516,
+      "outputSha256": "eeca84ac323ae8b7bc310c9fec2454f0ab0e37f6821bcf8c5d744d11944b4195"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 9923448,
+      "byteLength": 198516,
+      "outputSha256": "122383b410c9bccc5b019eda11c350316a7fe74f7de1895b3890e7a103fbbd85"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 10121964,
+      "byteLength": 198516,
+      "outputSha256": "08e86f406f28c9737e6a31ae1809ff5eb45902a8e505ee5cf6e882915ba25e2d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 10320480,
+      "byteLength": 198516,
+      "outputSha256": "2b637217318a31ef5ed33dcb57c88ca18180cf1f766cc65f1c69b29b63211ba3"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 10518996,
+      "byteLength": 198516,
+      "outputSha256": "bf5641d0980de13b614042919749415b0540c854fbe8cacaaac5a1c8ae6cf989"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 10717512,
+      "byteLength": 207336,
+      "outputSha256": "d6e424e8f0c7932f7d44e59f33f55854ad94ed188d356508b7371adb7b3d913a"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 51834,
+      "offsetBytes": 10924848,
+      "byteLength": 207336,
+      "outputSha256": "72b98ca1b96152efd7b1e40162bf31e70f594bf6df7aa501b20799e6ad4b90bc"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 11132184,
+      "byteLength": 198516,
+      "outputSha256": "5e07df162e2ebf5015a24119b68348d56efdaee23bf3e2df88d9148d991bd419"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 11330700,
+      "byteLength": 198516,
+      "outputSha256": "2450f634a368ad5b96d00653fed86e761b410e5ab2596f8cec361185ed4e81ee"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 11529216,
+      "byteLength": 198516,
+      "outputSha256": "b5046efe89711368ac3ba6e3ee45f9e4486bc9fd19d2ad99f54b8abf450e20c8"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 11727732,
+      "byteLength": 198516,
+      "outputSha256": "d2f5517560ef511a9c549c845146e1e7024bdb3b5a71006d652daf410d67245d"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 11926248,
+      "byteLength": 198516,
+      "outputSha256": "080af702ffd0d6384f4d37013693182fd8bb8c48e0207345a2e91337519e6be5"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 49629,
+      "offsetBytes": 12124764,
+      "byteLength": 198516,
+      "outputSha256": "264f60036b67147ce22ca32a9c14c09d55bb9925c2d2a589d80efa1363f939f2"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 12323280,
+      "byteLength": 397032,
+      "outputSha256": "f156ad38cd1c09f9dd928ee4c39ea28d6363a06c86f3723af216b29b3ec97003"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 12720312,
+      "byteLength": 397032,
+      "outputSha256": "df8e08e842c4c6e0cab912c40a113c588e48645132af33ee3e72f3c633d75f1f"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 13117344,
+      "byteLength": 397032,
+      "outputSha256": "ecaa6abf3e16f9ca2b2e2032078c4b400fe2112e6d81a7b0670f5f78c7f4c6fe"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 13514376,
+      "byteLength": 397032,
+      "outputSha256": "df8e08e842c4c6e0cab912c40a113c588e48645132af33ee3e72f3c633d75f1f"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 13911408,
+      "byteLength": 397032,
+      "outputSha256": "8fd6b734bc8c0ddc939a4cdeb3cd8c6b1bb589227eb690ccef3f2ab96aa53d29"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 14308440,
+      "byteLength": 397032,
+      "outputSha256": "69142788c06cb2e48070a4265d42c5f4754dc8e0101e09a2bd267b589f7f033e"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 14705472,
+      "byteLength": 397032,
+      "outputSha256": "7ed6b13fceb8bf29cf0430b49e32938ba2be18d98dec3ad72d90f2f4dcbe9bfd"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 15102504,
+      "byteLength": 397032,
+      "outputSha256": "28c024d0b5cc91820a263c019e2c7a6d9b08ebcede900b3bf0dc46c0c494988b"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 15499536,
+      "byteLength": 397032,
+      "outputSha256": "eea60de47b2da7e9139509773eec0d98d8b82f262f16631ee2e67afa51b9db0e"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 15896568,
+      "byteLength": 397032,
+      "outputSha256": "fac6e6eeb107f29c0069335a3f6ae2628d1ccab32978575d72c196e3af55ac08"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 16293600,
+      "byteLength": 397032,
+      "outputSha256": "dc11aa331e6b144ba55fc47b87e6e3a37ffc4923936243dc1af05b0efb673bc4"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 16690632,
+      "byteLength": 397032,
+      "outputSha256": "03fa2682d2b8386caaf2edbd888a44ebfb921eb5baafa42cae03e9a8d8db5093"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 17087664,
+      "byteLength": 414672,
+      "outputSha256": "2056715559e6c73cff3cb6373f875d9c4fb1d7a5b908330ecaa70c6737be3da2"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 51834,
+      "offsetBytes": 17502336,
+      "byteLength": 414672,
+      "outputSha256": "9a7b24315919f4618ecbb2c46b1dec05dad6bda563bdd32ed7e05832fd1906a7"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 17917008,
+      "byteLength": 397032,
+      "outputSha256": "d133e5c1a71e20ff2c1541d6071ff5ae577e0c1eae0a393a6df3418e997023cf"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 18314040,
+      "byteLength": 397032,
+      "outputSha256": "25cfc7ef7eb9f6701864f0ce47ccd5d7d90aa0f835f945b2bb19ad0f4e3c346d"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 18711072,
+      "byteLength": 397032,
+      "outputSha256": "1f4f2d338294c08460e1242db431245b95ec4b76452148eed69a0c8ae67d84bd"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 19108104,
+      "byteLength": 397032,
+      "outputSha256": "7392068a9ccbe487c67b3b412177647954b1b3011b77cb0cd42909177bf38f14"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 19505136,
+      "byteLength": 397032,
+      "outputSha256": "ab3d31063de20c444e03dd4a3728764f5c9317eccd653902a3d06b2014ed6d7f"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 49629,
+      "offsetBytes": 19902168,
+      "byteLength": 397032,
+      "outputSha256": "c2006c3700b8857797c95313de82b862db7f593ba952169f4ded41eacb6c5681"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 20299200,
+      "byteLength": 397032,
+      "outputSha256": "eb5e60d82407844b6503464b5d662a9437a741b702e637f2115b1b1e41dde928"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 20696232,
+      "byteLength": 397032,
+      "outputSha256": "c6b1a36a08594e007b6522802341dc46c24783e7d7cdc8694c8e2ce23000190a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 21093264,
+      "byteLength": 397032,
+      "outputSha256": "4350328e118ef78daac2517b7620fa6e4f03372064cda61a0172fc9e9186c7a6"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 21490296,
+      "byteLength": 397032,
+      "outputSha256": "c6b1a36a08594e007b6522802341dc46c24783e7d7cdc8694c8e2ce23000190a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 21887328,
+      "byteLength": 397032,
+      "outputSha256": "241a53a2f5b340cd5b14f0d8474d96956781ee2f7ced2def4310e0d4b5b75319"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 22284360,
+      "byteLength": 397032,
+      "outputSha256": "e08b5837a9dcb0a75103eb4ca048cc91c74f3ad717f29d15b4576af117ee5a78"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 22681392,
+      "byteLength": 397032,
+      "outputSha256": "7298b9f7653ed7b77cd9fcecddb3f9cfd1abdee32b1afa4f4b3e8aab56d0d9a9"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 23078424,
+      "byteLength": 397032,
+      "outputSha256": "45757e919f97ba38ab0c366ef3d1aeef50c9665e3e9f9803dece7589de4c02ad"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 23475456,
+      "byteLength": 397032,
+      "outputSha256": "b5b1bfecff8507febd8ead5dede3eaa1fb4565c75f3e064590fec59df0b07a77"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 23872488,
+      "byteLength": 397032,
+      "outputSha256": "07955938dc9076a931400919192f2cc37a47558696ef95db39a639743536aa1a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 24269520,
+      "byteLength": 397032,
+      "outputSha256": "a48559e0e674edccea71e7886a62d99fdc691697cc7e4d1d483fea97783f28df"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 24666552,
+      "byteLength": 397032,
+      "outputSha256": "9d807a9916d4afd563cab394b93a73ef3c43bd7b27495339deb6e9ed46a14679"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 25063584,
+      "byteLength": 414672,
+      "outputSha256": "232e812a41042357aaa283293f263168dfa10b98447df873b41771fc650e7fd0"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 51834,
+      "offsetBytes": 25478256,
+      "byteLength": 414672,
+      "outputSha256": "a6f8b421c66e9029d0d17cd6a47afdb7a645d7e2764975225d4431153c2cae6b"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 25892928,
+      "byteLength": 397032,
+      "outputSha256": "3e6ecec547a32e9fabd3591b9c2242dfe49b2b30764cbe8f896bf33e31eac612"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 26289960,
+      "byteLength": 397032,
+      "outputSha256": "48916a4959adf8a0851cf089dce1a6dcf0d5b2c772001e387a67b211f7a0f717"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 26686992,
+      "byteLength": 397032,
+      "outputSha256": "c675dc362a3ea0b685c3a4fdbf23aa4c5fc328c53367de9a0df95dcf5820119d"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 27084024,
+      "byteLength": 397032,
+      "outputSha256": "b71c27590f0d0f0d2366387198621a1c84134a8d9cff07489bf3b500d0b38588"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 27481056,
+      "byteLength": 397032,
+      "outputSha256": "42ccf2623df97f404f0287291284a0f6275aae4b5609d5326f877488033b0e71"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 49629,
+      "offsetBytes": 27878088,
+      "byteLength": 397032,
+      "outputSha256": "f9a2cf2a0d64048d85fb6bcb568262bac8aa0cd5a0cd0a8b7f64a0eb41067b5b"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 28275120,
+      "byteLength": 216068,
+      "outputSha256": "561552fe1b28d231973f399dbed0242a12c375d611fa80daeaafbe785ca79409"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 28491188,
+      "byteLength": 216068,
+      "outputSha256": "674237755edee7e692d23654bad43f0968a490f1a4d4e1d71fe19b4871782aad"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 28707256,
+      "byteLength": 216068,
+      "outputSha256": "da05eb8d455f962129c5c107e2e58a468db657d5d262c842c918dfcb81c410dc"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 28923324,
+      "byteLength": 216068,
+      "outputSha256": "674237755edee7e692d23654bad43f0968a490f1a4d4e1d71fe19b4871782aad"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 29139392,
+      "byteLength": 216068,
+      "outputSha256": "6865dc9bda8bf35754e0828e8b7554dece1200029a35a2b3fb51e92073eae264"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 29355460,
+      "byteLength": 216068,
+      "outputSha256": "16a8c59eef8ccb2bc45e63f9dd2ba8d7f57773a040deda4dd3dd3eade5384359"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 29571528,
+      "byteLength": 216068,
+      "outputSha256": "5b9e943717dd3c7554706b486e4ee7415901a62d02f27e2b4194f4bf9e112550"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 29787596,
+      "byteLength": 216068,
+      "outputSha256": "6d18ac3f3d16ae8cc3019830f5d2ad2721cdb8f5e9e13e61c5b9a494f80603cf"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 30003664,
+      "byteLength": 216068,
+      "outputSha256": "77f93b458868b43dbb7bd8ecb59fca5ff0d6aef225038c7c5487809129c6fcb2"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 30219732,
+      "byteLength": 216068,
+      "outputSha256": "8a148ab94ae04ece3fe96fdd8ffa6fd2cdfca71a90f447e169f7c4eaade668fd"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 30435800,
+      "byteLength": 216068,
+      "outputSha256": "41c86532ede308a17bcb346660dac72c2208cae14b47706a2601740342d3bf04"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 30651868,
+      "byteLength": 216068,
+      "outputSha256": "d49085db8c66b0dcfd01bd9f46a8e3565048fc59767538fe8f2df2e3cd221d76"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 30867936,
+      "byteLength": 225668,
+      "outputSha256": "5bea7ee8bfcf402e2efa99098422200dde4c95cf101f6c0da287b1e265d96639"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 56417,
+      "offsetBytes": 31093604,
+      "byteLength": 225668,
+      "outputSha256": "8406b16a93b920974e075e8c12eb3b2418416647cee6929a1fbe4d4eb81b2f00"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 31319272,
+      "byteLength": 216068,
+      "outputSha256": "d9e11a5c45c6073842ebac2f3796d55347620c27417afb8c1b259137b3de36b7"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 31535340,
+      "byteLength": 216068,
+      "outputSha256": "45fc679df4c94a9d85e638ddd972d1dde13027e60456c2503e3555059eceeb8f"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 31751408,
+      "byteLength": 216068,
+      "outputSha256": "cd13dd8d301acf7ef9983bae7dc84416a7e68b804c41013b97d54e246292ce4f"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 31967476,
+      "byteLength": 216068,
+      "outputSha256": "cf856b7e1f066307f4f593393ba7f09030e2cde401352e4a48b00e21251a4a56"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 32183544,
+      "byteLength": 216068,
+      "outputSha256": "3027944479cb56b952d599795bfe9aa5b18325b703ee7ca2fc700161f56794b0"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 32399612,
+      "byteLength": 216068,
+      "outputSha256": "9ddaef795b23991646f81c1d4655d758aa4ba8f84903f84c6709072b3ce3c516"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 32615680,
+      "byteLength": 216068,
+      "outputSha256": "8311a3a6a4961b3f37b1c5ec7c194660df41e0907795e3da6ca830be2173c7ba"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 32831748,
+      "byteLength": 216068,
+      "outputSha256": "87ceb6d1962e5bf5330ab1add63a3f3d4745b19707a81738f21fa5052ce0ceec"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 33047816,
+      "byteLength": 216068,
+      "outputSha256": "c85ee9ce5493c23b76f1409e71cf863efb2e9333eaf3d05f2e4ee6ba1105b01a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 33263884,
+      "byteLength": 216068,
+      "outputSha256": "87ceb6d1962e5bf5330ab1add63a3f3d4745b19707a81738f21fa5052ce0ceec"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 33479952,
+      "byteLength": 216068,
+      "outputSha256": "7b677a15227376a9877a0cb2cd4e270f9f9dcf26e829de29110ec4d59b5b4637"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 33696020,
+      "byteLength": 216068,
+      "outputSha256": "346fc3aac174b09865031c96759b408255fe8d487fbe381de641567e3e186426"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 33912088,
+      "byteLength": 216068,
+      "outputSha256": "2e92d98ddf9c581f94d97539c82b273ab2a87944a0a721c6d310f99a63aad407"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 34128156,
+      "byteLength": 216068,
+      "outputSha256": "3c7f2534008dff21bd331a76378a5817554075226a49c79233fad81998f3e0b8"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 34344224,
+      "byteLength": 216068,
+      "outputSha256": "d3cda43947e60cb7f11481fcbdbba93fea6db4b759cb036564ca0775c2fa3410"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 34560292,
+      "byteLength": 216068,
+      "outputSha256": "a2f9d369e0aaa634bbdbb6e1b338ad53a6e67356c7e94322efcc7cee24960564"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 34776360,
+      "byteLength": 216068,
+      "outputSha256": "a03cdb57230ad879c04d326c5933a3adcc586df6259dd7de509c48a7b99f59e9"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 34992428,
+      "byteLength": 216068,
+      "outputSha256": "899d2815a90a4c0cb522ea794fb16c7a248d4d91300b6e72d37b24b15ffae98a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 35208496,
+      "byteLength": 225668,
+      "outputSha256": "592ad0deb1011ef4df04adfc7796869d8cdf8be9484823f668106264aa1fc6fe"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 56417,
+      "offsetBytes": 35434164,
+      "byteLength": 225668,
+      "outputSha256": "cc41444063e24f52df699848d156559d05a647f6a40630e700da0bbb954b9bdf"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 35659832,
+      "byteLength": 216068,
+      "outputSha256": "1e6f0973b366625835615069c9587a1509119379e49c60cf2d76030b9981de55"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 35875900,
+      "byteLength": 216068,
+      "outputSha256": "82b08c5d8c24d855330db395a6c5a35fbbd99308c363e587d5e7a28f40c4ed6a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 36091968,
+      "byteLength": 216068,
+      "outputSha256": "8df3554ed18854975c7c61ca5905173d3930ed3c79aa8e3ddf197663904ccbbc"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 36308036,
+      "byteLength": 216068,
+      "outputSha256": "57e5109cfc8701ef27312a4be6edf09a370cc968664f96af24cb4118ff9e916c"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 36524104,
+      "byteLength": 216068,
+      "outputSha256": "b0e1526193ebdae676f5e1a6923c74ddec01614e8d3a1e8decfb62df6ad2b419"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54017,
+      "offsetBytes": 36740172,
+      "byteLength": 216068,
+      "outputSha256": "7bfe81cb21141e66a73ffec00e9b0607fa3615bf60cb90be9f08b59179a9b08f"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 36956240,
+      "byteLength": 432136,
+      "outputSha256": "53bd7051a8e25a19d8445a2896d84f491fe7098f09f402a4d34f6df4fd995ec1"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 37388376,
+      "byteLength": 432136,
+      "outputSha256": "c86aaf03a596989ce8b9ade44695a6c0354d6054902455be74ebeed47e0fa0f6"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 37820512,
+      "byteLength": 432136,
+      "outputSha256": "898ea2d3d6fa70f7f303133be0a6e44926c5d0931f74811b49c48d365f58d1cb"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 38252648,
+      "byteLength": 432136,
+      "outputSha256": "c86aaf03a596989ce8b9ade44695a6c0354d6054902455be74ebeed47e0fa0f6"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 38684784,
+      "byteLength": 432136,
+      "outputSha256": "454c970ec4adbd7965a7ae8f3d03f87c8c1db16795aef6a791de8e2eacf8540f"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 39116920,
+      "byteLength": 432136,
+      "outputSha256": "b46f12a98fc913b775650d82df712b2f9bdadc88020cb9a3f3eeabb1d7c964c1"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 39549056,
+      "byteLength": 432136,
+      "outputSha256": "fd32e0afcf6f74ec7d058df798ebe8abf6d7d6d66253d8092ec92ee44a12aefa"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 39981192,
+      "byteLength": 432136,
+      "outputSha256": "fb9d5525c9ce0e9650bb0a9658f894f25f6c5a98568dca573f46b79df56bb0bb"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 40413328,
+      "byteLength": 432136,
+      "outputSha256": "4794641f4f11d2c3410cf3bf3aaa813ea55d58b092dab30f43ccc4c447ae0750"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 40845464,
+      "byteLength": 432136,
+      "outputSha256": "94bc06ee8c55b065e065e364a273d5186f0fe5b9ba1b7ee199ceabe62ce41002"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 41277600,
+      "byteLength": 432136,
+      "outputSha256": "fa829fe2606dcc48090d9c344ab782baf2c991a790a7581b96227487aa19c9e7"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 41709736,
+      "byteLength": 432136,
+      "outputSha256": "604eab4dafbc3e1a011a3185b11c411ad6ddc3f200a17d41ba1c31a4a7ec3171"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 42141872,
+      "byteLength": 451336,
+      "outputSha256": "aabd89215a97443a36e3d27839c3bb042666719af9e5c234a24d466658fbd061"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 56417,
+      "offsetBytes": 42593208,
+      "byteLength": 451336,
+      "outputSha256": "3e86e6ed9029f8638a10a1b8a7d3e2d848052e4ebf3eeca706f4764c6e6410a1"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 43044544,
+      "byteLength": 432136,
+      "outputSha256": "6b6cf757e300da4fdc189c397da8846a03606e96b2817e9b5172248cb72a4484"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 43476680,
+      "byteLength": 432136,
+      "outputSha256": "1b0bcaf26532e14b449440d346746a260085d0cb63fe63c9fc903be45a72618a"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 43908816,
+      "byteLength": 432136,
+      "outputSha256": "c4a3f72caff055bbde95cf38034c1dff1d2c9b797743bd8c29259d5db3524cd0"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 44340952,
+      "byteLength": 432136,
+      "outputSha256": "f21b2ec409b0f7340be17e5e9fcfc11b8cf2f8f1659d699f76949591e01d864b"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 44773088,
+      "byteLength": 432136,
+      "outputSha256": "c4dea8ab54a4d5e99be989492fca361bc17a1b5ab695c870c5f0e0f50e93af40"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 45205224,
+      "byteLength": 432136,
+      "outputSha256": "b8ca29fb85449b9b094798fc6a933c8e27c0f5ab00400007f649287f42946db0"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 45637360,
+      "byteLength": 432136,
+      "outputSha256": "9e8987175b71478e2222f60d67b43ced81dfd4ca29cf9b6df1fda6d01783ef07"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 46069496,
+      "byteLength": 432136,
+      "outputSha256": "6bdf3dde353b6876da03a9065963aa5a16620ac1fb982d4fdf938e0a8bfa23e9"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=15:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 46501632,
+      "byteLength": 432136,
+      "outputSha256": "912a481cca0ab2bf216c6d39e08daa4f3364213d9b5a4026bea5662462a0d592"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 37.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 46933768,
+      "byteLength": 432136,
+      "outputSha256": "6bdf3dde353b6876da03a9065963aa5a16620ac1fb982d4fdf938e0a8bfa23e9"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 47365904,
+      "byteLength": 432136,
+      "outputSha256": "7c9decf4563877ddbf986e8dcfe8385cbe1ef76192db5c44b5d4502f9e885e85"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 47798040,
+      "byteLength": 432136,
+      "outputSha256": "db86aebb06ba6cd278d1aa503d9f11748d9be73e5d68ca960a9417d758cf0f17"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 48230176,
+      "byteLength": 432136,
+      "outputSha256": "e285643adb99db99044a6e1c4731cc3285edca03b55febc535e94b19138b29c4"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=5:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.5
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 48662312,
+      "byteLength": 432136,
+      "outputSha256": "b83f5a8dcbfada4e7eca640d990924284357a005e7a7cd203c482aa272b6ea6f"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=7:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 49094448,
+      "byteLength": 432136,
+      "outputSha256": "f07f6e7051328994986b0ab198290a320b9090c31841398474c9c19be4edbf4c"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 49526584,
+      "byteLength": 432136,
+      "outputSha256": "ef1e57a048c2acf414cb9a7dcfd315a8bb067e3b0ea1a2714d72946cf74e8f77"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 49958720,
+      "byteLength": 432136,
+      "outputSha256": "fac19dab44eb079d91a973ad4811c50f57ab91d940fc4c36f40eeb833255a6fc"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 50390856,
+      "byteLength": 432136,
+      "outputSha256": "fc9d1ff295985817d8fd08afb1c625e60cd28dedb7aef2878bc38ca1aa1e6d91"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,aecho=0.8:0.85:50:0.20",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 50822992,
+      "byteLength": 451336,
+      "outputSha256": "d7c0449fde43d40812013a06b90decf6a991ad07321d9d612202014cf856edc2"
+    },
+    {
+      "chain": "aecho=0.8:0.85:50:0.20,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.echo",
+          "params": {
+            "decay": 0.20000000298023224,
+            "delay": 0.05000000074505806
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 56417,
+      "offsetBytes": 51274328,
+      "byteLength": 451336,
+      "outputSha256": "d1edcfa4976b6bb527b320f68dd1752b5764ece443502b237e9cad8c7727138b"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 51725664,
+      "byteLength": 432136,
+      "outputSha256": "56d1c7b91918819d23d859692f021ea8cec5d61f345fcb7aa16e8f8f3d53f109"
+    },
+    {
+      "chain": "volume=4.50,acrusher=bits=6:mode=lin:mix=0.35,alimiter=limit=0.85:level=false,lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.distorted",
+          "params": {
+            "drive": 50.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 52157800,
+      "byteLength": 432136,
+      "outputSha256": "6a9db5de351c4178895b5a0e45551b5675d772495b6393262074d7795672128e"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        },
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 52589936,
+      "byteLength": 432136,
+      "outputSha256": "c339b8c944e9738a852428a1d0b4e5037c6a0938dabc7462e98ba67cfefdef03"
+    },
+    {
+      "chain": "highpass=f=400,lowpass=f=3400,equalizer=f=1600:t=q:w=1.4:g=4.50,alimiter=limit=0.92,highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.telephone",
+          "params": {
+            "drive": 3.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 53022072,
+      "byteLength": 432136,
+      "outputSha256": "f66ae65cb9d7423a6d12af5cfe5828a9cb9e9e6a2f6ea71df9875a3b9c0eb657"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9,lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        },
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 53454208,
+      "byteLength": 432136,
+      "outputSha256": "5043232b453e0b97580136417ce7058fff82b5198c8cd8ca6fc6e151a9b71c55"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9,highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        },
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54017,
+      "offsetBytes": 53886344,
+      "byteLength": 432136,
+      "outputSha256": "e9468b77fa1fb9cc2b142eff772dae348876ce50b11d2ae3d525612f8da39437"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 54318480,
+      "byteLength": 864068,
+      "outputSha256": "8649465316780c6519bba3cf0fd35284b263da94b9ca5fc0d4fe5e025f277bc7"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 55182548,
+      "byteLength": 864068,
+      "outputSha256": "4989042c392b744eb48a82b37dd95d7a9dda7907a124c4b8eaeb99ab41be11f6"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 56046616,
+      "byteLength": 864068,
+      "outputSha256": "5f7081cc8bbe7226b79cbb8d5c46c9a13075cb9edc4b0453a2483eb9fb4191f8"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 56910684,
+      "byteLength": 864068,
+      "outputSha256": "98f9240b01a77fbde2b3d60d5874d1249f295761bb488731f4225bdcf3ffbed1"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 57774752,
+      "byteLength": 864068,
+      "outputSha256": "28489e5ccad6cc96dcf9cac3417d933798dc815a6678c127608448b6dfd0c4ed"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 216017,
+      "offsetBytes": 58638820,
+      "byteLength": 864068,
+      "outputSha256": "4d65c265a03edce948f167ead4182b1c19d36c282d721b2accf781ae7ecebaa6"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 59502888,
+      "byteLength": 864068,
+      "outputSha256": "bed2e0cc872db5ba42d9a4dcff1ed4ca318c49787d5db629a1a0898c4a0accff"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 60366956,
+      "byteLength": 864068,
+      "outputSha256": "89facaac84c03edff8ca9de7c2803fc8be33c7a8ba0397f9ff4952020c7da570"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 61231024,
+      "byteLength": 864068,
+      "outputSha256": "0b0af6be19f9cffb0014cd89cd09ba88b826e64dcb4593de3a15c1239c5c4414"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 62095092,
+      "byteLength": 864068,
+      "outputSha256": "7687d3812e0375f2b815d9860cbd92b45396da69834ae220464cebf0c74bcc06"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 62959160,
+      "byteLength": 864068,
+      "outputSha256": "f7317dfb7c41e06796fed283d8ed03921885db7dac8be47e0d1c146edaf14193"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 216017,
+      "offsetBytes": 63823228,
+      "byteLength": 864068,
+      "outputSha256": "cafa0abcc76f11d40a54c50e1e378aed43803d0ff1d5c142caf4cb44ad72186e"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 64687296,
+      "byteLength": 1728136,
+      "outputSha256": "91ddf953e8abe1d6cfaaaa1921868c86ccaf4fea8f6bb8d4a777f3e3796c2a27"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 66415432,
+      "byteLength": 1728136,
+      "outputSha256": "c64cdb471906ff9abdfd12162afee3bc34562d2e9c86130b6a327470d9bdd09c"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 68143568,
+      "byteLength": 1728136,
+      "outputSha256": "bb9a41f3fc4cf7bbf36e5329513dc467835fa10acbd87912c33c330ab47707b5"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 69871704,
+      "byteLength": 1728136,
+      "outputSha256": "feac6ec72846e4c3a8d14f5792a595b97f0617b4f77971e91bee5f793965f65e"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 71599840,
+      "byteLength": 1728136,
+      "outputSha256": "0c94acfe9dcc6818415271fe334d45325fe0310287bbd1c3e4e96fc3b2b98c0f"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 216017,
+      "offsetBytes": 73327976,
+      "byteLength": 1728136,
+      "outputSha256": "aef2036d5a8e592118dcb5249a2890a82b4445ff0790462ae8999664aee87097"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=16:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 75056112,
+      "byteLength": 1728136,
+      "outputSha256": "65e8963492a1243fb536d2789f54125dc7ef3ca014069f609d943805ef222a5c"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=12:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 30.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 76784248,
+      "byteLength": 1728136,
+      "outputSha256": "ec19738c797fc884aa166e33908242fef3a2833fb031b1b6b404bf3548d3f345"
+    },
+    {
+      "chain": "highpass=f=300,lowpass=f=3400,acrusher=bits=4:mode=log:mix=0.6,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.radio",
+          "params": {
+            "noise": 100.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 78512384,
+      "byteLength": 1728136,
+      "outputSha256": "415bdf0278927f8a0253ee1f13ea2c48686ac105f4280eb12fac6bd5f9d071db"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=4:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 4.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 80240520,
+      "byteLength": 1728136,
+      "outputSha256": "8743a78471dc703669d4f5a3cdf91f1816c4dfe28b78b62183b8bfaddbd79aab"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=8:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 8.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 81968656,
+      "byteLength": 1728136,
+      "outputSha256": "7346a5aa70b5a7ca7fdbe3d59d690ca7ba67c6e1bc1a8929e37d00823e50d448"
+    },
+    {
+      "chain": "lowpass=f=3200,acrusher=bits=12:mode=log:mix=0.8,alimiter=limit=0.9",
+      "settings": [
+        {
+          "id": "concat.lofi",
+          "params": {
+            "bits": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 216017,
+      "offsetBytes": 83696792,
+      "byteLength": 1728136,
+      "outputSha256": "98b9cef53b6bd3e3929ab2d93fc22b883ac018f097ee2fe579d8bbfa40f2689d"
+    }
+  ]
+}

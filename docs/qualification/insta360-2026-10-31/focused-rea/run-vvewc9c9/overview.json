@@ -1,0 +1,479 @@
+{
+  "_meta": {
+    "provenance": {
+      "untrusted_content": true,
+      "source": "analysis_target"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"evidence_id\":\"ev_6b30aff4b5c477de0e83e4462dfe29f41d5f6dcd16f6ef38aba48e96fc56a213\",\"subject\":{\"name\":\"studio-main\",\"digest\":{\"sha256\":\"6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423\"},\"local_path\":\"/Applications/Insta360 Studio.app/Contents/MacOS/studio-main\",\"format\":\"mach-o-universal\",\"architecture\":\"arm64\"},\"provider\":{\"id\":\"rea-workflow\",\"name\":\"REA composed investigation workflow\",\"version\":\"1\"},\"analysis_profile\":{\"provider\":{\"id\":\"rea-workflow\",\"name\":\"REA composed investigation workflow\",\"version\":\"1\"},\"parameters\":{\"upstream_analysis_profile\":{\"provider\":{\"id\":\"ghidra\",\"name\":\"Ghidra\",\"version\":\"12.1.4\"},\"parameters\":{\"target_kind\":\"executable\",\"target_format\":\"mach-o-universal\",\"architecture\":\"arm64\",\"available_architectures\":[\"arm64\"],\"import_mode\":\"ephemeral-source-immutable\",\"annotation_policy\":\"atomic-function-entry-metadata-v1\",\"load_image_observations\":\"source-mappings-entry-context-v2\",\"function_body_evidence\":\"complete-inclusive-ranges-v1\",\"function_references\":\"complete-body-and-entry-reference-manager-v2\",\"call_relationship_coverage\":\"function-body-call-coverage-v5\",\"function_dossier_coverage\":\"observed-facets-and-call-relationships-v1\",\"string_inventory_evidence\":\"defined-data-coverage-v1\",\"location_resolution\":\"explicit-address-exact-entry-symbol-first-v3\",\"procedure_file_offset_resolution\":\"address-first-unique-target-source-mapping-v2\",\"instruction_flow_evidence\":\"decoded-return-pcode-v1\",\"instruction_references\":\"exact-address-incoming-without-synthetic-entry-v2\",\"function_boundary_observations\":\"ghidra-function-boundary-limitations-v4\",\"no_return_repair\":\"returning-imports-decoded-return-v2\",\"process_launch\":\"inspected-jvm-launch-support-v1\",\"jump_table_evidence\":\"typed-case-default-blocks-v1\",\"decompiler_jump_loads\":true,\"loader\":\"auto-from-header\",\"language_id\":\"auto-from-header\",\"compiler_spec_id\":\"auto-default\",\"analyzer_preset\":\"ghidra-default+disabled:Decompiler Switch Analysis,Basic Constant Reference Analyzer,Objective-C Message Analyzer\",\"analysis_options\":{\"disabled_analyzers\":[\"Decompiler Switch Analysis\",\"Basic Constant Reference Analyzer\",\"Objective-C Message Analyzer\"]}},\"digest\":\"db0fc5a96abc1a9c527742a72b579de3c9862664869d1219120254068021463e\"},\"source_limitations\":\"provider-operation-caveats-v1\",\"workflow_revision\":4},\"digest\":\"94e8305054d897769627f2c0d6861d290cd81ada98c0af4c210e6e21d030ec0f\"},\"predicate_type\":\"rea.analysis\",\"operation\":\"binary_overview\",\"parameters\":{},\"raw_result\":null,\"normalized_result\":{\"document\":\"target-6a100040c7e3.bin\",\"image_base\":\"0x100000000\",\"segments\":[{\"name\":\"__TEXT\",\"start\":\"0x100000000\",\"end\":\"0x100016480\",\"length\":91264,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__text\",\"start\":\"0x100016480\",\"end\":\"0x10345af88\",\"length\":54807304,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__stubs\",\"start\":\"0x10345af88\",\"end\":\"0x103463da0\",\"length\":36376,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_stubs\",\"start\":\"0x103463da0\",\"end\":\"0x103466e40\",\"length\":12448,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__init_offsets\",\"start\":\"0x103466e40\",\"end\":\"0x103468b60\",\"length\":7456,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_methlist\",\"start\":\"0x103468b60\",\"end\":\"0x10346929c\",\"length\":1852,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__gcc_except_tab\",\"start\":\"0x10346929c\",\"end\":\"0x10368a820\",\"length\":2233732,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__const\",\"start\":\"0x10368a820\",\"end\":\"0x103ccd290\",\"length\":6564464,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__cstring\",\"start\":\"0x103ccd290\",\"end\":\"0x103efb492\",\"length\":2286082,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__ustring\",\"start\":\"0x103efb492\",\"end\":\"0x103efea92\",\"length\":13824,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_classname\",\"start\":\"0x103efea92\",\"end\":\"0x103efec65\",\"length\":467,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_methname\",\"start\":\"0x103efec65\",\"end\":\"0x103f01f99\",\"length\":13108,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_methtype\",\"start\":\"0x103f01f99\",\"end\":\"0x103f02e26\",\"length\":3725,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__oslogstring\",\"start\":\"0x103f02e26\",\"end\":\"0x103f02e30\",\"length\":10,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__unwind_info\",\"start\":\"0x103f02e30\",\"end\":\"0x103fa2648\",\"length\":653336,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__eh_frame\",\"start\":\"0x103fa2648\",\"end\":\"0x103fe4000\",\"length\":268728,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__got\",\"start\":\"0x103fe4000\",\"end\":\"0x103fee9a8\",\"length\":43432,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__DATA_CONST\",\"start\":\"0x103fee9a8\",\"end\":\"0x103fee9c0\",\"length\":24,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__const\",\"start\":\"0x103fee9c0\",\"end\":\"0x1041e5368\",\"length\":2058664,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__cfstring\",\"start\":\"0x1041e5368\",\"end\":\"0x1041e5f08\",\"length\":2976,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_classlist\",\"start\":\"0x1041e5f08\",\"end\":\"0x1041e5f88\",\"length\":128,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_catlist\",\"start\":\"0x1041e5f88\",\"end\":\"0x1041e5f90\",\"length\":8,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_nlcatlist\",\"start\":\"0x1041e5f90\",\"end\":\"0x1041e5f98\",\"length\":8,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_protolist\",\"start\":\"0x1041e5f98\",\"end\":\"0x1041e5fe8\",\"length\":80,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_imageinfo\",\"start\":\"0x1041e5fe8\",\"end\":\"0x1041e5ff0\",\"length\":8,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_intobj\",\"start\":\"0x1041e5ff0\",\"end\":\"0x1041e8000\",\"length\":8208,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_const\",\"start\":\"0x1041e8000\",\"end\":\"0x1041e9da8\",\"length\":7592,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_selrefs\",\"start\":\"0x1041e9da8\",\"end\":\"0x1041eac88\",\"length\":3808,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_classrefs\",\"start\":\"0x1041eac88\",\"end\":\"0x1041eae80\",\"length\":504,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_superrefs\",\"start\":\"0x1041eae80\",\"end\":\"0x1041eaea8\",\"length\":40,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_ivar\",\"start\":\"0x1041eaea8\",\"end\":\"0x1041eaf3c\",\"length\":148,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__DATA\",\"start\":\"0x1041eaf3c\",\"end\":\"0x1041eaf40\",\"length\":4,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__objc_data\",\"start\":\"0x1041eaf40\",\"end\":\"0x1041eb440\",\"length\":1280,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__data\",\"start\":\"0x1041eb440\",\"end\":\"0x1043d3d20\",\"length\":2001120,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\".qtversion\",\"start\":\"0x1043d3d20\",\"end\":\"0x1043d3d30\",\"length\":16,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"crashpad_info\",\"start\":\"0x1043d3d30\",\"end\":\"0x1043d3d68\",\"length\":56,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__thread_vars\",\"start\":\"0x1043d3d68\",\"end\":\"0x1043d40b0\",\"length\":840,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__thread_data\",\"start\":\"0x1043d40b0\",\"end\":\"0x1043d42c0\",\"length\":528,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__bss\",\"start\":\"0x1043d42c0\",\"end\":\"0x1043d8000\",\"length\":15680,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__bss\",\"start\":\"0x1043d8000\",\"end\":\"0x104d36a28\",\"length\":9824808,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__DATA\",\"start\":\"0x104d36a28\",\"end\":\"0x104d36a40\",\"length\":24,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__common\",\"start\":\"0x104d36a40\",\"end\":\"0x104fd8000\",\"length\":2758080,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__LINKEDIT\",\"start\":\"0x104fd8000\",\"end\":\"0x105a3b1b0\",\"length\":10891696,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"__LINKEDIT\",\"start\":\"0x105a3b1b0\",\"end\":\"0x105a3c000\",\"length\":3664,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"},{\"name\":\"EXTERNAL\",\"start\":\"0x105a3c000\",\"end\":\"0x105a67700\",\"length\":177920,\"image_base\":\"0x100000000\",\"address_space\":\"ram\"}],\"segment_count\":45,\"procedure_count\":133841,\"string_count\":288877},\"confidence\":\"derived\",\"authority\":\"shipped-artifact\",\"environment\":null,\"limitations\":[\"Derived by an REA composed workflow.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Cancelling an active Ghidra request terminates its ephemeral database and discards session annotations. The selected target remains open; the next provider query imports the original artifact again.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Counts use the complete defined-string inventory and the same local/external function inventory as list_strings and list_procedures. They do not establish discovery of undefined strings or unidentified functions.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Default-space addresses use lowercase 0x-prefixed hexadecimal; other address spaces use <percent-encoded-space>:0x<hex>.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Memory-block end addresses are exclusive; segment lengths use those observed address coordinates.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Only Ghidra-defined string Data is observed; packed or undefined string bytes may be absent. Completeness applies to that inventory, and an empty search does not establish that text is absent from the artifact. If an address is known, use read_bytes and xrefs to inspect bytes and references.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: The imported Program and temporary project are ephemeral and deleted on close. Annotation operations edit session database metadata; original executable bytes are never written.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: The session serves operations only after Ghidra reports default auto-analysis complete; incomplete analysis does not expose partial results.\",\"Ghidra (ghidra 12.1.4) read_binary_inventory_summary: macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state.\"],\"relationship_coverage\":null,\"locations\":[],\"evidence_links\":[\"ev_740d9c950e66f41733a52d016476139bf75f668cec97ccf1717b8789e1fe0676\"]}"
+    }
+  ],
+  "structuredContent": {
+    "evidence_id": "ev_6b30aff4b5c477de0e83e4462dfe29f41d5f6dcd16f6ef38aba48e96fc56a213",
+    "subject": {
+      "name": "studio-main",
+      "digest": {
+        "sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423"
+      },
+      "local_path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main",
+      "format": "mach-o-universal",
+      "architecture": "arm64"
+    },
+    "provider": {
+      "id": "rea-workflow",
+      "name": "REA composed investigation workflow",
+      "version": "1"
+    },
+    "analysis_profile": {
+      "provider": {
+        "id": "rea-workflow",
+        "name": "REA composed investigation workflow",
+        "version": "1"
+      },
+      "parameters": {
+        "upstream_analysis_profile": {
+          "provider": {
+            "id": "ghidra",
+            "name": "Ghidra",
+            "version": "12.1.4"
+          },
+          "parameters": {
+            "target_kind": "executable",
+            "target_format": "mach-o-universal",
+            "architecture": "arm64",
+            "available_architectures": [
+              "arm64"
+            ],
+            "import_mode": "ephemeral-source-immutable",
+            "annotation_policy": "atomic-function-entry-metadata-v1",
+            "load_image_observations": "source-mappings-entry-context-v2",
+            "function_body_evidence": "complete-inclusive-ranges-v1",
+            "function_references": "complete-body-and-entry-reference-manager-v2",
+            "call_relationship_coverage": "function-body-call-coverage-v5",
+            "function_dossier_coverage": "observed-facets-and-call-relationships-v1",
+            "string_inventory_evidence": "defined-data-coverage-v1",
+            "location_resolution": "explicit-address-exact-entry-symbol-first-v3",
+            "procedure_file_offset_resolution": "address-first-unique-target-source-mapping-v2",
+            "instruction_flow_evidence": "decoded-return-pcode-v1",
+            "instruction_references": "exact-address-incoming-without-synthetic-entry-v2",
+            "function_boundary_observations": "ghidra-function-boundary-limitations-v4",
+            "no_return_repair": "returning-imports-decoded-return-v2",
+            "process_launch": "inspected-jvm-launch-support-v1",
+            "jump_table_evidence": "typed-case-default-blocks-v1",
+            "decompiler_jump_loads": true,
+            "loader": "auto-from-header",
+            "language_id": "auto-from-header",
+            "compiler_spec_id": "auto-default",
+            "analyzer_preset": "ghidra-default+disabled:Decompiler Switch Analysis,Basic Constant Reference Analyzer,Objective-C Message Analyzer",
+            "analysis_options": {
+              "disabled_analyzers": [
+                "Decompiler Switch Analysis",
+                "Basic Constant Reference Analyzer",
+                "Objective-C Message Analyzer"
+              ]
+            }
+          },
+          "digest": "db0fc5a96abc1a9c527742a72b579de3c9862664869d1219120254068021463e"
+        },
+        "source_limitations": "provider-operation-caveats-v1",
+        "workflow_revision": 4
+      },
+      "digest": "94e8305054d897769627f2c0d6861d290cd81ada98c0af4c210e6e21d030ec0f"
+    },
+    "predicate_type": "rea.analysis",
+    "operation": "binary_overview",
+    "parameters": {},
+    "raw_result": null,
+    "normalized_result": {
+      "document": "target-6a100040c7e3.bin",
+      "image_base": "0x100000000",
+      "segments": [
+        {
+          "name": "__TEXT",
+          "start": "0x100000000",
+          "end": "0x100016480",
+          "length": 91264,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__text",
+          "start": "0x100016480",
+          "end": "0x10345af88",
+          "length": 54807304,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__stubs",
+          "start": "0x10345af88",
+          "end": "0x103463da0",
+          "length": 36376,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_stubs",
+          "start": "0x103463da0",
+          "end": "0x103466e40",
+          "length": 12448,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__init_offsets",
+          "start": "0x103466e40",
+          "end": "0x103468b60",
+          "length": 7456,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_methlist",
+          "start": "0x103468b60",
+          "end": "0x10346929c",
+          "length": 1852,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__gcc_except_tab",
+          "start": "0x10346929c",
+          "end": "0x10368a820",
+          "length": 2233732,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__const",
+          "start": "0x10368a820",
+          "end": "0x103ccd290",
+          "length": 6564464,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__cstring",
+          "start": "0x103ccd290",
+          "end": "0x103efb492",
+          "length": 2286082,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__ustring",
+          "start": "0x103efb492",
+          "end": "0x103efea92",
+          "length": 13824,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_classname",
+          "start": "0x103efea92",
+          "end": "0x103efec65",
+          "length": 467,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_methname",
+          "start": "0x103efec65",
+          "end": "0x103f01f99",
+          "length": 13108,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_methtype",
+          "start": "0x103f01f99",
+          "end": "0x103f02e26",
+          "length": 3725,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__oslogstring",
+          "start": "0x103f02e26",
+          "end": "0x103f02e30",
+          "length": 10,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__unwind_info",
+          "start": "0x103f02e30",
+          "end": "0x103fa2648",
+          "length": 653336,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__eh_frame",
+          "start": "0x103fa2648",
+          "end": "0x103fe4000",
+          "length": 268728,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__got",
+          "start": "0x103fe4000",
+          "end": "0x103fee9a8",
+          "length": 43432,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__DATA_CONST",
+          "start": "0x103fee9a8",
+          "end": "0x103fee9c0",
+          "length": 24,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__const",
+          "start": "0x103fee9c0",
+          "end": "0x1041e5368",
+          "length": 2058664,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__cfstring",
+          "start": "0x1041e5368",
+          "end": "0x1041e5f08",
+          "length": 2976,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_classlist",
+          "start": "0x1041e5f08",
+          "end": "0x1041e5f88",
+          "length": 128,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_catlist",
+          "start": "0x1041e5f88",
+          "end": "0x1041e5f90",
+          "length": 8,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_nlcatlist",
+          "start": "0x1041e5f90",
+          "end": "0x1041e5f98",
+          "length": 8,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_protolist",
+          "start": "0x1041e5f98",
+          "end": "0x1041e5fe8",
+          "length": 80,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_imageinfo",
+          "start": "0x1041e5fe8",
+          "end": "0x1041e5ff0",
+          "length": 8,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_intobj",
+          "start": "0x1041e5ff0",
+          "end": "0x1041e8000",
+          "length": 8208,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_const",
+          "start": "0x1041e8000",
+          "end": "0x1041e9da8",
+          "length": 7592,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_selrefs",
+          "start": "0x1041e9da8",
+          "end": "0x1041eac88",
+          "length": 3808,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_classrefs",
+          "start": "0x1041eac88",
+          "end": "0x1041eae80",
+          "length": 504,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_superrefs",
+          "start": "0x1041eae80",
+          "end": "0x1041eaea8",
+          "length": 40,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_ivar",
+          "start": "0x1041eaea8",
+          "end": "0x1041eaf3c",
+          "length": 148,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__DATA",
+          "start": "0x1041eaf3c",
+          "end": "0x1041eaf40",
+          "length": 4,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__objc_data",
+          "start": "0x1041eaf40",
+          "end": "0x1041eb440",
+          "length": 1280,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__data",
+          "start": "0x1041eb440",
+          "end": "0x1043d3d20",
+          "length": 2001120,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": ".qtversion",
+          "start": "0x1043d3d20",
+          "end": "0x1043d3d30",
+          "length": 16,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "crashpad_info",
+          "start": "0x1043d3d30",
+          "end": "0x1043d3d68",
+          "length": 56,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__thread_vars",
+          "start": "0x1043d3d68",
+          "end": "0x1043d40b0",
+          "length": 840,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__thread_data",
+          "start": "0x1043d40b0",
+          "end": "0x1043d42c0",
+          "length": 528,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__bss",
+          "start": "0x1043d42c0",
+          "end": "0x1043d8000",
+          "length": 15680,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__bss",
+          "start": "0x1043d8000",
+          "end": "0x104d36a28",
+          "length": 9824808,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__DATA",
+          "start": "0x104d36a28",
+          "end": "0x104d36a40",
+          "length": 24,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__common",
+          "start": "0x104d36a40",
+          "end": "0x104fd8000",
+          "length": 2758080,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__LINKEDIT",
+          "start": "0x104fd8000",
+          "end": "0x105a3b1b0",
+          "length": 10891696,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "__LINKEDIT",
+          "start": "0x105a3b1b0",
+          "end": "0x105a3c000",
+          "length": 3664,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        },
+        {
+          "name": "EXTERNAL",
+          "start": "0x105a3c000",
+          "end": "0x105a67700",
+          "length": 177920,
+          "image_base": "0x100000000",
+          "address_space": "ram"
+        }
+      ],
+      "segment_count": 45,
+      "procedure_count": 133841,
+      "string_count": 288877
+    },
+    "confidence": "derived",
+    "authority": "shipped-artifact",
+    "environment": null,
+    "limitations": [
+      "Derived by an REA composed workflow.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Cancelling an active Ghidra request terminates its ephemeral database and discards session annotations. The selected target remains open; the next provider query imports the original artifact again.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Counts use the complete defined-string inventory and the same local/external function inventory as list_strings and list_procedures. They do not establish discovery of undefined strings or unidentified functions.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Default-space addresses use lowercase 0x-prefixed hexadecimal; other address spaces use <percent-encoded-space>:0x<hex>.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Memory-block end addresses are exclusive; segment lengths use those observed address coordinates.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: Only Ghidra-defined string Data is observed; packed or undefined string bytes may be absent. Completeness applies to that inventory, and an empty search does not establish that text is absent from the artifact. If an address is known, use read_bytes and xrefs to inspect bytes and references.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: The imported Program and temporary project are ephemeral and deleted on close. Annotation operations edit session database metadata; original executable bytes are never written.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: The session serves operations only after Ghidra reports default auto-analysis complete; incomplete analysis does not expose partial results.",
+      "Ghidra (ghidra 12.1.4) read_binary_inventory_summary: macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state."
+    ],
+    "relationship_coverage": null,
+    "locations": [],
+    "evidence_links": [
+      "ev_740d9c950e66f41733a52d016476139bf75f668cec97ccf1717b8789e1fe0676"
+    ]
+  }
+}

@@ -16,7 +16,7 @@ export function mapDetectedBeatsToTimeline(
   const location = findClip(composition, clipId)
   if (!location) throw new Error(`Audio clip ${clipId} не найден`)
   const { clip, muted } = location
-  if (clip.kind === 'image' || clip.kind === 'text') throw new Error('Auto Beat требует audio/video clip')
+  if (clip.kind === 'image' || clip.kind === 'text' || clip.kind === 'color' || clip.kind === 'graphic') throw new Error('Auto Beat требует audio/video clip')
   if (muted) throw new Error('Auto Beat source track выключена')
   if (clip.kind === 'video') {
     if (!clip.sourceAudioEnabled) throw new Error('Source audio выключен для выбранного video clip')

@@ -1,4 +1,4 @@
-import type { Composition, CompositionClip, CompositionSource } from './types'
+import {mediaVersionSourceIds,type Composition,type CompositionClip,type CompositionSource} from './types'
 import { assertValidComposition, isStableId } from './validation'
 
 export type CompositionRelinkErrorCode =
@@ -46,7 +46,7 @@ export function compositionRelinkRequirements(
   const referencedClipIds: string[] = []
   for (const track of composition.tracks) {
     for (const clip of track.clips) {
-      if (!('sourceId' in clip) || clip.sourceId !== sourceId) continue
+      if (!('sourceId' in clip) || clip.sourceId !== sourceId && !mediaVersionSourceIds(composition.metadata?.mediaVersions?.[clip.id]).includes(sourceId)) continue
       referencedClipIds.push(clip.id)
       if (clip.kind === 'video' || clip.kind === 'audio') {
         minimumDurationTicks = Math.max(minimumDurationTicks, clip.sourceOutTicks)
@@ -140,11 +140,13 @@ export function relinkCompositionSource(
     const clips = track.clips.map((clip) => {
       if (!('sourceId' in clip) || clip.sourceId !== sourceId) return clip
       changed = true
+      if(clip.kind==='video'){const {concatCutout:_cutout,...unbound}=clip;return {...unbound,sourceId:replacement.id}}
       return { ...clip, sourceId: replacement.id } as CompositionClip
     })
     return changed ? { ...track, clips } as typeof track : track
   })
-  const relinked = { ...composition, sources, tracks } as Composition
+  const mediaVersions = composition.metadata?.mediaVersions && Object.fromEntries(Object.entries(composition.metadata.mediaVersions).map(([id, pair]) => [id, { ...pair, ...(pair.videoCutout?{videoCutout:{...pair.videoCutout,corrections:pair.videoCutout.corrections.map(edit=>({...edit,correction:{...edit.correction,strokes:edit.correction.strokes.map(stroke=>stroke.region?{...stroke,region:{...stroke.region,sourceId:stroke.region.sourceId===sourceId?replacement.id:stroke.region.sourceId,maskSourceId:stroke.region.maskSourceId===sourceId?replacement.id:stroke.region.maskSourceId}}:stroke)}})),...(pair.videoCutout.trackedRegions?{trackedRegions:pair.videoCutout.trackedRegions.map(region=>({...region,sourceId:region.sourceId===sourceId?replacement.id:region.sourceId,maskSourceId:region.maskSourceId===sourceId?replacement.id:region.maskSourceId}))}:{}),sourceId:pair.videoCutout.sourceId===sourceId?replacement.id:pair.videoCutout.sourceId,maskSourceId:pair.videoCutout.maskSourceId===sourceId?replacement.id:pair.videoCutout.maskSourceId}}:{}), ...(pair.cutout?{cutout:{...pair.cutout,sourceId:pair.cutout.sourceId===sourceId?replacement.id:pair.cutout.sourceId,maskSourceId:pair.cutout.maskSourceId===sourceId?replacement.id:pair.cutout.maskSourceId,correction:{...pair.cutout.correction,strokes:pair.cutout.correction.strokes.map(stroke=>stroke.region?{...stroke,region:{...stroke.region,sourceId:stroke.region.sourceId===sourceId?replacement.id:stroke.region.sourceId,maskSourceId:stroke.region.maskSourceId===sourceId?replacement.id:stroke.region.maskSourceId}}:stroke)}}}:{}), originalSourceId: pair.originalSourceId === sourceId ? replacement.id : pair.originalSourceId, copySourceId: pair.copySourceId === sourceId ? replacement.id : pair.copySourceId }]))
+  const relinked = { ...composition, sources, tracks, ...(mediaVersions ? { metadata: { ...composition.metadata, mediaVersions } } : {}) } as Composition
   assertValidComposition(relinked)
   return relinked
 }

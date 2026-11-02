@@ -1,0 +1,7 @@
+
+running 1 test
+real X6 visual correction declined: DriftReport { source: "none", bias_radians_per_second: [0.0, 0.0, 0.0], calibration_samples: 0, heading_anchors: 0, visual_frames: 2, visual_pairs: 0, visual_rejected_pairs: 1, corrected_heading_degrees: 0.0, warnings: ["No spatially distributed static-background image consensus; heading was left unchanged.", "Some source intervals lacked a reliable static-background heading observation; correction holds across unobserved ends and interpolates only admitted observations.", "Visual correction observes relative world yaw in the sampled static background; scene translation/parallax, moving backgrounds and absolute compass heading are not assumed observable."] }
+test real_x6_background_observation_admission_and_injected_heading_error ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 12.16s
+

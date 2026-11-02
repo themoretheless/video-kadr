@@ -1,0 +1,6 @@
+{"completed":1,"event":"progress","total":5}
+{"completed":2,"event":"progress","total":5}
+{"completed":3,"event":"progress","total":5}
+{"completed":4,"event":"progress","total":5}
+{"completed":5,"event":"progress","total":5}
+{"admittedViews":[],"decoderHash":"f4514391764fbd56e08e119060d874ecd7d52994bfb1968af159e12d4943b5bb","encoderHash":"9f8433273a6750b587779baa0cf5508111001bf7e7acfcf585d370139fd366d0","exemplarHashes":["3299f627fb6f8d1104ae25384f15e109b802f11335d677a55af1ea9db7ea919f"],"frames":5,"height":96,"maskBytes":327680,"maskHeight":256,"maskWidth":256,"outputHash":"b1e59e8a7e33833c5fd5d3224aa72db65d608deab1f2a9a72f66e6f62b13ab2a","runtimeHash":"3567d114f7299d559993e536d605a6f46d7bc9d2542004accc80ee9bf5457f0b","schemaVersion":15,"seedFrame":0,"seedHash":"3299f627fb6f8d1104ae25384f15e109b802f11335d677a55af1ea9db7ea919f","sourceHash":"b603a86c441c6a076da250a973ce1680c40f9e692c84923e6160c6e937ec45ba","states":["seed","occluded","occluded","occluded","reacquired"],"width":128}

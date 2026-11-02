@@ -1,3 +1,7 @@
+import { sampleClockTick, shiftSampleClock } from './keyframeClock'
+import { segmentInterpolation, cloneInterpolation, cloneKeyframe, normalizeKeyframeTangents, resolvedKeyframeTangents } from './tangents'
+import { sampleBezier, bezierBounds, bezierEndpointSlope, isBezierInterpolation } from './bezier'
+import { sampleElastic, elasticBounds, isElasticInterpolation } from './elastic'
 import {
   COMPOSITION_AUDIO_PROPERTIES,
   COMPOSITION_MASK_PROPERTIES,
@@ -73,7 +77,7 @@ export function visualPropertyFallback(
   if (property === 'x') return clip.kind === 'text' ? clip.x : clip.transform.x
   if (property === 'y') return clip.kind === 'text' ? clip.y : clip.transform.y
   if (clip.kind === 'text') return 1
-  const source = composition.sources[clip.sourceId]
+  const source = (clip.kind === 'color' || clip.kind === 'graphic') ? { width: clip.width,height: clip.height } : composition.sources[clip.sourceId]
   const sourceDimension = property === 'scaleX' ? source?.width : source?.height
   const targetDimension = property === 'scaleX' ? clip.transform.width : clip.transform.height
   return sourceDimension ? targetDimension / sourceDimension : 1
@@ -129,21 +133,44 @@ export function sampleMaskProperty(
 export function sampleAnimatableValue(
   value: CompositionAnimatableValue,
   clipLocalTicks: number,
-  compositionTimeBase = COMPOSITION_TIME_BASE,
+  compositionTimeBase: number = COMPOSITION_TIME_BASE,
 ): number {
   if (value.mode === 'constant') return value.value
+  const tick = value.track.sampleClock ? sampleClockTick(value.track, clipLocalTicks, compositionTimeBase) : Math.round((clipLocalTicks * value.track.timeBase) / compositionTimeBase)
+  return sampleAuthoredTick(value, tick)
+}
+function sampleAuthoredTick(value: Extract<CompositionAnimatableValue, { mode: 'keyframes' }>, tick: number): number {
   const keyframes = value.track.keyframes
   if (!keyframes.length) return 0
-  const tick = Math.max(0, Math.round((clipLocalTicks * value.track.timeBase) / compositionTimeBase))
   const first = keyframes[0]!
-  if (tick <= first.tick) return first.value
   const last = keyframes.at(-1)!
-  if (tick >= last.tick) return last.value
+  if (tick < first.tick || tick > last.tick) {
+    const before = tick < first.tick
+    const end = before ? first : last
+    const extrapolation = value.track.extrapolation?.[before ? 'before' : 'after'] ?? 'hold'
+    if (keyframes.length < 2 || extrapolation === 'hold') return end.value
+    if (extrapolation === 'loop' || extrapolation === 'ping_pong' || extrapolation === 'offset') {
+      const period = last.tick - first.tick
+      const relative = tick - first.tick
+      const cycle = Math.floor(relative / period)
+      const remainder = relative - cycle * period
+      const folded = extrapolation === 'ping_pong' && ((cycle % 2) + 2) % 2 === 1 ? last.tick - remainder : first.tick + remainder
+      const sampled = sampleAuthoredTick(value, folded)
+      return sampled + (extrapolation === 'offset' ? cycle * (last.value - first.value) : 0)
+    }
+    const left = before ? first : keyframes[keyframes.length - 2]!
+    const right = before ? keyframes[1]! : last
+    const mode = segmentInterpolation(left, right, value.track.interpolation)
+    const slope = typeof mode === 'object' && mode.kind === 'bezier' ? bezierEndpointSlope(mode, before) : mode === 'linear' ? 1 : mode === 'ease_in' && !before || mode === 'ease_out' && before ? 3 : 0
+    return end.value + slope * (right.value - left.value) * (tick - end.tick) / (right.tick - left.tick)
+  }
+  if (tick === last.tick) return last.value
   const nextIndex = keyframes.findIndex((keyframe) => keyframe.tick > tick)
   const left = keyframes[nextIndex - 1]!
   const right = keyframes[nextIndex]!
+  if (tick === left.tick) return left.value
   const progress = (tick - left.tick) / (right.tick - left.tick)
-  const eased = interpolateProgress(value.track.interpolation, progress)
+  const eased = interpolateProgress(segmentInterpolation(left, right, value.track.interpolation), progress)
   return left.value + (right.value - left.value) * eased
 }
 
@@ -160,7 +187,9 @@ export function keyframeTickAtLocalTime(
   localTicks: number,
   trackTimeBase: number = COMPOSITION_TIME_BASE,
   compositionTimeBase: number = COMPOSITION_TIME_BASE,
+  track?: import('./types').CompositionKeyframeTrack,
 ): number {
+  if (track?.sampleClock) return sampleClockTick(track, localTicks, compositionTimeBase)
   return Math.max(0, Math.round((localTicks * trackTimeBase) / compositionTimeBase))
 }
 
@@ -169,28 +198,50 @@ export function upsertKeyframe(
   tick: number,
   value: number,
   fallback: number,
-  interpolation: CompositionInterpolation = 'linear',
+  interpolation?: CompositionInterpolation,
 ): CompositionAnimatableValue {
   const normalizedTick = safeTick(tick)
   const normalizedValue = finiteValue(value)
   const track = current?.mode === 'keyframes'
     ? current.track
-    : { timeBase: COMPOSITION_TIME_BASE, interpolation, keyframes: [] }
+    : { timeBase: COMPOSITION_TIME_BASE, interpolation: interpolation ?? 'linear', keyframes: [] }
+  const existing = track.keyframes.find((keyframe) => keyframe.tick === normalizedTick)
+  const preceding = track.keyframes.filter((keyframe) => keyframe.tick < normalizedTick).at(-1)
+  const following = track.keyframes.find(keyframe => keyframe.tick > normalizedTick)
+  const inheritedTangents = !existing && preceding && (preceding.tangents || following?.tangents)
+    ? {
+      incoming: following ? resolvedKeyframeTangents(track.keyframes,track.keyframes.indexOf(following),track.interpolation).incoming : { x: 2/3,y: 2/3,mode: 'free' as const },
+      outgoing: resolvedKeyframeTangents(track.keyframes,track.keyframes.indexOf(preceding),track.interpolation).outgoing,
+      continuity: 'broken' as const,
+    }
+    : undefined
+  const inherited = preceding?.interpolation ?? (!preceding && track.interpolation !== 'linear' ? 'linear' : undefined)
+  const next: CompositionKeyframe = {
+    ...(existing ?? (inherited === undefined ? {} : { interpolation: inherited })),
+    ...(inheritedTangents ? { tangents: inheritedTangents } : {}),
+    ...(interpolation === undefined ? {} : { interpolation: normalizeInterpolation(interpolation) }),
+    tick: normalizedTick,
+    value: normalizedValue,
+  }
   const keyframes = [
     ...track.keyframes.filter((keyframe) => keyframe.tick !== normalizedTick),
-    { tick: normalizedTick, value: normalizedValue },
+    next,
   ].sort((left, right) => left.tick - right.tick)
   if (keyframes.length > MAX_KEYFRAMES_PER_VALUE) {
     throw new Error(`Не больше ${MAX_KEYFRAMES_PER_VALUE} ключей на параметр`)
   }
-  return {
+  const result: CompositionAnimatableValue = {
     mode: 'keyframes',
     track: {
+      ...track,
       timeBase: track.timeBase || COMPOSITION_TIME_BASE,
       interpolation: normalizeInterpolation(track.interpolation),
-      keyframes: keyframes.length ? keyframes : [{ tick: 0, value: fallback }],
+      keyframes: normalizeKeyframeTangents(keyframes.length ? keyframes : [{ tick: 0, value: fallback }], track.interpolation),
     },
   }
+  return typeof interpolation === 'object' && interpolation.kind === 'bezier'
+    ? updateSelectedKeyframeInterpolation(result,[normalizedTick],interpolation)
+    : result
 }
 
 export function updateKeyframe(
@@ -204,18 +255,18 @@ export function updateKeyframe(
     throw new Error('Ключевой кадр не найден')
   }
   const nextTick = safeTick(tick)
-  if (nextTick !== originalTick && current.track.keyframes.some((keyframe) => keyframe.tick === nextTick)) {
-    throw new Error('На этой позиции уже есть ключевой кадр')
-  }
+  const ordered = current.track.keyframes
+    .map((keyframe): CompositionKeyframe => keyframe.tick === originalTick
+      ? { ...keyframe, tick: nextTick, value: finiteValue(value) }
+      : { ...keyframe })
+    .sort((left, right) => left.tick - right.tick)
+  const keyframes = new Map<number, CompositionKeyframe>()
+  for (const keyframe of ordered) keyframes.set(keyframe.tick, keyframe)
   return {
     mode: 'keyframes',
     track: {
       ...current.track,
-      keyframes: current.track.keyframes
-        .map((keyframe): CompositionKeyframe => keyframe.tick === originalTick
-          ? { tick: nextTick, value: finiteValue(value) }
-          : { ...keyframe })
-        .sort((left, right) => left.tick - right.tick),
+      keyframes: normalizeKeyframeTangents([...keyframes.values()], current.track.interpolation),
     },
   }
 }
@@ -224,11 +275,13 @@ export function deleteKeyframe(
   current: CompositionAnimatableValue,
   tick: number,
 ): CompositionAnimatableValue | undefined {
-  if (current.mode !== 'keyframes') return undefined
+  if (current.mode !== 'keyframes') return current
+  const removed = current.track.keyframes.find((keyframe) => keyframe.tick === tick)
+  if (!removed) return current
   const keyframes = current.track.keyframes.filter((keyframe) => keyframe.tick !== tick)
   return keyframes.length
-    ? { mode: 'keyframes', track: { ...current.track, keyframes: keyframes.map((keyframe) => ({ ...keyframe })) } }
-    : undefined
+    ? { mode: 'keyframes', track: { ...current.track, keyframes: normalizeKeyframeTangents(keyframes.map(cloneKeyframe), current.track.interpolation) } }
+    : constantAnimatable(removed.value)
 }
 
 export function updateInterpolation(
@@ -236,16 +289,28 @@ export function updateInterpolation(
   interpolation: CompositionInterpolation,
 ): CompositionAnimatableValue {
   if (current.mode !== 'keyframes') throw new Error('Сначала добавьте ключевой кадр')
+  const mode = normalizeInterpolation(interpolation)
+  const inheritedTicks = current.track.keyframes.slice(0, -1).filter(key => key.interpolation === undefined).map(key => key.tick)
+  const baked = typeof mode === 'object' && mode.kind === 'bezier' && inheritedTicks.length
+    ? updateSelectedKeyframeInterpolation(current, inheritedTicks, mode)
+    : current
+  if (baked.mode !== 'keyframes') throw new Error('Сначала добавьте ключевой кадр')
+  const keys = baked.track.keyframes.map(key => {
+    if (!inheritedTicks.includes(key.tick)) return key
+    const inherited = { ...key }
+    delete inherited.interpolation
+    return inherited
+  })
   return {
     mode: 'keyframes',
-    track: { ...current.track, interpolation: normalizeInterpolation(interpolation) },
+    track: { ...current.track, interpolation: mode, keyframes: normalizeKeyframeTangents(keys, mode) },
   }
 }
 
 export function cloneAnimatableValue(value: CompositionAnimatableValue): CompositionAnimatableValue {
   return value.mode === 'constant'
     ? { ...value }
-    : { mode: 'keyframes', track: { ...value.track, keyframes: value.track.keyframes.map((keyframe) => ({ ...keyframe })) } }
+    : { mode: 'keyframes', track: { ...value.track, interpolation: cloneInterpolation(value.track.interpolation), ...(value.track.extrapolation ? { extrapolation: { ...value.track.extrapolation } } : {}), ...(value.track.sampleClock ? { sampleClock: { ...value.track.sampleClock } } : {}), keyframes: value.track.keyframes.map(cloneKeyframe) } }
 }
 
 export function cloneVisualAnimation(
@@ -271,6 +336,40 @@ export function cloneVideoMasks(
  * boundaries. `startTicks` may be negative and `endTicks` may extend past the
  * old duration when a trim expands a clip.
  */
+export function splitAnimatableValue(value: CompositionAnimatableValue, splitTicks: number, right: boolean): CompositionAnimatableValue {
+  // A key outside a fragment still defines the interpolation/extrapolation
+  // inside it. Keep that context, changing only the right fragment's clock.
+  return right ? shiftAnimatableValue(value, -splitTicks) : cloneAnimatableValue(value)
+}
+
+export function splitVisualAnimation(animation: CompositionVisualAnimation | undefined, cut: number, right: boolean): CompositionVisualAnimation | undefined {
+  return mapAnimation(animation, COMPOSITION_VISUAL_PROPERTIES, value => splitAnimatableValue(value, cut, right))
+}
+export function splitAudioAnimation(animation: CompositionAudioAnimation | undefined, cut: number, right: boolean): CompositionAudioAnimation | undefined {
+  return mapAnimation(animation, COMPOSITION_AUDIO_PROPERTIES, value => splitAnimatableValue(value, cut, right))
+}
+export function splitVideoMasks(masks: readonly CompositionVideoMask[] | undefined, cut: number, right: boolean): readonly CompositionVideoMask[] | undefined {
+  return masks?.map(mask => mapAnimation(mask, COMPOSITION_MASK_PROPERTIES, value => splitAnimatableValue(value, cut, right))!)
+}
+
+export function shiftAnimatableValue(value: CompositionAnimatableValue, deltaTicks: number, compositionTimeBase: number = COMPOSITION_TIME_BASE): CompositionAnimatableValue {
+  const cloned = cloneAnimatableValue(value)
+  if (cloned.mode === 'constant') return cloned
+  if (cloned.track.sampleClock) return { ...cloned, track: { ...cloned.track, sampleClock: shiftSampleClock(cloned.track.sampleClock, deltaTicks, compositionTimeBase) } }
+  const delta = Math.round(deltaTicks * cloned.track.timeBase / compositionTimeBase)
+  return { ...cloned, track: { ...cloned.track, keyframes: cloned.track.keyframes.map(key => ({ ...key, tick: safeTick(key.tick + delta) })) } }
+}
+
+export function shiftVisualAnimation(animation: CompositionVisualAnimation | undefined, deltaTicks: number): CompositionVisualAnimation | undefined {
+  return mapAnimation(animation, COMPOSITION_VISUAL_PROPERTIES, value => shiftAnimatableValue(value, deltaTicks))
+}
+export function shiftAudioAnimation(animation: CompositionAudioAnimation | undefined, deltaTicks: number): CompositionAudioAnimation | undefined {
+  return mapAnimation(animation, COMPOSITION_AUDIO_PROPERTIES, value => shiftAnimatableValue(value, deltaTicks))
+}
+export function shiftVideoMasks(masks: readonly CompositionVideoMask[] | undefined, deltaTicks: number): readonly CompositionVideoMask[] | undefined {
+  return masks?.map(mask => mapAnimation(mask, COMPOSITION_MASK_PROPERTIES, value => shiftAnimatableValue(value, deltaTicks))!)
+}
+
 export function sliceAnimatableValue(
   value: CompositionAnimatableValue,
   startTicks: number,
@@ -279,6 +378,7 @@ export function sliceAnimatableValue(
   compositionTimeBase = COMPOSITION_TIME_BASE,
 ): CompositionAnimatableValue {
   if (value.mode === 'constant') return { ...value }
+  if (value.track.sampleClock) return shiftAnimatableValue(value, -startTicks, compositionTimeBase)
   const track = value.track
   const nextDuration = Math.max(0, endTicks - startTicks)
   const next: CompositionKeyframe[] = []
@@ -287,6 +387,7 @@ export function sliceAnimatableValue(
     const compositionTick = (keyframe.tick * compositionTimeBase) / track.timeBase
     if (compositionTick < Math.max(0, startTicks) || compositionTick > Math.min(sourceDurationTicks, endTicks)) continue
     next.push({
+      ...keyframe,
       tick: keyframeTickAtLocalTime(compositionTick - startTicks, track.timeBase, compositionTimeBase),
       value: keyframe.value,
     })
@@ -377,15 +478,40 @@ export function keyframeCount(value: CompositionAnimatableValue | undefined): nu
 
 export function animatableExtents(value: CompositionAnimatableValue): { minimum: number; maximum: number } {
   const values = value.mode === 'constant' ? [value.value] : value.track.keyframes.map((keyframe) => keyframe.value)
+  if (value.mode === 'keyframes') {
+    for (let index = 0; index < value.track.keyframes.length - 1; index++) {
+      const left = value.track.keyframes[index]!
+      const right = value.track.keyframes[index + 1]!
+      const interpolation = segmentInterpolation(left, right, value.track.interpolation)
+      if (typeof interpolation === 'object') {
+        const [lo, hi] = interpolation.kind === 'elastic' ? elasticBounds(interpolation, 0, 1) : bezierBounds(interpolation)
+        values.push(left.value + (right.value - left.value) * lo, left.value + (right.value - left.value) * hi)
+      }
+    }
+  }
   return { minimum: Math.min(...values), maximum: Math.max(...values) }
 }
 
 export function normalizeInterpolation(value: CompositionInterpolation): Exclude<CompositionInterpolation, 'ease_in_out_cubic'> {
+  if (typeof value === 'object' && !isElasticInterpolation(value) && !isBezierInterpolation(value)) throw new Error('Invalid curve parameters')
   return value === 'ease_in_out_cubic' ? 'ease_in_out' : value
 }
 
+// WeftCut Penner Bounce: four parabolas, with zero Continue endpoint slope.
+function bounceOut(t: number): number {
+  if (t < 1 / 2.75) return 7.5625 * t * t
+  if (t < 2 / 2.75) { t -= 1.5 / 2.75; return 7.5625 * t * t + 0.75 }
+  if (t < 2.5 / 2.75) { t -= 2.25 / 2.75; return 7.5625 * t * t + 0.9375 }
+  t -= 2.625 / 2.75
+  return 7.5625 * t * t + 0.984375
+}
+
 function interpolateProgress(interpolation: CompositionInterpolation, progress: number): number {
+  if (typeof interpolation === 'object') return interpolation.kind === 'elastic' ? sampleElastic(interpolation, progress) : sampleBezier(interpolation, progress)
   switch (interpolation) {
+    case 'bounce_out': return bounceOut(progress)
+    case 'bounce_in': return 1 - bounceOut(1 - progress)
+    case 'bounce_in_out': return progress < 0.5 ? 0.5 * (1 - bounceOut(1 - 2 * progress)) : 0.5 + 0.5 * bounceOut(2 * progress - 1)
     case 'hold': return 0
     case 'linear': return progress
     case 'ease_in': return progress ** 3
@@ -397,11 +523,32 @@ function interpolateProgress(interpolation: CompositionInterpolation, progress: 
 }
 
 function safeTick(value: number): number {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error('Keyframe tick должен быть неотрицательным целым')
+  if (!Number.isSafeInteger(value)) throw new Error('Keyframe tick должен быть безопасным целым')
   return value
 }
 
 function finiteValue(value: number): number {
   if (!Number.isFinite(value)) throw new Error('Значение keyframe должно быть конечным числом')
   return value
+}
+
+/** Change only the selected keys' outgoing interpolation, retaining all other segments. */
+export function updateSelectedKeyframeInterpolation(value: CompositionAnimatableValue, ticks: readonly number[], interpolation: CompositionInterpolation): CompositionAnimatableValue {
+  if (value.mode !== 'keyframes' || !ticks.length || ticks.some((tick) => !value.track.keyframes.some((key) => key.tick === tick))) throw new Error('Selected keyframe no longer exists')
+  const mode = normalizeInterpolation(interpolation)
+  const keys = value.track.keyframes.map((key) => ticks.includes(key.tick) ? { ...key, interpolation: mode } : { ...key })
+  if (typeof mode === 'object' && mode.kind === 'bezier') {
+    for (const tick of ticks) {
+      const index = keys.findIndex(key => key.tick === tick)
+      const left = keys[index]!, right = keys[index+1]
+      if (!left.tangents && !right?.tangents) continue
+      const l = resolvedKeyframeTangents(keys,index,value.track.interpolation)
+      keys[index] = { ...left,tangents: { ...l,outgoing: { x: mode.p1[0],y: mode.p1[1],mode: 'free' } } }
+      if (right) {
+        const r = resolvedKeyframeTangents(keys,index+1,value.track.interpolation)
+        keys[index+1] = { ...right,tangents: { ...r,incoming: { x: mode.p2[0],y: mode.p2[1],mode: 'free' } } }
+      }
+    }
+  }
+  return { ...value, track: { ...value.track, keyframes: normalizeKeyframeTangents(keys, value.track.interpolation) } }
 }

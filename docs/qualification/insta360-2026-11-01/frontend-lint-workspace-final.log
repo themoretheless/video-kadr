@@ -1,0 +1,1236 @@
+
+> video-kadr-frontend@0.1.0 lint
+> eslint .
+
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/clockLabelBrowserCases.ts
+  8:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/graphicShapeBrowserCases.ts
+  8:40   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  9:100  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  9:237  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  9:254  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/graphicTextBrowserCases.ts
+  8:40   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  9:100  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  9:237  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  9:254  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/lightningBrowserCases.ts
+  8:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/metadataBurninBrowserCases.ts
+  8:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-alpha-glow.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-asc-cdl.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-auto-align.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-auto-reframe.spec.ts
+  7:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-bevel-alpha.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-block-dissolve.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-bokeh-blur.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-brightness-contrast.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-brush-strokes.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-camera-shake.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-cell-pattern.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-channel-blur.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-checkerboard.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-circle.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-clone.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-color-emboss.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-compound-blur-external.spec.ts
+  8:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-compound-blur.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-concat-video-cutout.spec.ts
+  16:97   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  17:28   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  44:293  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  50:224  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  50:659  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-corner-pin.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-crop.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-echo-glow.spec.ts
+  7:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-echo.spec.ts
+  7:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-edge-feather.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-edge-glow.spec.ts
+  7:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-ellipse.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-flip.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-focus-blur.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-four-color-gradient.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-glint.spec.ts
+  7:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-gradient-wipe.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-gradient.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-grid.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-grow.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-lens-flare.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-light-leaks.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-lighting-effects.spec.ts
+  8:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-linear-wipe.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-logo-cutout.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-long-shadow.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-magnify.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-mirror.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-move.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-offset.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-paint-bucket.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-posterize-time.spec.ts
+   7:41   error  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  27:115  error  'count' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-ramp.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-reduce-interlace-flicker.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-rgb-split.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-rotate-3d.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-roughen-edges.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-rounded-crop.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-shrink.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-simple-text.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-spacer.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-spherize.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-spin.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-standalone-sharpen.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-stroke.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-transform-effect.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-turbulent-displace.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-unsharp-mask.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vignette-effect.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-volumetric-rays.spec.ts
+  7:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-chromatic.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-color-gradients.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-denoise.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-digital-glitch.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-filter.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-fractal-noise-basic-opaque.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-fractal-noise-basic.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-fractal-noise-sharp-opaque.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-fractal-noise-sharp.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-fractal-noise-smooth-opaque.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-fractal-noise-smooth.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-glow.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-plane-to-sphere.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-vr-sphere.spec.ts
+  7:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-wiggle.spec.ts
+  7:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/real-wonder-glow.spec.ts
+  7:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/e2e/writeOnBrowserCases.ts
+   8:38   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  11:220  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  28:113  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/scripts/qualify-filmcraft-custom-mask.mjs
+  34:217  error  Empty block statement  no-empty
+  62:166  error  Empty block statement  no-empty
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/scripts/qualify-filmcraft-mask-monitor.mjs
+   32:238  error  Empty block statement  no-empty
+  155:166  error  Empty block statement  no-empty
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/scripts/qualify-native-system-clipboard.mjs
+  34:159  error  Empty block statement  no-empty
+  49:83   error  Empty block statement  no-empty
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/scripts/qualify-sam-video-author-live.mjs
+  15:126  error  Empty block statement  no-empty
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/scripts/qualify-sam-video-flat-live.mjs
+  12:142  error  Empty block statement  no-empty
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/scripts/qualify-sam-video-handoff-live.mjs
+  12:142  error  Empty block statement  no-empty
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/scripts/run-real-composition-e2e.mjs
+  255:21  error  Unsafe usage of ThrowStatement  no-unsafe-finally
+  256:5   error  Unsafe usage of ThrowStatement  no-unsafe-finally
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/api.test.ts
+  939:9  error  'duration' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/audio/latestRequest.test.ts
+   9:24  error  'input' is defined but never used   @typescript-eslint/no-unused-vars
+  25:24  error  'input' is defined but never used   @typescript-eslint/no-unused-vars
+  25:39  error  'signal' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/audio/nativePreview.test.ts
+  14:59  error  '_focus' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/AudioDspChain.svelte
+  64:15  error  Each block should have a key  svelte/require-each-key
+  86:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/AudioSourceParamKeys.svelte
+  22:2  error  Each block should have a key  svelte/require-each-key
+  27:4  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CaptionFileExport.svelte
+  22:29   error  Unexpected control character(s) in regular expression: \x00, \x1f  no-control-regex
+  27:174  error  Each block should have a key                                       svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CaptionFileImport.svelte
+  28:1  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CaptionTrackSettings.svelte
+  17:202  error  Each block should have a key  svelte/require-each-key
+  19:136  error  Each block should have a key  svelte/require-each-key
+  25:196  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CompositionFonts.svelte
+  38:164  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CompositionSourceBypassEffects.svelte
+  17:3  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/ConcatClipAnimationEditor.svelte
+  11:2  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/ConcatCropEditor.svelte
+  10:2  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CurveParameters.svelte
+   7:3  error  Each block should have a key  svelte/require-each-key
+   8:4  error  Each block should have a key  svelte/require-each-key
+  14:3  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CurvePointGraph.svelte
+  34:2  error  Each block should have a key  svelte/require-each-key
+  36:2  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/CutoutModelDownloads.svelte
+  19:20  error  Found a mutable instance of the built-in Set class. Use SvelteSet instead  svelte/prefer-svelte-reactivity
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/EnhancementModelDownloads.svelte
+  19:20  error  Found a mutable instance of the built-in Set class. Use SvelteSet instead  svelte/prefer-svelte-reactivity
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/FilmcraftAnalysisControls.svelte
+  10:20  error  Found a mutable instance of the built-in Set class. Use SvelteSet instead  svelte/prefer-svelte-reactivity
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/FilmcraftProjectPanel.svelte
+  296:22   error  Found a mutable instance of the built-in Map class. Use SvelteMap instead  svelte/prefer-svelte-reactivity
+  299:22   error  Found a mutable instance of the built-in Set class. Use SvelteSet instead  svelte/prefer-svelte-reactivity
+  388:183  error  Each block should have a key                                               svelte/require-each-key
+  389:7    error  Each block should have a key                                               svelte/require-each-key
+  390:473  error  Each block should have a key                                               svelte/require-each-key
+  406:229  error  Each block should have a key                                               svelte/require-each-key
+  415:243  error  Each block should have a key                                               svelte/require-each-key
+  425:213  error  Each block should have a key                                               svelte/require-each-key
+  435:52   error  Each block should have a key                                               svelte/require-each-key
+  441:15   error  Each block should have a key                                               svelte/require-each-key
+  447:248  error  Each block should have a key                                               svelte/require-each-key
+  461:381  error  Each block should have a key                                               svelte/require-each-key
+  463:380  error  Each block should have a key                                               svelte/require-each-key
+  467:235  error  Each block should have a key                                               svelte/require-each-key
+  478:17   error  Each block should have a key                                               svelte/require-each-key
+  499:21   error  Each block should have a key                                               svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicCharacterFormatting.svelte
+  31:3   error  Each block should have a key  svelte/require-each-key
+  34:3   error  Each block should have a key  svelte/require-each-key
+  35:3   error  Each block should have a key  svelte/require-each-key
+  38:36  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicLayerAnimation.svelte
+  28:137  error  Each block should have a key  svelte/require-each-key
+  36:7    error  Each block should have a key  svelte/require-each-key
+  38:11   error  Each block should have a key  svelte/require-each-key
+  42:5    error  Each block should have a key  svelte/require-each-key
+  47:11   error  Each block should have a key  svelte/require-each-key
+  58:5    error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicLayerPins.svelte
+  35:3  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicLayerProperties.svelte
+  23:5  error  Each block should have a key  svelte/require-each-key
+  26:5  error  Each block should have a key  svelte/require-each-key
+  29:5  error  Each block should have a key  svelte/require-each-key
+  31:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicLayersEditor.svelte
+  62:140  error  'previous' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicResponsiveTime.svelte
+  17:3  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicRollEditor.svelte
+  20:3  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicTemplateBrowser.svelte
+  21:183  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicTemplateControls.svelte
+  74:179  error  Each block should have a key  svelte/require-each-key
+  79:56   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicTemplateExport.svelte
+  52:195  error  Each block should have a key  svelte/require-each-key
+  57:265  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/GraphicTemplateLibrary.svelte
+  21:175  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/ImageCutoutPanel.svelte
+  7:19  error  'MediaEntry' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/ImageEnhancementPanel.svelte
+  40:253  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NativeScopeGraph.svelte
+  14:43   error  Each block should have a key  svelte/require-each-key
+  17:168  error  Each block should have a key  svelte/require-each-key
+  23:162  error  Each block should have a key  svelte/require-each-key
+  25:26   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedAlphaAdjustInspector.svelte
+  34:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedAlphaGlowInspector.svelte
+  46:9   error  Each block should have a key  svelte/require-each-key
+  52:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedAscCdlInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  44:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedAutoAlignInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  48:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedAutoReframeInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  44:15  error  Each block should have a key  svelte/require-each-key
+  64:17  error  Each block should have a key  svelte/require-each-key
+  67:17  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBasic3DInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBasicGradeInspector.svelte
+  28:5  error  Each block should have a key  svelte/require-each-key
+  35:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBasicGradeInspector.test.ts
+  5:91  error  'redoNestedComposition' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBevelAlphaInspector.svelte
+  48:9   error  Each block should have a key  svelte/require-each-key
+  52:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBlackWhiteInspector.svelte
+  14:6  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBlockDissolveInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  42:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBokehBlurInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  45:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBrightnessContrastInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  44:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedBrushStrokesInspector.svelte
+  37:9    error  Each block should have a key  svelte/require-each-key
+  41:273  error  Each block should have a key  svelte/require-each-key
+  42:15   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCameraBlurInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCameraShakeInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  46:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCellPatternInspector.svelte
+   9:25   error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  10:65   error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  14:75   error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  48:9    error  Each block should have a key           svelte/require-each-key
+  52:270  error  Each block should have a key           svelte/require-each-key
+  53:272  error  Each block should have a key           svelte/require-each-key
+  55:15   error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedChangeToColorInspector.svelte
+  56:9   error  Each block should have a key  svelte/require-each-key
+  60:8   error  Each block should have a key  svelte/require-each-key
+  63:10  error  Each block should have a key  svelte/require-each-key
+  85:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedChannelBlurInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  48:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedChannelMixInspector.svelte
+  50:9   error  Each block should have a key  svelte/require-each-key
+  55:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCheckerboardInspector.svelte
+   9:25  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  10:72  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  15:84  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  56:9   error  Each block should have a key           svelte/require-each-key
+  62:15  error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedChromaInspector.svelte
+  51:9   error  Each block should have a key  svelte/require-each-key
+  55:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCineonInspector.svelte
+  44:9   error  Each block should have a key  svelte/require-each-key
+  51:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCircleInspector.svelte
+  13:66  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:78  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  59:9   error  Each block should have a key           svelte/require-each-key
+  63:15  error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedClipNameInspector.svelte
+  58:9   error  Each block should have a key  svelte/require-each-key
+  65:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCloneInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  47:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedColorBalanceInspector.svelte
+  47:9   error  Each block should have a key  svelte/require-each-key
+  52:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedColorEmbossInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedColorKeyInspector.svelte
+  56:9   error  Each block should have a key  svelte/require-each-key
+  62:16  error  Each block should have a key  svelte/require-each-key
+  81:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedColorPassInspector.svelte
+  53:9   error  Each block should have a key  svelte/require-each-key
+  60:16  error  Each block should have a key  svelte/require-each-key
+  79:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedColorReplaceInspector.svelte
+  53:9   error  Each block should have a key  svelte/require-each-key
+  57:8   error  Each block should have a key  svelte/require-each-key
+  60:10  error  Each block should have a key  svelte/require-each-key
+  82:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCompoundBlurInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  44:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedConcatCurvesInspector.test.ts
+  64:6  error  'effect' is never reassigned. Use 'const' instead  prefer-const
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCornerPinInspector.svelte
+  16:51  error  '_base' is defined but never used      @typescript-eslint/no-unused-vars
+  16:64  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  19:73  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  55:9   error  Each block should have a key           svelte/require-each-key
+  59:15  error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCreativeAdjustInspector.svelte
+  28:5  error  Each block should have a key  svelte/require-each-key
+  35:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCreativeAdjustInspector.test.ts
+  5:91  error  'redoNestedComposition' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCreativeGradeInspector.svelte
+  51:5    error  Each block should have a key  svelte/require-each-key
+  56:220  error  Each block should have a key  svelte/require-each-key
+  63:9    error  Each block should have a key  svelte/require-each-key
+  78:11   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedCropInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  45:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedDirectionalBlurInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedDirectionalBlurLegacyInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedDropShadowInspector.svelte
+  48:9   error  Each block should have a key  svelte/require-each-key
+  52:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedEchoGlowInspector.svelte
+  41:9   error  Each block should have a key  svelte/require-each-key
+  45:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedEchoInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  44:15  error  Each block should have a key  svelte/require-each-key
+  64:17  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedEdgeFeatherInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedEdgeGlowInspector.svelte
+  41:9   error  Each block should have a key  svelte/require-each-key
+  46:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedEllipseInspector.svelte
+  15:61  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  20:71  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  55:9   error  Each block should have a key           svelte/require-each-key
+  60:15  error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedEmbeddedAudioInspector.svelte
+  18:4  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedEmbossInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedExtractInspector.svelte
+  41:9   error  Each block should have a key  svelte/require-each-key
+  45:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedFindEdgesInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedFocusBlurInspector.svelte
+  13:69  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:81  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  60:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedFourColorGradientInspector.svelte
+  51:9   error  Each block should have a key  svelte/require-each-key
+  55:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGammaInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGaussianBlurInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  43:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGaussianBlurLegacyInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  42:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGlintInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:308  error  Each block should have a key  svelte/require-each-key
+  46:15   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGradientInspector.svelte
+  17:68   error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  27:80   error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  70:9    error  Each block should have a key           svelte/require-each-key
+  74:257  error  Each block should have a key           svelte/require-each-key
+  75:15   error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGradientWipeInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  44:17  error  Each block should have a key  svelte/require-each-key
+  47:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGraphicShapeInspector.svelte
+  61:9    error  Each block should have a key  svelte/require-each-key
+  69:15   error  Each block should have a key  svelte/require-each-key
+  72:15   error  Each block should have a key  svelte/require-each-key
+  91:15   error  Each block should have a key  svelte/require-each-key
+  92:288  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGraphicTextInspector.svelte
+   89:9    error  Each block should have a key  svelte/require-each-key
+   97:15   error  Each block should have a key  svelte/require-each-key
+   98:15   error  Each block should have a key  svelte/require-each-key
+  113:15   error  Each block should have a key  svelte/require-each-key
+  132:15   error  Each block should have a key  svelte/require-each-key
+  133:287  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGridInspector.svelte
+  48:9   error  Each block should have a key  svelte/require-each-key
+  52:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedGrowInspector.svelte
+  13:64  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:76  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  59:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedHorizontalFlipInspector.svelte
+  14:6  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedHslInspector.svelte
+  28:5  error  Each block should have a key  svelte/require-each-key
+  35:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedHslInspector.test.ts
+  5:91  error  'redoNestedComposition' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedInvertInspector.svelte
+  35:5    error  Each block should have a key  svelte/require-each-key
+  40:256  error  Each block should have a key  svelte/require-each-key
+  42:9    error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLeaveColorInspector.svelte
+  56:9   error  Each block should have a key  svelte/require-each-key
+  62:16  error  Each block should have a key  svelte/require-each-key
+  81:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLensDistortionInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLensFlareInspector.svelte
+  14:69  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  19:81  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  60:9   error  Each block should have a key           svelte/require-each-key
+  65:15  error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLevelsInspector.svelte
+  43:9   error  Each block should have a key  svelte/require-each-key
+  47:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLightLeaksInspector.svelte
+  43:9    error  Each block should have a key  svelte/require-each-key
+  47:15   error  Each block should have a key  svelte/require-each-key
+  66:15   error  Each block should have a key  svelte/require-each-key
+  67:287  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLightingEffectsInspector.svelte
+  42:9    error  Each block should have a key  svelte/require-each-key
+  46:15   error  Each block should have a key  svelte/require-each-key
+  47:388  error  Each block should have a key  svelte/require-each-key
+  50:15   error  Each block should have a key  svelte/require-each-key
+  52:15   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLightningInspector.svelte
+  62:9    error  Each block should have a key  svelte/require-each-key
+  69:15   error  Each block should have a key  svelte/require-each-key
+  88:15   error  Each block should have a key  svelte/require-each-key
+  89:285  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLinearWipeInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLogoCutoutInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:282  error  Each block should have a key  svelte/require-each-key
+  48:15   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLongShadowInspector.svelte
+  48:9   error  Each block should have a key  svelte/require-each-key
+  54:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLumaKeyInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLumetriInspector.svelte
+  149:2    error  Each block should have a key  svelte/require-each-key
+  160:2    error  Each block should have a key  svelte/require-each-key
+  164:352  error  Each block should have a key  svelte/require-each-key
+  167:552  error  Each block should have a key  svelte/require-each-key
+  178:217  error  Each block should have a key  svelte/require-each-key
+  181:2    error  Each block should have a key  svelte/require-each-key
+  188:228  error  Each block should have a key  svelte/require-each-key
+  191:24   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedLutInspector.svelte
+  31:5  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMagnifyInspector.svelte
+  13:67   error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:79   error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9    error  Each block should have a key          svelte/require-each-key
+  59:258  error  Each block should have a key          svelte/require-each-key
+  60:15   error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMaskInspector.svelte
+   65:6   error  Each block should have a key  svelte/require-each-key
+   69:5   error  Each block should have a key  svelte/require-each-key
+   74:9   error  Each block should have a key  svelte/require-each-key
+   84:9   error  Each block should have a key  svelte/require-each-key
+   90:13  error  Each block should have a key  svelte/require-each-key
+   94:13  error  Each block should have a key  svelte/require-each-key
+   96:15  error  Each block should have a key  svelte/require-each-key
+  102:14  error  Each block should have a key  svelte/require-each-key
+  103:15  error  Each block should have a key  svelte/require-each-key
+  111:14  error  Each block should have a key  svelte/require-each-key
+  122:15  error  Each block should have a key  svelte/require-each-key
+  130:15  error  Each block should have a key  svelte/require-each-key
+  132:16  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMedianInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMetadataBurninInspector.svelte
+   72:9    error  Each block should have a key  svelte/require-each-key
+   81:15   error  Each block should have a key  svelte/require-each-key
+  100:15   error  Each block should have a key  svelte/require-each-key
+  101:292  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMirrorInspector.svelte
+  13:66  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  17:22  error  'channel' is defined but never used   @typescript-eslint/no-unused-vars
+  18:78  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  58:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMosaicInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMosaicLegacyInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedMoveInspector.svelte
+   8:58  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  13:68  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  50:9   error  Each block should have a key           svelte/require-each-key
+  55:15  error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedNoiseInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedNoiseLegacyInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedOffsetInspector.svelte
+  13:66  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  17:22  error  'channel' is defined but never used   @typescript-eslint/no-unused-vars
+  18:78  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  58:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedPaintBucketInspector.svelte
+  13:71   error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:83   error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  59:9    error  Each block should have a key           svelte/require-each-key
+  63:277  error  Each block should have a key           svelte/require-each-key
+  64:261  error  Each block should have a key           svelte/require-each-key
+  66:15   error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedPlaybackControls.test.ts
+  25:108  error  Unexpected aliasing of 'this' to local variable  @typescript-eslint/no-this-alias
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedPosterizeInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedPosterizeTimeInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  44:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedProcAmpInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  46:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedRampInspector.svelte
+  17:64  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  27:76  error  '_sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  70:9   error  Each block should have a key           svelte/require-each-key
+  75:15  error  Each block should have a key           svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedReduceInterlaceFlickerInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedReplicateInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedRgbSplitInspector.svelte
+  13:68  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:80  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  59:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedRotate3DInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  42:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedRoughenEdgesInspector.svelte
+  47:9    error  Each block should have a key  svelte/require-each-key
+  51:273  error  Each block should have a key  svelte/require-each-key
+  52:15   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedRoundedCropInspector.svelte
+  50:9   error  Each block should have a key  svelte/require-each-key
+  54:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedScopes.svelte
+  54:158  error  Each block should have a key  svelte/require-each-key
+  55:138  error  Each block should have a key  svelte/require-each-key
+  56:29   error  Each block should have a key  svelte/require-each-key
+  75:133  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedScopes.test.ts
+  27:15  error  Optional chain expressions can return undefined by design - using a non-null assertion is unsafe and wrong  @typescript-eslint/no-non-null-asserted-optional-chain
+  35:18  error  Optional chain expressions can return undefined by design - using a non-null assertion is unsafe and wrong  @typescript-eslint/no-non-null-asserted-optional-chain
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedSharpenInspector.svelte
+  29:5  error  Each block should have a key  svelte/require-each-key
+  35:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedSharpenInspector.test.ts
+  5:91  error  'redoNestedComposition' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedShrinkInspector.svelte
+  13:66  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:78  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  59:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedSimpleTextInspector.svelte
+  64:9    error  Each block should have a key  svelte/require-each-key
+  71:15   error  Each block should have a key  svelte/require-each-key
+  90:15   error  Each block should have a key  svelte/require-each-key
+  91:287  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedSpacerInspector.svelte
+  50:9   error  Each block should have a key  svelte/require-each-key
+  56:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedSpherizeInspector.svelte
+  13:68  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  17:22  error  'channel' is defined but never used   @typescript-eslint/no-unused-vars
+  18:80  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  58:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedSpinInspector.svelte
+  13:64  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:76  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  59:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedStandaloneSharpenInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  41:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedStandaloneVignetteInspector.svelte
+  41:9   error  Each block should have a key  svelte/require-each-key
+  45:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedStrobeInspector.svelte
+  48:9   error  Each block should have a key  svelte/require-each-key
+  52:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedStrokeInspector.svelte
+  48:9   error  Each block should have a key  svelte/require-each-key
+  54:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedTimecodeInspector.svelte
+  58:9   error  Each block should have a key  svelte/require-each-key
+  65:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedTintInspector.svelte
+  51:5   error  Each block should have a key  svelte/require-each-key
+  56:8   error  Each block should have a key  svelte/require-each-key
+  59:10  error  Each block should have a key  svelte/require-each-key
+  82:9   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedToneCurvesInspector.svelte
+  20:9    error  Each block should have a key  svelte/require-each-key
+  24:369  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedTrackMatteInspector.svelte
+  17:5   error  Each block should have a key  svelte/require-each-key
+  23:39  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedTransformEffectInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  47:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedTurbulentDisplaceInspector.svelte
+  13:77  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:89  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  62:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedTwirlInspector.svelte
+  13:65  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:77  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  58:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedTwirlLegacyInspector.svelte
+  13:65  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  18:77  error  'sourceId' is defined but never used  @typescript-eslint/no-unused-vars
+  54:9   error  Each block should have a key          svelte/require-each-key
+  58:15  error  Each block should have a key          svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedUltraKeyInspector.svelte
+  56:9   error  Each block should have a key  svelte/require-each-key
+  65:16  error  Each block should have a key  svelte/require-each-key
+  84:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedUnsharpMaskInspector.svelte
+  40:9   error  Each block should have a key  svelte/require-each-key
+  44:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVerticalFlipInspector.svelte
+  14:6  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVideoLimiterInspector.svelte
+  58:9   error  Each block should have a key  svelte/require-each-key
+  62:15  error  Each block should have a key  svelte/require-each-key
+  64:19  error  Each block should have a key  svelte/require-each-key
+  72:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVignetteInspector.svelte
+  28:5  error  Each block should have a key  svelte/require-each-key
+  35:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVignetteInspector.test.ts
+  5:91  error  'redoNestedComposition' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVolumetricRaysInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  47:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrBlurInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  42:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrChromaticInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:300  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrColorGradientsInspector.svelte
+  42:9    error  Each block should have a key  svelte/require-each-key
+  46:15   error  Each block should have a key  svelte/require-each-key
+  65:15   error  Each block should have a key  svelte/require-each-key
+  66:294  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrDenoiseInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  44:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrDigitalGlitchInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:293  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrFractalNoiseInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:292  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrGlowInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:283  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrPlaneToSphereInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:294  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrProjectionInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:289  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrRotateSphereInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:292  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedVrSharpenInspector.svelte
+  35:5  error  Each block should have a key  svelte/require-each-key
+  42:9  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedWarpStabilizerInspector.svelte
+  41:9    error  Each block should have a key  svelte/require-each-key
+  45:15   error  Each block should have a key  svelte/require-each-key
+  64:15   error  Each block should have a key  svelte/require-each-key
+  65:291  error  Each block should have a key  svelte/require-each-key
+  67:15   error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedWaveWarpInspector.svelte
+  37:9   error  Each block should have a key  svelte/require-each-key
+  41:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedWiggleInspector.svelte
+  42:9   error  Each block should have a key  svelte/require-each-key
+  47:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedWonderGlowInspector.svelte
+  41:9   error  Each block should have a key  svelte/require-each-key
+  47:15  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/NestedWriteOnInspector.svelte
+  64:9    error  Each block should have a key  svelte/require-each-key
+  71:15   error  Each block should have a key  svelte/require-each-key
+  90:15   error  Each block should have a key  svelte/require-each-key
+  91:284  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/PersonVideoPanel.svelte
+  14:22  error  Found a mutable instance of the built-in Map class. Use SvelteMap instead  svelte/prefer-svelte-reactivity
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/ProceduralTransitionControls.svelte
+  31:197  error  Each block should have a key  svelte/require-each-key
+  35:4    error  Each block should have a key  svelte/require-each-key
+  37:4    error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/SamModelDownloads.svelte
+  19:20  error  Found a mutable instance of the built-in Set class. Use SvelteSet instead  svelte/prefer-svelte-reactivity
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/SourceBezierGraph.svelte
+  35:3  error  Each block should have a key  svelte/require-each-key
+  43:3  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/SpeechModelDownloads.svelte
+  19:20  error  Found a mutable instance of the built-in Set class. Use SvelteSet instead  svelte/prefer-svelte-reactivity
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/TextToSpeechPanel.svelte
+  116:90  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/ToneCurveChannel.svelte
+  51:5  error  Each block should have a key  svelte/require-each-key
+  56:5  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/TtsModelDownloads.svelte
+  19:20  error  Found a mutable instance of the built-in Set class. Use SvelteSet instead  svelte/prefer-svelte-reactivity
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/VideoEnhancementPanel.svelte
+  41:253  error  Each block should have a key  svelte/require-each-key
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/components/composition/VideoMaskBrushEditor.svelte
+  121:94  error  Unexpected mustache interpolation with a string literal value  svelte/no-useless-mustaches
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/composition/commands.ts
+  1319:9  error  'duration' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  1327:9  error  'duration' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/composition/graphicLayerAnimation.ts
+  26:22  error  '_removed' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  65:51  error  '_removed' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/composition/nativeCaptionClipboard.ts
+  18:15  error  '_id' is assigned a value but never used      @typescript-eslint/no-unused-vars
+  18:27  error  '_clips' is assigned a value but never used   @typescript-eslint/no-unused-vars
+  18:41  error  '_name' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  18:56  error  '_locked' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/composition/nativeMediaReplace.ts
+  77:79  error  '_cutout' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/composition/relink.ts
+  143:51  error  '_cutout' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/composition/replaceMedia.ts
+  26:73  error  '_cutout' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/composition/trackSyncLock.test.ts
+  21:47  error  'syncLock' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/cutout-api.test.ts
+   5:26  error  '_input' is defined but never used    @typescript-eslint/no-unused-vars
+   5:49  error  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+  20:26  error  '_input' is defined but never used    @typescript-eslint/no-unused-vars
+  20:49  error  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+  44:26  error  '_input' is defined but never used    @typescript-eslint/no-unused-vars
+  44:49  error  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+  51:26  error  '_input' is defined but never used    @typescript-eslint/no-unused-vars
+  51:49  error  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+  58:26  error  '_input' is defined but never used    @typescript-eslint/no-unused-vars
+  58:49  error  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/enhance-model-api.test.ts
+  5:26  error  '_input' is defined but never used    @typescript-eslint/no-unused-vars
+  5:49  error  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/state/composition/timeline.svelte.ts
+     9:10  error  'cloneAudioAnimation' is defined but never used    @typescript-eslint/no-unused-vars
+   110:3   error  'CompositionTransition' is defined but never used  @typescript-eslint/no-unused-vars
+  1529:28  error  'previous' is assigned a value but never used      @typescript-eslint/no-unused-vars
+  1538:18  error  'previous' is assigned a value but never used      @typescript-eslint/no-unused-vars
+
+/Users/themoretheless/Documents/Sources/video-kadr/frontend/src/lib/video-enhance-api.test.ts
+  5:26  error  '_input' is defined but never used    @typescript-eslint/no-unused-vars
+  5:49  error  '_options' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 644 problems (644 errors, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+

@@ -1,0 +1,28 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "header",
+      "address": "0x1018691e0",
+      "endAddress": "0x101869970",
+      "sourceOffset": 25612768,
+      "sha256": "9e52fda519db1f839ec19412c34768edd7d8bd70b2c102b81c2eb0daa3cb5cf3"
+    },
+    {
+      "name": "map",
+      "address": "0x101869058",
+      "endAddress": "0x1018691d8",
+      "sourceOffset": 25612376,
+      "sha256": "0700afea83c3786e7712b64590a361fd6203e2101b200f16be74f42d01e0d197"
+    },
+    {
+      "name": "copy",
+      "address": "0x1017fa6d8",
+      "endAddress": "0x1017fa8d0",
+      "sourceOffset": 25159384,
+      "sha256": "a4cc4a027cbbd5be97f0c8b3c17c899d54de6c729df2fd6ef953c88139e23864"
+    }
+  ]
+}

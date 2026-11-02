@@ -1,0 +1,1 @@
+Source copied from storytold/filmcraft commit 5231852443363f001c3f6b396dd9b1e6461ae2be, crates/color. Rust sources unchanged; standalone Cargo manifest adapted to the existing native vendoring convention. MIT and Apache-2.0 licenses retained. Source/frame and editor integration are qualified separately.

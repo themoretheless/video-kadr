@@ -1,5 +1,5 @@
+import { patchCompositionCanvas } from '../../composition/canvas.js'
 import {
-  assertValidComposition,
   normalizeComposition
 } from '../../composition/validation.js'
 import type {
@@ -97,9 +97,6 @@ export function openCompositionDocumentAsNew(document: Composition, name = 'Но
 
 
 export function updateCompositionCanvas(patch: Partial<Composition['canvas']>): void {
-  const canvas = { ...compositionState.document.canvas, ...patch }
-  const document = { ...compositionState.document, canvas }
-  assertValidComposition(document)
-  commitDocument(document)
+  commitDocument(patchCompositionCanvas(compositionState.document, patch))
 }
 

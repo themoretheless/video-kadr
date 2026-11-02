@@ -1,0 +1,41 @@
+{
+  "method": "Read-only50sample windows in observed1sec original capture before retained trim; no stationary assumption",
+  "bestWindows": [
+    {
+      "time": 20.23878,
+      "meanNormG": 0.9843126074984488,
+      "scatterG": 0.013032554945340545,
+      "gyroRate": 0.07064417842851888
+    },
+    {
+      "time": 20.263592,
+      "meanNormG": 0.9981947245934416,
+      "scatterG": 0.028002997374182582,
+      "gyroRate": 0.11645207890078213
+    },
+    {
+      "time": 20.213875,
+      "meanNormG": 0.9811822952918781,
+      "scatterG": 0.012000200905707527,
+      "gyroRate": 0.11094376885190736
+    },
+    {
+      "time": 20.363027,
+      "meanNormG": 1.01216975140888,
+      "scatterG": 0.020011297849614265,
+      "gyroRate": 0.16216705824971578
+    },
+    {
+      "time": 20.189063,
+      "meanNormG": 0.9791978369330532,
+      "scatterG": 0.016898978822091355,
+      "gyroRate": 0.18330509053200872
+    },
+    {
+      "time": 20.164158,
+      "meanNormG": 0.9754054905771105,
+      "scatterG": 0.016870851359974445,
+      "gyroRate": 0.20336494877773134
+    }
+  ]
+}

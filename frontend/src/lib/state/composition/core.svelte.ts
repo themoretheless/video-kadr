@@ -1,3 +1,14 @@
+import {ordinaryAffected} from '../../agent/affectedEntities'
+import {registerHistoryProvider,identifyHistoryEntry,transferHistoryEntry} from '../../agent/historyProvenance'
+import {linkActivityHistory,linkActivityEntities,type ActivityToken} from '../../agent/activity.svelte'
+import { audioRoleMix } from '../../composition/audioRoles.js'
+import { cloneAnimatableValue, constantAnimatable } from '../../composition/keyframes.js'
+import { setVisualScaleLinked } from '../../composition/scaleLink.js'
+import { assertCompositionLocksPreserved } from '../../composition/locks.js'
+import { compositionGaps, compositionGapAt } from '../../composition/timelineProductivity.js'
+import { SvelteSet } from 'svelte/reactivity'
+import { linkedClipIds, createCompositionLink, removeCompositionLink, compositionLinkToggleState } from '../../composition/links.js'
+import { agentSession, bumpAgentRevision, clearAgentProjectSession } from '../../agent/session.svelte.js'
 import * as api from '../../api'
 import {
   MAX_SYNC_SAMPLES,
@@ -138,10 +149,18 @@ export const compositionState = $state({
   ui: {
     selectedTrackId: null as string | null,
     selectedClipId: null as string | null,
+    selectedClipIds: [] as string[],
+    clipboard: null as import('../../composition/keyframeClipboard.js').CompositionClipboardSlot | null,
+    selectedColorKeys: [] as { clipId: string;tick: number }[],
+    selectedKeyframes: [] as { target: CompositionAutomationTarget; property: CompositionAutomationProperty; ticks: readonly number[] }[],
+    keyframePointerReleasePending: false,
+    keyframePreviews: [] as { target: CompositionAutomationTarget; property: CompositionAutomationProperty; ticks: readonly number[]; value: import('../../composition/types.js').CompositionAnimatableValue }[],
+    selectedGap: null as { trackId: string; start: number; end: number } | null,
     selectedMarkerId: null as string | null,
     selectedMulticamGroupId: null as string | null,
     zoomPxPerSecond: 84,
     snapEnabled: true,
+    linkOverride: false,
     message: '',
   },
   history: {
@@ -227,9 +246,44 @@ export function clearCompositionExportRange(): void {
   compositionState.export.error = ''
 }
 
-export function selectCompositionClip(trackId: string | null, clipId: string | null): void {
-  compositionState.ui.selectedTrackId = trackId
-  compositionState.ui.selectedClipId = clipId
+export function selectCompositionClip(trackId: string | null, clipId: string | null, options: { single?: boolean; toggle?: boolean } = {}): boolean {
+  compositionState.ui.selectedGap = null
+  compositionState.ui.selectedKeyframes = []
+  compositionState.ui.selectedColorKeys = []
+  if (!clipId) {
+    compositionState.ui.selectedTrackId = trackId
+    compositionState.ui.selectedClipId = null
+    compositionState.ui.selectedClipIds = []
+    return false
+  }
+  const subjects = options.single || compositionState.ui.linkOverride ? [clipId] : [...linkedClipIds(compositionState.document, clipId)]
+  const current = compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : compositionState.ui.selectedClipId ? [compositionState.ui.selectedClipId] : []
+  const ids = options.toggle
+    ? subjects.every((id) => current.includes(id)) ? current.filter((id) => !subjects.includes(id)) : [...new SvelteSet([...current, ...subjects])]
+    : subjects
+  const primary = ids.includes(clipId) ? clipId : ids[0] ?? null
+  compositionState.ui.selectedClipIds = ids
+  compositionState.ui.selectedClipId = primary
+  compositionState.ui.selectedTrackId = primary ? findClipLocation(compositionState.document, primary).track.id : null
+  return ids.includes(clipId)
+}
+
+/** Session-only switch: it changes UI edit subjects, never project history or MCP. */
+export function toggleCompositionLinkOverride(): void {
+  compositionState.ui.linkOverride = !compositionState.ui.linkOverride
+}
+
+export function compositionSelectionEscapesLink(clipId: string): boolean {
+  return compositionState.ui.linkOverride || (compositionState.ui.selectedClipIds.includes(clipId) && !linkedClipIds(compositionState.document, clipId).every((id) => compositionState.ui.selectedClipIds.includes(id)))
+}
+
+export function toggleSelectedCompositionLink(): void {
+  const ids = compositionState.ui.selectedClipIds.length ? compositionState.ui.selectedClipIds : compositionState.ui.selectedClipId ? [compositionState.ui.selectedClipId] : []
+  const status = compositionLinkToggleState(compositionState.document, ids)
+  if (status.mode === 'unavailable') throw new Error(status.reason)
+  commitDocument(status.mode === 'remove'
+    ? removeCompositionLink(compositionState.document, status.linkId!)
+    : createCompositionLink(compositionState.document, makeId('link'), ids))
 }
 
 export function selectedCompositionTrack(): CompositionTrack | null {
@@ -416,6 +470,15 @@ export function updateClip(clipId: string, update: (clip: CompositionClip) => Co
   commitDocument({ ...compositionState.document, tracks })
 }
 
+export function setCompositionScaleLinked(clipId: string, linked: boolean): void {
+  updateClip(clipId, (clip) => {
+    if (clip.kind === 'audio') throw new Error('Scale требует visual clip')
+    return setVisualScaleLinked(compositionState.document, clip, linked)
+  })
+  if (linked) compositionState.ui.selectedKeyframes = compositionState.ui.selectedKeyframes.filter((subject) => !(subject.target.kind === 'visual' && subject.target.clipId === clipId && subject.property === 'scaleY'))
+  compositionState.ui.keyframePreviews = compositionState.ui.keyframePreviews.filter((preview) => !(preview.target.kind === 'visual' && preview.target.clipId === clipId && (preview.property === 'scaleX' || preview.property === 'scaleY')))
+}
+
 export function requireVisualAutomation(clipId: string): { readonly clip: VisualClip; readonly track: CompositionTrack } {
   const location = findClipLocation(compositionState.document, clipId)
   if (location.clip.kind === 'audio') throw new Error('Keyframes доступны только для visual clips')
@@ -549,6 +612,72 @@ export function resolveAutomation(
   ]
 }
 
+type AutomationPatch = { target: CompositionAutomationTarget; property: CompositionAutomationProperty; value: import('../../composition/types.js').CompositionAnimatableValue | undefined }
+
+/** Expand the composite Scale UI value before preview or final batch admission. */
+export function linkedScaleAutomationPatches(patches: readonly AutomationPatch[]): AutomationPatch[] {
+  const result: AutomationPatch[] = []
+  for (const patch of patches) {
+    const clip = findClipLocation(compositionState.document, patch.target.clipId).clip
+    if (patch.target.kind !== 'visual' || clip.kind === 'audio' || !clip.scaleLinked || (patch.property !== 'scaleX' && patch.property !== 'scaleY')) {
+      result.push(patch)
+      continue
+    }
+    const value = patch.value ?? constantAnimatable(visualPropertyFallback(compositionState.document, clip, 'scaleX'))
+    for (const property of ['scaleX', 'scaleY'] as const) {
+      const existing = result.find((entry) => entry.target.kind === 'visual' && entry.target.clipId === clip.id && entry.property === property)
+      if (existing) {
+        // Source batches apply entries in order; the later axis wins for both twins.
+        result[result.indexOf(existing)] = { ...patch, property, value: cloneAnimatableValue(value) }
+      } else result.push({ ...patch, property, value: cloneAnimatableValue(value) })
+    }
+  }
+  return result
+}
+
+/** Apply multiple animation values through one project admission and one history entry. */
+export function projectAutomationValues(document: Composition, patches: readonly { target: CompositionAutomationTarget; property: CompositionAutomationProperty; value: import('../../composition/types.js').CompositionAnimatableValue | undefined }[]): Composition {
+  if (!patches.length) return document
+  const tracks = document.tracks.map((track) => withTrackClips(track, track.clips.map((original) => {
+    let clip = original
+    for (const { target, property, value } of patches.filter((patch) => patch.target.clipId === clip.id)) {
+      if (target.kind === 'visual' && clip.kind !== 'audio') {
+        const animation = { ...clip.animation }
+        if (value) animation[property as CompositionVisualProperty] = value
+        else delete animation[property as CompositionVisualProperty]
+        clip = { ...clip, animation }
+      } else if (target.kind === 'audio' && (clip.kind === 'audio' || clip.kind === 'video')) {
+        const audioAnimation = { ...clip.audioAnimation }
+        if (value) audioAnimation[property as CompositionAudioProperty] = value
+        else delete audioAnimation[property as CompositionAudioProperty]
+        clip = { ...clip, audioAnimation }
+      } else if (target.kind === 'mask' && clip.kind === 'video' && value) {
+        clip = { ...clip, masks: clip.masks?.map((mask) => mask.id === target.maskId ? { ...mask, [property]: value } : mask) }
+      }
+    }
+    return clip
+  })))
+  return { ...document, tracks }
+}
+
+
+export function commitAutomationValues(patches: readonly { target: CompositionAutomationTarget; property: CompositionAutomationProperty; value: import('../../composition/types.js').CompositionAnimatableValue | undefined }[]): void {
+  for (const patch of patches) resolveAutomation(patch.target, patch.property)
+  commitDocument(projectAutomationValues(compositionState.document, patches))
+}
+
+export function selectCompositionKeyframe(target: CompositionAutomationTarget, property: CompositionAutomationProperty, tick: number, toggle = false): void {
+  const resolved = resolveAutomation(target, property)
+  const location = findClipLocation(compositionState.document, target.clipId)
+  if (location.track.locked || location.clip.locked || resolved[1]?.mode !== 'keyframes' || !resolved[1].track.keyframes.some((key) => key.tick === tick)) return
+  const matches = (subject: { target: CompositionAutomationTarget; property: CompositionAutomationProperty }) => subject.target.kind === target.kind && subject.target.clipId === target.clipId && (subject.target.kind !== 'mask' || target.kind === 'mask' && subject.target.maskId === target.maskId) && subject.property === property
+  const current = toggle ? compositionState.ui.selectedKeyframes : []
+  const existing = current.find(matches)
+  const ticks = existing?.ticks.includes(tick) ? existing.ticks.filter((value) => value !== tick) : [...(existing?.ticks ?? []), tick]
+  compositionState.ui.selectedKeyframes = [...current.filter((subject) => !matches(subject)), ...(ticks.length ? [{ target, property, ticks }] : [])]
+  compositionState.ui.selectedGap = null
+}
+
 export function sampleAtPlayhead(resolved: ResolvedAutomation): number {
   const localTicks = clampTick(
     compositionState.transport.playheadTicks - resolved[0].timelineStartTicks,
@@ -576,6 +705,8 @@ function withTrackClips(track: CompositionTrack, clips: readonly CompositionClip
     case 'video': return { ...track, clips: clips as VideoClip[] }
     case 'audio': return { ...track, clips: clips as AudioClip[] }
     case 'image': return { ...track, clips: clips as ImageClip[] }
+    case 'graphic': return { ...track, clips: clips as typeof track.clips }
+    case 'color': return { ...track, clips: clips as typeof track.clips }
     case 'text': return { ...track, clips: clips as TextClip[] }
   }
 }
@@ -595,17 +726,45 @@ export function makeTrack(kind: TrackKind, id: string, name: string): Compositio
     case 'video': return { ...common, kind, hidden: false, muted: false, transitions: [] } as VideoTrack
     case 'audio': return { ...common, kind, muted: false, solo: false } as AudioTrack
     case 'image': return { ...common, kind, hidden: false } as ImageTrack
+    case 'graphic':
+    case 'color': return { ...common, kind, hidden: false }
     case 'text': return { ...common, kind, hidden: false } as TextTrack
   }
+}
+
+export function setCompositionRoleFlags(role: import('../../composition/types.js').CompositionAudioRole, patch: Partial<{ muted: boolean; solo: boolean }>): void {
+  if (!['dialogue', 'music', 'sfx', 'voiceover'].includes(role) || Object.entries(patch).some(([key, value]) => !['muted', 'solo'].includes(key) || typeof value !== 'boolean')) throw new Error('Invalid audio role flags')
+  const current = audioRoleMix(compositionState.document, role)
+  if ((patch.muted === undefined || patch.muted === current.muted) && (patch.solo === undefined || patch.solo === current.solo)) return
+  const project = (document: Composition): Composition => ({ ...document, audioRoles: { ...document.audioRoles, [role]: { ...audioRoleMix(document, role), ...patch } } })
+  compositionState.document = project(compositionState.document)
+  const past=compositionState.history.past,future=compositionState.history.future
+  compositionState.history.past = past.map(project)
+  compositionState.history.future = future.map(project)
+  past.forEach((entry,index)=>transferHistoryEntry(entry,compositionState.history.past[index]!))
+  future.forEach((entry,index)=>transferHistoryEntry(entry,compositionState.history.future[index]!))
+  for (const checkpoint of agentSession.checkpoints) checkpoint.document = project(checkpoint.document)
+  bumpAgentRevision()
+  compositionState.export.result = null
+  compositionState.export.error = ''
+  scheduleAutosave()
 }
 
 export function commitDocument(
   document: Composition,
   media: Record<string, CompositionMedia> = compositionState.media,
   output: CompositionRenderOutput = compositionRenderOutput(),
+  admission: 'content' | 'restore' | 'validated-batch' = 'content',
+  activity?: ActivityToken,
 ): void {
   const normalized = normalizeComposition(document)
+  if (admission === 'content') assertCompositionLocksPreserved(compositionState.document, normalized)
   const nextMedia = cloneCompositionMedia(media)
+  if (admission === 'content') for (const track of compositionState.document.tracks) for (const clip of track.clips) {
+    if ((track.locked || clip.locked) && 'sourceId' in clip && JSON.stringify(compositionState.media[clip.sourceId]) !== JSON.stringify(nextMedia[clip.sourceId])) {
+      throw new Error(`Clip ${clip.id} is locked; its media binding cannot change`)
+    }
+  }
   const nextOutput: CompositionRenderOutput = {
     profile: { ...output.profile },
     qualityTier: output.qualityTier,
@@ -618,6 +777,9 @@ export function commitDocument(
     JSON.stringify(nextOutput) === JSON.stringify(compositionRenderOutput())
   ) return
   compositionState.history.past.push(cloneComposition(compositionState.document))
+  const historyId=identifyHistoryEntry(compositionState.history.past.at(-1)!)
+  linkActivityHistory(activity,historyId)
+  if(activity)linkActivityEntities(activity,ordinaryAffected(compositionState.document,normalized,compositionState.media,nextMedia))
   compositionState.history.pastMedia.push(cloneCompositionMedia(compositionState.media))
   compositionState.history.pastOutput.push(compositionRenderOutput())
   if (compositionState.history.past.length > 100) {
@@ -628,7 +790,9 @@ export function commitDocument(
   compositionState.history.future = []
   compositionState.history.futureMedia = []
   compositionState.history.futureOutput = []
+  bumpAgentRevision()
   compositionState.document = cloneComposition(normalized)
+  repairGapSelection()
   compositionState.media = nextMedia
   compositionState.export.profile = { ...nextOutput.profile }
   compositionState.export.qualityTier = nextOutput.qualityTier
@@ -647,6 +811,7 @@ export function replaceDocument(document: Composition, keepHistory: boolean, aut
     compositionState.history.pastMedia.push(cloneCompositionMedia(compositionState.media))
     compositionState.history.pastOutput.push(compositionRenderOutput())
   } else {
+    clearAgentProjectSession()
     compositionState.history.past = []
     compositionState.history.pastMedia = []
     compositionState.history.pastOutput = []
@@ -654,9 +819,17 @@ export function replaceDocument(document: Composition, keepHistory: boolean, aut
   compositionState.history.future = []
   compositionState.history.futureMedia = []
   compositionState.history.futureOutput = []
+  bumpAgentRevision()
   compositionState.document = cloneComposition(normalized)
+  repairGapSelection()
   compositionState.ui.selectedTrackId = null
   compositionState.ui.selectedClipId = null
+  compositionState.ui.selectedClipIds = []
+  compositionState.ui.selectedKeyframes = []
+  compositionState.ui.selectedColorKeys = []
+  compositionState.ui.keyframePreviews = []
+  compositionState.ui.keyframePointerReleasePending = false
+  compositionState.ui.selectedGap = null
   compositionState.ui.selectedMarkerId = null
   compositionState.ui.selectedMulticamGroupId = null
   compositionState.transport.playheadTicks = 0
@@ -668,14 +841,63 @@ export function cloneCompositionMedia(media: Record<string, CompositionMedia>): 
   return Object.fromEntries(Object.entries(media).map(([id, item]) => [id, { ...item }]))
 }
 
+export function selectCompositionGap(trackId: string, tick: number): void {
+  const track = compositionState.document.tracks.find((item) => item.id === trackId)
+  const gap = track && !track.locked ? compositionGapAt(track.clips, tick) : null
+  selectCompositionClip(trackId, null)
+  compositionState.ui.selectedGap = gap ? { trackId, ...gap } : null
+}
+
+export function selectAdjacentCompositionGap(trackId: string, direction: -1 | 1): void {
+  const track = compositionState.document.tracks.find((item) => item.id === trackId)
+  if (!track) return
+  const gaps = compositionGaps(track.clips)
+  const selected = compositionState.ui.selectedGap
+  const anchor = selected?.trackId === trackId ? selected.start : compositionState.transport.playheadTicks
+  const gap = direction === 1
+    ? gaps.find((gap) => selected?.trackId === trackId ? gap.start > anchor : gap.end > anchor)
+    : [...gaps].reverse().find((gap) => gap.start < anchor)
+  if (gap) selectCompositionGap(trackId, gap.start)
+}
+
+function repairGapSelection(): void {
+  const selectedGap = compositionState.ui.selectedGap
+  if (selectedGap) {
+    const track = compositionState.document.tracks.find((item) => item.id === selectedGap.trackId)
+    const gap = track && !track.locked ? compositionGapAt(track.clips, selectedGap.start) : null
+    if (!gap || gap.start !== selectedGap.start || gap.end !== selectedGap.end) compositionState.ui.selectedGap = null
+  }
+}
+
 export function repairSelection(): void {
+  repairGapSelection()
+  compositionState.ui.selectedColorKeys = compositionState.ui.selectedColorKeys.filter(subject => {
+    try {
+      const { clip,track } = findClipLocation(compositionState.document,subject.clipId)
+      return !track.locked && !clip.locked && (clip.kind === 'text' || clip.kind === 'color') && clip.colorAnimation?.mode === 'keyframes' && clip.colorAnimation.track.keyframes.some(key => key.tick === subject.tick)
+    } catch { return false }
+  })
+  compositionState.ui.selectedKeyframes = compositionState.ui.selectedKeyframes.flatMap((subject) => {
+    try {
+      const resolved = resolveAutomation(subject.target, subject.property)
+      const location = findClipLocation(compositionState.document, subject.target.clipId)
+      if (location.track.locked || location.clip.locked || resolved[1]?.mode !== 'keyframes') return []
+      const valid = resolved[1].track.keyframes.map((key) => key.tick)
+      const ticks = subject.ticks.filter((tick) => valid.includes(tick))
+      return ticks.length ? [{ ...subject, ticks }] : []
+    } catch { return [] }
+  })
+  const existing = new SvelteSet(compositionState.document.tracks.flatMap((track) => track.clips.map((clip) => clip.id)))
+  compositionState.ui.selectedClipIds = compositionState.ui.selectedClipIds.filter((id) => existing.has(id))
   const clipId = compositionState.ui.selectedClipId
   if (clipId) {
     try {
       const location = findClipLocation(compositionState.document, clipId)
       compositionState.ui.selectedTrackId = location.track.id
     } catch {
-      selectCompositionClip(null, null)
+      const remaining = compositionState.ui.selectedClipIds[0]
+      compositionState.ui.selectedClipId = remaining ?? null
+      compositionState.ui.selectedTrackId = remaining ? findClipLocation(compositionState.document, remaining).track.id : null
     }
   }
   if (compositionState.ui.selectedMarkerId && !compositionMarkerList().some((marker) => marker.id === compositionState.ui.selectedMarkerId)) {
@@ -1005,6 +1227,7 @@ export function setCompositionStorageForTests(
 }
 
 export function resetCompositionForTests(): void {
+  compositionState.ui.clipboard = null
   if (autosaveTimer) clearTimeout(autosaveTimer)
   autosaveTimer = undefined
   bumpOpenCompositionRevision()
@@ -1031,3 +1254,5 @@ export function flushCompositionAutosaveForTests(): void {
   const storage = getStorage()
   if (storage) persistCompositionDraft(storage)
 }
+
+registerHistoryProvider('ordinary',()=>compositionState.history)

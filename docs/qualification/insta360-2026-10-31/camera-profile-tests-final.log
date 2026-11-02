@@ -1,0 +1,12 @@
+
+running 7 tests
+test v6_profiles_local_footage ... ignored, requires an explicitly supplied read-only local media inventory
+test v6_real_dual_track_panorama ... ignored, requires explicitly supplied local footage inventory and ffmpeg
+test v6_profile_checks_shape_flags_and_nonfinite_terms ... ok
+test v6_native_pose_places_both_lenses_in_opposite_hemispheres ... ok
+test v6_extended_tangential_and_prism_terms_are_not_dropped ... ok
+test v6_profile_retains_native_model_without_equidistant_approximation ... ok
+test v6_calibration_is_used_by_native_render_stack ... ok
+
+test result: ok. 5 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

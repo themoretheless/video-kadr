@@ -110,6 +110,15 @@ async fn local_probe_available(state: &video_kadr_backend::state::AppState) -> b
 
 #[tokio::test]
 async fn composition_project_archive_http_round_trip_relinks_sources_and_metadata() {
+    archive_roundtrip(false).await;
+}
+
+#[tokio::test]
+async fn nested_project_archive_http_roundtrip_preserves_instances_and_relinks_child_media() {
+    archive_roundtrip(true).await;
+}
+
+async fn archive_roundtrip(nested: bool) {
     let (state, directory) = make_state(true, false).await;
     if !local_probe_available(&state).await {
         eprintln!("skipping .veproj HTTP roundtrip: ffmpeg/ffprobe not on PATH");
@@ -131,6 +140,7 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
                 storage_key: None,
                 url: format!("/files/sources/{old_filename}"),
                 media_type: Some("audio".into()),
+                original_filename: Some("voice_0001.wav".into()),
                 title: Some("Imported voice".into()),
                 duration: Some(0.1),
                 width: None,
@@ -153,18 +163,49 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
         )
         .await
         .unwrap();
+    let copy_id = "portable-source-copy";
+    let mut copy_entry = state.library.get(old_id).await.unwrap();
+    copy_entry.id = copy_id.into();
+    copy_entry.filename = "portable-copy.wav".into();
+    copy_entry.url = "/files/sources/portable-copy.wav".into();
+    tokio::fs::write(state.sources_dir().join(&copy_entry.filename), &media).await.unwrap();
+    assert!(state.library.add(copy_entry).await);
     let session = state
         .db
         .register_auth_user("archive-owner", "shared test password")
         .await
         .unwrap()
         .unwrap();
+    let mut project_document = if nested {
+        use video_kadr_backend::domain::composition::{CanvasSpec,Composition,TransformSpec};
+        let root_content = serde_json::to_value(Composition::new(CanvasSpec::default())).unwrap();
+        let mut child_content = root_content.clone();
+        child_content["sources"] = document(old_id)["sources"].clone();
+        child_content["tracks"] = json!([{ "kind": "audio","id": "dialogue","name": "Dialogue","muted": false,"locked": false,"clips": [{ "id": "voice-clip","sourceId": old_id,"placement": { "timelineStartTick": 0,"sourceInTick": 0,"sourceOutTick": 100000,"speed": 1 },"gain": { "mode": "constant","value": 1 },"pan": { "mode": "constant","value": 0 },"fadeInTicks": 0,"fadeOutTicks": 0 }] }]);
+        json!({ "schemaVersion": 1,"root": "root","compositions": {
+            "root": { "content": root_content,"instances": [{ "id": "group","timing": { "composition": "child","timelineStartUs": 0,"sourceInUs": 0,"sourceOutUs": 100000 },"transform": TransformSpec::default(),"opacity": { "mode": "constant","value": 0.5 },"blendMode": "normal" }] },
+            "child": { "content": child_content,"instances": [] }
+        } })
+    } else { document(old_id) };
+    let content = if nested { &mut project_document["compositions"]["child"]["content"] } else { &mut project_document };
+    let mut copy_source = content["sources"][old_id].clone();
+    copy_source["id"] = json!(copy_id);
+    content["sources"][copy_id] = copy_source;
+    let mut linked=content["tracks"][0]["clips"][0].clone();linked["id"]=json!("linked-voice");
+    content["tracks"].as_array_mut().unwrap().push(json!({"kind":"audio","id":"linked-track","name":"Linked","muted":false,"locked":false,"clips":[linked]}));
+    content["metadata"] = json!({"clipLinks":{"voice-link":["voice-clip","linked-voice"]},"mediaVersions":{"voice-clip":{"originalSourceId":old_id,"copySourceId":copy_id}}});
+    if nested {
+        project_document["timelineOrder"] = json!(["root", "child"]);
+        let text = format!("{}LUT_1D_SIZE 2\n0 0 0\n1 1 1\n", format!("#{}\n", "x".repeat(1000)).repeat(3300));
+        project_document["luts"] = json!([{ "id": "shared", "name": "Portable LUT", "sourcePath": "identity.cube", "lut": { "format": "cube", "text": text, "intensity": 100 } }]);
+        assert!(serde_json::to_vec(&project_document).unwrap().len() > 3 * 1024 * 1024);
+    }
     let saved = state
         .db
         .create_owned_composition_project(
             "Portable edit",
-            &document(old_id),
-            &[old_id.into()],
+            &project_document,
+            &[old_id.into(), copy_id.into()],
             &session.user.username,
         )
         .await
@@ -217,7 +258,7 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
         .await
         .unwrap();
     assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
-    assert_eq!(state.library.list().await.len(), 1);
+    assert_eq!(state.library.list().await.len(), 2);
 
     let imported = app
         .clone()
@@ -238,16 +279,31 @@ async fn composition_project_archive_http_round_trip_relinks_sources_and_metadat
     assert_ne!(new_id, old_id);
     assert_eq!(body["project"]["name"], "Portable edit");
     assert_eq!(body["project"]["spaceId"], target_space.id);
-    assert_eq!(body["project"]["sourceIds"], json!([new_id]));
-    assert!(body["project"]["document"]["sources"].get(new_id).is_some());
-    assert_eq!(body["project"]["document"]["sources"][new_id]["id"], new_id);
-    assert_eq!(
-        body["project"]["document"]["tracks"][0]["clips"][0]["sourceId"],
-        new_id
-    );
+    let new_copy = body["sourceMapping"][copy_id].as_str().unwrap();
+    assert_ne!(new_copy, copy_id);
+    assert_ne!(new_copy, new_id);
+    let ids = body["project"]["sourceIds"].as_array().unwrap();
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&json!(new_id)) && ids.contains(&json!(new_copy)));
+    let restored = if nested {
+        assert_eq!(body["project"]["document"]["timelineOrder"], project_document["timelineOrder"]);
+        assert_eq!(body["project"]["document"]["luts"], project_document["luts"]);
+        assert_eq!(body["project"]["document"]["compositions"]["root"]["instances"], project_document["compositions"]["root"]["instances"]);
+        &body["project"]["document"]["compositions"]["child"]["content"]
+    } else { &body["project"]["document"] };
+    assert!(restored["sources"].get(new_id).is_some());
+    assert_eq!(restored["sources"][new_id]["id"], new_id);
+    assert_eq!(restored["tracks"][0]["clips"][0]["sourceId"], new_id);
 
+    assert_eq!(restored["metadata"]["clipLinks"]["voice-link"],json!(["voice-clip","linked-voice"]));
+    assert_eq!(restored["tracks"][1]["clips"][0]["sourceId"],new_id);
+    assert_eq!(restored["metadata"]["mediaVersions"]["voice-clip"], json!({"originalSourceId":new_id,"copySourceId":new_copy}));
+    assert!(restored["sources"].get(new_copy).is_some());
+    let imported_copy = state.library.get(new_copy).await.unwrap();
+    assert_eq!(tokio::fs::read(state.library.resolve_media_path(&imported_copy).await.unwrap()).await.unwrap(), media);
     let imported_entry = state.library.get(new_id).await.unwrap();
     assert_eq!(imported_entry.media_type.as_deref(), Some("audio"));
+    assert_eq!(imported_entry.original_filename.as_deref(), Some("voice_0001.wav"));
     assert_eq!(
         imported_entry.storage_key.as_deref(),
         Some(format!("spaces/{}/{}", target_space.id, imported_entry.filename).as_str())
@@ -352,4 +408,24 @@ async fn project_archive_routes_are_cors_preflight_enabled() {
             .map(str::trim)
             .any(|allowed| allowed == method));
     }
+}
+
+#[tokio::test]
+async fn deleted_original_root_project_roundtrips_without_sources_or_ffprobe() {
+    let (state, _directory) = make_state(false, false).await;
+    let session = state.db.register_auth_user("deleted-root-owner", "shared test password").await.unwrap().unwrap();
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/concat-merge-preview.json")).unwrap();
+    let document = &fixture["removedTimelines"]["root"];
+    let saved = state.db.create_owned_composition_project("Remaining cut", document, &[], &session.user.username).await.unwrap();
+    let app = router(state.clone());
+    let response = app.clone().oneshot(authenticated(Request::builder().uri(format!("/api/composition-projects/{}/archive", saved.id)).body(Body::empty()).unwrap(), &session.token)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let archive = to_bytes(response.into_body(), 4 * 1024 * 1024).await.unwrap();
+    let response = app.oneshot(authenticated(multipart_archive(&archive), &session.token)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 4 * 1024 * 1024).await.unwrap()).unwrap();
+    assert_eq!(body["project"]["document"], *document);
+    assert_eq!(body["project"]["sourceIds"], json!([]));
+    assert_eq!(body["sourceMapping"], json!({}));
+    assert!(state.library.list().await.is_empty());
 }

@@ -1,0 +1,3339 @@
+{
+  "schemaVersion": 1,
+  "package": "concat.pitch",
+  "reference": {
+    "repository": "https://github.com/jub0t/concat",
+    "commit": "78e4be101c2d3c41a7dc73c112c6b1f11b9ce170",
+    "files": {
+      "src/Cargo.lock": "47ad02410bb3177105252a83eb550cf817062f3222203b14c31b61e6cd55acc9",
+      "src/crates/concat-effects/src/catalogue.rs": "b03e52127cedc87429487f95e088b7d7bedfcc792490e559b72dfbfdd5218bdb",
+      "src/crates/concat-effects/packages/concat.echo/effect.toml": "225a48851a75fc8bd22e493c17903762cc3075ff0de4c98ecee4f1c93a59c8d3",
+      "src/crates/concat-effects/packages/concat.echo/fixtures.toml": "015e50ff01ba6c792ff4f25dd07789ef59209c2e5c1d766faaa596abc1e18062",
+      "src/crates/concat-effects/packages/concat.pitch/effect.toml": "b0e452a3619028dcc4c5546ed5966b57be627e4a66af17fde102df9fb25b787e",
+      "src/crates/concat-effects/packages/concat.pitch/fixtures.toml": "f4ff799e1e5ca8219db71ed4e8127ca67669e6577968527ff70209e0a704ac05"
+    },
+    "adapterSha256": "3f222df19109c46a9123fc033a096df8955be7764fcf8caac859160f80daf070"
+  },
+  "ffmpeg": {
+    "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "binarySha256": "768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e"
+  },
+  "aliasVerified": {
+    "hasShortAlias": false
+  },
+  "pcmBytes": 46540704,
+  "cases": [
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 54313,
+      "offsetBytes": 0,
+      "byteLength": 217252,
+      "outputSha256": "c297c429e9f196ff377fc25edf17b586d0c536afba3315c512636301b3d0fd6d",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 54308,
+      "offsetBytes": 217252,
+      "byteLength": 217232,
+      "outputSha256": "0a8c61623473cab7478f514ae0e6406471a9ee333953f854a6730e47c5f83705",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 54535,
+      "offsetBytes": 434484,
+      "byteLength": 218140,
+      "outputSha256": "921e3e6f2fe4e508b3463015968758353691d067b37b107bb1095080fb52c895",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 54102,
+      "offsetBytes": 652624,
+      "byteLength": 216408,
+      "outputSha256": "d6b1245075ecb4b80597fa21566b44d372943b238a56fcb79e4e577fce0ef4b9",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 53913,
+      "offsetBytes": 869032,
+      "byteLength": 215652,
+      "outputSha256": "38fea28badfcb3b1e6ca4c462c6aaae09d119973eb8aa5ccb5f0f87394cd2af9",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 54021,
+      "offsetBytes": 1084684,
+      "byteLength": 216084,
+      "outputSha256": "e7f04d4b0219196f33368ada51778b4ddfcdc0a161ea25b29df73ab28580ab64",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 53175,
+      "offsetBytes": 1300768,
+      "byteLength": 212700,
+      "outputSha256": "fdc42cca3d946d62a8d5a3fc3e6f9f7f8fda97a6b54422bb3a9b6addfe7fee34",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 54009,
+      "offsetBytes": 1513468,
+      "byteLength": 216036,
+      "outputSha256": "8cc435668374913d5f8429c71cd9d0762abf505ab2ba6383c1f3d9fb35049d6b",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "8484396f6a5d8bae4d1a4456d4fbc1de76744414f037e100596b001e5e38507e",
+      "outputFrames": 54420,
+      "offsetBytes": 1729504,
+      "byteLength": 217680,
+      "outputSha256": "045d2f2775377140bcd7d187169ec6aa28fc189990edc6a64a734bfbc72c63f1",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 54173,
+      "offsetBytes": 1947184,
+      "byteLength": 216692,
+      "outputSha256": "29bd6519a8012945db1d822f4d08608da00b7b5987b67aa381d19dff8940d28c",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 54251,
+      "offsetBytes": 2163876,
+      "byteLength": 217004,
+      "outputSha256": "fad37005b7a31def82766933c657ab5ea2f65ffdfb8fa0da2f63f5cb31b792d3",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 54213,
+      "offsetBytes": 2380880,
+      "byteLength": 216852,
+      "outputSha256": "1efb677c2b6ace274de64e103648b279381c0187f7545d47d6af773d35cc9440",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 54034,
+      "offsetBytes": 2597732,
+      "byteLength": 216136,
+      "outputSha256": "d27303723851c6b8d9801635244bd0ac326420ec8f742aa12fb329b27ebe7bbc",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 53893,
+      "offsetBytes": 2813868,
+      "byteLength": 215572,
+      "outputSha256": "56ed9c7674c35c176eb4ec01b71b9a4037e9d3a5409aa41bbc3a9f727bad40f5",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 53740,
+      "offsetBytes": 3029440,
+      "byteLength": 214960,
+      "outputSha256": "073ea0f9e05807624a1818ecfac7a817e25e108493bc5974a6ff45b4f17c17db",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 53069,
+      "offsetBytes": 3244400,
+      "byteLength": 212276,
+      "outputSha256": "2ab1b5090ae4c2411830040ece9db9460696c69b59303e90afb9a9fbba773d24",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 53754,
+      "offsetBytes": 3456676,
+      "byteLength": 215016,
+      "outputSha256": "cc23ad4131171b1ab442ab642a1d0282e6641d35a9cff0d136be6b61f25d2809",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 9017,
+      "inputSha256": "13555ad002498ee55bbdf2af362a06402194d4c71c755a31f0447388dec08c77",
+      "outputFrames": 54258,
+      "offsetBytes": 3671692,
+      "byteLength": 217032,
+      "outputSha256": "6fc167ab5c51614c72b958a3f477f057770aaf7a3b4a2616ab01feb1a8863150",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 54275,
+      "offsetBytes": 3888724,
+      "byteLength": 434200,
+      "outputSha256": "c03db29747045af0ee4e8e9916b0b00846e3180b8bbee5fd7fcfc052c6112d97",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 54346,
+      "offsetBytes": 4322924,
+      "byteLength": 434768,
+      "outputSha256": "6cea4d3e011f150ed545a2b0650faeca97aec206538656f9510ef0e6ec844bb4",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 54126,
+      "offsetBytes": 4757692,
+      "byteLength": 433008,
+      "outputSha256": "0eb9a1ac83ffa2f9ca87553a8d447f8f9165198eb8a8f9c5e981cb9caca2b3ae",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 54102,
+      "offsetBytes": 5190700,
+      "byteLength": 432816,
+      "outputSha256": "d618fc0a20b60014c2a128c34174a3fdfe2b99ada8096db9c296843c04af1695",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 53860,
+      "offsetBytes": 5623516,
+      "byteLength": 430880,
+      "outputSha256": "af45324f17b96f770b8ade69119dfe1580b66452f6e4dc38981a4e65588452bd",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 53118,
+      "offsetBytes": 6054396,
+      "byteLength": 424944,
+      "outputSha256": "445ed586909ae466eff625e180665b1b1676518d5dd551cf050c9b65923cfead",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 53628,
+      "offsetBytes": 6479340,
+      "byteLength": 429024,
+      "outputSha256": "c9dfd4da3a4e46bad02857ad691895a03e2249a474c1d467684ef50a4d6774ed",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 53574,
+      "offsetBytes": 6908364,
+      "byteLength": 428592,
+      "outputSha256": "9939227170ca05580dbd34409cd55b64601b6b18515073a8c1270cd467783d90",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "07856c57428f5d60be1e297fe72e3c904c1f331701de8dcfcfffaa6aeafb8cf1",
+      "outputFrames": 54314,
+      "offsetBytes": 7336956,
+      "byteLength": 434512,
+      "outputSha256": "8fb07178bff150ada429d78c5eb984d9554bc22ad295f04e4f02c1813b287950",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 54173,
+      "offsetBytes": 7771468,
+      "byteLength": 433384,
+      "outputSha256": "2655d60427ae59b9ec6ef3b82fd64f4e5622955ba9dc7c44b5ba120c6c18dc16",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 54251,
+      "offsetBytes": 8204852,
+      "byteLength": 434008,
+      "outputSha256": "0a37d285caf372f528a7197ae35be0b92d4d47c46c84561d7903df4a754301b1",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 54213,
+      "offsetBytes": 8638860,
+      "byteLength": 433704,
+      "outputSha256": "102cfa403fca17edbc98fceb380011759943baa60d34909ecb930ec5c622d22c",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 54034,
+      "offsetBytes": 9072564,
+      "byteLength": 432272,
+      "outputSha256": "4bb941115f704d552a664708c6f94e9bdd79aa713d60b2f5cefe42d7cb78ce83",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 53893,
+      "offsetBytes": 9504836,
+      "byteLength": 431144,
+      "outputSha256": "08c0393c22e409c168b769e399a55e057f2f2a48a5b389229aad405f853bfcbf",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 53740,
+      "offsetBytes": 9935980,
+      "byteLength": 429920,
+      "outputSha256": "8cad7cf10e39dba65cf51e972bf6157c9e92cc5963879d499afe4e6211efe236",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 53069,
+      "offsetBytes": 10365900,
+      "byteLength": 424552,
+      "outputSha256": "19d831836510dc0abc7601a930340919d08d62608a293c8f7b5f9a4cd66050ef",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 53754,
+      "offsetBytes": 10790452,
+      "byteLength": 430032,
+      "outputSha256": "61807f44966e7449059f0e9b89e0cd53ba6520ea76b9958cd8390410781f249e",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 8000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 9017,
+      "inputSha256": "51d8ae332df33afbc9bb8f28e65d87d2eea1fc9a8ec181271b067de4e272294e",
+      "outputFrames": 54258,
+      "offsetBytes": 11220484,
+      "byteLength": 434064,
+      "outputSha256": "79de1b37fc9ff0fcb7d262ae5a0e7168b9c81f6c4198aa47ec02125ddc911574",
+      "inputPacketFrames": 512,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53958,
+      "offsetBytes": 11654548,
+      "byteLength": 215832,
+      "outputSha256": "9039910321e56595d69d66a95354b7afc9bef041ec45cb73059bf0d8aed4321c",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 54067,
+      "offsetBytes": 11870380,
+      "byteLength": 216268,
+      "outputSha256": "25ca619994c843d934dafa61a63e28b8693898c980df923f92c14fe2a10772d9",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 54315,
+      "offsetBytes": 12086648,
+      "byteLength": 217260,
+      "outputSha256": "e12a453b0a702f5f17c716643fd217764f87c300f021a17e08abd708bbd482f1",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 54018,
+      "offsetBytes": 12303908,
+      "byteLength": 216072,
+      "outputSha256": "182d796db80a5db4a3da4c8c6ee6a8cd5f22542222a99eebcfc2835614451cfe",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53649,
+      "offsetBytes": 12519980,
+      "byteLength": 214596,
+      "outputSha256": "8595c138e9f23cfedfd90b010782ff5efe30d22b657880f8128373608e3e8338",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53911,
+      "offsetBytes": 12734576,
+      "byteLength": 215644,
+      "outputSha256": "98cc4ab892ee56c154c57eb4a06915c3339efeda864820dbe42a2c7fa1c45948",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53153,
+      "offsetBytes": 12950220,
+      "byteLength": 212612,
+      "outputSha256": "de0192cfa7659ef603c3d64bf75156e28ae19654e504b2c834101f523206b3e1",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53956,
+      "offsetBytes": 13162832,
+      "byteLength": 215824,
+      "outputSha256": "7d0cec6a85fe8a8a8bc106fa0187064139649c5a8f2867e247b3519de7532399",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "2b9b46d5d9724601a34d37998a13a0d4a8a877912baaf7c7240e115df2adf1ef",
+      "outputFrames": 53977,
+      "offsetBytes": 13378656,
+      "byteLength": 215908,
+      "outputSha256": "6568ceed35e8141348b6c9f1b385cc5c0b4610be99112b127068fd3fc286021c",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 54004,
+      "offsetBytes": 13594564,
+      "byteLength": 216016,
+      "outputSha256": "bb710d706b66005dc7b680451ae0545a88e6299e665470ea05b09cacf13b493b",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 54124,
+      "offsetBytes": 13810580,
+      "byteLength": 216496,
+      "outputSha256": "c61f6f9f4799d2f292bfc8f0ee77b63a274131d942e9f156875e935ae7443742",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 54113,
+      "offsetBytes": 14027076,
+      "byteLength": 216452,
+      "outputSha256": "cf5c316abf006bd5e47dc039599fa8f399c6b0e1936a03eb3aed8937c2bfafe5",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 53950,
+      "offsetBytes": 14243528,
+      "byteLength": 215800,
+      "outputSha256": "18579caf699c8f3aabb8b96b3ac4340535ca5538599b9eb2faf938685f46d34a",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 53822,
+      "offsetBytes": 14459328,
+      "byteLength": 215288,
+      "outputSha256": "098ef1f95ca3e33ce2e11bbae7a5b7375910f04897ba3064ea2f516809624d0d",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 53684,
+      "offsetBytes": 14674616,
+      "byteLength": 214736,
+      "outputSha256": "09a8b155d296977cd34df4a0ea1390dcd3e862c1d41218ff0900c395c8d8498a",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 53027,
+      "offsetBytes": 14889352,
+      "byteLength": 212108,
+      "outputSha256": "e7057d447a320e12a1e5866f2d0ff165e9543cfb111b7318c3464e1604184f43",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 53697,
+      "offsetBytes": 15101460,
+      "byteLength": 214788,
+      "outputSha256": "d20767d4e6cfc0b1fe342d7acc7c6f840541435fcb76dcd593418f83e56b2369",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 49629,
+      "inputSha256": "5c94b03fcfa6e0bddfcbef9b91825c0c92000100c4348c2b20c1385efc6040ed",
+      "outputFrames": 54135,
+      "offsetBytes": 15316248,
+      "byteLength": 216540,
+      "outputSha256": "8f6d2c157ef5e30d06171d0a92c6f6219a10e0d3287830ebac30ae5ae8cbf7ba",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 53761,
+      "offsetBytes": 15532788,
+      "byteLength": 430088,
+      "outputSha256": "a3959d7cd84dc5cef808e240aacb1c0ed2fa739dbbd320fde256090961fdfc6f",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 54289,
+      "offsetBytes": 15962876,
+      "byteLength": 434312,
+      "outputSha256": "c81980be4b03ae848d5dee7478f1f9cdbf5469899f7ed1686b8dc048627f077e",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 54271,
+      "offsetBytes": 16397188,
+      "byteLength": 434168,
+      "outputSha256": "e0aa67f651697029719fcf86508d61fecdd051db89d6e8a27cf186401ad9ad81",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 54018,
+      "offsetBytes": 16831356,
+      "byteLength": 432144,
+      "outputSha256": "b1063840fd6e1bf947789a9535743c7a4d361f8f6f488ea53e5b96bbcf658fab",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 53608,
+      "offsetBytes": 17263500,
+      "byteLength": 428864,
+      "outputSha256": "5e53199e4fb316fe7cd5cc47cea45fd0f400105b88f415241e02529240de75b4",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 53754,
+      "offsetBytes": 17692364,
+      "byteLength": 430032,
+      "outputSha256": "fbe0be45abed0952bcb56468b25500998f2551d7ae665dafbed1a98f9144feec",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 53036,
+      "offsetBytes": 18122396,
+      "byteLength": 424288,
+      "outputSha256": "0d35a9690772275be8ed1bbf25975898ba7fcf79e52bb004c95f3fe06f252b53",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 53843,
+      "offsetBytes": 18546684,
+      "byteLength": 430744,
+      "outputSha256": "bd0f3b86930b769675da2eccf740f1a44be75e26ab987865c851cbd942908d41",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "83b7bee2d4266561dd01814bd81aca75bd1fc2f3504d96ab8163b7d141834d3d",
+      "outputFrames": 54016,
+      "offsetBytes": 18977428,
+      "byteLength": 432128,
+      "outputSha256": "d40ce45f914fa940cf898483b5ab531365e5d0e6b46f3cf257a5bbc555c95e75",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 54004,
+      "offsetBytes": 19409556,
+      "byteLength": 432032,
+      "outputSha256": "a1fc61ab7c2b060016914f33a20d84be81905af8c822df8d6f46413f077c4e17",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 54124,
+      "offsetBytes": 19841588,
+      "byteLength": 432992,
+      "outputSha256": "4eb3ac01533ae4976c3a31c892faea73f31c69479395e192801108644a0aa9fe",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 54113,
+      "offsetBytes": 20274580,
+      "byteLength": 432904,
+      "outputSha256": "53eea6a9d3d84dcdf3d1f837a6f37f247e5ce7b99c6a91dc6cb70b04f7ef2943",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 53950,
+      "offsetBytes": 20707484,
+      "byteLength": 431600,
+      "outputSha256": "d9fc59ee5ef81e6ec20180f389aabc690d160b43b885dc63bdf44b3b68a42107",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 53822,
+      "offsetBytes": 21139084,
+      "byteLength": 430576,
+      "outputSha256": "d8c3a264f6ccd9052dec46b6e54e139d440704a6d6bffc916ac4698c1174aa06",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 53684,
+      "offsetBytes": 21569660,
+      "byteLength": 429472,
+      "outputSha256": "3d4461c921675ac8f4c5ce0142661c9ea2630384becae45539bc31aeb8e26061",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 53027,
+      "offsetBytes": 21999132,
+      "byteLength": 424216,
+      "outputSha256": "eb9088f36406c1554fe9ed9ca6b20a3b00a4f7ee5e52becc7b037d41e2e9e81c",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 53697,
+      "offsetBytes": 22423348,
+      "byteLength": 429576,
+      "outputSha256": "2be18a24a45f2a00be9699e5abe29d4d2a2d81339f7cde9a26192b330a2effd6",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 44100,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 49629,
+      "inputSha256": "e2216655bec792ca3cdf21d5d439237622743bf45f0cd2a46843504a2980c0d1",
+      "outputFrames": 54135,
+      "offsetBytes": 22852924,
+      "byteLength": 433080,
+      "outputSha256": "625b8e64f2d96f2c9ae764ef8e9a2d560ac348e8d5e7aa4bf2631688bcaf534b",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 53822,
+      "offsetBytes": 23286004,
+      "byteLength": 215288,
+      "outputSha256": "b47f4b1d1881e982f5e82f0ab3be25dbfc87d21736be292a4bd443123bf5f8d2",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 53985,
+      "offsetBytes": 23501292,
+      "byteLength": 215940,
+      "outputSha256": "c47e4c41aba5b7d63ac68409f283a633870dc3fa806c2cc6cec124fafec704fd",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54302,
+      "offsetBytes": 23717232,
+      "byteLength": 217208,
+      "outputSha256": "d060a2cb271cb63a8a6f2a8cf7803ddb474b9430cd027554510a8bc024869ba9",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54017,
+      "offsetBytes": 23934440,
+      "byteLength": 216068,
+      "outputSha256": "3b0c1a1c09c3b8e359d2c0a31f8f9a798b4920ede6ed1b26efcf38dfa43c0d29",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 53847,
+      "offsetBytes": 24150508,
+      "byteLength": 215388,
+      "outputSha256": "4f44904335793bc5aedba991bee0d3f9e165700818cf28bdfc98760a35478893",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 53888,
+      "offsetBytes": 24365896,
+      "byteLength": 215552,
+      "outputSha256": "07156486d751f29fe821fbac9bd514f6d073f5e9be2faf0be936bf6f2816d27d",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 52966,
+      "offsetBytes": 24581448,
+      "byteLength": 211864,
+      "outputSha256": "213a7fd27c8c8138519dfc522c3e1f4f283da1aa44c6b8bedb39a80fffa12a8b",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 53887,
+      "offsetBytes": 24793312,
+      "byteLength": 215548,
+      "outputSha256": "755e3ac02bd287d972993ab348e150f8cdff4cb8835a4a722eb78605d2db6bcd",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "797d780b8b917ea1260b1734c5b281137318a9c2c3e438a4c32fc2d58e971176",
+      "outputFrames": 54226,
+      "offsetBytes": 25008860,
+      "byteLength": 216904,
+      "outputSha256": "caad59d5093719a038b1a5d5dea962650707f4407839793747e600b4653fcc01",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54002,
+      "offsetBytes": 25225764,
+      "byteLength": 216008,
+      "outputSha256": "8ab4f00d2f70f6aad53727febdca58d5ad19292f9a4fbf533554bd9ad3a19e4f",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54123,
+      "offsetBytes": 25441772,
+      "byteLength": 216492,
+      "outputSha256": "09cb840b4855af26c584a0e79b90cfea8a7baf9f970b00320c0ab709083abbf3",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54112,
+      "offsetBytes": 25658264,
+      "byteLength": 216448,
+      "outputSha256": "9b4ddbdc44c5cfb4fe7d9da4b3609f621ea370ed345a80ff90baaafc9e44dc57",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 53949,
+      "offsetBytes": 25874712,
+      "byteLength": 215796,
+      "outputSha256": "3692c636e57547beda16f7926836572bebc1d1681b3329b249feb049ae8a4ec4",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 53821,
+      "offsetBytes": 26090508,
+      "byteLength": 215284,
+      "outputSha256": "71a907ca6c42fc6505a9cdc704e42936e39495e9345513a93439f1a61d8b0b76",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 53683,
+      "offsetBytes": 26305792,
+      "byteLength": 214732,
+      "outputSha256": "09a8797fd46d89c8dac575cc1eeaddaa4b0785ac6d0ef066c9c8b02fbf050cdb",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 53027,
+      "offsetBytes": 26520524,
+      "byteLength": 212108,
+      "outputSha256": "f26e1d782959a850553b5cc8336f64a8896ece514084ea00e24b4d6d09c94a86",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 53697,
+      "offsetBytes": 26732632,
+      "byteLength": 214788,
+      "outputSha256": "e5853fb466de4889d685ab7b2d348f67b80157904d271fd9cfff0e3663c946e1",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 54017,
+      "inputSha256": "f8161eb654104342829a97668d0635b395a5a1009f9cdbbb342b255622a420e8",
+      "outputFrames": 54133,
+      "offsetBytes": 26947420,
+      "byteLength": 216532,
+      "outputSha256": "95957b15d29124b7683030ba5c72ed816831953689eaf63d9b82a5795bafd07f",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54064,
+      "offsetBytes": 27163952,
+      "byteLength": 432512,
+      "outputSha256": "db1fb7465fdcc59ec6a04a7078346c91ca4ea251be42733527d047a7d8971738",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 53985,
+      "offsetBytes": 27596464,
+      "byteLength": 431880,
+      "outputSha256": "da2b941fb64c8d258a8bae982354e7f7dd72bea5ce4e65c799802d32a2d5ba86",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54353,
+      "offsetBytes": 28028344,
+      "byteLength": 434824,
+      "outputSha256": "43436bc86e4d6740266a118bba746674bd1c40621f3b5df064eb22e21f82c028",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54017,
+      "offsetBytes": 28463168,
+      "byteLength": 432136,
+      "outputSha256": "9c89ea4901782c41eef402acf21f56b9da24f14909b052d4123aff1995855fc5",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 53631,
+      "offsetBytes": 28895304,
+      "byteLength": 429048,
+      "outputSha256": "8d4fd8afbbc818800eeff5bc1860d11cf700cb2cdd0b008baf29d814510a5c0d",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 53202,
+      "offsetBytes": 29324352,
+      "byteLength": 425616,
+      "outputSha256": "ad7a78ca41fccdf1674829bd16cd2ed34edda606365172a504bc646dc9d09871",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 52966,
+      "offsetBytes": 29749968,
+      "byteLength": 423728,
+      "outputSha256": "7de8b2c89be71059ceebf45eef7990387af46d3dcfc95dc9ee3f5f888eaa836d",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 53711,
+      "offsetBytes": 30173696,
+      "byteLength": 429688,
+      "outputSha256": "0dc40844e22f1b631460ec0ead48c9a7fdd518e4aeb12da6530146f356d388cc",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a55f46770bbfe26d8c23d5693346ed84fedc81c4c7b6cc00505ffd4aca7c6c9",
+      "outputFrames": 54181,
+      "offsetBytes": 30603384,
+      "byteLength": 433448,
+      "outputSha256": "c132581b264d43ee107cc6b10d01326c3fed700f8283c7f33a5ae24de6c36aa5",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54002,
+      "offsetBytes": 31036832,
+      "byteLength": 432016,
+      "outputSha256": "79a73c43ce8bc5c81e260edded059cdf989ff903b1a0561b152bb350be143f8c",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54123,
+      "offsetBytes": 31468848,
+      "byteLength": 432984,
+      "outputSha256": "10859844f6b40737a10771629ec0cdfe5895c9f2d830b48515e4e2150ffaa3af",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54112,
+      "offsetBytes": 31901832,
+      "byteLength": 432896,
+      "outputSha256": "18a99cca3b5de834775d8b885b9f5d50a1ebb516c9c48efffb8c4e8062002f12",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 53949,
+      "offsetBytes": 32334728,
+      "byteLength": 431592,
+      "outputSha256": "ac4a3e7af6b9fc907bd5160c3fd64e97b8617a73819e5cfca5b0c2d6873090c2",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 53821,
+      "offsetBytes": 32766320,
+      "byteLength": 430568,
+      "outputSha256": "c778593275a00f5e3ad185cb728713b098644500ac76b15dd295dd4500f4235c",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 53683,
+      "offsetBytes": 33196888,
+      "byteLength": 429464,
+      "outputSha256": "a16ca43e355539a45ed383b1224ab3b5b646026c383e6a4a55456b19714b8de5",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 53027,
+      "offsetBytes": 33626352,
+      "byteLength": 424216,
+      "outputSha256": "9c78f198183733942c4370262a1a6319b2b36a7f689ddb479ef7e06dfd12dbad",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 53697,
+      "offsetBytes": 34050568,
+      "byteLength": 429576,
+      "outputSha256": "87c90b93472664ec54e3f5c7486f1334c5d32f6d8bb94b04e7acdc10eab54d94",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 48000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 54017,
+      "inputSha256": "0a4eb63fff32af018289fe6cf1322367a20c41178e53d6b94212c0badfff91cb",
+      "outputFrames": 54133,
+      "offsetBytes": 34480144,
+      "byteLength": 433064,
+      "outputSha256": "ffe5ff20f9cd1f9b04e54ddbe9604a58b77e3111ae4e76957d06b44a46b740a9",
+      "inputPacketFrames": 4096,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 53781,
+      "offsetBytes": 34913208,
+      "byteLength": 215124,
+      "outputSha256": "7e2b12afeca6b780e3ab36902befa6ff66845abb0e256583128c10ad623b4791",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 54166,
+      "offsetBytes": 35128332,
+      "byteLength": 216664,
+      "outputSha256": "43f525144688d5d2a15b9e5753b3189419b13116638083ddeb7606ba61bcc0c6",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 54063,
+      "offsetBytes": 35344996,
+      "byteLength": 216252,
+      "outputSha256": "b8161c0d126a9add002683aa396b8a128814c43cfb4813f28016a41b0d4501aa",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 54004,
+      "offsetBytes": 35561248,
+      "byteLength": 216016,
+      "outputSha256": "72f2a9bccd7928a6cfac711ba01366039f6734a4ae361985f3968e418420cd31",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 53782,
+      "offsetBytes": 35777264,
+      "byteLength": 215128,
+      "outputSha256": "ad1b010879e1a2ce2b4669c7e2f956e7c1cc2cd7bc97deb5c934f1260f22e39f",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 53837,
+      "offsetBytes": 35992392,
+      "byteLength": 215348,
+      "outputSha256": "9c8ddabe618a9a807e87a628750c4536f5c112df92598c9bd9934a11a77a6c84",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 53023,
+      "offsetBytes": 36207740,
+      "byteLength": 212092,
+      "outputSha256": "6d4d7b5e306379fdc7b7ecc2e47de9df96bca4c90440b59834886727cb46d88e",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 53702,
+      "offsetBytes": 36419832,
+      "byteLength": 214808,
+      "outputSha256": "d64198d611634ee6013b6a6027c7bfcdff1882ca850c021f25448dc2d98491e6",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "3d0e7d1249712d221c03cab8c24f3bb8290f9cda5855b65a8a3f8b843e69130d",
+      "outputFrames": 54192,
+      "offsetBytes": 36634640,
+      "byteLength": 216768,
+      "outputSha256": "fde56f5d33fa6a9f5d3d8bce48bd5f0259da4aa6bc936a5fb75673a05a5c78ae",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 53976,
+      "offsetBytes": 36851408,
+      "byteLength": 215904,
+      "outputSha256": "8998375d0a7dc2231ac19043a2a5f5f61057cf94a163670bbf4f42f1180ddc92",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 54103,
+      "offsetBytes": 37067312,
+      "byteLength": 216412,
+      "outputSha256": "35cca90fe3c4d8a491739166c22f4e7b053d5472118ac49988c41e777e2fb5dd",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 54097,
+      "offsetBytes": 37283724,
+      "byteLength": 216388,
+      "outputSha256": "647565a8df8937b4782e238d38f36f61e323b5a3c7b1a28f67669319c1b4d89f",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 53936,
+      "offsetBytes": 37500112,
+      "byteLength": 215744,
+      "outputSha256": "0f231ab8fdba91f3a3bb7ed69a35c9f110eb7d0eb5c736dfcfe0b8bce3e388a3",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 53810,
+      "offsetBytes": 37715856,
+      "byteLength": 215240,
+      "outputSha256": "1d062708313052b009b2f9d59b6e20c437c6e2ae5e76ab18864ac4dc988d3350",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 53675,
+      "offsetBytes": 37931096,
+      "byteLength": 214700,
+      "outputSha256": "5e6031bb9b8adae41fc5fb33f0a400cd0e4922759a110b3bb5209a55c11c22dc",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 53020,
+      "offsetBytes": 38145796,
+      "byteLength": 212080,
+      "outputSha256": "ad05f8b3f9128a1cc76a8b8a279942d18cc33ae319003b2231b6b8ee14f2789b",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 53688,
+      "offsetBytes": 38357876,
+      "byteLength": 214752,
+      "outputSha256": "6a486db07a13ddf09babc86a005734f081ca9ff4e77e5269543c68342442c717",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 1,
+      "inputFrames": 216017,
+      "inputSha256": "f754733cad9fbd7b128be29ff8dc075ec4d76ad3dc92bdd1ed0dd5102f234751",
+      "outputFrames": 54113,
+      "offsetBytes": 38572628,
+      "byteLength": 216452,
+      "outputSha256": "8656df28778ad53c756411bc1b585d79915e549c87be7e4d4561d22e5ed85761",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 53781,
+      "offsetBytes": 38789080,
+      "byteLength": 430248,
+      "outputSha256": "b8231c69a86ced07811ac9504d16fdbb47a1e54aa623645b9d22a66debfbeca5",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 54152,
+      "offsetBytes": 39219328,
+      "byteLength": 433216,
+      "outputSha256": "150430b4a58a9efdbaae8303244d1c4046ff91e1cc192b060a92f8c53789b2ec",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 54137,
+      "offsetBytes": 39652544,
+      "byteLength": 433096,
+      "outputSha256": "0d3201e861a12778445643751a071e75445a50630c3e7bb05e333e42f974363c",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 54004,
+      "offsetBytes": 40085640,
+      "byteLength": 432032,
+      "outputSha256": "6c3770e0a1ca3e8ddfdbe2bed6eb1a54618d2bf0288904403aa8de2d66a15350",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 53728,
+      "offsetBytes": 40517672,
+      "byteLength": 429824,
+      "outputSha256": "17e23e7724ed8966614d9f721a1d1f77bda2eb5476a719eaf4aa6269cb3056cc",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 53880,
+      "offsetBytes": 40947496,
+      "byteLength": 431040,
+      "outputSha256": "d5a0dfb59b256f28abdfa5b882ee82c52f6123b7c3662c17416a4b87d857472c",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 52959,
+      "offsetBytes": 41378536,
+      "byteLength": 423672,
+      "outputSha256": "c59ce6918ab16a321eab158fa9792b8dad0a14fcb34350888538993985501187",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 53702,
+      "offsetBytes": 41802208,
+      "byteLength": 429616,
+      "outputSha256": "6f2dcb90d06c8df8b9916ec3681e5fc16595103850621cfc64758d117c2c5700",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "noise",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "55d4d47d37ac98941237d6250f24b2a9dce17182528fb9f9d38d3a73363f3b5b",
+      "outputFrames": 54192,
+      "offsetBytes": 42231824,
+      "byteLength": 433536,
+      "outputSha256": "b2602c48fabcecf24f006df91ddb0791590fbb1f1a8f118cebb9b760ceaf475a",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=24000.000000,aresample=48000,atempo=2.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 53976,
+      "offsetBytes": 42665360,
+      "byteLength": 431808,
+      "outputSha256": "4bc4fe30e682995b97f5be77bf4945dc1d2175aaad284d8be089c2dd8c33976a",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32036.156500,aresample=48000,atempo=1.49830708",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 54103,
+      "offsetBytes": 43097168,
+      "byteLength": 432824,
+      "outputSha256": "c6d119ef993f4ad373cd7c3a4ee9a7c275f090528aa9d8a5a54efca082affa87",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=40363.027932,aresample=48000,atempo=1.18920712",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 54097,
+      "offsetBytes": 43529992,
+      "byteLength": 432776,
+      "outputSha256": "25da181612359c12d725d742f090826fdf63c0198a027fe383c9eab32d5b3086",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=48000.000000,aresample=48000,atempo=1.00000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 0.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 53936,
+      "offsetBytes": 43962768,
+      "byteLength": 431488,
+      "outputSha256": "125f774bcbfac5167bcfc0d9c298c183ede8c92de8a6057749d19c072b81c82e",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=57081.941520,aresample=48000,atempo=0.84089642",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 3.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 53810,
+      "offsetBytes": 44394256,
+      "byteLength": 430480,
+      "outputSha256": "0d1e3af96d5bb0fa7b9d699c69e97e8ff4c38e236d678c9f69c5f74dda2825a7",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=71918.739690,aresample=48000,atempo=0.66741993",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 7.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 53675,
+      "offsetBytes": 44824736,
+      "byteLength": 429400,
+      "outputSha256": "5abac9b5bff683732cf5397edf71c4756658c48559a22bfa6ec77f4c605dafee",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=96000.000000,aresample=48000,atempo=0.50000000",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 12.0
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 53020,
+      "offsetBytes": 45254136,
+      "byteLength": 424160,
+      "outputSha256": "5de166f2d512f37a85b4fe77724094b11ff2f59d6147adb195abba190e96b47b",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=70093.681074,aresample=48000,atempo=0.68479782",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": 6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 53688,
+      "offsetBytes": 45678296,
+      "byteLength": 429504,
+      "outputSha256": "0f0a5d651bfd1818cdc8be31ff254990feacc85367e41cb04fe64643c872a973",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    },
+    {
+      "chain": "aresample=48000,asetrate=32870.295363,aresample=48000,atempo=1.46028502",
+      "settings": [
+        {
+          "id": "concat.pitch",
+          "params": {
+            "semitones": -6.554999828338623
+          }
+        }
+      ],
+      "signal": "steps",
+      "rate": 192000,
+      "outputRate": 48000,
+      "channels": 2,
+      "inputFrames": 216017,
+      "inputSha256": "57683acb70e14ad01d122c6a9781bdbbd4023a205e3cbd68360915529a174301",
+      "outputFrames": 54113,
+      "offsetBytes": 46107800,
+      "byteLength": 432904,
+      "outputSha256": "fe841140942fe05a9e058b088e1324c28399c2bf6f933c8df3a5ed07b5538a9c",
+      "inputPacketFrames": 16384,
+      "inputPacketProfile": "ffmpeg-pcm-10fps-pow2"
+    }
+  ]
+}

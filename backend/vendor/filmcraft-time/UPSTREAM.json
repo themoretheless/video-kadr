@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/storytold/filmcraft",
+  "revision": "5231852443363f001c3f6b396dd9b1e6461ae2be",
+  "sourceSha256": "9b3d27b9c10dcfb4f5dab3280b964b7af216a1efb1de4a1f5dbfcc4505b28179",
+  "adaptations": [
+    "Standalone manifest for Rust1.89 compatibility qualification; original Rust source unchanged."
+  ],
+  "integration": "Not yet connected to backend metadata provider."
+}

@@ -1,0 +1,99 @@
+{
+  "inputSha256": {
+    "reference": "6b05fc1e43ec6205d64c4c68d22921df70c22b630688d367b5726bab3845d642",
+    "feather": "51da55a3cda99cda76151d58791413039489f5d5af8ff647fe8df92731e19f03",
+    "flow": "8bcb9cb2bab6f054ab0a370fbcd57f69aa68247f000832a1bc8ebb8182c16c01"
+  },
+  "fittedOn": "feather frame0; photometric global SO3 on downsampled luma; fixed identical rotation for both native variants",
+  "rotationEulerXYZRadians": [
+    2.2257294857401124,
+    -2.973607229570242,
+    2.583432723517787
+  ],
+  "objective": 0.03912548390798134,
+  "metrics": {
+    "feather": {
+      "sphereWeightedMse": 0.0008422315383301303,
+      "psnr": 30.745684999541147,
+      "changedRegionMse": 0.0008762753620347111,
+      "changedRegionPsnr": 30.573593990597207
+    },
+    "flow": {
+      "sphereWeightedMse": 0.0008338452817765861,
+      "psnr": 30.78914524307198,
+      "changedRegionMse": 0.0005644274913697083,
+      "changedRegionPsnr": 32.483918413751724
+    }
+  },
+  "limitation": "Different renderer calibration, resampling, chromatic calibration, seam modes, and time-selection may contribute. Single frame is not full vendor parity.",
+  "changedRegionPixels": 9727,
+  "changedRegionDefinition": "Same fixed SO3 for both images. Native RGB feather-versus-flow difference >1/255 before rotation; rotate and threshold interpolated mask >0.5.",
+  "vendor": {
+    "version": "6.0.2",
+    "binarySha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+    "secondExportObservedSettings": {
+      "stitching": "Optical Flow Stitching",
+      "flowState": false,
+      "directionLock": false,
+      "tiltRecovery": false,
+      "jitterRestoration": false,
+      "lensGuards": "Off",
+      "diveCase": "Off",
+      "chromaticCalibration": true,
+      "stitchFusionAngle": false
+    }
+  },
+  "exports": {
+    "defaultAiFlowState": {
+      "sha256": "79ebdd8b98fc8d8b49c14b1dbbab25dcf4e1a9d74174a443079076240f8553bb",
+      "bytes": 11701817,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "hevc",
+            "width": 7680,
+            "height": 3840,
+            "pix_fmt": "yuv420p10le",
+            "r_frame_rate": "50/1",
+            "nb_frames": "38",
+            "side_data_list": [
+              {},
+              {}
+            ]
+          }
+        ],
+        "format": {
+          "duration": "0.760000"
+        }
+      }
+    },
+    "opticalFlowNoFlowState": {
+      "sha256": "d23eceba82386c74e4aeef7cf793151d4e6a48454a052b0b2e66b01b58d88211",
+      "bytes": 11703964,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "hevc",
+            "width": 7680,
+            "height": 3840,
+            "pix_fmt": "yuv420p10le",
+            "r_frame_rate": "50/1",
+            "nb_frames": "38",
+            "side_data_list": [
+              {},
+              {}
+            ]
+          }
+        ],
+        "format": {
+          "duration": "0.760000"
+        }
+      }
+    }
+  },
+  "visualInspection": "Aligned native and vendor frames show similar global geometry. Native close-hand ghosting remains visibly worse in unsupported correspondence regions."
+}

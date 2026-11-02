@@ -112,6 +112,7 @@ pub async fn upload_handler(
         "width": info.width,
         "height": info.height,
         "title": title,
+        "originalFilename": received.original_name.as_deref().and_then(|name|name.rsplit(['/', '\\']).next()),
         "fps": info.fps,
         "vcodec": info.vcodec,
         "acodec": info.acodec,

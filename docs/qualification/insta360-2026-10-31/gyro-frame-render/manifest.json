@@ -1,0 +1,21 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "sure-init",
+      "address": "0x101080634",
+      "endAddress": "0x101081514",
+      "sourceOffset": 17319476,
+      "sha256": "11015ef51fa13b314d25fe1e35f7b529c3be8ed124f3f48b1f33a733eae55b4a"
+    },
+    {
+      "name": "render-map",
+      "address": "0x101b4fcb4",
+      "endAddress": "0x101b50450",
+      "sourceOffset": 28654772,
+      "sha256": "3567714e829501cd10d68cbdd6ef20ff9856dae477ed4694e239fa8b6b7abc47"
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "source_evidence_id": "ev_2dad431cc8d86dc0cdf87682695aa7f774ac5dedfc810f6f2989e30447165115",
+  "source_path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main",
+  "source_sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary_source": "Original LC_FUNCTION_STARTS ULEB128 entries, original __TEXT mapping, selected arm64 slice",
+  "limitations": [
+    "Derived function-only subranges, not full-app observations",
+    "Absolute entry address preserved; outside memory, data, call targets and Apple-specific ABI details are not supplied",
+    "Capsule tool Evidence binds each derived byte image, not the original full executable"
+  ],
+  "capsules": [
+    {
+      "address": "0x101b5d7e8",
+      "name": "__ZN10extra_info14GyroDataParser8ReadNextEPNS_11RawGyroItemE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/00-101b5d7e8.arm64.bin",
+      "source_offset": 28710888,
+      "end_address": "0x101b5d850",
+      "bytes": 104,
+      "sha256": "64ffca07fabeea8760b7fbc4b9e684a2223ee8e9c4ee444cbeb45cf85d07a1fb"
+    },
+    {
+      "address": "0x101b5d6bc",
+      "name": "__ZN10extra_info14GyroDataParser15ParseFromBufferEOKNSt3__16vectorIhNS1_9allocatorIhEEEE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/01-101b5d6bc.arm64.bin",
+      "source_offset": 28710588,
+      "end_address": "0x101b5d770",
+      "bytes": 180,
+      "sha256": "cd64ef425615fce6cda4ea19daef72163f4b912f58607876bd1dca8c3f735151"
+    },
+    {
+      "address": "0x101b5d508",
+      "name": "__ZN10extra_info14GyroDataParserC1Ebx",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/02-101b5d508.arm64.bin",
+      "source_offset": 28710152,
+      "end_address": "0x101b5d564",
+      "bytes": 92,
+      "sha256": "d8db55d371f7ffc47bbfee2be1bb8e2487cd32ac767123f248bd9a0e09a56133"
+    },
+    {
+      "address": "0x1008c9034",
+      "name": "__ZN3pro22DeepTrackRenderManager24CreateDeepTrackerOptionsERKNSt3__110shared_ptrINS_22DeepTrackConfigurationEEEbf",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/03-1008c9034.arm64.bin",
+      "source_offset": 9228340,
+      "end_address": "0x1008c92d0",
+      "bytes": 668,
+      "sha256": "eca9dbbd000731ca15c71403bd4f1f2ddb5ce75289cb01691efdc4545589c50b"
+    },
+    {
+      "address": "0x1004793c4",
+      "name": "__ZN6studio20StabilizationService12GetGyroCacheEv",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/04-1004793c4.arm64.bin",
+      "source_offset": 4707268,
+      "end_address": "0x1004795a4",
+      "bytes": 480,
+      "sha256": "051b9bd31d43fb46ebc78e106d192250faa6e9f5b768bd6925e1d9f6f87c950d"
+    },
+    {
+      "address": "0x1018437d8",
+      "name": "__ZN9arvrender23PrecomputeStabilization19ConverToInsGyroDataEPKhmRNSt3__16vectorIN3ins10Stabilizer8GyroDataENS3_9allocatorIS7_EEEEi",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "arvrender::PrecomputeStabilization::ConverToInsGyroData(unsigned char const*, unsigned long, std::__1::vector<ins::Stabilizer::GyroData, std::__1::allocator<ins::Stabilizer::GyroData>>&, int)",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/05-1018437d8.arm64.bin",
+      "source_offset": 25458648,
+      "end_address": "0x101843afc",
+      "bytes": 804,
+      "sha256": "a9a5d6717d9099280e08387b04595a1d2826395df12e59eab56d6f437084d80d"
+    },
+    {
+      "address": "0x10189b91c",
+      "name": "__ZNK9arvrender17GyroTimeConverter12ToGyroTimeMsEN3ins8IdxTimedEi",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "arvrender::GyroTimeConverter::ToGyroTimeMs(ins::IdxTimed, int) const",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/06-10189b91c.arm64.bin",
+      "source_offset": 25819420,
+      "end_address": "0x10189bc48",
+      "bytes": 812,
+      "sha256": "592321c6554048f363382604b148bfefc9f93e2f469713437c7a08bccf60ef1a"
+    },
+    {
+      "address": "0x101b5fda8",
+      "name": "__ZN10extra_info16OffsetSerializer18ParseBase64EncodedERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS_12CameraOffsetE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "extra_info::OffsetSerializer::ParseBase64Encoded(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, extra_info::CameraOffset&)",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/07-101b5fda8.arm64.bin",
+      "source_offset": 28720552,
+      "end_address": "0x101b5fe2c",
+      "bytes": 132,
+      "sha256": "f882ee7370bd6803a63b7f6601b284fb4e54ddd98c9aad2ec6e619b4e0e564d7"
+    },
+    {
+      "address": "0x101b5f870",
+      "name": "__ZN10extra_info16OffsetSerializer5ParseERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS_12CameraOffsetE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "extra_info::OffsetSerializer::Parse(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, extra_info::CameraOffset&)",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/08-101b5f870.arm64.bin",
+      "source_offset": 28719216,
+      "end_address": "0x101b5fda8",
+      "bytes": 1336,
+      "sha256": "81b911db273ce0406bc7f774c708ac7c395e19c15f7cd59480f8643134ee0f81"
+    },
+    {
+      "address": "0x1027a4bac",
+      "name": "__ZN12Insta360Lens12OffsetParser5ParseERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERN5Eigen6MatrixINS_12CameraParamsELin1ELi1ELi0ELin1ELi1EEE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "Insta360Lens::OffsetParser::Parse(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, Eigen::Matrix<Insta360Lens::CameraParams, -1, 1, 0, -1, 1>&)",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/09-1027a4bac.arm64.bin",
+      "source_offset": 41585580,
+      "end_address": "0x1027a7828",
+      "bytes": 11388,
+      "sha256": "8cbf2f3ecb8e2f7fdcffd68c31a7f5e6a6efd203c015a17caa5a3ab1a9fd0de7"
+    },
+    {
+      "address": "0x1027ab568",
+      "name": "__ZN3ins19GeometryWrapperBase16fromCameraParamsERKN12Insta360Lens12CameraParamsE",
+      "reexport": false,
+      "source": null,
+      "weak": null,
+      "demangled": "ins::GeometryWrapperBase::fromCameraParams(Insta360Lens::CameraParams const&)",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/capsules/10-1027ab568.arm64.bin",
+      "source_offset": 41612648,
+      "end_address": "0x1027ab834",
+      "bytes": 716,
+      "sha256": "075eb6899b864cd73c8ed55ab5f819f125b6ad62054dfbe9f7b3d5bc6cb88a2b"
+    }
+  ]
+}

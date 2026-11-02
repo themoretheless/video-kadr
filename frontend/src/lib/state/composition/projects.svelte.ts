@@ -1,3 +1,4 @@
+import { nestedComposition, closeNestedComposition, resetNestedHistory, nestedHistory } from '../nestedComposition.svelte.js'
 import * as api from '../../api.js'
 import {
   authState
@@ -70,7 +71,7 @@ export async function refreshCompositionProjects(): Promise<'unchanged' | 'updat
 
 
 export async function saveCompositionProject(): Promise<void> {
-  if (compositionState.save.busy) return
+  if (compositionState.save.busy || nestedHistory.busy) return
   persistCurrentDraftNow()
   setProjectWriteBusy(true)
   compositionState.save.busy = true
@@ -78,6 +79,17 @@ export async function saveCompositionProject(): Promise<void> {
   try {
     const token = authState.token
     if (!token) throw new Error('Войдите, чтобы сохранить проект')
+    if (nestedComposition.document) {
+      const saved = nestedComposition.projectId
+        ? await api.updateNestedCompositionProject(nestedComposition.projectId, { document: nestedComposition.document, name: nestedComposition.name, baseRevision: nestedComposition.revision ?? undefined }, token)
+        : await api.createNestedCompositionProject({document:nestedComposition.document,name:nestedComposition.name,spaceId:spacesState.selectedId||undefined},token)
+      nestedComposition.projectId=saved.id
+      nestedComposition.revision = saved.revision
+      nestedComposition.name = saved.name
+      nestedComposition.document = saved.document
+      compositionState.projects = [saved as unknown as api.CompositionProjectDto, ...compositionState.projects.filter((item) => item.id !== saved.id)]
+      return
+    }
     const body = {
       name: compositionState.projectName.trim() || undefined,
       spaceId: compositionState.projectId ? undefined : spacesState.selectedId || undefined,
@@ -121,6 +133,19 @@ export async function openCompositionProject(id: string): Promise<void> {
     const project = await fetchCompositionProject(id)
     if (!isCurrentOpenCompositionRevision(revision)) return
     if (!project) throw new Error('Композиционный проект не найден')
+    if ('compositions' in project.document && 'root' in project.document) {
+      const nested = project as unknown as api.NestedCompositionProjectDto
+      resetNestedHistory()
+      nestedComposition.document = nested.document
+      nestedComposition.projectId = nested.id
+      nestedComposition.revision = nested.revision
+      nestedComposition.name = nested.name
+      nestedComposition.activeCompositionId = nested.document.root
+      nestedComposition.timeUs = 0
+      nestedComposition.renderedOutputs = {}
+      return
+    }
+    closeNestedComposition()
     editorFacade.selectProject(project.id)
     const local = readStoredDraftCollection()?.projects[project.id]
     activateStoredDraft(local?.dirty ? local : {
@@ -147,6 +172,7 @@ export type RemoteProjectRefresh = 'unchanged' | 'updated' | 'conflict' | 'delet
 /** Refresh the active project without ever overwriting local unsaved edits. */
 
 export async function refreshOpenCompositionProject(): Promise<RemoteProjectRefresh> {
+  if (nestedComposition.document) return 'unchanged'
   const id = compositionState.projectId
   const token = authState.token
   const revision = compositionState.projectRevision
@@ -215,4 +241,3 @@ export async function deleteCompositionProject(id: string): Promise<void> {
     compositionState.save.busy = false
   }
 }
-

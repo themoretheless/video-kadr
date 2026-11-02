@@ -91,12 +91,27 @@ stable_id!(TrackId);
 stable_id!(CompositionClipId);
 stable_id!(TransitionId);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FrameRateRatio {
+    pub numerator: u32,
+    pub denominator: u32,
+}
+
+impl std::fmt::Display for FrameRateRatio {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}/{}", self.numerator, self.denominator)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CanvasSpec {
     pub width: u32,
     pub height: u32,
     pub fps_milli: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps_rate: Option<FrameRateRatio>,
     pub background: Rgba,
     #[serde(default)]
     pub background_mode: CanvasBackgroundMode,
@@ -123,6 +138,7 @@ impl Default for CanvasSpec {
             width: 1_920,
             height: 1_080,
             fps_milli: 30_000,
+            fps_rate: None,
             background: Rgba::BLACK,
             background_mode: CanvasBackgroundMode::Color,
             background_blur: default_canvas_blur(),
@@ -131,6 +147,13 @@ impl Default for CanvasSpec {
 }
 
 impl CanvasSpec {
+    pub fn frame_rate(self) -> FrameRateRatio {
+        self.fps_rate.unwrap_or(FrameRateRatio {
+            numerator: self.fps_milli,
+            denominator: 1000,
+        })
+    }
+
     fn validate(self) -> Result<(), CompositionError> {
         if !(2..=3_840).contains(&self.width)
             || !(2..=2_160).contains(&self.height)
@@ -141,6 +164,16 @@ impl CanvasSpec {
         }
         if !(1_000..=60_000).contains(&self.fps_milli) {
             return Err(CompositionError::InvalidFrameRate);
+        }
+        if let Some(rate) = self.fps_rate {
+            if rate.numerator == 0 || rate.denominator == 0 {
+                return Err(CompositionError::InvalidFrameRate);
+            }
+            let milli = (u64::from(rate.numerator) * 1000 + u64::from(rate.denominator) / 2)
+                / u64::from(rate.denominator);
+            if milli != u64::from(self.fps_milli) {
+                return Err(CompositionError::InvalidFrameRate);
+            }
         }
         self.background.validate()?;
         if !self.background_blur.is_finite() || !(1.0..=100.0).contains(&self.background_blur) {
@@ -182,6 +215,8 @@ impl Rgba {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CompositionSource {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_channels: Option<u32>,
     pub id: SourceId,
     pub kind: SourceKind,
     pub duration_ticks: u64,
@@ -197,6 +232,12 @@ impl CompositionSource {
             SourceKind::Audio => self.duration_ticks > 0 && self.has_audio,
             SourceKind::Image => self.width > 0 && self.height > 0 && !self.has_audio,
         };
+        if self
+            .audio_channels
+            .is_some_and(|channels| !self.has_audio || channels == 0 || channels > 64)
+        {
+            return Err(CompositionError::InvalidSource(self.id.clone()));
+        }
         if !valid {
             return Err(CompositionError::InvalidSource(self.id.clone()));
         }
@@ -219,11 +260,24 @@ pub struct ClipPlacement {
     pub source_in_tick: u64,
     pub source_out_tick: u64,
     pub speed: f64,
+    /// Authored timeline extent, independent of the source window. Legacy
+    /// documents derive it from the source span and speed curve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeline_duration_tick: Option<u64>,
+    /// Retained phase within the complete source-speed curve after a cut.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_timeline_offset_tick: Option<i64>,
+    /// Full retained preparation head, shared by fragments cut inside that head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_head_timeline_tick: Option<u64>,
     /// Optional source-progress speed curve. The first point is anchored to
     /// `speed`, so old constant-speed documents and authoring controls retain
     /// one unambiguous baseline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speed_ramp: Option<SpeedRampSpec>,
+    /// Original timeline-fraction curve; distinct from native source-progress ramps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concat_retime: Option<super::concat_retime::SourceClock>,
 }
 
 impl ClipPlacement {
@@ -234,17 +288,47 @@ impl ClipPlacement {
         {
             return Err(CompositionError::InvalidPlacement);
         }
+        if let Some(clock)=&self.concat_retime {
+            clock.validate_placement(self).map_err(|_|CompositionError::InvalidSpeedRamp)?;
+            return Ok(clock.duration_ticks);
+        }
         if let Some(segments) = self.speed_ramp_segments()? {
-            return segments
+            let derived = segments
                 .last()
                 .map(|segment| segment.timeline_end_tick)
-                .ok_or(CompositionError::InvalidSpeedRamp);
+                .ok_or(CompositionError::InvalidSpeedRamp)?;
+            return self.authored_duration_or(derived);
         }
         let duration = self.source_span_ticks() as f64 / self.speed;
         if !duration.is_finite() || duration < 1.0 || duration > u64::MAX as f64 {
             return Err(CompositionError::InvalidPlacement);
         }
-        Ok(duration.round() as u64)
+        self.authored_duration_or(duration.round() as u64)
+    }
+
+    fn authored_duration_or(&self, derived: u64) -> Result<u64, CompositionError> {
+        let offset = self.source_timeline_offset_tick.unwrap_or(0);
+        if i128::from(offset) >= i128::from(derived) || offset.unsigned_abs() > 9_007_199_254_740_991 {
+            return Err(CompositionError::InvalidPlacement);
+        }
+        match self.timeline_duration_tick {
+            Some(0) => Err(CompositionError::InvalidPlacement),
+            Some(duration) => Ok(duration),
+            None => u64::try_from(i128::from(derived) - i128::from(offset)).map_err(|_| CompositionError::InvalidPlacement),
+        }
+    }
+
+    /// Source material needed before the retained clock origin (after source-out in reverse).
+    pub fn source_head_timeline_ticks(&self) -> Result<u64, CompositionError> {
+        let phase = self.source_timeline_offset_tick.unwrap_or(0);
+        let head = self.source_head_timeline_tick.unwrap_or(0).max(if phase < 0 { phase.unsigned_abs() } else { 0 });
+        if head > 9_007_199_254_740_991 { return Err(CompositionError::InvalidPlacement); }
+        Ok(head)
+    }
+    pub fn source_head_ticks(&self) -> Result<u64, CompositionError> {
+        let head = self.source_head_timeline_ticks()? as f64 * self.speed;
+        if !head.is_finite() || head > 9_007_199_254_740_991.0 { return Err(CompositionError::InvalidPlacement); }
+        Ok(head.ceil() as u64)
     }
 
     pub fn timeline_end_tick(&self) -> Result<u64, CompositionError> {
@@ -258,6 +342,9 @@ impl ClipPlacement {
     }
 
     pub fn minimum_speed(&self) -> Result<f64, CompositionError> {
+        if let Some(clock)=&self.concat_retime {
+            return clock.curve().map_err(|_|CompositionError::InvalidSpeedRamp)?.points().iter().map(|p|p.1).reduce(f64::min).ok_or(CompositionError::InvalidSpeedRamp);
+        }
         self.speed_ramp
             .as_ref()
             .map(|ramp| {
@@ -419,11 +506,13 @@ impl AnimatableValue {
         Self::Constant { value }
     }
 
-    fn validate(&self) -> Result<(), CompositionError> {
+    pub(crate) fn validate(&self) -> Result<(), CompositionError> {
         match self {
             Self::Constant { value } if value.is_finite() => Ok(()),
             Self::Constant { .. } => Err(CompositionError::InvalidAnimation),
-            Self::Keyframes { track } => KeyframeTrack::new(
+            Self::Keyframes { track } => {
+                if let Some(clock)=track.sample_clock{clock.prepare(track).map_err(|_|CompositionError::InvalidAnimation)?;}
+                KeyframeTrack::new(
                 track.time_base,
                 track.interpolation,
                 track.keyframes.clone(),
@@ -435,7 +524,8 @@ impl AnimatableValue {
                     Err(super::keyframes::KeyframeError::TooManyKeyframes)
                 }
             })
-            .map_err(|_| CompositionError::InvalidAnimation),
+            .map_err(|_| CompositionError::InvalidAnimation)
+            },
         }
     }
 }
@@ -443,6 +533,12 @@ impl AnimatableValue {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransformSpec {
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub concat_animation:Option<super::concat_clip_animation::SourceAnimation>,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub concat_preparation:Option<super::concat_picture::Preparation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<super::motion_path::PositionAnimation>,
     pub x: AnimatableValue,
     pub y: AnimatableValue,
     pub scale_x: AnimatableValue,
@@ -455,6 +551,9 @@ pub struct TransformSpec {
 impl Default for TransformSpec {
     fn default() -> Self {
         Self {
+            concat_animation:None,
+            concat_preparation:None,
+            position: None,
             x: AnimatableValue::constant(0.0),
             y: AnimatableValue::constant(0.0),
             scale_x: AnimatableValue::constant(1.0),
@@ -467,7 +566,15 @@ impl Default for TransformSpec {
 }
 
 impl TransformSpec {
-    fn validate(&self) -> Result<(), CompositionError> {
+    pub(crate) fn validate(&self) -> Result<(), CompositionError> {
+        if let Some(preparation)=&self.concat_preparation{preparation.validate().map_err(|_|CompositionError::InvalidTransform)?;}
+        if let Some(animation)=&self.concat_animation {
+            animation.validate().map_err(|_|CompositionError::InvalidAnimation)?;
+            if self.position.is_some(){return Err(CompositionError::InvalidAnimation)}
+        }
+        if let Some(position) = &self.position {
+            position.compile().map_err(|_| CompositionError::InvalidAnimation)?;
+        }
         self.x.validate()?;
         self.y.validate()?;
         self.scale_x.validate()?;
@@ -625,6 +732,241 @@ pub enum VideoEffectPreset {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum VideoEffect {
+ NativeBypass {effect:Box<VideoEffect>},
+ ConcatBypass {link:super::concat_effect_upgrade::AppliedFilter},
+ ConcatGaussianBlur {parameters:super::concat_gaussian_blur::GaussianBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatMotionBlur {parameters:super::concat_motion_blur::MotionBlur, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<super::concat_motion_blur::OriginalKeys>},
+ ConcatBloomPulse {parameters:super::concat_bloom_pulse::BloomPulse, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<super::concat_bloom_pulse::OriginalKeys>},
+ ConcatZoomBlur {parameters:super::concat_zoom_blur::ZoomBlur, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<super::concat_zoom_blur::OriginalKeys>},
+ ConcatFilmGrain {parameters:super::concat_film_grain::FilmGrain, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatGlow {parameters:super::concat_glow::Glow, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatHalftone {parameters:super::concat_halftone::Halftone, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatFisheye {parameters:super::concat_fisheye::Fisheye, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatChromaticAberration {parameters:super::concat_chromatic_aberration::ChromaticAberration, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatPosterize {parameters:super::concat_posterize::Posterize},
+ ConcatLumaKey {parameters:super::concat_luma_key::LumaKey},
+ ConcatPixelate {parameters:super::concat_pixelate::Pixelate},
+ ConcatChromaKey {parameters:super::concat_chroma_key::ChromaKey, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<super::concat_chroma_key::OriginalKeys>},
+ ConcatSaturation {parameters:super::concat_chroma::Saturation, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatVibrance {parameters:super::concat_chroma::Vibrance, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::concat_chroma::VibranceAnimation>},
+ ConcatSharpen {parameters:super::concat_spatial_filters::Sharpen},
+ ConcatVhs {parameters:super::concat_vhs::Vhs},
+ ConcatFallingDust {parameters:super::concat_falling_dust::FallingDust},
+ ConcatFilm {parameters:super::concat_film_camera_looks::Film},
+ ConcatDigicam {parameters:super::concat_film_camera_looks::Digicam},
+ ConcatMono {parameters:super::concat_timed_looks::Mono},
+ ConcatMidnight {parameters:super::concat_timed_looks::Midnight},
+ ConcatMarquee {parameters:super::concat_marquee::Marquee},
+ ConcatRetroCartoon {parameters:super::concat_retro_cartoon::RetroCartoon},
+ ConcatSuper8 {parameters:super::concat_super8::Super8},
+ ConcatBleachBypass {parameters:super::concat_bleach_bypass::BleachBypass},
+ ConcatAutumn {parameters:super::concat_autumn::Autumn},
+ ConcatNeon {parameters:super::concat_neon_looks::Neon},
+ ConcatPinkFuzz {parameters:super::concat_neon_looks::PinkFuzz},
+
+ ConcatNight {parameters:super::concat_low_light_looks::Night},
+ ConcatSpooky {parameters:super::concat_low_light_looks::Spooky},
+
+ ConcatCool {parameters:super::concat_color_presets::Cool},
+ ConcatWarm {parameters:super::concat_color_presets::Warm},
+ ConcatTealOrange {parameters:super::concat_color_presets::TealOrange},
+
+ ConcatNoir {parameters:super::concat_scene_looks::Noir},
+ ConcatDreamy {parameters:super::concat_scene_looks::Dreamy},
+
+ ConcatHighContrastMono {parameters:super::concat_fixed_looks::HighContrastMono},
+ ConcatLandscapePop {parameters:super::concat_fixed_looks::LandscapePop},
+ ConcatNatural {parameters:super::concat_fixed_looks::Natural},
+ #[serde(rename="concat_retro_70s")]
+ ConcatRetro70s {parameters:super::concat_fixed_looks::Retro70s},
+ ConcatSilver {parameters:super::concat_fixed_looks::Silver},
+ ConcatTropical {parameters:super::concat_fixed_looks::Tropical},
+ ConcatVaporwave {parameters:super::concat_fixed_looks::Vaporwave},
+ ConcatWinterCool {parameters:super::concat_fixed_looks::WinterCool},
+ ConcatClassicChrome {parameters:super::concat_fixed_looks::ClassicChrome},
+ ConcatCyberpunk {parameters:super::concat_fixed_looks::Cyberpunk},
+ ConcatDelicious {parameters:super::concat_fixed_looks::Delicious},
+ ConcatRosy {parameters:super::concat_fixed_looks::Rosy},
+ ConcatSciFi {parameters:super::concat_fixed_looks::SciFi},
+ ConcatMatcha {parameters:super::concat_green_looks::Matcha},
+ ConcatSage {parameters:super::concat_green_looks::Sage},
+ ConcatIvory {parameters:super::concat_matte_looks::Ivory},
+ ConcatMilk {parameters:super::concat_matte_looks::Milk},
+ ConcatBronze {parameters:super::concat_toned_looks::Bronze},
+ ConcatCoolBlue {parameters:super::concat_toned_looks::CoolBlue},
+ ConcatFresh {parameters:super::concat_detail_looks::Fresh},
+ ConcatVivid {parameters:super::concat_detail_looks::Vivid},
+ ConcatSoftLight {parameters:super::concat_atmosphere_looks::SoftLight},
+ ConcatMoody {parameters:super::concat_atmosphere_looks::Moody},
+ ConcatRain {parameters:super::concat_weather_looks::Rain},
+ ConcatUmber {parameters:super::concat_weather_looks::Umber},
+ ConcatFair {parameters:super::concat_portrait_looks::Fair},
+ ConcatPeach {parameters:super::concat_portrait_looks::Peach},
+ ConcatPolaroid {parameters:super::concat_retro_looks::Polaroid},
+ ConcatVintage {parameters:super::concat_retro_looks::Vintage},
+ ConcatCloudlessSky {parameters:super::concat_scenery_looks::CloudlessSky},
+ ConcatLagoon {parameters:super::concat_scenery_looks::Lagoon},
+ ConcatGoldenHour {parameters:super::concat_light_looks::GoldenHour},
+ ConcatDaydream {parameters:super::concat_light_looks::Daydream},
+ ConcatClean {parameters:super::concat_clean::Clean},
+ ConcatContrastPop {parameters:super::concat_contrast_pop::ContrastPop},
+ ConcatVignette {parameters:super::concat_spatial_filters::Vignette},
+ ConcatAdjust {parameters:super::concat_adjust::Adjust, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::concat_color_wheels::Animation>, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<super::concat_color_wheels::OriginalKeys>},
+ ConcatCurves {parameters:super::concat_curves::Curves},
+ ConcatColorWheels {parameters:super::concat_color_wheels::ColorWheels, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::concat_color_wheels::Animation>, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<super::concat_color_wheels::OriginalKeys>},
+ ConcatWhiteBalance {parameters:super::concat_white_balance::WhiteBalance, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::concat_white_balance::Animation>, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<super::concat_white_balance::OriginalKeys>},
+ ConcatExposure {parameters:super::concat_exposure::ConcatExposure, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ ConcatContrast {parameters:super::concat_contrast::ConcatContrast, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>, #[serde(default,rename="concatKeys",skip_serializing_if="Option::is_none")] concat_keys:Option<Vec<super::concat_effect_upgrade::ParamKey>>},
+ Lumetri {parameters:super::lumetri::Lumetri},
+ ColorSharpen {parameters:super::color_sharpen::ColorSharpen, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ CreativeAdjust {parameters:super::creative_adjust::CreativeAdjust, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::creative_adjust::AdjustAnimation>},
+ ProcAmp {parameters:super::proc_amp::ProcAmp, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::proc_amp::ProcAmpAnimation>},
+ ColorReplace {parameters:super::color_replace::ColorReplace, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>, #[serde(default,rename="colorAnimation",skip_serializing_if="Option::is_none")] color_animation:Option<super::color_replace::ReplaceColorAnimation>},
+ AlphaAdjust {parameters:super::alpha_adjust::AlphaAdjust, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ UltraKey {parameters:super::ultra_key::UltraKey, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::ultra_key::UltraAnimation>, #[serde(default,rename="colorAnimation",skip_serializing_if="Option::is_none")] color_animation:Option<super::ultra_key::UltraColorAnimation>},
+ ColorKey {parameters:super::color_key::ColorKey, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::color_key::KeyAnimation>, #[serde(default,rename="colorAnimation",skip_serializing_if="Option::is_none")] color_animation:Option<super::color_key::KeyColorAnimation>},
+ ColorPass {parameters:super::color_pass::ColorPass, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>, #[serde(default,rename="colorAnimation",skip_serializing_if="Option::is_none")] color_animation:Option<super::color_pass::PassColorAnimation>},
+ ChangeToColor {parameters:super::change_to_color::ChangeToColor, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::change_to_color::ChangeAnimation>, #[serde(default,rename="colorAnimation",skip_serializing_if="Option::is_none")] color_animation:Option<super::change_to_color::ChangeColorAnimation>},
+ LeaveColor {parameters:super::leave_color::LeaveColor, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::leave_color::LeaveAnimation>, #[serde(default,rename="colorAnimation",skip_serializing_if="Option::is_none")] color_animation:Option<super::leave_color::LeaveColorAnimation>},
+ DirectionalBlur {parameters:super::directional_blur::DirectionalBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::directional_blur::DirectionalAnimation>},
+ DirectionalBlurLegacy {parameters:super::directional_blur::DirectionalBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::directional_blur::DirectionalAnimation>},
+ Mosaic {parameters:super::mosaic::Mosaic, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::mosaic::MosaicAnimation>},
+ MosaicLegacy {parameters:super::mosaic::Mosaic, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::mosaic::MosaicAnimation>},
+ Twirl {parameters:super::twirl::Twirl, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::twirl::TwirlAnimation>},
+ TwirlLegacy {parameters:super::twirl::Twirl, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::twirl::TwirlAnimation>},
+ WaveWarp {parameters:super::wave_warp::WaveWarp, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::wave_warp::WaveWarpAnimation>},
+ LensDistortion {parameters:super::lens_distortion::LensDistortion, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::lens_distortion::LensDistortionAnimation>},
+ Grid {parameters:super::grid::Grid, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::grid::GridAnimation>},
+ LensFlare {parameters:super::lens_flare::LensFlare, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::lens_flare::FlareAnimation>},
+ Ellipse {parameters:super::ellipse::Ellipse, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::ellipse::EllipseAnimation>},
+ PaintBucket {parameters:super::paint_bucket::PaintBucket, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::paint_bucket::PaintAnimation>},
+ Gradient {parameters:super::gradient::Gradient, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::gradient::GradientAnimation>},
+ ColorEmboss {parameters:super::color_emboss::ColorEmboss, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::color_emboss::ColorEmbossAnimation>},
+ BlockDissolve {parameters:super::block_dissolve::BlockDissolve, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::block_dissolve::BlockDissolveAnimation>},
+ GraphicText {parameters:super::graphic_text::GraphicTextParameters, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::graphic_text_animation::GraphicTextAnimation>, #[serde(default,rename="sourceTextAnimation",skip_serializing_if="Option::is_none")] source_text_animation:Option<super::graphic_source_text_animation::SourceTextAnimation>},
+ GraphicShape {parameters:super::graphic_shape::GraphicShape, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::graphic_shape_animation::GraphicShapeAnimation>},
+ TrackMatte {parameters:super::track_matte::TrackMatte},
+ GradientWipe {parameters:super::gradient_wipe::GradientWipe, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::gradient_wipe::GradientWipeAnimation>},
+ LinearWipe {parameters:super::linear_wipe::LinearWipe, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::linear_wipe::LinearWipeAnimation>},
+ Magnify {parameters:super::magnify::Magnify, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::magnify::MagnifyAnimation>},
+ Mirror {parameters:super::mirror::Mirror, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::mirror::MirrorAnimation>},
+ Offset {parameters:super::offset::Offset, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::offset::OffsetAnimation>},
+ Transform {parameters:super::transform_effect::TransformEffect, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::transform_effect::TransformAnimation>},
+ Spherize {parameters:super::spherize::Spherize, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::spherize::SpherizeAnimation>},
+ CornerPin {parameters:super::corner_pin::CornerPin, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::corner_pin::CornerPinAnimation>},
+ #[serde(rename="rotate_3d")]
+ Rotate3D {parameters:super::rotate_3d::Rotate3D, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::rotate_3d::Rotate3DAnimation>},
+ Shrink {parameters:super::grow_shrink::Shrink, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::grow_shrink::ScaleAnimation>},
+ Grow {parameters:super::grow_shrink::GrowShrink, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::grow_shrink::ScaleAnimation>},
+ Spin {parameters:super::spin::Spin, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::spin::SpinAnimation>},
+ Move {parameters:super::move_effect::MoveEffect, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::move_effect::MoveAnimation>},
+ Wiggle {parameters:super::wiggle::Wiggle, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::wiggle::WiggleAnimation>},
+ #[serde(rename="camera_shake")]
+ CameraShake {parameters:super::camera_shake::CameraShake, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::camera_shake::CameraShakeAnimation>},
+ Spacer {parameters:super::spacer::Spacer, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::spacer::SpacerAnimation>},
+ #[serde(rename="rounded_crop")]
+ RoundedCrop {parameters:super::rounded_crop::RoundedCrop, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::rounded_crop::RoundedCropAnimation>},
+ Clone {parameters:super::clone_effect::CloneEffect, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::clone_effect::CloneAnimation>},
+ AutoAlign {parameters:super::auto_align::AutoAlign, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::auto_align::AutoAlignAnimation>},
+ CompoundBlur {parameters:super::compound_blur::CompoundBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ Crop {parameters:super::crop::Crop, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::crop::CropAnimation>},
+ BrightnessContrast {parameters:super::brightness_contrast::BrightnessContrast, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::brightness_contrast::BrightnessContrastAnimation>},
+ AscCdl {parameters:super::asc_cdl::AscCdl, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::asc_cdl::AscCdlAnimation>},
+ LogoCutout {parameters:super::logo_cutout::LogoCutout, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::logo_cutout::LogoCutoutAnimation>},
+ EdgeGlow {parameters:super::edge_glow::EdgeGlow, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::edge_glow::EdgeGlowAnimation>},
+ WonderGlow {parameters:super::wonder_glow::WonderGlow, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::wonder_glow::WonderGlowAnimation>},
+ Glint {parameters:super::glint::Glint, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::glint::GlintAnimation>},
+ WarpStabilizer {parameters:super::warp_stabilizer::WarpStabilizer,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::warp_stabilizer_animation::Animation>},
+ VrChromaticAberrations {parameters:super::vr_chromatic::VrChromatic,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_chromatic::VrChromaticAnimation>},
+ VrColorGradients {parameters:super::vr_color_gradients::VrColorGradients,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_color_gradients::VrColorGradientsAnimation>},
+ Lightning {parameters:super::lightning::Lightning,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::lightning_animation::LightningAnimation>},
+ WriteOn {parameters:super::write_on::WriteOn,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::write_on_animation::WriteOnAnimation>},
+ Timecode {parameters:super::clock_label::Timecode,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::clock_label::TimecodeAnimation>},
+ ClipName {parameters:super::clock_label::ClipName,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::clock_label::ClipNameAnimation>},
+ MetadataBurnin {parameters:super::metadata_burnin::MetadataBurnin,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::metadata_burnin::MetadataBurninAnimation>},
+ SimpleText {parameters:super::simple_text::SimpleText,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::simple_text::SimpleTextAnimation>},
+ VrPlaneToSphere {parameters:super::vr_plane_to_sphere::VrPlaneToSphere,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_plane_to_sphere::VrPlaneAnimation>},
+ VrGlow {parameters:super::vr_glow::VrGlow,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_glow::VrGlowAnimation>},
+ VrFractalNoise {parameters:super::vr_fractal_noise::VrFractalNoise,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_fractal_noise::VrFractalNoiseAnimation>},
+ VrDigitalGlitch {parameters:super::vr_digital_glitch::VrDigitalGlitch,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_digital_glitch::VrDigitalGlitchAnimation>},
+ VrDenoise {parameters:super::vr_denoise::VrDenoise,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ VrBlur {parameters:super::vr_filter::VrBlur,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ VrSharpen {parameters:super::vr_filter::VrSharpen,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ SphericalVideo {parameters:super::spherical_video::SphericalVideo,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_sphere::VrSphereAnimation>},
+ VrProjection {parameters:super::vr_sphere::VrSphere,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_sphere::VrSphereAnimation>},
+ VrRotateSphere {parameters:super::vr_sphere::VrRotateSphere,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vr_sphere::VrSphereAnimation>},
+ LightLeaks {parameters:super::light_leaks::LightLeaks,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::light_leaks::LightLeaksAnimation>},
+ AutoReframe {parameters:super::auto_reframe::AutoReframe,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::auto_reframe::AutoReframeAnimation>},
+ Echo {parameters:super::echo::Echo,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::echo::EchoAnimation>},
+ PosterizeTime {parameters:super::posterize_time::PosterizeTime,#[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::posterize_time::PosterizeTimeAnimation>},
+ VolumetricRays {parameters:super::volumetric_rays::VolumetricRays, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::volumetric_rays::VolumetricRaysAnimation>},
+ EchoGlow {parameters:super::echo_glow::EchoGlow, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::echo_glow::EchoGlowAnimation>},
+ RgbSplit {parameters:super::rgb_split::RgbSplit, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::rgb_split::RgbSplitAnimation>},
+ LightingEffects {parameters:super::lighting_effects::LightingEffects, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::lighting_effects::LightingAnimation>},
+ #[serde(rename="vignette")] VignetteEffect {parameters:super::vignette_effect::VignetteEffect, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::vignette_effect::VignetteEffectAnimation>},
+ UnsharpMask {parameters:super::unsharp_mask::UnsharpMask, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::unsharp_mask::UnsharpMaskAnimation>},
+ BokehBlur {parameters:super::bokeh_blur::BokehBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::bokeh_blur::BokehBlurAnimation>},
+ FocusBlur {parameters:super::focus_blur::FocusBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::focus_blur::FocusBlurAnimation>},
+ EdgeFeather {parameters:super::edge_feather::EdgeFeather, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ Sharpen {parameters:super::sharpen::Sharpen, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ ReduceInterlaceFlicker {parameters:super::reduce_interlace_flicker::ReduceInterlaceFlicker, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ ChannelBlur {parameters:super::channel_blur::ChannelBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::channel_blur::ChannelBlurAnimation>},
+ TurbulentDisplace {parameters:super::turbulent_displace::TurbulentDisplace, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::turbulent_displace::TurbulentDisplaceAnimation>},
+ AlphaGlow {parameters:super::alpha_glow::AlphaGlow, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::alpha_glow::AlphaGlowAnimation>},
+ BrushStrokes {parameters:super::brush_strokes::BrushStrokes, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::brush_strokes::BrushStrokesAnimation>},
+ Stroke {parameters:super::stroke::Stroke, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::stroke::StrokeAnimation>},
+ LongShadow {parameters:super::long_shadow::LongShadow, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::long_shadow::LongShadowAnimation>},
+ RoughenEdges {parameters:super::roughen_edges::RoughenEdges, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::roughen_edges::RoughenEdgesAnimation>},
+ CellPattern {parameters:super::cell_pattern::CellPattern, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::cell_pattern::CellAnimation>},
+ Checkerboard {parameters:super::checkerboard::Checkerboard, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::checkerboard::CheckerAnimation>},
+ Circle {parameters:super::circle::Circle, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::circle::CircleAnimation>},
+ Ramp {parameters:super::ramp::Ramp, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::ramp::RampAnimation>},
+ FourColorGradient {parameters:super::four_color_gradient::FourColorGradient, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::four_color_gradient::GradientAnimation>},
+ BevelAlpha {parameters:super::bevel_alpha::BevelAlpha, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::bevel_alpha::BevelAnimation>},
+ DropShadow {parameters:super::drop_shadow::DropShadow, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::drop_shadow::ShadowAnimation>},
+ #[serde(rename="basic_3d")]
+ Basic3D {parameters:super::basic_3d::Basic3D, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::basic_3d::Basic3DAnimation>},
+ Strobe {parameters:super::strobe::Strobe, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::strobe::StrobeAnimation>},
+ Noise {parameters:super::noise::Noise, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::noise::NoiseAnimation>},
+ NoiseLegacy {parameters:super::noise::Noise, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::noise::NoiseAnimation>},
+ Emboss {parameters:super::emboss::Emboss, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::emboss::EmbossAnimation>},
+ CameraBlur {parameters:super::camera_blur::CameraBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ Median {parameters:super::median::Median, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ Replicate {parameters:super::replicate::Replicate, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ FindEdges {parameters:super::find_edges::FindEdges, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ GaussianBlur {parameters:super::gaussian_blur::GaussianBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ GaussianBlurLegacy {parameters:super::gaussian_blur::GaussianBlur, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ LumaKey {parameters:super::luma_key::LumaKey, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::luma_key::LumaAnimation>},
+ ChannelMix {parameters:super::channel_mix::ChannelMix, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::channel_mix::MixAnimation>},
+ ColorBalance {parameters:super::color_balance::ColorBalance, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::color_balance::BalanceAnimation>},
+ ColorLevels {parameters:super::color_levels::ColorLevels, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::color_levels::LevelsAnimation>},
+ ColorExtract {parameters:super::color_extract::ColorExtract, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::color_extract::ExtractAnimation>},
+ HorizontalFlip,
+ VerticalFlip,
+ BlackWhite,
+ GammaCorrection {parameters:super::gamma_correction::GammaCorrection, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ Posterize {parameters:super::posterize::Posterize, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ ColorInvert {parameters:super::color_invert::ColorInvert, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>},
+ ColorTint {parameters:super::color_tint::ColorTint, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<AnimatableValue>, #[serde(default,rename="colorAnimation",skip_serializing_if="Option::is_none")] color_animation:Option<super::color_tint::TintColorAnimation>},
+ CineonConverter {parameters:super::cineon_converter::CineonConverter, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::cineon_converter::CineonAnimation>},
+ VideoLimiter {parameters:super::video_limiter::VideoLimiter, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::video_limiter::VideoLimiterAnimation>},
+ BasicGrade {parameters:super::basic_grade::BasicGrade, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::basic_grade::BasicAnimation>},
+    ColorVignette {parameters:super::color_vignette::ColorVignette, #[serde(default,skip_serializing_if="Option::is_none")] animation:Option<super::color_vignette::VignetteAnimation>},
+    HslSecondary {parameters:super::hsl_secondary::HslSecondary,
+        #[serde(default,skip_serializing_if="Option::is_none")]
+        animation:Option<super::hsl_secondary::HslAnimation>,
+    },
+    ColorLut { lut: super::color_lut::ColorLut },
+    CreativeGrade { parameters: super::creative_grade::CreativeGrade,
+        #[serde(default, skip_serializing_if="Option::is_none")]
+        animation: Option<super::creative_grade::CreativeAnimation>,
+    },
+    ToneCurves { curves: super::tone_curves::ToneCurves },
+    ChromaMatte {
+        parameters: super::chroma_surface::ChromaParameters,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        animation: Option<super::chroma_surface::ChromaAnimation>,
+    },
     ChromaKey {
         color: Rgba,
         similarity: f64,
@@ -679,8 +1021,215 @@ pub enum VideoEffect {
 }
 
 impl VideoEffect {
-    fn validate(&self) -> Result<(), CompositionError> {
+    pub(crate) fn validate(&self) -> Result<(), CompositionError> {
         match self {
+            Self::NativeBypass{effect}=>{if matches!(effect.as_ref(),Self::NativeBypass{..}|Self::ConcatBypass{..}){return Err(CompositionError::InvalidEffect)}effect.validate()},
+            Self::ConcatBypass{link}=>super::concat_effect_upgrade::validate_bypassed(link).map_err(|_|CompositionError::InvalidEffect),
+            Self::Lumetri {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatGaussianBlur {parameters,animation,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_gaussian_blur::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;if !keys.is_empty() && animation.is_some(){return Err(CompositionError::InvalidEffect);}}if let Some(a)=animation{super::concat_gaussian_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatMotionBlur {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_motion_blur::validate_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatBloomPulse {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_bloom_pulse::validate_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatZoomBlur {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_zoom_blur::validate_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatFilmGrain {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_film_grain::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatGlow {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_glow::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatHalftone {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_halftone::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatFisheye {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_fisheye::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatChromaticAberration {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys {super::concat_chromatic_aberration::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatPosterize {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatLumaKey {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatPixelate {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatChromaKey {parameters,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys{super::concat_chroma_key::validate_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatSaturation {parameters,animation,concat_keys}=>{if let Some(keys)=concat_keys{super::concat_chroma::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;if !keys.is_empty()&&animation.is_some(){return Err(CompositionError::InvalidEffect);}}parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::concat_chroma::validate_saturation_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatVibrance {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::concat_chroma::validate_vibrance_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatVhs {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatFallingDust {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatFilm {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatDigicam {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatMono {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatMidnight {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatMarquee {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatRetroCartoon {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatSharpen {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatCool {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatWarm {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatTealOrange {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatNight {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatSpooky {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatNeon {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatPinkFuzz {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatSuper8 {..} | Self::ConcatBleachBypass {..} | Self::ConcatAutumn {..} | Self::ConcatNoir {..} | Self::ConcatDreamy {..} | Self::ConcatHighContrastMono {..} | Self::ConcatLandscapePop {..} | Self::ConcatNatural {..} | Self::ConcatRetro70s {..} | Self::ConcatSilver {..} | Self::ConcatTropical {..} | Self::ConcatVaporwave {..} | Self::ConcatWinterCool {..} | Self::ConcatClassicChrome {..} | Self::ConcatCyberpunk {..} | Self::ConcatDelicious {..} | Self::ConcatRosy {..} | Self::ConcatSciFi {..}=>Ok(()),
+            Self::ConcatMatcha {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatSage {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatIvory {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatMilk {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatBronze {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatCoolBlue {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatFresh {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatVivid {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatSoftLight {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatMoody {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatRain {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatUmber {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatFair {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatPeach {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatPolaroid {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatVintage {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatCloudlessSky {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatLagoon {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatGoldenHour {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatDaydream {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatClean {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatContrastPop {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatVignette {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatAdjust {parameters,animation,concat_keys}=>{if let Some(keys)=concat_keys{super::concat_color_wheels::validate_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;if keys.values().any(|run|!run.is_empty())&&animation.is_some(){return Err(CompositionError::InvalidEffect);}}parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::concat_color_wheels::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatCurves {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::ConcatColorWheels {parameters,animation,concat_keys}=>{if let Some(keys)=concat_keys{super::concat_color_wheels::validate_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;if keys.values().any(|run|!run.is_empty())&&animation.is_some(){return Err(CompositionError::InvalidEffect);}}parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::concat_color_wheels::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatWhiteBalance {parameters,animation,concat_keys}=>{if let Some(keys)=concat_keys{super::concat_white_balance::validate_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;if keys.values().any(|run|!run.is_empty())&&animation.is_some(){return Err(CompositionError::InvalidEffect);}}parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::concat_white_balance::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatExposure {parameters,animation,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys{super::concat_exposure::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;if !keys.is_empty()&&animation.is_some(){return Err(CompositionError::InvalidEffect);}}if let Some(a)=animation{super::concat_exposure::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ConcatContrast {parameters,animation,concat_keys}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(keys)=concat_keys{super::concat_contrast::validate_concat_keys(keys).map_err(|_|CompositionError::InvalidEffect)?;if !keys.is_empty()&&animation.is_some(){return Err(CompositionError::InvalidEffect);}}if let Some(a)=animation{super::concat_contrast::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorSharpen {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::color_sharpen::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::CreativeAdjust {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::creative_adjust::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ProcAmp {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::proc_amp::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorLevels {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_levels::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorExtract {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_extract::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::HorizontalFlip|Self::VerticalFlip=>Ok(()),
+            Self::BlackWhite=>Ok(()),
+            Self::GammaCorrection {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::gamma_correction::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Posterize {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::posterize::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorInvert {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_invert::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorReplace {parameters,animation,color_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_replace::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=color_animation {super::color_replace::validate_color_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::UltraKey {parameters,animation,color_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::ultra_key::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=color_animation {super::ultra_key::validate_color_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorKey {parameters,animation,color_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_key::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=color_animation {super::color_key::validate_color_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorPass {parameters,animation,color_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_pass::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=color_animation {super::color_pass::validate_color_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ChangeToColor {parameters,animation,color_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::change_to_color::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=color_animation {super::change_to_color::validate_color_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LeaveColor {parameters,animation,color_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::leave_color::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=color_animation {super::leave_color::validate_color_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::AlphaAdjust {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::alpha_adjust::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::DirectionalBlur {parameters,animation} | Self::DirectionalBlurLegacy {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::directional_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Mosaic {parameters,animation} | Self::MosaicLegacy {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::mosaic::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Twirl {parameters,animation} | Self::TwirlLegacy {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::twirl::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::WaveWarp {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::wave_warp::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LensDistortion {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::lens_distortion::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Grid {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::grid::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LensFlare {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::lens_flare::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Ellipse {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::ellipse::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::PaintBucket {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::paint_bucket::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Gradient {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::gradient::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorEmboss {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_emboss::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::BlockDissolve {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::block_dissolve::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::GraphicText {parameters,animation,source_text_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::graphic_text_animation::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=source_text_animation{a.validate().map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::GraphicShape {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::graphic_shape_animation::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::TrackMatte {parameters}=>parameters.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::GradientWipe {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::gradient_wipe::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LinearWipe {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::linear_wipe::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Magnify {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::magnify::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Mirror {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::mirror::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Offset {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::offset::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Transform {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::transform_effect::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Spherize {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::spherize::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::CornerPin {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::corner_pin::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Rotate3D {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::rotate_3d::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Shrink {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::grow_shrink::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Grow {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::grow_shrink::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Spin {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::spin::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Move {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::move_effect::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Wiggle {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::wiggle::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::CameraShake {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::camera_shake::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Spacer {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::spacer::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::RoundedCrop {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::rounded_crop::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Clone {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::clone_effect::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::AutoAlign {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::auto_align::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::CompoundBlur {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::compound_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Crop {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::crop::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::BrightnessContrast {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::brightness_contrast::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::AscCdl {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::asc_cdl::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LogoCutout {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::logo_cutout::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::EdgeGlow {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::edge_glow::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::WonderGlow {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::wonder_glow::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Glint {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::glint::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::WarpStabilizer{parameters,animation}=>{if !parameters.is_valid(){return Err(CompositionError::InvalidEffect);}if let Some(a)=animation{super::warp_stabilizer_animation::validate(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrChromaticAberrations{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_chromatic::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrColorGradients{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_color_gradients::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::Lightning{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::lightning_animation::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::WriteOn{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::write_on_animation::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::Timecode{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::clock_label::validate_timecode_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::ClipName{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::clock_label::validate_clip_name_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::MetadataBurnin{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::metadata_burnin::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::SimpleText{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::simple_text::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrPlaneToSphere{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_plane_to_sphere::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrGlow{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_glow::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrFractalNoise{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_fractal_noise::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrDigitalGlitch{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_digital_glitch::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrDenoise{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_denoise::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrBlur{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_filter::validate_animation(a,false).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrSharpen{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_filter::validate_animation(a,true).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::SphericalVideo{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_sphere::validate_animation(a,false).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrProjection{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_sphere::validate_animation(a,false).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::VrRotateSphere{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::vr_sphere::validate_animation(a,true).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::LightLeaks{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::light_leaks::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::AutoReframe{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::auto_reframe::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::Echo{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::echo::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+ Self::PosterizeTime{parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::posterize_time::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::VolumetricRays {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::volumetric_rays::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::EchoGlow {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::echo_glow::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::RgbSplit {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::rgb_split::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LightingEffects {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::lighting_effects::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::VignetteEffect {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::vignette_effect::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::UnsharpMask {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::unsharp_mask::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::BokehBlur {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::bokeh_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::FocusBlur {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::focus_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::EdgeFeather {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::edge_feather::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Sharpen {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::sharpen::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ReduceInterlaceFlicker {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::reduce_interlace_flicker::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ChannelBlur {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::channel_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::TurbulentDisplace {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::turbulent_displace::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::AlphaGlow {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::alpha_glow::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::BrushStrokes {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::brush_strokes::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Stroke {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::stroke::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LongShadow {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::long_shadow::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::RoughenEdges {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::roughen_edges::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::CellPattern {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::cell_pattern::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Checkerboard {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::checkerboard::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Circle {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::circle::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Ramp {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::ramp::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::FourColorGradient {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::four_color_gradient::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::BevelAlpha {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::bevel_alpha::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::DropShadow {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::drop_shadow::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Basic3D {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::basic_3d::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Strobe {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::strobe::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Noise {parameters,animation} | Self::NoiseLegacy {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::noise::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Emboss {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::emboss::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::CameraBlur {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::camera_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Median {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::median::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::Replicate {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::replicate::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::FindEdges {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::find_edges::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::GaussianBlur {parameters,animation} | Self::GaussianBlurLegacy {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::gaussian_blur::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::LumaKey {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::luma_key::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ChannelMix {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::channel_mix::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorBalance {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_balance::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorTint {parameters,animation,color_animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::color_tint::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}if let Some(a)=color_animation {super::color_tint::validate_color_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::CineonConverter {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::cineon_converter::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::VideoLimiter {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation {super::video_limiter::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::BasicGrade {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(a)=animation{super::basic_grade::validate_animation(a).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::ColorVignette {parameters,animation}=>{parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;if let Some(animation)=animation {super::color_vignette::validate_animation(animation).map_err(|_|CompositionError::InvalidEffect)?;}Ok(())},
+            Self::HslSecondary {parameters,animation}=>{
+                parameters.validate().map_err(|_|CompositionError::InvalidEffect)?;
+                if let Some(animation)=animation {super::hsl_secondary::validate_animation(animation).map_err(|_|CompositionError::InvalidEffect)?;}
+                Ok(())
+            },
+            Self::ColorLut {lut} => lut.validate().map_err(|_|CompositionError::InvalidEffect),
+            Self::CreativeGrade { parameters, animation } => {
+                parameters.validate().map_err(|_| CompositionError::InvalidEffect)?;
+                if let Some(animation)=animation {animation.validate().map_err(|_| CompositionError::InvalidEffect)?;}
+                Ok(())
+            },
+            Self::ToneCurves { curves } => curves.validate().map_err(|_| CompositionError::InvalidEffect),
+            Self::ChromaMatte { parameters, animation } => {
+                parameters.validate().map_err(|_| CompositionError::InvalidEffect)?;
+                if let Some(animation) = animation {
+                    animation.validate().map_err(|_| CompositionError::InvalidEffect)?;
+                }
+                Ok(())
+            },
             Self::ChromaKey {
                 color,
                 similarity,
@@ -754,7 +1303,7 @@ impl VideoEffect {
     }
 }
 
-fn animatable_values_in(
+pub(crate) fn animatable_values_in(
     value: &AnimatableValue,
     minimum: f64,
     maximum: f64,
@@ -779,6 +1328,27 @@ fn animatable_values_in(
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoClip {
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub concat_cutout: Option<super::concat_video_binding::Binding>,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub audio_stream:Option<u32>,
+
+    #[serde(default,skip_serializing_if="Vec::is_empty")]
+    pub concat_gain_keys:Vec<super::concat_effect_upgrade::ParamKey>,
+
+    #[serde(default,skip_serializing_if="transition_duration_is_zero")]
+    pub audio_fade_in_ticks:u64,
+    #[serde(default,skip_serializing_if="transition_duration_is_zero")]
+    pub audio_fade_out_ticks:u64,
+    #[serde(default,skip_serializing_if="Vec::is_empty")]
+    pub dsp_effects:Vec<super::filmcraft_dsp::EffectSpec>,
+    #[serde(default,skip_serializing_if="std::ops::Not::not")]
+    pub independent_audio:bool,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub filmcraft_motion:Option<super::filmcraft_motion::ClipMotion>,
+    /// Imported Filmcraft effects use media time; missing preserves native clip-local curves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_timing: Option<super::video_effect_timing::EffectTiming>,
     pub id: CompositionClipId,
     pub source_id: SourceId,
     pub placement: ClipPlacement,
@@ -819,6 +1389,20 @@ pub struct VideoClip {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AudioClip {
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub audio_stream:Option<u32>,
+
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub detached_from:Option<CompositionClipId>,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub concat_detached_order:Option<u32>,
+    #[serde(default,skip_serializing_if="Vec::is_empty")]
+    pub concat_gain_keys:Vec<super::concat_effect_upgrade::ParamKey>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dsp_effects: Vec<super::filmcraft_dsp::EffectSpec>,
+    #[serde(default = "default_role_gain")]
+    pub role_gain: f64,
     pub id: CompositionClipId,
     pub source_id: SourceId,
     pub placement: ClipPlacement,
@@ -836,6 +1420,8 @@ pub struct AudioClip {
     pub tone_db: f64,
     #[serde(default)]
     pub crossfade_in_ticks: u64,
+    #[serde(default)]
+    pub crossfade_curve: super::audio_transition::AudioTransitionCurve,
     #[serde(default)]
     pub ducking: Option<AudioDucking>,
     #[serde(default = "default_true")]
@@ -891,13 +1477,21 @@ pub struct ImageClip {
     pub transform: TransformSpec,
     pub opacity: AnimatableValue,
     pub blend_mode: BlendMode,
+    #[serde(default)]
+    pub effects: Vec<VideoEffect>,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlignment { Left, Center, Right }
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextStyle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<TextAlignment>,
     pub font_family: String,
     pub font_size: f64,
     pub color: Rgba,
@@ -938,22 +1532,138 @@ pub fn is_supported_composition_font_family(value: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextClip {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<VideoEffect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_mode: Option<BlendMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concat_title: Option<super::concat_title::TitleStyle>,
     pub id: CompositionClipId,
     pub timeline_start_tick: u64,
     pub timeline_end_tick: u64,
     pub text: String,
     pub style: TextStyle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_animation: Option<super::animated_color::ColorTrack>,
     pub transform: TransformSpec,
     pub opacity: AnimatableValue,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
 
+/// Source-free rectangle; color interpolation remains owned by native RGBA tracks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SolidColorClip {
+    pub id: CompositionClipId,
+    pub timeline_start_tick: u64,
+    pub timeline_end_tick: u64,
+    pub width: u32,
+    pub height: u32,
+    pub color: super::animated_color::Color,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_animation: Option<super::animated_color::ColorTrack>,
+    pub transform: TransformSpec,
+    pub opacity: AnimatableValue,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl SolidColorClip {
+    pub fn validate(&self) -> Result<(), CompositionError> {
+        if self.timeline_end_tick <= self.timeline_start_tick
+            || self.timeline_end_tick > 9_007_199_254_740_991
+        {
+            return Err(CompositionError::InvalidPlacement);
+        }
+        if self.width == 0 || self.height == 0 || self.width > 3840 || self.height > 2160 {
+            return Err(CompositionError::InvalidCanvas);
+        }
+        self.transform.validate()?;
+        self.opacity.validate()?;
+        if !animatable_values_in(&self.opacity, 0.0, 1.0, true) {
+            return Err(CompositionError::InvalidAnimation);
+        }
+        if let Some(track) = &self.color_animation {
+            super::animated_color::PreparedColorTrack::new(super::animated_color::ColorSampleRequest {
+                track: track.clone(), default: self.color, times_us: Vec::new(),
+            }).map_err(|_| CompositionError::InvalidAnimation)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod solid_color_model_tests {
+    use super::*;
+
+    #[test]
+    fn solid_color_shape_and_animation_roundtrip_and_reject_invalid_admission() {
+        let mut clip = SolidColorClip {
+            id: CompositionClipId::parse("solid").unwrap(),
+            timeline_start_tick: 500_000, timeline_end_tick: 1_500_000,
+            width: 63, height: 31,
+            color: super::super::animated_color::Color { r: 12, g: 34, b: 56, a: 128 },
+            color_animation: None, transform: TransformSpec::default(),
+            opacity: AnimatableValue::constant(0.75), enabled: true,
+        };
+        clip.validate().unwrap();
+        let mut composition = Composition::new(CanvasSpec::default());
+        composition.tracks.push(CompositionTrack::Color {
+            id: TrackId::parse("colors").unwrap(), name: "Colors".into(), hidden: false,
+            locked: false, clips: vec![clip.clone()],
+        });
+        composition.validate().unwrap();
+        assert_eq!(composition.duration_ticks().unwrap(), 1_500_000);
+        assert!(composition.sources.is_empty());
+        assert_eq!(composition.tracks[0].id().as_str(), "colors");
+        let wire = serde_json::to_value(&composition).unwrap();
+        assert_eq!(wire["tracks"][0]["kind"], "color");
+        assert_eq!(serde_json::from_value::<Composition>(wire).unwrap(), composition);
+        let CompositionTrack::Color { clips, .. } = &mut composition.tracks[0] else { unreachable!() };
+        clips.push(clip.clone());
+        assert_eq!(composition.validate(), Err(CompositionError::DuplicateClip(clip.id.clone())));
+        let wire = serde_json::to_value(&clip).unwrap();
+        assert!(wire.get("colorAnimation").is_none());
+        assert_eq!(serde_json::from_value::<SolidColorClip>(wire.clone()).unwrap(), clip);
+        let mut invalid_wire = wire.clone();
+        invalid_wire["color"]["a"] = serde_json::json!(256);
+        assert!(serde_json::from_value::<SolidColorClip>(invalid_wire).is_err());
+        let mut invalid_wire = wire;
+        invalid_wire["sourceId"] = serde_json::json!("source");
+        assert!(serde_json::from_value::<SolidColorClip>(invalid_wire).is_err());
+        clip.color_animation = Some(serde_json::from_value(serde_json::json!({
+            "keys":[{"t_us":-0.5,"value":{"r":255,"g":0,"b":0,"a":128},
+                "in_":[0.6666666666666666,0.6666666666666666],"out":[0.3333333333333333,0.3333333333333333],"segment":{"kind":"Linear"}}],
+            "extrapolate":{"before":"PingPong","after":"Offset"}
+        })).unwrap());
+        clip.validate().unwrap();
+        assert_eq!(serde_json::from_value::<SolidColorClip>(serde_json::to_value(&clip).unwrap()).unwrap(), clip);
+        for (width, height) in [(0, 31), (63, 0), (3841, 31), (63, 2161)] {
+            let mut invalid = clip.clone(); invalid.width = width; invalid.height = height;
+            assert_eq!(invalid.validate(), Err(CompositionError::InvalidCanvas));
+        }
+        let mut invalid = clip.clone(); invalid.timeline_end_tick = invalid.timeline_start_tick;
+        assert_eq!(invalid.validate(), Err(CompositionError::InvalidPlacement));
+        let mut invalid = clip.clone(); invalid.opacity = AnimatableValue::constant(1.1);
+        assert_eq!(invalid.validate(), Err(CompositionError::InvalidAnimation));
+        let mut invalid = clip.clone(); invalid.color_animation.as_mut().unwrap().keys[0].t_us = f64::NAN;
+        assert_eq!(invalid.validate(), Err(CompositionError::InvalidAnimation));
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TransitionKind {
+    ConcatDissolve,
+    ConcatFadeBlack,
+    ConcatFadeWhite,
+    Procedural,
     Dissolve,
     FadeBlack,
+    FilmDissolve,
+    AdditiveDissolve,
+    FadeWhite,
     WipeLeft,
     WipeRight,
     WipeUp,
@@ -981,16 +1691,55 @@ pub enum TransitionKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClipTransition {
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub concat_overlap: Option<super::concat_project_transitions::SourceOverlap>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kernel: Option<super::transition_spec::TransitionSpec>,
+    #[serde(default, skip_serializing_if = "transition_reverse_is_false")]
+    pub reverse: bool,
     pub id: TransitionId,
-    pub from_clip_id: CompositionClipId,
-    pub to_clip_id: CompositionClipId,
+    #[serde(default)]
+    pub from_clip_id: Option<CompositionClipId>,
+    #[serde(default)]
+    pub to_clip_id: Option<CompositionClipId>,
+    #[serde(default, skip_serializing_if = "transition_duration_is_zero")]
     pub duration_ticks: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeline: Option<super::transition_timeline::TransitionTimeline>,
     pub kind: TransitionKind,
+}
+fn transition_reverse_is_false(value: &bool) -> bool { !*value }
+fn transition_duration_is_zero(value: &u64) -> bool { *value == 0 }
+impl ClipTransition {
+    pub fn insert_explicit_gap(&self, at: i64, duration: i64, splits: &[(CompositionClipId, CompositionClipId)])
+        -> Result<Option<Self>, super::transition_gap::TransitionGapError> {
+        let timeline = self.timeline.ok_or(super::transition_gap::TransitionGapError::InvalidDuration)?;
+        let Some(gap) = timeline.gap(self.from_clip_id.clone(), self.to_clip_id.clone())?.insert(at, duration, splits)? else { return Ok(None) };
+        Ok(Some(Self { timeline: Some(super::transition_timeline::TransitionTimeline::from_gap(&gap)),
+            from_clip_id: gap.from, to_clip_id: gap.to, ..self.clone() }))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CompositionTrack {
+    Graphic {
+        id: TrackId,
+        name: String,
+        #[serde(default)] hidden: bool,
+        #[serde(default)] locked: bool,
+        #[serde(default)] clips: Vec<super::graphic_timeline::GraphicTimelineClip>,
+    },
+    Color {
+        id: TrackId,
+        name: String,
+        #[serde(default)]
+        hidden: bool,
+        #[serde(default)]
+        locked: bool,
+        #[serde(default)]
+        clips: Vec<SolidColorClip>,
+    },
     Video {
         id: TrackId,
         name: String,
@@ -1047,6 +1796,7 @@ impl CompositionTrack {
             | Self::Audio { id, .. }
             | Self::Image { id, .. }
             | Self::Text { id, .. } => id,
+            Self::Graphic { id, .. } | Self::Color { id, .. } => id,
         }
     }
 }
@@ -1054,25 +1804,41 @@ impl CompositionTrack {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Composition {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<super::metadata_burnin::CompositionMetadata>,
     pub schema_version: u32,
     pub time_base: u32,
     pub canvas: CanvasSpec,
     pub sources: BTreeMap<SourceId, CompositionSource>,
     pub tracks: Vec<CompositionTrack>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caption_tracks: Vec<super::caption_timeline::CaptionTrack>,
 }
 
 impl Composition {
     pub fn new(canvas: CanvasSpec) -> Self {
         Self {
+            metadata: None,
             schema_version: COMPOSITION_SCHEMA_VERSION,
             time_base: DEFAULT_TIME_BASE,
             canvas,
             sources: BTreeMap::new(),
             tracks: Vec::new(),
+            caption_tracks: Vec::new(),
         }
     }
 
     pub fn validate(&self) -> Result<(), CompositionError> {
+        self.validate_for_surface(false)
+    }
+
+    /// Native transition sampling clamps source handles and supports reverse endpoints.
+    /// Keep the ordinary exporter admission unchanged until its reverse path is qualified.
+    pub fn validate_native_surface(&self) -> Result<(), CompositionError> {
+        self.validate_for_surface(true)
+    }
+
+    fn validate_for_surface(&self, native: bool) -> Result<(), CompositionError> {
         if self.schema_version != COMPOSITION_SCHEMA_VERSION {
             return Err(CompositionError::UnsupportedSchema(self.schema_version));
         }
@@ -1083,9 +1849,10 @@ impl Composition {
             return Err(CompositionError::InvalidTimeBase);
         }
         self.canvas.validate()?;
-        if self.tracks.len() > MAX_TRACKS {
+        if self.tracks.len().saturating_add(self.caption_tracks.len()) > MAX_TRACKS {
             return Err(CompositionError::TooManyTracks);
         }
+        super::concat_lane_groups::groups(self).map_err(|_|CompositionError::InvalidLaneGroups)?;
         if self.sources.len() > MAX_SOURCES {
             return Err(CompositionError::TooManySources);
         }
@@ -1102,6 +1869,16 @@ impl Composition {
         let mut clip_count = 0_usize;
         let mut output_end = 0_u64;
         let mut visible_layers = 0_usize;
+        for track in &self.caption_tracks {
+            track.validate().map_err(|_|CompositionError::InvalidText)?;
+            if !track_ids.insert(&track.id) {return Err(CompositionError::DuplicateTrack(track.id.clone()));}
+            clip_count=clip_count.saturating_add(track.clips.len());
+            if !track.hidden {visible_layers=visible_layers.saturating_add(1);}
+            for cue in &track.clips {
+                if !clip_ids.insert(&cue.id) {return Err(CompositionError::DuplicateClip(cue.id.clone()));}
+                output_end=output_end.max(cue.timeline_end_tick.microseconds_ceil().map_err(|_|CompositionError::InvalidText)?);
+            }
+        }
         for track in &self.tracks {
             if !track_ids.insert(track.id()) {
                 return Err(CompositionError::DuplicateTrack(track.id().clone()));
@@ -1119,6 +1896,18 @@ impl Composition {
                     clip_count = clip_count.saturating_add(clips.len());
                     let mut local_ids = BTreeSet::new();
                     for clip in clips {
+                        if (clip.placement.source_timeline_offset_tick.unwrap_or(0) != 0 || clip.placement.source_head_timeline_tick.unwrap_or(0) != 0) && (!native || clip.effect_timing.is_some()) {
+                            return Err(CompositionError::InvalidPlacement);
+                        }
+                        if let Some(binding)=&clip.concat_cutout {
+                            binding.validate().map_err(|_|CompositionError::InvalidEffect)?;
+                            for track in &binding.region_tracks {
+                                if track.snapshot.source_id!=clip.source_id.as_str(){return Err(CompositionError::InvalidEffect);}
+                                let id=SourceId::parse(track.snapshot.mask_source_id.clone())?;
+                                let region=self.sources.get(&id).ok_or_else(||CompositionError::InvalidSource(id.clone()))?;
+                                if region.kind!=SourceKind::Video||region.has_audio||(region.width,region.height)!=(256,256){return Err(CompositionError::InvalidEffect);}
+                            }
+                        }
                         clip.stabilization.validate()?;
                         if clip.placement.speed_ramp.is_some()
                             && matches!(clip.playback_mode, PlaybackMode::Freeze { .. })
@@ -1153,9 +1942,17 @@ impl Composition {
                             &clip.source_id,
                             &clip.placement,
                             true,
+                            clip.playback_mode == PlaybackMode::Reverse,
                         )?;
+                        if let Some(motion)=&clip.filmcraft_motion {
+                            motion.parameters.validate().map_err(|_|CompositionError::InvalidTransform)?;
+                            if clip.effect_timing.is_none() || clip.transform!=TransformSpec::default() {return Err(CompositionError::InvalidTransform);}
+                        }
                         clip.transform.validate()?;
                         clip.opacity.validate()?;
+                        super::filmcraft_dsp::validate_specs(&clip.dsp_effects).map_err(|_|CompositionError::InvalidEffect)?;
+                        if clip.audio_fade_in_ticks>MAX_OUTPUT_TICKS || clip.audio_fade_out_ticks>MAX_OUTPUT_TICKS {return Err(CompositionError::InvalidAudioFade);}
+                        validate_concat_gain_keys(&clip.concat_gain_keys,&clip.audio_gain)?;
                         clip.audio_gain.validate()?;
                         clip.audio_pan.validate()?;
                         if clip
@@ -1175,19 +1972,30 @@ impl Composition {
                         }
                         output_end = output_end.max(clip.placement.timeline_end_tick()?);
                     }
-                    validate_transitions(transitions, clips, &self.sources)?;
+                    validate_transitions_for_surface(transitions, clips, &self.sources, native)?;
+                    if transitions.iter().any(|transition|transition.concat_overlap.is_some()){super::concat_project_transitions::validate_audio_overlaps(clips,transitions,&self.sources,&self.canvas).map_err(|_|CompositionError::InvalidTransition(transitions[0].id.clone()))?;}
                 }
                 CompositionTrack::Audio { clips, .. } => {
                     clip_count = clip_count.saturating_add(clips.len());
                     for clip in clips {
+                        if !native && (clip.placement.source_timeline_offset_tick.unwrap_or(0) != 0 || clip.placement.source_head_timeline_tick.unwrap_or(0) != 0) { return Err(CompositionError::InvalidPlacement); }
                         validate_media_clip(
                             &self.sources,
                             &clip.id,
                             &clip.source_id,
                             &clip.placement,
                             false,
+                            clip.reversed,
                         )?;
                         clip.gain.validate()?;
+                        if !clip.role_gain.is_finite()
+                            || !(0.0..=f64::MAX / 16.0).contains(&clip.role_gain)
+                        {
+                            return Err(CompositionError::InvalidAudioRoleGain);
+                        }
+                        super::filmcraft_dsp::validate_specs(&clip.dsp_effects)
+                            .map_err(|_| CompositionError::InvalidEffect)?;
+                        validate_concat_gain_keys(&clip.concat_gain_keys,&clip.gain)?;
                         clip.pan.validate()?;
                         if !clip.pitch_semitones.is_finite()
                             || !(-12.0..=12.0).contains(&clip.pitch_semitones)
@@ -1197,8 +2005,7 @@ impl Composition {
                         if !clip.tone_db.is_finite() || !(-12.0..=12.0).contains(&clip.tone_db) {
                             return Err(CompositionError::InvalidAudioTone);
                         }
-                        let duration = clip.placement.timeline_duration_ticks()?;
-                        if clip.fade_in_ticks > duration || clip.fade_out_ticks > duration {
+                        if clip.fade_in_ticks > MAX_OUTPUT_TICKS || clip.fade_out_ticks > MAX_OUTPUT_TICKS {
                             return Err(CompositionError::InvalidAudioFade);
                         }
                         if let Some(ducking) = clip.ducking {
@@ -1225,6 +2032,8 @@ impl Composition {
                         }
                         clip.transform.validate()?;
                         clip.opacity.validate()?;
+                        if clip.effects.iter().filter(|effect|matches!(effect,VideoEffect::Style{..})).count()>MAX_STYLE_EFFECTS_PER_CLIP {return Err(CompositionError::InvalidEffect);}
+                        for effect in &clip.effects {effect.validate()?;}
                         if !clip_ids.insert(&clip.id) {
                             return Err(CompositionError::DuplicateClip(clip.id.clone()));
                         }
@@ -1233,6 +2042,26 @@ impl Composition {
                             .checked_add(clip.duration_ticks)
                             .ok_or(CompositionError::InvalidPlacement)?;
                         output_end = output_end.max(end);
+                    }
+                }
+                CompositionTrack::Graphic { clips, hidden, .. } => {
+                    if !hidden { visible_layers = visible_layers.saturating_add(1); }
+                    clip_count = clip_count.saturating_add(clips.len());
+                    for clip in clips {
+                        clip.validate().map_err(|_|CompositionError::InvalidEffect)?;
+                        if !clip_ids.insert(&clip.id) {return Err(CompositionError::DuplicateClip(clip.id.clone()));}
+                        output_end=output_end.max(clip.timeline_end_tick);
+                    }
+                }
+                CompositionTrack::Color { clips, hidden, .. } => {
+                    if !hidden { visible_layers = visible_layers.saturating_add(1); }
+                    clip_count = clip_count.saturating_add(clips.len());
+                    for clip in clips {
+                        clip.validate()?;
+                        if !clip_ids.insert(&clip.id) {
+                            return Err(CompositionError::DuplicateClip(clip.id.clone()));
+                        }
+                        output_end = output_end.max(clip.timeline_end_tick);
                     }
                 }
                 CompositionTrack::Text { clips, hidden, .. } => {
@@ -1249,6 +2078,18 @@ impl Composition {
                             return Err(CompositionError::InvalidText);
                         }
                         clip.style.validate()?;
+                        if (!clip.effects.is_empty()&&clip.concat_title.is_none()) || clip.effects.iter().filter(|effect|matches!(effect,VideoEffect::Style{..})).count()>MAX_STYLE_EFFECTS_PER_CLIP {return Err(CompositionError::InvalidEffect);}
+                        for effect in &clip.effects {effect.validate()?;}
+                        if let Some(title)=&clip.concat_title {title.validate().map_err(|_|CompositionError::InvalidText)?;if clip.blend_mode.is_some_and(|mode|!matches!(mode,BlendMode::Normal|BlendMode::Multiply|BlendMode::Screen|BlendMode::Addition|BlendMode::Lighten|BlendMode::Darken)){return Err(CompositionError::InvalidText);}}
+                        if let Some(track) = &clip.color_animation {
+                            super::animated_color::PreparedColorTrack::new(
+                                super::animated_color::ColorSampleRequest {
+                                    track: track.clone(),
+                                    default: super::animated_color::Color { r: 0, g: 0, b: 0, a: 255 },
+                                    times_us: Vec::new(),
+                                },
+                            ).map_err(|_| CompositionError::InvalidAnimation)?;
+                        }
                         clip.transform.validate()?;
                         clip.opacity.validate()?;
                         if !clip_ids.insert(&clip.id) {
@@ -1256,6 +2097,47 @@ impl Composition {
                         }
                         output_end = output_end.max(clip.timeline_end_tick);
                     }
+                }
+            }
+        }
+        if let Some(metadata)=&self.metadata {
+            super::metadata_burnin::validate_markers(&metadata.markers).map_err(|_|CompositionError::InvalidEffect)?;
+            for (clip_id,pair) in &metadata.media_versions {
+                if let Some(video)=&pair.video_cutout {
+                    video.validate().map_err(|_|CompositionError::InvalidEffect)?;
+                    for region in &video.tracked_regions {
+                        let region_id=SourceId::parse(region.mask_source_id.clone())?;
+                        let source_id=SourceId::parse(region.source_id.clone())?;
+                        let region_source=self.sources.get(&region_id).ok_or_else(||CompositionError::InvalidSource(region_id.clone()))?;
+                        let input=self.sources.get(&source_id).ok_or_else(||CompositionError::InvalidSource(source_id.clone()))?;
+                        if region_source.kind!=SourceKind::Video || region_source.has_audio || (region_source.width,region_source.height)!=(256,256) || input.kind!=SourceKind::Video || ![(video.width,video.height),(video.height,video.width)].contains(&(input.width,input.height)) || region_id==pair.copy_source_id || source_id==pair.copy_source_id {return Err(CompositionError::InvalidEffect);}
+                    }
+
+                    if pair.cutout.is_some(){return Err(CompositionError::InvalidEffect);}
+                    let source=SourceId::parse(video.source_id.clone())?;let mask=SourceId::parse(video.mask_source_id.clone())?;
+                    let input=self.sources.get(&source).ok_or_else(||CompositionError::InvalidSource(source.clone()))?;
+                    let masks=self.sources.get(&mask).ok_or_else(||CompositionError::InvalidSource(mask.clone()))?;
+                    let copy=self.sources.get(&pair.copy_source_id).ok_or_else(||CompositionError::InvalidSource(pair.copy_source_id.clone()))?;
+                    let original=self.sources.get(&pair.original_source_id).ok_or_else(||CompositionError::InvalidSource(pair.original_source_id.clone()))?;
+                    let current=self.tracks.iter().find_map(|track|match track {CompositionTrack::Video{clips,..}=>clips.iter().find(|c|&c.id==clip_id).map(|c|&c.source_id),CompositionTrack::Audio{clips,..}=>clips.iter().find(|c|&c.id==clip_id).map(|c|&c.source_id),_=>None}).ok_or(CompositionError::InvalidEffect)?;
+                    if input.kind!=SourceKind::Video||original.kind!=SourceKind::Video||copy.kind!=SourceKind::Video||(copy.width,copy.height)!=(video.width,video.height)||mask==pair.original_source_id||masks.kind!=SourceKind::Video||masks.has_audio||![(video.width,video.height),(video.height,video.width)].contains(&(input.width,input.height))||masks.width!=video.mask_width||masks.height!=video.mask_height||source==pair.copy_source_id||mask==pair.copy_source_id||!self.sources.contains_key(&pair.original_source_id)||!self.sources.contains_key(&pair.copy_source_id)||(*current!=pair.original_source_id&&*current!=pair.copy_source_id){return Err(CompositionError::InvalidEffect);}
+                }
+                if let Some(cutout)=&pair.cutout {
+                    cutout.validate().map_err(|_|CompositionError::InvalidEffect)?;
+                    let source=SourceId::parse(cutout.source_id.clone())?;let mask=SourceId::parse(cutout.mask_source_id.clone())?;
+                    let input=self.sources.get(&source).ok_or_else(||CompositionError::InvalidSource(source.clone()))?;
+                    let mask_source=self.sources.get(&mask).ok_or_else(||CompositionError::InvalidSource(mask.clone()))?;
+                    for region in cutout.correction.strokes.iter().filter_map(|s|s.region.as_ref()) {let id=SourceId::parse(region.mask_source_id.clone())?;let entry=self.sources.get(&id).ok_or_else(||CompositionError::InvalidSource(id.clone()))?;if entry.kind!=SourceKind::Image||entry.width!=256||entry.height!=256||id==pair.copy_source_id{return Err(CompositionError::InvalidEffect);}}
+                    let image=self.tracks.iter().find_map(|track|if let CompositionTrack::Image{clips,..}=track{clips.iter().find(|c|&c.id==clip_id)}else{None}).ok_or(CompositionError::InvalidEffect)?;
+                    if source==pair.copy_source_id||mask==pair.copy_source_id||input.kind!=SourceKind::Image||mask_source.kind!=SourceKind::Image||(mask_source.width,mask_source.height)!=super::cutout::mask_dimensions(&cutout.model_hash,input.width,input.height).map_err(|_|CompositionError::InvalidEffect)?||!self.sources.contains_key(&pair.original_source_id)||!self.sources.contains_key(&pair.copy_source_id)||(image.source_id!=pair.original_source_id&&image.source_id!=pair.copy_source_id){return Err(CompositionError::InvalidEffect);}
+                }
+            }
+            let mut linked=BTreeSet::new();
+            if metadata.clip_links.len()>MAX_CLIPS {return Err(CompositionError::InvalidClipLinks);}
+            for (id,members) in &metadata.clip_links {
+                if CompositionClipId::parse(id.clone()).is_err() || members.len()<2 || members.len()>MAX_CLIPS {return Err(CompositionError::InvalidClipLinks);}
+                for member in members {
+                    if !clip_ids.iter().any(|id|*id==member) || self.caption_tracks.iter().flat_map(|track|&track.clips).any(|cue|&cue.id==member) || !linked.insert(member) {return Err(CompositionError::InvalidClipLinks);}
                 }
             }
         }
@@ -1618,7 +2500,16 @@ impl Composition {
 
     pub fn duration_ticks(&self) -> Result<u64, CompositionError> {
         self.validate()?;
-        let mut end = 0;
+        self.validated_duration_ticks()
+    }
+
+    pub fn native_duration_ticks(&self) -> Result<u64, CompositionError> {
+        self.validate_native_surface()?;
+        self.validated_duration_ticks()
+    }
+
+    fn validated_duration_ticks(&self) -> Result<u64, CompositionError> {
+        let mut end = self.caption_tracks.iter().flat_map(|track|track.clips.iter().map(|cue|cue.timeline_end_tick.microseconds_ceil().expect("validated caption time"))).max().unwrap_or(0);
         for track in &self.tracks {
             match track {
                 CompositionTrack::Video { clips, .. } => {
@@ -1645,6 +2536,14 @@ impl Composition {
                         end = end.max(clip.timeline_end_tick);
                     }
                 }
+                CompositionTrack::Graphic { clips, .. } => {
+                    for clip in clips {end=end.max(clip.timeline_end_tick);}
+                }
+                CompositionTrack::Color { clips, .. } => {
+                    for clip in clips {
+                        end = end.max(clip.timeline_end_tick);
+                    }
+                }
             }
         }
         Ok(end)
@@ -1657,11 +2556,18 @@ fn validate_media_clip(
     source_id: &SourceId,
     placement: &ClipPlacement,
     needs_video: bool,
+    reverse: bool,
 ) -> Result<(), CompositionError> {
+    // Do not admit source curves to production until audio and edit clocks are wired.
+    if placement.concat_retime.is_some(){return Err(CompositionError::InvalidSpeedRamp);}
+
     let source = sources
         .get(source_id)
         .ok_or_else(|| CompositionError::MissingSource(source_id.clone()))?;
-    if placement.source_out_tick > source.duration_ticks
+    let head = placement.source_head_ticks()?;
+    if (reverse && placement.source_out_tick.checked_add(head).is_none_or(|end| end > source.duration_ticks))
+        || (!reverse && head > placement.source_in_tick)
+        || placement.source_out_tick > source.duration_ticks
         || (needs_video && source.kind != SourceKind::Video)
         || (!needs_video && !source.has_audio)
     {
@@ -1671,10 +2577,20 @@ fn validate_media_clip(
     Ok(())
 }
 
+#[cfg(test)]
 fn validate_transitions(
     transitions: &[ClipTransition],
     clips: &[VideoClip],
     sources: &BTreeMap<SourceId, CompositionSource>,
+) -> Result<(), CompositionError> {
+    validate_transitions_for_surface(transitions, clips, sources, false)
+}
+
+fn validate_transitions_for_surface(
+    transitions: &[ClipTransition],
+    clips: &[VideoClip],
+    sources: &BTreeMap<SourceId, CompositionSource>,
+    native: bool,
 ) -> Result<(), CompositionError> {
     let mut ids = BTreeSet::new();
     let mut from_ids = BTreeSet::new();
@@ -1689,21 +2605,42 @@ fn validate_transitions(
     let mut head_occupancy = BTreeMap::<&CompositionClipId, u64>::new();
     let mut tail_occupancy = BTreeMap::<&CompositionClipId, u64>::new();
     for transition in transitions {
+        if (transition.kind == TransitionKind::Procedural) != transition.kernel.is_some()
+            || (transition.kernel.is_some() && transition.timeline.is_none())
+            || transition.kernel.as_ref().is_some_and(|kernel|kernel.validate().is_err()) {
+            return Err(CompositionError::InvalidTransition(transition.id.clone()));
+        }
         if !ids.insert(&transition.id) {
             return Err(CompositionError::DuplicateTransition(transition.id.clone()));
         }
-        let Some(&from_index) = indexes.get(&transition.from_clip_id) else {
+        if let Some(timeline) = transition.timeline {
+            if transition.duration_ticks != 0 || (transition.from_clip_id.is_none() && transition.to_clip_id.is_none())
+                || transition.from_clip_id.as_ref().is_some_and(|id| !indexes.contains_key(id))
+                || transition.to_clip_id.as_ref().is_some_and(|id| !indexes.contains_key(id))
+                || (transition.from_clip_id.is_some() && transition.from_clip_id == transition.to_clip_id)
+                || timeline.source_span().is_err() {
+                return Err(CompositionError::InvalidTransition(transition.id.clone()));
+            }
+            continue;
+        }
+        if matches!(transition.kind,TransitionKind::ConcatDissolve|TransitionKind::ConcatFadeBlack|TransitionKind::ConcatFadeWhite|TransitionKind::FilmDissolve|TransitionKind::AdditiveDissolve|TransitionKind::FadeWhite) {
+            return Err(CompositionError::InvalidTransition(transition.id.clone()));
+        }
+        let (Some(from_id), Some(to_id)) = (transition.from_clip_id.as_ref(), transition.to_clip_id.as_ref()) else {
             return Err(CompositionError::InvalidTransition(transition.id.clone()));
         };
-        let Some(&to_index) = indexes.get(&transition.to_clip_id) else {
+        let Some(&from_index) = indexes.get(from_id) else {
+            return Err(CompositionError::InvalidTransition(transition.id.clone()));
+        };
+        let Some(&to_index) = indexes.get(to_id) else {
             return Err(CompositionError::InvalidTransition(transition.id.clone()));
         };
         if transition.duration_ticks == 0
             || from_index.checked_add(1) != Some(to_index)
             || ordered[from_index].placement.timeline_end_tick().ok()
                 != Some(ordered[to_index].placement.timeline_start_tick)
-            || !from_ids.insert(&transition.from_clip_id)
-            || !to_ids.insert(&transition.to_clip_id)
+            || !from_ids.insert(from_id)
+            || !to_ids.insert(to_id)
         {
             return Err(CompositionError::InvalidTransition(transition.id.clone()));
         }
@@ -1716,7 +2653,7 @@ fn validate_transitions(
                 transition.id.clone(),
             ));
         }
-        if from.playback_mode != PlaybackMode::Forward || to.playback_mode != PlaybackMode::Forward
+        if !native && (from.playback_mode != PlaybackMode::Forward || to.playback_mode != PlaybackMode::Forward)
         {
             return Err(CompositionError::InvalidPlaybackMode(
                 if from.playback_mode != PlaybackMode::Forward {
@@ -1729,12 +2666,12 @@ fn validate_transitions(
         let from_source = &sources[&from.source_id];
         let from_handle = after_edit as f64 * from.placement.speed;
         let to_handle = before_edit as f64 * to.placement.speed;
-        if from_source
+        if (!native || (from.playback_mode == PlaybackMode::Forward && to.playback_mode == PlaybackMode::Forward)) && (from_source
             .duration_ticks
             .saturating_sub(from.placement.source_out_tick) as f64
             + f64::EPSILON
             < from_handle
-            || to.placement.source_in_tick as f64 + f64::EPSILON < to_handle
+            || to.placement.source_in_tick as f64 + f64::EPSILON < to_handle)
         {
             return Err(CompositionError::InvalidTransition(transition.id.clone()));
         }
@@ -1748,7 +2685,7 @@ fn validate_transitions(
             let transition = transitions
                 .iter()
                 .find(|transition| {
-                    transition.from_clip_id == clip.id || transition.to_clip_id == clip.id
+                    transition.from_clip_id.as_ref() == Some(&clip.id) || transition.to_clip_id.as_ref() == Some(&clip.id)
                 })
                 .expect("occupied duration comes from a transition");
             return Err(CompositionError::InvalidTransition(transition.id.clone()));
@@ -1819,6 +2756,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_role_gain() -> f64 {
+    1.0
+}
+
 fn default_audio_gain() -> AnimatableValue {
     AnimatableValue::constant(1.0)
 }
@@ -1860,12 +2801,15 @@ pub enum CompositionError {
     SourceKeyMismatch(SourceId),
     MissingSource(SourceId),
     InvalidPlacement,
+    InvalidClipLinks,
+    InvalidLaneGroups,
     InvalidSpeedRamp,
     InvalidAnimation,
     InvalidTransform,
     InvalidEffect,
     InvalidText,
     InvalidAudioFade,
+    InvalidAudioRoleGain,
     InvalidAudioCrossfade(CompositionClipId),
     InvalidAudioDucking,
     InvalidAudioPitch,
@@ -1896,11 +2840,69 @@ impl std::error::Error for CompositionError {}
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn exact_frame_rate_metadata_roundtrips_and_validates_legacy_milli() {
+        let canvas = CanvasSpec {
+            fps_milli: 29_970,
+            fps_rate: Some(FrameRateRatio {
+                numerator: 30_000,
+                denominator: 1001,
+            }),
+            ..CanvasSpec::default()
+        };
+        assert!(canvas.validate().is_ok());
+        assert_eq!(
+            canvas.frame_rate(),
+            FrameRateRatio {
+                numerator: 30_000,
+                denominator: 1001
+            }
+        );
+        assert_eq!(
+            CanvasSpec::default().frame_rate(),
+            FrameRateRatio {
+                numerator: 30_000,
+                denominator: 1000
+            }
+        );
+        let restored: CanvasSpec =
+            serde_json::from_str(&serde_json::to_string(&canvas).unwrap()).unwrap();
+        assert_eq!(restored, canvas);
+        assert!(
+            CanvasSpec {
+                fps_milli: 30_000,
+                ..canvas
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            CanvasSpec {
+                fps_rate: Some(FrameRateRatio {
+                    numerator: 30_000,
+                    denominator: 0
+                }),
+                ..canvas
+            }
+            .validate()
+            .is_err()
+        );
+        let encoded = serde_json::to_value(CanvasSpec::default()).unwrap();
+        assert!(encoded.get("fpsRate").is_none());
+        assert!(
+            serde_json::from_value::<CanvasSpec>(encoded)
+                .unwrap()
+                .fps_rate
+                .is_none()
+        );
+    }
+
     use super::*;
     use crate::domain::keyframes::{Interpolation, Keyframe};
 
     fn source(id: &str) -> CompositionSource {
         CompositionSource {
+            audio_channels: None,
             id: SourceId::parse(id).unwrap(),
             kind: SourceKind::Video,
             duration_ticks: 10_000_000,
@@ -1908,6 +2910,30 @@ mod tests {
             height: 1_080,
             has_audio: true,
         }
+    }
+
+    #[test]
+    fn audio_channel_metadata_is_additive_and_validated() {
+        let mut source = source("channel-source");
+        let legacy = serde_json::to_value(&source).unwrap();
+        assert!(legacy.get("audioChannels").is_none());
+        let decoded: CompositionSource = serde_json::from_value(legacy).unwrap();
+        assert_eq!(decoded.audio_channels, None);
+        for channels in [1, 2, 6, 64] {
+            source.audio_channels = Some(channels);
+            source.validate().unwrap();
+            assert_eq!(
+                serde_json::to_value(&source).unwrap()["audioChannels"],
+                channels
+            );
+        }
+        for channels in [0, 65] {
+            source.audio_channels = Some(channels);
+            assert!(source.validate().is_err());
+        }
+        source.audio_channels = Some(1);
+        source.has_audio = false;
+        assert!(source.validate().is_err());
     }
 
     #[test]
@@ -1924,6 +2950,8 @@ mod tests {
 
     fn placement(start: u64) -> ClipPlacement {
         ClipPlacement {
+            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            timeline_duration_tick: None,
             timeline_start_tick: start,
             source_in_tick: 0,
             source_out_tick: 2_000_000,
@@ -1932,8 +2960,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn authored_media_extent_is_independent_and_legacy_placement_stays_derived() {
+        let legacy = placement(33_367);
+        assert_eq!(legacy.timeline_duration_ticks().unwrap(), 2_000_000);
+        let wire = serde_json::to_value(&legacy).unwrap();
+        assert!(wire.get("timelineDurationTick").is_none());
+        let mut authored = legacy.clone();
+        authored.timeline_duration_tick = Some(1_999_999);
+        assert_eq!(authored.timeline_duration_ticks().unwrap(), 1_999_999);
+        assert_eq!(authored.timeline_end_tick().unwrap(), 2_033_366);
+        assert_eq!(authored.source_in_tick, legacy.source_in_tick);
+        assert_eq!(authored.source_out_tick, legacy.source_out_tick);
+        let roundtrip: ClipPlacement =
+            serde_json::from_value(serde_json::to_value(&authored).unwrap()).unwrap();
+        assert_eq!(roundtrip, authored);
+        authored.timeline_duration_tick = Some(0);
+        assert_eq!(
+            authored.timeline_duration_ticks(),
+            Err(CompositionError::InvalidPlacement)
+        );
+        authored.timeline_duration_tick = Some(u64::MAX);
+        assert_eq!(
+            authored.timeline_end_tick(),
+            Err(CompositionError::InvalidPlacement)
+        );
+        authored.timeline_duration_tick = Some(100);
+        authored.speed = f64::NAN;
+        assert_eq!(
+            authored.timeline_duration_ticks(),
+            Err(CompositionError::InvalidPlacement)
+        );
+    }
+
     fn video_clip(id: &str, source_id: &str, start: u64) -> VideoClip {
-        VideoClip {
+        VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
             id: CompositionClipId::parse(id).unwrap(),
             source_id: SourceId::parse(source_id).unwrap(),
             placement: placement(start),
@@ -1949,6 +3012,32 @@ mod tests {
             audio_pan: AnimatableValue::constant(0.0),
             enabled: true,
         }
+    }
+
+    #[test]
+    fn explicit_transition_validation_admits_single_sides_and_checks_authority() {
+        use crate::domain::{caption_time::CaptionDelta, transition_timeline::TransitionTimeline};
+        let clips = vec![video_clip("a", "source", 0), video_clip("b", "source", 9_000_000)];
+        let sources = BTreeMap::from([(SourceId::parse("source").unwrap(), source("source"))]);
+        let base = ClipTransition { concat_overlap: None,
+            kernel: None, reverse: false,
+id: TransitionId::parse("explicit").unwrap(),
+            from_clip_id: None, to_clip_id: Some(clips[1].id.clone()), duration_ticks: 0,
+            timeline: Some(TransitionTimeline { start_tick: CaptionDelta::SourceTicks(-1), duration_tick: CaptionDelta::SourceTicks(2) }),
+            kind: TransitionKind::Dissolve,
+        };
+        let check = |tr: ClipTransition| validate_transitions(&[tr], &clips, &sources);
+        check(base.clone()).unwrap();
+        let mut paired = base.clone(); paired.from_clip_id = Some(clips[0].id.clone());
+        check(paired).unwrap(); // Independent windows need no adjacent cut.
+        let mut outgoing = base.clone(); outgoing.from_clip_id = outgoing.to_clip_id.take();
+        check(outgoing).unwrap();
+        let mut invalid = base.clone(); invalid.duration_ticks = 1; assert!(check(invalid).is_err());
+        let mut invalid = base.clone(); invalid.to_clip_id = None; assert!(check(invalid).is_err());
+        let mut invalid = base.clone(); invalid.from_clip_id = invalid.to_clip_id.clone(); assert!(check(invalid).is_err());
+        let mut invalid = base.clone(); invalid.to_clip_id = Some(CompositionClipId::parse("missing").unwrap()); assert!(check(invalid).is_err());
+        let mut invalid = base.clone(); invalid.timeline.as_mut().unwrap().duration_tick = CaptionDelta::SourceTicks(0); assert!(check(invalid).is_err());
+        let mut invalid = base; invalid.timeline.as_mut().unwrap().start_tick = CaptionDelta::SourceTicks(i64::MAX); assert!(check(invalid).is_err());
     }
 
     #[test]
@@ -1971,10 +3060,12 @@ mod tests {
             muted: false,
             locked: false,
             clips: vec![clip_a, clip_b],
-            transitions: vec![ClipTransition {
+            transitions: vec![ClipTransition { concat_overlap: None,
+                kernel: None, reverse: false,
+timeline: None,
                 id: TransitionId::parse("transition-a-b").unwrap(),
-                from_clip_id: CompositionClipId::parse("clip-a").unwrap(),
-                to_clip_id: CompositionClipId::parse("clip-b").unwrap(),
+                from_clip_id: Some(CompositionClipId::parse("clip-a").unwrap()),
+                to_clip_id: Some(CompositionClipId::parse("clip-b").unwrap()),
                 duration_ticks: 250_000,
                 kind: TransitionKind::Dissolve,
             }],
@@ -2173,15 +3264,18 @@ mod tests {
             hidden: false,
             muted: false,
             locked: false,
-            transitions: vec![ClipTransition {
+            transitions: vec![ClipTransition { concat_overlap: None,
+                kernel: None, reverse: false,
+timeline: None,
                 id: TransitionId::parse("reverse-transition").unwrap(),
-                from_clip_id: from.id.clone(),
-                to_clip_id: to.id.clone(),
+                from_clip_id: Some(from.id.clone()),
+                to_clip_id: Some(to.id.clone()),
                 duration_ticks: 200_000,
                 kind: TransitionKind::Dissolve,
             }],
             clips: vec![from, to],
         }];
+        composition.validate_native_surface().unwrap();
         assert!(matches!(
             composition.validate(),
             Err(CompositionError::InvalidPlaybackMode(_))
@@ -2333,6 +3427,8 @@ mod tests {
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("clip-audio").unwrap(),
                 source_id: SourceId::parse("source-a").unwrap(),
                 placement: ClipPlacement {
@@ -2348,6 +3444,7 @@ mod tests {
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: crate::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -2521,11 +3618,13 @@ mod tests {
     fn animatable_values_bound_saved_projects_to_thirty_two_points() {
         let allowed = AnimatableValue::Keyframes {
             track: KeyframeTrack::new(
-                DEFAULT_TIME_BASE,
+                u64::from(DEFAULT_TIME_BASE),
                 Interpolation::Linear,
                 (0..MAX_KEYFRAMES_PER_VALUE)
                     .map(|index| Keyframe {
-                        tick: index as u64,
+                        tangents: None,
+                        interpolation: None,
+                        tick: index as i64,
                         value: index as f64,
                     })
                     .collect(),
@@ -2535,11 +3634,13 @@ mod tests {
         allowed.validate().unwrap();
         let too_many = AnimatableValue::Keyframes {
             track: KeyframeTrack::new(
-                DEFAULT_TIME_BASE,
+                u64::from(DEFAULT_TIME_BASE),
                 Interpolation::EaseInOut,
                 (0..=MAX_KEYFRAMES_PER_VALUE)
                     .map(|index| Keyframe {
-                        tick: index as u64,
+                        tangents: None,
+                        interpolation: None,
+                        tick: index as i64,
                         value: index as f64,
                     })
                     .collect(),
@@ -2558,11 +3659,16 @@ mod tests {
             hidden: false,
             locked: false,
             clips: vec![TextClip {
+                effects: vec![],
+                blend_mode: None,
+                concat_title: None,
+                color_animation: None,
                 id: CompositionClipId::parse("title-clip").unwrap(),
                 timeline_start_tick: 0,
                 timeline_end_tick: 1_000_000,
                 text: "safe textfile content".into(),
                 style: TextStyle {
+                    align: None,
                     font_family: "../../arbitrary.ttf".into(),
                     font_size: 48.0,
                     color: Rgba::BLACK,
@@ -2580,6 +3686,34 @@ mod tests {
         });
         assert_eq!(composition.validate(), Err(CompositionError::InvalidText));
 
+        let CompositionTrack::Text { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        clips[0].style.font_family = "Noto Sans".into();
+        let static_wire = serde_json::to_value(&clips[0]).unwrap();
+        assert!(static_wire.get("colorAnimation").is_none());
+        clips[0].color_animation = Some(serde_json::from_value(serde_json::json!({
+            "keys":[
+                {"t_us":-0.5,"value":{"r":255,"g":0,"b":0,"a":128},"in_":[0.6666666666666666,0.6666666666666666],"out":[0.3333333333333333,0.3333333333333333],"segment":{"kind":"Linear"}},
+                {"t_us":1000000.5,"value":{"r":0,"g":0,"b":255,"a":255},"in_":[0.6666666666666666,0.6666666666666666],"out":[0.3333333333333333,0.3333333333333333],"segment":{"kind":"Linear"}}
+            ],"extrapolate":{"before":"PingPong","after":"Offset"}
+        })).unwrap());
+        let wire = serde_json::to_value(&clips[0]).unwrap();
+        assert_eq!(serde_json::from_value::<TextClip>(wire.clone()).unwrap(), clips[0]);
+        let mut invalid_wire = wire;
+        invalid_wire["colorAnimation"]["keys"][0]["value"]["r"] = serde_json::json!(256);
+        assert!(serde_json::from_value::<TextClip>(invalid_wire).is_err());
+        assert!(composition.validate().is_ok());
+        let CompositionTrack::Text { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        clips[0].color_animation.as_mut().unwrap().keys[1].t_us = -1.0;
+        assert_eq!(composition.validate(), Err(CompositionError::InvalidAnimation));
+        let CompositionTrack::Text { clips, .. } = &mut composition.tracks[0] else {
+            unreachable!();
+        };
+        clips[0].color_animation = None;
+
         let source_a = source("source-a");
         let source_b = source("source-b");
         composition.sources.insert(source_a.id.clone(), source_a);
@@ -2594,10 +3728,12 @@ mod tests {
             muted: false,
             locked: false,
             clips: vec![clip_a.clone(), clip_b.clone()],
-            transitions: vec![ClipTransition {
+            transitions: vec![ClipTransition { concat_overlap: None,
+                kernel: None, reverse: false,
+timeline: None,
                 id: transition_id.clone(),
-                from_clip_id: clip_a.id,
-                to_clip_id: clip_b.id,
+                from_clip_id: Some(clip_a.id),
+                to_clip_id: Some(clip_b.id),
                 duration_ticks: 250_000,
                 kind: TransitionKind::Dissolve,
             }],
@@ -2806,10 +3942,12 @@ mod tests {
             muted: false,
             locked: false,
             clips: vec![first.clone(), second.clone()],
-            transitions: vec![ClipTransition {
+            transitions: vec![ClipTransition { concat_overlap: None,
+                kernel: None, reverse: false,
+timeline: None,
                 id: transition_id.clone(),
-                from_clip_id: first.id,
-                to_clip_id: second.id,
+                from_clip_id: Some(first.id),
+                to_clip_id: Some(second.id),
                 duration_ticks: 100_000,
                 kind: TransitionKind::Dissolve,
             }],
@@ -2819,4 +3957,49 @@ mod tests {
             Err(CompositionError::InvalidSpeedRampTransition(transition_id))
         );
     }
+}
+
+#[cfg(test)]
+mod motion_position_model_tests {
+    use super::*;
+    use crate::domain::motion_path::PositionAnimation;
+    #[test]
+    fn transform_position_is_optional_legacy_compatible_and_admitted() {
+        let original=TransformSpec::default();
+        let wire=serde_json::to_value(&original).unwrap();
+        assert!(wire.get("position").is_none());
+        assert_eq!(serde_json::from_value::<TransformSpec>(wire).unwrap(),original);
+        let positioned=TransformSpec{position:Some(PositionAnimation::Xy{x:AnimatableValue::constant(10.0),y:AnimatableValue::constant(20.0)}),..original};
+        positioned.validate().unwrap();
+        let wire=serde_json::to_value(&positioned).unwrap();
+        assert_eq!(serde_json::from_value::<TransformSpec>(wire).unwrap(),positioned);
+        let invalid=TransformSpec{position:Some(PositionAnimation::Xy{x:AnimatableValue::constant(f64::NAN),y:AnimatableValue::constant(20.0)}),..positioned};
+        assert!(invalid.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod warp_stabilizer_project_tests {
+    #[test]
+    fn persisted_effect_contract_and_bounds() {
+        let value = serde_json::json!({"kind":"warp_stabilizer","parameters":{},"animation":{"smoothness":{"mode":"constant","value":75.}}});
+        let effect: super::VideoEffect = serde_json::from_value(value).unwrap();
+        effect.validate().unwrap();
+        let saved = serde_json::to_value(&effect).unwrap();
+        assert_eq!(saved["parameters"]["framing"], 2);
+        assert_eq!(saved["animation"]["smoothness"]["value"], 75.);
+        let restored: super::VideoEffect =
+            serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(serde_json::to_value(restored).unwrap(), saved);
+        let invalid: super::VideoEffect = serde_json::from_value(
+            serde_json::json!({"kind":"warp_stabilizer","parameters":{"method":4}}),
+        )
+        .unwrap();
+        assert!(invalid.validate().is_err());
+    }
+}
+
+fn validate_concat_gain_keys(keys:&[super::concat_effect_upgrade::ParamKey],gain:&AnimatableValue)->Result<(),CompositionError>{
+    if keys.len()>4096 || (!keys.is_empty()&&!matches!(gain,AnimatableValue::Constant{..})) || keys.iter().any(|k|!k.at.is_finite()||!(0.0..=1.0).contains(&k.at)||!k.value.is_finite()||(!k.derived&&k.value<0.)||!k.ease.iter().all(|v|v.is_finite())||!(0.0..=1.0).contains(&k.ease[0])||!(0.0..=1.0).contains(&k.ease[2])) {return Err(CompositionError::InvalidAnimation)}
+    Ok(())
 }

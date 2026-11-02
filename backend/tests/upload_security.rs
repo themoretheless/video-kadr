@@ -105,6 +105,7 @@ async fn published_name_and_content_type_come_from_probe_not_client_name() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let uploaded: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(uploaded["originalFilename"], "payload.html");
     let filename = uploaded["filename"].as_str().unwrap();
     let generated_id = filename.strip_suffix(".mp4").unwrap();
     assert!(Uuid::parse_str(generated_id).is_ok(), "got {filename}");

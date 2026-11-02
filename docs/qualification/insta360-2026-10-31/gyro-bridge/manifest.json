@@ -1,0 +1,35 @@
+{
+  "source_path": "/Applications/Insta360 Studio.app/Contents/MacOS/studio-main",
+  "source_sha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary_source": "Original LC_FUNCTION_STARTS and original arm64 segment mapping",
+  "limitations": [
+    "Function-only subranges omit outside data, calls and Apple ABI",
+    "Static observation, not runtime global read"
+  ],
+  "capsules": [
+    {
+      "address": "0x1018b9728",
+      "end_address": "0x1018b97f0",
+      "source_offset": 25941800,
+      "bytes": 200,
+      "sha256": "fbd24dd4816365229e0ae06b6e276c58623a8404899ae954329aff8c1f7627a8",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/gyro-bridge/1018b9728.arm64.bin"
+    },
+    {
+      "address": "0x101036b60",
+      "end_address": "0x101036c74",
+      "source_offset": 17017696,
+      "bytes": 276,
+      "sha256": "6004bd2866113be9e6925cd25ca1d99d34ecb324f62612e4cd18c978fa952056",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/gyro-bridge/101036b60.arm64.bin"
+    },
+    {
+      "address": "0x1018b928c",
+      "end_address": "0x1018b9330",
+      "source_offset": 25940620,
+      "bytes": 164,
+      "sha256": "367946be0f1d08e5a16f5fbb0d08e7a6ae5e670a66d7dabfb76e8d76994408c2",
+      "path": "/Users/themoretheless/Documents/Sources/video-kadr/docs/qualification/insta360-2026-10-31/gyro-bridge/1018b928c.arm64.bin"
+    }
+  ]
+}

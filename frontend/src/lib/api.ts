@@ -1,4 +1,4 @@
-import type { Composition, CompositionRenderRequest } from './composition/types'
+import type { Composition, CompositionDspEffect, CompositionRenderRequest, WireVideoEffect } from './composition/types'
 import type { CompositionTemplate } from './composition/templates'
 import {
   parseProxyCreateResult,
@@ -133,8 +133,8 @@ export async function getLut(id: string): Promise<LutAsset> {
   return res.json()
 }
 
-export async function getJob(jobId: string): Promise<Job> {
-  const res = await safeFetch(`/api/jobs/${jobId}`)
+export async function getJob(jobId: string, signal?: AbortSignal): Promise<Job> {
+  const res = await safeFetch(`/api/jobs/${jobId}`, { signal })
   await requireOk(res, `job poll -> HTTP ${res.status}`)
   return res.json()
 }
@@ -561,6 +561,19 @@ export function updateCompositionProject(
   })
 }
 
+export type FreezeCompositionProjectResult = { changed: false } | {
+  changed: true
+  project: Omit<CompositionProjectDto, 'document'> & { document: Composition | NativeNestedProject }
+  media: MediaEntry
+}
+
+/** Saves a native freeze against exactly the displayed server revision. */
+export function freezeCompositionProject(id: string, body: { revision: number; compositionId?: string; clipId: string; time: number }, token: string): Promise<FreezeCompositionProjectResult> {
+  return requestJson(`/api/composition-projects/${encodeURIComponent(id)}/freeze-frame`, {
+    method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify(body),
+  })
+}
+
 export async function deleteCompositionProject(id: string, token: string): Promise<void> {
   const res = await safeFetch(`/api/composition-projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -936,7 +949,7 @@ export function pollJob(jobId: string, onTick?: (job: Job) => void): Promise<Job
         }
         
         // Exponential backoff: 500ms → 1s → 2s → 4s → max 5s
-        const delay = Math.min(500 * Math.pow(2, Math.min(attempt, 4)), 5000);
+        const delay = Math.min(500 * Math.pow(2, Math.min(attempt - 1, 4)), 5000);
         setTimeout(tick, delay);
       } catch (e) {
         reject(e);
@@ -944,4 +957,1641 @@ export function pollJob(jobId: string, onTick?: (job: Job) => void): Promise<Job
     };
     void tick();
   });
+}
+
+export async function scanLibraryShots(id: string, token?: string | null, spaceId?: string | null): Promise<import('./analysis/shots.js').ShotScan> {
+  const result = await requestJson<unknown>(`/api/library/${encodeURIComponent(id)}/shots`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true) })
+  const validateShotScan: typeof import('./analysis/shots.js').validateShotScan = (await import('./analysis/shots.js')).validateShotScan
+  validateShotScan(result)
+  return result
+}
+export async function measureLibraryShots(id: string, spans: readonly import('./analysis/shots.js').ShotSpan[], token?: string | null, spaceId?: string | null, expectedSourceHash?: string): Promise<import('./analysis/shots.js').ShotMeasurement[]> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/shots/measure`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ spans, expectedSourceHash }) })
+}
+export async function compareLibraryFrames(id: string, leftTick: number, rightTick: number, token?: string | null, spaceId?: string | null): Promise<{ leftTick: number; rightTick: number; similarity: number; motion: number }> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/compare-frames`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ leftTick, rightTick }) })
+}
+export async function getLibraryAnalysisFrame(id: string, tick: number, token?: string | null, spaceId?: string | null): Promise<Blob> {
+  const response = await safeFetch(`/api/library/${encodeURIComponent(id)}/analysis-frame?tick=${tick}`, { headers: libraryAccessHeaders(token, spaceId) })
+  if (!response.ok) throw await responseError(response, 'Кадр недоступен')
+  return response.blob()
+}
+
+type NativeMotionPath = { readonly nodes: readonly import('./composition/types').CompositionPathNode[] }
+type NativePathPoint = import('./composition/types').CompositionPathPoint
+export type NativeMotionPathRequest =
+  | { operation: 'nearest';path: NativeMotionPath;point: NativePathPoint }
+  | { operation: 'translate';path: NativeMotionPath;delta: NativePathPoint }
+  | { operation: 'remove' | 'toggle_segment'; path: NativeMotionPath; index: number }
+  | { operation: 'measure'; path: NativeMotionPath }
+  | { operation: 'solve'; path: NativeMotionPath }
+  | { operation: 'sample'; path: NativeMotionPath; progresses: readonly number[] }
+  | { operation: 'edit'; path: NativeMotionPath; index: number; part: 'point' | 'in_handle' | 'out_handle'; value: NativePathPoint }
+  | { operation: 'mode'; path: NativeMotionPath; index: number; mode: 'corner' | 'smooth' | 'auto' }
+  | { operation: 'insert'; path: NativeMotionPath; segment: number; t: number; id: string }
+export interface NativeMotionPathResponse {
+  path: NativeMotionPath
+  length: number
+  points: readonly NativePathPoint[]
+  nodeProgresses?: readonly number[]
+  nearest?: { segment: number;t: number;distance: number }
+}
+/** Geometry, authored solve and path sampling are executed by native Rust. */
+export function evaluateMotionPath(request: NativeMotionPathRequest, signal?: AbortSignal): Promise<NativeMotionPathResponse> {
+  return requestJson('/api/compositions/motion-path',{ method: 'POST',headers: { 'Content-Type': 'application/json' },body: JSON.stringify(request),signal })
+}
+
+export type NativeConversionSegment = { kind: 'Linear' | 'Hold' | 'Spline' } | { kind: 'Elastic';dir: 'In' | 'Out' | 'InOut';amplitude: number;period: number } | { kind: 'Bounce';dir: 'In' | 'Out' | 'InOut' }
+export interface NativeConversionTrack {
+  sampleGrid?: { timeBase: number;rateNum: number;rateDen: number;offsetNum: number }
+  keys: readonly { t_us: number;value: number;in_: readonly [number,number];out: readonly [number,number];segment: NativeConversionSegment }[]
+  extrapolate: { before: 'Hold' | 'Continue' | 'Loop' | 'PingPong' | 'Offset';after: 'Hold' | 'Continue' | 'Loop' | 'PingPong' | 'Offset' }
+}
+export interface NativeConversionNode { point: NativePathPoint;incoming: NativePathPoint;outgoing: NativePathPoint;cubic: boolean }
+export interface NativePositionConversionRequest {
+  nodes: readonly NativeConversionNode[] | null
+  tracks: readonly NativeConversionTrack[]
+  options: { fpsNum: number;fpsDen: number;startFrame: number;endFrame: number;tolerancePx: number;everyFrames: number;xyMode: 'editable' | 'bake' }
+}
+export interface NativePositionConversionResult {
+  nodes: readonly NativeConversionNode[] | null
+  tracks: readonly NativeConversionTrack[]
+  sampleCount: number;nodeCount: number;maxErrorPx: number;checkCount: number;withinTolerance: boolean;limit: string | null
+}
+export function previewPositionConversion(request: NativePositionConversionRequest,signal?: AbortSignal): Promise<NativePositionConversionResult> {
+  return requestJson('/api/compositions/position-conversion',{ method: 'POST',headers: { 'Content-Type': 'application/json' },body: JSON.stringify(request),signal })
+}
+
+export interface NativeColor { readonly r: number;readonly g: number;readonly b: number;readonly a: number }
+export interface NativeColorTrack {
+  readonly keys: readonly {
+    readonly t_us: number
+    readonly value: NativeColor
+    readonly in_: readonly [number,number]
+    readonly out: readonly [number,number]
+    readonly segment: NativeConversionSegment
+    readonly legacy_curve?: 'ease_in_out'
+    readonly tangent_modes?: {readonly incoming:'auto'|'free';readonly outgoing:'auto'|'free';readonly continuity:'smooth'|'broken'}
+  }[]
+  readonly extrapolate: NativeConversionTrack['extrapolate']
+}
+export function sampleAnimatedColors(request: { readonly track: NativeColorTrack;readonly default: NativeColor;readonly times_us: readonly number[] },signal?: AbortSignal): Promise<{ colors: NativeColor[] }> {
+  return requestJson('/api/compositions/animated-color',{ method: 'POST',headers: { 'Content-Type': 'application/json' },body: JSON.stringify(request),signal })
+}
+
+export interface NativeCompositionInstance {
+  animationOffsetUs?: number
+  id: string
+  timing: { composition: string;timelineStartUs: number;sourceInUs: number;sourceOutUs: number }
+  transform: import('./composition/types').WireTransform
+  opacity: import('./composition/types').WireColorClip['opacity']
+  blendMode: import('./composition/types').CompositionBlendMode
+}
+export interface NativeProjectLut {readonly id:string;readonly name:string;readonly lut:import("./composition/types").WireColorLut;readonly sourcePath?:string}
+export interface NativeProjectFont {readonly family:string;readonly data:string}
+export interface NativeNestedProject {
+  fonts?:readonly NativeProjectFont[]
+  timelineOrder?: readonly string[]
+  luts?:readonly NativeProjectLut[]
+  schemaVersion: 1
+  root: string
+  compositions: Record<string,{ durationUs?: number;content: import('./composition/types').WireComposition;instances: readonly NativeCompositionInstance[] }>
+}
+export interface NativeNestedFrameResponse {
+  entries: readonly { composition: string;sourceTimeUs: number;canvasToRoot: readonly [number,number,number,number,number,number];instancePath: readonly string[];ancestors: readonly NativeCompositionInstance[];ancestorPoses: readonly { localTimeUs: number;x: number;y: number;scaleX: number;scaleY: number;rotationDegrees: number;opacity: number }[] }[]
+}
+export function evaluateNestedFrame(project: NativeNestedProject,timeUs: number,signal?: AbortSignal): Promise<NativeNestedFrameResponse> {
+  return requestJson('/api/compositions/nested-frame',{ method: 'POST',headers: { 'Content-Type': 'application/json' },body: JSON.stringify({ project,timeUs }),signal })
+}
+
+export type NestedCompositionProjectDto = Omit<CompositionProjectDto,'document'> & { document: NativeNestedProject }
+export type NestedCompositionProjectSaveRequest = Omit<CompositionProjectSaveRequest,'document'> & { document: NativeNestedProject }
+export function createNestedCompositionProject(body: NestedCompositionProjectSaveRequest,token: string): Promise<NestedCompositionProjectDto> {
+  return requestJson('/api/composition-projects',{ method: 'POST',headers: bearerHeaders(token,true),body: JSON.stringify({ ...body,schemaVersion: 2,mode: 'composition' }) })
+}
+export function updateNestedCompositionProject(id: string,body: NestedCompositionProjectSaveRequest,token: string): Promise<NestedCompositionProjectDto> {
+  return requestJson(`/api/composition-projects/${encodeURIComponent(id)}`,{ method: 'PUT',headers: bearerHeaders(token,true),body: JSON.stringify({ ...body,schemaVersion: 2,mode: 'composition' }) })
+}
+export function getNestedCompositionProject(id: string,token: string): Promise<NestedCompositionProjectDto> {
+  return requestJson(`/api/composition-projects/${encodeURIComponent(id)}`,{ headers: bearerHeaders(token) })
+}
+
+export function groupNestedComposition(project: NativeNestedProject,parent: string,child: string,instanceId: string,signal?: AbortSignal): Promise<NativeNestedProject> {
+  return requestJson('/api/compositions/nested-group',{ method: 'POST',headers: { 'Content-Type': 'application/json' },body: JSON.stringify({ project,parent,child,instanceId }),signal })
+}
+
+export interface NativeNestedPreviewFrame {
+  width: number
+  height: number
+  rgba: Uint8ClampedArray
+}
+
+export async function renderNestedPreview(
+  project: NativeNestedProject,
+  timeUs: number,
+  renderedOutputs: Readonly<Record<string, string>>,
+  token: string,
+  signal?: AbortSignal,
+  compositionId?: string,
+  savedProject?: {projectId:string;expectedRevision:number},
+): Promise<NativeNestedPreviewFrame> {
+  let response: Response
+  try {
+    response = await fetch('/api/compositions/nested-preview', {
+      method: 'POST',
+      headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, timeUs, renderedOutputs, compositionId, savedProject }),
+      signal,
+    })
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new BackendUnavailableError()
+  }
+  await requireOk(response, 'Не удалось загрузить кадр композиции')
+  const width = Number(response.headers.get('x-frame-width'))
+  const height = Number(response.headers.get('x-frame-height'))
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 3840 || height > 2160) {
+    throw new ApiError('Некорректный размер кадра композиции', response.status)
+  }
+  const bytes = await response.arrayBuffer()
+  if (bytes.byteLength !== width * height * 4) {
+    throw new ApiError('Неполный RGBA-кадр композиции', response.status)
+  }
+  return { width, height, rgba: new Uint8ClampedArray(bytes) }
+}
+
+/** Encode the committed native frame in Rust; preserves preview ACL and saved-mask binding. */
+export async function exportNestedFramePng(project:NativeNestedProject,timeUs:number,renderedOutputs:Readonly<Record<string,string>>,token:string,signal?:AbortSignal,compositionId?:string,savedProject?:{projectId:string;expectedRevision:number}):Promise<Blob>{
+ const response=await safeFetch('/api/compositions/nested-preview',{method:'POST',headers:{...bearerHeaders(token),'Content-Type':'application/json',Accept:'image/png'},body:JSON.stringify({project,timeUs,renderedOutputs,compositionId,savedProject}),signal})
+ await requireOk(response,'Не удалось сохранить кадр')
+ if(response.headers.get('content-type')?.split(';')[0]!=='image/png')throw new ApiError('Сервер не вернул PNG',response.status)
+ const blob=await response.blob()
+ if(blob.size<8||blob.size>64*1024*1024)throw new ApiError('Недопустимый размер PNG',response.status)
+ return blob
+}
+
+export function splitNestedComposition(project: NativeNestedProject, parent: string, instanceId: string, rightId: string, timeUs: number, signal?: AbortSignal): Promise<NativeNestedProject> {
+  return requestJson('/api/compositions/nested-split', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, parent, instanceId, rightId, timeUs }), signal,
+  })
+}
+
+/** Graph samples use the same Rust interpolation as the rendered frame. */
+export async function sampleConcatCurve(points:readonly (readonly[number,number])[],signal?:AbortSignal):Promise<readonly number[]>{
+ const response=await requestJson<{values:number[]}>('/api/compositions/concat-curve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points,samples:256}),signal})
+ if(!Array.isArray(response.values)||response.values.length!==256||response.values.some(v=>!Number.isFinite(v)))throw new Error('Некорректный результат кривой Concat')
+ return response.values
+}
+export async function sampleToneCurve(points: readonly (readonly [number, number])[], signal?: AbortSignal, periodic = false): Promise<readonly number[]> {
+  const response = await requestJson<{ values: number[] }>('/api/compositions/tone-curve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ points, samples: 256, ...(periodic ? { periodic } : {}) }), signal })
+  if (!Array.isArray(response.values) || response.values.length !== 256 || response.values.some((value) => !Number.isFinite(value))) throw new Error('Некорректный результат кривой')
+  return response.values
+}
+
+
+export function nestedDurations(project: NativeNestedProject, signal?: AbortSignal): Promise<Record<string, number>> {
+  return requestJson('/api/compositions/nested-durations', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project }), signal,
+  })
+}
+export function exportNestedVideo(
+  project: NativeNestedProject, compositionId: string, startUs: number, endUs: number,
+  renderedOutputs: Readonly<Record<string, string>>, token: string, signal?: AbortSignal, mode: 'video_only' | 'video_audio' = 'video_only',
+  savedProject?: {projectId:string;expectedRevision:number},
+): Promise<{ jobId: string; mode: 'video_only' | 'video_audio'; container: 'mkv' | 'mp4' }> {
+  return requestJson('/api/compositions/nested-export', {
+    method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ schemaVersion: 1, mode, project, compositionId, startUs, endUs, renderedOutputs, savedProject }), signal,
+  })
+}
+
+export function validateColorLut(lut: import('./composition/types').WireColorLut, signal?: AbortSignal): Promise<{title:string;shaperSize:number;cubeSize:number}> {
+ return requestJson('/api/compositions/color-lut',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lut),signal})
+}
+
+export interface NativeColorMatch {readonly shadows:readonly [number,number];readonly midtones:readonly [number,number];readonly highlights:readonly [number,number];readonly lightness:readonly [number,number,number];readonly saturation:number;readonly before:number;readonly after:number}
+export interface ColorMatchFrame {readonly width:number;readonly height:number;readonly rgba:readonly number[]}
+export function solveColorMatch(current:ColorMatchFrame,reference:ColorMatchFrame,parameters:import('./composition/types').WireLumetri,skinProtect:boolean,signal?:AbortSignal,luts:readonly NativeProjectLut[]=[]):Promise<NativeColorMatch> {
+ return requestJson('/api/compositions/color-match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current,reference,parameters,skinProtect,luts}),signal})
+}
+
+export interface NativeBuiltinLut {readonly id:string;readonly label:string;readonly input:boolean;readonly size:number}
+export function listBuiltinLuts(signal?:AbortSignal):Promise<readonly NativeBuiltinLut[]> {return requestJson('/api/compositions/builtin-luts',{signal})}
+
+export function importProjectLut(project:NativeNestedProject,lut:import('./composition/types').WireColorLut,name:string,sourcePath:string,composition:string,track:string,clip:string,effectIndex:number,input:boolean,signal?:AbortSignal):Promise<{project:NativeNestedProject;id:string;reused:boolean}> {
+ return requestJson('/api/compositions/project-lut-import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,lut,name,sourcePath,composition,track,clip,effectIndex,input}),signal})
+}
+
+export function exportColorLut(source:{reference:string;luts?:readonly NativeProjectLut[]}|{lut:import('./composition/types').WireColorLut},format:'cube'|'three_dl',signal?:AbortSignal):Promise<{text:string;filename:string}> {
+ return requestJson('/api/compositions/lut-export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...source,format}),signal})
+}
+
+export function updateProjectLut(project:NativeNestedProject,id:string,changes:{name?:string;lut?:import('./composition/types').WireColorLut;sourcePath?:string},signal?:AbortSignal):Promise<NativeNestedProject> {
+ return requestJson('/api/compositions/project-lut-update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,id,...changes}),signal})
+}
+
+export function removeProjectLut(project:NativeNestedProject,id:string,signal?:AbortSignal):Promise<NativeNestedProject> {
+ return requestJson('/api/compositions/project-lut-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,id}),signal})
+}
+
+export type NativeScopeKind='waveform'|'parade'|'histogram'|'vectorscopeYuv'|'vectorscopeHls'
+export interface NativeScopeOptions {colorSpace?:'auto'|'rec601'|'rec709'|'rec2100';layoutWidth?:number;layoutHeight?:number;scale?:'bits8'|'float'|'hdr';targets?:'75'|'100';scopes?:readonly NativeScopeKind[];matrix?:'Bt601'|'Bt709'|'Bt2020Ncl';clamp?:boolean;rows?:number;vectorSize?:number;waveformType?:'rgb'|'luma'|'yc'|'ycNoChroma';paradeType?:'rgb'|'yuv'|'rgbWhite';brightness?:'dimmed'|'normal'|'bright';columns?:number;peaks?:number}
+export interface NativeScopeLevel {min:number;max:number;mean:number}
+export type NativeScopeOverlay = {kind:'line';x1:number;y1:number;x2:number;y2:number;color:string}|{kind:'circle';cx:number;cy:number;r:number;color:string}|{kind:'rect';x:number;y:number;width:number;height:number;color:string}|{kind:'text';x:number;y:number;text:string;color:string}
+export interface NativeScopeGraph {title?:string;axisUnit?:string;foreground?:readonly Extract<NativeScopeOverlay,{kind:'line'}>[];axis?:readonly {position:number;left:string;right:string}[];overlay?:readonly NativeScopeOverlay[];image:{width:number;height:number;rgba:readonly number[]}}
+export type NativeScopes = {resolvedColorSpace?:'rec601'|'rec709'|'rec2100';layout?:{columns:number;rows:number};samples:readonly [number,number];matrix:string;unit:string;stats:{r:NativeScopeLevel;g:NativeScopeLevel;b:NativeScopeLevel;y:NativeScopeLevel;chromaMean:readonly [number,number];hueDeg:number;saturation:number}|null} & Partial<Record<NativeScopeKind,NativeScopeGraph>>
+export function analyzeScopes(frame:ColorMatchFrame,options:NativeScopeOptions={},signal?:AbortSignal):Promise<NativeScopes> {
+ return requestJson('/api/compositions/scopes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({frame,options}),signal})
+}
+
+export function analyzeScopesBinary(frame:NativeNestedPreviewFrame,options:NativeScopeOptions={},signal?:AbortSignal):Promise<NativeScopes> {
+ return requestJson('/api/compositions/scopes-rgba',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Frame-Width':String(frame.width),'X-Frame-Height':String(frame.height),'X-Scope-Options':JSON.stringify(options)},body:frame.rgba.slice().buffer,signal})
+}
+
+export type NativeAudioDspUnit = 'none' | 'decibels' | 'hertz' | 'milliseconds' | 'seconds' | 'percent' | 'q' | 'ratio' | 'semitones' | 'bpm' | 'pan' | 'toggle' | 'choice'
+export interface NativeAudioDspParameter {
+  readonly step?: number | null
+  readonly animatable?: boolean
+  readonly id: string
+  readonly name: string
+  readonly min: number
+  readonly max: number
+  readonly default: number
+  readonly unit: NativeAudioDspUnit
+  readonly logScale: boolean
+  readonly choices: readonly string[]
+}
+export interface NativeAudioDspEffect {
+  readonly nativeExport: boolean
+  readonly id: string
+  readonly name: string
+  readonly category: 'filter' | 'dynamics' | 'time' | 'channel' | 'restoration' | 'pitch' | 'modulation' | 'reverb' | 'special'
+  readonly params: readonly NativeAudioDspParameter[]
+}
+export interface NativeAudioDspCatalog {
+  readonly schemaVersion: 1
+  readonly effects: readonly NativeAudioDspEffect[]
+  readonly projectCatalog?: FilmcraftAudioProjectCatalog
+}
+export interface FilmcraftAudioProjectParameter {
+  readonly id: string
+  readonly label: string
+  readonly default: { Float: number } | { Choice: number } | { Bool: boolean }
+  readonly kind: 'Bool' | { Choice: readonly string[] } | { Float: { min: number; max: number; decimals: number; soft_min: number; soft_max: number; unit: string } }
+  readonly animatable: boolean
+}
+export interface FilmcraftAudioProjectCatalog {
+  readonly schemaVersion: 1
+  readonly sourceCommit: string
+  readonly effects: readonly {
+    readonly id: string
+    readonly name: string
+    readonly intrinsic: boolean
+    readonly kind: 'Audio'
+    readonly category: readonly string[]
+    readonly params: readonly FilmcraftAudioProjectParameter[]
+  }[]
+}
+export interface FilmcraftAudioProjectResponseRequest {
+  readonly effect: string
+  readonly params?: Readonly<Record<string, number>>
+  readonly animation?: CompositionDspEffect['animation']
+  readonly localTimeSeconds?: number
+  readonly sampleRate: number
+  readonly frequencies?: readonly number[]
+  readonly levels?: readonly number[]
+  readonly band?: number
+}
+export interface FilmcraftAudioProjectResponse {
+  readonly dspId: string
+  readonly params: Readonly<Record<string, number>>
+  readonly latencySamples: number
+  readonly prerollSamples: number
+  readonly responseDb: readonly (number | null)[]
+  readonly transferDb: readonly (number | null)[]
+}
+/** Metadata adaptation only; all project→DSP signal conversions remain native. */
+export function audioDspEditorEffects(catalog: NativeAudioDspCatalog): readonly NativeAudioDspEffect[] {
+  return [...catalog.effects, ...(catalog.projectCatalog?.effects ?? []).filter(effect => !effect.intrinsic).map(effect => ({
+    id: `filmcraft:${effect.id}`, name: `Filmcraft · ${effect.name}`, nativeExport: true,
+    category: 'special' as const,
+    params: effect.params.map(param => {
+      const float = typeof param.kind === 'object' && 'Float' in param.kind ? param.kind.Float : undefined
+      const choices = typeof param.kind === 'object' && 'Choice' in param.kind ? param.kind.Choice : []
+      const toggle = param.kind === 'Bool'
+      const value = 'Float' in param.default ? param.default.Float : 'Choice' in param.default ? param.default.Choice : Number(param.default.Bool)
+      return { id: param.id, animatable: param.animatable, name: `${param.label}${float?.unit ? ` (${float.unit})` : ''}`, min: float?.min ?? 0,
+        max: float?.max ?? (toggle ? 1 : Math.max(0, choices.length - 1)), default: value,
+        unit: (toggle ? 'toggle' : choices.length ? 'choice' : 'none') as NativeAudioDspUnit,
+        choices, logScale: false }
+    }),
+  }))]
+}
+/** Native configured editor characteristics; null denotes unsupported response type. */
+export function getAudioProjectResponse(input: FilmcraftAudioProjectResponseRequest, signal?: AbortSignal): Promise<FilmcraftAudioProjectResponse> {
+  return requestJson('/api/compositions/audio-project-response', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+/** Registry metadata; listing an effect does not imply it is bound to the project renderer. */
+export function getAudioDspCatalog(signal?: AbortSignal): Promise<NativeAudioDspCatalog> {
+  return requestJson('/api/compositions/audio-dsp-catalog', { signal })
+}
+
+/** Character formatting and text replacement use the native Filmcraft run rules. */
+export type GraphicTextParameters = Extract<import('./composition/types').WireVideoEffect,{kind:'graphic_text'}>['parameters']
+export type GraphicCharacterStyle = NonNullable<GraphicTextParameters['runs']>[number]['style']
+export type GraphicTextEditOperation = {kind:'normalize'} | {kind:'apply';start:number;end:number;style:GraphicCharacterStyle} | {kind:'clear';start:number;end:number} | {kind:'adjust';newText:string}
+export async function editGraphicTextRuns(text:string,runs:NonNullable<GraphicTextParameters['runs']>,operation:GraphicTextEditOperation,signal?:AbortSignal):Promise<NonNullable<GraphicTextParameters['runs']>> {
+ const response=await requestJson<{runs:NonNullable<GraphicTextParameters['runs']>}>('/api/compositions/graphic-text-edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,runs,operation}),signal})
+ if(!Array.isArray(response.runs))throw new Error('Некорректный результат форматирования текста')
+ return response.runs
+}
+
+/** Capture canvas-space edge distances with the native animated graphic evaluator. */
+export async function captureGraphicPin(graphic: {readonly layers: readonly import('./composition/types').GraphicLayer[]}, width:number, height:number, localUs:number, uid:number, to:import('./composition/types').GraphicPin['to'], edges:readonly [boolean,boolean,boolean,boolean], signal?:AbortSignal):Promise<import('./composition/types').GraphicPin> {
+  const response = await requestJson<{pin:import('./composition/types').GraphicPin}>('/api/compositions/graphic-pin-capture', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({graphic,width,height,localUs,uid,to,edges}),signal})
+  if (!response.pin || response.pin.offsets?.length !== 4 || !response.pin.offsets.every(Number.isFinite)) throw new Error('Некорректные расстояния привязки')
+  return response.pin
+}
+
+export async function mapGraphicClock(responsiveTime:import('./composition/types').GraphicResponsiveTime,relativeUs:number,durationUs:number,animationOffsetUs:number,signal?:AbortSignal):Promise<number> {
+  const response=await requestJson<{localUs:number}>('/api/compositions/graphic-clock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({responsiveTime,relativeUs,durationUs,animationOffsetUs}),signal})
+  if (!Number.isSafeInteger(response.localUs)) throw new Error('Некорректное время графического слоя')
+  return response.localUs
+}
+
+export interface NativeGraphicTemplateControl {
+  readonly id:string; readonly name:string; readonly kind:'text'|'font'|'slider'|'checkbox'|'color'|'position'; readonly layer:number; readonly param:string; readonly min?:number|null; readonly max?:number|null
+}
+export interface NativeGraphicTemplate {
+  readonly resources?: {readonly fonts?:readonly {readonly family:string;readonly style:string;readonly license:string;readonly file:string;readonly data:string}[]}
+  readonly id:string; readonly name:string; readonly category:string; readonly description:string; readonly author:string; readonly license:string; readonly tags:readonly string[]; readonly canvas:readonly [number,number]; readonly durationUs:number
+  readonly graphic:{readonly layers:readonly import('./composition/types').GraphicLayer[]}; readonly roll?:import('./composition/types').GraphicRoll|null; readonly responsiveTime?:import('./composition/types').GraphicResponsiveTime|null; readonly controls:readonly NativeGraphicTemplateControl[]
+}
+export function getGraphicTemplates(signal?:AbortSignal):Promise<readonly NativeGraphicTemplate[]> {
+  return requestJson('/api/compositions/graphic-templates',{signal})
+}
+export function editGraphicTemplate(template:NativeGraphicTemplate,control:string,value:unknown,signal?:AbortSignal,clock?:GraphicTemplateClock):Promise<NativeGraphicTemplate> {
+  return requestJson('/api/compositions/graphic-template-edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template,control,value,clock}),signal})
+}
+
+/** Native .fcgt document boundary; source fields and resources remain intact. */
+export function readGraphicTemplateFile(contents:string,signal?:AbortSignal):Promise<Record<string,unknown>> {
+  return requestJson('/api/compositions/graphic-template-file/read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents}),signal})
+}
+export function writeGraphicTemplateFile(document:Record<string,unknown>,signal?:AbortSignal):Promise<string> {
+  return requestJson('/api/compositions/graphic-template-file/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(document),signal})
+}
+
+export interface UserGraphicTemplateFile {file:string;document:Record<string,unknown>}
+export function listUserGraphicTemplates(signal?:AbortSignal):Promise<UserGraphicTemplateFile[]> {
+ return requestJson('/api/compositions/graphic-template-library',{signal})
+}
+export function installUserGraphicTemplate(contents:string,signal?:AbortSignal,options?:{replace?:boolean}):Promise<string> {
+ return requestJson('/api/compositions/graphic-template-library/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents,...options}),signal})
+}
+export function removeUserGraphicTemplate(file:string,signal?:AbortSignal):Promise<{removed:boolean}> {
+ return requestJson('/api/compositions/graphic-template-library/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file}),signal})
+}
+
+export function instantiateGraphicTemplateFile(document:Record<string,unknown>,signal?:AbortSignal):Promise<NativeGraphicTemplate> {
+ return requestJson('/api/compositions/graphic-template-file/instantiate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(document),signal})
+}
+
+export interface GraphicTemplateClock {relativeUs:number;durationUs:number;animationOffsetUs:number}
+export function getGraphicTemplateValues(template:NativeGraphicTemplate,clock:GraphicTemplateClock,signal?:AbortSignal):Promise<Record<string,unknown>> {
+ return requestJson('/api/compositions/graphic-template-values',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template,clock}),signal})
+}
+
+export function exportGraphicTemplateFile(template:NativeGraphicTemplate,animationOffsetUs:number,signal?:AbortSignal,options?:{readonly embedFonts?:boolean;readonly fontLicense?:string;readonly autoTextControls?:boolean;readonly controls?:readonly {readonly layer:number|string;readonly param?:string;readonly kind?:string;readonly id?:string;readonly name?:string;readonly min?:number;readonly max?:number}[]}):Promise<string> {
+ return requestJson('/api/compositions/graphic-template-file/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template,animationOffsetUs,...options}),signal})
+}
+
+export function editGraphicTemplateBatch(template:NativeGraphicTemplate,values:Readonly<Record<string,unknown>>,signal?:AbortSignal,clock?:GraphicTemplateClock):Promise<NativeGraphicTemplate> {
+  return requestJson('/api/compositions/graphic-template-edit-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template,values,clock}),signal})
+}
+
+export interface GraphicTemplateThumbnail {readonly width:number;readonly height:number;readonly pngBase64:string}
+export function getGraphicTemplateThumbnail(template:NativeGraphicTemplate,width=160,signal?:AbortSignal):Promise<GraphicTemplateThumbnail> {
+ return requestJson('/api/compositions/graphic-template-thumbnail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template,width}),signal})
+}
+export function getGraphicTemplateDocumentThumbnail(document:Readonly<Record<string,unknown>>,width=160,signal?:AbortSignal):Promise<GraphicTemplateThumbnail> {
+ return requestJson('/api/compositions/graphic-template-thumbnail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document,width}),signal})
+}
+
+export interface CompositionFontUsage {readonly family:string;readonly style:string;readonly count:number;readonly missing?:boolean}
+export function getCompositionFonts(composition:import('./composition/types').WireComposition,signal?:AbortSignal):Promise<readonly CompositionFontUsage[]> {
+ return requestJson('/api/compositions/fonts-used',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(composition),signal})
+}
+
+export type CompositionFontSelection=string|{readonly family:string;readonly style?:string}
+export function replaceCompositionFonts(composition:import('./composition/types').WireComposition,from:CompositionFontSelection,to:CompositionFontSelection,signal?:AbortSignal):Promise<{readonly composition:import('./composition/types').WireComposition;readonly replaced:number}> {
+ return requestJson('/api/compositions/replace-fonts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({composition,from,to}),signal})
+}
+
+export function editProjectFontFile(project:NativeNestedProject,operation:{kind:'add';data:string}|{kind:'remove';index:number},signal?:AbortSignal):Promise<NativeNestedProject>{
+ return requestJson('/api/compositions/project-font-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,operation}),signal})
+}
+
+export function getProjectFonts(project:NativeNestedProject,signal?:AbortSignal):Promise<readonly CompositionFontUsage[]> {
+ return requestJson('/api/compositions/project-fonts-used',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(project),signal})
+}
+export function replaceProjectFonts(project:NativeNestedProject,from:CompositionFontSelection,to:CompositionFontSelection,signal?:AbortSignal):Promise<{readonly project:NativeNestedProject;readonly replaced:number}> {
+ return requestJson('/api/compositions/project-replace-fonts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,from,to}),signal})
+}
+
+/** Return a new native document; the caller commits it through normal editor history. */
+export function upgradeCompositionCaptions(composition:import('./composition/types').WireComposition,captionIds:readonly string[],signal?:AbortSignal):Promise<import('./composition/types').WireComposition> {
+  return requestJson('/api/compositions/captions/upgrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({composition,captionIds}),signal})
+}
+
+export type CaptionCommandTimeInput = {readonly unit:'frames'|'seconds';readonly value:number}|{readonly unit:'timecode'|'ticks';readonly value:string}
+export type CaptionEditOperation =
+ | {readonly kind:'add';readonly trackId:string;readonly startTick?:number|string;readonly endTick?:number|string;readonly startInput?:CaptionCommandTimeInput;readonly endInput?:CaptionCommandTimeInput;readonly text?:string;readonly speaker?:string|null}
+ | {readonly kind:'split';readonly id:string;readonly timeTick?:number|string;readonly timeInput?:CaptionCommandTimeInput}
+ | {readonly kind:'merge';readonly ids:readonly string[]}
+ | {readonly kind:'text';readonly id:string;readonly text?:string;readonly speaker?:string|null}
+ | {readonly kind:'times';readonly id:string;readonly startTick?:number|string;readonly endTick?:number|string;readonly startInput?:CaptionCommandTimeInput;readonly endInput?:CaptionCommandTimeInput}
+ | {readonly kind:'trim';readonly id:string;readonly inEdge:boolean;readonly deltaTicks:number|string}
+ | {readonly kind:'move';readonly ids:readonly string[];readonly deltaTicks:number|string}
+ | {readonly kind:'delete';readonly ids:readonly string[];readonly ripple?:boolean}
+export interface CaptionEditResponse {readonly composition:import('./composition/types').WireComposition;readonly appliedDelta:number|string|null;readonly deleted:number}
+export interface CaptionEditContext {readonly playheadTick?:number|string;readonly dropFrame?:boolean}
+export function editCompositionCaptions(composition:import('./composition/types').WireComposition,operation:CaptionEditOperation,signal?:AbortSignal,context?:CaptionEditContext):Promise<CaptionEditResponse> {
+ return requestJson('/api/compositions/captions/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({composition,operation,...context}),signal})
+}
+
+/** Filmcraft file time is signed 254016000000-Hz ticks, encoded as decimal strings. */
+export interface CaptionFileCue {
+ readonly startTick:string;readonly endTick:string;readonly text:string
+ readonly speaker?:string|null;readonly id?:string|null;readonly settings?:string
+}
+export interface CaptionFileDocument {
+ readonly ticksPerSecond:'254016000000';readonly cues:readonly CaptionFileCue[]
+ readonly blocks?:readonly string[];readonly warnings?:readonly string[]
+}
+export type CaptionFileFormat='srt'|'vtt'|'scc'|'mcc'|'stl'|'ttml'|'dfxp'
+export function readCaptionFile(dataBase64:string,options?:{readonly format?:CaptionFileFormat;readonly extension?:string;readonly snapToRate?:{readonly num:number;readonly den:number}},signal?:AbortSignal):Promise<{readonly format:CaptionFileFormat;readonly document:CaptionFileDocument}> {
+ return requestJson('/api/compositions/captions/file/read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataBase64,...options}),signal})
+}
+export function writeCaptionFile(document:CaptionFileDocument,format:CaptionFileFormat,options?:{readonly dropFrame?:boolean;readonly rate?:{readonly num:number;readonly den:number};readonly offsetTick?:string},signal?:AbortSignal):Promise<{readonly extension:CaptionFileFormat;readonly dataBase64:string}> {
+ return requestJson('/api/compositions/captions/file/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document,format,...options}),signal})
+}
+
+export interface PreparedCaptionFileImport {
+ readonly name:string;readonly format:'Subtitle'|'CEA-608'|'CEA-708'|'Teletext';readonly language:string
+ readonly enabled:boolean;readonly locked:boolean;readonly syncLock:boolean;readonly backgroundColor:readonly [number,number,number,number]
+ readonly document:CaptionFileDocument
+}
+export function prepareCaptionFileImport(dataBase64:string,path:string,rate:{readonly num:number;readonly den:number},options?:{readonly name?:string;readonly format?:CaptionFileFormat},signal?:AbortSignal):Promise<PreparedCaptionFileImport> {
+ return requestJson('/api/compositions/captions/file/prepare-import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataBase64,path,rate,...options}),signal})
+}
+
+/** Source JSON stays text so Filmcraft u64 IDs and ticks survive browser transport. */
+export interface FilmcraftAppliedTransition { id: string; trackId: string; trackKind: string; effect: string; reverse: boolean; startTicks: string; durationTicks: string; paramsText: string }
+export interface FilmcraftImportResult {
+  documentText: string
+  originalSchema: number
+  sequences: Array<{ id: string; name: string; settings: unknown; sampleRate: number; durationSeconds: number; durationFrames?: string; transitions?: FilmcraftAppliedTransition[]; clips?: Array<{ id: string; name: string; trackId: string; trackKind: string; locked: boolean; linkId?: string | null; startTicks: string; durationTicks: string }> }>
+  media: Array<{ id: string; name: string; path: string; offline: boolean }>
+}
+export function importFilmcraftProject(documentText: string, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  return requestJson('/api/compositions/filmcraft/import', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document: documentText }), signal,
+  })
+}
+export interface FilmcraftAudioExport {
+  document: string
+  sequenceId: string
+  startSample: number
+  frames: number
+  channels: 1 | 2
+  bits: 16 | 24
+  format: 'wav' | 'aiff'
+  sources: Record<string, string>
+}
+export async function exportFilmcraftAudio(input: FilmcraftAudioExport, token?: string | null, signal?: AbortSignal): Promise<Blob> {
+  if (!Number.isSafeInteger(input.startSample) || !Number.isSafeInteger(input.frames)) {
+    throw new Error('Недопустимый диапазон звука')
+  }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers.Authorization = `Bearer ${token}`
+  const response = await safeFetch('/api/compositions/filmcraft/export-audio', {
+    method: 'POST', headers, body: JSON.stringify(input), signal,
+  })
+  await requireOk(response, 'Не удалось экспортировать звук проекта')
+  return response.blob()
+}
+
+export type FilmcraftTrimRequest = {
+  document: string
+  sequenceId: string
+  clipId: string
+  edge: 'in' | 'out'
+  mode?: 'regular' | 'ripple'
+  linked: boolean
+} & ({ deltaTicks: string; deltaFrames?: never } | { deltaFrames: string; deltaTicks?: never })
+export interface FilmcraftTrimResult extends FilmcraftImportResult { appliedDeltaTicks: string }
+export function trimFilmcraftProject(input: FilmcraftTrimRequest, signal?: AbortSignal): Promise<FilmcraftTrimResult> {
+  return requestJson('/api/compositions/filmcraft/trim', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+/** Frame delta is in source media, using the selected sequence frame clock. */
+export function slipFilmcraftProject(input: { document: string; sequenceId: string; clipId: string; deltaFrames: string }, signal?: AbortSignal): Promise<FilmcraftTrimResult> {
+  return requestJson('/api/compositions/filmcraft/slip', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function stretchFilmcraftProject(input: { document: string; sequenceId: string; clipId: string; edge: 'in' | 'out'; deltaFrames: string }, signal?: AbortSignal): Promise<FilmcraftImportResult & { appliedSpeed: number }> {
+  return requestJson('/api/compositions/filmcraft/rate-stretch', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function rollFilmcraftProject(input: { document: string; sequenceId: string; leftClipId: string; rightClipId: string; deltaFrames: string }, signal?: AbortSignal): Promise<FilmcraftTrimResult> {
+  return requestJson('/api/compositions/filmcraft/roll', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function slideFilmcraftProject(input: { document: string; sequenceId: string; clipId: string; deltaFrames: string }, signal?: AbortSignal): Promise<FilmcraftTrimResult> {
+  return requestJson('/api/compositions/filmcraft/slide', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function deleteFilmcraftClips(input: { document: string; sequenceId: string; clipIds: string[]; ripple: boolean }, signal?: AbortSignal): Promise<FilmcraftImportResult & { removed: number; closedSpans: Array<{ startTicks: string; durationTicks: string }> }> {
+  return requestJson('/api/compositions/filmcraft/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function closeFilmcraftGap(input: { document: string; sequenceId: string; trackId: string; timeFrames: string }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  return requestJson('/api/compositions/filmcraft/close-gap', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function razorFilmcraftProject(input: { document: string; sequenceId: string; timeFrames: string } & ({ clipIds: string[]; trackIds?: never } | { trackIds: string[]; clipIds?: never }), signal?: AbortSignal): Promise<FilmcraftImportResult & { createdClipIds: string[] }> {
+  return requestJson('/api/compositions/filmcraft/razor', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function removeFilmcraftRange(input: { document: string; sequenceId: string; trackIds: string[]; startFrames: string; durationFrames: string; ripple: boolean }, signal?: AbortSignal): Promise<FilmcraftImportResult & { removedClipIds: string[] }> {
+  return requestJson('/api/compositions/filmcraft/remove-range', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export function placeFilmcraftClips(input: { document: string; sequenceId: string; placements: Array<{ trackId: string; clipText: string }>; insert: boolean }, signal?: AbortSignal): Promise<FilmcraftImportResult & { placedClipIds: string[] }> {
+  return requestJson('/api/compositions/filmcraft/place-clips', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
+  })
+}
+
+export interface FilmcraftClipboardResult { clipboardText: string; clipCount: number; markerCount: number }
+export interface FilmcraftPasteResult extends FilmcraftImportResult { selectedClipIds: string[]; playheadTicks: string; playheadFrames: string }
+export function copyFilmcraftClips(input: { document: string; sequenceId: string; clipIds: string[]; linked: boolean; includeMarkers: boolean }, signal?: AbortSignal): Promise<FilmcraftClipboardResult> {
+  return requestJson('/api/compositions/filmcraft/copy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+export function pasteFilmcraftClips(input: { document: string; sequenceId: string; clipboardText: string; insert: boolean; includeMarkers: boolean; rippleMarkers: boolean } & ({ timeFrames: string; timeTicks?: never } | { timeTicks: string; timeFrames?: never }), signal?: AbortSignal): Promise<FilmcraftPasteResult> {
+  return requestJson('/api/compositions/filmcraft/paste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export function addFilmcraftTransition(input: { document: string; sequenceId: string; trackId: string; transitionText: string }, signal?: AbortSignal): Promise<FilmcraftImportResult & { createdTransitionId: string }> {
+  return requestJson('/api/compositions/filmcraft/add-transition', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export interface FilmcraftTransitionDuration { value: number; unit: 'frames' | 'seconds' }
+export function applyFilmcraftTransition(input: { document: string; sequenceId: string; kind: 'video' | 'audio'; effect: string; targetedTrackIds?: string[]; clipId?: string; edge?: 'in' | 'out'; params?: Record<string, unknown>; reverse?: boolean } & ({ frames: string; duration?: never } | { frames?: never; duration?: FilmcraftTransitionDuration }) & ({ timeTicks: string; timeFrames?: never } | { timeFrames: string; timeTicks?: never }), signal?: AbortSignal): Promise<FilmcraftImportResult & { createdTransitionId: string }> {
+  return requestJson('/api/compositions/filmcraft/apply-transition', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export interface FilmcraftTransitionParameter { id: string; label: string; kind: string | Record<string, unknown>; default: Record<string, unknown> }
+export interface FilmcraftTransitionDefinition { id: string; name: string; kind: 'VideoTransition' | 'AudioTransition'; category: string[]; params: FilmcraftTransitionParameter[] }
+export interface FilmcraftTransitionCatalogEntry { definition: FilmcraftTransitionDefinition; instance: unknown }
+export function getFilmcraftTransitions(signal?: AbortSignal): Promise<FilmcraftTransitionCatalogEntry[]> {
+  return requestJson('/api/compositions/filmcraft/transitions', { signal })
+}
+
+export function setFilmcraftTransition(input: { document: string; sequenceId: string; transitionId: string; reset?: boolean; params?: Record<string, unknown>; reverse?: boolean }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  return requestJson('/api/compositions/filmcraft/set-transition', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export function applyFilmcraftSelectionTransitions(input: { document: string; sequenceId: string; clipIds: string[]; editPoints?: { clipId: string; edge: 'in' | 'out' }[]; videoEffect: string; audioEffect: string } & ({ videoFrames: string; videoDuration?: never } | { videoFrames?: never; videoDuration?: FilmcraftTransitionDuration }) & ({ audioFrames: string; audioDuration?: never } | { audioFrames?: never; audioDuration?: FilmcraftTransitionDuration }), signal?: AbortSignal): Promise<FilmcraftImportResult & { createdTransitionIds: string[] }> {
+  return requestJson('/api/compositions/filmcraft/batch-transitions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export type FilmcraftMonitorFrame = { kind?: 'generator' | 'image' | 'video' | 'sequence'; sourcePts?: string; originPts?: string; ordinal?: string; timeBase?: { num: string; den: string }; sampleTicks?: string; width: number; height: number; ptsTicks: string; rgbaHex: string }
+export type FilmcraftTrimMonitorSide = {
+  clip: string; item: string; name: string; track: string; video: boolean
+  time: string; mediaTime: string; mediaFrame: string; sourceIn: string; sourceOut: string
+  frame?: FilmcraftMonitorFrame; frameUnavailable?: string
+}
+export type FilmcraftTrimMonitor = {
+  editTime: string | null; rollPair: [string, string] | null
+  outgoing: FilmcraftTrimMonitorSide | null; incoming: FilmcraftTrimMonitorSide | null
+}
+export function getFilmcraftTrimMonitor(input: { document: string; sequenceId: string; clipId: string; edge: 'in' | 'out'; includeFrames?: boolean; sources?: Record<string,string> }, signal?: AbortSignal, token?: string | null): Promise<FilmcraftTrimMonitor> {
+  return requestJson('/api/compositions/filmcraft/trim-monitor', { method: 'POST', headers: { ...(token ? bearerHeaders(token) : {}), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export type FilmcraftNearestEditKind = 'trimIn' | 'trimOut' | 'rippleIn' | 'rippleOut' | 'roll'
+export type FilmcraftEditPoint = { clip: string; out: boolean; kind: 'trim' | 'ripple' | 'roll' }
+export function getFilmcraftNearestEditPoints(input: { document: string; sequenceId: string; kind: FilmcraftNearestEditKind; targetedTrackIds?: string[] } & ({ timeTicks: string; timeFrames?: never } | { timeTicks?: never; timeFrames: string }), signal?: AbortSignal): Promise<{ editPoints: FilmcraftEditPoint[] }> {
+  return requestJson('/api/compositions/filmcraft/nearest-edit-points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export type FilmcraftTrimShift = { outShift: string; inShift: string }
+export type FilmcraftTrimPointsResult = FilmcraftImportResult & { shift: FilmcraftTrimShift; shiftFrames: FilmcraftTrimShift } & ({ appliedTicks: string[]; refusal: null } | { appliedTicks: null; refusal: string })
+/** A command refusal can include earlier successful edits; callers must adopt documentText. */
+export function trimFilmcraftEditPoints(input: { document: string; sequenceId: string; points: FilmcraftEditPoint[]; linked: boolean; shift?: FilmcraftTrimShift } & ({ deltaTicks: string; deltaFrames?: never; playheadTicks?: never; playheadFrames?: never } | { deltaTicks?: never; deltaFrames: string; playheadTicks?: never; playheadFrames?: never } | { deltaTicks?: never; deltaFrames?: never; playheadTicks: string; playheadFrames?: never } | { deltaTicks?: never; deltaFrames?: never; playheadTicks?: never; playheadFrames: string }), signal?: AbortSignal): Promise<FilmcraftTrimPointsResult> {
+  return requestJson('/api/compositions/filmcraft/trim-points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export type FilmcraftToPlayheadResult = FilmcraftImportResult & { rangeTicks: [string, string]; playheadTicks: string; playheadFrames: string; trackIds: string[] }
+/** Q/W uses selected linked clips first, otherwise explicitly targeted tracks. */
+export function trimFilmcraftToPlayhead(input: { document: string; sequenceId: string; clipIds: string[]; targetedTrackIds: string[]; side: 'previous' | 'next'; ripple: boolean; linked: boolean } & ({ timeTicks: string; timeFrames?: never } | { timeTicks?: never; timeFrames: string }), signal?: AbortSignal): Promise<FilmcraftToPlayheadResult> {
+  return requestJson('/api/compositions/filmcraft/to-playhead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export type FilmcraftTrimSessionAction =
+  | { op: 'shuttle'; clock: number; direction: 'forward' | 'reverse'; slow: boolean }
+  | { op: 'tick'; clock: number }
+  | { op: 'stop'; clock?: number }
+  | { op: 'cancel' }
+  | { op: 'around'; clock: number; loop: boolean; toggle: boolean; centerPlayhead: boolean; prerollSeconds: number; postrollSeconds: number }
+export type FilmcraftTrimSessionResult = FilmcraftImportResult & {
+  sessionId: string; revision: string; shift: FilmcraftTrimShift; shiftFrames: FilmcraftTrimShift
+  status: { playing: boolean; playheadTicks: string; playheadFrames: string; dynamic: { offsetFrames: string; speed: number; atLimit: boolean } | null; around: { startTicks: string; endTicks: string; loop: boolean } | null }
+  commit: { committed: boolean; label: string | null; offsetTicks: string; offsetFrames: string } | null
+}
+export function createFilmcraftTrimSession(token: string, input: { creationKey?: string; document: string; sequenceId: string; points: FilmcraftEditPoint[]; linked: boolean; shift: FilmcraftTrimShift } & ({ playheadTicks: string; playheadFrames?: never } | { playheadTicks?: never; playheadFrames: string }), signal?: AbortSignal): Promise<FilmcraftTrimSessionResult> {
+  return requestJson('/api/compositions/filmcraft/trim-sessions/create', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+export function readFilmcraftTrimSession(token: string, sessionId: string, signal?: AbortSignal): Promise<FilmcraftTrimSessionResult> {
+  return requestJson('/api/compositions/filmcraft/trim-sessions/read', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }), signal })
+}
+export function commandFilmcraftTrimSession(token: string, input: { sessionId: string; revision: string; action: FilmcraftTrimSessionAction }, signal?: AbortSignal): Promise<FilmcraftTrimSessionResult> {
+  return requestJson('/api/compositions/filmcraft/trim-sessions/command', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+export function closeFilmcraftTrimSession(token: string, sessionId: string, revision: string, signal?: AbortSignal): Promise<{ closed: true }> {
+  return requestJson('/api/compositions/filmcraft/trim-sessions/close', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, revision }), signal })
+}
+
+export type FilmcraftPreviewInput = { sources?: Record<string, string>; document: string; sequenceId: string; timeFrames?: string; timeTicks?: string; effects?: boolean; captions?: boolean }
+export type FilmcraftPreviewFrame = FilmcraftMonitorFrame & { kind: 'sequence'; sequenceId: string; scale: number; effects: boolean; captions: boolean }
+export type FilmcraftExportPreset = 'lossless' | 'adaptive_high' | 'adaptive_medium' | 'adaptive_low' | 'high_quality1080' | 'high_quality2160' | 'youtube1080' | 'youtube2160' | 'vimeo1080' | 'vimeo2160' | 'social_vertical' | 'mjpeg' | 'hevc' | 'prores_proxy' | 'prores_lt' | 'prores_standard' | 'prores_hq' | 'dnxhr_lb' | 'dnxhr_sq' | 'dnxhr_hq' | 'apv42210' | 'apv42212' | 'mxf_dnxhr_hq' | 'mxf_prores_hq' | 'mxf_atom_dnxhr_hq' | 'mxf_h264' | 'png_sequence' | 'tiff_sequence' | 'bmp_sequence' | 'gif' | 'wav16' | 'wav24' | 'aiff16'
+export interface FilmcraftLibraryPreset { name: string; category: string; description: string; settings: Record<string, unknown>; builtin: boolean; favorite: boolean }
+export interface FilmcraftPresetFile { format: 'filmcraft.export-presets'; version: number; presets: Array<Omit<FilmcraftLibraryPreset, 'builtin' | 'favorite'>>; favorites: string[] }
+export interface FilmcraftPresetSaveOverrides { format?: string; width?: number; height?: number; fps?: number | string; scale?: number; audio?: boolean; quality?: number; bitrateKbps?: number; maxBitrateKbps?: number; bitrateMode?: 'cbr' | 'vbr1Pass' | 'vbr2Pass'; keyframeDistance?: number; hardwareEncoding?: boolean | 'off' | 'auto'; burnCaptions?: boolean; proresProfile?: string; dnxProfile?: string; apvProfile?: string; mxfVideoCodec?: 'dnxhr' | 'proRes' | 'h264'; sdr?: boolean; captionSidecar?: string; loudnessLufs?: number }
+export function listFilmcraftExportPresets(token: string, filters: { query?: string; category?: string; format?: string; favorites?: boolean } = {}, signal?: AbortSignal): Promise<{ presets: FilmcraftLibraryPreset[]; default: string }> {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) if (value !== undefined) query.set(key, String(value))
+  return requestJson(`/api/compositions/filmcraft/export-presets?${query}`, { headers: bearerHeaders(token), signal })
+}
+export type FilmcraftPresetCommand =
+  | { action: 'get'; name: string }
+  | ({ action: 'save'; name: string; from?: string; settings?: Record<string, unknown>; category?: string; description?: string; overwrite?: boolean } & FilmcraftPresetSaveOverrides)
+  | { action: 'delete'; name: string }
+  | { action: 'favorite'; name: string; favorite?: boolean }
+  | { action: 'import'; file: FilmcraftPresetFile }
+  | { action: 'export'; names?: string[] }
+export function editFilmcraftExportPresets<T>(token: string, command: FilmcraftPresetCommand, signal?: AbortSignal): Promise<T> {
+  return requestJson('/api/compositions/filmcraft/export-presets', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(command), signal })
+}
+export type FilmcraftScaling = 'scaleToFit' | 'scaleToFill' | 'stretchToFill'
+export type FilmcraftExportMetadata = { title?: string; creator?: string; copyright?: string; description?: string; comment?: string }
+export type FilmcraftVideoLimiter = { enabled?: boolean; minPercent?: number; maxPercent?: number }
+export type FilmcraftOverlayPlacement = 'topLeft' | 'topCenter' | 'topRight' | 'centerLeft' | 'center' | 'centerRight' | 'bottomLeft' | 'bottomCenter' | 'bottomRight'
+export type FilmcraftTextOverlay = { enabled: boolean; text: string; placement: FilmcraftOverlayPlacement; offset: [number, number]; sizePercent: number; opacity: number }
+export type FilmcraftImageOverlay = Omit<FilmcraftTextOverlay, 'text'> & { sourceId: string }
+export type FilmcraftBitrateSettings = { mode: 'cbr' | 'vbr1Pass' | 'vbr2Pass'; targetKbps: number; maxKbps?: number; adaptiveBpp?: number }
+export type FilmcraftH264AudioSettings = { codec?: 'auto' | 'aac' | 'pcm'; bitrateKbps?: number; bits?: number; sampleRate?: number; channels?: number }
+export type FilmcraftVideoRequest = { mjpegQuality?: number; captionSidecar?: string; h264Level?: number; burnCaptions?: boolean; scale?: number; libraryPreset?: string; document: string; sequenceId: string; startFrames: string; frames: number; sources: Record<string, string>; withAudio?: boolean; preset?: FilmcraftExportPreset; frameSize?: [number, number]; frameRate?: { numerator: number; denominator: number }; keyframeDistance?: number; h264Profile?: 'baseline' | 'main' | 'high'; multiplexer?: 'mp4' | 'mov'; h264Audio?: FilmcraftH264AudioSettings; audio?: FilmcraftH264AudioSettings; bitrate?: FilmcraftBitrateSettings; scaling?: FilmcraftScaling; pixelAspect?: [number, number]; maxRenderQuality?: boolean; metadata?: FilmcraftExportMetadata; videoLimiter?: FilmcraftVideoLimiter; loudness?: { enabled: boolean; targetLufs?: number; truePeakDbtp?: number }; nameOverlay?: FilmcraftTextOverlay; timecodeOverlay?: FilmcraftTextOverlay; imageOverlay?: FilmcraftImageOverlay }
+export function startFilmcraftVideoJob(token: string, input: FilmcraftVideoRequest, signal?: AbortSignal): Promise<{ jobId: string; mode: 'video_only' | 'video_audio' | 'audio_only'; container: 'mkv' | 'mp4' | 'mov' | 'mxf' | 'zip' | 'gif' | 'wav' | 'aiff' }> {
+  return requestJson('/api/compositions/filmcraft/video-jobs', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+export type FilmcraftQuickExportRequest = { wait?: boolean; document: string; sequenceId: string; sources: Record<string, string>; preset?: string; settings?: Record<string, unknown>; range?: 'entire' | 'inOut' | 'workArea' | 'custom'; sourceRange?: { startTicks: string; endTicks: string } }
+export type FilmcraftQuickExportJob = Awaited<ReturnType<typeof startFilmcraftVideoJob>> & { presetName: string; status?: Job['status']; result?: Job['result'] | null; error?: string | null }
+export function startFilmcraftQuickExportJob(token: string, input: FilmcraftQuickExportRequest, signal?: AbortSignal): Promise<FilmcraftQuickExportJob> {
+  return requestJson('/api/compositions/filmcraft/quick-export', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+export type FilmcraftExportCommand = `export.presets.${'list' | 'get' | 'save' | 'delete' | 'favorite' | 'import' | 'export'}` | `export.queue.${'add' | 'list' | 'start' | 'stop' | 'cancel' | 'retry' | 'remove' | 'move' | 'clear'}` | 'export.quick' | 'export.formats'
+export interface FilmcraftSourceEditFence { document: string; sequenceId: string; clipId: string; token: string | null; sourceBindings?: Record<string, string>; timeFrames?: string; timeTicks?: string | null }
+export type FilmcraftEffectRackCommand = 'effects.remove' | 'effects.toggleEnabled' | 'effects.reset'
+export type FilmcraftNativeCommand = 'clip.rename' | FilmcraftExportCommand | FilmcraftEffectRackCommand | 'effects.apply' | 'masks.track' | 'jobs.list' | 'jobs.cancel' | 'masks.add' | 'masks.remove' | 'masks.set' | 'masks.moveVertex' | 'masks.translate' | 'masks.addVertex' | 'masks.removeVertex' | 'masks.toggleVertexSmooth' | 'masks.list' | 'masks.select' | 'effects.toggleAnimation' | 'effects.addKeyframe' | 'effects.setParam' | 'effects.deleteKeyframe' | 'effects.moveKeyframe' | 'effects.setInterpolation' | 'effects.setKeyframe' | 'project.inspect' | 'sequence.inspect' | 'source.inspect' | 'effects.list' | 'command.list' | 'command.batch'
+export function runFilmcraftExportCommand<T = unknown>(token: string, command: FilmcraftNativeCommand, params: Record<string, unknown> = {}, signal?: AbortSignal, deadlineUnixMs?: number): Promise<T> {
+  return requestJson('/api/compositions/filmcraft/command', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ command, params, ...(deadlineUnixMs !== undefined ? { deadlineUnixMs } : {}) }), signal })
+}
+export type FilmcraftTrackingJobId = number | string
+export interface FilmcraftTrackingJobRef { id: FilmcraftTrackingJobId; instance: string }
+export interface FilmcraftTrackingJob extends FilmcraftTrackingJobRef { kind: 'maskTracking'; done: number; total: number; finished: boolean; status: string; result: { error?: string; frames?: number } | null; documentText?: string }
+function filmcraftTrackingId(value: unknown): FilmcraftTrackingJobId {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  if (typeof value === 'string' && value.length <= 20 && /^[1-9]\d*$/.test(value) && BigInt(value) <= 18446744073709551615n) return value
+  throw new Error('Invalid exact tracking job ID')
+}
+function filmcraftTrackingReference(job: FilmcraftTrackingJobId | FilmcraftTrackingJobRef): { job: FilmcraftTrackingJobId; instance?: string } {
+  if (typeof job !== 'object') return { job: filmcraftTrackingId(job) }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(job.instance)) throw new Error('Invalid tracking job instance')
+  return { job: filmcraftTrackingId(job.id), instance: job.instance }
+}
+function filmcraftTrackingRow(value: unknown, expected: FilmcraftTrackingJobId | FilmcraftTrackingJobRef): FilmcraftTrackingJob {
+  if (!value || typeof value !== 'object') throw new Error('Invalid tracking job response')
+  const row = value as Record<string, unknown>
+  const reference = filmcraftTrackingReference(expected)
+  if (String(filmcraftTrackingId(row.id)) !== String(reference.job) || row.kind !== 'maskTracking' || !Number.isSafeInteger(row.done) || !Number.isSafeInteger(row.total) || Number(row.done) < 0 || Number(row.total) < 1 || Number(row.done) > Number(row.total) || typeof row.finished !== 'boolean' || typeof row.status !== 'string' || (row.result !== null && (typeof row.result !== 'object' || Array.isArray(row.result))) || (row.finished && !row.result)) throw new Error('Invalid tracking job response')
+  const actualReference = filmcraftTrackingReference({ id: filmcraftTrackingId(row.id), instance: String(row.instance ?? '') })
+  if (reference.instance !== undefined && reference.instance !== actualReference.instance) throw new Error('Tracking job instance changed')
+  if (row.result && 'error' in row.result && typeof row.result.error !== 'string') throw new Error('Invalid tracking job error')
+  return row as unknown as FilmcraftTrackingJob
+}
+export async function startFilmcraftMaskTrackingJob(token: string, input: { document: string; sequence: string; clip: string; effect: number; mask: number; frames: number; direction: 'forward' | 'backward'; sources: Record<string, string> } & FilmcraftParameterClock): Promise<FilmcraftTrackingJob> {
+  if (!Number.isSafeInteger(input.frames) || input.frames < 1 || !Number.isSafeInteger(input.effect) || input.effect < 0 || !Number.isSafeInteger(input.mask) || input.mask < 0) throw new Error('Invalid tracking frame count or mask address')
+  const { timeTicks, timeFrames, ...address } = input
+  const response = await runFilmcraftExportCommand<{ job: unknown; status: unknown }>(token, 'masks.track', { ...address, wait: false, ...(timeTicks !== undefined ? { time: timeTicks } : { frame: timeFrames }) })
+  const id = filmcraftTrackingId(response.job)
+  return filmcraftTrackingRow(response.status, id)
+}
+export async function readFilmcraftTrackingJob(token: string, job: FilmcraftTrackingJobId | FilmcraftTrackingJobRef, snapshot = false, signal?: AbortSignal): Promise<FilmcraftTrackingJob> {
+  const reference = filmcraftTrackingReference(job)
+  const rows = await runFilmcraftExportCommand<unknown>(token, 'jobs.list', { ...reference, snapshot }, signal)
+  if (!Array.isArray(rows) || rows.length !== 1) throw new Error('Tracking job is no longer available')
+  const row = filmcraftTrackingRow(rows[0], job)
+  if (snapshot && (typeof row.documentText !== 'string' || !row.documentText)) throw new Error('Tracking job returned no exact source snapshot')
+  return row
+}
+export function cancelFilmcraftTrackingJob(token: string, job: FilmcraftTrackingJobId | FilmcraftTrackingJobRef): Promise<null> { return runFilmcraftExportCommand(token, 'jobs.cancel', filmcraftTrackingReference(job)) }
+export async function importFilmcraftTrackingSnapshot(job: FilmcraftTrackingJob, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  if (!job.finished) throw new Error('Tracking is still running')
+  return importFilmcraftCommandSnapshot(job, signal)
+}
+export async function editFilmcraftEffectRack(token: string, input: { document: string; sequence: string; clip: string; index: number; command: FilmcraftEffectRackCommand }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const { command, ...params } = input
+  const result = await runFilmcraftExportCommand<{ documentText?: unknown }>(token, command, params, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+export async function renameFilmcraftClip(token: string, input: { document: string; sequence: string; clip: string; name: string }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const result = await runFilmcraftExportCommand(token, 'clip.rename', input, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+function importFilmcraftCommandSnapshot(result: unknown, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  if (!result || typeof result !== 'object' || !('documentText' in result) || typeof result.documentText !== 'string' || !result.documentText) throw new Error('Effect command returned no source snapshot')
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  return importFilmcraftProject(result.documentText, signal)
+}
+export type FilmcraftEffectKind = 'Video' | 'Audio' | 'VideoTransition' | 'AudioTransition'
+export interface FilmcraftEffectOption { id: string; name: string; kind: FilmcraftEffectKind; category: string[]; folder: string | null; path: string; params: string[]; badges: { accelerated: boolean; float32: boolean; yuv: boolean } }
+export function listFilmcraftEffects(token: string, kind: FilmcraftEffectKind, signal?: AbortSignal): Promise<FilmcraftEffectOption[]> {
+  return runFilmcraftExportCommand(token, 'effects.list', { kind }, signal)
+}
+export async function editFilmcraftAnimation(token: string, input: { command: 'effects.toggleAnimation' | 'effects.addKeyframe'; document: string; sequence: string; clip: string; effect: number; param: string; mask?: number; playhead: string }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const { command, playhead, ...address } = input
+  const result = await runFilmcraftExportCommand(token, command, { ...address, context: { playhead } }, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+export async function setFilmcraftEffectParameter(token: string, input: { document: string; sequence: string; clip: string; effect: number; param: string; value: FilmcraftParameterValue; mask?: number } & FilmcraftParameterClock, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const { value, timeTicks, timeFrames, ...address } = input
+  let raw: unknown
+  if ('Vec2' in value) {
+    if (value.Vec2.x === null || value.Vec2.y === null) throw new Error('Для применения в позиции курсора задайте численные координаты вместо auto')
+    raw = [value.Vec2.x, value.Vec2.y]
+  } else raw = Object.values(value)[0]
+  const result = await runFilmcraftExportCommand(token, 'effects.setParam', { ...address, value: raw, ...(timeTicks !== undefined ? { time: timeTicks } : { frame: timeFrames }) }, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+export async function applyFilmcraftEffect(token: string, input: { document: string; sequence: string; clip: string; effect: string }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  const result = await runFilmcraftExportCommand(token, 'effects.apply', input, signal)
+  return importFilmcraftCommandSnapshot(result, signal)
+}
+export interface FilmcraftExportFormat {
+  id: string; label: string; extension: string; video: boolean; audio: boolean; imageSequence: boolean
+  available: boolean; native: boolean; hostExtension: string | null; unavailableReason: string | null; availabilityScope: string
+}
+export function listFilmcraftExportFormats(token: string, signal?: AbortSignal): Promise<FilmcraftExportFormat[]> {
+  return runFilmcraftExportCommand(token, 'export.formats', {}, signal)
+}
+export type FilmcraftSourceRange = { startTicks: string; endTicks: string }
+export interface FilmcraftExportQueueItem {
+  id: string; sequenceId: string; sequenceName: string; preset: string; container: string
+  status: 'ready' | 'encoding' | 'done' | 'failed' | 'cancelled'
+  jobId: string | null; error: string | null; progress: number | null
+  statusText: string | null; etaSeconds: number | null; etaText?: string | null; sourceRange: FilmcraftSourceRange | null
+}
+export interface FilmcraftExportQueue { running: boolean; items: FilmcraftExportQueueItem[] }
+export type FilmcraftExportQueueCommand =
+  | { action: 'add'; input: Omit<FilmcraftVideoRequest, 'frames' | 'startFrames'> & { frames?: number; startFrames?: string; sourceRange?: FilmcraftSourceRange }; sequences?: string[]; ranges?: Array<'entire' | 'inOut' | 'workArea' | FilmcraftSourceRange>; start?: boolean; wait?: boolean }
+  | { action: 'start'; wait?: boolean }
+  | { action: 'stop' }
+  | { action: 'cancel'; id?: string; wait?: boolean }
+  | { action: 'retry'; id: string; start?: boolean; wait?: boolean }
+  | { action: 'remove'; id: string }
+  | { action: 'move'; id: string; to?: number; by?: number }
+  | { action: 'clear'; all?: boolean }
+export function listFilmcraftExportQueue(token: string, signal?: AbortSignal): Promise<FilmcraftExportQueue> {
+  return requestJson('/api/compositions/filmcraft/export-queue', { headers: bearerHeaders(token), signal })
+}
+export function editFilmcraftExportQueue(token: string, command: FilmcraftExportQueueCommand, signal?: AbortSignal): Promise<FilmcraftExportQueue> {
+  return requestJson('/api/compositions/filmcraft/export-queue', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(command), signal })
+}
+export interface FilmcraftVideoHistoryEntry { jobId: string; createdAt: number; job: Job }
+export interface FilmcraftVideoHistory { jobs: FilmcraftVideoHistoryEntry[]; nextCursor: string | null }
+export function listFilmcraftVideoJobs(token: string, cursor?: string, signal?: AbortSignal): Promise<FilmcraftVideoHistory> {
+  const query = new URLSearchParams({ limit: '20' }); if (cursor) query.set('cursor', cursor)
+  return requestJson(`/api/compositions/filmcraft/video-jobs?${query}`, { headers: bearerHeaders(token), signal })
+}
+export function getFilmcraftVideoJob(token: string, id: string, signal?: AbortSignal): Promise<Job> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}`, { headers: bearerHeaders(token), signal })
+}
+export function retryFilmcraftVideoJob(token: string, id: string, signal?: AbortSignal): Promise<{ jobId: string; status: 'pending' }> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}/retry`, { method: 'POST', headers: bearerHeaders(token), signal })
+}
+export function cancelFilmcraftVideoJob(token: string, id: string, signal?: AbortSignal): Promise<unknown> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: bearerHeaders(token), signal })
+}
+export async function downloadFilmcraftVideo(token: string, id: string, signal?: AbortSignal, format: 'mkv' | 'mp4' | 'mov' | 'mxf' | 'zip' | 'gif' | 'wav' | 'aiff' = 'mkv'): Promise<Blob> {
+  if (format !== 'mkv' && format !== 'mp4' && format !== 'mov' && format !== 'mxf' && format !== 'zip' && format !== 'gif' && format !== 'wav' && format !== 'aiff') throw new Error('Неподдерживаемый формат видео')
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error('Некорректный идентификатор видео')
+  const response = await safeFetch(`/files/outputs/${id}.${format}`, { headers: bearerHeaders(token), signal })
+  await requireOk(response, 'Не удалось скачать видео')
+  return response.blob()
+}
+export async function exportFilmcraftFrame(input: FilmcraftPreviewInput, token?: string | null, signal?: AbortSignal): Promise<Blob> {
+  const response = await safeFetch('/api/compositions/filmcraft/export-frame', { method: 'POST', headers: { ...(token ? bearerHeaders(token) : {}), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+  await requireOk(response, 'Не удалось экспортировать кадр проекта')
+  return response.blob()
+}
+export function getFilmcraftPreviewFrame(input: FilmcraftPreviewInput, signal?: AbortSignal, token?: string | null): Promise<FilmcraftPreviewFrame> {
+  return requestJson('/api/compositions/filmcraft/preview-frame', { method: 'POST', headers: { ...(token ? bearerHeaders(token) : {}), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export type ConcatSourceEditCommand =
+  | {kind:'move';startTick:number}
+  | {kind:'setCurve';points:import('./composition/types').ConcatSourceDocumentClock['speedCurve']}
+  | {kind:'split';time:number}
+  | {kind:'trimStart';delta:number;floor:number;ripple:boolean}
+  | {kind:'trimEnd';delta:number;ceiling:number|null;ripple:boolean}
+  | {kind:'freeze';time:number;duration:number|null}
+export interface ConcatSourceEditTracks {
+  clip?:Readonly<Record<string,readonly import('./composition/types').WireConcatParamKey[]>>
+  audio?:Readonly<Record<string,readonly import('./composition/types').WireConcatParamKey[]>>
+  video?:Readonly<Record<string,readonly import('./composition/types').WireConcatParamKey[]>>
+}
+export interface ConcatSourceEditPlan {
+  capture?:{selection:'atOrAfterThenFirst';sourceSeconds:number;seekTimeUs:number;cacheTimeMs:number;width:number;jpegQuality:number}
+  changed:boolean
+  rippleBy:number
+  parts:readonly {role:'clip'|'head'|'tail'|'still';tracks:ConcatSourceEditTracks;fadeIn:number;fadeOut:number;clock:import('./composition/types').ConcatSourceDocumentClock;placement:import('./composition/types').WireClipPlacement}[]
+}
+export function planConcatSourceEdit(input:{tracks?:ConcatSourceEditTracks;fadeIn?:number;fadeOut?:number;clock:import('./composition/types').ConcatSourceDocumentClock;rateNum:number;rateDen:number;command:ConcatSourceEditCommand},signal?:AbortSignal):Promise<ConcatSourceEditPlan>{
+  return requestJson('/api/compositions/concat-retime-edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),signal})
+}
+
+export interface NativeClipMove {
+  fromComposition: string; fromTrackId: string; clipId: string;
+  toComposition: string; toTrackId: string; startUs: number; createTrack?: boolean
+}
+export interface NativeClipMoveResult { project: NativeNestedProject; changed: boolean; affectedCompositions: readonly string[]; movedClipIds: readonly string[] }
+export function moveNativeNestedClips(project: NativeNestedProject, moves: readonly NativeClipMove[]): Promise<NativeClipMoveResult> {
+  return requestJson('/api/compositions/nested-move-clips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, moves }) })
+}
+
+export interface LocalSpeechStatus {engine:string;available:boolean;model:string|null;maxDurationUs:number}
+export interface LocalSpeechTranscript {segmentation?:'phrase'|'word';language:string;modelHash:string;sourceStartUs:number;durationUs:number;segments:readonly {startUs:number;endUs:number;text:string}[]}
+export function getLocalSpeechStatus(token?:string):Promise<LocalSpeechStatus>{return requestJson('/api/speech/models',{headers:token?bearerHeaders(token):undefined})}
+export interface LocalSpeechJobUpdate {jobId:string;status:Job['status'];progress?:number}
+export async function transcribeLocalSpeech(token:string,input:{sourceId:string;startUs:number;endUs:number;language:string;segmentation?:'phrase'|'word'},signal?:AbortSignal,onJob?:(update:LocalSpeechJobUpdate)=>void):Promise<LocalSpeechTranscript>{
+  signal?.throwIfAborted()
+  // Keep admission observable even if the panel closes while POST is in flight.
+  const {jobId}=await requestJson<{jobId:string}>('/api/speech/jobs',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify(input)})
+  if(typeof jobId!=='string'||!jobId)throw new Error('Сервер не вернул номер задания речи')
+  return observeLocalSpeechJob(token,jobId,signal,onJob)
+}
+
+export interface LocalSpeechJobSummary {jobId:string;sourceId:string;status:Job['status'];progress:number|null;createdAt:number}
+export interface LocalSpeechJobPage {jobs:LocalSpeechJobSummary[];nextCursor:string|null}
+export function listLocalSpeechJobs(token:string,cursor?:string):Promise<LocalSpeechJobPage>{
+  return requestJson(`/api/speech/jobs${cursor?`?cursor=${encodeURIComponent(cursor)}`:''}`,{headers:bearerHeaders(token)})
+}
+
+export function cancelLocalSpeechJob(token:string,jobId:string):Promise<unknown>{
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/cancel`,{method:'POST',headers:bearerHeaders(token)})
+}
+
+/** Reconnect to existing work without admitting a second recognition job. */
+export async function observeLocalSpeechJob(token:string,jobId:string,signal?:AbortSignal,onJob?:(update:LocalSpeechJobUpdate)=>void):Promise<LocalSpeechTranscript>{
+  if(!jobId||jobId.length>128)throw new Error('Некорректный номер задания речи')
+  try{
+    onJob?.({jobId,status:'pending'})
+    const deadline=Date.now()+8*60*1000
+    while(true){
+      signal?.throwIfAborted()
+      const job=await requestJson<Job>(`/api/jobs/${encodeURIComponent(jobId)}`,{headers:bearerHeaders(token),signal})
+      signal?.throwIfAborted()
+      onJob?.({jobId,status:job.status,progress:typeof job.progress==='number'&&Number.isFinite(job.progress)?Math.max(0,Math.min(100,job.progress)):undefined})
+      if(job.status==='done')return job.result as unknown as LocalSpeechTranscript
+      if(job.status==='cancelled')throw new Error('Распознавание отменено')
+      if(job.status==='error'||job.status==='interrupted')throw new Error(job.error||'Распознавание остановлено')
+      if(Date.now()>=deadline)throw new Error('Превышено время ожидания распознавания')
+      await new Promise<void>((resolve,reject)=>{
+        const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(signal?.reason??new DOMException('Aborted','AbortError'))}
+        const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve()},300)
+        signal?.addEventListener('abort',abort,{once:true})
+        if(signal?.aborted)abort()
+      })
+    }
+  }catch(reason){
+    // Observation failures leave durable work intact. Only explicit abort requests cancellation.
+    if(signal?.aborted){
+      await cancelLocalSpeechJob(token,jobId)
+        .catch(error=>{throw new Error(`Не удалось подтвердить отмену: ${String(error)}`)})
+      throw new Error('Отмена распознавания запрошена')
+    }
+    throw reason
+  }
+}
+
+export interface SpeechClipPlan {sourceId:string;sourceStartUs:number;sourceEndUs:number;timelineStartUs:number;timelineEndUs:number}
+export function planSpeechClip(project:NativeNestedProject,compositionId:string,clipId:string):Promise<SpeechClipPlan>{return requestJson('/api/speech/clip-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,compositionId,clipId})})}
+export function alignSpeechClip(project:NativeNestedProject,compositionId:string,clipId:string,sourceId:string,transcript:LocalSpeechTranscript):Promise<import('./composition/types').CaptionTrack>{return requestJson('/api/speech/align',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,compositionId,clipId,sourceId,transcript})})}
+
+export interface FilmcraftAnalysisJobSummary { jobId: string; status: Job['status']; progress: number | null; createdAt: number }
+export interface FilmcraftAnalysisJobPage { jobs: FilmcraftAnalysisJobSummary[]; nextCursor: string | null }
+export function startFilmcraftAnalysis(token: string, input: FilmcraftPreviewInput, signal?: AbortSignal): Promise<{ jobId: string }> {
+  return requestJson('/api/compositions/filmcraft/analysis-jobs', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify(input), signal })
+}
+export function listFilmcraftAnalysis(token: string, cursor?: string, signal?: AbortSignal): Promise<FilmcraftAnalysisJobPage> {
+  return requestJson(`/api/compositions/filmcraft/analysis-jobs${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: bearerHeaders(token), signal })
+}
+export function getFilmcraftAnalysis(token: string, jobId: string, signal?: AbortSignal): Promise<Job> {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`, { headers: bearerHeaders(token), signal })
+}
+export function cancelFilmcraftAnalysis(token: string, jobId: string, signal?: AbortSignal): Promise<unknown> {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', headers: bearerHeaders(token), signal })
+}
+
+export interface LocalSpeechModel { id: string; name: string; bytes: number; available: boolean; inUse?: boolean }
+export interface LocalSpeechModelLibrary { models: LocalSpeechModel[]; configured: LocalSpeechModel | null; selectedId: string; maxBytes: number }
+export function listLocalSpeechModels(token: string, signal?: AbortSignal): Promise<LocalSpeechModelLibrary> {
+  return requestJson('/api/speech/model-library', { headers: bearerHeaders(token), signal })
+}
+export function selectLocalSpeechModel(token: string, modelId: string, signal?: AbortSignal): Promise<{ selectedId: string }> {
+  return requestJson('/api/speech/model-selection', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({ modelId }), signal })
+}
+export function importLocalSpeechModel(token: string, file: File, signal?: AbortSignal): Promise<LocalSpeechModel> {
+  return requestJson(`/api/speech/model-library?${new URLSearchParams({ name: file.name })}`, { method: 'PUT', headers: { ...bearerHeaders(token), 'Content-Type': 'application/octet-stream' }, body: file, signal })
+}
+export function removeLocalSpeechModel(token: string, modelId: string, signal?: AbortSignal): Promise<{ removed: boolean; fileReleased: boolean }> {
+  return requestJson('/api/speech/model-removal', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({ modelId }), signal })
+}
+
+export interface SpeechCatalogModel { id: string; file: string; bytes: number; sha256: string }
+export interface SpeechModelCatalog { revision: string; models: SpeechCatalogModel[] }
+export interface SpeechModelDownloadSummary { jobId: string; catalogId: string; createdAt: number; status: Job['status']; progress: number | null }
+export function getSpeechModelCatalog(signal?: AbortSignal): Promise<SpeechModelCatalog> {
+  return requestJson('/api/speech/model-catalog', { signal })
+}
+export function startSpeechModelDownload(token: string, catalogId: string, signal?: AbortSignal): Promise<{ jobId: string }> {
+  return requestJson('/api/speech/model-downloads', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({ catalogId }), signal })
+}
+export function listSpeechModelDownloads(token: string, cursor?: string, signal?: AbortSignal): Promise<{ jobs: SpeechModelDownloadSummary[]; nextCursor: string | null }> {
+  return requestJson(`/api/speech/model-downloads${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: bearerHeaders(token), signal })
+}
+export function getSpeechModelDownload(token: string, id: string, signal?: AbortSignal): Promise<Job> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}`, { headers: bearerHeaders(token), signal })
+}
+export function cancelSpeechModelDownload(token: string, id: string, signal?: AbortSignal): Promise<unknown> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: bearerHeaders(token), signal })
+}
+export function retrySpeechModelDownload(token: string, id: string, signal?: AbortSignal): Promise<{ jobId: string; status: string }> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}/retry`, { method: 'POST', headers: bearerHeaders(token), signal })
+}
+
+export interface LocalTtsVoice { id: number; name: string; language: string }
+export interface LocalTtsStatus { engine: string; available: boolean; voices: LocalTtsVoice[]; maxTextBytes: number; minSpeed: number; maxSpeed: number; supportsPauses?: boolean }
+export function getLocalTtsStatus(signal?: AbortSignal, token?: string): Promise<LocalTtsStatus> {
+  return requestJson('/api/speech/voices', { signal, ...(token ? { headers: bearerHeaders(token) } : {}) })
+}
+export async function synthesizeLocalSpeech(token: string, input: {text: string; voiceId: number; speed: number}, signal?: AbortSignal): Promise<Blob> {
+  const response = await safeFetch('/api/speech/synthesize', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify(input), signal })
+  await requireOk(response, 'Не удалось создать озвучку')
+  if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('Сервер не вернул звуковой файл WAV')
+  const audio = await response.blob()
+  if (audio.size < 44 || audio.size > 64 * 1024 * 1024) throw new Error('Недопустимый размер озвучки')
+  return audio
+}
+export function saveLocalNarration(token: string, projectId: string, audio: Blob, signal?: AbortSignal): Promise<MediaEntry> {
+  return requestJson(`/api/speech/narration-assets?${new URLSearchParams({ projectId })}`, { method: 'PUT', headers: { ...bearerHeaders(token), 'Content-Type': 'audio/wav' }, body: audio, signal })
+}
+
+export interface LocalTtsJobSummary { jobId: string; voiceId: number; createdAt: number; status: Job['status']; progress: number | null }
+export function startLocalTtsJob(token: string, input: {text: string; voiceId: number; speed: number; referenceId?: string; numSteps?: number; pauses?: number}, signal?: AbortSignal): Promise<{ jobId: string }> {
+  return requestJson('/api/speech/tts-jobs', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify(input), signal })
+}
+export function listLocalTtsJobs(token: string, cursor?: string, signal?: AbortSignal): Promise<{ jobs: LocalTtsJobSummary[]; nextCursor: string | null }> {
+  return requestJson(`/api/speech/tts-jobs${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: bearerHeaders(token), signal })
+}
+export function getLocalTtsJob(token: string, id: string, signal?: AbortSignal): Promise<Job> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}`, { headers: bearerHeaders(token), signal })
+}
+export function cancelLocalTtsJob(token: string, id: string, signal?: AbortSignal): Promise<unknown> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: bearerHeaders(token), signal })
+}
+export async function getLocalTtsJobAudio(token: string, id: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await safeFetch(`/api/speech/tts-jobs/${encodeURIComponent(id)}/audio`, { headers: bearerHeaders(token), signal })
+  await requireOk(response, 'Не удалось загрузить готовую озвучку')
+  if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('Сервер не вернул WAV')
+  const blob = await response.blob()
+  if (blob.size < 44 || blob.size > 64 * 1024 * 1024) throw new Error('Недопустимый размер озвучки')
+  return blob
+}
+
+export interface LocalTtsModel { id: string; name: string; bytes: number }
+export interface LocalTtsModelLibrary { selectedId: string; models: LocalTtsModel[]; catalog: (LocalTtsModel & { revision: string })[] }
+export function listLocalTtsModels(token: string, signal?: AbortSignal): Promise<LocalTtsModelLibrary> {
+  return requestJson('/api/speech/tts-models', { headers: bearerHeaders(token), signal })
+}
+export function selectLocalTtsModel(token: string, modelId: string, signal?: AbortSignal): Promise<{ selectedId: string }> {
+  return requestJson('/api/speech/tts-models/selection', { method: 'PUT', headers: bearerHeaders(token, true), body: JSON.stringify({ modelId }), signal })
+}
+export function startTtsModelDownload(token: string, catalogId: string, signal?: AbortSignal): Promise<{ jobId: string }> {
+  return requestJson('/api/speech/tts-model-downloads', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({ catalogId }), signal })
+}
+export function listTtsModelDownloads(token: string, cursor?: string, signal?: AbortSignal): Promise<{ jobs: SpeechModelDownloadSummary[]; nextCursor: string | null }> {
+  return requestJson(`/api/speech/tts-model-downloads${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: bearerHeaders(token), signal })
+}
+export function removeLocalTtsModel(token: string, modelId: string, signal?: AbortSignal): Promise<{ removed: boolean; fileReleased: boolean }> {
+  return requestJson('/api/speech/tts-models', { method: 'DELETE', headers: bearerHeaders(token, true), body: JSON.stringify({ modelId }), signal })
+}
+
+export interface LocalTtsReference { id: string; durationUs: number; sampleRate: number }
+export function uploadLocalTtsReference(token: string, audio: Blob, signal?: AbortSignal): Promise<LocalTtsReference> {
+  return requestJson('/api/speech/tts-references', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'audio/wav' }, body: audio, signal })
+}
+export interface VoiceReferenceClipPlan { sourceId: string; sourceStartUs: number }
+export function planVoiceReferenceClip(project: NativeNestedProject, compositionId: string, clipId: string, signal?: AbortSignal): Promise<VoiceReferenceClipPlan> {
+  return requestJson('/api/speech/reference-clip-plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, compositionId, clipId }), signal })
+}
+export function createLocalTtsReferenceFromSource(token: string, sourceId: string, startUs: number, endUs: number, signal?: AbortSignal): Promise<LocalTtsReference> {
+  return requestJson('/api/speech/tts-references/source', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({ sourceId, startUs, endUs }), signal })
+}
+
+export interface SavedTtsReference extends LocalTtsReference { origin: 'file'|'clip'; available: boolean }
+export interface TtsReferencePage { references: SavedTtsReference[]; nextCursor: string|null }
+export function listLocalTtsReferences(token:string,cursor?:string,signal?:AbortSignal):Promise<TtsReferencePage>{
+ return requestJson('/api/speech/tts-references'+(cursor?'?cursor='+encodeURIComponent(cursor):''),{headers:bearerHeaders(token),signal})
+}
+export function removeLocalTtsReference(token:string,referenceId:string,signal?:AbortSignal):Promise<{removed:boolean;filesRetained:boolean}>{
+ return requestJson('/api/speech/tts-references',{method:'DELETE',headers:bearerHeaders(token,true),body:JSON.stringify({referenceId}),signal})
+}
+
+export interface ImageEnhancementStatus { available: boolean; engine: string; factors: number[]; stillImages: boolean; video: boolean }
+export function getImageEnhancementStatus(token: string, signal?: AbortSignal): Promise<ImageEnhancementStatus> {
+  return requestJson('/api/enhance/status', { headers: bearerHeaders(token), signal })
+}
+export function startImageEnhancement(token: string, sourceId: string, factor: number, signal?: AbortSignal): Promise<{jobId: string}> {
+  return requestJson('/api/enhance/jobs', { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({sourceId, factor}), signal })
+}
+export function getImageEnhancementJob(token: string, id: string, signal?: AbortSignal): Promise<Job> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}`, { headers: bearerHeaders(token), signal })
+}
+export function cancelImageEnhancement(token: string, id: string, signal?: AbortSignal): Promise<unknown> {
+  return requestJson(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: bearerHeaders(token), signal })
+}
+export async function getEnhancedImage(token: string, id: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await safeFetch(`/api/enhance/jobs/${encodeURIComponent(id)}/image`, { headers: bearerHeaders(token), signal })
+  await requireOk(response, 'Не удалось загрузить улучшенное изображение')
+  if (!response.headers.get('content-type')?.startsWith('image/png')) throw new Error('Сервер не вернул PNG')
+  const blob = await response.blob()
+  if (blob.size < 8 || blob.size > 256 * 1024 * 1024) throw new Error('Недопустимый размер изображения')
+  return blob
+}
+export function saveEnhancedImage(token: string, id: string, projectId: string, signal?: AbortSignal): Promise<MediaEntry> {
+  return requestJson(`/api/enhance/jobs/${encodeURIComponent(id)}/asset`, { method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({projectId}), signal })
+}
+
+export interface ImageEnhancementSummary { jobId: string; sourceId: string; factor: number | null; createdAt: number; status: Job['status']; progress: number | null }
+export function listImageEnhancements(token: string, sourceId?: string, cursor?: string, signal?: AbortSignal): Promise<{jobs: ImageEnhancementSummary[]; nextCursor: string | null}> {
+  const query = new URLSearchParams()
+  if (sourceId) query.set('sourceId', sourceId)
+  if (cursor) query.set('cursor', cursor)
+  return requestJson(`/api/enhance/jobs?${query}`, { headers: bearerHeaders(token), signal })
+}
+
+export interface EnhancementModel { id:string; name:string; bytes:number; revision?:string; licence?:string }
+export interface EnhancementModelLibrary { models:EnhancementModel[]; catalog:EnhancementModel[]; selectedId:string }
+export function listEnhancementModels(token:string,signal?:AbortSignal):Promise<EnhancementModelLibrary>{
+ return requestJson('/api/enhance/models',{headers:bearerHeaders(token),signal})
+}
+export function selectEnhancementModel(token:string,modelId:string,signal?:AbortSignal):Promise<{selectedId:string}>{
+ return requestJson('/api/enhance/models/select',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({modelId}),signal})
+}
+export function removeEnhancementModel(token:string,modelId:string,signal?:AbortSignal):Promise<{removed:boolean;fileReleased:boolean}>{
+ return requestJson('/api/enhance/models/remove',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({modelId}),signal})
+}
+export function startEnhancementModelDownload(token:string,catalogId:string,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/enhance/models/downloads',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({catalogId}),signal})
+}
+export function listEnhancementModelDownloads(token:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:SpeechModelDownloadSummary[];nextCursor:string|null}>{
+ return requestJson('/api/enhance/models/downloads'+(cursor?'?cursor='+encodeURIComponent(cursor):''),{headers:bearerHeaders(token),signal})
+}
+
+export function startVideoEnhancement(token:string,sourceId:string,factor:number,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/enhance/video-jobs',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({sourceId,factor}),signal})
+}
+export function saveEnhancedVideo(token:string,id:string,projectId:string,signal?:AbortSignal):Promise<MediaEntry>{
+ return requestJson('/api/enhance/video-jobs/'+encodeURIComponent(id)+'/asset',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({projectId}),signal})
+}
+export function listVideoEnhancements(token:string,sourceId?:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:ImageEnhancementSummary[];nextCursor:string|null}>{
+ const query=new URLSearchParams();if(sourceId)query.set('sourceId',sourceId);if(cursor)query.set('cursor',cursor)
+ return requestJson('/api/enhance/video-jobs?'+query,{headers:bearerHeaders(token),signal})
+}
+
+export interface CutoutStatus { available:boolean; engine:string; stillImages:boolean; video:boolean }
+export type CutoutSummary = Omit<ImageEnhancementSummary,'factor'>
+export function getCutoutStatus(token:string,signal?:AbortSignal):Promise<CutoutStatus>{
+ return requestJson('/api/cutout/status',{headers:bearerHeaders(token),signal})
+}
+export function startCutout(token:string,sourceId:string,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/cutout/jobs',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({sourceId}),signal})
+}
+export async function getCutoutImage(token:string,id:string,signal?:AbortSignal):Promise<Blob>{
+ const response=await safeFetch(`/api/cutout/jobs/${encodeURIComponent(id)}/image`,{headers:bearerHeaders(token),signal})
+ await requireOk(response,'Не удалось загрузить изображение без фона')
+ if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG')
+ const blob=await response.blob()
+ if(blob.size<8||blob.size>256*1024*1024)throw new Error('Недопустимый размер изображения')
+ return blob
+}
+export function saveCutoutImage(token:string,id:string,projectId:string,signal?:AbortSignal):Promise<CutoutAcceptedMedia>{
+ return requestJson(`/api/cutout/jobs/${encodeURIComponent(id)}/asset`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({projectId}),signal})
+}
+export function listCutouts(token:string,sourceId?:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:CutoutSummary[];nextCursor:string|null}>{
+ const query=new URLSearchParams();if(sourceId)query.set('sourceId',sourceId);if(cursor)query.set('cursor',cursor)
+ return requestJson(`/api/cutout/jobs?${query}`,{headers:bearerHeaders(token),signal})
+}
+
+export function listCutoutModels(token:string,signal?:AbortSignal):Promise<CutoutModelLibrary>{
+ return requestJson('/api/cutout/models',{headers:bearerHeaders(token),signal})
+}
+export function selectCutoutModel(token:string,modelId:string,signal?:AbortSignal):Promise<{selectedId:string}>{
+ return requestJson('/api/cutout/models/select',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({modelId}),signal})
+}
+export function removeCutoutModel(token:string,modelId:string,signal?:AbortSignal):Promise<{removed:boolean;fileReleased:boolean}>{
+ return requestJson('/api/cutout/models/remove',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({modelId}),signal})
+}
+export function startCutoutModelDownload(token:string,catalogId:string,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/cutout/models/downloads',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({catalogId}),signal})
+}
+export function listCutoutModelDownloads(token:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:SpeechModelDownloadSummary[];nextCursor:string|null}>{
+ return requestJson('/api/cutout/models/downloads'+(cursor?'?cursor='+encodeURIComponent(cursor):''),{headers:bearerHeaders(token),signal})
+}
+
+export type CutoutModel=EnhancementModel
+export type CutoutModelLibrary=EnhancementModelLibrary
+export function listSamModels(token:string,signal?:AbortSignal):Promise<SamModelLibrary>{
+ return requestJson('/api/sam/models',{headers:bearerHeaders(token),signal})
+}
+export function selectSamModel(token:string,modelId:string,signal?:AbortSignal):Promise<{selectedId:string}>{
+ return requestJson('/api/sam/models/select',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({modelId}),signal})
+}
+export function removeSamModel(token:string,modelId:string,signal?:AbortSignal):Promise<{removed:boolean;fileReleased:boolean}>{
+ return requestJson('/api/sam/models/remove',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({modelId}),signal})
+}
+export function startSamModelDownload(token:string,catalogId:string,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/sam/models/downloads',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({catalogId}),signal})
+}
+export function listSamModelDownloads(token:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:SpeechModelDownloadSummary[];nextCursor:string|null}>{
+ return requestJson('/api/sam/models/downloads'+(cursor?'?cursor='+encodeURIComponent(cursor):''),{headers:bearerHeaders(token),signal})
+}
+
+export type SamModel=EnhancementModel
+export type SamModelLibrary=EnhancementModelLibrary
+
+export type {MaskStroke,MaskCorrection} from './composition/types'
+import type {MaskCorrection} from './composition/types'
+export interface CutoutAcceptedMedia extends MediaEntry {cutout?:{snapshot:import('./composition/types').CutoutAttachment;source:MediaEntry;mask:MediaEntry;regions?:MediaEntry[]}}
+export async function getCutoutOriginal(token:string,id:string,signal?:AbortSignal):Promise<Blob>{
+ const response=await safeFetch(`/api/cutout/jobs/${encodeURIComponent(id)}/original`,{headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось открыть исходник маски');if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG');const blob=await response.blob();if(blob.size<8||blob.size>16*1024*1024)throw new Error('Недопустимый размер превью');return blob
+}
+export async function getCutoutCorrection(token:string,id:string,signal?:AbortSignal):Promise<{baseJobId:string;correction:MaskCorrection}|null>{
+ const response=await safeFetch(`/api/cutout/jobs/${encodeURIComponent(id)}/correction`,{headers:bearerHeaders(token),signal});if(response.status===404)return null;await requireOk(response,'Не удалось прочитать правки маски');return response.json()
+}
+export function startCutoutCorrection(token:string,id:string,correction:MaskCorrection,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson(`/api/cutout/jobs/${encodeURIComponent(id)}/corrections`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify(correction),signal})
+}
+
+/** Correct a saved project mask independently of inference job history. */
+export function startProjectCutoutCorrection(token:string,projectId:string,clipId:string,correction:MaskCorrection,compositionId?:string,signal?:AbortSignal,expectedAttachment?:import('./composition/types').CutoutAttachment):Promise<{jobId:string}>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/cutout/corrections`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({clipId,correction,...(compositionId===undefined?{}:{compositionId}),...(expectedAttachment?{expectedAttachment}:{})}),signal})
+}
+
+export interface ProjectCutoutContext {projectId:string;clipId:string;compositionId?:string;snapshot:import('./composition/types').CutoutAttachment}
+function projectCutoutUrl(context:ProjectCutoutContext){return `/api/composition-projects/${encodeURIComponent(context.projectId)}/cutout/${encodeURIComponent(context.clipId)}`}
+function projectCutoutQuery(context:ProjectCutoutContext){return context.compositionId===undefined?'':`?compositionId=${encodeURIComponent(context.compositionId)}`}
+export function getProjectCutoutSettings(token:string,context:ProjectCutoutContext,signal?:AbortSignal):Promise<{snapshot:import('./composition/types').CutoutAttachment;width:number;height:number}>{
+ return requestJson(projectCutoutUrl(context)+projectCutoutQuery(context),{headers:bearerHeaders(token),signal})
+}
+export async function getProjectCutoutOriginal(token:string,context:ProjectCutoutContext,signal?:AbortSignal):Promise<Blob>{
+ const response=await safeFetch(projectCutoutUrl(context)+'/original'+projectCutoutQuery(context),{headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось открыть исходник маски проекта');if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG');const blob=await response.blob();if(blob.size<8||blob.size>16*1024*1024)throw new Error('Недопустимый размер превью');return blob
+}
+
+export function getSamStatus(token:string,signal?:AbortSignal):Promise<CutoutStatus>{
+ return requestJson('/api/sam/status',{headers:bearerHeaders(token),signal})
+}
+export function startSamRegion(token:string,sourceId:string,points:readonly [number,number][],signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/sam/jobs',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({sourceId,points}),signal})
+}
+export function listSamRegions(token:string,sourceId?:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:CutoutSummary[];nextCursor:string|null}>{
+ const query=new URLSearchParams();if(sourceId)query.set('sourceId',sourceId);if(cursor)query.set('cursor',cursor)
+ return requestJson('/api/sam/jobs?'+query,{headers:bearerHeaders(token),signal})
+}
+export function getSamPoints(token:string,id:string,signal?:AbortSignal):Promise<{sourceId:string;points:[number,number][]}>{
+ return requestJson(`/api/sam/jobs/${encodeURIComponent(id)}/points`,{headers:bearerHeaders(token),signal})
+}
+/** The seed is a decoder ordinal in the original source, independent of clip retiming. */
+export function startSamVideoTracking(token:string,sourceId:string,points:readonly [number,number][],seedFrame:number,signal?:AbortSignal):Promise<{jobId:string}>{
+ if(!Number.isInteger(seedFrame)||seedFrame<0||seedFrame>=360000)throw new Error('Недопустимый номер исходного кадра')
+ return requestJson('/api/sam/jobs',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({sourceId,points,seedFrame}),signal})
+}
+export function listSamVideoTracking(token:string,sourceId?:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:CutoutSummary[];nextCursor:string|null}>{
+ const query=new URLSearchParams({video:'true'});if(sourceId)query.set('sourceId',sourceId);if(cursor)query.set('cursor',cursor)
+ return requestJson('/api/sam/jobs?'+query,{headers:bearerHeaders(token),signal})
+}
+export interface SavedSamVideoRegion {source:MediaEntry;mask:MediaEntry;snapshot:import('./composition/types').SamVideoRegionAttachment}
+export function saveSamVideoRegion(token:string,id:string,projectId:string,signal?:AbortSignal):Promise<SavedSamVideoRegion>{
+ return requestJson(`/api/sam/jobs/${encodeURIComponent(id)}/video-asset`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({projectId}),signal})
+}
+export function getSamVideoPoints(token:string,id:string,signal?:AbortSignal):Promise<{sourceId:string;points:[number,number][];seedFrame:number}>{
+ return requestJson(`/api/sam/jobs/${encodeURIComponent(id)}/points`,{headers:bearerHeaders(token),signal})
+}
+
+export async function getSamMask(token:string,id:string,signal?:AbortSignal):Promise<Blob>{
+ const response=await safeFetch(`/api/sam/jobs/${encodeURIComponent(id)}/mask`,{headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось открыть выделенную область');if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG');const blob=await response.blob();if(blob.size<8||blob.size>1024*1024)throw new Error('Недопустимый размер маски');return blob
+}
+
+export interface SavedSamRegion extends MediaEntry {region:import('./composition/types').SamRegionAttachment;source:MediaEntry}
+export function saveSamRegion(token:string,id:string,projectId:string,signal?:AbortSignal):Promise<SavedSamRegion>{
+ return requestJson(`/api/sam/jobs/${encodeURIComponent(id)}/asset`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({projectId}),signal})
+}
+
+export function getSelfieStatus(token:string,signal?:AbortSignal):Promise<CutoutStatus>{
+ return requestJson('/api/selfie/status',{headers:bearerHeaders(token),signal})
+}
+export function startSelfie(token:string,sourceId:string,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/selfie/jobs',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({sourceId}),signal})
+}
+export async function getSelfieImage(token:string,id:string,signal?:AbortSignal):Promise<Blob>{
+ const response=await safeFetch(`/api/selfie/jobs/${encodeURIComponent(id)}/image`,{headers:bearerHeaders(token),signal})
+ await requireOk(response,'Не удалось загрузить изображение без фона')
+ if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG')
+ const blob=await response.blob()
+ if(blob.size<8||blob.size>256*1024*1024)throw new Error('Недопустимый размер изображения')
+ return blob
+}
+export function listSelfies(token:string,sourceId?:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:CutoutSummary[];nextCursor:string|null}>{
+ const query=new URLSearchParams();if(sourceId)query.set('sourceId',sourceId);if(cursor)query.set('cursor',cursor)
+ return requestJson(`/api/selfie/jobs?${query}`,{headers:bearerHeaders(token),signal})
+}
+export async function getSelfieOriginal(token:string,id:string,signal?:AbortSignal):Promise<Blob>{
+ const response=await safeFetch(`/api/selfie/jobs/${encodeURIComponent(id)}/original`,{headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось открыть исходник маски');if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG');const blob=await response.blob();if(blob.size<8||blob.size>16*1024*1024)throw new Error('Недопустимый размер превью');return blob
+}
+export function startSelfieCorrection(token:string,id:string,correction:MaskCorrection,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson(`/api/selfie/jobs/${encodeURIComponent(id)}/corrections`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify(correction),signal})
+}
+export function saveSelfieImage(token:string,id:string,projectId:string,signal?:AbortSignal):Promise<CutoutAcceptedMedia>{
+ return requestJson(`/api/selfie/jobs/${encodeURIComponent(id)}/asset`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({projectId}),signal})
+}
+
+export interface PersonVideoStatus {available:boolean;correctionAvailable?:boolean;model:string;video:boolean;alpha:boolean;timing:string;color:string;maxComponentBits:number}
+export function getPersonVideoStatus(token:string,signal?:AbortSignal):Promise<PersonVideoStatus>{
+ return requestJson('/api/person/status',{headers:bearerHeaders(token),signal})
+}
+export function startPersonVideo(token:string,sourceId:string,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson('/api/person/video-jobs',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({sourceId}),signal})
+}
+export interface SavedPersonVideo extends MediaEntry {videoCutout?:{snapshot:import('./composition/types').VideoMaskAttachment;source:MediaEntry;mask:MediaEntry}}
+export function savePersonVideo(token:string,id:string,projectId:string,signal?:AbortSignal):Promise<SavedPersonVideo>{
+ return requestJson('/api/person/video-jobs/'+encodeURIComponent(id)+'/asset',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({projectId}),signal})
+}
+export function listPersonVideos(token:string,sourceId?:string,cursor?:string,signal?:AbortSignal):Promise<{jobs:CutoutSummary[];nextCursor:string|null}>{
+ const query=new URLSearchParams();if(sourceId)query.set('sourceId',sourceId);if(cursor)query.set('cursor',cursor)
+ return requestJson('/api/person/video-jobs?'+query,{headers:bearerHeaders(token),signal})
+}
+export type {VideoFrameCorrection} from './composition/types'
+import type {VideoFrameCorrection} from './composition/types'
+export interface VideoCorrectionRecipe {baseJobId:string;maskHash:string;corrections:VideoFrameCorrection[];projectOrigin?:{projectId:string;clipId:string;compositionId?:string|null;snapshot:import('./composition/types').VideoMaskAttachment;savedSnapshot?:import('./composition/types').VideoMaskAttachment}}
+export function getVideoCorrectionRecipe(token:string,id:string,signal?:AbortSignal):Promise<VideoCorrectionRecipe>{
+ return requestJson(`/api/person/video-jobs/${encodeURIComponent(id)}/corrections`,{headers:bearerHeaders(token),signal})
+}
+export function startVideoCorrection(token:string,id:string,corrections:VideoFrameCorrection[],signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson(`/api/person/video-jobs/${encodeURIComponent(id)}/corrections`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({corrections}),signal})
+}
+export async function getVideoMaskFrame(token:string,id:string,frame:number,signal?:AbortSignal):Promise<Blob>{
+ if(!Number.isSafeInteger(frame)||frame<0||frame>=360000)throw new Error('Неверный кадр маски')
+ const response=await safeFetch(`/api/person/video-jobs/${encodeURIComponent(id)}/masks/${frame}`,{headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось открыть маску кадра');if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG');const blob=await response.blob();if(blob.size<8||blob.size>1024*1024)throw new Error('Недопустимый размер маски');return blob
+}
+
+export async function getVideoRegionFrame(token:string,id:string,regionId:string,frame:number,signal?:AbortSignal):Promise<{png:Blob;maskHash:string}>{
+ if(!Number.isSafeInteger(frame)||frame<0||frame>=360000)throw new Error('Неверный кадр области')
+ const response=await safeFetch(`/api/person/video-jobs/${encodeURIComponent(id)}/regions/${encodeURIComponent(regionId)}/${frame}`,{headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось открыть область кадра')
+ if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG области')
+ const maskHash=response.headers.get('x-mask-sha256');if(!maskHash||!/^[a-f0-9]{64}$/.test(maskHash)||response.headers.get('x-source-frame')!==String(frame))throw new Error('Сервер вернул область другого кадра')
+ const png=await response.blob();if(png.size<8||png.size>1024*1024)throw new Error('Недопустимый размер области');return {png,maskHash}
+}
+
+/** Fork a project-origin correction with a completed SAM tracking result, without saving its document. */
+export function continueVideoWithRegion(token:string,id:string,samJobId:string,corrections:VideoFrameCorrection[],signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson(`/api/person/video-jobs/${encodeURIComponent(id)}/regions`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({samJobId,corrections}),signal})
+}
+
+export interface ProjectVideoMaskContext {clipId:string;compositionId?:string;snapshot:import('./composition/types').VideoMaskAttachment}
+export function startProjectVideoCorrection(token:string,projectId:string,context:ProjectVideoMaskContext,signal?:AbortSignal):Promise<{jobId:string}>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/video-cutout/corrections`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({clipId:context.clipId,...(context.compositionId===undefined?{}:{compositionId:context.compositionId}),expectedAttachment:context.snapshot,corrections:context.snapshot.corrections}),signal})
+}
+
+export async function getVideoSourceFrame(token:string,id:string,frame:number,signal?:AbortSignal):Promise<Blob>{
+ if(!Number.isSafeInteger(frame)||frame<0||frame>=360000)throw new Error('Неверный исходный кадр')
+ const response=await safeFetch(`/api/person/video-jobs/${encodeURIComponent(id)}/source/${frame}`,{headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось открыть исходный кадр');if(!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Сервер не вернул PNG');const blob=await response.blob();if(blob.size<8||blob.size>272*1024*1024)throw new Error('Недопустимый размер исходного кадра');return blob
+}
+
+/** Exact 48 kHz stereo sample coordinates; PCM is explicitly little endian. */
+export async function renderCompositionAudioPreview(
+  project: NativeNestedProject,
+  startSample: number,
+  frames: number,
+  token?: string,
+  signal?: AbortSignal,
+  compositionId?: string,
+): Promise<Float32Array> {
+  if (!Number.isSafeInteger(startSample) || startSample < 0 || !Number.isInteger(frames) || frames < 1 || frames > 96000) {
+    throw new RangeError('Некорректный диапазон аудиопредпросмотра')
+  }
+  let response: Response
+  try {
+    response = await fetch('/api/compositions/audio-preview', {
+      method: 'POST',
+      headers: { ...(token ? bearerHeaders(token) : {}), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, startSample, frames, compositionId }), signal,
+    })
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new BackendUnavailableError()
+  }
+  await requireOk(response, 'Не удалось подготовить звук композиции')
+  if (response.headers.get('content-type')?.split(';')[0] !== 'application/octet-stream' ||
+      response.headers.get('x-audio-rate') !== '48000' || response.headers.get('x-audio-channels') !== '2' ||
+      response.headers.get('x-audio-frames') !== String(frames) ||
+      response.headers.get('x-audio-start-sample') !== String(startSample)) {
+    throw new ApiError('Некорректный формат аудиопредпросмотра', response.status)
+  }
+  const buffer = await response.arrayBuffer()
+  if (buffer.byteLength !== frames * 8) throw new ApiError('Неполный PCM-блок', response.status)
+  const view = new DataView(buffer)
+  const samples = new Float32Array(frames * 2)
+  for (let i = 0; i < samples.length; i++) {
+    const value = view.getFloat32(i * 4, true)
+    if (!Number.isFinite(value)) throw new ApiError('Некорректный PCM-сэмпл', response.status)
+    samples[i] = value
+  }
+  return samples
+}
+
+/** Original Concat links; native conversion preserves bypass and keyed values. */
+export interface ConcatEffectLink {
+  readonly id: string
+  readonly params?: Readonly<Record<string,number>>
+  readonly enabled?: boolean
+  readonly keys?: Readonly<Record<string,readonly {readonly at:number;readonly value:number;readonly ease?:string|readonly [number,number,number,number]}[]>>
+}
+export interface ConcatNativeTransition {
+  readonly kind: import('./composition/types').CompositionTransitionKind
+  readonly kernel?: import('./composition/transitionCatalog').ProceduralTransitionSpec
+}
+export interface ConcatEffectUpgradeResult {
+  readonly schemaVersion: 1
+  readonly nativeEffects?: readonly (WireVideoEffect|null)[]
+  readonly nativeTransitions?: readonly (ConcatNativeTransition|null)[]
+  readonly links: readonly {readonly upgraded:boolean;readonly link:ConcatEffectLink}[]
+}
+/** Converts retired links. Applying a whole project or its animation is separate. */
+export function upgradeConcatEffectLinks(links:readonly ConcatEffectLink[],signal?:AbortSignal,includeNativeEffects=false,includeNativeTransitions=false):Promise<ConcatEffectUpgradeResult> {
+  return requestJson('/api/compositions/concat-effects/upgrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schemaVersion:1,links,includeNativeEffects,includeNativeTransitions}),signal})
+}
+
+/** Convert a Concat v1 document using explicitly registered/relinked media. No source path is opened. */
+export interface ConcatProjectImportReport {
+  readonly schemaVersion:1
+  readonly status:'converted'|'needs_attention'
+  readonly project:NativeNestedProject|null
+  readonly diagnostics:readonly string[]
+  readonly sourceDocument:unknown
+  readonly timelineIds:Readonly<Record<string,string>>
+}
+export type ConcatFontBinding={readonly data:string}|{readonly fallback:true}
+export function importConcatProject(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={}):Promise<ConcatProjectImportReport>{
+ return requestJson('/api/compositions/concat-project/import',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({schemaVersion:1,document,mediaBindings,...(Object.keys(fontBindings).length?{fontBindings}:{})}),signal})
+}
+
+
+export interface SourceAudioStream {
+ index:number;codec:string|null;channels:number|null;sampleRate:number|null;channelLayout:string|null;language:string|null;title:string|null;default:boolean
+}
+export async function getSourceAudioStreams(sourceId:string,token?:string,signal?:AbortSignal):Promise<{sourceId:string;streams:SourceAudioStream[]}>{
+ return requestJson(`/api/library/${encodeURIComponent(sourceId)}/audio-streams`,{headers:token?{Authorization:`Bearer ${token}`}:{},signal})
+}
+
+export type ConcatCutoutSubject='auto'|'person'|'object'
+export function analyseNestedCutout(projectId:string,compositionId:string,clipId:string,expectedRevision:number,subject:ConcatCutoutSubject,feather:number,token:string,signal?:AbortSignal,correction?:MaskCorrection):Promise<NestedCompositionProjectDto>{
+ const cutout={mode:correction?.custom?'custom':'auto',subject,feather,...(correction?{strokes:correction.strokes.map(({tool,size,points,at})=>({tool,size,points,at}))}:{})}
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-cutout`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({compositionId,clipId,expectedRevision,cutout}),signal})
+}
+
+export interface ConcatVideoAnalysis {subject?:ConcatCutoutSubject;modelHash?:string|null;sourceId:string;analysedRuns:number;analysedFrames:number;emptyRuns:number;cacheReused:boolean}
+export async function analyseNestedVideoCutout(projectId:string,compositionId:string,clipId:string,expectedRevision:number,token:string,signal?:AbortSignal,subject:ConcatCutoutSubject='person'):Promise<ConcatVideoAnalysis>{
+ if(signal?.aborted)throw new DOMException('Video analysis cancelled','AbortError')
+ const operationId=crypto.randomUUID(),url=`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout`
+ const cancel=()=>{void safeFetch(`${url}/cancel`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({operationId}),keepalive:true,signal:AbortSignal.timeout(10000)}).catch(()=>{})}
+ signal?.addEventListener('abort',cancel,{once:true})
+ try{return await requestJson(`${url}/analyse`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({compositionId,clipId,expectedRevision,subject,operationId}),signal})}
+ finally{signal?.removeEventListener('abort',cancel)}
+}
+export async function previewNestedVideoCutout(projectId:string,compositionId:string,clipId:string,expectedRevision:number,timeUs:number,token:string,signal?:AbortSignal,feather?:number,correction?:MaskCorrection,sourceSpace?:boolean,sourceOriginal?:boolean,regionTracks?:readonly import('./composition/types').ConcatVideoRegionTrack[]):Promise<NativeNestedPreviewFrame>{
+ const response=await fetch(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout/preview`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({compositionId,clipId,expectedRevision,timeUs,feather,correction,sourceSpace,sourceOriginal,regionTracks}),signal})
+ await requireOk(response,'Не удалось показать удаление фона видео')
+ const width=Number(response.headers.get('x-frame-width')),height=Number(response.headers.get('x-frame-height'))
+ if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width>3840||height>2160)throw new ApiError('Некорректный размер видеокадра',response.status)
+ const bytes=await response.arrayBuffer()
+ if(bytes.byteLength!==width*height*4)throw new ApiError('Неполный RGBA-видеокадр',response.status)
+ return {width,height,rgba:new Uint8ClampedArray(bytes)}
+}
+
+export function setNestedVideoCutoutBinding(projectId:string,compositionId:string,clipId:string,expectedRevision:number,enabled:boolean,token:string,signal?:AbortSignal,subject?:ConcatCutoutSubject,expectedModelHash?:string,feather?:number,correction?:MaskCorrection,regionTracks?:readonly import('./composition/types').ConcatVideoRegionTrack[]):Promise<NestedCompositionProjectDto>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout/binding`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({compositionId,clipId,expectedRevision,enabled,subject,expectedModelHash,feather,correction,regionTracks}),signal})
+}
+
+export interface NestedVideoSmartRegionJob {frameTimesUs?:readonly number[];jobId:string;sourceId:string;sourceUs:number;seedFrame:number;frames:number;frameRate:{numerator:number;denominator:number};expectedRevision:number}
+export function startNestedVideoSmartRegion(projectId:string,compositionId:string,clipId:string,expectedRevision:number,timeUs:number,points:readonly [number,number][],token:string,signal?:AbortSignal,operationId?:string):Promise<NestedVideoSmartRegionJob>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout/smart-region`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({compositionId,clipId,expectedRevision,timeUs,points,operationId}),signal})
+}
+
+export function attachNestedVideoSmartRegion(projectId:string,compositionId:string,clipId:string,expectedRevision:number,timeUs:number,jobId:string,tool:'smartBrush'|'smartEraser',size:number,token:string,signal?:AbortSignal):Promise<NestedCompositionProjectDto>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout/smart-region/attach`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({compositionId,clipId,expectedRevision,timeUs,jobId,tool,size}),signal})
+}
+
+/** Observe owned durable SAM work; stopping observation leaves the job intact. */
+export async function observeNestedVideoSmartRegion(token:string,jobId:string,signal?:AbortSignal,onJob?:(job:Job)=>void):Promise<Job>{
+ const deadline=Date.now()+50*60*1000
+ while(true){
+  signal?.throwIfAborted()
+  const job=await requestJson<Job>(`/api/jobs/${encodeURIComponent(jobId)}`,{headers:bearerHeaders(token),signal})
+  signal?.throwIfAborted()
+  if(job.id!==jobId||!['pending','running','done','error','cancelled','interrupted'].includes(job.status))throw new Error('Сервер вернул другую задачу SAM')
+  onJob?.(job)
+  if(job.status==='done')return job
+  if(job.status==='error'||job.status==='interrupted'||job.status==='cancelled')throw new Error(job.error||'Обработка области SAM остановлена')
+  if(Date.now()>=deadline)throw new Error('Превышено время ожидания области SAM')
+  await new Promise<void>((resolve,reject)=>{
+   const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(signal?.reason??new DOMException('Aborted','AbortError'))}
+   const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve()},500)
+   signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort()
+  })
+ }
+}
+export function cancelNestedVideoSmartRegion(token:string,jobId:string):Promise<unknown>{
+ return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/cancel`,{method:'POST',headers:bearerHeaders(token),signal:AbortSignal.timeout(10000)})
+}
+
+/** A durable server receipt can exist before the SAM job is enqueued. */
+export interface NestedVideoSmartOperation {operationId:string;jobId:string;started:NestedVideoSmartRegionJob|null;cancelled:boolean;enqueued:boolean}
+export function getNestedVideoSmartOperation(projectId:string,operationId:string,token:string,signal?:AbortSignal):Promise<NestedVideoSmartOperation>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout/smart-region/operations/${encodeURIComponent(operationId)}`,{headers:bearerHeaders(token),signal})
+}
+export function cancelNestedVideoSmartOperation(projectId:string,operationId:string,token:string):Promise<unknown>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout/smart-region/operations/${encodeURIComponent(operationId)}/cancel`,{method:'POST',headers:bearerHeaders(token),signal:AbortSignal.timeout(10000)})
+}
+
+export function exportConcatProject(project:NativeNestedProject,name:string,signal?:AbortSignal,mediaPaths:Record<string,string>={}):Promise<{schemaVersion:1;document:unknown}>{
+ return requestJson('/api/compositions/concat-project/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,name,mediaPaths}),signal})
+}
+
+export interface Insta360SourceMetadata {readonly version:number;readonly cameraModel:string|null;readonly firmware:string|null;readonly frameRate:number|null;readonly dimension:readonly [number,number]|null;readonly resolution:readonly [number,number]|null;readonly rollingShutterTime?:number|null;readonly windowCropInfo?:{readonly sourceSize:readonly [number,number];readonly destinationSize:readonly [number,number];readonly offset:readonly [number,number]}|null;readonly calibrations:readonly {fieldNumber:number;value:string}[];readonly blocks:readonly {kind:number;format:number;length:number;offset:number}[]}
+export function inspectInsta360Source(id:string,token:string,signal?:AbortSignal):Promise<Insta360SourceMetadata|null>{return requestJson(`/api/library/${encodeURIComponent(id)}/insta360`,{headers:{Authorization:`Bearer ${token}`},signal})}
+
+export type FilmcraftScalarValue = { Float: number } | { Choice: number } | { Bool: boolean }
+export interface FilmcraftPathPoint { x: number; y: number; [extension: string]: unknown }
+export interface FilmcraftPathVertex { p: FilmcraftPathPoint; t_in?: FilmcraftPathPoint; t_out?: FilmcraftPathPoint; [extension: string]: unknown }
+export interface FilmcraftPath { vertices: FilmcraftPathVertex[]; closed?: boolean; [extension: string]: unknown }
+export type FilmcraftParameterValue = FilmcraftScalarValue | { Vec2: { x: number | null; y: number | null } } | { Color: [number, number, number, number] } | { Text: string } | { Curve: [number, number][] } | { Path: FilmcraftPath }
+export type FilmcraftParameterCommand =
+  | { kind: 'setBase' | 'atPlayhead'; value: FilmcraftParameterValue }
+  | { kind: 'upsert'; time: string; value: FilmcraftParameterValue }
+  | { kind: 'delete'; time: string }
+  | { kind: 'move'; time: string; destination: string }
+  | { kind: 'interpolation'; time: string; interpolation: string }
+  | { kind: 'influence'; time: string; incoming: number; outgoing: number }
+export interface FilmcraftParameterInfo {
+  name: string; value: FilmcraftParameterValue; sampled: number | null; sampledComponents?: number[] | null; sampledValue?: FilmcraftParameterValue | null
+  keys: Array<{ time: string; value: FilmcraftParameterValue; interp: string; in_influence?: number; out_influence?: number }>
+}
+export interface FilmcraftParameterReport {
+  locked: boolean; timelineTicks: string; parameterTicks: string; frameTicks: string; generatorTicks: string
+  effects: Array<{ index: number; kind: string; enabled: boolean; maskable?: boolean; parameters: FilmcraftParameterInfo[]; masks?: FilmcraftMaskInfo[] }>
+}
+type FilmcraftParameterClock = { timeTicks: string; timeFrames?: never } | { timeFrames: string; timeTicks?: never }
+export function getFilmcraftParameters(input: { document: string; sequenceId: string; clipId: string } & FilmcraftParameterClock, signal?: AbortSignal): Promise<FilmcraftParameterReport> {
+  return requestJson('/api/compositions/filmcraft/parameters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+export function editFilmcraftParameter(input: { document: string; address: { sequenceId: string; clipId: string; effectIndex: number; effectKind: string; parameter: string; maskIndex?: number }; command: FilmcraftParameterCommand } & FilmcraftParameterClock, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  return requestJson('/api/compositions/filmcraft/edit-parameter', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export type FilmcraftMaskMode = 'None' | 'Add' | 'Subtract' | 'Intersect' | 'Lighten' | 'Darken' | 'Difference'
+export type FilmcraftMaskTrackMethod = 'Position' | 'PositionRotation' | 'PositionScaleRotation'
+export interface FilmcraftMaskInfo { index: number; name: string | null; mode?: FilmcraftMaskMode; inverted?: boolean; trackMethod?: FilmcraftMaskTrackMethod; parameters: FilmcraftParameterInfo[] }
+export type FilmcraftMaskShape = { kind: 'rectangle' | 'ellipse'; x0: number; y0: number; x1: number; y1: number } | { kind: 'freeDraw' } | { kind: 'path'; path: FilmcraftPath }
+export type FilmcraftMaskCommand =
+  | { kind: 'create'; name: string; shape: FilmcraftMaskShape }
+  | { kind: 'delete'; maskIndex: number }
+  | { kind: 'move'; maskIndex: number; destination: number }
+  | { kind: 'settings'; maskIndex: number; name?: string; mode?: FilmcraftMaskMode; inverted?: boolean; trackMethod?: FilmcraftMaskTrackMethod }
+export function editFilmcraftMask(input: { document: string; address: { sequenceId: string; clipId: string; effectIndex: number; effectKind: string }; command: FilmcraftMaskCommand }, signal?: AbortSignal): Promise<FilmcraftImportResult> {
+  return requestJson('/api/compositions/filmcraft/edit-mask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export interface FilmcraftMaskTrackingResult extends FilmcraftImportResult { tracking: { status: 'tracked' | 'lost' | 'boundary'; sourceTicks: string; more: boolean; inliers: number } }
+export function trackFilmcraftMask(input: { document: string; address: { sequenceId: string; clipId: string; effectIndex: number; effectKind: string; maskIndex: number; parameter: 'path' }; sources: Record<string, string>; direction: 'forward' | 'backward'; cursorTicks?: string } & FilmcraftParameterClock, token?: string | null, signal?: AbortSignal): Promise<FilmcraftMaskTrackingResult> {
+  return requestJson('/api/compositions/filmcraft/track-mask', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(input), signal })
+}
+
+export type FilmcraftMaskMonitorPart = 'vertex' | 'in' | 'out'
+export type FilmcraftMaskMonitorOperation =
+  | { kind: 'read' }
+  | { kind: 'bodyClick'; point: [number, number]; pixelScale: [number, number] }
+  | { kind: 'move'; index: number; part: FilmcraftMaskMonitorPart; point: [number, number]; breakHandles?: boolean }
+  | { kind: 'translate'; delta: [number, number]; origin?: [number, number] }
+  | { kind: 'falloff'; parameter: 'feather' | 'expansion'; delta: [number, number] }
+  | { kind: 'append'; point: [number, number] }
+  | { kind: 'penDraft'; points: Array<{ point: [number, number]; handle?: [number, number] }>; closed: boolean }
+  | { kind: 'insertNear'; point: [number, number]; pixelScale: [number, number] }
+  | { kind: 'delete' | 'smooth'; index: number }
+  | { kind: 'close'; closed: boolean }
+  | { kind: 'box'; shape: 'rectangle' | 'ellipse'; from: [number, number]; to: [number, number] }
+export interface FilmcraftMaskFalloffHandle { parameter: 'feather' | 'expansion'; point: [number, number]; direction: [number, number] }
+export interface FilmcraftMaskOverlay { deselectMask?: boolean; falloff?: { feather: number; expansion: number; expansionContour: Array<[number, number]>; featherContour: Array<[number, number]>; handles: FilmcraftMaskFalloffHandle[] }; createdMaskIndex?: number; selectedVertex?: number; canvas: [number, number]; matrix: [number, number, number, number, number, number]; sampleTicks: string; locked: boolean; visible: boolean; editable: boolean; closed: boolean; svgPath: string; vertices: Array<{ index: number; point: [number, number]; incoming: [number, number]; outgoing: [number, number] }> }
+export interface FilmcraftMaskMonitorResult { overlay: FilmcraftMaskOverlay; project: FilmcraftImportResult | null }
+export function editFilmcraftMaskMonitor(input: { document: string; createMask?: boolean; address: { sequenceId: string; clipId: string; effectIndex: number; effectKind: string; maskIndex?: number; parameter: 'path' }; operation: FilmcraftMaskMonitorOperation } & FilmcraftParameterClock, signal?: AbortSignal): Promise<FilmcraftMaskMonitorResult> {
+  return requestJson('/api/compositions/filmcraft/mask-monitor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
+
+export interface Insta360GyroRequest {
+ readonly startSeconds:number;readonly durationSeconds:number;readonly sampleRateHz?:number
+ readonly cameraFromSensor?:readonly [number,number,number,number]
+ readonly timeOffsetSeconds?:number;readonly accelerometerCorrection?:boolean
+ readonly visualDriftCorrection?:boolean;readonly driftCorrection?:Insta360DriftCorrection
+ readonly orientationToleranceDegrees?:number;readonly motionPaddingSeconds?:number;readonly gravityPrerollSeconds?:number
+}
+export interface Insta360GyroAnalysis {
+ readonly status:'sensor_axes_required'|'orientation_ready'
+ readonly mountingSource:'embedded_v6_145'|'embedded_legacy_145'|'explicit'|'unresolved'
+ readonly synchronization:string;readonly timingWarning?:string|null;readonly limitations:readonly string[];readonly inputSamples:number
+ readonly captureStartSeconds:number;readonly captureEndSeconds:number
+ readonly orientationOffsetSeconds?:number
+ readonly originalTimeMapOffsetSeconds?:number|null
+ readonly gravityAlignment?:{readonly status:string;readonly warning:string|null;readonly requestedForceNormG:number;readonly observedPrerollSeconds:number;readonly initializationSamples:number}
+ readonly captureClock?:readonly import('./composition/types').WireCaptureTime[]
+ readonly sourceFrameClock?:import('./composition/types').WireSourceFrameClock|null
+ readonly driftCorrection?:{readonly source:string;readonly visualFrames:number;readonly visualPairs:number;readonly visualRejectedPairs:number;readonly correctedHeadingDegrees:number;readonly warnings:readonly string[]}
+
+ readonly samples:readonly {readonly timeSeconds:number;readonly accelerationG:readonly number[];readonly radiansPerSecond:readonly number[]}[]
+ readonly orientation:readonly {readonly timeSeconds:number;readonly quaternion:readonly [number,number,number,number]}[]
+}
+export function analyzeInsta360Gyro(id:string,token:string,data:Insta360GyroRequest,signal?:AbortSignal):Promise<Insta360GyroAnalysis|null>{
+ return requestJson(`/api/library/${encodeURIComponent(id)}/insta360/gyro`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(data),signal})
+}
+
+/** Saved project-owned SAM masks decoded and measured natively, including FFV1 transport. */
+export function measureSphericalSamRegion(token:string,projectId:string,request:{compositionId?:string;clipId:string;expectedRevision:number;region:import('./composition/types').SamVideoRegionAttachment;sourceTimesUs:readonly number[];spherical?:import('./composition/types').WireSphericalVideo;parameterStartUs?:number;reidentify?:boolean;framing?:{aspectRatio:number;targetFill:number;initialFov:number}},signal?:AbortSignal):Promise<{centres:{pan:number;tilt:number;fov?:number}[];sampleIndices?:number[];states?:string[]}>{
+ return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/spherical-mask-track`,{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify(request),signal})
+}
+
+export type Insta360CameraProfile = import('./composition/types').WireInsta360CameraProfile
+export interface Insta360ProfileAnalysis {
+ readonly calibration:{readonly status:string;readonly renderReady:boolean;readonly reason:string;readonly calibrationField:number|null;readonly profile:Insta360CameraProfile|null}
+ readonly sourceLayout:'dual_video_streams'|null;readonly packingReason:string
+}
+export function inspectInsta360Profile(id:string,token:string,signal?:AbortSignal):Promise<Insta360ProfileAnalysis|null>{
+ return requestJson(`/api/library/${encodeURIComponent(id)}/insta360/profile`,{headers:{Authorization:`Bearer ${token}`},signal})
+}
+
+export interface Insta360DriftCorrection {
+ readonly biasRadiansPerSecond?:readonly [number,number,number]
+ readonly stationaryIntervals?:readonly {readonly startSeconds:number;readonly endSeconds:number}[]
+ readonly headingAnchors?:readonly {readonly timeSeconds:number;readonly headingDegrees:number}[]
 }

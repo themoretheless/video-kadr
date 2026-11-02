@@ -1,0 +1,247 @@
+    Blocking waiting for file lock on build directory
+   Compiling video-kadr-backend v0.1.0 (/Users/themoretheless/Documents/Sources/video-kadr/backend)
+warning: unused import: `super::*`
+  --> src/domain/gradient_wipe.rs:63:40
+   |
+63 | #[cfg(test)]mod composition_tests {use super::*;use crate::domain::{composition::{Composition,CanvasSpec,TransformSpec,SourceId},group_su...
+   |                                        ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+   --> src/services/concat_freeze_capture.rs:155:9
+    |
+155 |     let mut directories = vec![prefix.join("lib")];
+    |         ----^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+error[E0631]: type mismatch in closure arguments
+    --> src/domain/flat_surface.rs:4460:1392
+     |
+4460 | ...de=|_:&crate::domain::composition::SourceId,t:u64,_:bool,_clip:&crate::domain::composition::CompositionClipId|Ok(picture(t));let mut context=CompositionEffectContext{exact_sample:None,temporal_clip:Some(TemporalClip::Video(clip)),clip_duration_us:1000000,composition:&c,time_us:1000000+tick,depth:0,library:&[],matrix:GroupAffine::IDENTITY,image:None,video:Some(&mut decode)};...
+     |       ----------------------------------------------------------------------------------------------------------- found signature defined here                                                                                                                                                                                                                               ^^^^^^^^^^^ expected due to this
+     |
+     = note: expected closure signature `for<'a, 'b> fn(&'a domain::composition::SourceId, FrameTime, _, &'b domain::composition::CompositionClipId) -> _`
+                found closure signature `fn(&domain::composition::SourceId, u64, _, &domain::composition::CompositionClipId) -> _`
+     = note: required for the cast from `&mut {closure@src/domain/flat_surface.rs:4460:1033: 4460:1140}` to `&mut dyn FnMut(&SourceId, FrameTime, bool, &CompositionClipId) -> ...`
+     = note: the full name for the type has been written to '/Users/themoretheless/.codex/tmp/video-kadr-insta360-gyro-20261031/target/debug/deps/video_kadr_backend-b43ed5c7308b3e5d.long-type-3051875692143763594.txt'
+     = note: consider using `--verbose` to print the full type name to the console
+
+error[E0631]: type mismatch in closure arguments
+    --> src/domain/flat_surface.rs:4493:236
+     |
+4492 | ...de=|_:&crate::domain::composition::SourceId,t:u64,_:bool,_clip:&crate::domain::composition::CompositionClipId|{calls.push(t);Ok(picture(t,alpha))};
+     |       ----------------------------------------------------------------------------------------------------------- found signature defined here
+4493 | ...ext=CompositionEffectContext{exact_sample:None,temporal_clip:Some(TemporalClip::Video(clip)),clip_duration_us:1000000,composition:&c,time_us:1500000,depth:0,library:&[],matrix:GroupAffine::IDENTITY,image:None,video:Some(&mut decode)};
+     |                                                                                                                                                                                                                                ^^^^^^^^^^^ expected due to this
+     |
+     = note: expected closure signature `for<'a, 'b> fn(&'a domain::composition::SourceId, FrameTime, _, &'b domain::composition::CompositionClipId) -> _`
+                found closure signature `fn(&domain::composition::SourceId, u64, _, &domain::composition::CompositionClipId) -> _`
+     = note: required for the cast from `&mut {closure@src/domain/flat_surface.rs:4492:19: 4492:126}` to `&mut dyn FnMut(&SourceId, FrameTime, bool, &CompositionClipId) -> ...`
+     = note: the full name for the type has been written to '/Users/themoretheless/.codex/tmp/video-kadr-insta360-gyro-20261031/target/debug/deps/video_kadr_backend-b43ed5c7308b3e5d.long-type-9759542970170653078.txt'
+     = note: consider using `--verbose` to print the full type name to the console
+
+error[E0063]: missing fields `caption_text_tracks` and `concat_lane_groups` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_effect_default_scene_tests.rs:26:30
+   |
+26 |    composition.metadata=Some(super::super::metadata_burnin::CompositionMetadata{
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks` and `concat_lane_groups`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_effect_animation_scene_tests.rs:63:41
+   |
+63 |             composition.metadata = Some(crate::domain::metadata_burnin::CompositionMetadata {
+   |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0631]: type mismatch in closure arguments
+   --> src/domain/transition_effect_animation_scene_tests.rs:105:29
+    |
+87  | ...         |_: &crate::domain::composition::SourceId, _: u64, _: bool, _: &crate::domain::composition::CompositionClipId| Ok(picture());
+    |             -------------------------------------------------------------------------------------------------------------- found signature defined here
+...
+105 | ...         video: Some(&mut decode),
+    |                         ^^^^^^^^^^^ expected due to this
+    |
+    = note: expected closure signature `for<'a, 'b> fn(&'a domain::composition::SourceId, FrameTime, _, &'b domain::composition::CompositionClipId) -> _`
+               found closure signature `fn(&domain::composition::SourceId, u64, _, &domain::composition::CompositionClipId) -> _`
+    = note: required for the cast from `&mut {closure@src/domain/transition_effect_animation_scene_tests.rs:87:17: 87:127}` to `&mut dyn FnMut(&SourceId, FrameTime, bool, &CompositionClipId) -> ...`
+    = note: the full name for the type has been written to '/Users/themoretheless/.codex/tmp/video-kadr-insta360-gyro-20261031/target/debug/deps/video_kadr_backend-b43ed5c7308b3e5d.long-type-16114714169000825662.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_effect_persisted_scene_tests.rs:63:37
+   |
+63 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_effect_varying_source_tests.rs:90:37
+   |
+90 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_effect_varying_animation_tests.rs:84:37
+   |
+84 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_lumetri_animation_tests.rs:95:37
+   |
+95 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_lumetri_wheel_tests.rs:91:37
+   |
+91 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_tint_color_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_keying_color_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_generator_color_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_vr_color_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_glow_color_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_fill_color_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_lighting_color_tests.rs:95:37
+   |
+95 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_lumetri_color_tests.rs:91:37
+   |
+91 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_auto_generator_point_tests.rs:91:37
+   |
+91 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_auto_distortion_point_tests.rs:91:37
+   |
+91 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_auto_layout_point_tests.rs:95:37
+   |
+95 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_key_auto_generator_point_tests.rs:91:37
+   |
+91 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_key_auto_distortion_point_tests.rs:91:37
+   |
+91 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_key_auto_layout_point_tests.rs:95:37
+   |
+95 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_key_auto_move_point_tests.rs:92:37
+   |
+92 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_generator_point_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_distortion_point_tests.rs:88:37
+   |
+88 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_layout_point_tests.rs:92:37
+   |
+92 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_key_auto_motion_tests.rs:72:37
+   |
+72 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/ordinary_key_auto_motion_tests.rs:76:37
+   |
+76 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/transition_motion_import_tests.rs:69:37
+   |
+69 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+  --> src/domain/ordinary_motion_import_tests.rs:73:37
+   |
+73 |         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+error[E0063]: missing field `caption_text_tracks` in initializer of `metadata_burnin::CompositionMetadata`
+   --> src/domain/metadata_burnin.rs:508:27
+    |
+508 |         c.metadata = Some(CompositionMetadata {
+    |                           ^^^^^^^^^^^^^^^^^^^ missing `caption_text_tracks`
+
+warning: unused import: `crate::ports::RenderCache`
+   --> src/jobs/runner.rs:225:13
+    |
+225 |         use crate::ports::RenderCache;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+

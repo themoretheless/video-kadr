@@ -6,20 +6,20 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::domain::arithmetic::frame_count_ceil;
+use crate::domain::arithmetic::rational_frame_count_ceil;
 use crate::domain::artifact_graph::Fingerprint;
 use crate::domain::composition::{
-    AnimatableValue, ClipPlacement, Composition, CompositionSource, CompositionTrack,
-    FrameInterpolation, MaskShape, PlaybackMode, SourceId, SourceKind, SpeedRampAudioPolicy,
-    TransformSpec, VideoEffect, COMPOSITION_SCHEMA_VERSION, DEFAULT_TIME_BASE,
-    MAX_ACTIVE_SPEED_RAMP_SEGMENTS, MAX_OPTICAL_FLOW_CLIP_TICKS, MAX_OPTICAL_FLOW_EDGE,
-    MAX_OPTICAL_FLOW_PIXELS, MAX_OPTICAL_FLOW_PIXEL_FRAMES, MAX_REVERSE_CLIP_TICKS,
-    MAX_REVERSE_EDGE, MAX_REVERSE_PIXELS, MAX_REVERSE_PIXEL_FRAMES, MAX_STABILIZATION_CLIP_TICKS,
-    MAX_STABILIZATION_EDGE, MAX_STABILIZATION_PIXELS, MAX_STABILIZATION_PIXEL_FRAMES,
+    AnimatableValue, COMPOSITION_SCHEMA_VERSION, ClipPlacement, Composition, CompositionSource,
+    CompositionTrack, DEFAULT_TIME_BASE, FrameInterpolation, MAX_ACTIVE_SPEED_RAMP_SEGMENTS,
+    MAX_OPTICAL_FLOW_CLIP_TICKS, MAX_OPTICAL_FLOW_EDGE, MAX_OPTICAL_FLOW_PIXEL_FRAMES,
+    MAX_OPTICAL_FLOW_PIXELS, MAX_REVERSE_CLIP_TICKS, MAX_REVERSE_EDGE, MAX_REVERSE_PIXEL_FRAMES,
+    MAX_REVERSE_PIXELS, MAX_STABILIZATION_CLIP_TICKS, MAX_STABILIZATION_EDGE,
+    MAX_STABILIZATION_PIXEL_FRAMES, MAX_STABILIZATION_PIXELS, MaskShape, PlaybackMode, SourceId,
+    SourceKind, SpeedRampAudioPolicy, TransformSpec, VideoEffect,
 };
 pub use crate::ports::{
     CompositionAudioCodec, CompositionAv1Encoder, CompositionExportProfile, CompositionExportRange,
@@ -29,6 +29,8 @@ pub use crate::ports::{
 use crate::ports::COMPOSITION_AUDIO_BITRATE_KBPS;
 
 pub const COMPOSITION_RENDER_SCHEMA_VERSION: u32 = 1;
+// Render semantics can change without changing the client document schema.
+const COMPOSITION_COMPILER_REVISION: &[u8] = b"filmcraft-native-independent-transition-delivery-4-gaps";
 const MAX_VISUAL_FILTER_DIMENSION: f64 = 8_192.0;
 const MAX_VISUAL_POSITION: f64 = 32_768.0;
 const MAX_ACTIVE_KEYFRAME_POINTS: usize = 2_048;
@@ -374,7 +376,30 @@ impl CompositionPlan {
             }
         }
         composition.validate()?;
-        validate_renderable_v1(&composition)?;
+        crate::domain::transition_export::validate(&composition)?;
+        if crate::domain::flat_surface::requires_native_video(&composition) {
+            // Native visual rendering validates the authored effect stack itself;
+            // preserve legacy source/timing/audio admission without its effect refusal.
+            let mut admission = composition.clone();
+            crate::domain::transition_export::replace_independent_tracks_with_timing(&mut admission)?;
+            crate::domain::transition_export::replace_native_graphics_with_timing(&mut admission);
+            for track in &mut admission.tracks {
+                if let CompositionTrack::Image { clips, .. } = track {
+                        for clip in clips { clip.effects.clear(); }
+                    }
+                    if let CompositionTrack::Video { clips, transitions, .. } = track {
+                    transitions.retain(|transition|transition.timeline.is_none());
+                    for clip in clips { clip.effects.clear(); }
+                }
+            }
+            validate_renderable(&admission,true)?;
+        } else if output.profile.is_audio_only() {
+            // Picture continuity is irrelevant to an audio-only delivery. Validate
+            // the legacy timing surrogate while retaining authored clips for mixing.
+            let mut admission = composition.clone();
+            crate::domain::transition_export::replace_sparse_primary_with_timing(&mut admission)?;
+            validate_renderable_v1(&admission)?;
+        } else { validate_renderable_v1(&composition)?; }
 
         let source_fingerprints: BTreeMap<_, _> = trusted
             .into_iter()
@@ -386,6 +411,7 @@ impl CompositionPlan {
         let schema_bytes = COMPOSITION_RENDER_SCHEMA_VERSION.to_be_bytes();
         let plan_fingerprint = Fingerprint::combine([
             b"composition-render-plan".as_slice(),
+            COMPOSITION_COMPILER_REVISION,
             schema_bytes.as_slice(),
             canonical_composition.as_slice(),
             canonical_sources.as_slice(),
@@ -427,14 +453,15 @@ pub fn source_requirements(
             }
         )
     });
-    for track in &composition.tracks {
+    let needed=crate::domain::nested_composition::effect_track_dependencies(composition);
+    for (index,track) in composition.tracks.iter().enumerate() {
         match track {
             CompositionTrack::Video {
-                hidden: false,
-                clips,
-                ..
-            } => {
-                for clip in clips.iter().filter(|clip| clip.enabled) {
+                clips, transitions, hidden, muted, ..
+            } if needed.contains(&index) => {
+                for clip in clips.iter().filter(|clip| clip.enabled || (!*hidden && !*muted && clip.source_audio_enabled
+                    && composition.sources.get(&clip.source_id).is_some_and(|source|source.has_audio)
+                    && transitions.iter().any(|t|t.timeline.is_some()&&(t.from_clip_id.as_ref()==Some(&clip.id)||t.to_clip_id.as_ref()==Some(&clip.id))))) {
                     merge_requirement(
                         &mut requirements,
                         clip.source_id.clone(),
@@ -461,10 +488,9 @@ pub fn source_requirements(
                 }
             }
             CompositionTrack::Image {
-                hidden: false,
                 clips,
                 ..
-            } => {
+            } if needed.contains(&index) => {
                 for clip in clips.iter().filter(|clip| clip.enabled) {
                     merge_requirement(
                         &mut requirements,
@@ -476,6 +502,8 @@ pub fn source_requirements(
             CompositionTrack::Video { .. }
             | CompositionTrack::Audio { .. }
             | CompositionTrack::Image { .. }
+            | CompositionTrack::Color { .. }
+            | CompositionTrack::Graphic { .. }
             | CompositionTrack::Text { .. } => {}
         }
     }
@@ -507,7 +535,11 @@ fn merge_requirement(
 /// rotated Linear masks are supported. Bounded optical flow, reverse/freeze playback, and
 /// classical deshake stabilization are request-specific; legacy ambiguous Linear masks and
 /// stabilization of a freeze frame remain explicitly fail-closed.
-fn validate_renderable_v1(composition: &Composition) -> Result<()> {
+fn validate_renderable_v1(composition: &Composition) -> Result<()> {validate_renderable(composition,false)}
+fn validate_renderable(composition: &Composition,native_video:bool) -> Result<()> {
+    ensure!(!composition.tracks.iter().any(|track|matches!(track,CompositionTrack::Video{clips,..} if clips.iter().any(|clip|clip.filmcraft_motion.is_some()))),"Filmcraft Motion requires qualified native delivery");
+    ensure!(!composition.tracks.iter().any(|track| matches!(track, CompositionTrack::Video { hidden: false, transitions, .. } if transitions.iter().any(|transition| transition.timeline.is_some()))),
+        "explicit transition timeline requires independent-window renderer");
     let mut keyframe_points = 0_usize;
     let mut audio_keyframe_points = 0_usize;
     let mut optical_flow_pixel_frames = 0_u128;
@@ -529,6 +561,8 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
                 clips,
                 ..
             } => clips.iter().any(|clip| clip.enabled),
+            CompositionTrack::Color { hidden: false, clips, .. } => clips.iter().any(|clip| clip.enabled),
+            CompositionTrack::Graphic { hidden: false, clips, .. } => clips.iter().any(|clip| clip.enabled),
             CompositionTrack::Text {
                 hidden: false,
                 clips,
@@ -537,45 +571,36 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
             _ => false,
         })
         .collect();
-    let (primary_index, primary_track) = active_visual
-        .last()
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("composition render v1 требует основную видеодорожку"))?;
-    let CompositionTrack::Video {
-        clips,
-        muted: primary_muted,
-        transitions,
-        ..
-    } = primary_track
-    else {
-        bail!("нижняя видимая visual-дорожка должна быть основной видеодорожкой")
+    let (primary_index, clips, transitions, primary_muted) = match active_visual.last().copied() {
+        Some((index, CompositionTrack::Video { clips, transitions, muted, .. })) =>
+            (index, clips.as_slice(), transitions.as_slice(), *muted),
+        _ => (composition.tracks.len(), &[][..], &[][..], true),
     };
     let enabled_clips: Vec<_> = clips.iter().filter(|clip| clip.enabled).collect();
-    ensure!(
-        !enabled_clips.is_empty(),
-        "основная видеодорожка должна содержать enabled clips"
-    );
+    let canvas_backed = enabled_clips.is_empty();
+    if canvas_backed {
+        ensure!(composition.duration_ticks()? > 0, "composition requires a positive duration");
+    }
 
     let active_primary_ids: BTreeSet<_> = enabled_clips.iter().map(|clip| &clip.id).collect();
     let mut handle_ticks = BTreeMap::<&crate::domain::composition::CompositionClipId, u64>::new();
     for transition in transitions {
-        if active_primary_ids.contains(&transition.from_clip_id)
-            && active_primary_ids.contains(&transition.to_clip_id)
-        {
+        if let (Some(from), Some(to)) = (transition.from_clip_id.as_ref(), transition.to_clip_id.as_ref()) {
+            if !active_primary_ids.contains(from) || !active_primary_ids.contains(to) { continue; }
             let before_edit = transition.duration_ticks / 2;
             let after_edit = transition.duration_ticks - before_edit;
-            *handle_ticks.entry(&transition.from_clip_id).or_default() += after_edit;
-            *handle_ticks.entry(&transition.to_clip_id).or_default() += before_edit;
+            *handle_ticks.entry(from).or_default() += after_edit;
+            *handle_ticks.entry(to).or_default() += before_edit;
         }
     }
 
     let mut primary = enabled_clips;
     primary.sort_by_key(|clip| (clip.placement.timeline_start_tick, clip.id.as_str()));
-    let mut cursor = 0_u64;
+    let mut cursor = if canvas_backed { composition.duration_ticks()? } else { 0_u64 };
     for clip in primary {
         count_speed_ramp_segments(&clip.placement, &mut speed_ramp_segments)?;
         ensure!(
-            clip.placement.timeline_start_tick == cursor,
+            clip.placement.timeline_start_tick == cursor || native_video && clip.placement.timeline_start_tick >= cursor,
             "видеодорожка должна начинаться с нуля и не содержать gaps/overlaps"
         );
         validate_visual(
@@ -642,7 +667,7 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
             )?;
         }
         let source = &composition.sources[&clip.source_id];
-        if !*primary_muted
+        if !primary_muted
             && clip.source_audio_enabled
             && source.has_audio
             && !matches!(clip.playback_mode, PlaybackMode::Freeze { .. })
@@ -688,12 +713,8 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
                 for transition in transitions {
                     let before_edit = transition.duration_ticks / 2;
                     let after_edit = transition.duration_ticks - before_edit;
-                    *transition_handles
-                        .entry(transition.from_clip_id.as_str())
-                        .or_default() += after_edit;
-                    *transition_handles
-                        .entry(transition.to_clip_id.as_str())
-                        .or_default() += before_edit;
+                    if let Some(from) = &transition.from_clip_id { *transition_handles.entry(from.as_str()).or_default() += after_edit; }
+                    if let Some(to) = &transition.to_clip_id { *transition_handles.entry(to.as_str()).or_default() += before_edit; }
                 }
                 let mut intervals = Vec::new();
                 for clip in clips.iter().filter(|clip| clip.enabled) {
@@ -793,6 +814,26 @@ fn validate_renderable_v1(composition: &Composition) -> Result<()> {
                         .checked_add(clip.duration_ticks)
                         .ok_or_else(|| anyhow::anyhow!("image clip timeline overflow"))?;
                     intervals.push((clip.timeline_start_tick, end, clip.id.as_str()));
+                }
+                validate_visual_intervals(&mut intervals, cursor)?;
+            }
+            CompositionTrack::Graphic { hidden: false, clips, .. } => {
+                let mut intervals = Vec::new();
+                for clip in clips.iter().filter(|clip| clip.enabled) {
+                    validate_visual(&clip.transform, &clip.opacity, &clip.effects, clip.id.as_str(),
+                        clip.width, clip.height, clip.timeline_end_tick - clip.timeline_start_tick,
+                        composition.time_base, true, &mut keyframe_points)?;
+                    intervals.push((clip.timeline_start_tick, clip.timeline_end_tick, clip.id.as_str()));
+                }
+                validate_visual_intervals(&mut intervals, cursor)?;
+            }
+            CompositionTrack::Color { hidden: false, clips, .. } => {
+                let mut intervals = Vec::new();
+                for clip in clips.iter().filter(|clip| clip.enabled) {
+                    validate_visual(&clip.transform, &clip.opacity, &[], clip.id.as_str(),
+                        clip.width, clip.height, clip.timeline_end_tick - clip.timeline_start_tick,
+                        composition.time_base, true, &mut keyframe_points)?;
+                    intervals.push((clip.timeline_start_tick, clip.timeline_end_tick, clip.id.as_str()));
                 }
                 validate_visual_intervals(&mut intervals, cursor)?;
             }
@@ -933,10 +974,11 @@ fn validate_optical_flow_work(
         "optical flow clip {clip_id} превышает duration budget"
     );
     let output_frames = u128::from(
-        frame_count_ceil(
+        rational_frame_count_ceil(
             duration_ticks,
             composition.time_base,
-            composition.canvas.fps_milli,
+            composition.canvas.frame_rate().numerator,
+            composition.canvas.frame_rate().denominator,
         )
         .ok_or_else(|| anyhow::anyhow!("optical-flow frame count overflow"))?,
     );
@@ -972,10 +1014,11 @@ fn validate_reverse_work(
         "reverse clip {clip_id} превышает buffered duration budget"
     );
     let buffered_frames = u128::from(
-        frame_count_ceil(
+        rational_frame_count_ceil(
             source_duration_ticks,
             composition.time_base,
-            composition.canvas.fps_milli,
+            composition.canvas.frame_rate().numerator,
+            composition.canvas.frame_rate().denominator,
         )
         .ok_or_else(|| anyhow::anyhow!("reverse frame count overflow"))?,
     );
@@ -1026,10 +1069,11 @@ fn validate_stabilization_work(
         "stabilization clip {clip_id} превышает duration budget"
     );
     let frames = u128::from(
-        frame_count_ceil(
+        rational_frame_count_ceil(
             source_duration_ticks,
             composition.time_base,
-            composition.canvas.fps_milli,
+            composition.canvas.frame_rate().numerator,
+            composition.canvas.frame_rate().denominator,
         )
         .ok_or_else(|| anyhow::anyhow!("stabilization frame count overflow"))?,
     );
@@ -1154,6 +1198,125 @@ fn validate_visual(
     let mut saw_mask = false;
     for effect in effects {
         match effect {
+            VideoEffect::Lumetri { .. } => bail!("Lumetri requires native export"),
+ VideoEffect::ConcatGaussianBlur { .. } | VideoEffect::ConcatBloomPulse { .. } | VideoEffect::ConcatMotionBlur { .. } | VideoEffect::ConcatZoomBlur { .. } | VideoEffect::ConcatFilmGrain { .. } | VideoEffect::ConcatGlow { .. } | VideoEffect::ConcatHalftone { .. } | VideoEffect::ConcatFisheye { .. } | VideoEffect::ConcatChromaticAberration { .. } | VideoEffect::ConcatPosterize { .. } | VideoEffect::ConcatLumaKey { .. } | VideoEffect::ConcatPixelate { .. } | VideoEffect::ConcatChromaKey { .. } | VideoEffect::ConcatSaturation { .. } | VideoEffect::ConcatVibrance { .. } | VideoEffect::ConcatSharpen { .. } | VideoEffect::ConcatVhs { .. } | VideoEffect::ConcatFallingDust { .. } | VideoEffect::ConcatFilm { .. } | VideoEffect::ConcatDigicam { .. } | VideoEffect::ConcatMono { .. } | VideoEffect::ConcatMidnight { .. } | VideoEffect::ConcatMarquee { .. } | VideoEffect::ConcatRetroCartoon { .. } | VideoEffect::ConcatSuper8 { .. } | VideoEffect::ConcatBleachBypass { .. } | VideoEffect::ConcatAutumn { .. } | VideoEffect::ConcatNeon { .. } | VideoEffect::ConcatPinkFuzz { .. } | VideoEffect::ConcatNight { .. } | VideoEffect::ConcatSpooky { .. } | VideoEffect::ConcatCool { .. } | VideoEffect::ConcatWarm { .. } | VideoEffect::ConcatTealOrange { .. } | VideoEffect::ConcatNoir { .. } | VideoEffect::ConcatDreamy { .. } | VideoEffect::ConcatHighContrastMono { .. } | VideoEffect::ConcatLandscapePop { .. } | VideoEffect::ConcatNatural { .. } | VideoEffect::ConcatRetro70s { .. } | VideoEffect::ConcatSilver { .. } | VideoEffect::ConcatTropical { .. } | VideoEffect::ConcatVaporwave { .. } | VideoEffect::ConcatWinterCool { .. } | VideoEffect::ConcatClassicChrome { .. } | VideoEffect::ConcatCyberpunk { .. } | VideoEffect::ConcatDelicious { .. } | VideoEffect::ConcatRosy { .. } | VideoEffect::ConcatSciFi { .. } | VideoEffect::ConcatMatcha { .. } | VideoEffect::ConcatSage { .. } | VideoEffect::ConcatIvory { .. } | VideoEffect::ConcatMilk { .. } | VideoEffect::ConcatBronze { .. } | VideoEffect::ConcatCoolBlue { .. } | VideoEffect::ConcatFresh { .. } | VideoEffect::ConcatVivid { .. } | VideoEffect::ConcatSoftLight { .. } | VideoEffect::ConcatMoody { .. } | VideoEffect::ConcatRain { .. } | VideoEffect::ConcatUmber { .. } | VideoEffect::ConcatFair { .. } | VideoEffect::ConcatPeach { .. } | VideoEffect::ConcatPolaroid { .. } | VideoEffect::ConcatVintage { .. } | VideoEffect::ConcatCloudlessSky { .. } | VideoEffect::ConcatLagoon { .. } | VideoEffect::ConcatGoldenHour { .. } | VideoEffect::ConcatDaydream { .. } | VideoEffect::ConcatClean { .. } | VideoEffect::ConcatContrastPop { .. } | VideoEffect::ConcatVignette { .. } | VideoEffect::ConcatAdjust { .. } | VideoEffect::ConcatCurves { .. } | VideoEffect::ConcatColorWheels { .. } | VideoEffect::ConcatWhiteBalance { .. } | VideoEffect::ConcatExposure { .. } | VideoEffect::ConcatContrast { .. } | VideoEffect::ColorSharpen { .. } => bail!("color sharpen requires native export"),
+ VideoEffect::CreativeAdjust { .. } => bail!("creative adjustment requires native export"),
+ VideoEffect::BasicGrade { .. } => bail!("basic grade requires native export"),
+ VideoEffect::ProcAmp { .. } => bail!("ProcAmp requires native export"),
+ VideoEffect::GammaCorrection { .. } => bail!("Gamma Correction requires native export"),
+ VideoEffect::Posterize { .. } => bail!("Posterize requires native export"),
+ VideoEffect::ColorInvert { .. } => bail!("Invert requires native export"),
+ VideoEffect::ColorReplace { .. } => bail!("Color Replace requires native export"),
+ VideoEffect::UltraKey { .. } => bail!("Ultra Key requires native export"),
+ VideoEffect::ColorKey { .. } => bail!("Color Key requires native export"),
+ VideoEffect::ColorPass { .. } => bail!("Color Pass requires native export"),
+ VideoEffect::ChangeToColor { .. } => bail!("Change to Color requires native export"),
+ VideoEffect::LeaveColor { .. } => bail!("Leave Color requires native export"),
+ VideoEffect::AlphaAdjust { .. } => bail!("Alpha Adjust requires native export"),
+ VideoEffect::DirectionalBlur { .. } | VideoEffect::DirectionalBlurLegacy { .. } => bail!("Directional Blur requires native export"),
+ VideoEffect::Mosaic { .. } | VideoEffect::MosaicLegacy { .. } => bail!("Mosaic requires native export"),
+ VideoEffect::Twirl { .. } | VideoEffect::TwirlLegacy { .. } => bail!("Twirl requires native export"),
+ VideoEffect::WaveWarp { .. } => bail!("Wave Warp requires native export"),
+ VideoEffect::LensDistortion { .. } => bail!("Lens Distortion requires native export"),
+ VideoEffect::Grid { .. } => bail!("Grid requires native export"),
+ VideoEffect::LensFlare { .. } => bail!("Lens Flare requires native export"),
+ VideoEffect::Ellipse { .. } => bail!("Ellipse requires native export"),
+ VideoEffect::PaintBucket { .. } => bail!("PaintBucket requires native export"),
+ VideoEffect::Gradient { .. } => bail!("Gradient requires native export"),
+ VideoEffect::ColorEmboss { .. } => bail!("ColorEmboss requires native export"),
+ VideoEffect::BlockDissolve { .. } => bail!("BlockDissolve requires native export"),
+ VideoEffect::GradientWipe { .. } => bail!("GradientWipe requires native export"),
+ VideoEffect::LinearWipe { .. } => bail!("LinearWipe requires native export"),
+ VideoEffect::Magnify { .. } => bail!("Magnify requires native export"),
+ VideoEffect::Mirror { .. } => bail!("Mirror requires native export"),
+ VideoEffect::Offset { .. } => bail!("Offset requires native export"),
+ VideoEffect::Transform { .. } => bail!("Transform requires native export"),
+ VideoEffect::AscCdl { .. } => bail!("AscCdl requires native export"),
+ VideoEffect::VignetteEffect { .. } => bail!("VignetteEffect requires native export"),
+ VideoEffect::LightingEffects { .. } => bail!("Lighting Effects requires native export"),
+ VideoEffect::LogoCutout { .. } => bail!("Logo Cutout requires native export"),
+ VideoEffect::EdgeGlow { .. } => bail!("Edge Glow requires native export"),
+VideoEffect::WonderGlow { .. } => bail!("Wonder Glow requires native export"),
+VideoEffect::Glint { .. } => bail!("Glint requires native export"),
+VideoEffect::WarpStabilizer { .. } => bail!("Warp Stabilizer requires native export"),
+VideoEffect::Lightning { .. } => bail!("Lightning requires native export"),
+VideoEffect::WriteOn { .. } => bail!("Write-on requires native export"),
+VideoEffect::Timecode { .. } | VideoEffect::ClipName { .. } => bail!("Timecode/Clip Name require native export"),
+VideoEffect::MetadataBurnin { .. } => bail!("Metadata Burn-in requires native export"),
+VideoEffect::SimpleText { .. } => bail!("Simple Text requires native export"),
+VideoEffect::VrDigitalGlitch { .. } | VideoEffect::VrFractalNoise { .. } | VideoEffect::VrGlow { .. } | VideoEffect::VrPlaneToSphere { .. } | VideoEffect::VrColorGradients { .. } | VideoEffect::VrChromaticAberrations { .. } | VideoEffect::VrDenoise { .. } | VideoEffect::VrBlur { .. } | VideoEffect::VrSharpen { .. } | VideoEffect::SphericalVideo { .. } | VideoEffect::VrProjection { .. } | VideoEffect::VrRotateSphere { .. } => bail!("VR sphere effects require native export"),
+VideoEffect::LightLeaks { .. } => bail!("Light Leaks requires native export"),
+VideoEffect::AutoReframe { .. } => bail!("Auto Reframe requires native export"),
+VideoEffect::Echo { .. } => bail!("Echo requires native export"),
+VideoEffect::PosterizeTime { .. } => bail!("Posterize Time requires native export"),
+VideoEffect::VolumetricRays { .. } => bail!("Volumetric Rays requires native export"),
+ VideoEffect::EchoGlow { .. } => bail!("Echo Glow requires native export"),
+ VideoEffect::RgbSplit { .. } => bail!("RGB Split requires native export"),
+ VideoEffect::Spherize { .. } => bail!("Spherize requires native export"),
+ VideoEffect::CornerPin { .. } => bail!("CornerPin requires native export"),
+ VideoEffect::Rotate3D { .. } => bail!("Rotate3D requires native export"),
+ VideoEffect::Grow { .. } => bail!("Grow requires native export"),
+
+ VideoEffect::Spin { .. } => bail!("Spin requires native export"),
+ VideoEffect::Move { .. } => bail!("Move requires native export"),
+ VideoEffect::Wiggle { .. } => bail!("Wiggle requires native export"),
+ VideoEffect::CameraShake { .. } => bail!("CameraShake requires native export"),
+ VideoEffect::Spacer { .. } => bail!("Spacer requires native export"),
+ VideoEffect::RoundedCrop { .. } => bail!("RoundedCrop requires native export"),
+ VideoEffect::Clone { .. } => bail!("Clone requires native export"),
+ VideoEffect::AutoAlign { .. } => bail!("Auto Align requires native export"),
+ VideoEffect::GraphicText { .. } => bail!("Graphic Text requires native export"),
+ VideoEffect::GraphicShape { .. } => bail!("Graphic Shape requires native export"),
+ VideoEffect::TrackMatte { .. } => bail!("Track Matte Key requires native export"),
+ VideoEffect::CompoundBlur { .. } => bail!("Compound Blur requires native export"),
+ VideoEffect::Crop { .. } => bail!("Crop requires native export"),
+ VideoEffect::BrightnessContrast { .. } => bail!("Brightness & Contrast requires native export"),
+ VideoEffect::UnsharpMask { .. } => bail!("Unsharp Mask requires native export"),
+ VideoEffect::BokehBlur { .. } => bail!("Bokeh Blur requires native export"),
+ VideoEffect::FocusBlur { .. } => bail!("Focus Blur requires native export"),
+ VideoEffect::EdgeFeather { .. } => bail!("Edge Feather requires native export"),
+ VideoEffect::Sharpen { .. } => bail!("Sharpen requires native export"),
+ VideoEffect::ReduceInterlaceFlicker { .. } => bail!("Reduce Interlace Flicker requires native export"),
+ VideoEffect::ChannelBlur { .. } => bail!("Channel Blur requires native export"),
+ VideoEffect::TurbulentDisplace { .. } => bail!("Turbulent Displace requires native export"),
+ VideoEffect::Shrink { .. } => bail!("Shrink requires native export"),
+ VideoEffect::AlphaGlow { .. } => bail!("AlphaGlow requires native export"),
+ VideoEffect::BrushStrokes { .. } => bail!("BrushStrokes requires native export"),
+ VideoEffect::Stroke { .. } => bail!("Stroke requires native export"),
+ VideoEffect::LongShadow { .. } => bail!("LongShadow requires native export"),
+ VideoEffect::RoughenEdges { .. } => bail!("RoughenEdges requires native export"),
+ VideoEffect::CellPattern { .. } => bail!("CellPattern requires native export"),
+ VideoEffect::Checkerboard { .. } => bail!("Checkerboard requires native export"),
+ VideoEffect::Circle { .. } => bail!("Circle requires native export"),
+ VideoEffect::Ramp { .. } => bail!("Ramp requires native export"),
+ VideoEffect::FourColorGradient { .. } => bail!("4-Color Gradient requires native export"),
+ VideoEffect::BevelAlpha { .. } => bail!("Bevel Alpha requires native export"),
+ VideoEffect::DropShadow { .. } => bail!("Drop Shadow requires native export"),
+ VideoEffect::Basic3D { .. } => bail!("Basic 3D requires native export"),
+ VideoEffect::Strobe { .. } => bail!("Strobe requires native export"),
+ VideoEffect::Noise { .. } | VideoEffect::NoiseLegacy { .. } => bail!("Noise requires native export"),
+ VideoEffect::Emboss { .. } => bail!("Emboss requires native export"),
+ VideoEffect::CameraBlur { .. } => bail!("Camera Blur requires native export"),
+ VideoEffect::Median { .. } => bail!("Median requires native export"),
+ VideoEffect::Replicate { .. } => bail!("Replicate requires native export"),
+ VideoEffect::FindEdges { .. } => bail!("Find Edges requires native export"),
+ VideoEffect::GaussianBlur { .. } | VideoEffect::GaussianBlurLegacy { .. } => bail!("Gaussian Blur requires native export"),
+ VideoEffect::LumaKey { .. } => bail!("Luma Key requires native export"),
+ VideoEffect::ChannelMix { .. } => bail!("Channel Mix requires native export"),
+ VideoEffect::ColorBalance { .. } => bail!("Color Balance requires native export"),
+ VideoEffect::ColorTint { .. } => bail!("Tint requires native export"),
+ VideoEffect::ColorLevels { .. } => bail!("Levels requires native export"),
+ VideoEffect::ColorExtract { .. } => bail!("Extract requires native export"),
+ VideoEffect::NativeBypass{..}|VideoEffect::ConcatBypass{..}|VideoEffect::HorizontalFlip|VideoEffect::VerticalFlip => bail!("Source bypass/flip requires native export"),
+ VideoEffect::BlackWhite => bail!("Black & White requires native export"),
+ VideoEffect::CineonConverter { .. } => bail!("Cineon Converter requires native export"),
+ VideoEffect::VideoLimiter { .. } => bail!("video limiter requires native export"),
+ VideoEffect::ColorVignette { .. } => bail!("color vignette requires native export"),
+            VideoEffect::HslSecondary { .. } => bail!("HSL secondary requires native export"),
+            VideoEffect::ColorLut { .. } => bail!("color LUT requires native export"),
+            VideoEffect::CreativeGrade { .. } => bail!("creative grading requires native export"),
+            VideoEffect::ToneCurves { .. } => bail!("native tone curves export is not yet supported"),
+            VideoEffect::ChromaMatte { .. } => bail!("native chroma matte export is not yet supported"),
             VideoEffect::ChromaKey { .. } if saw_mask => {
                 bail!("clip {clip_id} должен размещать chroma key effects перед shape masks")
             }
@@ -1270,22 +1433,14 @@ fn validate_animatable(
             *keyframe_points = keyframe_points
                 .checked_add(track.keyframes.len())
                 .ok_or_else(|| anyhow::anyhow!("keyframe count overflow"))?;
-            let last = track.keyframes.last().expect("domain validated keyframes");
-            ensure!(
-                u128::from(last.tick) * u128::from(composition_time_base)
-                    <= u128::from(clip_duration_ticks) * u128::from(track.time_base),
-                "{label} keyframes выходят за clip-local duration"
-            );
             ensure!(
                 track.keyframes.iter().all(|keyframe| valid(keyframe.value)),
                 "{label} keyframes вне поддерживаемого диапазона"
             );
-            let (minimum, maximum) = track.keyframes.iter().fold(
-                (f64::INFINITY, f64::NEG_INFINITY),
-                |(minimum, maximum), keyframe| {
-                    (minimum.min(keyframe.value), maximum.max(keyframe.value))
-                },
-            );
+            let (minimum, maximum) = track.value_bounds_seconds(
+                0.0,
+                clip_duration_ticks as f64 / composition_time_base as f64,
+            )?;
             Ok((minimum, maximum))
         }
     }
@@ -1329,6 +1484,7 @@ mod tests {
             composition.sources.insert(
                 id.clone(),
                 CompositionSource {
+                    audio_channels: None,
                     id: id.clone(),
                     kind: SourceKind::Video,
                     duration_ticks: 4_000_000,
@@ -1338,10 +1494,14 @@ mod tests {
                 },
             );
         }
-        let clip = |id: &str, source_id: SourceId, start| VideoClip {
+        let clip = |id: &str, source_id: SourceId, start| VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
             id: CompositionClipId::parse(id).unwrap(),
             source_id,
             placement: ClipPlacement {
+                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                timeline_duration_tick: None,
                 timeline_start_tick: start,
                 source_in_tick: 0,
                 source_out_tick: 2_000_000,
@@ -1408,11 +1568,15 @@ mod tests {
                 interpolation,
                 vec![
                     Keyframe {
+                        tangents: None,
+                        interpolation: None,
                         tick: 0,
                         value: from,
                     },
                     Keyframe {
-                        tick: end_tick,
+                        tangents: None,
+                        interpolation: None,
+                        tick: end_tick.try_into().unwrap(),
                         value: to,
                     },
                 ],
@@ -1614,20 +1778,24 @@ mod tests {
         assert!(error.contains("100096000"), "{error}");
         // Zero seconds would divide the budget into nothing.
         assert!(target_video_bitrate_kbps(mp4, 1_000_000, 0.0).is_err());
-        assert!(target_video_bitrate_kbps(mp4, 1_000_000, f64::NAN)
+        assert!(
+            target_video_bitrate_kbps(mp4, 1_000_000, f64::NAN)
+                .unwrap_err()
+                .to_string()
+                .contains("положительной длительности")
+        );
+        assert!(
+            target_video_bitrate_kbps(
+                CompositionExportProfile::Mov {
+                    profile: crate::ports::CompositionProResProfile::Standard,
+                },
+                1_096_000,
+                4.0,
+            )
             .unwrap_err()
             .to_string()
-            .contains("положительной длительности"));
-        assert!(target_video_bitrate_kbps(
-            CompositionExportProfile::Mov {
-                profile: crate::ports::CompositionProResProfile::Standard,
-            },
-            1_096_000,
-            4.0,
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("MP4/WebM"));
+            .contains("MP4/WebM")
+        );
     }
 
     #[test]
@@ -1714,6 +1882,43 @@ mod tests {
     }
 
     #[test]
+    fn pan_compiler_revision_invalidates_previously_cached_render_plans() {
+        let request = request(2_000_000);
+        let plan = CompositionPlan::compile(request.clone(), trusted(&request)).unwrap();
+        let composition = serde_json::to_vec(&plan.composition).unwrap();
+        let sources = serde_json::to_vec(&plan.source_fingerprints).unwrap();
+        let output = serde_json::to_vec(&plan.output).unwrap();
+        let schema = COMPOSITION_RENDER_SCHEMA_VERSION.to_be_bytes();
+        // The previous cache identity omitted compiler semantics.
+        let previous = Fingerprint::combine([
+            b"composition-render-plan".as_slice(),
+            schema.as_slice(),
+            composition.as_slice(),
+            sources.as_slice(),
+            output.as_slice(),
+        ]);
+        assert_ne!(plan.fingerprint(), &previous);
+        assert_eq!(plan.schema_version, 1, "document wire stays compatible");
+    }
+
+    #[test]
+    fn caption_exact_frame_revision_invalidates_rounded_frame_exports() {
+        let request = request(2_000_000);
+        let plan = CompositionPlan::compile(request.clone(), trusted(&request)).unwrap();
+        let composition = serde_json::to_vec(&plan.composition).unwrap();
+        let sources = serde_json::to_vec(&plan.source_fingerprints).unwrap();
+        let output = serde_json::to_vec(&plan.output).unwrap();
+        let schema = COMPOSITION_RENDER_SCHEMA_VERSION.to_be_bytes();
+        let previous = Fingerprint::combine([
+            b"composition-render-plan".as_slice(),
+            b"filmcraft-native-caption-burn-1".as_slice(),
+            schema.as_slice(), composition.as_slice(), sources.as_slice(), output.as_slice(),
+        ]);
+        assert_ne!(plan.fingerprint(), &previous);
+        assert_eq!(plan.schema_version, 1);
+    }
+
+    #[test]
     fn plan_uses_trusted_sources_and_has_stable_identity() {
         let request = request(2_000_000);
         let plan = CompositionPlan::compile(request.clone(), trusted(&request)).unwrap();
@@ -1782,6 +1987,7 @@ mod tests {
         request.composition.sources.insert(
             muted_source.clone(),
             CompositionSource {
+                audio_channels: None,
                 id: muted_source.clone(),
                 kind: SourceKind::Audio,
                 duration_ticks: 2_000_000,
@@ -1797,9 +2003,13 @@ mod tests {
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("muted-ramp-clip").unwrap(),
                 source_id: muted_source.clone(),
                 placement: ClipPlacement {
+                    source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                    timeline_duration_tick: None,
                     timeline_start_tick: 0,
                     source_in_tick: 0,
                     source_out_tick: 1_000_000,
@@ -1828,6 +2038,7 @@ mod tests {
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: crate::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -1843,6 +2054,29 @@ mod tests {
     }
 
     #[test]
+    fn admits_canvas_backed_solid_and_rejects_empty_duration() {
+        let mut composition = request(2_000_000).composition;
+        composition.sources.clear();
+        composition.tracks.clear();
+        assert!(validate_renderable_v1(&composition).is_err());
+        composition.tracks.push(CompositionTrack::Color {
+            id: TrackId::parse("colors").unwrap(), name: "Colors".into(), hidden: false, locked: false,
+            clips: vec![crate::domain::composition::SolidColorClip {
+                id: CompositionClipId::parse("solid").unwrap(), timeline_start_tick: 500_000,
+                timeline_end_tick: 1_000_000, width: 63, height: 31,
+                color: crate::domain::animated_color::Color { r: 255, g: 0, b: 0, a: 128 },
+                color_animation: None, transform: TransformSpec::default(),
+                opacity: AnimatableValue::constant(0.5), enabled: true,
+            }],
+        });
+        validate_renderable_v1(&composition).unwrap();
+        if let CompositionTrack::Color { clips, .. } = &mut composition.tracks[0] {
+            clips[0].opacity = AnimatableValue::constant(2.0);
+        }
+        assert!(validate_renderable_v1(&composition).is_err());
+    }
+
+    #[test]
     fn plan_accepts_video_image_and_transition_layers_above_primary() {
         let mut request = request(2_000_000);
         let overlay_id = SourceId::parse("overlay-source").unwrap();
@@ -1850,6 +2084,7 @@ mod tests {
         request.composition.sources.insert(
             overlay_id.clone(),
             CompositionSource {
+                audio_channels: None,
                 id: overlay_id.clone(),
                 kind: SourceKind::Video,
                 duration_ticks: 2_000_000,
@@ -1861,6 +2096,7 @@ mod tests {
         request.composition.sources.insert(
             image_id.clone(),
             CompositionSource {
+                audio_channels: None,
                 id: image_id.clone(),
                 kind: SourceKind::Image,
                 duration_ticks: 0,
@@ -1869,10 +2105,14 @@ mod tests {
                 has_audio: false,
             },
         );
-        let mut overlay = VideoClip {
+        let mut overlay = VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
             id: CompositionClipId::parse("overlay-clip").unwrap(),
             source_id: overlay_id,
             placement: ClipPlacement {
+                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                timeline_duration_tick: None,
                 timeline_start_tick: 500_000,
                 source_in_tick: 0,
                 source_out_tick: 1_000_000,
@@ -1906,6 +2146,8 @@ mod tests {
         let mut overlay_b = overlay.clone();
         overlay_b.id = CompositionClipId::parse("overlay-clip-b").unwrap();
         overlay_b.placement = ClipPlacement {
+            source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+            timeline_duration_tick: None,
             timeline_start_tick: 1_500_000,
             source_in_tick: 500_000,
             source_out_tick: 1_500_000,
@@ -1920,6 +2162,7 @@ mod tests {
                 hidden: false,
                 locked: false,
                 clips: vec![ImageClip {
+                    effects: Vec::new(),
                     id: CompositionClipId::parse("image-clip").unwrap(),
                     source_id: image_id,
                     timeline_start_tick: 1_000_000,
@@ -1940,10 +2183,12 @@ mod tests {
                 muted: false,
                 locked: false,
                 clips: vec![overlay, overlay_b],
-                transitions: vec![ClipTransition {
+                transitions: vec![ClipTransition { concat_overlap: None,
+                    kernel: None, reverse: false,
+timeline: None,
                     id: TransitionId::parse("overlay-transition").unwrap(),
-                    from_clip_id: CompositionClipId::parse("overlay-clip").unwrap(),
-                    to_clip_id: CompositionClipId::parse("overlay-clip-b").unwrap(),
+                    from_clip_id: Some(CompositionClipId::parse("overlay-clip").unwrap()),
+                    to_clip_id: Some(CompositionClipId::parse("overlay-clip-b").unwrap()),
                     duration_ticks: 200_000,
                     kind: TransitionKind::SlideLeft,
                 }],
@@ -1960,6 +2205,7 @@ mod tests {
         request.composition.sources.insert(
             overlay_id.clone(),
             CompositionSource {
+                audio_channels: None,
                 id: overlay_id.clone(),
                 kind: SourceKind::Video,
                 duration_ticks: 2_000_000,
@@ -1976,10 +2222,14 @@ mod tests {
             rotation_degrees: animated(Interpolation::EaseInOut, 1_000_000, -30.0, 30.0),
             ..TransformSpec::default()
         };
-        let overlay = VideoClip {
+        let overlay = VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
             id: CompositionClipId::parse("animated-overlay-clip").unwrap(),
             source_id: overlay_id,
             placement: ClipPlacement {
+                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                timeline_duration_tick: None,
                 timeline_start_tick: 250_000,
                 source_in_tick: 0,
                 source_out_tick: 1_000_000,
@@ -2076,12 +2326,13 @@ mod tests {
     }
 
     #[test]
-    fn plan_rejects_visual_keyframes_past_the_clip_local_duration() {
+    fn plan_accepts_visual_keyframes_past_the_clip_local_duration() {
         let mut request = request(2_000_000);
         let image_id = SourceId::parse("animated-image-source").unwrap();
         request.composition.sources.insert(
             image_id.clone(),
             CompositionSource {
+                audio_channels: None,
                 id: image_id.clone(),
                 kind: SourceKind::Image,
                 duration_ticks: 0,
@@ -2098,6 +2349,7 @@ mod tests {
                 hidden: false,
                 locked: false,
                 clips: vec![ImageClip {
+                    effects: Vec::new(),
                     id: CompositionClipId::parse("animated-image-clip").unwrap(),
                     source_id: image_id,
                     timeline_start_tick: 0,
@@ -2109,11 +2361,7 @@ mod tests {
                 }],
             },
         );
-        let error = CompositionPlan::compile(request.clone(), trusted(&request)).unwrap_err();
-        assert!(
-            error.to_string().contains("clip-local duration"),
-            "{error:#}"
-        );
+        assert!(CompositionPlan::compile(request.clone(), trusted(&request)).is_ok());
     }
 
     #[test]
@@ -2131,9 +2379,13 @@ mod tests {
             solo: false,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse("automated-audio-clip").unwrap(),
                 source_id: SourceId::parse("source-a").unwrap(),
                 placement: ClipPlacement {
+                    source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                    timeline_duration_tick: None,
                     timeline_start_tick: 500_000,
                     source_in_tick: 0,
                     source_out_tick: 1_000_000,
@@ -2149,6 +2401,7 @@ mod tests {
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: crate::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -2160,11 +2413,7 @@ mod tests {
             unreachable!();
         };
         clips[0].audio_gain = animated(Interpolation::Linear, 2_000_001, 0.0, 1.0);
-        let error = CompositionPlan::compile(outside.clone(), trusted(&outside)).unwrap_err();
-        assert!(
-            error.to_string().contains("clip-local duration"),
-            "{error:#}"
-        );
+        CompositionPlan::compile(outside.clone(), trusted(&outside)).unwrap();
 
         let mut out_of_range = request.clone();
         let CompositionTrack::Audio { clips, .. } = &mut out_of_range.composition.tracks[1] else {
@@ -2288,11 +2537,16 @@ mod tests {
                 hidden: false,
                 locked: false,
                 clips: vec![TextClip {
+                effects: vec![],
+                blend_mode: None,
+                concat_title: None,
+                    color_animation: None,
                     id: CompositionClipId::parse("text-clip").unwrap(),
                     timeline_start_tick: 250_000,
                     timeline_end_tick: 1_750_000,
                     text: "Привет, мир!\n字幕".into(),
                     style: TextStyle {
+                        align: None,
                         font_family: "Noto Sans".into(),
                         font_size: 64.0,
                         color: Rgba {
@@ -2317,6 +2571,22 @@ mod tests {
         CompositionPlan::compile(request.clone(), trusted(&request)).unwrap();
     }
 
+ #[test]
+ fn plan_routes_independent_transition_streams_and_resolves_disabled_audio_side(){
+  for kind in ["dissolve","film_dissolve","additive_dissolve","fade_black","fade_white","wipe_left","wipe_right","wipe_up","wipe_down"] {
+   let mut r=request(2_000_000);
+   let CompositionTrack::Video{clips,transitions,..}=&mut r.composition.tracks[0]else{unreachable!()};
+   for clip in clips.iter_mut(){clip.placement.source_in_tick=500_000;clip.placement.source_out_tick=2_500_000;}
+   transitions.push(serde_json::from_value(serde_json::json!({"id":"independent","fromClipId":"clip-a","toClipId":"clip-b","kind":kind,"timeline":{"startTick":"381024000000","durationTick":"254016000000"}})).unwrap());
+   let plan=CompositionPlan::compile(r.clone(),trusted(&r)).unwrap();
+   assert!(crate::tools::composition_native_video::needs_native_video(plan.composition()));
+   assert!(crate::tools::composition_native_audio::needs_native_audio(plan.composition()));
+   let CompositionTrack::Video{clips,..}=&mut r.composition.tracks[0]else{unreachable!()};clips[0].enabled=false;
+   assert!(source_requirements(&r.composition).unwrap().contains_key(&SourceId::parse("source-a").unwrap()));
+  }
+ }
+
+
     #[test]
     fn plan_accepts_exact_handle_backed_primary_transition() {
         let mut request = request(2_000_000);
@@ -2330,10 +2600,12 @@ mod tests {
             clip.placement.source_in_tick = 500_000;
             clip.placement.source_out_tick = 2_500_000;
         }
-        transitions.push(ClipTransition {
+        transitions.push(ClipTransition { concat_overlap: None,
+            kernel: None, reverse: false,
+timeline: None,
             id: TransitionId::parse("transition-a-b").unwrap(),
-            from_clip_id: clips[0].id.clone(),
-            to_clip_id: clips[1].id.clone(),
+            from_clip_id: Some(clips[0].id.clone()),
+            to_clip_id: Some(clips[1].id.clone()),
             duration_ticks: 500_000,
             kind: TransitionKind::WipeLeft,
         });
@@ -2348,6 +2620,7 @@ mod tests {
             composition.sources.insert(
                 id.clone(),
                 CompositionSource {
+                    audio_channels: None,
                     id: id.clone(),
                     kind: SourceKind::Video,
                     duration_ticks: 4_000_000,
@@ -2362,10 +2635,14 @@ mod tests {
         let muted = add_source(&mut request.composition, "muted-source");
         let non_solo = add_source(&mut request.composition, "non-solo-source");
         let solo = add_source(&mut request.composition, "solo-source");
-        let video = |id: &str, source_id: SourceId| VideoClip {
+        let video = |id: &str, source_id: SourceId| VideoClip {concat_cutout:None,audio_stream:None,concat_gain_keys:Vec::new(),dsp_effects:Vec::new(),independent_audio:false,audio_fade_in_ticks:0,audio_fade_out_ticks:0,
+            effect_timing: None,
+            filmcraft_motion: None,
             id: CompositionClipId::parse(id).unwrap(),
             source_id,
             placement: ClipPlacement {
+                source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                timeline_duration_tick: None,
                 timeline_start_tick: 0,
                 source_in_tick: 0,
                 source_out_tick: 1_000_000,
@@ -2403,9 +2680,13 @@ mod tests {
             solo,
             locked: false,
             clips: vec![AudioClip {
+                audio_stream:None,detached_from:None,concat_detached_order:None,concat_gain_keys:Vec::new(),dsp_effects: Vec::new(),
+                role_gain: 1.0,
                 id: CompositionClipId::parse(format!("{id}-clip")).unwrap(),
                 source_id,
                 placement: ClipPlacement {
+                    source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retime: None,
+                    timeline_duration_tick: None,
                     timeline_start_tick: 0,
                     source_in_tick: 0,
                     source_out_tick: 1_000_000,
@@ -2421,6 +2702,7 @@ mod tests {
                 pitch_semitones: 0.0,
                 tone_db: 0.0,
                 crossfade_in_ticks: 0,
+                crossfade_curve: crate::domain::audio_transition::AudioTransitionCurve::ConstantGain,
                 ducking: None,
                 enabled: true,
             }],
@@ -2450,4 +2732,25 @@ mod tests {
         active_trusted.retain(|id, _| requirements.contains_key(id));
         CompositionPlan::compile(request, active_trusted).unwrap();
     }
+}
+
+#[cfg(test)]mod compound_blur_source_dependency_tests {
+ use super::*;
+ #[test]fn source_requirements_compound_blur_hidden_sources_follow_cycles_and_keep_unreferenced_tracks_excluded(){
+ let mut composition=Composition::new(crate::domain::composition::CanvasSpec::default());
+ let tracks:Vec<_>=[("a",false,2),("b",true,1),("c",true,0)].into_iter().map(|(id,hidden,layer)|serde_json::json!({"kind":"image","id":id,"name":id,"hidden":hidden,"clips":[{"id":id,"sourceId":id,"timelineStartTick":0,"durationTicks":1000000,"transform":crate::domain::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1.},"blendMode":"normal","effects":[{"kind":"compound_blur","parameters":{"layer":layer}}]}]})).collect();
+ composition.tracks=serde_json::from_value(serde_json::json!(tracks)).unwrap();
+ let required=source_requirements(&composition).unwrap();assert_eq!(required.len(),2);for id in["a","b"]{assert_eq!(required[&SourceId::parse(id).unwrap()],SourceRequirement::Image);}assert!(!required.contains_key(&SourceId::parse("c").unwrap()));
+ }
+}
+
+#[cfg(test)]mod track_matte_source_dependency_tests {
+ use super::*;
+ #[test]fn source_requirements_track_matte_hidden_sources_follow_cycles_and_keep_unreferenced_tracks_excluded(){
+ let mut composition=Composition::new(crate::domain::composition::CanvasSpec::default());
+ let tracks:Vec<_>=[("a",false,2),("b",true,1),("c",true,0)].into_iter().map(|(id,hidden,layer)|serde_json::json!({"kind":"image","id":id,"name":id,"hidden":hidden,"clips":[{"id":id,"sourceId":id,"timelineStartTick":0,"durationTicks":1000000,"transform":crate::domain::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1.},"blendMode":"normal","effects":[{"kind":"track_matte","parameters":{"matte":layer}}]}]})).collect();
+ composition.tracks=serde_json::from_value(serde_json::json!(tracks)).unwrap();
+ let required=source_requirements(&composition).unwrap();assert_eq!(required.len(),2);for id in["a","b"]{assert_eq!(required[&SourceId::parse(id).unwrap()],SourceRequirement::Image);}assert!(!required.contains_key(&SourceId::parse("c").unwrap()));
+ }
+
 }

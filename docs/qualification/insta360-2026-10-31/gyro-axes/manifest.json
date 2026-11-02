@@ -1,0 +1,28 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "boundary": "LC_FUNCTION_STARTS arm64 __TEXT source mapping",
+  "limitations": "Derived function images omit out-of-range calls/data; generic arm64 ABI only",
+  "functions": [
+    {
+      "name": "axes",
+      "address": "0x1027b0f4c",
+      "endAddress": "0x1027b1510",
+      "sourceOffset": 41635660,
+      "sha256": "d6bb23caf3ad93b62255b78ad8188c4591f7852dea27bdd85619657c49201c76"
+    },
+    {
+      "name": "resolve",
+      "address": "0x1018b52d0",
+      "endAddress": "0x1018b5448",
+      "sourceOffset": 25924304,
+      "sha256": "dc5502d2ecb0d54b55698a3ae07054cf83407ad8b8be6beb05133d646c910d40"
+    },
+    {
+      "name": "offset",
+      "address": "0x1018b0a8c",
+      "endAddress": "0x1018b0c14",
+      "sourceOffset": 25905804,
+      "sha256": "170f538fe5c3a47ea10e573df24bd80b857fdb41ffca4093305f1f666dd6601c"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+Native conversion and evaluation sources copied from WeftCut/WeftCut, commit d1db8020164c51ee49df9cf0143a5cbf250951a4. MIT license is retained in each crate. Local dependency and copied golden-fixture paths were adjusted. Product wire adapters and preview/apply admission are separate integration work.
+
+`../tests/fixtures/weftcut-animated-color.json` is copied unchanged from `apps/desktop/src/renderer/render/animatedColorGolden.fixture.json` at the same commit, under the retained MIT license. Its externally anchored Chromium OkLab expectations qualify the product native color sampler and actual HTTP transport; copying a fixture does not qualify canvas or export integration.

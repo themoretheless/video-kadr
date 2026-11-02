@@ -1,0 +1,20 @@
+{
+  "sourceSha256": "6a100040c7e39d202b64e2fc0470e2f52600a39c4cde4e3fb1e92cea5ed76423",
+  "method": "Read-only original Mach-O switch ushort table; supplements existing REA GetLensConfig capsule",
+  "records": [
+    {
+      "lensType": 71,
+      "tableAddress": "0x103b1d508",
+      "sourceOffset": 62002440,
+      "entryBytes": "0000",
+      "targetAddress": "0x1018b431c"
+    },
+    {
+      "lensType": 193,
+      "tableAddress": "0x103b1d5fc",
+      "sourceOffset": 62002684,
+      "entryBytes": "8400",
+      "targetAddress": "0x1018b452c"
+    }
+  ]
+}
