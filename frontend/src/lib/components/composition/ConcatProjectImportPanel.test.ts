@@ -16,7 +16,7 @@ function click(text:string){const button=[...document.querySelectorAll('button')
 async function read(value:unknown=original){const input=document.querySelector<HTMLInputElement>('input[type=file]')!;const file=new File([JSON.stringify(value)],'concat.json',{type:'application/json'});Object.defineProperty(file,'text',{value:async()=>JSON.stringify(value)});Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new Event('change',{bubbles:true}));await vi.waitFor(()=>expect(document.querySelector('select[aria-label="Источник Concat m1"]')).not.toBeNull());await tick();const select=document.querySelector<HTMLSelectElement>('select[aria-label="Источник Concat m1"]')!;select.value='source';select.dispatchEvent(new Event('change',{bubbles:true}));await tick()}
 it('loads a file, binds registered media, reviews and adopts with undo/redo',async()=>{
  component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Library.mov',source}]}});await tick();await read();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProject).toHaveBeenCalledWith(original,{m1:source},expect.any(AbortSignal),'session'));await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'));expect(nestedComposition.document).toBeNull()
- if(process.env.CONCAT_UI_IMPORT_REQUEST_OUTPUT){const[document,mediaBindings]=vi.mocked(importConcatProject).mock.calls[0]!;writeFileSync(process.env.CONCAT_UI_IMPORT_REQUEST_OUTPUT,JSON.stringify({schemaVersion:1,document,mediaBindings}))}
+ if(process.env.CONCAT_UI_IMPORT_REQUEST_OUTPUT){const[document,mediaBindings]=vi.mocked(importConcatProject).mock.calls[0]!;writeFileSync(process.env.CONCAT_UI_IMPORT_REQUEST_OUTPUT,JSON.stringify({schemaVersion:1,document,mediaBindings,preserveMediaIds:vi.mocked(importConcatProject).mock.calls[0]![5]??false}))}
  click('Открыть импорт как новый проект');await vi.waitFor(()=>expect(nestedComposition.document).toEqual(project));expect(nestedHistory.past).toHaveLength(1);expect(nestedComposition.projectId).toBeNull();expect(nestedComposition.name).toBe('Original cut');undoNestedComposition();expect(nestedComposition.document).toBeNull();redoNestedComposition();expect(nestedComposition.document).toEqual(project)
 })
 it('shows import diagnostics without replacing the current editor',async()=>{
@@ -80,4 +80,15 @@ it('undo restores the prior descriptor even when a fill keeps the same library s
  const select=document.querySelector<HTMLSelectElement>('select[aria-label="Заполнение слота Concat m1"]')!;select.value='source';select.dispatchEvent(new Event('change',{bubbles:true}));await tick();document.querySelector<HTMLButtonElement>('button[aria-label="Заполнить слот Concat m1"]')!.click();await vi.waitFor(()=>expect(document.body.textContent).toContain('Слот заполнен в исходном документе'))
  click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProject).toHaveBeenLastCalledWith(filled,{m1:fresh},expect.any(AbortSignal),'session'))
  await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'));click('Отменить заполнение слота');await tick();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProject).toHaveBeenLastCalledWith(slot,{m1:source},expect.any(AbortSignal),'session'))
+})
+
+it('reviews separate logical slots bound to the same file and invalidates review when the mode changes',async()=>{
+ const doc={...original,media:[{...original.media[0],placeholder:true},{...original.media[0],id:'m2',name:'Other slot',placeholder:true}]}
+ component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Shared file',source}]}});await tick();await read(doc)
+ const second=document.querySelector<HTMLSelectElement>('select[aria-label="Источник Concat m2"]')!;second.value=source.id;second.dispatchEvent(new Event('change',{bubbles:true}));await tick()
+ const mode=document.querySelector<HTMLInputElement>('input[aria-label="Сохранять отдельные ID медиа Concat"]')!;mode.checked=true;mode.dispatchEvent(new Event('change',{bubbles:true}));await tick()
+ click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProject).toHaveBeenCalledWith(doc,{m1:source,m2:source},expect.any(AbortSignal),'session',{},true))
+ await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'))
+ mode.checked=false;mode.dispatchEvent(new Event('change',{bubbles:true}));await tick()
+ expect(document.body.textContent).not.toContain('Таймлайнов: 1');expect(nestedComposition.document).toBeNull()
 })

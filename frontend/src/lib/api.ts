@@ -2745,8 +2745,8 @@ export async function fillConcatMediaSlot(document:unknown,mediaId:string,entry:
 }
 
 export type ConcatFontBinding={readonly data:string}|{readonly fallback:true}
-export function importConcatProject(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={}):Promise<ConcatProjectImportReport>{
- return requestJson('/api/compositions/concat-project/import',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({schemaVersion:1,document,mediaBindings,...(Object.keys(fontBindings).length?{fontBindings}:{})}),signal})
+export function importConcatProject(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={},preserveMediaIds=false):Promise<ConcatProjectImportReport>{
+ return requestJson('/api/compositions/concat-project/import',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({schemaVersion:1,document,mediaBindings,preserveMediaIds,...(Object.keys(fontBindings).length?{fontBindings}:{})}),signal})
 }
 
 

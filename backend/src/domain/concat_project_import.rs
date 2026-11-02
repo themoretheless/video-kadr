@@ -14,6 +14,9 @@ pub struct ImportRequest {
     pub schema_version: u32,
     pub document: Value,
     pub media_bindings: BTreeMap<String, CompositionSource>,
+    /// Preserve Concat resource IDs and bind physical library files separately.
+    #[serde(default)]
+    pub preserve_media_ids: bool,
     #[serde(default)]
     pub font_bindings:BTreeMap<String,FontBinding>,
 }
@@ -108,7 +111,7 @@ pub fn import_with_still_bindings(request:ImportRequest,ready:&StillBindings)->R
     ensure!(request.schema_version == 1, "unsupported import schema");
     ensure!(serde_json::to_vec(&request.document)?.len()<=4*1024*1024,"Concat source document exceeds 4 MiB");
     let original = request.document;
-    let converted = convert(&original, &request.media_bindings,&request.font_bindings,ready);
+    let converted = convert(&original, &request.media_bindings,&request.font_bindings,ready,request.preserve_media_ids);
     let font_warnings=original.get("fonts").and_then(Value::as_array).into_iter().flatten().filter(|font|font.get("path").and_then(Value::as_str).and_then(|path|request.font_bindings.get(path)).is_some_and(|binding|binding.fallback)).map(|font|format!("Шрифт {} не встроен: выбрана системная замена.",font.get("family").and_then(Value::as_str).unwrap_or(""))).collect::<Vec<_>>();
     Ok(match converted {
         Ok((project, timeline_ids)) => ImportReport {
@@ -140,7 +143,21 @@ fn convert(
     bindings: &BTreeMap<String, CompositionSource>,
     font_bindings:&BTreeMap<String,FontBinding>,
     ready:&StillBindings,
+    preserve_media_ids:bool,
 ) -> Result<(NestedCompositionProject, BTreeMap<String, String>)> {
+    ensure!(!preserve_media_ids || ready.is_empty(),"Logical media bindings for prepared cutout imports require dedicated asset rebinding");
+    let physical_bindings=bindings;
+    let logical_bindings;
+    let bindings=if preserve_media_ids {
+        let mut physical=BTreeMap::new();
+        logical_bindings=bindings.iter().map(|(id,source)|{
+            source.validate()?;
+            if let Some(previous)=physical.insert(source.id.clone(),source.clone()) {ensure!(previous==*source,"conflicting registered source metadata");}
+            let mut logical=source.clone();logical.id=super::composition::SourceId::parse(id.clone()).with_context(||format!("Concat media ID {id} cannot be represented natively"))?;
+            Ok((id.clone(),logical))
+        }).collect::<Result<BTreeMap<_,_>>>()?;
+        &logical_bindings
+    }else{bindings};
     fields(
         document,
         &[
@@ -218,15 +235,15 @@ fn convert(
             Some(value) => value.as_bool().context("media.placeholder: expected boolean")?,
         };
         let concat_metadata=super::project_media::capture_concat_metadata(item);
-        let owns_record=item.get("placeholder").is_some()||!concat_metadata.is_empty();
-        if let Some((previous_id, previous_placeholder)) = binding_owners.insert(binding.id.clone(), (id, placeholder||owns_record)) {
-            ensure!(!placeholder && !owns_record && !previous_placeholder,
-                "distinct template media IDs {previous_id} and {id} require distinct registered source bindings");
+        let owns_record=preserve_media_ids||item.get("placeholder").is_some()||!concat_metadata.is_empty();
+        if let Some((previous_id, previous_record)) = binding_owners.insert(binding.id.clone(), (id, owns_record)) {
+            ensure!(!owns_record && !previous_record,
+                "distinct project media IDs {previous_id} and {id} require distinct registered source bindings");
         }
         if owns_record {
             project_media.insert(binding.id.clone(), super::project_media::ProjectMediaItem {
                 source: binding.clone(),
-                library_source_id: None,
+                library_source_id: preserve_media_ids.then(||physical_bindings[id].id.clone()),
                 name: item.get("name").and_then(Value::as_str).unwrap_or(id).to_owned(),
                 placeholder,
                 concat_metadata,

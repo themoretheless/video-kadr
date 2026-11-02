@@ -10,14 +10,11 @@ fn project(physical: &str) -> NestedCompositionProject {
         .into_iter()
         .map(|id| json!({"id":id,"kind":"image","name":id,"path":"/inert","placeholder":true}))
         .collect();
-    let bindings:serde_json::Map<String,Value>=["slot-a","slot-b"].into_iter().map(|id|(id.into(),json!({"id":id,"kind":"image","durationTicks":0,"width":16,"height":16,"hasAudio":false}))).collect();
-    let request:ImportRequest=serde_json::from_value(json!({"schemaVersion":1,"document":{"version":1,"media":media,"timelines":[{"id":"timeline","video":{"width":16,"height":16,"rateNum":4,"rateDen":1},"tracks":[{"id":"v"}],"clips":[{"id":"a","trackId":"v","mediaId":"slot-a","kind":"image","start":0.,"duration":1.},{"id":"b","trackId":"v","mediaId":"slot-b","kind":"image","start":1.,"duration":1.}]}]},"mediaBindings":bindings})).unwrap();
+    let bindings:serde_json::Map<String,Value>=["slot-a","slot-b"].into_iter().map(|id|(id.into(),json!({"id":physical,"kind":"image","durationTicks":0,"width":16,"height":16,"hasAudio":false}))).collect();
+    let request:ImportRequest=serde_json::from_value(json!({"schemaVersion":1,"document":{"version":1,"media":media,"timelines":[{"id":"timeline","video":{"width":16,"height":16,"rateNum":4,"rateDen":1},"tracks":[{"id":"v"}],"clips":[{"id":"a","trackId":"v","mediaId":"slot-a","kind":"image","start":0.,"duration":1.},{"id":"b","trackId":"v","mediaId":"slot-b","kind":"image","start":1.,"duration":1.}]}]},"mediaBindings":bindings,"preserveMediaIds":true})).unwrap();
     let report = import(request).unwrap();
     assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
-    let mut project = report.project.unwrap();
-    for item in project.project_media.values_mut() {
-        item.library_source_id = Some(SourceId::parse(physical).unwrap());
-    }
+    let project = report.project.unwrap();
     project.dependency_order().unwrap();
     project
 }
@@ -236,4 +233,44 @@ async fn preview_authorizes_physical_source_and_renders_both_logical_slots() {
     for pixel in decoded.stdout.chunks_exact(4) {
         assert_eq!(pixel, [12, 34, 56, 255]);
     }
+}
+
+#[test]
+fn logical_import_keeps_alias_properties_and_refuses_inconsistent_physical_descriptors() {
+    let original = json!({"version":1,"media":[{"id":"slot-a","kind":"image","name":"A","placeholder":true,"origin":"speech"},{"id":"slot-b","kind":"image","name":"B","placeholder":false,"origin":"processed"}],"timelines":[{"id":"main","video":{"width":16,"height":16,"rateNum":4,"rateDen":1},"tracks":[],"clips":[]}]});
+    let descriptor = json!({"id":"physical-file","kind":"image","durationTicks":0,"width":16,"height":16,"hasAudio":false});
+    let bindings = json!({"slot-a":descriptor,"slot-b":descriptor});
+    let input = json!({"schemaVersion":1,"document":original,"mediaBindings":bindings,"preserveMediaIds":true});
+    let report = import(serde_json::from_value(input.clone()).unwrap()).unwrap();
+    assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+    assert_eq!(report.source_document, original);
+    let project = report.project.unwrap();
+    assert_eq!(project.project_media.len(), 2);
+    for (id, name, origin, placeholder) in [
+        ("slot-a", "A", "speech", true),
+        ("slot-b", "B", "processed", false),
+    ] {
+        let record = &project.project_media[&SourceId::parse(id).unwrap()];
+        assert_eq!(record.name, name);
+        assert_eq!(record.concat_metadata["origin"], origin);
+        assert_eq!(record.placeholder, placeholder);
+        assert_eq!(record.source.id.as_str(), id);
+        assert_eq!(
+            record.library_source_id.as_ref().unwrap().as_str(),
+            "physical-file"
+        );
+    }
+    for mode in [0, 1, 2] {
+        let mut bad = input.clone();
+        match mode {
+            0 => bad["mediaBindings"]["slot-b"]["width"] = json!(32),
+            1 => bad["mediaBindings"]["unknown"] = descriptor.clone(),
+            _ => bad["preserveMediaIds"] = json!(false),
+        }
+        let report = import(serde_json::from_value(bad).unwrap()).unwrap();
+        assert_eq!(report.status, "needs_attention");
+        assert!(report.project.is_none());
+        assert_eq!(report.source_document, original);
+    }
+    assert_eq!(input["mediaBindings"], bindings);
 }

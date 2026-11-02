@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { setNativeProjectMediaPlaceholder, removeNativeProjectMedia, type NativeNestedProject } from './api'
+import { setNativeProjectMediaPlaceholder, removeNativeProjectMedia, importConcatProject, type NativeNestedProject } from './api'
 import { createComposition } from './composition/commands'
 import { buildCompositionWireDocument } from './composition/payload'
 afterEach(() => vi.unstubAllGlobals())
@@ -21,4 +21,17 @@ it('removes registered media with an immutable bounded native command and preser
   expect(await removeNativeProjectMedia(project,'missing')).toBe(project)
   expect(fetcher.mock.calls[0][0]).toContain('/api/compositions/nested-media-remove')
   expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({project,sourceId:'missing'})
+})
+
+it('imports Concat with stable logical media IDs while sending physical library descriptors', async () => {
+  const document={version:1,media:[{id:'slot-a',kind:'image'},{id:'slot-b',kind:'image'}]}
+  const physical={id:'library-image',kind:'image' as const,durationTicks:0,width:16,height:16,hasAudio:false}
+  const mediaBindings={'slot-a':physical,'slot-b':physical}
+  const fetcher=vi.fn().mockImplementation(()=>Promise.resolve(new Response(JSON.stringify({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:document,timelineIds:{}}))))
+  vi.stubGlobal('fetch',fetcher)
+  await importConcatProject(document,mediaBindings,undefined,'session',{},true)
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({schemaVersion:1,document,mediaBindings,preserveMediaIds:true})
+  await importConcatProject(document,mediaBindings,undefined,'session',{},false)
+  expect(JSON.parse(fetcher.mock.calls[1][1].body).preserveMediaIds).toBe(false)
+  expect(mediaBindings['slot-a'].id).toBe('library-image')
 })
