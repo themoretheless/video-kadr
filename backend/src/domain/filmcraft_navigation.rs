@@ -56,6 +56,41 @@ fn marked(v: &Value) -> bool {
         .into_iter()
         .any(|key| v["split"][key].as_i64().is_some())
 }
+fn front_clip<'a>(q: &'a Value, time: i64, targeted: Option<&[u64]>) -> Result<Option<&'a Value>> {
+    let tracks = q["video_tracks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .rev()
+        .chain(q["audio_tracks"].as_array().into_iter().flatten());
+    for track in tracks {
+        if targeted.is_some_and(|ids| !track["id"].as_u64().is_some_and(|id| ids.contains(&id))) {
+            continue;
+        }
+        let Some(clip) = track["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .rev()
+            .find(|clip| clip["start"].as_i64().is_some_and(|start| start <= time))
+        else {
+            continue;
+        };
+        let end = clip["start"]
+            .as_i64()
+            .context("invalid match clip start")?
+            .checked_add(
+                clip["duration"]
+                    .as_i64()
+                    .context("invalid match clip duration")?,
+            )
+            .context("match clip end overflow")?;
+        if time < end {
+            return Ok(Some(clip));
+        }
+    }
+    Ok(None)
+}
 fn select(q: &Value, time: i64, targeted: Option<&[u64]>, linked: bool) -> Result<Vec<u64>> {
     let tracks: Vec<_> = ["video_tracks", "audio_tracks"]
         .into_iter()
@@ -142,13 +177,68 @@ pub fn navigate(command: &str, mut params: Value) -> Result<Value> {
         }
     };
     let mut selection = context_ids(context.selection)?;
-    let project_selection = context_ids(context.project_selection)?;
+    let mut project_selection = context_ids(context.project_selection)?;
     let targeted = context.targeted_track_ids.map(context_ids).transpose()?;
     let source_target = params["target"] == "source";
     let mut result = Value::Null;
     let mut event = None;
+    let mut event_type = "openSource";
     let mut seek_program = None;
     match command {
+        "sequence.matchFrame" => {
+            let q = q.context("no sequence is open")?;
+            // Match Frame deliberately ignores targeting, enabled/mute/lock state and selection.
+            let clip = front_clip(q, playhead, None)?.context("no clip at the playhead")?;
+            let item = clip["item"].as_u64().context("invalid match source item")?;
+            source_time = match clip["frame_hold"].as_i64() {
+                Some(held) => held,
+                None => super::filmcraft_clip_edit::source_at(clip, playhead)?,
+            };
+            source = Some(item);
+            event = Some(item);
+            result = json!({"item":item.to_string()});
+        }
+        "clip.revealInProject" | "sequence.revealInProject" => {
+            let q = q.context("no sequence is open")?;
+            let item = if command == "sequence.revealInProject" {
+                target_id(params.get("item").cloned())?
+                    .or(active)
+                    .context("no sequence is open")?
+            } else {
+                let clips = params["clips"]
+                    .as_array()
+                    .map(|ids| {
+                        ids.iter()
+                            .filter_map(|id| id.as_u64().or_else(|| id.as_str()?.parse().ok()))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_else(|| {
+                        target_id(params.get("clip").cloned())
+                            .ok()
+                            .flatten()
+                            .map(|id| vec![id])
+                            .unwrap_or_else(|| selection.clone())
+                    });
+                let picked = clips.iter().find_map(|id| {
+                    super::filmcraft_trim::clip_location(q, *id)
+                        .ok()
+                        .map(|(key, track, clip)| &q[key][track]["items"][clip])
+                });
+                (match picked {
+                    Some(clip) => Some(clip),
+                    None => front_clip(q, playhead, targeted.as_deref())?,
+                })
+                .and_then(|clip| clip["item"].as_u64())
+                .context("select a clip to reveal")?
+            };
+            index
+                .item(item)
+                .context("that clip's source is not in the project")?;
+            project_selection = vec![item];
+            event = Some(item);
+            event_type = "revealInProject";
+            result = json!({"item":item.to_string()});
+        }
         "source.open" => {
             let item = target_id(params.get("item").cloned())?
                 .or(project_selection.first().copied())
@@ -257,13 +347,22 @@ pub fn navigate(command: &str, mut params: Value) -> Result<Value> {
         }
     }
     Ok(
-        json!({"result":result,"context":{"activeSequence":active.map(|id|id.to_string()),"sourceItem":source.map(|id|id.to_string()),"sourcePlayhead":source_time.to_string(),"playhead":playhead.to_string(),"playheadFrames":program_rate.frame_at(Tick(playhead)).to_string(),"selection":strings(&selection),"projectSelection":strings(&project_selection)},"events":event.into_iter().map(|id|json!({"type":"openSource","item":id.to_string()})).collect::<Vec<_>>()}),
+        json!({"result":result,"context":{"activeSequence":active.map(|id|id.to_string()),"sourceItem":source.map(|id|id.to_string()),"sourcePlayhead":source_time.to_string(),"playhead":playhead.to_string(),"playheadFrames":program_rate.frame_at(Tick(playhead)).to_string(),"selection":strings(&selection),"projectSelection":strings(&project_selection)},"events":event.into_iter().map(|id|json!({"type":event_type,"item":id.to_string()})).collect::<Vec<_>>()}),
     )
 }
 
 /// Apply the original selection-follows-playhead policy after a document edit.
-pub(super) fn selection_at(document: &SourceProjectDocument, sequence: u64, time: i64, targeted: Option<&Vec<Value>>, linked: bool) -> Result<Vec<u64>> {
+pub(super) fn selection_at(
+    document: &SourceProjectDocument,
+    sequence: u64,
+    time: i64,
+    targeted: Option<&Vec<Value>>,
+    linked: bool,
+) -> Result<Vec<u64>> {
     let targets = targeted.map(|v| context_ids(v.clone())).transpose()?;
-    let q = document.envelope.pointer(&format!("/project/items/{sequence}/kind/Sequence")).context("no sequence is open")?;
-    select(q,time,targets.as_deref(),linked)
+    let q = document
+        .envelope
+        .pointer(&format!("/project/items/{sequence}/kind/Sequence"))
+        .context("no sequence is open")?;
+    select(q, time, targets.as_deref(), linked)
 }

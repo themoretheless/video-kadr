@@ -6,6 +6,11 @@
   import { parseFilmcraftSession, encodeFilmcraftSession, validTransitionDurationText } from '$lib/filmcraft/session'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
   import FilmcraftLabelControls from './FilmcraftLabelControls.svelte'
+  import FilmcraftClipEditControls from './FilmcraftClipEditControls.svelte'
+  import FilmcraftMediaModifyControls from './FilmcraftMediaModifyControls.svelte'
+  import FilmcraftVideoOptionsControls from './FilmcraftVideoOptionsControls.svelte'
+  import FilmcraftReplaceControls from './FilmcraftReplaceControls.svelte'
+  import FilmcraftAttributesControls from './FilmcraftAttributesControls.svelte'
   import FilmcraftSubclipControls from './FilmcraftSubclipControls.svelte'
   import FilmcraftMarksControls from './FilmcraftMarksControls.svelte'
   import FilmcraftBinActions from './FilmcraftBinActions.svelte'
@@ -100,6 +105,7 @@
   let rightClipId = $state('')
   let extraSelectedIds = $state<string[]>([])
   let projectSelection = $state<string[]>([])
+  let projectReveal = $state<{ itemId: string; serial: number } | null>(null)
   const timelineSelection = $derived([clipId, ...extraSelectedIds].filter(id => sequence?.clips?.some(clip => clip.id === id)))
   let edge = $state<'in' | 'out'>('out')
   let trimMode = $state<'regular' | 'ripple'>('regular')
@@ -158,7 +164,12 @@
   function adoptNavigation(result: FilmcraftNavigationResult, expected: FilmcraftSourceEditFence) {
     if (!acceptsFence(expected) || result.context.activeSequence !== (sequenceId || null)) return false
     const fixed = result.context
-    if (fixed.sourceItem !== null && !project?.projectItems?.some(item => item.id === fixed.sourceItem) || fixed.selection.some(id => !sequence?.clips?.some(clip => clip.id === id))) return false
+    if (fixed.sourceItem !== null && fixed.sourceItem !== (sourceItem || null) && !project?.projectItems?.some(item => item.id === fixed.sourceItem) && !result.events.some(event => event.type === 'openSource' && event.item === fixed.sourceItem) || fixed.selection.some(id => !sequence?.clips?.some(clip => clip.id === id))) return false
+    const projectIds = new Set(project?.projectItems?.map(item => item.id) ?? [...(project?.sequences.map(item => item.id) ?? []), ...(project?.media.map(item => item.id) ?? [])])
+    if (fixed.projectSelection.some(id => !projectIds.has(id))) return false
+    projectSelection = [...fixed.projectSelection]
+    const reveal = result.events.find(event => event.type === 'revealInProject')
+    if (reveal) projectReveal = { itemId: reveal.item, serial: (projectReveal?.serial ?? 0) + 1 }
     sourceItem = fixed.sourceItem || ''; sourcePlayhead = fixed.sourcePlayhead
     editPositionFrames = fixed.playheadFrames; pastePositionTicks = fixed.playhead; pastePlayheadTicks = ''
     if (JSON.stringify(fixed.selection) !== JSON.stringify(timelineSelection)) { clipId = fixed.selection[0] || ''; extraSelectedIds = fixed.selection.slice(1); rightClipId = ''; editPoints = [] }
@@ -172,13 +183,16 @@
     if (placement && (placement.sourceEdit !== true || placement.sourceEditContext.activeSequence !== sequenceId || placement.sourceEditContext.sourceItem !== sourceItem || placement.sourceEditContext.selection.some(id => !placement.insertedClipIds.includes(id) && !edited.sequences.find(sequence => sequence.id === sequenceId)?.clips?.some(clip => clip.id === id)))) return false
     const deletion = 'deletionContext' in edited ? edited.deletionContext as { activeSequence: string | null; selection: string[]; projectSelection: string[] } : null
     if (deletion && (deletion.activeSequence !== null && !edited.sequences.some(sequence => sequence.id === deletion.activeSequence) || deletion.projectSelection.length || deletion.selection.some(id => !edited.sequences.find(sequence => sequence.id === deletion.activeSequence)?.clips?.some(clip => clip.id === id)))) return false
+    const clipEditSelection = 'clipEditSelection' in edited && Array.isArray(edited.clipEditSelection) ? edited.clipEditSelection as string[] : undefined
+    if (clipEditSelection?.some(id => !edited.sequences.find(sequence => sequence.id === sequenceId)?.clips?.some(clip => clip.id === id))) return false
     // Original Duplicate and Clear push an edit frame even for an accepted no-op.
-    if (project && (edited.documentText !== project.documentText || 'duplicatedItemIds' in edited && Array.isArray(edited.duplicatedItemIds) || 'deletedItemIds' in edited && Array.isArray(edited.deletedItemIds) || 'markEdit' in edited && edited.markEdit === true || placement?.sourceEdit === true || !!subclip)) { undo = boundedHistory([...undo, project]); redo = [] }
+    if (project && (edited.documentText !== project.documentText || 'duplicatedItemIds' in edited && Array.isArray(edited.duplicatedItemIds) || 'deletedItemIds' in edited && Array.isArray(edited.deletedItemIds) || 'clipEdit' in edited && edited.clipEdit === true || 'modifyEdit' in edited && edited.modifyEdit === true || 'videoOptionsEdit' in edited && edited.videoOptionsEdit === true || 'replacementEdit' in edited && edited.replacementEdit === true || 'attributeEdit' in edited && edited.attributeEdit === true || 'markEdit' in edited && edited.markEdit === true || placement?.sourceEdit === true || !!subclip)) { undo = boundedHistory([...undo, project]); redo = [] }
     if ('duplicateSources' in edited && Array.isArray(edited.duplicateSources)) {
       const inherited = { ...bindings }
       for (const record of edited.duplicateSources) if (edited.media.some(media => media.id === record.id) && inherited[record.sourceId]) inherited[record.id] = inherited[record.sourceId]
       bindings = inherited
     }
+    if ('modifiedProjectSelection' in edited && Array.isArray(edited.modifiedProjectSelection)) projectSelection = [...edited.modifiedProjectSelection]
     if (subclip) {
       const info = subclip.subclipEdit
       if (info.converted && info.bindingSourceId && edited.media.some(media => media.id === info.itemId) && bindings[info.bindingSourceId]) bindings = { ...bindings, [info.itemId]: bindings[info.bindingSourceId] }
@@ -193,6 +207,7 @@
       if (sequenceId !== (deletion.activeSequence || '')) { const next = edited.sequences.find(sequence => sequence.id === deletion.activeSequence); start = 0; end = Math.min(next?.durationSeconds || 1, 4194304 / (next?.sampleRate || 48000)); nearestTargets = []; editPositionFrames = '0'; pastePositionTicks = ''; pastePlayheadTicks = ''; trimShift = { outShift: '0', inShift: '0' }; trimShiftFrames = { outShift: '0', inShift: '0' } }
       sequenceId = deletion.activeSequence || ''; clipId = deletion.selection[0] || ''; extraSelectedIds = deletion.selection.slice(1); projectSelection = []; rightClipId = ''; editPoints = []
     }
+    if (clipEditSelection) { clipId = clipEditSelection[0] || ''; extraSelectedIds = clipEditSelection.slice(1); rightClipId = ''; editPoints = [] }
     clearDownload(); pointTrimCount = null; batchTransitionCount = null; project = edited; reconcileSelection(edited)
     return true
   }
@@ -412,7 +427,7 @@
       const loaded = await importFilmcraftProject(session?.documentText || text, controller.signal)
       if (controller.signal.aborted) return
       if (session && !loaded.sequences.some((item) => item.id === session.sequenceId)) throw new Error('Секвенция из сессии отсутствует в проекте')
-      clearDownload(); resetTrimShift(); pointTrimCount = null; nearestTargets = []; editPoints = []; batchTransitionCount = null; editingTransitionId = ''; transitionDraft = {}; transitionTarget = 'edge'; clipboard = null; pastePlayheadTicks = ''; pastePositionTicks = ''; editPositionFrames = '0'; undo = []; redo = []; extraSelectedIds = []; rightClipId = ''; clipId = ''; renameItemId = ''; renameBinId = ''; projectSelection = []; sourceItem = ''; sourcePlayhead = '0'; project = loaded; sequenceId = loaded.sequences[0]?.id || ''; bindings = {}
+      clearDownload(); resetTrimShift(); pointTrimCount = null; nearestTargets = []; editPoints = []; batchTransitionCount = null; editingTransitionId = ''; transitionDraft = {}; transitionTarget = 'edge'; clipboard = null; pastePlayheadTicks = ''; pastePositionTicks = ''; editPositionFrames = '0'; undo = []; redo = []; extraSelectedIds = []; rightClipId = ''; clipId = ''; renameItemId = ''; renameBinId = ''; projectSelection = []; projectReveal = null; sourceItem = ''; sourcePlayhead = '0'; project = loaded; sequenceId = loaded.sequences[0]?.id || ''; bindings = {}
       for (const media of loaded.media.filter((media) => !media.offline)) {
         const name = media.path.split(/[\\/]/).pop()
         const matches = files.filter((entry) => (entry.originalFilename ?? entry.filename) === name)
@@ -486,9 +501,14 @@
       <button type="button" disabled={busy || !valid} onclick={saveSession}>Сохранить рабочую сессию</button>
         <label>Позиция правки, кадров <input aria-label="Позиция правки, кадров" type="text" inputmode="numeric" value={editPositionFrames} oninput={(event) => { editPositionFrames = event.currentTarget.value; pastePositionTicks = '' }} disabled={busy} /></label>
       <FilmcraftLabelControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} palette={project.labelPalette ?? []} bind:selected={projectSelection} clipSelection={timelineSelection} onselection={adoptLabelSelection} clipLabel={sequence?.clips?.find(clip => clip.id === clipId)?.label} disabled={busy} onedit={commitEdit} />
+      <FilmcraftClipEditControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} {linked} tracks={sequence?.tracks ?? []} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
+      <FilmcraftMediaModifyControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} selected={projectSelection} items={project.projectItems ?? []} sourceBindings={activeBindings} disabled={busy} onedit={commitEdit} />
+      <FilmcraftVideoOptionsControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
+      <FilmcraftReplaceControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} {projectSelection} {sourceItem} {sourcePlayhead} {linked} items={project.projectItems ?? []} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
+      <FilmcraftAttributesControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} {linked} clipboardText={clipboard?.clipboardText} disabled={busy} onedit={commitEdit} />
       <FilmcraftSubclipControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} {sourceItem} {sourcePlayhead} selection={timelineSelection} selected={projectSelection} bind:stillDuration={stillImageDuration} bind:stillUnit={stillImageUnit} disabled={busy} onedit={commitEdit} />
       <FilmcraftMarksControls bind:stillDuration={stillImageDuration} bind:stillUnit={stillImageUnit} tracks={sequence?.tracks ?? []} bind:rippleMarkers bind:item={sourceItem} {sourcePlayhead} selection={timelineSelection} {projectSelection} linkedSelection={linked} oncontext={adoptNavigation} marks={sequence?.marks} document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
-      <FilmcraftBinActions document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} bins={project.projectBins ?? []} clipSelection={timelineSelection} bind:selected={projectSelection} disabled={busy} onedit={commitEdit} />
+      <FilmcraftBinActions revealRequest={projectReveal} document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} bins={project.projectBins ?? []} clipSelection={timelineSelection} bind:selected={projectSelection} disabled={busy} onedit={commitEdit} />
       {#if renameBins.length}<label>Папка проекта <select aria-label="Папка проекта Filmcraft" value={renameBinId} onchange={(event) => { renameBinId = event.currentTarget.value }} disabled={busy}><option value="">Выбрать папку для переименования</option>{#each renameBins as bin}<option value={bin.id}>{'—'.repeat(Math.min(bin.depth, 10))} {bin.name || bin.id}</option>{/each}</select></label>{/if}
       {#if renameBinId && renameBins.some(bin => bin.id === renameBinId)}<FilmcraftRenameControls document={project.documentText} {sequenceId} {clipId} {token} binId={renameBinId} name={renameBins.find(bin => bin.id === renameBinId)?.name || ''} disabled={busy} onedit={commitEdit} />{/if}
       <label>Элемент проекта <select aria-label="Элемент проекта Filmcraft" value={renameItemId} onchange={(event) => { renameItemId = event.currentTarget.value }} disabled={busy}><option value="">Выбрать элемент для переименования</option>{#each renameItems as item}<option value={item.id}>{item.kind}: {item.name || item.id}</option>{/each}</select></label>

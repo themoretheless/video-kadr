@@ -50,6 +50,7 @@ fn visual(clip:&Value,width:f64,height:f64,media_kind:Option<&str>)->Result<Valu
 pub fn export(project:&NestedCompositionProject)->Result<Value>{export_with_paths(project,&BTreeMap::new())}
 pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<String,String>)->Result<Value>{
  project.dependency_order()?;
+ ensure!(project.project_media.is_empty(),"Project media records require slot-aware Concat export; native project data is retained");
  for node in project.compositions.values(){super::concat_lane_groups::groups(&node.content)?;}
  ensure!(project.fonts.is_empty()&&project.luts.is_empty(),"Embedded fonts/LUTs require a resource bundle for Concat export");
  let wire=serde_json::to_value(project)?;

@@ -308,10 +308,10 @@ pub fn delete_selection(document:&mut SourceProjectDocument,sequence:u64,ids:&[u
  *document=work;Ok(DeleteResult{removed,closed_spans})
 }
 
-fn clip_location(seq:&Value,id:u64)->Result<(&'static str,usize,usize)>{
+pub(super) fn clip_location(seq:&Value,id:u64)->Result<(&'static str,usize,usize)>{
  ["video_tracks","audio_tracks"].into_iter().find_map(|key|seq[key].as_array().and_then(|tracks|tracks.iter().enumerate().find_map(|(ti,t)|t["items"].as_array().and_then(|items|items.iter().position(|i|i["id"].as_u64()==Some(id))).map(|ci|(key,ti,ci))))).context("missing edit clip")
 }
-fn follow_transition_cuts(seq:&Value,after:&mut Value)->Result<()>{
+pub(super) fn follow_transition_cuts(seq:&Value,after:&mut Value)->Result<()>{
  for key in ["video_tracks","audio_tracks"]{for track in after[key].as_array_mut().into_iter().flatten(){
   let Some(old)=seq[key].as_array().and_then(|tracks|tracks.iter().find(|t|t["id"]==track["id"]))else{continue};let current=track.clone();
   for transition in track["transitions"].as_array_mut().into_iter().flatten(){if let(Some(a),Some(b))=(transition_anchor(old,transition)?,transition_anchor(&current,transition)?){transition["start"]=narrow(integer(transition,"start")? as i128+b as i128-a as i128)?.into();}}
@@ -635,7 +635,7 @@ pub fn validate_clip_fields(clip:&Value)->Result<()>{
  if let Some(value)=clip.get("source_channels"){ensure!(value.as_array().is_some_and(|channels|channels.iter().all(|channel|channel.as_u64().is_some_and(|channel|channel<=u16::MAX as u64))),"invalid clip source channels");}
  Ok(())
 }
-fn validate_clipboard(clipboard:&Value)->Result<()>{
+pub(super) fn validate_clipboard(clipboard:&Value)->Result<()>{
  ensure!(clipboard["format"]=="video-kadr.filmcraft-clipboard" && clipboard["version"]==1,"invalid source clipboard version");
  let clips=clipboard["clips"].as_array().context("invalid clipboard clips")?;let markers=clipboard["markers"].as_array().context("invalid clipboard markers")?;
  ensure!(clips.len()<=4096 && markers.len()<=4096,"clipboard selection too large");

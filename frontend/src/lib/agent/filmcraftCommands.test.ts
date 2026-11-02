@@ -252,3 +252,43 @@ it.each(['clip.makeSubclip', 'clip.editSubclip', 'clip.subclipDefaults'] as cons
   const params = { document: '{}', item: '18446744073709551615', start: '9007199254740997', end: '9007199254740999', context: { projectSelection: [] } }
   await call('command_run', { id: command, params }); expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal)); expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe(command === 'clip.subclipDefaults' ? 'read' : 'operation')
 })
+
+it.each(['edit.pasteAttributes', 'edit.removeAttributes'] as const)('routes %s as one operation without parsing clipboard text', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ attributeEdit: true, documentText: '{}' })
+  const params = { document: '{"id":18446744073709551615}', clips: ['9007199254740993'], clipboardText: 'opaque', effects: ['brightness_contrast'], scaleTimes: false, context: { activeSequence: '18446744073709551615', selection: [], linkedSelection: true } }
+  await call('command_run', { id: command, params })
+  expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal))
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+
+it.each(['clip.replaceFromSource', 'clip.replaceFromSourceMatchFrame', 'clip.replaceFromBin'] as const)('routes %s with exact identities and monitor clocks', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ replacementEdit: true, documentText: '{}' })
+  const params = { document: '{"id":18446744073709551615}', clips: ['9007199254740993'], item: '9007199254740995', keepSourceIn: true, context: { activeSequence: '18446744073709551615', sourceItem: '9007199254740995', sourcePlayhead: '9007199254740997', playhead: '9007199254740999', selection: [], projectSelection: [], linkedSelection: true } }
+  await call('command_run', { id: command, params })
+  expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal))
+  expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+
+it.each(['clip.frameHoldOptions', 'clip.fieldOptions', 'clip.timeInterpolation.frameSampling', 'clip.timeInterpolation.frameBlending', 'clip.timeInterpolation.opticalFlow', 'clip.setTimeInterpolation', 'clip.fitToFrame', 'clip.fillFrame'] as const)('routes %s as an exact source-video operation', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ videoOptionsEdit: true, documentText: '{}' })
+  const params = { document: '{"id":18446744073709551615}', clips: ['9007199254740993'], holdOn: 'sourceTimecode', time: '9007199254740997', mode: 'opticalFlow', context: { activeSequence: '18446744073709551615', selection: [], playhead: '9007199254740999' } }
+  await call('command_run', { id: command, params }); expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal)); expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+
+it.each(['clip.audioChannels', 'clip.modifyTimecode', 'clip.breakoutToMono'] as const)('routes %s as one source media modification', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ modifyEdit: true, documentText: '{}' })
+  const params = { document: '{"id":18446744073709551615}', items: ['9007199254740993'], frame: '9007199254740997', format: 'mono', context: { activeSequence: '18446744073709551615', projectSelection: [], selection: [] } }
+  await call('command_run', { id: command, params }); expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal)); expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+
+it.each(['clip.speedDuration', 'clip.enable', 'clip.link', 'clip.group', 'clip.ungroup', 'clip.scaleToFrameSize', 'clip.frameHold', 'clip.insertFrameHoldSegment'] as const)('routes %s as one timeline edit', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ clipEdit: true, documentText: '{}' })
+  const params = { document: '{"id":18446744073709551615}', clips: ['9007199254740993'], speed: 50, ripple: true, time: '9007199254740997', context: { activeSequence: '18446744073709551615', selection: [], linkedSelection: true } }
+  await call('command_run', { id: command, params }); expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal)); expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('operation')
+})
+
+it.each(['sequence.matchFrame', 'clip.revealInProject', 'sequence.revealInProject'] as const)('routes %s as context navigation without document history', async command => {
+  const request = vi.spyOn(api, 'runFilmcraftExportCommand').mockResolvedValue({ context: {}, events: [] })
+  const params = { document: '{"id":18446744073709551615}', context: { activeSequence: '18446744073709551615', sourcePlayhead: '9007199254740997', playhead: '9007199254740999', selection: [], projectSelection: [] } }
+  await call('command_run', { id: command, params }); expect(request).toHaveBeenCalledWith('owner', command, params, expect.any(AbortSignal)); expect(agentActivity.activities.findLast(activity => activity.tool === 'command_run')?.kind).toBe('read')
+})

@@ -1,7 +1,11 @@
+import { editFilmcraftClips } from '$lib/api'
+import { modifyFilmcraftMedia } from '$lib/api'
+import { editFilmcraftVideoOptions } from '$lib/api'
+import { replaceFilmcraftClips } from '$lib/api'
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { editFilmcraftSubclip, getFilmcraftSubclipDefaults, editFilmcraftSource, navigateFilmcraft, editFilmcraftMarks, deleteFilmcraftProjectItems, duplicateFilmcraftProjectItems, selectFilmcraftSelection, selectFilmcraftLabelGroup, editFilmcraftLabels, editFilmcraftBins, renameFilmcraftBin, renameFilmcraftClip, startFilmcraftMaskTrackingJob, readFilmcraftTrackingJob, cancelFilmcraftTrackingJob, importFilmcraftTrackingSnapshot, editFilmcraftAnimation, setFilmcraftEffectParameter, applyFilmcraftEffect, listFilmcraftEffects, editFilmcraftEffectRack, listFilmcraftExportQueue, editFilmcraftMaskMonitor, trackFilmcraftMask, getFilmcraftParameters, editFilmcraftParameter, editFilmcraftMask, createFilmcraftTrimSession, commandFilmcraftTrimSession, readFilmcraftTrimSession, closeFilmcraftTrimSession, trimFilmcraftToPlayhead, trimFilmcraftEditPoints, getFilmcraftNearestEditPoints, getFilmcraftTrimMonitor, applyFilmcraftSelectionTransitions, setFilmcraftTransition, getFilmcraftTransitions, applyFilmcraftTransition, importFilmcraftProject, listFilmcraftVideoJobs, exportFilmcraftAudio, exportFilmcraftFrame, trimFilmcraftProject, slipFilmcraftProject, stretchFilmcraftProject, rollFilmcraftProject, slideFilmcraftProject, deleteFilmcraftClips, closeFilmcraftGap, razorFilmcraftProject, removeFilmcraftRange, copyFilmcraftClips, pasteFilmcraftClips } from '$lib/api'
+import { editFilmcraftAttributes, editFilmcraftSubclip, getFilmcraftSubclipDefaults, editFilmcraftSource, navigateFilmcraft, editFilmcraftMarks, deleteFilmcraftProjectItems, duplicateFilmcraftProjectItems, selectFilmcraftSelection, selectFilmcraftLabelGroup, editFilmcraftLabels, editFilmcraftBins, renameFilmcraftBin, renameFilmcraftClip, startFilmcraftMaskTrackingJob, readFilmcraftTrackingJob, cancelFilmcraftTrackingJob, importFilmcraftTrackingSnapshot, editFilmcraftAnimation, setFilmcraftEffectParameter, applyFilmcraftEffect, listFilmcraftEffects, editFilmcraftEffectRack, listFilmcraftExportQueue, editFilmcraftMaskMonitor, trackFilmcraftMask, getFilmcraftParameters, editFilmcraftParameter, editFilmcraftMask, createFilmcraftTrimSession, commandFilmcraftTrimSession, readFilmcraftTrimSession, closeFilmcraftTrimSession, trimFilmcraftToPlayhead, trimFilmcraftEditPoints, getFilmcraftNearestEditPoints, getFilmcraftTrimMonitor, applyFilmcraftSelectionTransitions, setFilmcraftTransition, getFilmcraftTransitions, applyFilmcraftTransition, importFilmcraftProject, listFilmcraftVideoJobs, exportFilmcraftAudio, exportFilmcraftFrame, trimFilmcraftProject, slipFilmcraftProject, stretchFilmcraftProject, rollFilmcraftProject, slideFilmcraftProject, deleteFilmcraftClips, closeFilmcraftGap, razorFilmcraftProject, removeFilmcraftRange, copyFilmcraftClips, pasteFilmcraftClips } from '$lib/api'
 import FilmcraftProjectPanel from './FilmcraftProjectPanel.svelte'
 import type { MediaEntry } from '$lib/types'
 import type { FilmcraftImportResult } from '$lib/api'
@@ -13,7 +17,7 @@ vi.mock('svelte', async importOriginal => {
   const client = await import('../../../../node_modules/svelte/src/index-client.js')
   return { ...actual, untrack: client.untrack }
 })
-vi.mock('$lib/api', () => ({ editFilmcraftSubclip: vi.fn(), getFilmcraftSubclipDefaults: vi.fn(), editFilmcraftSource: vi.fn(), navigateFilmcraft: vi.fn(), editFilmcraftMarks: vi.fn(), deleteFilmcraftProjectItems: vi.fn(), duplicateFilmcraftProjectItems: vi.fn(), selectFilmcraftSelection: vi.fn(), selectFilmcraftLabelGroup: vi.fn(), editFilmcraftLabels: vi.fn(), FILMCRAFT_LABELS: ['Violet', 'Iris', 'Caribbean', 'Lavender', 'Cerulean', 'Forest', 'Rose', 'Mango', 'Purple', 'Blue', 'Teal', 'Magenta', 'Tan', 'Green', 'Brown', 'Yellow'], editFilmcraftBins: vi.fn(), renameFilmcraftBin: vi.fn(), renameFilmcraftClip: vi.fn(), startFilmcraftMaskTrackingJob: vi.fn(), readFilmcraftTrackingJob: vi.fn(), cancelFilmcraftTrackingJob: vi.fn(), importFilmcraftTrackingSnapshot: vi.fn(), editFilmcraftAnimation: vi.fn(), setFilmcraftEffectParameter: vi.fn(), applyFilmcraftEffect: vi.fn(), listFilmcraftEffects: vi.fn(), editFilmcraftEffectRack: vi.fn(), editFilmcraftMaskMonitor: vi.fn(), trackFilmcraftMask: vi.fn(), editFilmcraftMask: vi.fn(), getFilmcraftParameters: vi.fn(), editFilmcraftParameter: vi.fn(), getFilmcraftPreviewFrame: vi.fn(), createFilmcraftTrimSession: vi.fn(), commandFilmcraftTrimSession: vi.fn(), readFilmcraftTrimSession: vi.fn(), closeFilmcraftTrimSession: vi.fn(), trimFilmcraftToPlayhead: vi.fn(), trimFilmcraftEditPoints: vi.fn(), getFilmcraftNearestEditPoints: vi.fn(), getFilmcraftTrimMonitor: vi.fn(), applyFilmcraftSelectionTransitions: vi.fn(), setFilmcraftTransition: vi.fn(), getFilmcraftTransitions: vi.fn(), applyFilmcraftTransition: vi.fn(), importFilmcraftProject: vi.fn(), exportFilmcraftAudio: vi.fn(), exportFilmcraftFrame: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), trimFilmcraftProject: vi.fn(), slipFilmcraftProject: vi.fn(), stretchFilmcraftProject: vi.fn(), rollFilmcraftProject: vi.fn(), slideFilmcraftProject: vi.fn(), deleteFilmcraftClips: vi.fn(), closeFilmcraftGap: vi.fn(), razorFilmcraftProject: vi.fn(), removeFilmcraftRange: vi.fn(), copyFilmcraftClips: vi.fn(), pasteFilmcraftClips: vi.fn() }))
+vi.mock('$lib/api', () => ({ editFilmcraftClips: vi.fn(), modifyFilmcraftMedia: vi.fn(), editFilmcraftVideoOptions: vi.fn(), replaceFilmcraftClips: vi.fn(), editFilmcraftAttributes: vi.fn(), editFilmcraftSubclip: vi.fn(), getFilmcraftSubclipDefaults: vi.fn(), editFilmcraftSource: vi.fn(), navigateFilmcraft: vi.fn(), editFilmcraftMarks: vi.fn(), deleteFilmcraftProjectItems: vi.fn(), duplicateFilmcraftProjectItems: vi.fn(), selectFilmcraftSelection: vi.fn(), selectFilmcraftLabelGroup: vi.fn(), editFilmcraftLabels: vi.fn(), FILMCRAFT_LABELS: ['Violet', 'Iris', 'Caribbean', 'Lavender', 'Cerulean', 'Forest', 'Rose', 'Mango', 'Purple', 'Blue', 'Teal', 'Magenta', 'Tan', 'Green', 'Brown', 'Yellow'], editFilmcraftBins: vi.fn(), renameFilmcraftBin: vi.fn(), renameFilmcraftClip: vi.fn(), startFilmcraftMaskTrackingJob: vi.fn(), readFilmcraftTrackingJob: vi.fn(), cancelFilmcraftTrackingJob: vi.fn(), importFilmcraftTrackingSnapshot: vi.fn(), editFilmcraftAnimation: vi.fn(), setFilmcraftEffectParameter: vi.fn(), applyFilmcraftEffect: vi.fn(), listFilmcraftEffects: vi.fn(), editFilmcraftEffectRack: vi.fn(), editFilmcraftMaskMonitor: vi.fn(), trackFilmcraftMask: vi.fn(), editFilmcraftMask: vi.fn(), getFilmcraftParameters: vi.fn(), editFilmcraftParameter: vi.fn(), getFilmcraftPreviewFrame: vi.fn(), createFilmcraftTrimSession: vi.fn(), commandFilmcraftTrimSession: vi.fn(), readFilmcraftTrimSession: vi.fn(), closeFilmcraftTrimSession: vi.fn(), trimFilmcraftToPlayhead: vi.fn(), trimFilmcraftEditPoints: vi.fn(), getFilmcraftNearestEditPoints: vi.fn(), getFilmcraftTrimMonitor: vi.fn(), applyFilmcraftSelectionTransitions: vi.fn(), setFilmcraftTransition: vi.fn(), getFilmcraftTransitions: vi.fn(), applyFilmcraftTransition: vi.fn(), importFilmcraftProject: vi.fn(), exportFilmcraftAudio: vi.fn(), exportFilmcraftFrame: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), trimFilmcraftProject: vi.fn(), slipFilmcraftProject: vi.fn(), stretchFilmcraftProject: vi.fn(), rollFilmcraftProject: vi.fn(), slideFilmcraftProject: vi.fn(), deleteFilmcraftClips: vi.fn(), closeFilmcraftGap: vi.fn(), razorFilmcraftProject: vi.fn(), removeFilmcraftRange: vi.fn(), copyFilmcraftClips: vi.fn(), pasteFilmcraftClips: vi.fn() }))
 beforeEach(() => { vi.mocked(listFilmcraftExportQueue).mockResolvedValue({ running: false, items: [] }) })
 let component: ReturnType<typeof mount> | undefined
 const sourceText = '{"id":18446744073709551615}'
@@ -1659,4 +1663,135 @@ it('shares still preferences across subclip defaults and source navigation witho
   vi.mocked(navigateFilmcraft).mockResolvedValue({ context: { activeSequence: loaded.sequences[0].id, sourceItem: parent, sourcePlayhead: '0', playhead: '0', playheadFrames: '0', selection: [], projectSelection: [parent] }, events: [{ type: 'openSource', item: parent }] })
   button('Открыть исходник').click(); await tick()
   expect(navigateFilmcraft).toHaveBeenCalledWith('owner', 'source.open', expect.objectContaining({ context: expect.objectContaining({ stillImageDuration: 17.5, stillImageUnit: 'frames' }) }), expect.any(AbortSignal))
+})
+
+it('retains an accepted attributes no-op as exactly one Undo frame', async () => {
+  await open()
+  const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  const select = document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!
+  select.value = loaded.sequences[0].clips![0].id; select.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  vi.mocked(editFilmcraftAttributes).mockResolvedValue({ ...loaded, attributeEdit: true, changedClipCount: 0 })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Удалить атрибуты').click(); await tick()
+  await vi.waitFor(() => expect(button('Отменить правку').disabled).toBe(false))
+  expect(editFilmcraftAttributes).toHaveBeenCalledTimes(1)
+  button('Отменить правку').click(); await tick()
+  expect(button('Отменить правку').disabled).toBe(true)
+  expect(button('Повторить правку').disabled).toBe(false)
+})
+
+it('adopts a bin replacement with no Source Monitor and retains a no-op Undo frame', async () => {
+  const id = '9007199254740993'
+  await open(sourceText, false, false, undefined, [{ id, name: 'Wave', kind: 'Media' }])
+  const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  const clip = document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!
+  clip.value = loaded.sequences[0].clips![0].id; clip.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  const target = document.querySelector<HTMLSelectElement>('[aria-label="Исходник замены Filmcraft"]')!
+  target.value = id; target.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  vi.mocked(replaceFilmcraftClips).mockResolvedValue({ ...loaded, replacementEdit: true, replacedClipIds: [clip.value], replacementItemId: id, sourceInClamped: [], shortClips: [] })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  expect(target.value).toBe(id); expect(button('Заменить из проекта').disabled).toBe(false); expect(button('Заменить из проекта').closest('fieldset')!.disabled).toBe(false); button('Заменить из проекта').click(); await tick(); await vi.waitFor(() => { expect(replaceFilmcraftClips).toHaveBeenCalledTimes(1); expect(document.body.textContent).not.toContain('Результат не применён'); expect(button('Отменить правку').disabled).toBe(false) })
+  expect(replaceFilmcraftClips).toHaveBeenCalledWith('owner', 'clip.replaceFromBin', expect.objectContaining({ item: id, context: expect.objectContaining({ sourceItem: null }) }), expect.any(AbortSignal))
+  button('Отменить правку').click(); await tick(); expect(button('Отменить правку').disabled).toBe(true); expect(button('Повторить правку').disabled).toBe(false)
+})
+
+it('retains a successful video options no-op as one Undo frame', async () => {
+  await open()
+  const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  const clip = document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!
+  clip.value = loaded.sequences[0].clips![0].id; clip.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  vi.mocked(editFilmcraftVideoOptions).mockResolvedValue({ ...loaded, videoOptionsEdit: true, videoOptionsClipCount: 0 })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Вписать в кадр').click(); await tick(); await vi.waitFor(() => expect(button('Отменить правку').disabled).toBe(false))
+  expect(editFilmcraftVideoOptions).toHaveBeenCalledWith('owner', 'clip.fitToFrame', expect.objectContaining({ clips: [clip.value], context: expect.objectContaining({ playheadFrames: '0' }) }), expect.any(AbortSignal))
+  button('Отменить правку').click(); await tick(); expect(button('Отменить правку').disabled).toBe(true); expect(button('Повторить правку').disabled).toBe(false)
+})
+
+it('inherits authorized mono source bindings and excludes inactive aliases through Undo/Redo', async () => {
+  const sourceId = '9007199254740993', monoId = '18446744073709551614'
+  const source = { id: sourceId, name: 'Wave', kind: 'Media' as const }
+  await open(sourceText, false, false, undefined, [source])
+  const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  vi.mocked(modifyFilmcraftMedia).mockResolvedValue({ ...loaded, documentText: 'mono source', projectItems: [source, { ...source, id: monoId, name: 'Wave Left' }], media: [...loaded.media, { ...loaded.media[0], id: monoId, name: 'Wave Left' }], modifyEdit: true, modificationCount: 1, modifiedProjectSelection: [monoId], duplicateSources: [{ id: monoId, sourceId }] })
+  vi.mocked(exportFilmcraftAudio).mockRejectedValue(new Error('inspect export input'))
+  await selectProjectItemsFor('Элементы для организации Filmcraft', [sourceId])
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Создать моно-элементы').click(); await tick()
+  await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Файл для Wave Left"]')?.value).toBe('asset'))
+  expect(selectedProjectOptions('Элементы для организации Filmcraft')).toEqual([monoId])
+  button('Экспортировать звук').click(); await vi.waitFor(() => expect(exportFilmcraftAudio).toHaveBeenLastCalledWith(expect.objectContaining({ document: 'mono source', sources: { [sourceId]: 'asset', [monoId]: 'asset' } }), 'owner', expect.any(AbortSignal)))
+  await vi.waitFor(() => expect(button('Отменить правку').disabled).toBe(false)); button('Отменить правку').click(); await tick()
+  button('Экспортировать звук').click(); await vi.waitFor(() => expect(exportFilmcraftAudio).toHaveBeenLastCalledWith(expect.objectContaining({ document: sourceText, sources: { [sourceId]: 'asset' } }), 'owner', expect.any(AbortSignal)))
+  await vi.waitFor(() => expect(button('Повторить правку').disabled).toBe(false)); button('Повторить правку').click(); await tick()
+  expect(document.querySelector<HTMLSelectElement>('[aria-label="Файл для Wave Left"]')?.value).toBe('asset')
+})
+it('creates one Undo frame for a successful unchanged timecode reset', async () => {
+  const id = '9007199254740993'; await open(sourceText, false, false, undefined, [{ id, name: 'Wave', kind: 'Media' }])
+  const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  await selectProjectItemsFor('Элементы для организации Filmcraft', [id])
+  const mode = document.querySelector<HTMLSelectElement>('[aria-label="Правка таймкода Filmcraft"]')!; mode.value = 'reset'; mode.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  vi.mocked(modifyFilmcraftMedia).mockResolvedValue({ ...loaded, modifyEdit: true, modificationCount: 1 })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Применить таймкод').click(); await tick(); await vi.waitFor(() => expect(button('Отменить правку').disabled).toBe(false))
+  button('Отменить правку').click(); await tick(); expect(button('Отменить правку').disabled).toBe(true); expect(button('Повторить правку').disabled).toBe(false)
+})
+
+it('adopts held segment selection while retaining the program clock and one Undo frame', async () => {
+  await open()
+  const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  const id = '18446744073709551614', q = loaded.sequences[0]
+  vi.mocked(editFilmcraftClips).mockResolvedValue({ ...loaded, documentText: 'inserted hold', sequences: [{ ...q, clips: [...q.clips!, { ...q.clips![0], id, name: 'Hold' }] }], clipEdit: true, clipEditSelection: [id] })
+  const clock = document.querySelector<HTMLInputElement>('[aria-label="Позиция правки, кадров"]')!; clock.value = '7'; clock.dispatchEvent(new Event('input', { bubbles: true })); await tick()
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Вставить сегмент стоп-кадра').click(); await tick(); await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!.value).toBe(id))
+  expect(clock.value).toBe('7'); expect(button('Отменить правку').disabled).toBe(false)
+  button('Отменить правку').click(); await tick(); expect(document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!.value).toBe(''); expect(button('Отменить правку').disabled).toBe(true)
+  button('Повторить правку').click(); await tick(); expect([...document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!.options].some(option => option.value === id)).toBe(true)
+})
+it('records an accepted unchanged clip edit as one history frame', async () => {
+  await open(); const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  const clip = document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!; clip.value = loaded.sequences[0].clips![0].id; clip.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  vi.mocked(editFilmcraftClips).mockResolvedValue({ ...loaded, clipEdit: true })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Применить скорость').click(); await tick(); await vi.waitFor(() => expect(button('Отменить правку').disabled).toBe(false)); button('Отменить правку').click(); await tick(); expect(button('Отменить правку').disabled).toBe(true)
+})
+
+it('opens the matched source frame and marks that exact frame without adding navigation history', async () => {
+  const id = '9007199254740993'; await open(sourceText, false, false, undefined, [{ id, name: 'Wave', kind: 'Media' }])
+  const loaded: Awaited<ReturnType<typeof importFilmcraftProject>> = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  const fixed = { activeSequence: loaded.sequences[0].id, sourceItem: id, sourcePlayhead: '9007199254740997', playhead: '0', playheadFrames: '0', selection: [], projectSelection: [] }
+  vi.mocked(navigateFilmcraft).mockResolvedValue({ context: fixed, events: [{ type: 'openSource', item: id }] })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Найти кадр в исходнике').click(); await tick(); await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Исходник точек Filmcraft"]')?.value).toBe(id))
+  expect(button('Отменить правку').disabled).toBe(true); expect(document.querySelector('[aria-label="Позиция исходника Filmcraft"]')!.textContent).toContain(fixed.sourcePlayhead)
+  vi.mocked(editFilmcraftMarks).mockResolvedValue({ ...loaded, markEdit: true }); button('Поставить In').click(); await tick()
+  expect(editFilmcraftMarks).toHaveBeenCalledWith('owner', 'markers.markIn', expect.objectContaining({ target: 'source', time: fixed.sourcePlayhead, context: expect.objectContaining({ sourceItem: id, sourcePlayhead: fixed.sourcePlayhead }) }), expect.any(AbortSignal))
+})
+it.each(['Показать исходник клипа в проекте', 'Показать секвенцию в проекте'])('reveals %s in the shared Project selection and focuses its bin control without Undo', async label => {
+  const source = { id: '9007199254740993', name: 'Wave', kind: 'Media' as const }, seq = { id: '18446744073709551615', name: 'Scene', kind: 'Sequence' as const }
+  await open(sourceText, false, false, undefined, [source, seq]); const id = label.includes('секвенцию') ? seq.id : source.id
+  vi.mocked(navigateFilmcraft).mockResolvedValue({ context: { activeSequence: seq.id, sourceItem: null, sourcePlayhead: '0', playhead: '0', playheadFrames: '0', selection: [], projectSelection: [id] }, events: [{ type: 'revealInProject', item: id }] })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button(label).click(); await tick(); await vi.waitFor(() => expect(selectedProjectOptions('Элементы для организации Filmcraft')).toEqual([id]))
+  const select = document.querySelector<HTMLSelectElement>('[aria-label="Элементы для организации Filmcraft"]')!
+  expect(select.closest('details')!.open).toBe(true); expect(document.activeElement).toBe(select); expect(button('Отменить правку').disabled).toBe(true)
+  expect(document.querySelector<HTMLSelectElement>('[aria-label="Монитор точек Filmcraft"]')!.value).toBe('program')
+})
+
+it('retains an unavailable matched identity and exact signed clock without selecting another source', async () => {
+  const id = '18446744073709551614'; await open(sourceText, false, false, undefined, [{ id: '9007199254740993', name: 'Wave', kind: 'Media' }])
+  vi.mocked(navigateFilmcraft).mockResolvedValue({ context: { activeSequence: '18446744073709551615', sourceItem: id, sourcePlayhead: '-1', playhead: '0', playheadFrames: '0', selection: [], projectSelection: [] }, events: [{ type: 'openSource', item: id }] })
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Найти кадр в исходнике').click(); await tick(); await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Исходник точек Filmcraft"]')?.value).toBe(id))
+  expect(document.body.textContent).toContain(`Недоступный исходник (${id})`); expect(document.querySelector('[aria-label="Позиция исходника Filmcraft"]')!.textContent).toContain('-1'); expect(button('Поставить In').disabled).toBe(true); expect(button('Отменить правку').disabled).toBe(true)
+})
+it('discards a pending match after timeline selection changes without replay or history', async () => {
+  await open(sourceText, false, false, undefined, [{ id: '9007199254740993', name: 'Wave', kind: 'Media' }])
+  let resolve!: (value: Awaited<ReturnType<typeof navigateFilmcraft>>) => void
+  vi.mocked(navigateFilmcraft).mockImplementation(() => new Promise(done => { resolve = done }))
+  const button = (text: string) => [...document.querySelectorAll('button')].find(item => item.textContent === text)!
+  button('Найти кадр в исходнике').click(); await tick()
+  const clip = document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!; clip.value = '9007199254740995'; clip.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  resolve({ context: { activeSequence: '18446744073709551615', sourceItem: '9007199254740993', sourcePlayhead: '19', playhead: '0', playheadFrames: '0', selection: [], projectSelection: [] }, events: [{ type: 'openSource', item: '9007199254740993' }] }); await tick(); await tick()
+  expect(navigateFilmcraft).toHaveBeenCalledTimes(1); expect(document.querySelector<HTMLSelectElement>('[aria-label="Монитор точек Filmcraft"]')!.value).toBe('program'); expect(clip.value).toBe('9007199254740995'); expect(button('Отменить правку').disabled).toBe(true)
 })

@@ -2371,6 +2371,7 @@ mod tests {
         assert_eq!(rendered.rgba, [255, 255, 255, 255].repeat(4));
         assert_eq!(render_media_layers(&composition, 0, &mut || Ok(()), None, Some(&mut decoder)).unwrap().unwrap().rgba, [0,0,0,255].repeat(4));
         let project = super::super::nested_composition::NestedCompositionProject {
+            project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![],
             luts: library, schema_version: 1, root: "root".into(),

@@ -3854,7 +3854,7 @@ async fn nested_preview_requires_authentication() {
     use video_kadr_backend::domain::{composition::{CanvasSpec,Composition}, nested_composition::{NestedCompositionDocument,NestedCompositionProject}};
     let (state, _directory) = make_state(true,true).await;
     let app = router(state);
-    let project = NestedCompositionProject { fonts:vec![], timeline_order: vec![], luts:vec![],
+    let project = NestedCompositionProject { project_media: Default::default(), fonts:vec![], timeline_order: vec![], luts:vec![],
             schema_version:1, root:"root".into(), compositions: std::collections::BTreeMap::from([("root".into(),NestedCompositionDocument { duration_us:Some(0),content:Composition::new(CanvasSpec::default()),instances:vec![] })]) };
     let response = app.oneshot(post_json("/api/compositions/nested-preview",json!({"project":project,"timeUs":0,"renderedOutputs":{}}))).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);

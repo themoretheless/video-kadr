@@ -626,6 +626,12 @@ pub(crate) fn extract_document_source_ids(document: &Value) -> Result<Vec<String
                 }
             }
         }
+        for (id, entry) in &project.project_media {
+            ensure!(valid_source_id(id.as_str()), "invalid project media source id");
+            // A live source table is authoritative; the bin retains an unused
+            // source descriptor so its ownership survives the last placement.
+            sources.entry(id.as_str().to_owned()).or_insert(&entry.source);
+        }
         ensure!(sources.len() <= MAX_COMPOSITION_PROJECT_SOURCES, "nested project has too many sources");
         return Ok(sources.into_keys().collect());
     }
@@ -747,6 +753,19 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let db = Db::open(directory.path()).await.unwrap();
         (db, directory)
+    }
+
+    #[tokio::test]
+    async fn project_media_without_a_placement_remains_in_storage_reference_inventory() {
+        let (db,_directory)=db().await;
+        let content=crate::domain::composition::Composition::new(crate::domain::composition::CanvasSpec::default());
+        let document=json!({"schemaVersion":1,"root":"root","compositions":{"root":{"content":content,"instances":[]}},"projectMedia":{"retained":{"source":{"id":"retained","kind":"image","durationTicks":0,"width":16,"height":16,"hasAudio":false},"name":"Retained slot","placeholder":true}}});
+        assert_eq!(extract_document_source_ids(&document).unwrap(),vec!["retained"]);
+        assert!(db.create_composition_project("Missing source inventory",&document,&[]).await.is_err());
+        let saved=db.create_composition_project("Slot",&document,&["retained".into()]).await.unwrap();
+        let restored=db.get_composition_project(&saved.id).await.unwrap().unwrap();
+        assert_eq!(restored.document,document);assert_eq!(restored.source_ids,vec!["retained"]);
+        assert_eq!(db.composition_source_reference_count("retained").await.unwrap(),1);
     }
 
     #[tokio::test]

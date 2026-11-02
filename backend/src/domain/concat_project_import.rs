@@ -422,6 +422,7 @@ fn convert(
         .cloned()
         .unwrap_or_else(|| order[0].clone());
     let project = NestedCompositionProject {
+        project_media: Default::default(),
         fonts,
         schema_version: 1,
         root,

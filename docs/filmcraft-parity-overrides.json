@@ -41143,5 +41143,905 @@
       }
     ],
     "note": "Authenticated native snapshot Make/Edit Subclip preserves source/project/timeline precedence and named-target admission, sixteen-node media-root resolution, root-parent bin traversal, planned name/label, source marks/still ranges and timeline speed-derived source span. Exact tick/frame overrides retain original null/type fallback and endpoint semantics. Creation resets metadata/split and selects the new item. Editing preserves identity/top-level metadata/split; conversion requires direct parent Media, clones its complete payload and filters inherited markers by start in [a,b). 1152 actual original engine cases (594 success/558 refusal) compare full project SHA256, result/selection and one Undo delta; 367 original make-dialog defaults are compared separately. Native host clip.subclipDefaults extends original read-only helper with exact ticks/rational clock and edit-dialog data. Additional tests cover u64::MAX parent and near-MAX new ID, guarded allocator/frame-overflow refusal, exact imported metadata and File-media conversion without opening a path. Editor supports all input origins, optional bounds/restriction overrides, master conversion, defaults without history and one accepted Undo/Redo frame including unchanged edits. Validated direct-parent provenance inherits existing authorized library bindings for converted file aliases; inactive choices are excluded from payloads across Undo and retained for Redo. Still preferences are shared with source navigation/placement. Full persistent engine/media-cache lifetime, playback/render/browser and settings/session qualification remain open; partial only."
+  },
+  "command:edit.pasteAttributes": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_attribute_transfer.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_attribute_transfer.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-attributes-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-attributes-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftAttributesControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftAttributesControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-attributes-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot attributes, original command admission/linked selection/locked tracks, intrinsic replacement/reset and standard effect append/removal. Full-project/result/Undo comparison across 1152 actual original cases; typed API, chooser and fenced Undo adoption. Persistent engine/render/browser qualification remains open."
+  },
+  "command:edit.removeAttributes": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_attribute_transfer.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_attribute_transfer.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-attributes-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-attributes-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftAttributesControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftAttributesControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-attributes-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot attributes, original command admission/linked selection/locked tracks, intrinsic replacement/reset and standard effect append/removal. Full-project/result/Undo comparison across 1152 actual original cases; typed API, chooser and fenced Undo adoption. Persistent engine/render/browser qualification remains open."
+  },
+  "command:clip.replaceFromSource": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_replace.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_replace.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-replace-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-replace-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftReplaceControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftReplaceControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-replace-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original snapshot replacement admission, source/bin/match-frame ranges, source capabilities, linked selection and locked tracks; retains effects/speed/markers and resets hold/multicam. Restricted subclip clamp, short-media reports and nest-cycle refusal. Full-project/results/Undo comparison across 2016 actual original cases; native UI and exact transport. Persistent session/render/browser qualification remains open."
+  },
+  "command:clip.replaceFromSourceMatchFrame": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_replace.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_replace.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-replace-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-replace-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftReplaceControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftReplaceControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-replace-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original snapshot replacement admission, source/bin/match-frame ranges, source capabilities, linked selection and locked tracks; retains effects/speed/markers and resets hold/multicam. Restricted subclip clamp, short-media reports and nest-cycle refusal. Full-project/results/Undo comparison across 2016 actual original cases; native UI and exact transport. Persistent session/render/browser qualification remains open."
+  },
+  "command:clip.replaceFromBin": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_replace.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_replace.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-replace-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-replace-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftReplaceControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftReplaceControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-replace-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original snapshot replacement admission, source/bin/match-frame ranges, source capabilities, linked selection and locked tracks; retains effects/speed/markers and resets hold/multicam. Restricted subclip clamp, short-media reports and nest-cycle refusal. Full-project/results/Undo comparison across 2016 actual original cases; native UI and exact transport. Persistent session/render/browser qualification remains open."
+  },
+  "command:clip.frameHoldOptions": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.fieldOptions": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.timeInterpolation.frameSampling": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.timeInterpolation.frameBlending": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.timeInterpolation.opticalFlow": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.setTimeInterpolation": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.fitToFrame": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.fillFrame": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_video_options.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-video-options-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-video-options-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftVideoOptionsControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-video-options-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native video-only snapshot options, selection admission without linked expansion, locked tracks and accepted no-op history. Frame holds/timecode/moving source clocks, fields, interpolation and source-aware Fit/Fill. Full-project/results/Undo comparison across 5568 original cases; exact native API and UI controls. Persistent playback/render/browser qualification remains open."
+  },
+  "command:clip.audioChannels": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_media_modify.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_project.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_media_modify.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-media-modify-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-media-modify-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMediaModifyControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMediaModifyControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-media-modify-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native project/timeline audio channel interpretation, timecode/tape edits with file reset, and mono project aliases in source bins. Snapshot command admission/context, fresh IDs/provenance and full-project/results/Undo comparison across 2856 original cases. Exact transport, native metadata summaries and UI/history/library binding integration. Persistent media cache/decoder/playback/browser qualification remains open."
+  },
+  "command:clip.modifyTimecode": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_media_modify.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_project.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_media_modify.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-media-modify-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-media-modify-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMediaModifyControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMediaModifyControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-media-modify-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native project/timeline audio channel interpretation, timecode/tape edits with file reset, and mono project aliases in source bins. Snapshot command admission/context, fresh IDs/provenance and full-project/results/Undo comparison across 2856 original cases. Exact transport, native metadata summaries and UI/history/library binding integration. Persistent media cache/decoder/playback/browser qualification remains open."
+  },
+  "command:clip.breakoutToMono": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_media_modify.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_project.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_media_modify.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-media-modify-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-media-modify-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMediaModifyControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMediaModifyControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-media-modify-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Original native project/timeline audio channel interpretation, timecode/tape edits with file reset, and mono project aliases in source bins. Snapshot command admission/context, fresh IDs/provenance and full-project/results/Undo comparison across 2856 original cases. Exact transport, native metadata summaries and UI/history/library binding integration. Persistent media cache/decoder/playback/browser qualification remains open."
+  },
+  "command:clip.speedDuration": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:clip.enable": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:clip.link": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:clip.group": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:clip.ungroup": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:clip.scaleToFrameSize": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:clip.frameHold": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:clip.insertFrameHoldSegment": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_clip_edit.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-clip-edit-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-clip-edit-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftClipEditControls.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-clip-edit-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native snapshot clip editing: original linked speed groups/ripple/transitions, enable/link/group/scale toggles and structural frame holds using qualified razor/insert primitives. Full-project/results/selection/Undo comparison across 5040 original cases. Exact typed transport, UI clock/selection fences and bounded history. Persistent playback/render/browser and full application parity remain open."
+  },
+  "command:sequence.matchFrame": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_navigation.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_match_reveal.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-match-reveal-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-match-reveal-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native context-only source matching/reveal with exact clocks, target/selection precedence and typed UI events; original no-document/no-history behavior. 5220 actual original cases plus 8304 prior navigation regressions. Source monitor activation and Project selection/focus are adopted with owner/document/clock/selection fences. Persistent app-wide focus/browser/render qualification remains open."
+  },
+  "command:clip.revealInProject": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_navigation.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_match_reveal.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-match-reveal-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-match-reveal-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native context-only source matching/reveal with exact clocks, target/selection precedence and typed UI events; original no-document/no-history behavior. 5220 actual original cases plus 8304 prior navigation regressions. Source monitor activation and Project selection/focus are adopted with owner/document/clock/selection fences. Persistent app-wide focus/browser/render qualification remains open."
+  },
+  "command:sequence.revealInProject": {
+    "status": "partial",
+    "evidence": [
+      {
+        "path": "backend/src/domain/filmcraft_navigation.rs"
+      },
+      {
+        "path": "backend/src/handlers/filmcraft_commands.rs"
+      },
+      {
+        "path": "backend/tests/filmcraft_match_reveal.rs"
+      },
+      {
+        "path": "backend/tests/fixtures/filmcraft-match-reveal-oracle.json"
+      },
+      {
+        "path": "scripts/filmcraft-match-reveal-oracle.rs"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftMarksControls.svelte"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftBinActions.svelte"
+      },
+      {
+        "path": "frontend/src/lib/filmcraft-navigation-api.test.ts"
+      },
+      {
+        "path": "frontend/src/lib/components/composition/FilmcraftProjectPanel.test.ts"
+      }
+    ],
+    "note": "Native context-only source matching/reveal with exact clocks, target/selection precedence and typed UI events; original no-document/no-history behavior. 5220 actual original cases plus 8304 prior navigation regressions. Source monitor activation and Project selection/focus are adopted with owner/document/clock/selection fences. Persistent app-wide focus/browser/render qualification remains open."
   }
 }

@@ -815,3 +815,10 @@ pub mod filmcraft_navigation;
 pub mod filmcraft_source_edit;
 
 pub mod filmcraft_subclip;
+pub mod filmcraft_replace;
+pub mod filmcraft_video_options;
+pub mod filmcraft_media_modify;
+pub mod filmcraft_clip_edit;
+pub mod filmcraft_attribute_transfer;
+
+pub mod project_media;

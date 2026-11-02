@@ -25,3 +25,19 @@ it('does not return late metadata after observation abort', async () => {
   const controller = new AbortController(); const fetcher = vi.fn().mockImplementation(async () => { controller.abort(); return new Response(JSON.stringify(reply)) }); vi.stubGlobal('fetch', fetcher)
   await expect(navigateFilmcraft('owner', 'source.open', input, controller.signal)).rejects.toThrow('Aborted'); expect(fetcher).toHaveBeenCalledTimes(1)
 })
+
+it('matches an exact source frame using one context request and no import', async () => {
+  const response = { result: { item: id }, context, events: reply.events }
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(response))); vi.stubGlobal('fetch', fetcher)
+  expect(await navigateFilmcraft('owner', 'sequence.matchFrame', input)).toEqual({ context, events: reply.events }); expect(fetcher).toHaveBeenCalledTimes(1)
+})
+it.each(['clip.revealInProject', 'sequence.revealInProject'] as const)('returns %s project selection and reveal event without touching the Source Monitor', async command => {
+  const target = '9007199254740995'; const fixed = { ...input.context, projectSelection: [target], playheadFrames: '0' }
+  const events = [{ type: 'revealInProject', item: target }]
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ result: { item: target }, context: fixed, events }))); vi.stubGlobal('fetch', fetcher)
+  expect(await navigateFilmcraft('owner', command, input)).toEqual({ context: fixed, events }); expect(fetcher).toHaveBeenCalledTimes(1)
+})
+it.each([{ result: { item: '7' } }, { context: { ...context, playhead: '1' } }, { context: { ...context, selection: [] } }, { events: [{ type: 'revealInProject', item: id }] }])('rejects inconsistent Match Frame metadata (%j)', async patch => {
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ result: { item: id }, context, events: reply.events, ...patch }))); vi.stubGlobal('fetch', fetcher)
+  await expect(navigateFilmcraft('owner', 'sequence.matchFrame', input)).rejects.toThrow(); expect(fetcher).toHaveBeenCalledTimes(1)
+})

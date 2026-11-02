@@ -218,7 +218,7 @@ async fn source_discovery_and_run_cross_the_claimed_bridge_to_owner_native_servi
         .all(|item| item["enabled"] == true && item["partial"] == true));
     let all = native(&native_app, Some(&owner.token), "command.list", json!({})).await;
     assert_eq!(all.0, 200);
-    assert_eq!(all.1.as_array().unwrap().len(), 98);
+    assert_eq!(all.1.as_array().unwrap().len(), 125);
     assert!(all.1.as_array().unwrap().iter().any(|row| row["id"] == "clip.rename"));
     assert_eq!(
         native(
@@ -231,6 +231,54 @@ async fn source_discovery_and_run_cross_the_claimed_bridge_to_owner_native_servi
         .0,
         400
     );
+    let match_reveal_oracle:Value=serde_json::from_str(include_str!("fixtures/filmcraft-match-reveal-oracle.json")).unwrap();
+    for command in ["sequence.matchFrame","clip.revealInProject","sequence.revealInProject"] {
+        let case=match_reveal_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==command && case["ok"]==true).unwrap();
+        let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":match_reveal_oracle["projects"][case["profile"].as_u64().unwrap() as usize]});params["context"]=case["context"].clone();
+        let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":command,"params":params})).await;
+        assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert!(returned.get("documentText").is_none());assert!(returned.get("document").is_none());assert_eq!(returned["events"].as_array().unwrap().len(),1);
+    }
+    let clip_edit_oracle:Value=serde_json::from_str(include_str!("fixtures/filmcraft-clip-edit-oracle.json")).unwrap();
+    for command in video_kadr_backend::domain::filmcraft_clip_edit::COMMANDS {
+        let case=clip_edit_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==command && case["ok"]==true).unwrap();
+        let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":clip_edit_oracle["projects"][case["profile"].as_u64().unwrap() as usize]});params["context"]=case["context"].clone();
+        let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":command,"params":params})).await;
+        assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(returned["clipEdit"],true);
+    }
+    let media_modify_oracle:Value=serde_json::from_str(include_str!("fixtures/filmcraft-media-modify-oracle.json")).unwrap();
+    for command in video_kadr_backend::domain::filmcraft_media_modify::COMMANDS {
+        let case=media_modify_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==command && case["ok"]==true).unwrap();
+        let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":media_modify_oracle["projects"][case["profile"].as_u64().unwrap() as usize]});params["context"]=case["context"].clone();
+        let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":command,"params":params})).await;
+        assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(returned["modifyEdit"],true);
+    }
+    let video_options_oracle:Value=serde_json::from_str(include_str!("fixtures/filmcraft-video-options-oracle.json")).unwrap();
+    for command in video_kadr_backend::domain::filmcraft_video_options::COMMANDS {
+        let case=video_options_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==command && case["ok"]==true).unwrap();
+        let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":video_options_oracle["projects"][case["profile"].as_u64().unwrap() as usize]});params["context"]=case["context"].clone();
+        let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":command,"params":params})).await;
+        assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(returned["videoOptionsEdit"],true);
+    }
+    let replacement_oracle:Value=serde_json::from_str(include_str!("fixtures/filmcraft-replace-oracle.json")).unwrap();
+    for command in ["clip.replaceFromSource","clip.replaceFromSourceMatchFrame","clip.replaceFromBin"] {
+        let case=replacement_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==command && case["ok"]==true).unwrap();
+        let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":replacement_oracle["project"]});params["context"]=case["context"].clone();
+        let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":command,"params":params})).await;
+        assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(returned["replacementEdit"],true);assert!(returned["result"]["item"].is_string());assert!(!returned["result"]["clips"].as_array().unwrap().is_empty());
+    }
+    let attributes_oracle:Value=serde_json::from_str(include_str!("fixtures/filmcraft-attributes-oracle.json")).unwrap();
+    for command in ["edit.pasteAttributes","edit.removeAttributes"] {
+        let case=attributes_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==command && case["ok"]==true).unwrap();
+        let mut params=case["params"].clone();params["document"]=json!({"format":"filmcraft.project","schema_version":12,"project":attributes_oracle["project"]});params["context"]=case["context"].clone();params["clipboardText"]=json!(serde_json::to_string(&attributes_oracle["clipboards"][case["clipboard"].as_u64().unwrap() as usize]).unwrap());
+        let reply=forward(&bridge,&native_app,Some(&owner.token),"command_run",json!({"id":command,"params":params})).await;
+        assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(returned["attributeEdit"],true);assert_eq!(returned["result"],case["result"]);
+    }
     let marks_oracle: Value = serde_json::from_str(include_str!("fixtures/filmcraft-marks-oracle.json")).unwrap();
     let source_id = marks_oracle["project"]["items"].as_object().unwrap().iter().find(|(_, item)| item.pointer("/kind/Media").is_some()).unwrap().0.clone();
     for id in ["project.setMarks", "markers.markSplitAudioOut"] {

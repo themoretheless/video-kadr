@@ -35,7 +35,7 @@ pub(crate) fn fractional_caption_project(nested:bool,offset_us:u64)->super::nest
   compositions.insert("child".into(),child);
   compositions.insert("root".into(),NestedCompositionDocument{content:Composition::new(canvas),duration_us:Some(2000000),instances:vec![CompositionInstance{id:"instance".into(),timing:CompositionReferenceTiming{composition:"child".into(),timeline_start_us:200000,source_in_us:100000,source_out_us:1900000},animation_offset_us:0,transform:TransformSpec::default(),opacity:AnimatableValue::constant(1.),blend_mode:BlendMode::Normal}]});
  }else{compositions.insert("root".into(),child);}
- NestedCompositionProject{fonts:vec![],timeline_order: vec![],schema_version:1,root:"root".into(),luts:vec![],compositions}
+ NestedCompositionProject{project_media: Default::default(),fonts:vec![],timeline_order: vec![],schema_version:1,root:"root".into(),luts:vec![],compositions}
 }
 #[test]
 fn caption_exact_export_sample_renders_start_end_nested_and_selected_range() {

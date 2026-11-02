@@ -44,6 +44,7 @@ mod tests {
     #[tokio::test]
     async fn handler_returns_native_frame_wire_and_refuses_missing_root() {
         let project = NestedCompositionProject {
+            project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![],
             luts:vec![],
@@ -308,4 +309,21 @@ pub async fn concat_retime_edit_handler(ApiJson(request):ApiJson<crate::domain::
     let permit=NESTED_EDIT_SLOTS.acquire().await.map_err(|e|AppError::bad_request(e.to_string()))?;
     let plan=tokio::task::spawn_blocking(move||{let _permit=permit;crate::domain::concat_retime_edit::plan(request)}).await.map_err(|e|AppError::bad_request(e.to_string()))?.map_err(|e|AppError::bad_request(e.to_string()))?;
     Ok(Json(plan))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct ProjectMediaPlaceholderRequest {
+    project: NestedCompositionProject,
+    source_id: crate::domain::composition::SourceId,
+    placeholder: bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct ProjectMediaPlaceholderResponse { project: NestedCompositionProject, applied: bool }
+pub async fn project_media_placeholder_handler(ApiJson(request):ApiJson<ProjectMediaPlaceholderRequest>)->AppResult<Json<ProjectMediaPlaceholderResponse>> {
+    let permit=NESTED_SLOTS.acquire().await.map_err(|e|AppError::bad_request(e.to_string()))?;
+    let (project,applied)=tokio::task::spawn_blocking(move||{let _permit=permit;crate::domain::project_media::set_placeholder(&request.project,&request.source_id,request.placeholder)})
+        .await.map_err(|e|AppError::bad_request(e.to_string()))?.map_err(|e|AppError::bad_request(e.to_string()))?;
+    Ok(Json(ProjectMediaPlaceholderResponse{project,applied}))
 }

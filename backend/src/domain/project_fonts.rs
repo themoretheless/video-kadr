@@ -99,6 +99,7 @@ mod tests {
             });
         }
         NestedCompositionProject {
+            project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![],
             luts: vec![],

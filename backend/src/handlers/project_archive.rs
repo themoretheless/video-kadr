@@ -571,6 +571,14 @@ fn rewrite_document_source_ids(
             let local = composition["content"]["sources"].as_object().unwrap().keys().map(|id| (id.clone(),source_mapping[id].clone())).collect();
             composition["content"] = rewrite_document_source_ids(composition["content"].take(), &local)?;
         }
+        if let Some(records)=document.get_mut("projectMedia").and_then(Value::as_object_mut) {
+            let old=std::mem::take(records);
+            for (old_id,mut item) in old {
+                let new_id=&source_mapping[&old_id];
+                item["source"]["id"]=Value::String(new_id.clone());
+                records.insert(new_id.clone(),item);
+            }
+        }
         crate::db::extract_document_source_ids(&document).map_err(|error| AppError::bad_request(error.to_string()))?;
         return Ok(document);
     }
@@ -869,6 +877,15 @@ mod tests {
             assert!(rewritten["compositions"][id]["content"]["sources"].get("old-image").is_none());
         }
         assert!(rewrite_document_source_ids(document, &BTreeMap::new()).is_err());
+    }
+
+    #[test]
+    fn project_media_archive_mapping_rewrites_unused_records_and_their_descriptors() {
+        let content=crate::domain::composition::Composition::new(crate::domain::composition::CanvasSpec::default());
+        let document=json!({"schemaVersion":1,"root":"root","compositions":{"root":{"content":content,"instances":[]}},"projectMedia":{"old":{"source":{"id":"old","kind":"image","durationTicks":0,"width":16,"height":16,"hasAudio":false},"name":"Slot","placeholder":true}}});
+        let mapped=rewrite_document_source_ids(document,&BTreeMap::from([("old".into(),"new".into())])).unwrap();
+        assert!(mapped["projectMedia"].get("old").is_none());assert_eq!(mapped["projectMedia"]["new"]["source"]["id"],"new");assert_eq!(mapped["projectMedia"]["new"]["placeholder"],true);
+        assert_eq!(crate::db::extract_document_source_ids(&mapped).unwrap(),vec!["new"]);
     }
 
     #[test]

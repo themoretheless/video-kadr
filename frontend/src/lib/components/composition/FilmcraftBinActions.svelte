@@ -1,11 +1,14 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { deleteFilmcraftProjectItems, duplicateFilmcraftProjectItems, editFilmcraftBins, type FilmcraftBinEditCommand, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
-  let { document, sequenceId, clipId, token, items, bins, selected = $bindable<string[]>([]), clipSelection, disabled = false, onedit }: {
+  let { document, sequenceId, clipId, token, items, bins, selected = $bindable<string[]>([]), clipSelection, revealRequest = null, disabled = false, onedit }: {
     document: string; sequenceId: string; clipId: string; token: string | null
-    items: NonNullable<FilmcraftImportResult['projectItems']>; bins: NonNullable<FilmcraftImportResult['projectBins']>; selected?: string[]; clipSelection?: string[]; disabled?: boolean
+    items: NonNullable<FilmcraftImportResult['projectItems']>; bins: NonNullable<FilmcraftImportResult['projectBins']>; selected?: string[]; clipSelection?: string[]; revealRequest?: { itemId: string; serial: number } | null; disabled?: boolean
     onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean | void
   } = $props()
+  let details: HTMLDetailsElement | undefined
+  let itemSelect: HTMLSelectElement | undefined
+  $effect(() => { const request = revealRequest; if (!request) return; untrack(() => { if (items.some(item => item.id === request.itemId) && details && itemSelect) { details.open = true; itemSelect.focus(); [...itemSelect.options].find(option => option.value === request.itemId)?.scrollIntoView?.({ block: 'nearest' }) } }) })
   let target = $state('')
   let automatic = $state(true)
   let name = $state('')
@@ -69,9 +72,9 @@
   }
 
 </script>
-<details>
+<details bind:this={details}>
   <summary>Элементы и папки проекта</summary>
-  <label>Элементы <select aria-label="Элементы для организации Filmcraft" multiple value={selected} disabled={disabled || busy || !token} onchange={(event) => { selected = [...event.currentTarget.options].filter(option => option.selected).map(option => option.value) }}>
+  <label>Элементы <select bind:this={itemSelect} aria-label="Элементы для организации Filmcraft" multiple value={selected} disabled={disabled || busy || !token} onchange={(event) => { selected = [...event.currentTarget.options].filter(option => option.selected).map(option => option.value) }}>
     {#each items as item (item.id)}<option value={item.id}>{item.name || item.id}{location(item.id) ? ` — ${location(item.id)}` : ''}</option>{/each}
   </select></label>
   <label>Папка назначения <select aria-label="Папка назначения Filmcraft" value={target} disabled={disabled || busy || !token} onchange={(event) => { target = event.currentTarget.value }}><option value="">Корень проекта</option>{#each bins.filter(bin => bin.parentId !== null) as bin (bin.id)}<option value={bin.id}>{'—'.repeat(Math.min(bin.depth, 10))} {bin.name || bin.id}</option>{/each}</select></label>

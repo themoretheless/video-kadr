@@ -80,7 +80,7 @@ fn frame_tick(rate: FrameRate, frame: i64) -> Result<i64> {
         .context("subclip frame clock overflow")?;
     Ok(ticks.div_euclid(r.num as i128) as i64)
 }
-fn item_rate(index: &ProjectIndex<'_>, item: u64) -> Result<FrameRate> {
+pub(super) fn item_rate(index: &ProjectIndex<'_>, item: u64) -> Result<FrameRate> {
     if let Some(root) = index.resolve_media(item) {
         return super::filmcraft_source_inspect::frame_rate(index, root.item_id);
     }
@@ -226,7 +226,7 @@ fn edit_item(index: &ProjectIndex<'_>, state: &State, p: &Value) -> Result<u64> 
         })
         .context("select a subclip")
 }
-fn parent_path(bin: &Value, path: &str, item: u64) -> Option<String> {
+pub(super) fn parent_path(bin: &Value, path: &str, item: u64) -> Option<String> {
     for (i, child) in bin["children"].as_array()?.iter().enumerate() {
         if child["Item"].as_u64() == Some(item) {
             return Some(path.into());

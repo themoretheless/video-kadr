@@ -112,7 +112,7 @@ impl Alloc {
         Ok(next)
     }
 }
-fn duration(q: &Value) -> Result<i64> {
+pub(super) fn duration(q: &Value) -> Result<i64> {
     let mut kind_end = Vec::new();
     for kind in ["video_tracks", "audio_tracks", "caption_tracks"] {
         for track in q[kind].as_array().into_iter().flatten() {
@@ -134,7 +134,7 @@ fn duration(q: &Value) -> Result<i64> {
     }
     Ok(kind_end.into_iter().max().unwrap_or(0))
 }
-fn item_rate(item: &Value) -> Result<FrameRate> {
+pub(super) fn item_rate(item: &Value) -> Result<FrameRate> {
     if let Some(m) = item.pointer("/kind/Media") {
         rate(if !m["interpret"]["frame_rate"].is_null() {
             &m["interpret"]["frame_rate"]

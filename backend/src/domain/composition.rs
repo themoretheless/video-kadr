@@ -226,7 +226,7 @@ pub struct CompositionSource {
 }
 
 impl CompositionSource {
-    fn validate(&self) -> Result<(), CompositionError> {
+    pub(crate) fn validate(&self) -> Result<(), CompositionError> {
         let valid = match self.kind {
             SourceKind::Video => self.duration_ticks > 0 && self.width > 0 && self.height > 0,
             SourceKind::Audio => self.duration_ticks > 0 && self.has_audio,

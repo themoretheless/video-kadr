@@ -120,3 +120,14 @@ it.each(['program', 'source'] as const)('marks the current %s clock without re-e
   button('Поставить In').click(); await tick()
   expect(editFilmcraftMarks).toHaveBeenCalledWith('owner', 'markers.markIn', expect.objectContaining({ time: target === 'source' ? '333' : props.timeTicks }), expect.any(AbortSignal))
 })
+
+it.each([['Найти кадр в исходнике', 'sequence.matchFrame', 'openSource'], ['Показать исходник клипа в проекте', 'clip.revealInProject', 'revealInProject'], ['Показать секвенцию в проекте', 'sequence.revealInProject', 'revealInProject']] as const)('runs %s as a fenced context-only operation', async (label, command, type) => {
+  const source = props.items[0].id
+  const context = { activeSequence: props.sequenceId, sourceItem: type === 'openSource' ? source : null, sourcePlayhead: type === 'openSource' ? '9007199254740997' : '0', playhead: props.timeTicks, playheadFrames: props.timeFrames, selection: [], projectSelection: type === 'revealInProject' ? [source] : [] }
+  const result: FilmcraftNavigationResult = { context, events: [{ type, item: source }] }
+  vi.mocked(navigateFilmcraft).mockResolvedValue(result); const oncontext = vi.fn(() => true), onedit = vi.fn()
+  component = mount(Controls, { target: document.body, props: { ...props, oncontext, onedit } }); await tick(); button(label).click(); await tick(); await tick()
+  expect(navigateFilmcraft).toHaveBeenCalledWith('owner', command, expect.objectContaining({ document: props.document, context: expect.objectContaining({ selection: [], projectSelection: [], playhead: props.timeTicks }) }), expect.any(AbortSignal))
+  expect(oncontext).toHaveBeenCalledExactlyOnceWith(result, expect.objectContaining({ sourceItem: null, sourcePlayhead: '0', timelineSelection: [], projectSelection: [] })); expect(onedit).not.toHaveBeenCalled()
+  if (type === 'openSource') expect(document.querySelector<HTMLSelectElement>('[aria-label="Монитор точек Filmcraft"]')!.value).toBe('source')
+})

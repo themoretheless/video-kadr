@@ -67,6 +67,7 @@
   import NestedMarkers from './NestedMarkers.svelte'
   import NestedTrackControls from './NestedTrackControls.svelte'
   import NestedMediaInsert from './NestedMediaInsert.svelte'
+  import NestedProjectMedia from './NestedProjectMedia.svelte'
   import NestedTimelineControls from './NestedTimelineControls.svelte'
   import NestedCompositionPreview from './NestedCompositionPreview.svelte'
   import NestedFrameExport from './NestedFrameExport.svelte'
@@ -551,6 +552,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
       <NestedMarkers disabled={compositionState.save.busy} />
       <NestedTrackControls disabled={compositionState.save.busy} />
       <NestedMediaInsert disabled={compositionState.save.busy} />
+      <NestedProjectMedia disabled={compositionState.save.busy} />
       <NestedClipTransfer disabled={compositionState.save.busy} />
       <NestedConcatTitleInsert disabled={compositionState.save.busy} />
       <NestedConcatTitleInspector disabled={compositionState.save.busy} />

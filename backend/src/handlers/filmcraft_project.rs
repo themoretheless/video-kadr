@@ -46,7 +46,7 @@ fn manifest(document:&SourceProjectDocument)->AppResult<Value> {
         json!({"tracks":tracks,"marks":crate::domain::filmcraft_marks::sequence_marks(sequence),"transitions":transitions,"clips":clips,"id":id.to_string(),"name":index.item(id).and_then(|v|v.get("name")),"settings":sequence["settings"],"sampleRate":sequence["settings"]["sample_rate"],"durationSeconds":end as f64/254_016_000_000.,"durationFrames":frames.to_string()})
     }).collect();
     let project_items:Vec<_>=index.items().map(|(id,item)|json!({
-        "id":id.to_string(),"name":item["name"],"label":item["label"],"sourceMarks":crate::domain::filmcraft_marks::source_marks(item),"subclip":crate::domain::filmcraft_subclip::describe(item),
+        "id":id.to_string(),"name":item["name"],"label":item["label"],"sourceMarks":crate::domain::filmcraft_marks::source_marks(item),"subclip":crate::domain::filmcraft_subclip::describe(item),"mediaInterpretation":crate::domain::filmcraft_media_modify::describe(item),
         "kind":item["kind"].as_object().and_then(|kind|kind.keys().next())
     })).collect();
     let media:Vec<_>=document.project()["items"].as_object().into_iter().flat_map(|items|items.iter()).filter_map(|(id,item)| {

@@ -59,12 +59,14 @@
     if (!token || disabled || busy || !oncontext || command.startsWith('source.') && !validStill || command === 'source.setPlayhead' && (!item || !validSeek)) return
     const captured = context(); const current = new AbortController()
     const expected = { document, sequenceId, clipId, token, timeFrames, timeTicks: timeTicks || null, sourceItem: item || null, sourcePlayhead, timelineSelection: [...selection], projectSelection: [...projectSelection] }
-    const params = command === 'source.open' ? (item ? { item } : {}) : command === 'source.setPlayhead' ? (seekUnit === 'ticks' ? { time: seekPosition } : seekUnit === 'frames' ? { frame: seekPosition } : { seconds: Number(seekPosition) }) : { target }
+    const params = command === 'source.open' ? (item ? { item } : {}) : command === 'source.setPlayhead' ? (seekUnit === 'ticks' ? { time: seekPosition } : seekUnit === 'frames' ? { frame: seekPosition } : { seconds: Number(seekPosition) }) : ['sequence.matchFrame', 'clip.revealInProject', 'sequence.revealInProject'].includes(command) ? {} : { target }
     controller = current; busy = true; busyLabel = 'Обновляется позиция…'; error = ''; status = ''
     try {
       const result = await navigateFilmcraft(token, command, { document, ...params, context: { activeSequence: sequenceId || null, sourceItem: item || null, sourcePlayhead, ...(timeTicks ? { playhead: timeTicks } : { playheadFrames: timeFrames }), selection: [...selection], projectSelection: [...projectSelection], linkedSelection, selectionFollowsPlayhead: follows, stillImageDuration: Number(stillDuration), stillImageUnit: stillUnit } }, current.signal)
       if (!alive || current.signal.aborted || captured !== context()) return
-      status = oncontext(result, expected) ? 'Позиция обновлена' : 'Результат не применён: контекст изменился'
+      const accepted = oncontext(result, expected)
+      if (accepted && result.events.some(event => event.type === 'openSource')) { target = 'source'; if (command === 'sequence.matchFrame') useMonitorPosition = true }
+      status = accepted ? result.events.some(event => event.type === 'revealInProject') ? 'Элемент показан в проекте' : 'Позиция обновлена' : 'Результат не применён: контекст изменился'
     } catch (failure) { if (alive && !current.signal.aborted && captured === context()) error = failure instanceof Error ? failure.message : String(failure) }
     finally { if (controller === current) { controller = undefined; busy = false } }
   }
@@ -87,7 +89,7 @@
 <details>
   <summary>Точки In/Out</summary>
   <label>Монитор <select aria-label="Монитор точек Filmcraft" value={target} disabled={disabled || busy} onchange={event => { target = event.currentTarget.value as typeof target }}><option value="program">Таймлайн</option><option value="source">Исходник</option></select></label>
-  {#if target === 'source'}<label>Элемент <select aria-label="Исходник точек Filmcraft" value={item} disabled={disabled || busy} onchange={event => { item = event.currentTarget.value }}><option value="">Выберите элемент</option>{#each items as source (source.id)}<option value={source.id}>{source.name || source.id}</option>{/each}</select></label>{/if}
+  {#if target === 'source'}<label>Элемент <select aria-label="Исходник точек Filmcraft" value={item} disabled={disabled || busy} onchange={event => { item = event.currentTarget.value }}><option value="">Выберите элемент</option>{#if item && !items.some(source => source.id === item)}<option value={item}>Недоступный исходник ({item})</option>{/if}{#each items as source (source.id)}<option value={source.id}>{source.name || source.id}</option>{/each}</select></label>{/if}
   {#if shown}<dl aria-label="Текущие точки Filmcraft"><dt>In</dt><dd>{shown.in ?? '—'}</dd><dt>Out</dt><dd>{shown.out ?? '—'}</dd><dt>Видео In / Out</dt><dd>{shown.split.videoIn ?? '—'} / {shown.split.videoOut ?? '—'}</dd><dt>Аудио In / Out</dt><dd>{shown.split.audioIn ?? '—'} / {shown.split.audioOut ?? '—'}</dd></dl>{/if}
   {#if oncontext}<label><input type="checkbox" aria-label="По позиции монитора Filmcraft" bind:checked={useMonitorPosition} disabled={disabled || busy} />Ставить точки по текущей позиции монитора</label>{/if}
   <label>Позиция <input aria-label="Позиция точки Filmcraft" bind:value={position} disabled={disabled || busy} /></label>
@@ -101,6 +103,9 @@
     <button type="button" disabled={!ready || !validMark} onclick={() => run(command as FilmcraftMarksCommand)}>{label}</button>
   {/each}
   {#if oncontext}
+    <button type="button" disabled={disabled || busy || !token || !sequenceId} onclick={() => navigate('sequence.matchFrame')}>Найти кадр в исходнике</button>
+    <button type="button" disabled={disabled || busy || !token || !sequenceId} onclick={() => navigate('clip.revealInProject')}>Показать исходник клипа в проекте</button>
+    <button type="button" disabled={disabled || busy || !token || !sequenceId} onclick={() => navigate('sequence.revealInProject')}>Показать секвенцию в проекте</button>
     <span aria-label="Позиция исходника Filmcraft">Исходник: {sourcePlayhead} тиков</span>
     {#if target === 'source'}
       <button type="button" disabled={disabled || busy || !token || !item && !projectSelection.length || !validStill} onclick={() => navigate('source.open')}>Открыть исходник</button>
