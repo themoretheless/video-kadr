@@ -122,16 +122,30 @@ pub struct RegionTransfer{pub snapshot:crate::domain::video_region::Attachment,p
 pub struct TransferredStore{pub cache_id:String,pub regions:Vec<crate::domain::video_region::Attachment>}
 /// Atomically retain verified temporal region ownership alongside the mask store.
 pub fn transfer_with_regions<'a>(state:&'a AppState,actor:&'a str,from:ProjectSource<'a>,to:ProjectSource<'a>,runtime_hash:&'a str,model_hash:&'a str,regions:&'a [RegionTransfer],cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<TransferredStore>>+Send+'a>>{
-    // Decoding/SQL futures are large in debug builds. Keep this I/O operation
-    // owned on the heap so callers do not accumulate its state on worker stacks.
-    Box::pin(async move {
+ Box::pin(async move {
+  let target=state.db.get_composition_project_for(to.project,actor).await?.ok_or_else(||anyhow::anyhow!("target project unavailable"))?;
+  ensure!(target.revision==to.revision,"stale target region revision");
+  let prepared=prepare_transfer(state,actor,from,to.source_id,&target.document,runtime_hash,model_hash,regions,cancel).await?;
+  let mut transaction=state.db.pool().begin_with("BEGIN IMMEDIATE").await?;
+  let cache_id=prepared.register(&mut transaction,to.project,to.revision).await?;
+  transaction.commit().await?;
+  Ok(TransferredStore{cache_id,regions:prepared.planned.into_iter().map(|(_,_,snapshot)|snapshot).collect()})
+ })
+}
+/// Opaque verified input for registration inside a caller-owned save transaction.
+/// No authority is granted until `register` rechecks both saved endpoints.
+pub(crate) struct PreparedTransfer {
+ actor:String,source_project:String,source_id:String,source_revision:u64,target_source:String,
+ physical:String,target_document_hash:String,cache:RunCache,planned:Vec<(String,String,crate::domain::video_region::Attachment)>,cancel:CancellationToken,
+}
+pub(crate) fn prepare_transfer<'a>(state:&'a AppState,actor:&'a str,from:ProjectSource<'a>,target_source:&'a str,target_document:&'a serde_json::Value,runtime_hash:&'a str,model_hash:&'a str,regions:&'a [RegionTransfer],cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<PreparedTransfer>>+Send+'a>>{
+ Box::pin(async move {
     crate::services::concat_video_selection::model_from_hash(model_hash)?;
     let physical=physical_id(state,actor,from.project,from.source_id,from.revision).await?;
-    ensure!(physical_id(state,actor,to.project,to.source_id,to.revision).await?==physical,"video cache transfer requires the same registered physical source");
+    ensure!(super::concat_cutout_access::library_id(target_document,target_source)?==physical,"video cache transfer requires the same registered physical source");
     let cache=restore_for_model(state,actor,from.project,from.source_id,from.revision,runtime_hash,model_hash,cancel).await?.ok_or_else(||anyhow::anyhow!("source project has no verified video cache"))?;
     ensure!(!cache.is_empty(),"cannot transfer an empty video cache");
     ensure!(regions.len()<=1024,"too many transferred video regions");
-    let target=state.db.get_composition_project_for(to.project,actor).await?.ok_or_else(||anyhow::anyhow!("target project unavailable"))?;ensure!(target.revision==to.revision,"stale target region revision");
     let mut leases=std::collections::BTreeMap::new();let mut total=0u64;let mut planned=vec![];
     for region in regions{
         ensure!(region.snapshot.source_id==from.source_id&&region.snapshot.source_hash==cache.video_hash(),"transferred region belongs to another original");
@@ -142,32 +156,48 @@ pub fn transfer_with_regions<'a>(state:&'a AppState,actor:&'a str,from:ProjectSo
         }
         let library=leases[&key].library_source_id.clone();
         let mask_id=crate::domain::composition::SourceId::parse(&region.target_mask_source_id)?;
-        if super::concat_video_region_cache::declares_source(&target.document,mask_id.as_str()){ensure!(super::concat_cutout_access::library_id(&target.document,mask_id.as_str())?==library,"target region ID is bound to another library file");}
-        let mut snapshot=region.snapshot.clone();snapshot.source_id=to.source_id.into();snapshot.mask_source_id=mask_id.as_str().into();snapshot.validate()?;
+        if super::concat_video_region_cache::declares_source(target_document,mask_id.as_str()){ensure!(super::concat_cutout_access::library_id(target_document,mask_id.as_str())?==library,"target region ID is bound to another library file");}
+        let mut snapshot=region.snapshot.clone();snapshot.source_id=target_source.into();snapshot.mask_source_id=mask_id.as_str().into();snapshot.validate()?;
         planned.push((region.snapshot.mask_source_id.clone(),library,snapshot));
     }
+    cache.published_receipt()?;
+    let path=source(state,actor,from.project,from.source_id,from.revision).await?;
+    ensure!(crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?.1==cache.video_hash()&&!cancel.is_cancelled(),"video cache transfer source/access changed");
+    Ok(PreparedTransfer{actor:actor.into(),source_project:from.project.into(),source_id:from.source_id.into(),source_revision:from.revision,target_source:target_source.into(),physical,target_document_hash:document_identity(target_document)?,cache,planned,cancel:cancel.clone()})
+    })
+}
+impl PreparedTransfer {
+ pub(crate) async fn register(&self,connection:&mut sqlx::SqliteConnection,target_project:&str,target_revision:u64)->Result<String>{
+    let stored:String=sqlx::query_scalar("SELECT document_json FROM composition_projects WHERE id=? AND revision=?").bind(target_project).bind(i64::try_from(target_revision)?).fetch_optional(&mut *connection).await?.ok_or_else(||anyhow::anyhow!("target project changed before video registration"))?;
+    ensure!(document_identity(&serde_json::from_str(&stored)?)?==self.target_document_hash,"target video document differs from verified transfer plan");
+    let actor=self.actor.as_str();let physical=&self.physical;let cache=&self.cache;let planned=&self.planned;let cancel=&self.cancel;
+    let from=ProjectSource{project:&self.source_project,source_id:&self.source_id,revision:self.source_revision};
+    let to=ProjectSource{project:target_project,source_id:&self.target_source,revision:target_revision};
+    let runtime_hash=cache.runtime_hash();let model_hash=cache.model_hash();
     let receipt=cache.published_receipt()?;
     let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("invalid video cache generation"))?;
-    let path=source(state,actor,from.project,from.source_id,from.revision).await?;
-    ensure!(source(state,actor,to.project,to.source_id,to.revision).await?==path&&crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?.1==cache.video_hash()&&!cancel.is_cancelled(),"video cache transfer source/access changed");
-    let mut transaction=state.db.pool().begin_with("BEGIN IMMEDIATE").await?;
+    ensure!(!cancel.is_cancelled(),"video cache transfer cancelled");
     for endpoint in [from,to]{
-        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?)").bind(endpoint.project).bind(i64::try_from(endpoint.revision)?).bind(actor).bind(&physical).fetch_one(&mut *transaction).await?;
+        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?)").bind(endpoint.project).bind(i64::try_from(endpoint.revision)?).bind(actor).bind(physical).fetch_one(&mut *connection).await?;
         ensure!(allowed,"video transfer project/source authority changed");
     }
-    let source_row:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid DESC LIMIT 1").bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *transaction).await?;
+    let source_row:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid DESC LIMIT 1").bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *connection).await?;
     let source_row=source_row.ok_or_else(||anyhow::anyhow!("verified source cache registration disappeared"))?;
-    let existing:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid LIMIT 1").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *transaction).await?;
+    let existing:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid LIMIT 1").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *connection).await?;
     let id=if let Some(id)=existing{id}else{
         let id=uuid::Uuid::new_v4().to_string();
-        let changed=sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,?,?,video_hash,model_hash,runtime_hash,manifest_hash,generation FROM concat_video_project_caches WHERE id=?").bind(&id).bind(to.project).bind(to.source_id).bind(&source_row).execute(&mut *transaction).await?.rows_affected();ensure!(changed==1,"source cache disappeared during transfer");id
+        let changed=sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,?,?,video_hash,model_hash,runtime_hash,manifest_hash,generation FROM concat_video_project_caches WHERE id=?").bind(&id).bind(to.project).bind(to.source_id).bind(&source_row).execute(&mut *connection).await?.rows_affected();ensure!(changed==1,"source cache disappeared during transfer");id
     };
-    for(source_mask,library,snapshot)in &planned{
-        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_project_sources WHERE project_id=? AND source_id=?) OR EXISTS(SELECT 1 FROM person_video_project_resources WHERE project_id=? AND role='sam-video-regions' AND source_id=? AND file_hash=?) OR EXISTS(SELECT 1 FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND library_source_id=? AND file_hash=?)").bind(from.project).bind(library).bind(from.project).bind(library).bind(&snapshot.mask_file_hash).bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(source_mask).bind(library).bind(&snapshot.mask_file_hash).fetch_one(&mut *transaction).await?;ensure!(allowed,"source region authority changed");
-        let existing:Option<String>=sqlx::query_scalar("SELECT library_source_id FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND file_hash=?").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(&snapshot.mask_source_id).bind(&snapshot.mask_file_hash).fetch_optional(&mut *transaction).await?;ensure!(existing.as_ref().is_none_or(|old|old==library),"target region reservation changed physical file");
-        sqlx::query("INSERT INTO concat_video_project_region_refs(project_id,source_id,video_hash,mask_source_id,library_source_id,file_hash) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(&snapshot.mask_source_id).bind(library).bind(&snapshot.mask_file_hash).execute(&mut *transaction).await?;
+    for(source_mask,library,snapshot)in planned{
+        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_project_sources WHERE project_id=? AND source_id=?) OR EXISTS(SELECT 1 FROM person_video_project_resources WHERE project_id=? AND role='sam-video-regions' AND source_id=? AND file_hash=?) OR EXISTS(SELECT 1 FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND library_source_id=? AND file_hash=?)").bind(from.project).bind(library).bind(from.project).bind(library).bind(&snapshot.mask_file_hash).bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(source_mask).bind(library).bind(&snapshot.mask_file_hash).fetch_one(&mut *connection).await?;ensure!(allowed,"source region authority changed");
+        let existing:Option<String>=sqlx::query_scalar("SELECT library_source_id FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND file_hash=?").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(&snapshot.mask_source_id).bind(&snapshot.mask_file_hash).fetch_optional(&mut *connection).await?;ensure!(existing.as_ref().is_none_or(|old|old==library),"target region reservation changed physical file");
+        sqlx::query("INSERT INTO concat_video_project_region_refs(project_id,source_id,video_hash,mask_source_id,library_source_id,file_hash) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(&snapshot.mask_source_id).bind(library).bind(&snapshot.mask_file_hash).execute(&mut *connection).await?;
     }
-    let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT project_id,source_id,video_hash,model_hash,runtime_hash FROM concat_video_project_caches WHERE id=? ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash").bind(&id).execute(&mut *transaction).await?.rows_affected();
-    ensure!(changed==1&&!cancel.is_cancelled(),"video cache transfer cancelled");transaction.commit().await?;Ok(TransferredStore{cache_id:id,regions:planned.into_iter().map(|(_,_,snapshot)|snapshot).collect()})
-    })
+    let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT project_id,source_id,video_hash,model_hash,runtime_hash FROM concat_video_project_caches WHERE id=? ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash").bind(&id).execute(&mut *connection).await?.rows_affected();
+    ensure!(changed==1&&!cancel.is_cancelled(),"video cache transfer cancelled");Ok(id)
+ }
+}
+
+fn document_identity(document:&serde_json::Value)->Result<String>{
+ use sha2::{Digest,Sha256};Ok(format!("{:x}",Sha256::digest(serde_json::to_vec(document)?)))
 }

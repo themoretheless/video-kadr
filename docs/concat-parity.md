@@ -13138,3 +13138,19 @@ the returned native project with one Undo/Redo step. The generated JSON remains
 outside the repository. Video failure/account-change tests and existing still,
 media-binding, and API tests pass. Atomic final-save ownership adoption and
 public-route temporal-region qualification remain open.
+
+### Transaction boundary for final-save adoption (infrastructure)
+
+Verified video transfer now has an opaque preparation stage independent of an
+already-saved target project. It verifies the source store and temporal region
+files against the proposed target document. Registration accepts the caller's
+SQLite connection, so a future save can insert/update its document, source
+inventory and memberships, then register every prepared store in that same
+transaction. Registration does not commit. It rechecks both project authorities,
+source registrations and region reservations, and requires the committed target
+document to match the verified plan's document identity. Existing standalone
+transfer uses these same stages inside its own immediate transaction.
+
+This is the transaction boundary needed by final-save adoption, not a claim that
+the create/update project ports already invoke adoption. Those ports and removal
+of imported origin references on successful save remain open.
