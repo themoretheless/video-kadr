@@ -13198,3 +13198,25 @@ and Selfie checks that a forged owned manifest registration refuses even when
 the external source remains valid. Provider loading and ownership selection use
 boxed futures; the SAM scenario passes on the normal debug stack. Archive/direct
 DB adoption and the wider imported-history lifecycle/GC remain unqualified.
+
+### Portable video-store transport (archive infrastructure)
+
+A standalone streaming video-store transport now flattens verified incremental
+cache generations into one path-free manifest and sequential mask planes. Its
+identity includes encoded source, model, runtime and the complete cache identity.
+The reader requires an expected identity, checks lengths/frame budgets and exact
+EOF, stages privately, and restores every run through the existing verifier.
+Imported staging is removed on error/drop; explicit publication can retain a
+verified standalone generation after staging is dropped. The codec itself grants
+no project access or registrations.
+
+Qualification includes a 65-generation round trip and durable republication,
+independent nonblank mask planes compared byte-for-byte, deterministic re-export,
+source mutation on export, empty-store refusal, truncated/trailing/corrupt data,
+wrong source/cache identities, cancellation and byte-budget refusals. Tests use
+small generated files; no large fixtures are checked in.
+
+The `.veproj` HTTP archive currently still transports document and media records
+only. Attaching these cache payloads to the archive manifest, preserving aggregate
+archive limits, and registering imported stores atomically remain open. This
+transport is an implementation prerequisite, not completed archive parity.

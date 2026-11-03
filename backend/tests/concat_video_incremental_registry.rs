@@ -44,6 +44,7 @@ async fn run(logical:bool){
  for((generation,_),bytes)in generations.iter().zip(&manifests){assert_eq!(std::fs::read(published_root.join(generation).join("manifest.json")).unwrap(),*bytes);}
  let mut restored=registry::restore_for_model(&reopened,"owner",&project.id,slot,project.revision,&runtime,MODEL,&cancel).await.unwrap().unwrap();assert_eq!(restored.identity().unwrap(),identity);assert!(restored.timeline().unwrap().missing_runs(&[(0.,6.4)]).unwrap().is_empty());assert!(restored.automatic(6400,&cancel).unwrap().is_none());drop(restored);
  let receipt=PublishedCache{directory:latest.clone(),manifest_hash:hash,model_hash:MODEL.into(),video_hash:video,runtime_hash:runtime};
+ if logical{Box::pin(portable_roundtrip(&receipt)).await;}
  // A different saved slot obtains its own registry authority over the exact
  // verified immutable parent chain, without copying mask files.
  let target=state.db.create_space_composition_project("Transferred",&document,&["raw".into()],"owner",&space.id).await.unwrap();
@@ -76,4 +77,17 @@ async fn empty_published_store_does_not_establish_a_transferred_model_choice(){
  let mut composition=video_kadr_backend::domain::composition::Composition::new(Default::default());let descriptor:video_kadr_backend::domain::composition::CompositionSource=serde_json::from_value(serde_json::json!({"id":"raw","kind":"video","durationTicks":1000000,"width":1,"height":1,"hasAudio":false})).unwrap();composition.sources.insert(descriptor.id.clone(),descriptor);let document=serde_json::to_value(composition).unwrap();let space=state.db.create_space("owner","Empty transfer").await.unwrap();
  let source=state.db.create_space_composition_project("Source",&document,&["raw".into()],"owner",&space.id).await.unwrap();let target=state.db.create_space_composition_project("Target",&document,&["raw".into()],"owner",&space.id).await.unwrap();let runtime="b".repeat(64);let mut cache=RunCache::new_for_model(digest(bytes),runtime.clone(),MODEL.into()).unwrap();let cancel=CancellationToken::new();registry::publish(&state,"owner",&source.id,"raw",source.revision,&mut cache,&cancel).await.unwrap();
  assert!(registry::transfer_for_model(&state,"owner",registry::ProjectSource{project:&source.id,source_id:"raw",revision:source.revision},registry::ProjectSource{project:&target.id,source_id:"raw",revision:target.revision},&runtime,MODEL,&cancel).await.is_err());assert!(registry::choice(&state,"owner",&target.id,"raw",target.revision,&cancel).await.unwrap().is_none());let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM concat_video_project_caches WHERE project_id=?").bind(&target.id).fetch_one(&pool).await.unwrap();assert_eq!(count,0);assert_eq!(std::fs::read_dir(state.storage.join("concat-video-caches")).unwrap().count(),1);
+}
+
+async fn portable_roundtrip(receipt:&PublishedCache){
+ use video_kadr_backend::services::concat_video_analysis::portable;
+ let root=tempfile::tempdir().unwrap();let stages=root.path().join("stages");let published=root.path().join("published");std::fs::create_dir(&stages).unwrap();std::fs::create_dir(&published).unwrap();let path=root.path().join("cache.vkmask");let cancel=CancellationToken::new();let budget=16*1024*1024;
+ let mut original=RunCache::restore(receipt,budget,&cancel).await.unwrap();let expected=original.portable_identity().unwrap();
+ original.write_portable(tokio::fs::File::create(&path).await.unwrap(),budget,&cancel).await.unwrap();
+ let bytes=std::fs::read(&path).unwrap();assert!(!String::from_utf8_lossy(&bytes).contains("concat-video-cache-"));
+ let mut imported=portable::restore(tokio::fs::File::open(&path).await.unwrap(),&expected,&stages,budget,&cancel).await.unwrap();assert_eq!(imported.cache().identity().unwrap(),expected.cache_identity);
+ for time in [0,3200,6400]{assert_eq!(imported.cache().automatic(time,&cancel).unwrap().map(|mask|mask.probabilities.clone()),original.automatic(time,&cancel).unwrap().map(|mask|mask.probabilities.clone()));}
+ let durable=imported.publish(&published,budget,&cancel).await.unwrap();drop(imported);assert_eq!(std::fs::read_dir(&stages).unwrap().count(),0);assert_eq!(RunCache::restore(&durable,budget,&cancel).await.unwrap().identity().unwrap(),expected.cache_identity);
+ for mode in 0..7 {let mut altered=bytes.clone();let mut identity=expected.clone();let mut limit=budget;match mode{0=>{altered.pop();},1=>altered.push(0),2=>*altered.last_mut().unwrap()=255,3=>identity.video_hash="0".repeat(64),4=>identity.cache_identity="0".repeat(64),5=>limit=bytes.len() as u64-1,_=>altered[8..16].copy_from_slice(&u64::MAX.to_le_bytes())};assert!(portable::restore(altered.as_slice(),&identity,&stages,limit,&cancel).await.is_err(),"mode {mode}");assert_eq!(std::fs::read_dir(&stages).unwrap().count(),0);}
+ let stopped=CancellationToken::new();stopped.cancel();assert!(portable::restore(bytes.as_slice(),&expected,&stages,budget,&stopped).await.is_err());assert!(original.write_portable(tokio::io::sink(),bytes.len()as u64-1,&cancel).await.is_err());
 }

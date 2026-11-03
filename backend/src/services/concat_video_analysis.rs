@@ -1,4 +1,5 @@
 //! One owned Concat video analysis run. Caller owns source ACL and Analysis admission.
+pub mod portable;
 use std::{path::{Path, PathBuf}, time::Duration};
 use anyhow::{ensure, Result};
 use tokio_util::sync::CancellationToken;
