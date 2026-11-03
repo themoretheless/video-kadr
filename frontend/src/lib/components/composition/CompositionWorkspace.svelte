@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NativeTemplateDownload from './NativeTemplateDownload.svelte'
   import NestedConcatTreatmentInsert from "./NestedConcatTreatmentInsert.svelte"
   import NestedConcatTreatmentInspector from "./NestedConcatTreatmentInspector.svelte"
   import NestedConcatShapeInsert from "./NestedConcatShapeInsert.svelte"
@@ -458,6 +459,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
     </select>
     {#if activeSavedProjectId}
       <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={downloadProjectArchive}>Экспорт .veproj</button>
+      {#if nestedComposition.document}<NativeTemplateDownload projectId={activeSavedProjectId} disabled={archiveBusy||!authState.token}/>{/if}
       <button class="btn ghost sm danger" disabled={Boolean(nestedComposition.document) || compositionState.save.busy || !authState.token} onclick={() => void deleteCompositionProject(compositionState.projectId!)}>Удалить проект</button>
     {/if}
     <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={() => archivePicker?.click()}>Импорт .veproj</button>

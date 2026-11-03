@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest'
-import {inspectNativeTemplate,type NativeNestedProject} from './api'
+import {inspectNativeTemplate,compositionProjectTemplateUrl,type NativeNestedProject} from './api'
 const source={id:'slot',kind:'image' as const,durationTicks:0,width:16,height:16,hasAudio:false}
 // Metadata-only response validation does not inspect a timeline's rendering model.
 const project={schemaVersion:1,root:'root',compositions:{},projectMedia:{slot:{source,name:'Slot',placeholder:true}}} as NativeNestedProject
@@ -21,3 +21,5 @@ it('does not publish a response observed after cancellation',async()=>{
  const controller=new AbortController();vi.stubGlobal('fetch',vi.fn().mockImplementation(async()=>{controller.abort();return new Response(JSON.stringify(info))}))
  await expect(inspectNativeTemplate(project,'active',controller.signal)).rejects.toThrow('Aborted')
 })
+
+it('uses a streaming download URL with an encoded project identity',()=>{expect(compositionProjectTemplateUrl('project/one')).toBe('/api/composition-projects/project%2Fone/template')})

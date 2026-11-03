@@ -13487,3 +13487,37 @@ truncation and staged cleanup after failure/drop. The first malformed-manifest
 test helper read a key after removing its inventory; its construction order was
 fixed and the full gate rerun. No runtime admission was weakened. Diff checks pass.
 This is a native codec gate, not yet an HTTP export/import or gallery acceptance.
+
+### Saved native template HTTP download
+
+`GET /composition-projects/:id/template` now streams a `.vktemplate` from a saved
+native project. Bearer and session-cookie authorization follow project archive
+navigation. The exporter plans the exact design inventory, checks every resource
+against the saved project's physical index and its current source access, then
+runs the codec in a blocking worker. That worker owns both output cleanup and its
+admission permit even if the HTTP request disappears. Before responding, the
+handler rechecks resource entries/paths/revisions, access, current session and
+saved project revision/document/source index. No placeholder file is opened.
+Dropping or consuming the response deletes its temporary archive.
+
+The native workspace includes a dedicated “Скачать шаблон сохранённой версии”
+control; it navigates directly to the encoded download URL without fetching a
+multi-gigabyte Blob. Its status explicitly identifies the saved version rather
+than implying that unsaved changes have been packed.
+
+Eight backend tests pass: actual HTTP export plus package and template-info
+regressions. A generated PNG is exactly preserved; a missing original slot file
+does not block export. Anonymous/outsider access and missing design files refuse;
+cookie download and both response consumption/drop clean staging; saved document
+is unchanged. Sixteen frontend tests pass across the isolated mounted download
+control, template API and project-media controls; scoped lint passes. An attempted
+full native-workspace mount with generic API fixtures hit an effect-update-depth
+error and is not a passing whole-workspace qualification. The dedicated control
+is tested without substituting those renderer/playback fixtures. Import,
+instantiation, gallery/posters, video-mask packaging and live browser acceptance
+remain open.
+
+Final scoped checks: Svelte typecheck reports zero errors/warnings; production
+build passes (22.95s, existing chunk warnings). Design-token, listener-lifecycle
+and diff checks pass. The full native-workspace mount issue above remains an
+unresolved verification gap rather than a passing browser claim.

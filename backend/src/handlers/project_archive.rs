@@ -9,6 +9,8 @@ use std::time::Duration;
 
 mod video_export;
 mod video_import;
+mod template_export;
+pub use template_export::export as composition_project_template_export_handler;
 
 use axum::body::Body;
 use axum::extract::{multipart::MultipartError, Multipart, Path as AxPath, State};
