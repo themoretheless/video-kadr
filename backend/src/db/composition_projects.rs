@@ -528,7 +528,11 @@ impl Db {
     /// source. Library deletion uses this index to fail closed instead of
     /// silently turning durable projects into missing-media projects.
     pub async fn composition_source_reference_count(&self, source_id: &str) -> Result<i64> {
-        sqlx::query_scalar("SELECT COUNT(*) FROM composition_project_sources WHERE source_id = ?")
+        // Historical temporal reservations remain live ownership after Undo
+        // removes a region from the current bin. Count projects, not rows.
+        sqlx::query_scalar("SELECT COUNT(DISTINCT project_id) FROM (SELECT project_id FROM composition_project_sources WHERE source_id=? UNION SELECT r.project_id FROM concat_video_project_region_refs r JOIN composition_projects p ON p.id=r.project_id WHERE r.library_source_id=? UNION SELECT r.project_id FROM person_video_project_resources r JOIN composition_projects p ON p.id=r.project_id WHERE r.source_id=? AND r.role='sam-video-regions')")
+            .bind(source_id)
+            .bind(source_id)
             .bind(source_id)
             .fetch_one(&self.pool)
             .await
@@ -906,6 +910,21 @@ mod tests {
         assert_eq!(legacy_projects[0].id, legacy.id);
         let composition_projects = db.list_composition_projects().await.unwrap();
         assert_eq!(composition_projects, [composition]);
+    }
+
+    #[tokio::test]
+    async fn temporal_history_counts_owners_without_double_counting_or_stale_legacy_rows(){
+        let (db,_dir)=db().await;
+        let document=serde_json::to_value(crate::domain::composition::Composition::new(Default::default())).unwrap();
+        let first=db.create_owned_composition_project("First",&document,&[],"owner").await.unwrap();
+        let second=db.create_owned_composition_project("Second",&document,&[],"owner").await.unwrap();
+        for project in [&first.id,&second.id]{
+            for hash in ["a","b"]{sqlx::query("INSERT INTO concat_video_project_region_refs(project_id,source_id,video_hash,mask_source_id,library_source_id,file_hash) VALUES(?,?,?,?,?,?)").bind(project).bind("slot").bind("video-hash").bind("mask-slot").bind("mask-file").bind(hash).execute(&db.pool).await.unwrap();}
+        }
+        sqlx::query("INSERT INTO person_video_project_resources(project_id,role,file_hash,source_id) VALUES(?,?,?,?)").bind(&first.id).bind("sam-video-regions").bind("legacy").bind("mask-file").execute(&db.pool).await.unwrap();
+        assert_eq!(db.composition_source_reference_count("mask-file").await.unwrap(),2);
+        db.delete_composition_project(&first.id).await.unwrap();assert_eq!(db.composition_source_reference_count("mask-file").await.unwrap(),1);
+        db.delete_composition_project(&second.id).await.unwrap();assert_eq!(db.composition_source_reference_count("mask-file").await.unwrap(),0);
     }
 
     #[tokio::test]

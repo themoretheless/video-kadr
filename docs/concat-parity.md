@@ -13297,3 +13297,22 @@ whole-project feature parity and the wider history/GC/platform gates remain open
 Additional focused unit gates for this restore change: all 11 archive tests and
 all 8 composition-project DB tests pass. The archive unsupported-version test now
 uses version three because version two is supported.
+
+### Historical temporal files survive bin changes
+
+Library deletion now counts exact temporal-region reservations as saved-project
+ownership, alongside current source references. Both shared imported reservations
+and legacy `sam-video-regions` reservations retain their files while their project
+exists. Multiple snapshots/current references count once per owning project;
+orphan legacy rows do not retain files after project deletion. An additive index
+supports physical-region ownership lookup.
+
+Qualification: all nine composition-project DB unit tests and eleven integration
+tests pass. The cold SAM archive case rebinds the inactive live mask slot to the
+original video, removing the mask file from the saved physical source inventory.
+Library deletion still returns conflict, and the historical requested snapshot
+renders identical pixels through its imported reservation. After deleting the
+last owning project, the count is zero and library deletion succeeds. A separate
+DB case covers two owners, repeated snapshots and a stale legacy reservation.
+This fixes temporal-region retention; complete original-media history ownership
+and global cache/asset garbage collection remain separate unfinished gates.

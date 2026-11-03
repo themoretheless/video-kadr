@@ -210,7 +210,7 @@ pub async fn import_and_preview(
     .unwrap();
     assert_eq!(refs, if regions { 1 } else { 0 });
     let request=Request::builder().method("POST").uri("/api/compositions/nested-preview").header("content-type","application/json").header("authorization",format!("Bearer {}",user.token)).body(Body::from(json!({"project":project,"compositionId":node,"timeUs":time,"renderedOutputs":{},"savedProject":{"projectId":id,"expectedRevision":saved.revision}}).to_string())).unwrap();
-    let response = app.oneshot(request).await.unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
     let status = response.status();
     let pixels = to_bytes(response.into_body(), 8 * 1024 * 1024)
         .await
@@ -222,6 +222,20 @@ pub async fn import_and_preview(
         String::from_utf8_lossy(&pixels)
     );
     assert_eq!(pixels.as_ref(), expected);
+    if regions {
+        Box::pin(history_after_import(
+            &state,
+            &app,
+            &user.token,
+            &saved,
+            &project,
+            node,
+            time,
+            expected,
+        ))
+        .await;
+    }
+
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
 }
 async fn assert_clean(state: &video_kadr_backend::state::AppState, pool: &sqlx::SqlitePool) {
@@ -264,4 +278,135 @@ fn count_files(root: &std::path::Path) -> usize {
             }
         })
         .sum()
+}
+
+async fn history_after_import(
+    state: &video_kadr_backend::state::AppState,
+    app: &axum::Router,
+    token: &str,
+    saved: &video_kadr_backend::db::CompositionProject,
+    snapshot: &Value,
+    node: &str,
+    time: u64,
+    expected: &[u8],
+) {
+    use video_kadr_backend::domain::{
+        composition::SourceId, nested_composition::NestedCompositionProject,
+    };
+    let first = &snapshot["compositions"][node]["content"]["tracks"][0]["clips"][0];
+    let logical = first["concatCutout"]["regionTracks"][0]["snapshot"]["maskSourceId"]
+        .as_str()
+        .unwrap();
+    let original = first["sourceId"].as_str().unwrap();
+    let typed: NestedCompositionProject = serde_json::from_value(snapshot.clone()).unwrap();
+    let physical = typed
+        .library_source_id(&SourceId::parse(logical).unwrap())
+        .as_str()
+        .to_owned();
+    assert_eq!(
+        state
+            .db
+            .composition_source_reference_count(&physical)
+            .await
+            .unwrap(),
+        1
+    );
+    let mut undone = saved.document.clone();
+    for node in undone["compositions"].as_object_mut().unwrap().values_mut() {
+        for track in node["content"]["tracks"].as_array_mut().unwrap() {
+            if let Some(clips) = track.get_mut("clips").and_then(Value::as_array_mut) {
+                for clip in clips {
+                    clip.as_object_mut().unwrap().remove("concatCutout");
+                }
+            }
+        }
+    }
+    // Rebind the inactive bin slot to the original, keeping the historical file
+    // reachable only through its exact imported reservation.
+    let mut replacement = undone["compositions"][node]["content"]["sources"][original].clone();
+    replacement["id"] = json!(logical);
+    undone["compositions"][node]["content"]["sources"][logical] = replacement.clone();
+    let raw = typed
+        .library_source_id(&SourceId::parse(original).unwrap())
+        .as_str()
+        .to_owned();
+    undone["projectMedia"][logical] = json!({"source":replacement,"librarySourceId":raw,"name":"Other live source","placeholder":false});
+    let current: NestedCompositionProject = serde_json::from_value(undone.clone()).unwrap();
+    current.dependency_order().unwrap();
+    let mut ids = std::collections::BTreeSet::new();
+    for document in current.compositions.values() {
+        for source in document.content.sources.keys() {
+            ids.insert(current.library_source_id(source).as_str().to_owned());
+        }
+    }
+    for source in current.project_media.keys() {
+        ids.insert(current.library_source_id(source).as_str().to_owned());
+    }
+    let ids: Vec<_> = ids.into_iter().collect();
+    assert!(!ids.contains(&physical));
+    let current = state
+        .db
+        .update_composition_project_for(
+            &saved.id,
+            "archive-owner",
+            &saved.name,
+            &undone,
+            &ids,
+            saved.revision,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state
+            .db
+            .composition_source_reference_count(&physical)
+            .await
+            .unwrap(),
+        1
+    );
+    let delete = || {
+        Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/library/{physical}"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(
+        app.clone().oneshot(delete()).await.unwrap().status(),
+        StatusCode::CONFLICT
+    );
+    assert!(state.library.get(&physical).await.is_some());
+    let request=Request::builder().method("POST").uri("/api/compositions/nested-preview").header("content-type","application/json").header("authorization",format!("Bearer {token}")).body(Body::from(json!({"project":snapshot,"compositionId":node,"timeUs":time,"renderedOutputs":{},"savedProject":{"projectId":saved.id,"expectedRevision":current.revision}}).to_string())).unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let pixels = to_bytes(response.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&pixels)
+    );
+    assert_eq!(pixels.as_ref(), expected);
+    assert!(state
+        .db
+        .delete_composition_project_for(&saved.id, "archive-owner")
+        .await
+        .unwrap());
+    assert_eq!(
+        state
+            .db
+            .composition_source_reference_count(&physical)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        app.clone().oneshot(delete()).await.unwrap().status(),
+        StatusCode::NO_CONTENT
+    );
+    assert!(state.library.get(&physical).await.is_none());
 }
