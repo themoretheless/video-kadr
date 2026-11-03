@@ -14,7 +14,7 @@ source-application parity.
 | --- | --- | --- |
 | Timeline and media editing | Native timeline ordering/creation/removal, linked split/trim/replacement, clipboard, freeze, compatible joining, Concat-provenance audio reattachment, original/copy selection and AddClipAtFirstFree are covered by the milestones below. | Full source-command matrix; arbitrary render consolidation and admission outside the implemented command envelopes. The stricter synchronized-pair reattachment mode is distinct from Concat provenance-based reattachment. |
 | Project media / placeholders | `backend/src/domain/concat_media_slots.rs`, `project_media_fill.rs`; `backend/tests/concat_media_slots.rs`, `concat_registered_slot.rs`; staged and open-project FillSlot and logical media bindings. | FillSlot reanalysis/rebinding of derived versions and video cutouts; affected transitions, visual dependencies and dormant controls outside the admitted conversion envelope. |
-| Templates | Portable original/copy references, native multi-composition infrastructure and all-slot filling in one Undo exist. | Source template packs and end-to-end template behavior need a separate requirement audit. |
+| Templates | Native `.vktemplate` design bundles, file import, private durable library, ordered slots and all-slot filling in one Undo exist. | Posters, video-mask bundle payloads, source-bundle compatibility and full browser/platform acceptance remain open. |
 | Audio cleanup and narration | Native DSP, learned voice enhancement, Kokoro and Chatterbox narration, voice references, durable jobs/assets and model management exist. See `backend/src/domain/concat_enhance_voice.rs`, `backend/src/services/local_chatterbox.rs`, and `backend/tests/tts_*.rs`, `concat_enhance_*.rs`. | Whole source voice/model/quality/platform parity; implemented engines must not be described as universally equivalent. |
 | Captions and learned vision | Local Whisper jobs/model management, speech alignment, still/video enhancement, Person/Object/Selfie/SAM cutouts and smart temporal regions exist. See `backend/src/services/local_speech.rs`, `local_enhance*.rs`, `concat_video_analysis/` and `backend/tests/logical_video_cutout.rs`, `concat_video_smart.rs`. | Broader codec, source-clock, HDR and segmentation-quality qualification; derived-media FillSlot reanalysis. |
 | Saved mask ownership and archives | Prepared still/video import; atomic cache/region/original ownership; self-contained v2 archives; historical preview/resave; verified legacy current-binding adoption. See the final milestones, `backend/tests/project_archive_video.rs` and `backend/tests/support/video_archive.rs`. | Legacy inactive slots without proven physical mapping remain refused. General retired-asset GC and publication/history lifecycle acceptance remain open. |
@@ -13661,3 +13661,52 @@ Final production build passes in 21.66s with existing chunk warnings. The local
 file-to-project UI path is implemented; durable template library/gallery,
 posters, video-mask cache packaging and live browser-to-server qualification
 remain open alongside the broader WeftCut/Filmcraft/Concat scope.
+
+### Durable private native-template library and selection panel
+
+A separate native-template catalogue now persists verified packages under opaque
+UUID filenames and keeps owner/name/slot metadata, size and digest in SQLite.
+Authenticated owner endpoints install, list, download, delete and instantiate a
+stored package. Names cannot overwrite an existing owner's template; insertion
+checks name and capacity under one immediate transaction (128 records / 16 GiB
+per owner). Failed insertion drops the new immutable package. The metadata owner
+references the authenticated account with cascading row deletion, so reusing a
+deleted username cannot inherit its old catalogue. Orphan package file reclamation
+after account deletion/process crashes remains a GC qualification boundary.
+
+Stored creation snapshots the package with a private hard link, verifies its
+registered digest and reuses the upload-instantiation pipeline without another
+browser upload. An already admitted snapshot can outlive gallery deletion;
+requests made after deletion cannot acquire it. Downloads enforce owner access
+and registered size/digest. Library packages are not project-media files and do
+not get published as ordinary library sources.
+
+The editor's “Библиотека шаблонов” panel loads only when expanded, installs a
+selected package, lists names/canvas/slot counts, exposes download/delete and
+selects a stored design for slot replacement and project creation. Collapsing,
+account/Space/document changes and unmount invalidate pending observations. It
+uses the same final activation guard as file-based creation. These are text
+cards; poster generation and display are still unfinished. Whole-application,
+Space-sharing, crash/GC and live browser acceptance remain open.
+
+
+Qualification: nine backend tests pass across bundle, actual inspect/import/export
+and durable-library HTTP suites. Library checks inject catalogue insertion failure
+and verify package/staging rollback, reject duplicate names, isolate another
+owner for list/download/delete/create, reopen the DB and download identical bytes,
+create a saved project without reupload, refuse package tampering, delete the
+record/file and prevent a replacement account with the same username from reading
+an old catalogue. The first reopen fixture assigned Db instead of Arc<Db>; only
+that fixture conversion changed before the successful gate. Library creation is
+currently qualified with a resource-free design; generated PNG package publication
+and slot replacement remain covered by the shared upload-instantiation tests, not
+claimed as a fresh media-rich library-to-preview run.
+
+Twenty-five frontend tests pass across library/API, file-import/API and complete
+workspace regressions. Mounted cases cover install/delete, selecting a stored
+record, required slot assignment, creation without uploading package bytes,
+collapse cancellation and rejection of a prior account's late list. Svelte
+typecheck reports zero errors/warnings; scoped lint, token/listener and diff checks
+pass. Production build passes in 27.13s with existing chunk warnings. Quota
+exhaustion, in-flight deletion races and crash/orphan reclamation are not qualified
+by the bounded success/rollback cases above. Full application parity stays open.

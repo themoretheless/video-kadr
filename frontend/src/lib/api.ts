@@ -939,6 +939,27 @@ export async function importNativeTemplate(file:File,fills:readonly NativeTempla
  return reply
 }
 
+export interface NativeTemplateLibraryEntry {id:string;name:string;info:NativeTemplateInfo;bytes:number;createdAt:number}
+export function nativeTemplateLibraryUrl(id:string):string{return `/api/template-library/${encodeURIComponent(id)}`}
+export function listNativeTemplateLibrary(token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry[]>{return requestJson('/api/template-library',{headers:bearerHeaders(token),signal})}
+export async function installNativeTemplate(file:File,token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry>{
+ if(file.size>MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES)throw new Error('Шаблон превышает лимит 2 ГиБ')
+ const body=new FormData();body.append('file',file)
+ return requestJson('/api/template-library',{method:'POST',headers:bearerHeaders(token),body,signal})
+}
+export async function removeNativeTemplate(id:string,token:string,signal?:AbortSignal):Promise<void>{
+ const response=await safeFetch(nativeTemplateLibraryUrl(id),{method:'DELETE',headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось удалить шаблон')
+}
+export async function createProjectFromNativeLibrary(id:string,fills:readonly NativeTemplateSlotReference[],token:string,spaceId?:string,signal?:AbortSignal):Promise<NativeTemplateImportResponse>{
+ if(new Set(fills.map(fill=>fill.mediaId)).size!==fills.length||fills.some(fill=>!fill.mediaId||!fill.sourceId))throw new Error('Некорректные замены шаблона')
+ const headers=bearerHeaders(token);if(spaceId)headers['X-Space-Id']=spaceId
+ const reply=await requestJson<NativeTemplateImportResponse>(`${nativeTemplateLibraryUrl(id)}/create?fills=${encodeURIComponent(JSON.stringify(fills))}`,{method:'POST',headers,signal})
+ if(signal?.aborted)throw new DOMException('Aborted','AbortError')
+ const project=reply?.project,document=project?.document
+ if(!project?.id||project.mode!=='composition'||project.schemaVersion!==2||document?.schemaVersion!==1||!document.compositions?.[document.root]||fills.some(fill=>document.projectMedia?.[fill.mediaId]?.librarySourceId!==fill.sourceId)||Object.values(document.projectMedia??{}).some(item=>item.placeholder===true))throw new Error('Native template library returned invalid project')
+ return reply
+}
+
 /** Ask the backend to cancel a running/pending job. Best-effort. */
 export async function cancelJob(jobId: string): Promise<void> {
   try {

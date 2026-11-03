@@ -44,6 +44,7 @@ pub use library::{
 };
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
 pub use project_archive::{
+    native_template_list_handler,native_template_install_handler,native_template_download_handler,native_template_remove_handler,native_template_create_handler,
     composition_project_archive_export_handler, composition_project_archive_import_handler, composition_project_template_export_handler, composition_project_template_import_handler, composition_project_template_inspect_handler,
 };
 pub use proxy::{

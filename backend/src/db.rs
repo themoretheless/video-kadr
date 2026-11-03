@@ -47,6 +47,8 @@ mod publish_oauth;
 mod publish_uploads;
 mod space_brand;
 mod space_templates;
+mod template_library;
+pub use template_library::NativeTemplateEntry;
 mod spaces;
 
 pub use auth::{AuthSession, AuthUser, AUTH_SESSION_TTL_SECS};
@@ -253,6 +255,7 @@ impl Db {
         project_narration::migrate(&pool).await?;
         space_brand::migrate(&pool).await?;
         space_templates::migrate(&pool).await?;
+        template_library::migrate(&pool).await?;
         library_metadata::migrate(&pool).await?;
         output_access::migrate(&pool).await?;
         publish_oauth::migrate(&pool).await?;

@@ -11,26 +11,19 @@ use serde_json::json;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Options {
-    fills: String,
+    pub(super) fills: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Reference {
+pub(super) struct Reference {
     media_id: SourceId,
     source_id: SourceId,
 }
-pub async fn import(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Query(options): Query<Options>,
-    ApiMultipart(multipart): ApiMultipart,
-) -> AppResult<(StatusCode, Json<ProjectArchiveImportResponse>)> {
-    let actor = archive_actor(&state, &headers, false).await?;
-    let space = archive_space_id(&headers)?;
-    if options.fills.len() > 65536 {
+pub(super) fn parse_references(raw: &str) -> AppResult<Vec<Reference>> {
+    if raw.len() > 65536 {
         return Err(AppError::bad_request("Слишком много замен шаблона"));
     }
-    let refs: Vec<Reference> = serde_json::from_str(&options.fills)
+    let refs: Vec<Reference> = serde_json::from_str(&raw)
         .map_err(|_| AppError::bad_request("Некорректные замены шаблона"))?;
     if refs.len() > crate::domain::composition::MAX_SOURCES
         || refs
@@ -44,6 +37,17 @@ pub async fn import(
             "Повторяющиеся или лишние замены шаблона",
         ));
     }
+    Ok(refs)
+}
+pub async fn import(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(options): Query<Options>,
+    ApiMultipart(multipart): ApiMultipart,
+) -> AppResult<(StatusCode, Json<ProjectArchiveImportResponse>)> {
+    let actor = archive_actor(&state, &headers, false).await?;
+    let space = archive_space_id(&headers)?;
+    let refs = parse_references(&options.fills)?;
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
@@ -67,7 +71,7 @@ pub async fn import(
     .map_err(|e| AppError::internal("join template import", e))??;
     Ok((StatusCode::CREATED, Json(result)))
 }
-async fn create(
+pub(super) async fn create(
     state: AppState,
     archive: TemporaryFile,
     actor: String,
