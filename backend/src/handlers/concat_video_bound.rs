@@ -46,7 +46,7 @@ impl BoundMasks {
     let identity=format!("{:x}",Sha256::digest(serde_json::to_vec(&track.snapshot)?));
     if !result.regions.contains_key(&identity){
      let used:u64=result.regions.values().map(|r|r.reader.snapshot().frames*256*256).sum();ensure!(used.checked_add(track.snapshot.frames*256*256).is_some_and(|n|n<=64*1024*1024*1024),"video region provider staging budget exceeded");
-     let lease=super::concat_video_region_cache::load(state,actor,&context.project_id,context.expected_revision,&track.snapshot,cancel).await?;result.regions.insert(identity.clone(),lease);
+     let lease=super::concat_video_region_cache::load(state,actor,&context.project_id,context.expected_revision,&track.snapshot,cancel).await?;ensure!(requested.library_source_id(&SourceId::parse(&track.snapshot.mask_source_id)?).as_str()==lease.library_source_id,"requested region library binding differs from reserved asset");result.regions.insert(identity.clone(),lease);
     }
     tracks.push((track.stroke,identity));
    }
