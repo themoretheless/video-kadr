@@ -928,6 +928,7 @@ pub fn build_router_with_mcp(
             ),
         )
         .route("/template-library",get(handlers::native_template_list_handler).post(handlers::native_template_install_handler).layer(DefaultBodyLimit::max(crate::project_archive::MAX_ARCHIVE_MULTIPART_BYTES)))
+        .route("/template-library/:id/poster",get(handlers::native_template_poster_handler))
         .route("/template-library/:id",get(handlers::native_template_download_handler).delete(handlers::native_template_remove_handler))
         .route("/template-library/:id/create",post(handlers::native_template_create_handler))
         .route(

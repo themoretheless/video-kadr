@@ -1,7 +1,7 @@
 //! Native template packages. Callers must authorize every input file before packing.
 //! This codec never resolves a path supplied by an imported document.
 mod instantiate;
-pub use instantiate::{instantiate,SlotFill};
+pub use instantiate::{instantiate, SlotFill};
 
 use crate::domain::{
     composition::{CompositionTrack, SourceId},
@@ -20,6 +20,7 @@ use std::{
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST: &str = "template.json";
 const MAX_MANIFEST: u64 = crate::project_archive::MAX_ARCHIVE_MANIFEST_BYTES as u64;
+pub const MAX_POSTER_BYTES: usize = 1024 * 1024;
 const MAX_ASSETS: u64 = crate::project_archive::MAX_ARCHIVE_TOTAL_MEDIA_BYTES;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -28,6 +29,8 @@ pub struct Manifest {
     pub name: String,
     pub project: NestedCompositionProject,
     pub assets: Vec<Asset>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<Poster>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -35,6 +38,38 @@ pub struct Asset {
     pub key: SourceId,
     pub byte_length: u64,
     pub sha256: String,
+}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Poster {
+    pub byte_length: u64,
+    pub sha256: String,
+    pub width: u32,
+    pub height: u32,
+}
+fn poster_info(bytes: &[u8]) -> Result<Poster> {
+    use image::ImageDecoder;
+    ensure!(
+        !bytes.is_empty() && bytes.len() <= MAX_POSTER_BYTES,
+        "Template poster exceeds byte limit"
+    );
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(1024);
+    limits.max_image_height = Some(1024);
+    limits.max_alloc = Some(16 * 1024 * 1024);
+    let decoder = image::codecs::png::PngDecoder::with_limits(std::io::Cursor::new(bytes), limits)?;
+    let (width, height) = decoder.dimensions();
+    ensure!(
+        width > 0 && height > 0 && width <= 1024 && height <= 1024,
+        "Invalid template poster dimensions"
+    );
+    image::DynamicImage::from_decoder(decoder)?;
+    Ok(Poster {
+        byte_length: bytes.len() as u64,
+        sha256: format!("{:x}", Sha256::digest(bytes)),
+        width,
+        height,
+    })
 }
 pub struct Input {
     pub source_id: SourceId,
@@ -171,6 +206,28 @@ fn validate(manifest: &Manifest) -> Result<()> {
             .checked_add(asset.byte_length)
             .context("Template asset size overflow")?;
     }
+    if let Some(poster) = &manifest.poster {
+        ensure!(
+            poster.byte_length > 0
+                && poster.byte_length <= MAX_POSTER_BYTES as u64
+                && poster.width > 0
+                && poster.height > 0
+                && poster.width <= 1024
+                && poster.height <= 1024,
+            "Invalid template poster metadata"
+        );
+        ensure!(
+            poster.sha256.len() == 64
+                && poster
+                    .sha256
+                    .bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)),
+            "Invalid template poster digest"
+        );
+        bytes = bytes
+            .checked_add(poster.byte_length)
+            .context("Template size overflow")?;
+    }
     ensure!(
         seen == expected,
         "Template asset inventory differs from design media"
@@ -209,6 +266,16 @@ pub fn write<W: Write + Seek>(
     project: &NestedCompositionProject,
     inputs: &[Input],
 ) -> Result<W> {
+    write_with_poster(writer, name, project, inputs, None)
+}
+pub fn write_with_poster<W: Write + Seek>(
+    writer: W,
+    name: &str,
+    project: &NestedCompositionProject,
+    inputs: &[Input],
+    poster_png: Option<&[u8]>,
+) -> Result<W> {
+    let poster = poster_png.map(poster_info).transpose()?;
     let prepared = plan(project)?;
     let files: BTreeMap<_, _> = inputs
         .iter()
@@ -234,6 +301,7 @@ pub fn write<W: Write + Seek>(
         name: name.into(),
         project: prepared.project,
         assets,
+        poster,
     };
     validate(&manifest)?;
     let encoded = serde_json::to_vec(&manifest)?;
@@ -257,6 +325,10 @@ pub fn write<W: Write + Seek>(
             "Template source changed during packaging"
         );
     }
+    if let Some(bytes) = poster_png {
+        zip.start_file("poster.png", options)?;
+        zip.write_all(bytes)?;
+    }
     Ok(zip.finish()?)
 }
 pub struct StagedAsset {
@@ -264,8 +336,15 @@ pub struct StagedAsset {
     path: PathBuf,
 }
 impl StagedAsset {
-    pub(crate) fn into_archive(mut self,filename:String)->crate::project_archive::StagedArchiveMedia {
-        crate::project_archive::StagedArchiveMedia::from_staged_file(self.key.as_str().into(),filename,std::mem::take(&mut self.path))
+    pub(crate) fn into_archive(
+        mut self,
+        filename: String,
+    ) -> crate::project_archive::StagedArchiveMedia {
+        crate::project_archive::StagedArchiveMedia::from_staged_file(
+            self.key.as_str().into(),
+            filename,
+            std::mem::take(&mut self.path),
+        )
     }
     pub fn path(&self) -> &Path {
         &self.path
@@ -279,6 +358,7 @@ impl Drop for StagedAsset {
 pub struct Parsed {
     pub manifest: Manifest,
     pub assets: Vec<StagedAsset>,
+    pub poster_png: Option<Vec<u8>>,
 }
 /// Stages only allowlisted records under fresh names; never extracts ZIP paths.
 pub fn read<R: Read + Seek>(reader: R, staging: &Path) -> Result<Parsed> {
@@ -301,7 +381,7 @@ pub fn read<R: Read + Seek>(reader: R, staging: &Path) -> Result<Parsed> {
     };
     validate(&manifest)?;
     ensure!(
-        zip.len() == manifest.assets.len() + 1,
+        zip.len() == manifest.assets.len() + 1 + usize::from(manifest.poster.is_some()),
         "Template contains missing or unexpected records"
     );
     let mut assets = Vec::new();
@@ -328,5 +408,31 @@ pub fn read<R: Read + Seek>(reader: R, staging: &Path) -> Result<Parsed> {
         file.flush()?;
         assets.push(staged);
     }
-    Ok(Parsed { manifest, assets })
+    let poster_png = if let Some(expected) = &manifest.poster {
+        let mut entry = zip.by_index(manifest.assets.len() + 1)?;
+        ensure!(
+            entry.name() == "poster.png" && entry.size() == expected.byte_length,
+            "Invalid template poster record"
+        );
+        let mut bytes = Vec::new();
+        (&mut entry)
+            .take(MAX_POSTER_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        let actual = poster_info(&bytes)?;
+        ensure!(
+            actual.byte_length == expected.byte_length
+                && actual.sha256 == expected.sha256
+                && actual.width == expected.width
+                && actual.height == expected.height,
+            "Template poster verification failed"
+        );
+        Some(bytes)
+    } else {
+        None
+    };
+    Ok(Parsed {
+        manifest,
+        assets,
+        poster_png,
+    })
 }

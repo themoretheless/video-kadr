@@ -62,19 +62,22 @@ pub async fn install(
     let result = tokio::spawn(async move {
         let _slot = slot;
         let stage = state.staging_dir();
-        let (upload, info, name) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let parsed = template_bundle::read(std::fs::File::open(upload.path())?, &stage)?;
-            let info = crate::domain::project_template::inspect(&parsed.manifest.project, None)?;
-            let name = parsed.manifest.name.clone();
-            Ok((upload, serde_json::to_value(info)?, name))
-        })
-        .await
-        .map_err(|e| AppError::internal("join library verification", e))?
-        .map_err(|e| AppError::bad_request(e.to_string()))?;
+        let (upload, info, name, poster) =
+            tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let parsed = template_bundle::read(std::fs::File::open(upload.path())?, &stage)?;
+                let info =
+                    crate::domain::project_template::inspect(&parsed.manifest.project, None)?;
+                let name = parsed.manifest.name.clone();
+                Ok((upload, serde_json::to_value(info)?, name, parsed.poster_png))
+            })
+            .await
+            .map_err(|e| AppError::internal("join library verification", e))?
+            .map_err(|e| AppError::bad_request(e.to_string()))?;
         let (bytes, sha256) = fingerprint_file(upload.path())
             .await
             .map_err(export_archive_error)?;
         let entry = NativeTemplateEntry {
+            has_poster: poster.is_some(),
             id: Uuid::new_v4().to_string(),
             name,
             info,
@@ -92,7 +95,7 @@ pub async fn install(
             .map_err(|e| AppError::internal("publish template package", e))?;
         state
             .db
-            .insert_native_template(&actor, &entry)
+            .insert_native_template(&actor, &entry, poster.as_deref())
             .await
             .map_err(|e| {
                 if e.to_string().contains("name already exists") {
@@ -196,4 +199,27 @@ pub async fn instantiate(
     .await
     .map_err(|e| AppError::internal("join saved template creation", e))??;
     Ok((StatusCode::CREATED, Json(result)))
+}
+
+pub async fn poster(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let (actor, _) = owned(&state, &headers, &id, false).await?;
+    let bytes = state
+        .db
+        .native_template_poster(&actor, &id)
+        .await
+        .map_err(|e| AppError::internal("read template poster", e))?
+        .ok_or_else(|| AppError::not_found("Обложка отсутствует"))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "private, no-store"),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
+        bytes,
+    )
+        .into_response())
 }

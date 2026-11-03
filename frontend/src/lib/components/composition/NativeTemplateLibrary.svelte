@@ -1,4 +1,5 @@
 <script lang="ts">
+ import NativeTemplatePoster from './NativeTemplatePoster.svelte'
  import {listNativeTemplateLibrary,installNativeTemplate,removeNativeTemplate,createProjectFromNativeLibrary,nativeTemplateLibraryUrl,type NativeTemplateLibraryEntry,type NativeTemplateImportResponse} from '$lib/api'
  import type {ConcatImportSource} from '$lib/composition/concatProjectImport'
  let {token,spaceId,context,disabled=false,sources=[],oncreated}:{token:string|null;spaceId?:string;context:unknown;disabled?:boolean;sources?:readonly ConcatImportSource[];oncreated:(result:NativeTemplateImportResponse,guard:()=>void)=>Promise<void>}=$props()
@@ -34,7 +35,7 @@
  {#if file}<p>{file.name}</p>{/if}
  <button class="btn ghost sm" disabled={disabled||busy||!token||!file} onclick={()=>void install()}>Сохранить пакет в библиотеку</button>
  {#each entries as item(item.id)}
-  <div><button class="btn ghost sm" disabled={disabled||busy} onclick={()=>{selected=item.id;choices={};error='';message=''}}>{item.name} · {item.info.width} × {item.info.height} · Слотов: {item.info.slots.length}</button>
+  <div>{#if item.hasPoster&&token}<NativeTemplatePoster id={item.id} name={item.name} {token}/>{/if}<button class="btn ghost sm" disabled={disabled||busy} onclick={()=>{selected=item.id;choices={};error='';message=''}}>{item.name} · {item.info.width} × {item.info.height} · Слотов: {item.info.slots.length}</button>
    <a class="btn ghost sm" href={nativeTemplateLibraryUrl(item.id)} download>Скачать {item.name}</a>
    <button class="btn ghost sm danger" aria-label={`Удалить шаблон ${item.name}`} disabled={disabled||busy} onclick={()=>void remove(item.id)}>Удалить</button>
   </div>

@@ -14,7 +14,7 @@ source-application parity.
 | --- | --- | --- |
 | Timeline and media editing | Native timeline ordering/creation/removal, linked split/trim/replacement, clipboard, freeze, compatible joining, Concat-provenance audio reattachment, original/copy selection and AddClipAtFirstFree are covered by the milestones below. | Full source-command matrix; arbitrary render consolidation and admission outside the implemented command envelopes. The stricter synchronized-pair reattachment mode is distinct from Concat provenance-based reattachment. |
 | Project media / placeholders | `backend/src/domain/concat_media_slots.rs`, `project_media_fill.rs`; `backend/tests/concat_media_slots.rs`, `concat_registered_slot.rs`; staged and open-project FillSlot and logical media bindings. | FillSlot reanalysis/rebinding of derived versions and video cutouts; affected transitions, visual dependencies and dormant controls outside the admitted conversion envelope. |
-| Templates | Native `.vktemplate` design bundles, file import, private durable library, ordered slots and all-slot filling in one Undo exist. | Posters, video-mask bundle payloads, source-bundle compatibility and full browser/platform acceptance remain open. |
+| Templates | Native `.vktemplate` design bundles, file import, private durable library, embedded PNG posters, ordered slots and all-slot filling in one Undo exist. | Editor-frame poster capture, video-mask bundle payloads, source-bundle compatibility and full browser/platform acceptance remain open. |
 | Audio cleanup and narration | Native DSP, learned voice enhancement, Kokoro and Chatterbox narration, voice references, durable jobs/assets and model management exist. See `backend/src/domain/concat_enhance_voice.rs`, `backend/src/services/local_chatterbox.rs`, and `backend/tests/tts_*.rs`, `concat_enhance_*.rs`. | Whole source voice/model/quality/platform parity; implemented engines must not be described as universally equivalent. |
 | Captions and learned vision | Local Whisper jobs/model management, speech alignment, still/video enhancement, Person/Object/Selfie/SAM cutouts and smart temporal regions exist. See `backend/src/services/local_speech.rs`, `local_enhance*.rs`, `concat_video_analysis/` and `backend/tests/logical_video_cutout.rs`, `concat_video_smart.rs`. | Broader codec, source-clock, HDR and segmentation-quality qualification; derived-media FillSlot reanalysis. |
 | Saved mask ownership and archives | Prepared still/video import; atomic cache/region/original ownership; self-contained v2 archives; historical preview/resave; verified legacy current-binding adoption. See the final milestones, `backend/tests/project_archive_video.rs` and `backend/tests/support/video_archive.rs`. | Legacy inactive slots without proven physical mapping remain refused. General retired-asset GC and publication/history lifecycle acceptance remain open. |
@@ -13710,3 +13710,45 @@ typecheck reports zero errors/warnings; scoped lint, token/listener and diff che
 pass. Production build passes in 27.13s with existing chunk warnings. Quota
 exhaustion, in-flight deletion races and crash/orphan reclamation are not qualified
 by the bounded success/rollback cases above. Full application parity stays open.
+
+### Optional portable PNG posters and private gallery rendering
+
+Native template packages can now carry a `poster.png` record with explicit
+length/digest/dimensions in the manifest. The default writer still emits the
+original poster-free format; `write_with_poster` verifies and embeds PNG bytes.
+Posters have a one-MiB encoded budget, at most 1024 pixels per side and share the
+package's total byte budget. Reading verifies the declared record, PNG decoding,
+actual dimensions and SHA-256. Poster-free packages remain supported.
+
+Installing a package preserves its exact original download bytes and stores its
+verified small poster separately in SQLite for inexpensive card reads. An additive
+column migration preserves existing entries. Catalogue queries select only poster
+presence rather than loading all image blobs. Both the package and duplicated
+poster storage count toward the owner's capacity. The authenticated poster route
+returns PNG with private/no-store and nosniff headers; another owner cannot read it.
+The gallery fetches with the current Bearer session, uses an owned Blob URL and
+revokes it on scope change/unmount; late responses cannot recreate it.
+
+This milestone displays posters already embedded in incoming packages. Capturing
+an editor frame or choosing a poster while exporting/saving a template is not yet
+connected to the product workflow. Automatic poster generation, video-mask bundle
+payloads, broader lifecycle and full application parity remain open.
+
+
+Final gate: eleven backend tests pass across poster, package, durable-library,
+actual template import and export suites. A real 320x180 PNG round-trips exactly
+and decodes to the expected RGBA pixel. Wrong digest, unsupported image format,
+encoded over-budget input and dimensions above the bound refuse. PNG decoding
+uses explicit dimension and 16-MiB allocation limits. HTTP verifies private poster
+access, persistence across DB reopen and unchanged package download bytes. The
+existing catalogue test removes the new column to simulate an older populated
+schema, then reopens it and verifies its poster-free entry/download still works.
+
+Twenty-two frontend tests pass across the complete workspace, library/card/API
+and poster component. Tests verify the rendered card's owner-scoped request,
+PNG-only content admission, Blob URL creation/revocation and refusal of a response
+after disposal. These DOM fixtures do not constitute a live browser visual
+comparison. Svelte typecheck reports zero errors/warnings; scoped lint,
+token/listener and diff checks pass. Production build passes in 19.67s with
+existing chunk warnings. Automatic frame capture and the remaining poster authoring
+workflow stay open rather than being implied by portable poster display.

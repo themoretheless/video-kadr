@@ -140,6 +140,10 @@ async fn private_library_survives_reopen_creates_without_reupload_and_rolls_back
             StatusCode::NOT_FOUND
         );
     }
+    sqlx::query("ALTER TABLE native_template_library DROP COLUMN poster_png")
+        .execute(&pool)
+        .await
+        .unwrap();
     let mut reopened = state.clone();
     reopened.db = video_kadr_backend::db::Db::open(&state.storage)
         .await

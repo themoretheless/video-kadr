@@ -12,3 +12,9 @@ it('creates from a stored identity without uploading package bytes and validates
  await createProjectFromNativeLibrary('saved',[{mediaId:'slot',sourceId:'chosen'}],'owner','space');const[path,options]=fetcher.mock.calls[0]!;expect(String(path)).toContain('/api/template-library/saved/create?fills=');expect(options.body).toBeUndefined();expect(options.headers['X-Space-Id']).toBe('space')
  fetcher.mockResolvedValue(new Response(JSON.stringify(reply)));await expect(createProjectFromNativeLibrary('saved',[{mediaId:'slot',sourceId:'wrong'}],'owner')).rejects.toThrow('invalid project')
 })
+
+it('loads posters with the session header and refuses executable content types',async()=>{
+ const{getNativeTemplatePoster}=await import('./api');const fetcher=vi.fn().mockResolvedValue(new Response('PNG',{headers:{'content-type':'image/png'}}));vi.stubGlobal('fetch',fetcher)
+ expect((await getNativeTemplatePoster('saved/id','owner')).type).toBe('image/png');expect(fetcher.mock.calls[0]![0]).toContain('/saved%2Fid/poster');expect(fetcher.mock.calls[0]![1].headers.Authorization).toBe('Bearer owner')
+ fetcher.mockResolvedValue(new Response('<svg/>',{headers:{'content-type':'image/svg+xml'}}));await expect(getNativeTemplatePoster('saved','owner')).rejects.toThrow('Invalid template poster type')
+})

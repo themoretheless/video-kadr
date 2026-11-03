@@ -33,3 +33,11 @@ it('drops the previous owner list on account change before accepting a new one',
  const instance=mount(Harness,{target:document.body});component=instance;await tick();const details=document.querySelector('details')!;details.open=true;details.dispatchEvent(new Event('toggle'));await vi.waitFor(()=>expect(pending).toHaveLength(1));const old=vi.mocked(api.listNativeTemplateLibrary).mock.calls[0]![1]!
  instance.changeAccount();await tick();await vi.waitFor(()=>expect(pending).toHaveLength(2));expect(old.aborted).toBe(true);pending[0]!([entry]);await tick();expect(document.body.textContent).not.toContain('Design ·');pending[1]!([]);await tick();expect(document.body.textContent).not.toContain('Design ·');expect(vi.mocked(api.listNativeTemplateLibrary).mock.calls[1]![0]).toBe('other')
 })
+
+it('renders an embedded poster in its library card through the owner-scoped loader',async()=>{
+ vi.mocked(api.listNativeTemplateLibrary).mockResolvedValue([{...entry,hasPoster:true}])
+ const poster=vi.spyOn(api,'getNativeTemplatePoster').mockResolvedValue(new Blob(['PNG'],{type:'image/png'}))
+ const create=vi.spyOn(URL,'createObjectURL').mockReturnValue('blob:card-poster'),revoke=vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{})
+ try{await setup();await vi.waitFor(()=>expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:card-poster'));expect(poster).toHaveBeenCalledWith('stored','owner',expect.any(AbortSignal));expect(document.querySelector('img')?.alt).toBe('Обложка Design')}
+ finally{await unmount(component!);component=undefined;poster.mockRestore();create.mockRestore();revoke.mockRestore()}
+})

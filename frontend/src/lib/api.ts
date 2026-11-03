@@ -939,7 +939,16 @@ export async function importNativeTemplate(file:File,fills:readonly NativeTempla
  return reply
 }
 
-export interface NativeTemplateLibraryEntry {id:string;name:string;info:NativeTemplateInfo;bytes:number;createdAt:number}
+export interface NativeTemplateLibraryEntry {hasPoster?:boolean;id:string;name:string;info:NativeTemplateInfo;bytes:number;createdAt:number}
+export async function getNativeTemplatePoster(id:string,token:string,signal?:AbortSignal):Promise<Blob>{
+ const response=await safeFetch(`/api/template-library/${encodeURIComponent(id)}/poster`,{headers:bearerHeaders(token),signal})
+ await requireOk(response,'Не удалось загрузить обложку шаблона')
+ if(response.headers.get('content-type')?.split(';')[0]!== 'image/png')throw new Error('Invalid template poster type')
+ const blob=await response.blob()
+ if(signal?.aborted)throw new DOMException('Aborted','AbortError')
+ if(blob.size===0||blob.size>1024*1024)throw new Error('Invalid template poster size')
+ return blob
+}
 export function nativeTemplateLibraryUrl(id:string):string{return `/api/template-library/${encodeURIComponent(id)}`}
 export function listNativeTemplateLibrary(token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry[]>{return requestJson('/api/template-library',{headers:bearerHeaders(token),signal})}
 export async function installNativeTemplate(file:File,token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry>{

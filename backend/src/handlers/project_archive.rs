@@ -12,7 +12,7 @@ mod video_import;
 mod template_export;
 mod template_import;
 mod template_library;
-pub use template_library::{list as native_template_list_handler,install as native_template_install_handler,download as native_template_download_handler,remove as native_template_remove_handler,instantiate as native_template_create_handler};
+pub use template_library::{poster as native_template_poster_handler,list as native_template_list_handler,install as native_template_install_handler,download as native_template_download_handler,remove as native_template_remove_handler,instantiate as native_template_create_handler};
 pub use template_import::{import as composition_project_template_import_handler,inspect as composition_project_template_inspect_handler};
 pub use template_export::export as composition_project_template_export_handler;
 
