@@ -234,8 +234,9 @@ pub async fn import_and_preview(
             expected,
         ))
         .await;
+    } else {
+        Box::pin(original_after_import(&state, &app, &user.token, &saved)).await;
     }
-
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
 }
 async fn assert_clean(state: &video_kadr_backend::state::AppState, pool: &sqlx::SqlitePool) {
@@ -244,6 +245,7 @@ async fn assert_clean(state: &video_kadr_backend::state::AppState, pool: &sqlx::
     for table in [
         "composition_projects",
         "concat_video_project_caches",
+        "concat_video_project_source_refs",
         "concat_video_model_choices",
         "concat_video_project_region_refs",
         "library_metadata",
@@ -409,4 +411,68 @@ async fn history_after_import(
         StatusCode::NO_CONTENT
     );
     assert!(state.library.get(&physical).await.is_none());
+}
+
+async fn original_after_import(
+    state: &video_kadr_backend::state::AppState,
+    app: &axum::Router,
+    token: &str,
+    saved: &video_kadr_backend::db::CompositionProject,
+) {
+    let physical = saved.source_ids[0].clone();
+    assert_eq!(saved.source_ids.len(), 1);
+    let empty = serde_json::to_value(video_kadr_backend::domain::composition::Composition::new(
+        Default::default(),
+    ))
+    .unwrap();
+    state
+        .db
+        .update_composition_project_for(
+            &saved.id,
+            "archive-owner",
+            &saved.name,
+            &empty,
+            &[],
+            saved.revision,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state
+            .db
+            .composition_source_reference_count(&physical)
+            .await
+            .unwrap(),
+        1
+    );
+    let delete = || {
+        Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/library/{physical}"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(
+        app.clone().oneshot(delete()).await.unwrap().status(),
+        StatusCode::CONFLICT
+    );
+    assert!(state
+        .db
+        .delete_composition_project_for(&saved.id, "archive-owner")
+        .await
+        .unwrap());
+    assert_eq!(
+        state
+            .db
+            .composition_source_reference_count(&physical)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        app.clone().oneshot(delete()).await.unwrap().status(),
+        StatusCode::NO_CONTENT
+    );
 }

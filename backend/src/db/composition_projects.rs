@@ -530,7 +530,8 @@ impl Db {
     pub async fn composition_source_reference_count(&self, source_id: &str) -> Result<i64> {
         // Historical temporal reservations remain live ownership after Undo
         // removes a region from the current bin. Count projects, not rows.
-        sqlx::query_scalar("SELECT COUNT(DISTINCT project_id) FROM (SELECT project_id FROM composition_project_sources WHERE source_id=? UNION SELECT r.project_id FROM concat_video_project_region_refs r JOIN composition_projects p ON p.id=r.project_id WHERE r.library_source_id=? UNION SELECT r.project_id FROM person_video_project_resources r JOIN composition_projects p ON p.id=r.project_id WHERE r.source_id=? AND r.role='sam-video-regions')")
+        sqlx::query_scalar("SELECT COUNT(DISTINCT project_id) FROM (SELECT project_id FROM composition_project_sources WHERE source_id=? UNION SELECT r.project_id FROM concat_video_project_region_refs r JOIN composition_projects p ON p.id=r.project_id WHERE r.library_source_id=? UNION SELECT r.project_id FROM person_video_project_resources r JOIN composition_projects p ON p.id=r.project_id WHERE r.source_id=? AND r.role='sam-video-regions' UNION SELECT r.project_id FROM concat_video_project_source_refs r JOIN composition_projects p ON p.id=r.project_id WHERE r.library_source_id=?)")
+            .bind(source_id)
             .bind(source_id)
             .bind(source_id)
             .bind(source_id)
@@ -910,6 +911,24 @@ mod tests {
         assert_eq!(legacy_projects[0].id, legacy.id);
         let composition_projects = db.list_composition_projects().await.unwrap();
         assert_eq!(composition_projects, [composition]);
+    }
+
+    #[tokio::test]
+    async fn cached_original_retention_outlives_current_source_inventory(){
+        let (db,_dir)=db().await;
+        let mut document=serde_json::to_value(crate::domain::composition::Composition::new(Default::default())).unwrap();
+        document["sources"]=serde_json::json!({"raw":{"id":"raw","kind":"video","durationTicks":100000,"width":2,"height":2,"hasAudio":false}});
+        let first=db.create_owned_composition_project("Original",&document,&["raw".into()],"owner").await.unwrap();
+        for hash in ["first","second"]{sqlx::query("INSERT INTO concat_video_project_source_refs VALUES(?,?,?,?)").bind(&first.id).bind("raw").bind(hash).bind("raw").execute(&db.pool).await.unwrap();}
+        assert_eq!(db.composition_source_reference_count("raw").await.unwrap(),1);
+        let empty=serde_json::to_value(crate::domain::composition::Composition::new(Default::default())).unwrap();
+        db.update_composition_project_for(&first.id,"owner",&first.name,&empty,&[],first.revision).await.unwrap().unwrap();
+        assert_eq!(db.composition_source_reference_count("raw").await.unwrap(),1);
+        let second=db.create_owned_composition_project("Other history",&empty,&[],"owner").await.unwrap();
+        sqlx::query("INSERT INTO concat_video_project_source_refs VALUES(?,?,?,?)").bind(&second.id).bind("slot").bind("first").bind("raw").execute(&db.pool).await.unwrap();
+        assert_eq!(db.composition_source_reference_count("raw").await.unwrap(),2);
+        db.delete_composition_project(&first.id).await.unwrap();assert_eq!(db.composition_source_reference_count("raw").await.unwrap(),1);
+        db.delete_composition_project(&second.id).await.unwrap();assert_eq!(db.composition_source_reference_count("raw").await.unwrap(),0);
     }
 
     #[tokio::test]

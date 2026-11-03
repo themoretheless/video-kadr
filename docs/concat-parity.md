@@ -13316,3 +13316,29 @@ last owning project, the count is zero and library deletion succeeds. A separate
 DB case covers two owners, repeated snapshots and a stale legacy reservation.
 This fixes temporal-region retention; complete original-media history ownership
 and global cache/asset garbage collection remain separate unfinished gates.
+
+### Physical originals retained by published video stores
+
+A new project/source/hash/physical-file reservation records the actual registered
+original when automatic stores are published, progressively appended, transferred,
+or imported from an archive. Reservation and cache registration share the same
+transaction; a failed reservation cannot advance the publication cursor or leave
+a registered cache pointing at a removed generation. Library reference counts
+include these reservations, deduplicated by project, with cascading release when
+the last owner project is deleted. An additive physical-owner lookup index is
+included.
+
+Qualification: ten composition-project DB tests and seventeen integration tests
+pass. Generated registry tests reject original-reservation insertion and verify
+cache/generation rollback, safe retry and one original reservation across 65
+incremental generations. Cold Selfie archive tests for logical and physical IDs
+replace the current document with an empty composition: original deletion stays
+blocked until the owner project is deleted, then succeeds. Failed archive imports
+also leave no original-reservation rows. Existing SAM, archive and migration gates
+remain green.
+
+This gate retains original bytes; rendering a historical logical slot after its
+current binding is removed/rebound still needs reservation-aware resolution.
+Legacy registrations without a verified physical reservation are not guessed or
+backfilled from ambiguous old bindings. Those recovery and full GC gates remain
+unfinished.

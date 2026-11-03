@@ -29,10 +29,14 @@ pub async fn publish(state: &AppState, actor: &str, project: &str, source_id: &s
         ensure!(source(state, actor, project, source_id, revision).await? == path && crate::project_archive::fingerprint_file_with_limit(&path, CACHE_BUDGET).await? == before && !cancel.is_cancelled(), "video cache source/access changed");
         let generation = receipt.directory.file_name().and_then(|s| s.to_str()).ok_or_else(|| anyhow::anyhow!("invalid cache generation"))?;
         let id = uuid::Uuid::new_v4().to_string();
+        let physical=physical_id(state,actor,project,source_id,revision).await?;
+        let mut transaction=state.db.pool().begin().await?;
         let changed = sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,p.id,?,?,?,?,?,? FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?")
             .bind(&id).bind(source_id).bind(&receipt.video_hash).bind(&receipt.model_hash).bind(&receipt.runtime_hash).bind(&receipt.manifest_hash).bind(generation)
-            .bind(project).bind(i64::try_from(revision)?).bind(actor).bind(physical_id(state,actor,project,source_id,revision).await?).execute(state.db.pool()).await?.rows_affected();
+            .bind(project).bind(i64::try_from(revision)?).bind(actor).bind(&physical).execute(&mut *transaction).await?.rows_affected();
         ensure!(changed == 1, "project changed before video cache registration");
+        retain_original(&mut transaction,project,source_id,&receipt.video_hash,&physical).await?;
+        ensure!(!cancel.is_cancelled(),"video publication cancelled");transaction.commit().await?;
         Ok(id)
     }.await;
     if result.is_err(){let _=tokio::fs::remove_dir_all(&receipt.directory).await;}else{cache.accept_publication(publication)?;}
@@ -102,6 +106,7 @@ impl PublicationSession{
   let result:Result<()>=async{
    self.check(state,cache,cancel).await?;let receipt=&publication.receipt;let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("invalid video generation"))?;let id=uuid::Uuid::new_v4().to_string();let physical=physical_id(state,&self.actor,&self.project,&self.source_id,self.revision).await?;let mut transaction=state.db.pool().begin().await?;
    let changed=sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,p.id,?,?,?,?,?,? FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?").bind(&id).bind(&self.source_id).bind(&receipt.video_hash).bind(&receipt.model_hash).bind(&receipt.runtime_hash).bind(&receipt.manifest_hash).bind(generation).bind(&self.project).bind(i64::try_from(self.revision)?).bind(&self.actor).bind(&physical).execute(&mut *transaction).await?.rows_affected();ensure!(changed==1,"project changed before prefix registration");
+   retain_original(&mut transaction,&self.project,&self.source_id,&receipt.video_hash,&physical).await?;
    let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT project_id,source_id,video_hash,model_hash,runtime_hash FROM concat_video_project_caches WHERE id=? ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash").bind(&id).execute(&mut *transaction).await?.rows_affected();ensure!(changed==1&&!cancel.is_cancelled(),"video prefix choice registration cancelled");transaction.commit().await?;Ok(())
   }.await;
   if result.is_err(){let _=tokio::fs::remove_dir_all(&publication.receipt.directory).await;}else{cache.accept_publication(publication)?;}result
@@ -194,6 +199,7 @@ impl PreparedTransfer {
             sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) VALUES(?,?,?,?,?,?,?,?)").bind(&id).bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(&receipt.manifest_hash).bind(generation).execute(&mut *connection).await?.rows_affected()
         };ensure!(changed==1,"source cache disappeared during transfer");id
     };
+    retain_original(connection,to.project,to.source_id,cache.video_hash(),physical).await?;
     for(source_mask,library,snapshot)in planned{
         let allowed:bool=if let Some(from)=from {sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_project_sources WHERE project_id=? AND source_id=?) OR EXISTS(SELECT 1 FROM person_video_project_resources WHERE project_id=? AND role='sam-video-regions' AND source_id=? AND file_hash=?) OR EXISTS(SELECT 1 FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND library_source_id=? AND file_hash=?)").bind(from.project).bind(library).bind(from.project).bind(library).bind(&snapshot.mask_file_hash).bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(source_mask).bind(library).bind(&snapshot.mask_file_hash).fetch_one(&mut *connection).await?}else{sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_project_sources WHERE project_id=? AND source_id=?)").bind(to.project).bind(library).fetch_one(&mut *connection).await?};ensure!(allowed,"source region authority changed");
         let existing:Option<String>=sqlx::query_scalar("SELECT library_source_id FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND file_hash=?").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(&snapshot.mask_source_id).bind(&snapshot.mask_file_hash).fetch_optional(&mut *connection).await?;ensure!(existing.as_ref().is_none_or(|old|old==library),"target region reservation changed physical file");
@@ -231,4 +237,8 @@ pub(crate) fn prepare_archive<'a>(state:&'a AppState,actor:&'a str,target_source
     ensure!(!cancel.is_cancelled(),"archive video verification cancelled");
     Ok(PreparedTransfer{actor:actor.into(),source_project:None,source_id:target_source.into(),source_revision:0,target_source:target_source.into(),physical,target_document_hash:document_identity(target_document)?,cache,planned,cancel:cancel.clone()})
  })
+}
+
+async fn retain_original(connection:&mut sqlx::SqliteConnection,project:&str,source:&str,hash:&str,physical:&str)->Result<()>{
+ sqlx::query("INSERT INTO concat_video_project_source_refs(project_id,source_id,video_hash,library_source_id) VALUES(?,?,?,?) ON CONFLICT DO NOTHING").bind(project).bind(source).bind(hash).bind(physical).execute(connection).await?;Ok(())
 }
