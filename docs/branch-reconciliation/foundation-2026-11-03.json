@@ -273,6 +273,9 @@
     "branch": "feat/appstate-arc-wrapping",
     "tip": "43310e4a1807357f7db22014ea34b1a72ed2f688",
     "alreadyIntegratedAt": "049bc1f3b4a0f9b4e2b71e81d69cacd0699c737e",
-    "treesEqual": true
+    "treesEqual": true,
+    "historicalAncestryMerged": false,
+    "reason": "The already integrated feature snapshot has a deleted 198510852-byte fixture blob in its unpublished ancestral commits. GitHub rejected that redundant ancestry; retain the complete original branch locally rather than import obsolete historical blobs into main.",
+    "preservedHistoryRef": "codex/preserve-unpublished-feature-ancestry-20261103"
   }
 }
