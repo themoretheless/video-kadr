@@ -13421,3 +13421,35 @@ FillSlot rebinding and full source-application parity remain open.
 Final checks: Svelte typecheck reports zero errors/warnings; production build
 passes (39.54s, existing chunk warnings); design-token and listener-lifecycle
 checks and `git diff --check` pass. Backend media semantics are unchanged.
+
+### Native template slot inventory and active-timeline presentation
+
+The read-only `/compositions/nested-template-info` endpoint validates a supplied
+native project and returns its selected timeline canvas and placeholder inventory.
+Rust orders slots by first authored placement on that timeline and sums their
+editorial durations, including repeated, hidden/muted and retimed clips. A slot
+unused on that timeline is retained with zero seconds. It does not count another
+timeline or recursively count child placements. Equal first-use times follow the
+canonical native media registry order; preserving an imported Concat bin's original
+array order for ties is not implemented by the BTreeMap registry.
+
+The project-media panel requests this inventory only when expanded, displays media
+kind and summed seconds, and uses the returned slot ordering. Changing project,
+active timeline, collapsing or unmounting cancels observation of the old request.
+The frontend validates the complete placeholder identity/kind set and nonnegative
+finite durations. This endpoint takes an in-memory document and performs no file
+lookup, copying or library publication; it confers no source access.
+
+Sixteen frontend tests pass across project-media controls and metadata/slot APIs,
+including mounted active-timeline display, ordering and stale-response refusal.
+Scoped lint passes. Bundle packing, font/media copying, gallery/posters, standalone
+instantiation and derived-asset FillSlot rebinding remain open. This milestone does
+not establish a complete template-bundle workflow or whole-application parity.
+
+Final validation: six backend tests pass, including the actual HTTP route,
+retimed authored-duration accounting, hidden/muted placements, inactive/unused
+media, default root, unknown timeline, invalid project and project-media
+regressions. The initial test used pre-import timeline names; it was corrected to
+the converter's canonical timeline IDs without changing production admission.
+Frontend typecheck reports zero errors/warnings; production build passes in 18.25s
+with existing chunk warnings. Design-token, listener-lifecycle and diff checks pass.

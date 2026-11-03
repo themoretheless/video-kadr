@@ -829,3 +829,4 @@ pub mod concat_media_slots;
 pub mod concat_registered_media;
 
 pub mod project_media_fill;
+pub mod project_template;

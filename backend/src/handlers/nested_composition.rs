@@ -334,3 +334,19 @@ pub async fn project_media_remove_handler(ApiJson(request):ApiJson<ProjectMediaR
         .await.map_err(|e|AppError::bad_request(e.to_string()))?.map_err(|e|AppError::bad_request(e.to_string()))?;
     Ok(Json(ProjectMediaPlaceholderResponse{project,applied}))
 }
+
+
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct ProjectTemplateInfoRequest {
+    project: NestedCompositionProject,
+    #[serde(default)]
+    composition_id: Option<String>,
+}
+/// Pure document metadata; no library lookup or filesystem authority.
+pub async fn project_template_info_handler(ApiJson(request):ApiJson<ProjectTemplateInfoRequest>)->AppResult<Json<crate::domain::project_template::TemplateInfo>> {
+    let permit=NESTED_SLOTS.acquire().await.map_err(|e|AppError::bad_request(e.to_string()))?;
+    let info=tokio::task::spawn_blocking(move||{let _permit=permit;crate::domain::project_template::inspect(&request.project,request.composition_id.as_deref())})
+        .await.map_err(|e|AppError::bad_request(e.to_string()))?.map_err(|e|AppError::bad_request(e.to_string()))?;
+    Ok(Json(info))
+}

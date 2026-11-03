@@ -6,7 +6,7 @@ import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMedi
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import Controls from './NestedProjectMedia.svelte'
-vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn(), removeNativeProjectMedia: vi.fn(), fillNativeProjectMedia: vi.fn() }))
+vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn(), removeNativeProjectMedia: vi.fn(), fillNativeProjectMedia: vi.fn(), inspectNativeTemplate:vi.fn() }))
 const source = { id: 'source-a', kind: 'image' as const, durationTicks: 0, width: 16, height: 16, hasAudio: false }
 function project(): api.NativeNestedProject {
   const content = { ...buildCompositionWireDocument(createComposition({ width: 16, height: 16, fps: 24, backgroundColor: '#000000' })), sources: { [source.id]: source } }
@@ -125,4 +125,24 @@ it('drops staged template fills on context change and project close',async()=>{
  await vi.waitFor(()=>expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(2));closeNestedComposition();resolve(initial)
  await late;expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(2)
  expect(nestedComposition.document).toBeNull();expect(nestedHistory.past).toHaveLength(0)
+})
+
+it('shows native slot order and durations for the active timeline and cancels stale inspections',async()=>{
+ const initial=template();nestedComposition.document=initial;nestedComposition.activeCompositionId='other'
+ let resolve!:(value:api.NativeTemplateInfo)=>void
+ vi.mocked(api.inspectNativeTemplate).mockImplementation(()=>new Promise(done=>{resolve=done}))
+ component=mount(Controls,{target:document.body});await tick()
+ expect(api.inspectNativeTemplate).not.toHaveBeenCalled()
+ const details=document.querySelector('details')!;details.open=true;details.dispatchEvent(new Event('toggle'));await tick()
+ await vi.waitFor(()=>expect(api.inspectNativeTemplate).toHaveBeenCalledTimes(1))
+ const signal=vi.mocked(api.inspectNativeTemplate).mock.calls[0]![2]!
+ expect(vi.mocked(api.inspectNativeTemplate).mock.calls[0]![1]).toBe('other')
+ resolve({schemaVersion:1,compositionId:'other',width:16,height:16,slots:[{mediaId:'two',name:'Two',kind:'image',seconds:5.5},{mediaId:'one',name:'One',kind:'image',seconds:2}]})
+ await vi.waitFor(()=>expect(document.body.textContent).toContain('5,5 с'))
+ expect([...document.querySelectorAll('input[type=checkbox]')].map(input=>input.getAttribute('aria-label')).slice(0,2)).toEqual(['Слот шаблона: Two','Слот шаблона: One'])
+ nestedComposition.activeCompositionId='root';await tick();await vi.waitFor(()=>expect(api.inspectNativeTemplate).toHaveBeenCalledTimes(2));expect(signal.aborted).toBe(true)
+ details.open=false;details.dispatchEvent(new Event('toggle'));await tick()
+ const lateSignal=vi.mocked(api.inspectNativeTemplate).mock.calls[1]![2]!;expect(lateSignal.aborted).toBe(true)
+ resolve({schemaVersion:1,compositionId:'root',width:16,height:16,slots:[{mediaId:'one',name:'One',kind:'image',seconds:999},{mediaId:'two',name:'Two',kind:'image',seconds:0}]})
+ await tick();expect(document.body.textContent).not.toContain('999 с')
 })

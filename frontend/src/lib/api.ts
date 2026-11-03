@@ -1059,6 +1059,20 @@ export interface NativeNestedProject {
   root: string
   compositions: Record<string,{ durationUs?: number;content: import('./composition/types').WireComposition;instances: readonly NativeCompositionInstance[] }>
 }
+export interface NativeTemplateInfo {
+ schemaVersion:1
+ compositionId:string
+ width:number
+ height:number
+ slots:readonly {mediaId:string;name:string;kind:import('./composition/types').CompositionSource['kind'];seconds:number}[]
+}
+export async function inspectNativeTemplate(project:NativeNestedProject,compositionId:string,signal?:AbortSignal):Promise<NativeTemplateInfo>{
+ const reply=await requestJson<NativeTemplateInfo>('/api/compositions/nested-template-info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project,compositionId}),signal})
+ if(signal?.aborted)throw new DOMException('Aborted','AbortError')
+ const expected=Object.entries(project.projectMedia??{}).filter(([,item])=>item.placeholder===true).map(([id])=>id)
+ if(reply?.schemaVersion!==1||reply.compositionId!==compositionId||!Array.isArray(reply.slots)||reply.slots.length!==expected.length||new Set(reply.slots.map(slot=>slot.mediaId)).size!==expected.length||reply.slots.some(slot=>!expected.includes(slot.mediaId)||!Number.isFinite(slot.seconds)||slot.seconds<0||slot.kind!==project.projectMedia?.[slot.mediaId]?.source.kind))throw new Error('Native template inspection returned invalid slots')
+ return reply
+}
 export async function setNativeProjectMediaPlaceholder(project: NativeNestedProject, sourceId: string, placeholder: boolean, signal?: AbortSignal): Promise<NativeNestedProject> {
   const reply = await requestJson<{ project: NativeNestedProject; applied: boolean }>('/api/compositions/nested-media-placeholder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, sourceId, placeholder }), signal })
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
