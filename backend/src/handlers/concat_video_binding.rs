@@ -31,7 +31,7 @@ pub async fn handler(State(state):State<AppState>,Path(project):Path<String>,hea
    let mut correction=request.correction.clone().or_else(||clip.concat_cutout.as_ref().and_then(|b|b.correction.clone()));
    let feather=request.feather.or_else(||correction.as_ref().map(|c|c.feather)).or_else(||clip.concat_cutout.as_ref().and_then(|b|b.feather));
    if let (Some(c),Some(f))=(&mut correction,feather){c.feather=f;}
-   Some(crate::domain::concat_video_binding::Binding{source_hash,model_hash:choice.model_hash,runtime_hash:choice.runtime_hash,subject:subject.into(),feather,correction,region_tracks:request.region_tracks.clone().unwrap_or_else(||clip.concat_cutout.as_ref().map(|b|b.region_tracks.clone()).unwrap_or_default())})
+   Some(crate::domain::concat_video_binding::Binding{origin:None,source_hash,model_hash:choice.model_hash,runtime_hash:choice.runtime_hash,subject:subject.into(),feather,correction,region_tracks:request.region_tracks.clone().unwrap_or_else(||clip.concat_cutout.as_ref().map(|b|b.region_tracks.clone()).unwrap_or_default())})
   }else{None};
   ensure!(!token.is_cancelled(),"video cutout activation cancelled");
   if clip.concat_cutout==desired{return Ok(saved)}

@@ -34,7 +34,7 @@ async fn portable_lossless_region_movie_restores_into_verified_temporal_reader()
 fn portable_timed_binding_uses_exact_microsecond_seed_clock(){
  use video_kadr_backend::domain::{concat_video_binding::{Binding,RegionTrack},cutout::{Correction,Stroke,Tool}};
  let mut raw=vec![0;3*256*256];raw[256*256..2*256*256].fill(255);let snapshot=snapshot(&raw);
- let mut binding=Binding{source_hash:snapshot.source_hash.clone(),model_hash:"88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828".into(),runtime_hash:"f".repeat(64),subject:"person".into(),feather:None,correction:Some(Correction{custom:true,feather:0.,strokes:vec![Stroke{tool:Tool::SmartBrush,size:0.1,points:snapshot.points.clone(),at:Some(0.033367),region:None}]}),region_tracks:vec![RegionTrack{stroke:0,snapshot}]};assert!(binding.validate().is_ok());binding.correction.as_mut().unwrap().strokes[0].at=Some(0.033366);assert!(binding.validate().is_err());binding.correction.as_mut().unwrap().strokes[0].at=Some(f64::MAX);assert!(binding.validate().is_err());
+ let mut binding=Binding{origin:None,source_hash:snapshot.source_hash.clone(),model_hash:"88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828".into(),runtime_hash:"f".repeat(64),subject:"person".into(),feather:None,correction:Some(Correction{custom:true,feather:0.,strokes:vec![Stroke{tool:Tool::SmartBrush,size:0.1,points:snapshot.points.clone(),at:Some(0.033367),region:None}]}),region_tracks:vec![RegionTrack{stroke:0,snapshot}]};assert!(binding.validate().is_ok());binding.correction.as_mut().unwrap().strokes[0].at=Some(0.033366);assert!(binding.validate().is_err());binding.correction.as_mut().unwrap().strokes[0].at=Some(f64::MAX);assert!(binding.validate().is_err());
 }
 
 #[tokio::test]
@@ -46,7 +46,7 @@ async fn variable_presentation_clock_holds_exact_planes_and_validates_seed(){
  for clock in [vec![1,100000,400000,500000],vec![0,100000,100000,500000],vec![0,100000,500000],vec![0,100000,400000,9_007_199_254_740_992]]{let mut wrong=snapshot.clone();wrong.frame_times_us=Some(clock);assert!(wrong.validate().is_err());}
  let restored:Attachment=serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();assert_eq!(restored,snapshot);
  use video_kadr_backend::domain::{concat_video_binding::{Binding,RegionTrack},cutout::{Correction,Stroke,Tool}};
- let mut binding=Binding{source_hash:snapshot.source_hash.clone(),model_hash:"88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828".into(),runtime_hash:"f".repeat(64),subject:"person".into(),feather:None,correction:Some(Correction{custom:true,feather:0.,strokes:vec![Stroke{tool:Tool::SmartBrush,size:0.1,points:snapshot.points.clone(),at:Some(0.25),region:None}]}),region_tracks:vec![RegionTrack{stroke:0,snapshot}]};assert!(binding.validate().is_ok());binding.correction.as_mut().unwrap().strokes[0].at=Some(0.4);assert!(binding.validate().is_err());
+ let mut binding=Binding{origin:None,source_hash:snapshot.source_hash.clone(),model_hash:"88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828".into(),runtime_hash:"f".repeat(64),subject:"person".into(),feather:None,correction:Some(Correction{custom:true,feather:0.,strokes:vec![Stroke{tool:Tool::SmartBrush,size:0.1,points:snapshot.points.clone(),at:Some(0.25),region:None}]}),region_tracks:vec![RegionTrack{stroke:0,snapshot}]};assert!(binding.validate().is_ok());binding.correction.as_mut().unwrap().strokes[0].at=Some(0.4);assert!(binding.validate().is_err());
 }
 
 #[tokio::test]

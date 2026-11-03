@@ -281,7 +281,8 @@ export interface CompositionFilmcraftMotion {
 }
 
 export interface ConcatVideoRegionTrack {readonly stroke:number;readonly snapshot:SamVideoRegionAttachment}
-export interface ConcatVideoBinding {readonly regionTracks?:readonly ConcatVideoRegionTrack[];readonly correction?:MaskCorrection;readonly feather?:number;readonly subject:'auto'|'person'|'object';readonly sourceHash:string;readonly modelHash:string;readonly runtimeHash:string}
+export interface ConcatVideoCacheOrigin {readonly projectId:string;readonly expectedRevision:number;readonly sourceId:string;readonly regionSources?:Readonly<Record<string,string>>}
+export interface ConcatVideoBinding {readonly origin?:ConcatVideoCacheOrigin;readonly regionTracks?:readonly ConcatVideoRegionTrack[];readonly correction?:MaskCorrection;readonly feather?:number;readonly subject:'auto'|'person'|'object';readonly sourceHash:string;readonly modelHash:string;readonly runtimeHash:string}
 
 export interface VideoClip extends SourceClipTiming {
   readonly concatCutout?:ConcatVideoBinding

@@ -203,7 +203,7 @@ pub async fn nested_preview_handler(
     let frame = tokio::spawn(async move {
         let _permit=permit;
         let mut masks=super::concat_video_bound::BoundMasks::load(&state,&actor,request.saved_project.as_ref(),&request.project,&token).await?;
-        let check=state.clone();let check_actor=actor.clone();let context=if masks.is_empty(){None}else{request.saved_project.clone()};
+        let check=state.clone();let check_actor=actor.clone();let authorities=masks.authorities();
         let frame=tokio::task::spawn_blocking(move || {
             let mut filter=|node:&str,clip:&crate::domain::composition::CompositionClipId,source:&crate::domain::composition::SourceId,time,frame:&mut crate::domain::group_surface::GroupSurface|masks.apply(node,clip,source,time,frame);
             let frame=crate::domain::group_media::render_project_frame_sources_with_clip_filter(
@@ -218,11 +218,7 @@ pub async fn nested_preview_handler(
             }else{frame.rgba};
             anyhow::Ok((frame.width,frame.height,body))
         }).await??;
-        if let Some(context)=context{
-            super::cutout_assets::authorize(&check,&context.project_id,&check_actor).await.map_err(|_|anyhow::anyhow!("saved project access revoked"))?;
-            let saved=check.db.get_composition_project_for(&context.project_id,&check_actor).await?.ok_or_else(||anyhow::anyhow!("saved project unavailable"))?;
-            anyhow::ensure!(saved.revision==context.expected_revision,"saved project changed during preview");
-        }
+        super::concat_video_bound::recheck_authorities(&check,&check_actor,&authorities).await?;
         anyhow::ensure!(!token.is_cancelled(),"saved preview cancelled");
         anyhow::Ok(frame)
     }).await.map_err(|error|AppError::bad_request(error.to_string()))?.map_err(|error|AppError::bad_request(error.to_string()))?;

@@ -1273,10 +1273,15 @@ function validateClip(
         if(isRecord(correction)&&Array.isArray(correction.strokes))correction.strokes.forEach((stroke,index)=>{if(isRecord(stroke)&&['smartBrush','smartEraser'].includes(String(stroke.tool))&&stroke.at!=null&&!seen.has(index))throw new Error('Missing timed video track')})
       }catch{add('cutout',`${path}.concatCutout.regionTracks`,'Invalid temporal video region binding')}
     }
+    if(isRecord(binding)&&binding.origin!==undefined){
+      const origin=binding.origin
+      const tracks=Array.isArray(binding.regionTracks)?binding.regionTracks:[]
+      if(!isRecord(origin)||Object.keys(origin).some(key=>!['projectId','expectedRevision','sourceId','regionSources'].includes(key))||!isStableId(origin.projectId)||!isStableId(origin.sourceId)||!Number.isSafeInteger(origin.expectedRevision)||Number(origin.expectedRevision)<1||origin.regionSources!==undefined&&(!isRecord(origin.regionSources)||Object.keys(origin.regionSources).length>1024||Object.entries(origin.regionSources).some(([key,value])=>!isStableId(key)||!isStableId(value)||!tracks.some(track=>isRecord(track)&&isRecord(track.snapshot)&&track.snapshot.maskSourceId===key))))add('cutout',`${path}.concatCutout.origin`,'Invalid saved video cache origin')
+    }
     const personModel=isRecord(binding)&&['88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828','3241ac4ad8aa35bdaf33946776db29f7c283a413aa0b0dacb9483594b4531aad'].includes(String(binding.modelHash))
     const objectModel=isRecord(binding)&&binding.modelHash==='60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a'
     const compatible=isRecord(binding)&&(binding.subject==='auto'?(personModel||objectModel):binding.subject==='person'?personModel:binding.subject==='object'&&objectModel)
-    if(!isRecord(binding)||Object.keys(binding).length<4||Object.keys(binding).length>7||Object.keys(binding).some(key=>!['subject','sourceHash','modelHash','runtimeHash','feather','correction','regionTracks'].includes(key))||(binding.feather!==undefined&&(typeof binding.feather!=='number'||!Number.isFinite(binding.feather)||binding.feather<0||binding.feather>0.1))||!compatible||![binding.sourceHash,binding.modelHash,binding.runtimeHash].every(hash=>typeof hash==='string'&&/^[0-9a-f]{64}$/.test(hash)))add('cutout',`${path}.concatCutout`,'Invalid video cutout binding')
+    if(!isRecord(binding)||Object.keys(binding).length<4||Object.keys(binding).length>8||Object.keys(binding).some(key=>!['subject','sourceHash','modelHash','runtimeHash','feather','correction','regionTracks','origin'].includes(key))||(binding.feather!==undefined&&(typeof binding.feather!=='number'||!Number.isFinite(binding.feather)||binding.feather<0||binding.feather>0.1))||!compatible||![binding.sourceHash,binding.modelHash,binding.runtimeHash].every(hash=>typeof hash==='string'&&/^[0-9a-f]{64}$/.test(hash)))add('cutout',`${path}.concatCutout`,'Invalid video cutout binding')
   }
   if(clip.kind==='video'&&clip.independentAudio!==undefined&&typeof clip.independentAudio!=='boolean')add('audio-dsp',`${path}.independentAudio`,'Independent embedded audio must be boolean')
   if(clip.kind==='audio'){

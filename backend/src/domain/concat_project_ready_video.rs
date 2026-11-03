@@ -184,6 +184,12 @@ pub(crate) fn prepare(
                     Ok(asset)
                 })
                 .collect::<Result<_>>()?;
+            if let Some(origin)=&mut ready.binding.origin {
+                origin.region_sources = std::mem::take(&mut origin.region_sources).into_iter().map(|(key,value)| {
+                    let old=SourceId::parse(&key)?;
+                    Ok((remap.get(&old).map(|id|id.as_str()).unwrap_or(&key).to_owned(),value))
+                }).collect::<Result<_>>()?;
+            }
             ready.source = target.clone();
             ready.binding.validate()?;
         }

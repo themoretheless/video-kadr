@@ -275,3 +275,25 @@ fn mixed_still_and_video_cutouts_bind_atomically_without_sharing_clip_versions()
         .contains_key(&CompositionClipId::parse("same").unwrap()));
     assert!(content.tracks.iter().any(|track|matches!(track,CompositionTrack::Video{clips,..} if clips.iter().any(|clip|clip.id.as_str()=="same"&&clip.concat_cutout.is_some()))));
 }
+
+#[test]
+fn imported_video_origin_keeps_owner_namespace_and_rekeys_target_region_aliases() {
+    use video_kadr_backend::domain::concat_video_binding::CacheOrigin;
+    let mut prepared=videos();
+    for clips in prepared.values_mut(){
+        clips.get_mut("same").unwrap().binding.origin=Some(CacheOrigin{project_id:"saved-project".into(),expected_revision:7,source_id:"saved-slot".into(),region_sources:BTreeMap::from([("region".into(),"saved-region".into())])});
+    }
+    let report=import_with_ready_bindings(request(document(),true),&StillBindings::new(),&prepared).unwrap();
+    assert_eq!(report.status,"converted","{:?}",report.diagnostics);
+    for node in report.project.unwrap().compositions.values(){
+        let CompositionTrack::Video{clips,..}=&node.content.tracks[0] else{panic!()};
+        let binding=clips[0].concat_cutout.as_ref().unwrap();let origin=binding.origin.as_ref().unwrap();
+        assert_eq!(origin.source_id,"saved-slot");assert_eq!(origin.expected_revision,7);
+        assert_ne!(binding.region_tracks[0].snapshot.mask_source_id,"region");
+        assert_eq!(origin.region_sources[&binding.region_tracks[0].snapshot.mask_source_id],"saved-region");
+    }
+    for revision in [0,9_007_199_254_740_992] {
+        prepared.get_mut("a").unwrap().get_mut("same").unwrap().binding.origin.as_mut().unwrap().expected_revision=revision;
+        assert_eq!(import_with_ready_bindings(request(document(),true),&StillBindings::new(),&prepared).unwrap().status,"needs_attention");
+    }
+}

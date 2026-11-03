@@ -13081,3 +13081,21 @@ Validation: 33 backend cases pass: prepared video admission (5), existing prepar
 The formerly optional mounted ordinary-import request gate was explicitly enabled using a fresh request emitted by the mounted panel test (one frontend case passes); its backend HTTP conversion also passes. The 659-byte request and 1741-byte project output remain temporary files, not checked-in fixtures. `git diff --check` passes.
 
 This completes the schema/conversion core, not public prepared-video import. Saved video-reference verification, unsaved preview/export provenance, final-save/cache/region atomic orchestration and UI selection still need implementation. The VFR region converter is qualified by schema/identity cases here; real SAM store/region transfer and rendering were qualified separately in the preceding milestone. Full codec/clock/HDR/quality coverage, templates and complete cross-application parity remain open.
+
+### Saved video cache origin references (partial import bridge)
+
+Native per-clip video bindings can retain an optional saved owner reference
+(project, expected revision, logical source, and logical region aliases).
+Preview and export resolve the owner's registered stores after checking editor
+access, revision, physical source bindings, source/model/runtime identities and
+verified temporal region files. A reference grants no access. Cache and region
+provider keys include their owning namespace; preview rechecks all owner projects
+after rendering, and export repeats provider validation before publication.
+Trusted prepared-video conversion rekeys target region aliases while preserving
+the saved owner's namespace. No inference or ownership transfer occurs on read.
+
+Qualification includes real Selfie draft preview and export without savedProject,
+SAM brush/eraser draft preview with renamed temporal regions, stale owner and
+unauthorized actor refusals, and frontend round-trip/schema checks. The public
+prepared-video import producer/selector and atomic final-save ownership adoption
+remain open; this bridge does not establish complete Concat parity.

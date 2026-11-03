@@ -305,7 +305,9 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
     );
     assert_eq!(bytes.len(), 16 * 16 * 4);
     assert_eq!(bytes.as_ref(), expected_rgba);
-    let body = json!({"schemaVersion":1,"mode":"video_audio","project":native,"compositionId":root,"startUs":0,"endUs":100000,"renderedOutputs":{},"savedProject":context});
+    let mut export_draft=serde_json::to_value(&native).unwrap();
+    export_draft["compositions"][&root]["content"]["tracks"][0]["clips"][0]["concatCutout"]["origin"]=json!({"projectId":context.project_id,"expectedRevision":context.expected_revision,"sourceId":"slot"});
+    let body = json!({"schemaVersion":1,"mode":"video_audio","project":export_draft,"compositionId":root,"startUs":0,"endUs":100000,"renderedOutputs":{}});
     let response = delivery
         .clone()
         .oneshot(request(
@@ -492,6 +494,24 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
     assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
     let prepared_native = report.project.unwrap();
     prepared_native.dependency_order().unwrap();
+    // An unsaved imported draft can reference the authorized source store,
+    // without claiming ownership or requiring a configured inference engine.
+    let mut draft=prepared_native.clone();
+    if let video_kadr_backend::domain::composition::CompositionTrack::Video{clips,..}=&mut draft.compositions.get_mut("concat-timeline-0").unwrap().content.tracks[0]{
+        clips[0].concat_cutout.as_mut().unwrap().origin=Some(video_kadr_backend::domain::concat_video_binding::CacheOrigin{project_id:context.project_id.clone(),expected_revision:context.expected_revision,source_id:"slot".into(),region_sources:Default::default()});
+    }else{panic!()}
+    let response=delivery.clone().oneshot(request("/api/compositions/nested-preview",&owner.token,json!({"project":draft,"timeUs":100000,"renderedOutputs":{}}))).await.unwrap();
+    assert_eq!(response.status(),StatusCode::OK);
+    let draft_pixels=to_bytes(response.into_body(),usize::MAX).await.unwrap();
+    assert_eq!(draft_pixels.as_ref(),expected_rgba.as_slice());
+    assert!(BoundMasks::load(&delivery_state,"stranger",None,&draft,&cancel).await.is_err());
+    let mut forged_origin=serde_json::to_value(&draft).unwrap();
+    forged_origin["projectMedia"]["prepared-slot"]["librarySourceId"]=json!("another-file");
+    let forged_origin=serde_json::from_value(forged_origin).unwrap();
+    assert!(BoundMasks::load(&delivery_state,"owner",None,&forged_origin,&cancel).await.is_err());
+    let mut stale=draft.clone();
+    if let video_kadr_backend::domain::composition::CompositionTrack::Video{clips,..}=&mut stale.compositions.get_mut("concat-timeline-0").unwrap().content.tracks[0]{clips[0].concat_cutout.as_mut().unwrap().origin.as_mut().unwrap().expected_revision+=1;}
+    assert!(BoundMasks::load(&delivery_state,"owner",None,&stale,&cancel).await.is_err());
     let prepared = state
         .db
         .create_space_composition_project(

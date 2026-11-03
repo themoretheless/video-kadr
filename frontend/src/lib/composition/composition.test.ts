@@ -2413,3 +2413,10 @@ it('validates persisted subtitle lane roles without requiring stale advisory ids
   }
   expect(validateComposition({...document, metadata: {captionTextTracks: ['previous-lane']}})).toEqual([])
 })
+
+it('preserves saved video cache origins and rejects malformed owner references',()=>{
+ const binding={subject:'person' as const,sourceHash:'a'.repeat(64),modelHash:'3241ac4ad8aa35bdaf33946776db29f7c283a413aa0b0dacb9483594b4531aad',runtimeHash:'b'.repeat(64),origin:{projectId:'saved-project',sourceId:'saved-slot',expectedRevision:1}}
+ const payload=(origin:unknown)=>buildCompositionRenderRequest({...emptyComposition(),tracks:[videoTrack('video',[{...videoClip(),concatCutout:{...binding,origin} as typeof binding}])]})
+ expect(payload(binding.origin).composition.tracks[0]).toMatchObject({clips:[{concatCutout:binding}]})
+ for(const origin of [{...binding.origin,expectedRevision:0},{...binding.origin,expectedRevision:1.5},{...binding.origin,sourceId:''},{...binding.origin,path:'/tmp/cache'},{...binding.origin,regionSources:{unused:'mask'}}])expect(()=>payload(origin)).toThrow()
+})
