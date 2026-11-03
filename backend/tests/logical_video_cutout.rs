@@ -690,5 +690,20 @@ async fn qualify_atomic_save(state:&video_kadr_backend::state::AppState,token:&s
  let context=SavedProject{project_id:id.into(),expected_revision:own.revision};assert!(BoundMasks::load(state,"owner",Some(&context),draft,&cancel).await.is_err());
  sqlx::query("UPDATE concat_video_project_caches SET manifest_hash=? WHERE project_id=?").bind(hash).bind(id).execute(&pool).await.unwrap();
  assert!(BoundMasks::load(state,"owner",Some(&context),draft,&cancel).await.is_ok());
+ Box::pin(qualify_archive_export(state,token,space,&own)).await;
 
+}
+
+async fn qualify_archive_export(state:&video_kadr_backend::state::AppState,token:&str,space:&str,own:&video_kadr_backend::db::CompositionProject){
+ let mut document=own.document.clone();let clips=document["compositions"]["concat-timeline-0"]["content"]["tracks"][0]["clips"].as_array_mut().unwrap();clips[0]["enabled"]=json!(false);let mut copy=clips[0].clone();copy["id"]=json!("disabled-copy");copy["placement"]["timelineStartTick"]=json!(200000);clips.push(copy);
+ let own=state.db.update_composition_project_for(&own.id,"owner",&own.name,&document,&own.source_ids,own.revision).await.unwrap().unwrap();
+ let app=support::router(state.clone());let export=|id:&str|Request::builder().uri(format!("/api/composition-projects/{id}/archive")).header("authorization",format!("Bearer {token}")).body(Body::empty()).unwrap();
+ let response=app.clone().oneshot(export(&own.id)).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),8*1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&bytes));
+ let root=tempfile::tempdir().unwrap();let parsed=video_kadr_backend::project_archive::read_project_archive(bytes.as_ref(),root.path()).await.unwrap();assert_eq!(parsed.manifest.schema_version,2);assert_eq!(parsed.manifest.project.document,own.document);assert_eq!(parsed.video_caches.len(),1);assert_eq!(parsed.manifest.video_caches[0].source_id,"prepared-slot");assert!(!String::from_utf8_lossy(&bytes).contains(&own.id));
+ let entry=&parsed.manifest.video_caches[0];let cancel=tokio_util::sync::CancellationToken::new();let mut restored=video_kadr_backend::services::concat_video_analysis::portable::restore(tokio::fs::File::open(parsed.video_caches[0].path()).await.unwrap(),&entry.identity,root.path(),8*1024*1024,&cancel).await.unwrap();
+ let mut registered=cache::restore_for_model(state,"owner",&own.id,"prepared-slot",own.revision,&entry.identity.runtime_hash,&entry.identity.model_hash,&cancel).await.unwrap().unwrap();assert_eq!(restored.cache().identity().unwrap(),registered.identity().unwrap());
+ for time in [0,100]{assert_eq!(restored.cache().automatic(time,&cancel).unwrap().map(|mask|mask.probabilities.clone()),registered.automatic(time,&cancel).unwrap().map(|mask|mask.probabilities.clone()));}
+ drop(restored);drop(parsed);assert_eq!(std::fs::read_dir(root.path()).unwrap().count(),0);
+ let missing=state.db.create_space_composition_project("Missing archived cache",&document,&own.source_ids,"owner",space).await.unwrap();assert_eq!(app.oneshot(export(&missing.id)).await.unwrap().status(),StatusCode::CONFLICT);
+ assert!(std::fs::read_dir(state.staging_dir()).unwrap().all(|entry|!entry.unwrap().file_name().to_string_lossy().contains("veproj-export")));
 }

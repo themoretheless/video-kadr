@@ -13242,3 +13242,26 @@ bindings, aggregate limits and staging cleanup. The HTTP import route explicitly
 rejects cache-bearing archives until atomic publication/registration is wired;
 it cannot silently discard their caches. Automatic HTTP export collection and
 atomic HTTP restore remain open.
+
+### Automatic HTTP archive export of video stores
+
+The archive download route now collects all bound video stores, including those
+on disabled/copy clips and in non-active compositions. It uses the shared saved
+provider to verify ownership, source/model/runtime identity and temporal regions,
+then writes one portable payload per distinct binding. Identical bindings share
+one record; conflicting stores for one tuple refuse export. Cache bytes and media
+share the archive limit. Projects without video bindings keep version one.
+
+Only the archived document loses external origin references; the saved project
+is unchanged. All provider authorities and the exported project's revision,
+document and physical inventory are checked again before returning the file.
+Private cache payloads and source snapshots are cleaned on failure or completion.
+The collector uses existing analysis admission, cancellation and archive deadlines.
+
+Qualification: 13 backend tests pass. Actual model-free Selfie HTTP export covers
+logical slots, disabled copies, record deduplication, restored plane equality,
+missing-store refusal and staging cleanup. Actual model-free SAM export succeeds
+after source-project access is revoked and includes both the portable automatic
+store and the hash-matching temporal-region media. Existing version-one HTTP and
+version-two format tests remain green. Atomic HTTP import of these cache records
+is still open and explicitly rejected until its registration path is ready.

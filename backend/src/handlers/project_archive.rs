@@ -7,6 +7,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+mod video_export;
+
 use axum::body::Body;
 use axum::extract::{multipart::MultipartError, Multipart, Path as AxPath, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
@@ -25,7 +27,7 @@ use crate::db::{
 use crate::error::{ApiMultipart, AppError, AppResult};
 use crate::library::{now_secs, MediaEntry};
 use crate::project_archive::{
-    fingerprint_file, read_project_archive, safe_archive_filename, write_project_archive,
+    fingerprint_file, read_project_archive, safe_archive_filename, write_project_archive_with_video_caches,
     ArchiveError, ArchiveMediaInput, ArchivedProject, ArchivedSource, ParsedProjectArchive,
     ProjectArchiveManifest, StagedArchiveMedia, ARCHIVE_EXTENSION, ARCHIVE_MEDIA_TYPE,
     MAX_ARCHIVE_BYTES,
@@ -193,15 +195,20 @@ pub async fn composition_project_archive_export_handler(
         snapshots.push(snapshot);
     }
 
-    let manifest = ProjectArchiveManifest::new(
+    let cancel=tokio_util::sync::CancellationToken::new();let _cancel=cancel.clone().drop_guard();
+    let media_bytes=sources.iter().try_fold(0u64,|n,source|n.checked_add(source.byte_length)).ok_or_else(||AppError::payload_too_large("Размер архива переполнен"))?;
+    let video=run_with_timeout(video_export::collect(&state,&actor,&project,media_bytes,&cancel),ARCHIVE_IO_TIMEOUT,"сбор видеокэша превысил лимит времени").await?.map_err(|error|AppError::conflict(error.to_string()))?;
+    let mut manifest = ProjectArchiveManifest::new(
         ArchivedProject {
             schema_version: project.schema_version,
             mode: project.mode,
             name: project.name.clone(),
-            document: project.document,
+            document: video.document.clone(),
         },
         sources,
     );
+    manifest.video_caches=video.entries.clone();
+    if !manifest.video_caches.is_empty(){manifest.schema_version=crate::project_archive::ARCHIVE_VIDEO_FORMAT_VERSION;}
     let archive = TemporaryFile::new(
         state
             .staging_dir()
@@ -214,12 +221,16 @@ pub async fn composition_project_archive_export_handler(
         .await
         .map_err(|error| AppError::internal("create project archive", error))?;
     run_with_timeout(
-        write_project_archive(writer, &manifest, &inputs),
+        write_project_archive_with_video_caches(writer, &manifest, &inputs,&video.inputs),
         ARCHIVE_IO_TIMEOUT,
         "экспорт проекта превысил лимит времени",
     )
     .await?
     .map_err(export_archive_error)?;
+    crate::handlers::concat_video_bound::recheck_authorities(&state,&actor,&video.authorities).await.map_err(|error|AppError::conflict(error.to_string()))?;
+    let current=state.db.get_composition_project_for(&id,&actor).await.map_err(|error|AppError::internal("recheck archive project",error))?.ok_or_else(||AppError::conflict("Доступ к проекту отозван во время экспорта"))?;
+    if current.revision!=project.revision||current.document!=project.document||current.source_ids!=project.source_ids{return Err(AppError::conflict("Проект изменился во время экспорта"));}
+    drop(video);
     drop(snapshots);
 
     let length = tokio::fs::metadata(archive.path())

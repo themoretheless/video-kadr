@@ -10,6 +10,7 @@ type CacheKey=(SourceId,String,String,String,String,String,u64);
 struct Owner{cache:CacheKey,correction:crate::domain::cutout::Correction,tracks:Vec<(usize,String)>}
 pub struct BoundMasks {authorities:BTreeMap<String,u64>,owners:BTreeMap<(String,CompositionClipId),Owner>,regions:BTreeMap<String,super::concat_video_region_cache::Lease>,caches:BTreeMap<CacheKey,RunCache>,cancel:CancellationToken}
 impl BoundMasks {
+ pub(crate) fn archive_caches(&mut self)->impl Iterator<Item=(&SourceId,&mut RunCache)>{self.caches.iter_mut().map(|(key,cache)|(&key.0,cache))}
  pub fn authorities(&self)->Vec<SavedProject>{self.authorities.iter().map(|(id,revision)|SavedProject{project_id:id.clone(),expected_revision:*revision}).collect()}
  pub fn is_empty(&self)->bool{self.owners.is_empty()}
  pub fn identities(&self)->Result<BTreeMap<SourceId,String>>{
