@@ -678,6 +678,7 @@ pub mod concat_transitions;
 pub mod concat_qualification;
 
 pub mod concat_project_import;
+mod concat_project_ready_video;
 
 pub mod concat_audio_import;
 pub mod concat_clip_animation;

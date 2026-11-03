@@ -104,14 +104,26 @@ pub struct ReadyStillBinding {
     pub source_hash:String,pub model_hash:String,pub runtime_hash:String,
 }
 pub type StillBindings=BTreeMap<String,BTreeMap<String,ReadyStillBinding>>;
+/// Supplied only after server verification of store coverage and region ownership.
+/// This schema binding does not itself grant an unsaved project cache ownership.
+#[derive(Debug,Clone)]
+pub struct ReadyVideoBinding {
+    pub source:CompositionSource,pub source_settings:super::concat_cutout_import::Plan,
+    pub binding:super::concat_video_binding::Binding,pub regions:Vec<CompositionSource>,
+}
+pub type VideoBindings=BTreeMap<String,BTreeMap<String,ReadyVideoBinding>>;
+
 pub fn import(request: ImportRequest) -> Result<ImportReport> {
     import_with_still_bindings(request,&StillBindings::new())
 }
 pub fn import_with_still_bindings(request:ImportRequest,ready:&StillBindings)->Result<ImportReport>{
+    import_with_ready_bindings(request,ready,&VideoBindings::new())
+}
+pub fn import_with_ready_bindings(request:ImportRequest,ready:&StillBindings,videos:&VideoBindings)->Result<ImportReport>{
     ensure!(request.schema_version == 1, "unsupported import schema");
     ensure!(serde_json::to_vec(&request.document)?.len()<=4*1024*1024,"Concat source document exceeds 4 MiB");
     let original = request.document;
-    let converted = convert(&original, &request.media_bindings,&request.font_bindings,ready,request.preserve_media_ids);
+    let converted = convert(&original, &request.media_bindings,&request.font_bindings,ready,videos,request.preserve_media_ids);
     let font_warnings=original.get("fonts").and_then(Value::as_array).into_iter().flatten().filter(|font|font.get("path").and_then(Value::as_str).and_then(|path|request.font_bindings.get(path)).is_some_and(|binding|binding.fallback)).map(|font|format!("Шрифт {} не встроен: выбрана системная замена.",font.get("family").and_then(Value::as_str).unwrap_or(""))).collect::<Vec<_>>();
     Ok(match converted {
         Ok((project, timeline_ids)) => ImportReport {
@@ -214,6 +226,7 @@ fn convert(
     bindings: &BTreeMap<String, CompositionSource>,
     font_bindings:&BTreeMap<String,FontBinding>,
     ready:&StillBindings,
+    videos:&VideoBindings,
     preserve_media_ids:bool,
 ) -> Result<(NestedCompositionProject, BTreeMap<String, String>)> {
     let physical_bindings=bindings;
@@ -344,11 +357,15 @@ fn convert(
         "document.timelines: expected1..16 timelines"
     );
     ensure!(ready.len()<=16&&ready.values().all(|clips|clips.len()<=512),"cutout binding budget exceeded");
+    ensure!(videos.len()<=16&&videos.values().all(|clips|clips.len()<=512),"video cutout binding budget exceeded");
+    ensure!(ready.iter().all(|(timeline,clips)|clips.keys().all(|clip|!videos.get(timeline).is_some_and(|entries|entries.contains_key(clip)))),"duplicate still/video cutout destination");
     let rebound;
     let ready=if preserve_media_ids{
         rebound=rebind_ready_stills(timelines,ready,physical_bindings,bindings,&mut project_media)?;
         &rebound
     }else{ready};
+    let videos=super::concat_project_ready_video::prepare(timelines,videos,physical_bindings,bindings,&mut project_media,ready,preserve_media_ids)?;
+    let mut used_videos=BTreeSet::new();
     let mut used_cutouts=BTreeSet::new();
     let mut compositions = BTreeMap::new();
     let mut mapping = BTreeMap::new();
@@ -431,6 +448,7 @@ fn convert(
                     let clip_path = format!("{path}.clips[{ci}]");
                     let clip_id=text(clip,"id")?;
                     let prepared=ready.get(old_id).and_then(|clips|clips.get(clip_id));
+                    let prepared_video=videos.get(old_id).and_then(|clips|clips.get(clip_id));
                     let mut view=clip.clone();
                     if kind=="video"{view.as_object_mut().context("invalid video clip")?.remove("transitionIn");}
                     if prepared.is_some(){
@@ -438,6 +456,11 @@ fn convert(
                         super::concat_cutout_import::plan(&clip["cutout"])?;
                         view.as_object_mut().context("invalid clip")?.remove("cutout");
                         used_cutouts.insert((old_id.to_owned(),clip_id.to_owned()));
+                    }
+                    if prepared_video.is_some(){
+                        ensure!(kind=="video"&&clip.get("cutout").is_some_and(|v|!v.is_null()),"ready video cutout does not match a video cutout clip");
+                        view.as_object_mut().context("invalid video clip")?.remove("cutout");
+                        used_videos.insert((old_id.to_owned(),clip_id.to_owned()));
                     }
                     let mut native = convert_clip(&view, bindings, width, height)
                         .with_context(|| clip_path.clone())?;
@@ -515,6 +538,12 @@ fn convert(
                 content=super::concat_cutout_binding::bind_still(&content,&super::composition::CompositionClipId::parse(clip_id)?,&plan,&binding.assets,&binding.source_hash,&binding.model_hash,&binding.runtime_hash)?;
             }
         }
+        for clip in clips{
+            let clip_id=text(clip,"id")?;
+            if let Some(binding)=videos.get(old_id).and_then(|entries|entries.get(clip_id)){
+                super::concat_project_ready_video::bind(&mut content,&super::composition::CompositionClipId::parse(clip_id)?,binding)?;
+            }
+        }
         content
             .validate_native_surface()
             .with_context(|| format!("{path}: native qualification"))?;
@@ -528,6 +557,7 @@ fn convert(
         );
     }
     ensure!(ready.iter().all(|(timeline,clips)|mapping.contains_key(timeline)&&clips.keys().all(|clip|used_cutouts.contains(&(timeline.clone(),clip.clone())))),"unused or stale cutout binding");
+    ensure!(videos.iter().all(|(timeline,clips)|mapping.contains_key(timeline)&&clips.keys().all(|clip|used_videos.contains(&(timeline.clone(),clip.clone())))),"unused or stale video cutout binding");
     let root = document
         .get("activeTimelineId")
         .and_then(Value::as_str)

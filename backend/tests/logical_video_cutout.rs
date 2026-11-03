@@ -455,6 +455,96 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
         String::from_utf8_lossy(&bytes)
     );
     assert_eq!(bytes.as_ref(), expected_rgba);
+    // Trusted Concat conversion plus explicit target cache ownership, with no
+    // model present during adoption/rendering. Unsaved provenance is separate.
+    use video_kadr_backend::domain::concat_project_import::{
+        import_with_ready_bindings, ReadyVideoBinding, StillBindings, VideoBindings,
+    };
+    let mut physical_source: video_kadr_backend::domain::composition::CompositionSource =
+        serde_json::from_value(
+            bound.document["compositions"][&root]["content"]["sources"]["slot"].clone(),
+        )
+        .unwrap();
+    physical_source.id = SourceId::parse("physical").unwrap();
+    let ready_binding: video_kadr_backend::domain::concat_video_binding::Binding =
+        serde_json::from_value(
+            bound.document["compositions"][&root]["content"]["tracks"][0]["clips"][0]
+                ["concatCutout"]
+                .clone(),
+        )
+        .unwrap();
+    let settings = json!({"mode":"auto","subject":"person","feather":0});
+    let prepared_input:ImportRequest=serde_json::from_value(json!({"schemaVersion":1,"preserveMediaIds":true,"mediaBindings":{"prepared-slot":physical_source},"document":{"version":1,"media":[{"id":"prepared-slot","kind":"video"}],"timelines":[{"id":"main","video":{"width":16,"height":16,"rateNum":10,"rateDen":1},"tracks":[{"id":"videos"}],"clips":[{"id":"prepared-clip","kind":"video","trackId":"videos","mediaId":"prepared-slot","duration":0.2,"cutout":settings}]}]}})).unwrap();
+    let ready: VideoBindings = std::collections::BTreeMap::from([(
+        "main".into(),
+        std::collections::BTreeMap::from([(
+            "prepared-clip".into(),
+            ReadyVideoBinding {
+                source: physical_source,
+                source_settings: video_kadr_backend::domain::concat_cutout_import::plan(&settings)
+                    .unwrap(),
+                binding: ready_binding,
+                regions: vec![],
+            },
+        )]),
+    )]);
+    let report = import_with_ready_bindings(prepared_input, &StillBindings::new(), &ready).unwrap();
+    assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+    let prepared_native = report.project.unwrap();
+    prepared_native.dependency_order().unwrap();
+    let prepared = state
+        .db
+        .create_space_composition_project(
+            "Prepared Concat video",
+            &serde_json::to_value(&prepared_native).unwrap(),
+            &["physical".into()],
+            "owner",
+            &space.id,
+        )
+        .await
+        .unwrap();
+    let prepared_context = SavedProject {
+        project_id: prepared.id.clone(),
+        expected_revision: prepared.revision,
+    };
+    assert!(BoundMasks::load(
+        &delivery_state,
+        "owner",
+        Some(&prepared_context),
+        &prepared_native,
+        &cancel
+    )
+    .await
+    .is_err());
+    cache::transfer_for_model(
+        &delivery_state,
+        "owner",
+        cache::ProjectSource {
+            project: &saved.id,
+            source_id: "slot",
+            revision: bound.revision,
+        },
+        cache::ProjectSource {
+            project: &prepared.id,
+            source_id: "prepared-slot",
+            revision: prepared.revision,
+        },
+        &chosen.runtime_hash,
+        &chosen.model_hash,
+        &cancel,
+    )
+    .await
+    .unwrap();
+    let response=delivery.clone().oneshot(request("/api/compositions/nested-preview",&owner.token,json!({"project":prepared_native,"compositionId":prepared_native.root,"timeUs":100000,"renderedOutputs":{},"savedProject":prepared_context}))).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
+    assert_eq!(bytes.as_ref(), expected_rgba);
     let decoy = state
         .library
         .resolve_media_path(&state.library.get("slot").await.unwrap())
