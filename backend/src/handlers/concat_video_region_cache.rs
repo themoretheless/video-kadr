@@ -9,7 +9,8 @@ pub async fn load(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:
  snapshot.validate()?;
  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access required"))?;
  let saved=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("region project unavailable"))?;
- ensure!(saved.revision==revision&&saved.source_ids.contains(&snapshot.source_id),"stale project or unrelated region original");
+ let physical=super::concat_cutout_access::library_id(&saved.document,&snapshot.source_id)?;
+ ensure!(saved.revision==revision&&saved.source_ids.contains(&physical),"stale project or unrelated region original");
  // Undo followed by Save can remove the current mask reference. A verified
  // project-owned immutable SAM reservation remains authority for later Redo.
  // Actor ownership or source-space readability alone must not grant this.

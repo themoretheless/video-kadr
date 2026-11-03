@@ -137,14 +137,18 @@ pub async fn store(
 
 /// Persist only the region movie when the project already owns the original.
 /// Avoid copying the full original video once for every smart stroke.
-pub(super) async fn mask_for_original(state:&AppState,id:&str,project:&str,actor:&str,headers:&HeaderMap,source_id:&str)->AppResult<(MediaEntry,Attachment)>{
+pub(super) async fn mask_for_original(state:&AppState,id:&str,project:&str,actor:&str,headers:&HeaderMap,source_id:&str,revision:u64)->AppResult<(MediaEntry,Attachment)>{
  super::person_video_assets::authorize(state,project,actor).await?;
+ let saved=state.db.get_composition_project_for(project,actor).await.map_err(|e|AppError::internal("read SAM source binding",e))?.ok_or_else(||AppError::conflict("Проект недоступен"))?;
+ if saved.revision!=revision{return Err(AppError::conflict("Проект изменился"))}
+ let physical=super::concat_cutout_access::library_id(&saved.document,source_id).map_err(|e|AppError::conflict(e.to_string()))?;
+ if !saved.source_ids.contains(&physical){return Err(AppError::forbidden("Исходник не принадлежит проекту"))}
  let _operation=state.enhance_asset_ops.lock().await;
  let(movie,path)=super::sam_jobs::checked_video(state,id,headers).await?;
  let recipe=super::sam_jobs::points(State(state.clone()),Path(id.to_owned()),headers.clone()).await?.0;
- if recipe["sourceId"].as_str()!=Some(source_id)||recipe["seedFrame"].as_u64()!=Some(movie.seed_frame){return Err(AppError::conflict("Задача SAM относится к другому исходнику или кадру"))}
+ if recipe["sourceId"].as_str()!=Some(physical.as_str())||recipe["seedFrame"].as_u64()!=Some(movie.seed_frame){return Err(AppError::conflict("Задача SAM относится к другому исходнику или кадру"))}
  let points=serde_json::from_value(recipe["points"].clone()).map_err(|_|AppError::conflict("Неверные точки SAM"))?;
- let original=super::cutout_jobs::source(state,source_id,actor).await.map_err(|_|AppError::forbidden("Исходник SAM недоступен"))?;
+ let original=super::concat_cutout_access::source_for_document(state,actor,&saved.document,source_id).await.map_err(|_|AppError::forbidden("Исходник SAM недоступен"))?;
  let before=crate::project_archive::fingerprint_file_with_limit(&original,64*1024*1024*1024).await.map_err(|_|AppError::conflict("Исходник SAM недоступен"))?;
  if before.1!=movie.source_hash{return Err(AppError::conflict("Исходник SAM изменился"))}
  let duration=movie.frames as f64*f64::from(movie.frame_rate.denominator)/f64::from(movie.frame_rate.numerator);
@@ -155,5 +159,7 @@ pub(super) async fn mask_for_original(state:&AppState,id:&str,project:&str,actor
  snapshot.validate().map_err(|e|AppError::conflict(e.to_string()))?;
  super::person_video_assets::authorize(state,project,actor).await?;super::sam_jobs::checked_video(state,id,headers).await?;
  if crate::project_archive::fingerprint_file_with_limit(&original,64*1024*1024*1024).await.map_err(|e|AppError::conflict(e.to_string()))?!=before{return Err(AppError::conflict("Исходник SAM изменился"))}
+ let current=state.db.get_composition_project_for(project,actor).await.map_err(|e|AppError::internal("recheck SAM source binding",e))?.ok_or_else(||AppError::conflict("Проект недоступен"))?;
+ if current.revision!=revision||current.document!=saved.document||super::concat_cutout_access::source_for_document(state,actor,&current.document,source_id).await.map_err(|e|AppError::conflict(e.to_string()))?!=original{return Err(AppError::conflict("Исходник или проект изменился"))}
  Ok((mask,snapshot))
 }

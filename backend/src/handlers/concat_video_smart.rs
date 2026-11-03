@@ -20,13 +20,17 @@ pub async fn start(State(state):State<AppState>,Path(project):Path<String>,heade
   let saved=state.db.get_composition_project_for(&project,&actor).await.map_err(|e|AppError::internal("read smart video target",e))?.ok_or_else(||AppError::not_found("Проект не найден"))?;
   if saved.revision!=request.expected_revision{return Err(AppError::conflict("Проект изменился"))}
   let content=if let Some(nodes)=saved.document.get("compositions"){&nodes[request.composition_id.as_deref().ok_or_else(||AppError::bad_request("Нужен таймлайн"))?]["content"]}else{if request.composition_id.is_some(){return Err(AppError::bad_request("Лишний таймлайн"))} &saved.document};
-  let composition:Composition=serde_json::from_value(content.clone()).map_err(|e|AppError::bad_request(e.to_string()))?;composition.validate().map_err(|e|AppError::bad_request(e.to_string()))?;
+  let composition:Composition=serde_json::from_value(content.clone()).map_err(|e|AppError::bad_request(e.to_string()))?;composition.validate_native_surface().map_err(|e|AppError::bad_request(e.to_string()))?;
   let id=CompositionClipId::parse(request.clip_id).map_err(|e|AppError::bad_request(e.to_string()))?;
   if composition.metadata.as_ref().is_some_and(|m|m.media_versions.contains_key(&id)){return Err(AppError::conflict("Клип содержит обработанную версию"))}
   let clip=composition.tracks.iter().find_map(|t|match t{CompositionTrack::Video{locked:false,clips,..}=>clips.iter().find(|c|c.id==id&&c.enabled),_=>None}).ok_or_else(||AppError::bad_request("Нужно незаблокированное видео"))?;
-  if !saved.source_ids.iter().any(|id|id==clip.source_id.as_str()){return Err(AppError::forbidden("Исходник не принадлежит проекту"))}
+  let physical=super::concat_cutout_access::library_id(&saved.document,clip.source_id.as_str()).map_err(|e|AppError::conflict(e.to_string()))?;
+  if !saved.source_ids.iter().any(|id|id==&physical){return Err(AppError::forbidden("Исходник не принадлежит проекту"))}
   let source_us=crate::domain::video_clock::source_tick(&clip.placement,clip.playback_mode,request.time_us).map_err(|e|AppError::bad_request(e.to_string()))?.ok_or_else(||AppError::bad_request("Кадр вне клипа"))?;
-  let source_id=clip.source_id.as_str().to_owned();let path=super::cutout_jobs::source(&state,&source_id,&actor).await.map_err(|e|AppError::forbidden(e.to_string()))?;
+  // Source authorization can relocate legacy files into private Space storage.
+  // Complete that move before concurrent seed probes or receipt authorization.
+  super::library::authorize_source_access(&state,&physical,&headers).await?;
+  let source_id=clip.source_id.as_str().to_owned();let path=super::concat_cutout_access::source_for_document(&state,&actor,&saved.document,&source_id).await.map_err(|e|AppError::forbidden(e.to_string()))?;
   let before=crate::project_archive::fingerprint_file_with_limit(&path,64*1024*1024*1024).await.map_err(|e|AppError::conflict(e.to_string()))?;
   let seed=crate::services::concat_video_sam_seed::resolve(&state.process_runtime,&path,source_us,&cancel).await.map_err(|e|AppError::bad_request(e.to_string()))?;
   super::cutout_assets::authorize(&state,&project,&actor).await?;
@@ -34,8 +38,8 @@ pub async fn start(State(state):State<AppState>,Path(project):Path<String>,heade
   if current.revision!=saved.revision||current.document!=saved.document||cancel.is_cancelled()||crate::project_archive::fingerprint_file_with_limit(&path,64*1024*1024*1024).await.map_err(|e|AppError::conflict(e.to_string()))?!=before{return Err(AppError::conflict("Исходник или проект изменился"))}
   let mut accepted=json!({"sourceId":source_id,"sourceUs":seed.source_us,"seedFrame":seed.seed_frame,"frames":seed.frames,"frameRate":seed.frame_rate,"expectedRevision":saved.revision});
   if let Some(times)=seed.frame_times_us{accepted["frameTimesUs"]=json!(times)}
-  let receipt=if let Some(operation)=&request.operation_id{Some(super::concat_video_operation::reserve(&state,&actor,&project,operation,&request_hash,&source_id,&before.1,accepted.clone(),&headers).await?)}else{None};
-  let body:super::sam_jobs::Request=serde_json::from_value(json!({"sourceId":source_id,"points":request.points,"seedFrame":seed.seed_frame})).map_err(|e|AppError::bad_request(e.to_string()))?;
+  let receipt=if let Some(operation)=&request.operation_id{Some(super::concat_video_operation::reserve(&state,&actor,&project,operation,&request_hash,&physical,&before.1,accepted.clone(),&headers).await?)}else{None};
+  let body:super::sam_jobs::Request=serde_json::from_value(json!({"sourceId":physical,"points":request.points,"seedFrame":seed.seed_frame})).map_err(|e|AppError::bad_request(e.to_string()))?;
   let(status,Json(submitted))=super::sam_jobs::submit_named(state.clone(),headers,body,receipt.as_ref().map(|r|r.job_id.clone()),true,Some(before.1.clone())).await?;
   let id=submitted["jobId"].as_str().ok_or_else(||AppError::conflict("Нет задачи SAM"))?;
   if super::concat_video_operation::stop_if_cancelled(&state,id).await?{return Err(AppError::conflict("Операция SAM отменена"))}
@@ -59,25 +63,25 @@ pub async fn attach(State(state):State<AppState>,Path(project):Path<String>,head
   ensure!(!super::concat_video_operation::is_cancelled(&state,&request.job_id).await?,"smart region operation cancelled");
   let saved=state.db.get_composition_project_for(&project,&actor).await?.ok_or_else(||anyhow::anyhow!("project unavailable"))?;ensure!(saved.revision==request.expected_revision,"stale smart region target");
   let mut document=saved.document.clone();let content=if document.get("compositions").is_some(){document.get_mut("compositions").and_then(|n|n.get_mut(request.composition_id.as_deref()?)).and_then(|n|n.get_mut("content")).ok_or_else(||anyhow::anyhow!("timeline unavailable"))?}else{ensure!(request.composition_id.is_none(),"unexpected timeline");&mut document};
-  let mut composition:Composition=serde_json::from_value(content.clone())?;composition.validate()?;let id=CompositionClipId::parse(request.clip_id)?;
+  let mut composition:Composition=serde_json::from_value(content.clone())?;composition.validate_native_surface()?;let id=CompositionClipId::parse(request.clip_id)?;
   ensure!(!composition.metadata.as_ref().is_some_and(|m|m.media_versions.contains_key(&id)),"clip contains another processed version");
   let clip=composition.tracks.iter_mut().find_map(|t|match t{CompositionTrack::Video{locked:false,clips,..}=>clips.iter_mut().find(|c|c.id==id&&c.enabled),_=>None}).ok_or_else(||anyhow::anyhow!("unlocked video required"))?;
-  let source_id=clip.source_id.clone();ensure!(saved.source_ids.iter().any(|s|s==source_id.as_str()),"unrelated clip source");
+  let source_id=clip.source_id.clone();let physical=super::concat_cutout_access::library_id(&saved.document,source_id.as_str())?;ensure!(saved.source_ids.iter().any(|s|s==&physical),"unrelated clip source");
   let source_us=crate::domain::video_clock::source_tick(&clip.placement,clip.playback_mode,request.time_us)?.ok_or_else(||anyhow::anyhow!("cursor outside clip"))?;
   let binding=clip.concat_cutout.as_mut().ok_or_else(||anyhow::anyhow!("enable automatic video cutout before attaching a smart region"))?;
   let cache=super::concat_video_cache::restore_for_model(&state,&actor,&project,source_id.as_str(),saved.revision,&binding.runtime_hash,&binding.model_hash,&cancel).await?.ok_or_else(||anyhow::anyhow!("automatic video cache missing"))?;ensure!(cache.video_hash()==binding.source_hash,"automatic source changed");
   let(movie,_)=super::sam_jobs::checked_video(&state,&request.job_id,&headers).await.map_err(|_|anyhow::anyhow!("SAM video job unavailable"))?;
   let recipe=super::sam_jobs::points(State(state.clone()),Path(request.job_id.clone()),headers.clone()).await.map_err(|_|anyhow::anyhow!("SAM points unavailable"))?.0;
   let seed=crate::domain::video_region::frame_ordinal(source_us,movie.frames,movie.frame_rate,movie.frame_times_us.as_deref())?;
-  ensure!(movie.source_hash==binding.source_hash&&recipe["sourceId"].as_str()==Some(source_id.as_str())&&seed==movie.seed_frame,"SAM job source/seed does not match clip cursor");
+  ensure!(movie.source_hash==binding.source_hash&&recipe["sourceId"].as_str()==Some(physical.as_str())&&seed==movie.seed_frame,"SAM job source/seed does not match clip cursor");
   let mut correction=binding.settings();let stroke=crate::domain::cutout::Stroke{tool:request.tool,size:request.size,points:serde_json::from_value(recipe["points"].clone())?,at:Some(source_us as f64/1_000_000.),region:None};let index=correction.strokes.len();correction.strokes.push(stroke);correction.custom=true;correction.validate()?;
-  let(mask,snapshot)=super::sam_video_assets::mask_for_original(&state,&request.job_id,&project,&actor,&headers,source_id.as_str()).await.map_err(|_|anyhow::anyhow!("SAM region asset unavailable"))?;
+  let(mask,snapshot)=super::sam_video_assets::mask_for_original(&state,&request.job_id,&project,&actor,&headers,source_id.as_str(),saved.revision).await.map_err(|_|anyhow::anyhow!("SAM region asset unavailable"))?;
   ensure!(!cancel.is_cancelled(),"smart region attachment cancelled");
   binding.correction=Some(correction);binding.region_tracks.push(crate::domain::concat_video_binding::RegionTrack{stroke:index,snapshot:snapshot.clone()});binding.validate()?;
   let duration=snapshot.frame_times_us.as_ref().and_then(|t|t.last()).map(|v|u128::from(*v)).unwrap_or_else(||(u128::from(snapshot.frames)*u128::from(snapshot.frame_rate.denominator)*1_000_000).div_ceil(u128::from(snapshot.frame_rate.numerator)));
   let descriptor:crate::domain::composition::CompositionSource=serde_json::from_value(json!({"id":mask.id,"kind":"video","durationTicks":u64::try_from(duration)?,"width":256,"height":256,"hasAudio":false}))?;
   if let Some(existing)=composition.sources.get(&descriptor.id){ensure!(serde_json::to_value(existing)?==serde_json::to_value(&descriptor)?,"region source descriptor collision");}else{composition.sources.insert(descriptor.id.clone(),descriptor);}
-  composition.validate()?;*content=serde_json::to_value(composition)?;let sources=crate::db::extract_document_source_ids(&document)?;
+  composition.validate_native_surface()?;*content=serde_json::to_value(composition)?;let sources=crate::db::extract_document_source_ids(&document)?;
   super::cutout_assets::authorize(&state,&project,&actor).await.map_err(|_|anyhow::anyhow!("project editor access revoked"))?;ensure!(!cancel.is_cancelled(),"smart region attachment cancelled");
   ensure!(!super::concat_video_operation::is_cancelled(&state,&request.job_id).await?,"smart region operation cancelled");
   state.db.update_composition_project_for(&project,&actor,&saved.name,&document,&sources,saved.revision).await?.ok_or_else(||anyhow::anyhow!("project changed during smart region attachment"))
