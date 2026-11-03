@@ -28,6 +28,7 @@ pub mod ports;
 pub mod privacy;
 pub mod process_control;
 pub mod project_archive;
+pub mod template_bundle;
 pub mod reliability;
 #[cfg(feature = "spec-contracts")]
 pub mod render;

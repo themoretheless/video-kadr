@@ -13453,3 +13453,37 @@ regressions. The initial test used pre-import timeline names; it was corrected t
 the converter's canonical timeline IDs without changing production admission.
 Frontend typecheck reports zero errors/warnings; production build passes in 18.25s
 with existing chunk warnings. Design-token, listener-lifecycle and diff checks pass.
+
+### Native template bundle codec (qualified core; workflow incomplete)
+
+`template_bundle` introduces a stored ZIP containing a native `template.json` and
+an exact allowlist of design asset records. Packing validates the project, makes
+canonical media records for legacy timeline sources, deduplicates physical design
+files and replaces their library bindings with package-local keys. Placeholder
+bindings are removed and their original bytes are not requested or copied. A
+physical file deliberately used by a separate non-placeholder design item still
+ships for that design item. Native compositions, embedded font data and LUTs stay
+in the native document rather than passing through the narrower Concat exporter.
+
+Packing requires the caller to supply exactly the authorized design input set,
+fingerprints each file and verifies it again while streaming. Input paths belong
+to the caller and are never accepted from an imported manifest. Reading validates
+schema, project, inventory and SHA-256/length bounds, stages only named records
+under generated filenames, and owns staged files through RAII cleanup. Manifest
+and total asset budgets reuse project archive limits. Slot rebindings, media
+probing, durable gallery storage and project creation are not implemented by this
+codec. Video-mask stores explicitly refuse until their cache payloads can be
+packaged; an apparently complete template must not lose those masks.
+
+
+Final core gate: ten backend tests pass (four package tests, three template-info
+and three project-media regressions). Real generated PNG bytes round-trip exactly;
+two logical design aliases share one payload; slot bindings and physical source
+identities are absent from the manifest; all native timeline surfaces remain
+unchanged. Cases cover empty templates, missing/wrong input inventories, changed
+source bytes during streaming, valid-ZIP/corrupt-payload digest refusal, extra
+path-like records, missing assets, retained slot bindings, unsupported schema,
+truncation and staged cleanup after failure/drop. The first malformed-manifest
+test helper read a key after removing its inventory; its construction order was
+fixed and the full gate rerun. No runtime admission was weakened. Diff checks pass.
+This is a native codec gate, not yet an HTTP export/import or gallery acceptance.
