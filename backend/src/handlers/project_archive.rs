@@ -302,7 +302,8 @@ async fn import_parsed_archive(
     owner: String,
     space_id: Option<String>,
 ) -> AppResult<ProjectArchiveImportResponse> {
-    let ParsedProjectArchive { manifest, media } = parsed;
+    let ParsedProjectArchive { manifest, media,video_caches } = parsed;
+    if !video_caches.is_empty(){return Err(AppError::bad_request("Восстановление видеокэша из архива ещё не подключено"));}
     let ProjectArchiveManifest {
         project, sources, ..
     } = manifest;

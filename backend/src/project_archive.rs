@@ -5,6 +5,9 @@
 //! media records with explicit lengths and SHA-256 digests. Media bytes are
 //! always streamed; only the bounded manifest is held in memory.
 
+pub mod video;
+pub use video::{ArchivedVideoCache,ArchiveVideoCacheInput,StagedArchiveVideoCache};
+
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
@@ -25,6 +28,7 @@ use crate::db::{
 pub const ARCHIVE_MEDIA_TYPE: &str = "application/vnd.video-editor.project";
 pub const ARCHIVE_EXTENSION: &str = "veproj";
 pub const ARCHIVE_FORMAT_VERSION: u16 = 1;
+pub const ARCHIVE_VIDEO_FORMAT_VERSION: u16 = 2;
 pub const MAX_ARCHIVE_MANIFEST_BYTES: usize = MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES + 1024 * 1024;
 pub const MAX_ARCHIVE_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub const MAX_ARCHIVE_TOTAL_MEDIA_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -47,6 +51,8 @@ pub struct ProjectArchiveManifest {
     pub schema_version: u16,
     pub project: ArchivedProject,
     pub sources: Vec<ArchivedSource>,
+    #[serde(default,skip_serializing_if="Vec::is_empty")]
+    pub video_caches: Vec<ArchivedVideoCache>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -87,6 +93,7 @@ pub struct ArchiveMediaInput {
 pub struct ParsedProjectArchive {
     pub manifest: ProjectArchiveManifest,
     pub media: Vec<StagedArchiveMedia>,
+    pub video_caches: Vec<StagedArchiveVideoCache>,
 }
 
 #[derive(Debug)]
@@ -163,6 +170,7 @@ impl ProjectArchiveManifest {
             schema_version: ARCHIVE_FORMAT_VERSION,
             project,
             sources,
+            video_caches:vec![],
         }
     }
 }
@@ -191,15 +199,20 @@ pub(crate) async fn fingerprint_file_with_limit(path: &Path,limit:u64) -> Result
     Ok((total, hex_digest(hasher.finalize().into())))
 }
 
-pub async fn write_project_archive<W>(
+pub async fn write_project_archive<W:AsyncWrite+Unpin>(writer:W,manifest:&ProjectArchiveManifest,media:&[ArchiveMediaInput])->Result<(),ArchiveError>{
+    write_project_archive_with_video_caches(writer,manifest,media,&[]).await
+}
+pub async fn write_project_archive_with_video_caches<W>(
     mut writer: W,
     manifest: &ProjectArchiveManifest,
     media: &[ArchiveMediaInput],
+    video_caches:&[ArchiveVideoCacheInput],
 ) -> Result<(), ArchiveError>
 where
     W: AsyncWrite + Unpin,
 {
     let digests = validate_manifest(manifest)?;
+    if video_caches.len()!=manifest.video_caches.len(){return Err(ArchiveError::Invalid("video cache payload count mismatch"))}
     if media.len() != manifest.sources.len() {
         return Err(ArchiveError::Invalid(
             "media entry count does not match manifest",
@@ -214,14 +227,14 @@ where
 
     writer.write_all(ARCHIVE_MAGIC).await?;
     writer
-        .write_all(&ARCHIVE_FORMAT_VERSION.to_be_bytes())
+        .write_all(&manifest.schema_version.to_be_bytes())
         .await?;
     writer.write_all(&0_u16.to_be_bytes()).await?;
     writer
         .write_all(&(manifest_bytes.len() as u32).to_be_bytes())
         .await?;
     writer
-        .write_all(&(manifest.sources.len() as u32).to_be_bytes())
+        .write_all(&((manifest.sources.len()+manifest.video_caches.len()) as u32).to_be_bytes())
         .await?;
     writer
         .write_all(&total_media_bytes(manifest)?.to_be_bytes())
@@ -255,6 +268,7 @@ where
             ));
         }
     }
+    video::write(&mut writer,&manifest.video_caches,video_caches).await?;
     writer.flush().await?;
     Ok(())
 }
@@ -273,7 +287,7 @@ where
     }
     let version = read_u16(&mut reader).await?;
     let flags = read_u16(&mut reader).await?;
-    if version != ARCHIVE_FORMAT_VERSION || flags != 0 {
+    if ![ARCHIVE_FORMAT_VERSION,ARCHIVE_VIDEO_FORMAT_VERSION].contains(&version) || flags != 0 {
         return Err(ArchiveError::Invalid(
             "unsupported archive version or flags",
         ));
@@ -284,7 +298,7 @@ where
     if manifest_length > MAX_ARCHIVE_MANIFEST_BYTES {
         return Err(ArchiveError::Limit("manifest exceeds the archive limit"));
     }
-    if entry_count > MAX_COMPOSITION_PROJECT_SOURCES {
+    if entry_count > MAX_COMPOSITION_PROJECT_SOURCES * if version==ARCHIVE_VIDEO_FORMAT_VERSION{2}else{1} {
         return Err(ArchiveError::Limit(
             "archive contains too many media entries",
         ));
@@ -303,7 +317,7 @@ where
         return Err(ArchiveError::Invalid("manifest JSON is not canonical"));
     }
     let digests = validate_manifest(&manifest)?;
-    if manifest.sources.len() != entry_count
+    if manifest.schema_version!=version || manifest.sources.len()+manifest.video_caches.len() != entry_count
         || total_media_bytes(&manifest)? != declared_total_media
     {
         return Err(ArchiveError::Invalid(
@@ -312,7 +326,7 @@ where
     }
     validate_archive_size(&manifest, manifest_length)?;
 
-    let mut media = Vec::with_capacity(entry_count);
+    let mut media = Vec::with_capacity(manifest.sources.len());
     for (source, expected_digest) in manifest.sources.iter().zip(digests) {
         let mut entry_magic = [0_u8; 4];
         read_exact_archive(&mut reader, &mut entry_magic).await?;
@@ -362,16 +376,19 @@ where
         media.push(staged_media);
     }
 
+    let video_caches=video::read(&mut reader,&manifest.video_caches,staging_dir).await?;
+
     let mut trailing = [0_u8; 1];
     if reader.read(&mut trailing).await? != 0 {
         return Err(ArchiveError::Invalid("archive has trailing bytes"));
     }
-    Ok(ParsedProjectArchive { manifest, media })
+    Ok(ParsedProjectArchive { manifest, media,video_caches })
 }
 
 fn validate_manifest(manifest: &ProjectArchiveManifest) -> Result<Vec<[u8; 32]>, ArchiveError> {
     if manifest.format != ARCHIVE_FORMAT_NAME
-        || manifest.schema_version != ARCHIVE_FORMAT_VERSION
+        || ![ARCHIVE_FORMAT_VERSION,ARCHIVE_VIDEO_FORMAT_VERSION].contains(&manifest.schema_version)
+        || (manifest.schema_version==ARCHIVE_FORMAT_VERSION)!=manifest.video_caches.is_empty()
         || manifest.project.schema_version != COMPOSITION_PROJECT_SCHEMA_VERSION
         || manifest.project.mode != COMPOSITION_PROJECT_MODE
     {
@@ -444,21 +461,17 @@ fn validate_manifest(manifest: &ProjectArchiveManifest) -> Result<Vec<[u8; 32]>,
             "manifest sources do not match project document",
         ));
     }
-    validate_document_references(&manifest.project.document, &ids)?;
+    if manifest.project.document.get("compositions").is_none(){validate_document_references(&manifest.project.document, &ids)?;}
+    video::validate(manifest)?;
     let _ = total_media_bytes(manifest)?;
     Ok(digests)
 }
 
-fn document_source_ids(document: &Value) -> Result<Vec<&str>, ArchiveError> {
+fn document_source_ids(document: &Value) -> Result<Vec<String>, ArchiveError> {
     if document.get("compositions").is_some() {
-        crate::db::extract_document_source_ids(document).map_err(|_| ArchiveError::Invalid("invalid nested composition document"))?;
-        let mut ids = std::collections::BTreeSet::new();
-        for composition in document["compositions"].as_object().unwrap().values() {
-            for id in composition["content"]["sources"].as_object().unwrap().keys() {
-                ids.insert(id.as_str());
-            }
-        }
-        return Ok(ids.into_iter().collect());
+        // The native validator resolves logical slots and unused bin entries
+        // to the actual physical inventory and checks all scoped references.
+        return crate::db::extract_document_source_ids(document).map_err(|_| ArchiveError::Invalid("invalid nested composition document"));
     }
 
     let document = document.as_object().ok_or(ArchiveError::Invalid(
@@ -488,7 +501,7 @@ fn document_source_ids(document: &Value) -> Result<Vec<&str>, ArchiveError> {
         {
             return Err(ArchiveError::Invalid("invalid composition source identity"));
         }
-        ids.push(source_id.as_str());
+        ids.push(source_id.clone());
     }
     Ok(ids)
 }
@@ -585,6 +598,9 @@ fn validate_archive_size(
             .and_then(|value| value.checked_add(source.byte_length))
             .ok_or(ArchiveError::Limit("archive size overflow"))?;
     }
+    for cache in &manifest.video_caches {
+        total=total.checked_add(video::CACHE_HEADER).and_then(|n|n.checked_add(cache.key.len() as u64)).and_then(|n|n.checked_add(cache.byte_length)).ok_or(ArchiveError::Limit("archive cache size overflow"))?;
+    }
     if total > MAX_ARCHIVE_BYTES {
         return Err(ArchiveError::Limit("archive exceeds the total size limit"));
     }
@@ -592,11 +608,12 @@ fn validate_archive_size(
 }
 
 fn total_media_bytes(manifest: &ProjectArchiveManifest) -> Result<u64, ArchiveError> {
-    let total = manifest.sources.iter().try_fold(0_u64, |total, source| {
+    let mut total = manifest.sources.iter().try_fold(0_u64, |total, source| {
         total
             .checked_add(source.byte_length)
             .ok_or(ArchiveError::Limit("archive media size overflow"))
     })?;
+    total=manifest.video_caches.iter().try_fold(total,|total,cache|total.checked_add(cache.byte_length).ok_or(ArchiveError::Limit("archive cache size overflow")))?;
     if total > MAX_ARCHIVE_TOTAL_MEDIA_BYTES {
         return Err(ArchiveError::Limit("archive media exceeds the total limit"));
     }

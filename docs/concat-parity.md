@@ -13220,3 +13220,25 @@ The `.veproj` HTTP archive currently still transports document and media records
 only. Attaching these cache payloads to the archive manifest, preserving aggregate
 archive limits, and registering imported stores atomically remain open. This
 transport is an implementation prerequisite, not completed archive parity.
+
+### Version-two archive cache records (format layer)
+
+The `.veproj` reader/writer now supports version two with separate video-cache
+records after media records. Each manifest entry names a logical source and the
+portable source/model/runtime/cache identity, byte length and SHA-256 digest.
+The format requires matching archived source bytes and clip bindings, complete
+video-binding coverage, unique keys/tuples, exact record order and EOF. Media and
+cache payloads share the existing aggregate byte limit. Version-one archives
+retain their original header and omit the optional cache field.
+
+The archive inventory validator also now uses the native physical-source
+inventory for nested projects instead of comparing logical source names to file
+IDs. Native dependency validation checks the scoped logical references.
+
+Qualification: six existing archive HTTP tests plus flat/logical version-two
+round trips with a real portable-codec payload, restored nonblank probabilities,
+version-one compatibility, corrupt/truncated/trailing records, duplicate/wrong
+bindings, aggregate limits and staging cleanup. The HTTP import route explicitly
+rejects cache-bearing archives until atomic publication/registration is wired;
+it cannot silently discard their caches. Automatic HTTP export collection and
+atomic HTTP restore remain open.
