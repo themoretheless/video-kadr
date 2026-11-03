@@ -5,6 +5,7 @@ use crate::{
     template_bundle,
 };
 use axum::extract::Query;
+use axum::response::IntoResponse;
 use serde::Deserialize;
 use serde_json::json;
 #[derive(Deserialize)]
@@ -286,4 +287,39 @@ async fn create(
         project: saved,
         source_mapping: mapping,
     })
+}
+
+/// Verify a package and expose only gallery/slot metadata, without publication.
+pub async fn inspect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ApiMultipart(multipart): ApiMultipart,
+) -> AppResult<Response> {
+    archive_actor(&state, &headers, false).await?;
+    let slot = state.try_acquire_upload_slot().ok_or_else(|| {
+        AppError::too_many_requests("слишком много операций с локальными файлами")
+    })?;
+    let archive = TemporaryFile::new(
+        state
+            .staging_dir()
+            .join(format!("{}.template-inspect", Uuid::new_v4())),
+    );
+    run_with_timeout(
+        receive_archive(multipart, archive.path()),
+        ARCHIVE_IO_TIMEOUT,
+        "Проверка шаблона превысила лимит времени",
+    )
+    .await??;
+    let stage = state.staging_dir();
+    let info = tokio::task::spawn_blocking(move || -> anyhow::Result<Value> {
+        let _slot = slot;
+        let _archive = archive;
+        let parsed = template_bundle::read(std::fs::File::open(_archive.path())?, &stage)?;
+        let info = crate::domain::project_template::inspect(&parsed.manifest.project, None)?;
+        Ok(json!({"schemaVersion":1,"name":parsed.manifest.name,"template":info}))
+    })
+    .await
+    .map_err(|e| AppError::internal("join template inspection", e))?
+    .map_err(|e| AppError::bad_request(e.to_string()))?;
+    Ok(([(header::CACHE_CONTROL, "private, no-store")], Json(info)).into_response())
 }

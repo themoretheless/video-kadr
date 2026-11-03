@@ -1,5 +1,6 @@
 <script lang="ts">
   import NativeTemplateDownload from './NativeTemplateDownload.svelte'
+  import NativeTemplateImport from './NativeTemplateImport.svelte'
   import NestedConcatTreatmentInsert from "./NestedConcatTreatmentInsert.svelte"
   import NestedConcatTreatmentInspector from "./NestedConcatTreatmentInspector.svelte"
   import NestedConcatShapeInsert from "./NestedConcatShapeInsert.svelte"
@@ -421,6 +422,15 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
     }
   }
 
+  async function templateCreated(result:import('$lib/api').NativeTemplateImportResponse,guard:()=>void):Promise<void>{
+    guard()
+    const [libraryLoaded]=await Promise.all([loadLibrary(),loadCompositionProjects()])
+    guard()
+    await openCompositionProject(result.project.id,guard)
+    syncCompositionLibrary(legacyState.library,libraryLoaded)
+    archiveMessage=`Создан проект «${result.project.name}» из шаблона`
+  }
+
   function downloadUrl(url: string, filename = ''): void {
     const anchor = document.createElement('a')
     anchor.href = url
@@ -535,6 +545,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   {#if voiceoverMessage}<p class="composition-voiceover-message" role="status">{voiceoverMessage}</p>{/if}
   {#if voiceoverError && !voiceoverOpen}<p class="composition-workspace-error error" role="alert">{voiceoverError}</p>{/if}
 
+  <NativeTemplateImport token={authState.token} spaceId={spacesState.selectedId||undefined} context={nestedComposition.document??compositionState.document} disabled={compositionState.save.busy||nestedHistory.busy||archiveBusy} oncreated={templateCreated} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})}/>
   <ConcatProjectImportPanel token={authState.token} context={compositionState.document} disabled={compositionState.save.busy} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
   <ConcatProjectExportPanel disabled={compositionState.save.busy} />
   <FilmcraftProjectPanel token={authState.token} library={legacyState.library} />

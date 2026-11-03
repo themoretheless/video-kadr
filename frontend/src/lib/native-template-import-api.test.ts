@@ -19,3 +19,13 @@ it('refuses duplicate slots before network and mismatched or unfinished server d
   await expect(importNativeTemplate(file,[{mediaId:'slot',sourceId:'chosen'}],'session')).rejects.toThrow('invalid project')
  }
 })
+
+it('verifies a package without creating a project and refuses invalid slot metadata',async()=>{
+ const {inspectNativeTemplatePackage}=await import('./api')
+ const metadata={schemaVersion:1,name:'Template',template:{schemaVersion:1,compositionId:'root',width:16,height:8,slots:[{mediaId:'slot',name:'Image',kind:'image',seconds:2}]}}
+ const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify(metadata)));vi.stubGlobal('fetch',fetcher)
+ const file=new File(['package'],'edit.vktemplate');expect(await inspectNativeTemplatePackage(file,'owner')).toEqual(metadata)
+ expect(fetcher.mock.calls[0]![0]).toContain('/api/composition-projects/template-inspect');expect(fetcher.mock.calls[0]![1].body.get('file')).toBe(file)
+ fetcher.mockResolvedValue(new Response(JSON.stringify({...metadata,template:{...metadata.template,slots:[{...metadata.template.slots[0],seconds:-1}]}})))
+ await expect(inspectNativeTemplatePackage(file,'owner')).rejects.toThrow('Invalid template')
+})

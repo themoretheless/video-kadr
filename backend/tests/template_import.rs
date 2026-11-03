@@ -106,6 +106,61 @@ async fn imports_template_to_independent_project_and_rolls_back_design_publicati
     .into_inner();
     std::fs::remove_file(design_path).unwrap();
     let app = support::router(state.clone());
+    let denied = app
+        .clone()
+        .oneshot(
+            Request::post("/api/composition-projects/template-inspect")
+                .header(
+                    header::CONTENT_TYPE,
+                    "multipart/form-data; boundary=TEMPLATE",
+                )
+                .body(Body::from(multipart(&bytes)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    let corrupt = app
+        .clone()
+        .oneshot(
+            Request::post("/api/composition-projects/template-inspect")
+                .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+                .header(
+                    header::CONTENT_TYPE,
+                    "multipart/form-data; boundary=TEMPLATE",
+                )
+                .body(Body::from(multipart(b"broken package")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(corrupt.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
+    let preview = app
+        .clone()
+        .oneshot(
+            Request::post("/api/composition-projects/template-inspect")
+                .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+                .header(
+                    header::CONTENT_TYPE,
+                    "multipart/form-data; boundary=TEMPLATE",
+                )
+                .body(Body::from(multipart(&bytes)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(preview.status(), StatusCode::OK);
+    assert_eq!(
+        preview.headers()[header::CACHE_CONTROL],
+        "private, no-store"
+    );
+    let info: Value =
+        serde_json::from_slice(&to_bytes(preview.into_body(), 1024 * 1024).await.unwrap()).unwrap();
+    assert_eq!(info["name"], "Fresh edit");
+    assert_eq!(info["template"]["slots"][0]["mediaId"], "slot");
+    assert_eq!(state.library.list().await.len(), 1);
+    assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
     let fills = json!([{"mediaId":"slot","sourceId":"replacement"}]);
     assert_eq!(
         app.clone()

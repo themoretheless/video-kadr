@@ -120,7 +120,7 @@ export async function saveCompositionProject(): Promise<void> {
 }
 
 
-export async function openCompositionProject(id: string): Promise<void> {
+export async function openCompositionProject(id: string,validateCommit?:()=>void): Promise<void> {
   if (projectWriteBusy) {
     compositionState.save.error = PROJECT_BUSY_MESSAGE
     return
@@ -133,6 +133,7 @@ export async function openCompositionProject(id: string): Promise<void> {
     const project = await fetchCompositionProject(id)
     if (!isCurrentOpenCompositionRevision(revision)) return
     if (!project) throw new Error('Композиционный проект не найден')
+    validateCommit?.()
     if ('compositions' in project.document && 'root' in project.document) {
       const nested = project as unknown as api.NestedCompositionProjectDto
       resetNestedHistory()

@@ -13616,3 +13616,48 @@ errors/warnings), scoped lint, token/listener checks and production build (35.50
 existing chunk warnings) pass. No model or network runtime is used for package
 media probing. Diff checks pass. The picker/slot-selection UI, gallery/posters,
 Space-race/quality coverage and complete application parity remain open.
+
+### Template file picker, verified slot preview and project opening
+
+The native workspace now exposes “Создать проект из шаблона”: choose a `.vktemplate`,
+explicitly verify it, inspect its ordered slots/type/duration, select registered
+library files, then create and open the new saved project. Creation is disabled
+until every slot has an available library selection. Failures preserve choices
+for retry; successful creation clears them before opening, so a later opening
+failure does not offer accidental duplicate creation. Library/project lists are
+refreshed before opening the returned saved identity.
+
+A separate authenticated `/composition-projects/template-inspect` upload endpoint
+verifies the package and returns only name/canvas/slot metadata. It does not publish
+files or create a project; worker-owned guards clean both uploaded and extracted
+bytes, including cancellation. The browser uploads the selected file again at
+creation, when all package and replacement checks are performed independently.
+There is no client-supplied assertion that an earlier inspection grants access.
+
+Account, destination Space, document changes and unmount abort observations and
+invalidate the panel's captured commit guard. Late results never replace the
+current editor. An already admitted server creation may still complete and remain
+in the saved-project list; frontend cancellation is not a claim of DB rollback.
+The file-picker component and full-workspace regressions use mocked API responses,
+while actual inspect/import/export package behavior is exercised by HTTP tests.
+Live browser-to-server acceptance, durable gallery/posters, video-mask bundle
+payloads and full application parity remain open.
+
+Final tests: eight backend tests pass across the actual authenticated inspection,
+import/export and bundle suites. Inspection rejects unauthenticated and malformed
+uploads, returns ordered slot metadata for a real PNG package, leaves no staging
+files and does not publish media. Seventy-one frontend tests pass across complete
+workspace/state regressions, import control and API. Mounted cases cover mandatory
+slot selection/order, exact package/ID payload, retry without reinspection,
+unmount cancellation and private metadata refusal after account change. A separate
+state regression changes caller context while the created-project fetch is
+pending: the new optional activation guard prevents overwriting the current
+editor at the final open boundary. Its first fixture tried rendering an empty
+composition; adding the intended video fixed that fixture and all 71 tests were
+rerun successfully. Svelte typecheck reports zero errors/warnings; scoped lint,
+design-token, listener-lifecycle and diff checks pass.
+
+Final production build passes in 21.66s with existing chunk warnings. The local
+file-to-project UI path is implemented; durable template library/gallery,
+posters, video-mask cache packaging and live browser-to-server qualification
+remain open alongside the broader WeftCut/Filmcraft/Concat scope.

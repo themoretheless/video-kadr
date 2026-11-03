@@ -914,6 +914,16 @@ export async function importCompositionProjectArchive(
   return res.json()
 }
 
+export interface NativeTemplatePackageInfo {schemaVersion:1;name:string;template:NativeTemplateInfo}
+export async function inspectNativeTemplatePackage(file:File,token:string,signal?:AbortSignal):Promise<NativeTemplatePackageInfo>{
+ if(file.size>MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES)throw new Error('Шаблон превышает лимит 2 ГиБ')
+ const body=new FormData();body.append('file',file)
+ const reply=await requestJson<NativeTemplatePackageInfo>('/api/composition-projects/template-inspect',{method:'POST',headers:bearerHeaders(token),body,signal})
+ if(signal?.aborted)throw new DOMException('Aborted','AbortError')
+ const info=reply?.template
+ if(reply?.schemaVersion!==1||typeof reply.name!=='string'||info?.schemaVersion!==1||!Array.isArray(info.slots)||new Set(info.slots.map(slot=>slot.mediaId)).size!==info.slots.length||info.slots.some(slot=>!slot.mediaId||typeof slot.name!=='string'||!['image','video','audio'].includes(slot.kind)||!Number.isFinite(slot.seconds)||slot.seconds<0))throw new Error('Invalid template package metadata')
+ return reply
+}
 export interface NativeTemplateSlotReference {readonly mediaId:string;readonly sourceId:string}
 export interface NativeTemplateImportResponse {project:NestedCompositionProjectDto;sourceMapping:Record<string,string>}
 /** The server verifies package files and probes every registered slot replacement. */

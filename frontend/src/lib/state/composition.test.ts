@@ -1739,3 +1739,18 @@ it('persists inactive DSP source keys through history, draft reload and native p
  flushCompositionAutosaveForTests();resetCompositionForTests();reloadCompositionDraftForTests();expect(current().dspEffects?.[0]?.concatSourceKeys?.semitones?.[0]?.value).toBe(-12)
  expect(buildCompositionRenderRequest(compositionState.document).composition.tracks.find(track=>track.kind==='audio')).toMatchObject({clips:[{dspEffects:[{params:{semitones:0},concatSourceKeys:{semitones:[{value:-12},{value:12}]}}]}]});expect(current().dspEffects?.[0]?.animation).toBeUndefined()
 })
+
+
+it('does not activate a created template project if its caller context changes during fetch',async()=>{
+ closeNestedComposition();addMediaInfoToComposition(video);const before=JSON.stringify(compositionState.document)
+ let resolve!:(project:api.CompositionProjectDto)=>void
+ vi.mocked(api.getCompositionProject).mockImplementation(()=>new Promise(done=>{resolve=done}))
+ let current=true
+ const opening=openCompositionProject('guarded-template',()=>{if(!current)throw new Error('template context changed')})
+ await vi.waitFor(()=>expect(api.getCompositionProject).toHaveBeenCalled())
+ current=false
+ const document:api.NativeNestedProject={schemaVersion:1,root:'root',compositions:{root:{content:buildCompositionRenderRequest(compositionState.document).composition,instances:[]}}}
+ resolve({id:'guarded-template',name:'Template',schemaVersion:2,mode:'composition',document,sourceIds:[],revision:1,createdAt:1,updatedAt:1} as unknown as api.CompositionProjectDto)
+ await opening
+ expect(nestedComposition.document).toBeNull();expect(JSON.stringify(compositionState.document)).toBe(before);expect(compositionState.save.error).toBe('template context changed');expect(compositionState.save.busy).toBe(false)
+})
