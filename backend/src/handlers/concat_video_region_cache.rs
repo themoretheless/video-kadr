@@ -8,12 +8,15 @@ impl Drop for Lease{fn drop(&mut self){let _=std::fs::remove_dir_all(&self.stage
 pub(crate) fn declares_source(document:&serde_json::Value,id:&str)->bool{
  document.get("projectMedia").and_then(|v|v.get(id)).is_some()||document.get("sources").and_then(|v|v.get(id)).is_some()||document.get("compositions").and_then(serde_json::Value::as_object).is_some_and(|nodes|nodes.values().any(|node|node.get("content").and_then(|v|v.get("sources")).and_then(|v|v.get(id)).is_some()))
 }
-pub async fn load(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,cancel:&CancellationToken)->Result<Lease>{
+pub async fn load(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,cancel:&CancellationToken)->Result<Lease>{load_inner(state,actor,project,revision,snapshot,None,cancel).await}
+pub(crate) async fn load_for_original(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,physical:&str,cancel:&CancellationToken)->Result<Lease>{load_inner(state,actor,project,revision,snapshot,Some(physical),cancel).await}
+async fn load_inner(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,original:Option<&str>,cancel:&CancellationToken)->Result<Lease>{
  snapshot.validate()?;
  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access required"))?;
  let saved=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("region project unavailable"))?;
  let physical=super::concat_cutout_access::library_id(&saved.document,&snapshot.source_id)?;
- ensure!(saved.revision==revision&&saved.source_ids.contains(&physical),"stale project or unrelated region original");
+ ensure!(saved.revision==revision,"stale region project");
+ if let Some(original)=original{ensure!(super::concat_video_source_access::allowed(state,actor,project,revision,&snapshot.source_id,&snapshot.source_hash,original).await?,"unrelated historical region original");}else{ensure!(saved.source_ids.contains(&physical),"unrelated region original");}
  // Undo followed by Save can remove the current mask reference. A verified
  // project-owned immutable SAM reservation remains authority for later Redo.
  // Actor ownership or source-space readability alone must not grant this.

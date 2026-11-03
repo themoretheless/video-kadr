@@ -146,9 +146,11 @@ pub(crate) struct PreparedTransfer {
 pub(crate) fn prepare_transfer<'a>(state:&'a AppState,actor:&'a str,from:ProjectSource<'a>,target_source:&'a str,target_document:&'a serde_json::Value,runtime_hash:&'a str,model_hash:&'a str,regions:&'a [RegionTransfer],cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<PreparedTransfer>>+Send+'a>>{
  Box::pin(async move {
     crate::services::concat_video_selection::model_from_hash(model_hash)?;
-    let physical=physical_id(state,actor,from.project,from.source_id,from.revision).await?;
-    ensure!(super::concat_cutout_access::library_id(target_document,target_source)?==physical,"video cache transfer requires the same registered physical source");
-    let cache=restore_for_model(state,actor,from.project,from.source_id,from.revision,runtime_hash,model_hash,cancel).await?.ok_or_else(||anyhow::anyhow!("source project has no verified video cache"))?;
+    super::cutout_assets::authorize(state,from.project,actor).await.map_err(|_|anyhow::anyhow!("source editor access required"))?;
+    let physical=super::concat_cutout_access::library_id(target_document,target_source)?;
+    let original=super::cutout_jobs::source(state,&physical,actor).await?;
+    let hash=crate::project_archive::fingerprint_file_with_limit(&original,CACHE_BUDGET).await?.1;
+    let cache=restore_requested(state,actor,from.project,from.source_id,from.revision,&physical,&hash,runtime_hash,model_hash,cancel).await?.ok_or_else(||anyhow::anyhow!("source project has no verified video cache"))?;
     ensure!(!cache.is_empty(),"cannot transfer an empty video cache");
     ensure!(regions.len()<=1024,"too many transferred video regions");
     let mut leases=std::collections::BTreeMap::new();let mut total=0u64;let mut planned=vec![];
@@ -157,7 +159,7 @@ pub(crate) fn prepare_transfer<'a>(state:&'a AppState,actor:&'a str,from:Project
         let key=serde_json::to_string(&region.snapshot)?;
         if !leases.contains_key(&key){
             total=total.checked_add(region.snapshot.frames.checked_mul(256*256).ok_or_else(||anyhow::anyhow!("region byte budget overflow"))?).ok_or_else(||anyhow::anyhow!("region byte budget overflow"))?;ensure!(total<=CACHE_BUDGET,"transferred region byte budget exceeded");
-            leases.insert(key.clone(),super::concat_video_region_cache::load(state,actor,from.project,from.revision,&region.snapshot,cancel).await?);
+            leases.insert(key.clone(),super::concat_video_region_cache::load_for_original(state,actor,from.project,from.revision,&region.snapshot,&physical,cancel).await?);
         }
         let library=leases[&key].library_source_id.clone();
         let mask_id=crate::domain::composition::SourceId::parse(&region.target_mask_source_id)?;
@@ -166,8 +168,8 @@ pub(crate) fn prepare_transfer<'a>(state:&'a AppState,actor:&'a str,from:Project
         planned.push((region.snapshot.mask_source_id.clone(),library,snapshot));
     }
     cache.published_receipt()?;
-    let path=source(state,actor,from.project,from.source_id,from.revision).await?;
-    ensure!(crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?.1==cache.video_hash()&&!cancel.is_cancelled(),"video cache transfer source/access changed");
+    let path=super::cutout_jobs::source(state,&physical,actor).await?;
+    ensure!(super::concat_video_source_access::allowed(state,actor,from.project,from.revision,from.source_id,cache.video_hash(),&physical).await?&&crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?.1==cache.video_hash()&&!cancel.is_cancelled(),"video cache transfer source/access changed");
     Ok(PreparedTransfer{actor:actor.into(),source_project:Some(from.project.into()),source_id:from.source_id.into(),source_revision:from.revision,target_source:target_source.into(),physical,target_document_hash:document_identity(target_document)?,cache,planned,cancel:cancel.clone()})
     })
 }
@@ -184,8 +186,8 @@ impl PreparedTransfer {
     let receipt=cache.published_receipt()?;
     let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("invalid video cache generation"))?;
     ensure!(!cancel.is_cancelled(),"video cache transfer cancelled");
-    for endpoint in from.into_iter().chain(std::iter::once(to)){
-        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?)").bind(endpoint.project).bind(i64::try_from(endpoint.revision)?).bind(actor).bind(physical).fetch_one(&mut *connection).await?;
+    for(endpoint,is_from)in from.map(|v|(v,true)).into_iter().chain(std::iter::once((to,false))){
+        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND (EXISTS(SELECT 1 FROM composition_project_sources s WHERE s.project_id=p.id AND s.source_id=?) OR (? AND EXISTS(SELECT 1 FROM concat_video_project_source_refs r WHERE r.project_id=p.id AND r.source_id=? AND r.video_hash=? AND r.library_source_id=?))))").bind(endpoint.project).bind(i64::try_from(endpoint.revision)?).bind(actor).bind(physical).bind(is_from).bind(endpoint.source_id).bind(cache.video_hash()).bind(physical).fetch_one(&mut *connection).await?;
         ensure!(allowed,"video transfer project/source authority changed");
     }
     let source_row=if let Some(from)=from {
@@ -241,4 +243,19 @@ pub(crate) fn prepare_archive<'a>(state:&'a AppState,actor:&'a str,target_source
 
 async fn retain_original(connection:&mut sqlx::SqliteConnection,project:&str,source:&str,hash:&str,physical:&str)->Result<()>{
  sqlx::query("INSERT INTO concat_video_project_source_refs(project_id,source_id,video_hash,library_source_id) VALUES(?,?,?,?) ON CONFLICT DO NOTHING").bind(project).bind(source).bind(hash).bind(physical).execute(connection).await?;Ok(())
+}
+
+/// Restore the requested immutable original, even after its live slot disappears.
+pub(crate) fn restore_requested<'a>(state:&'a AppState,actor:&'a str,project:&'a str,source_id:&'a str,revision:u64,physical:&'a str,hash:&'a str,runtime:&'a str,model:&'a str,cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<Option<RunCache>>>+Send+'a>>{
+ Box::pin(async move {
+  ensure!(super::concat_video_source_access::allowed(state,actor,project,revision,source_id,hash,physical).await?,"requested original has no exact project authority");
+  let path=super::cutout_jobs::source(state,physical,actor).await?;
+  let before=crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?;ensure!(before.1==hash,"historical original bytes changed");
+  let row:Option<(String,String)>=sqlx::query_as("SELECT generation,manifest_hash FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? ORDER BY rowid DESC LIMIT 1").bind(project).bind(source_id).bind(hash).bind(model).bind(runtime).fetch_optional(state.db.pool()).await?;
+  let Some((generation,manifest_hash))=row else{return Ok(None)};
+  let suffix=generation.strip_prefix("concat-video-cache-").ok_or_else(||anyhow::anyhow!("invalid historical cache generation"))?;ensure!(uuid::Uuid::parse_str(suffix)?.to_string()==suffix,"invalid historical cache generation");
+  let cache=RunCache::restore(&PublishedCache{model_hash:model.into(),runtime_hash:runtime.into(),video_hash:hash.into(),directory:state.storage.join("concat-video-caches").join(generation),manifest_hash},CACHE_BUDGET,cancel).await?;
+  ensure!(super::concat_video_source_access::allowed(state,actor,project,revision,source_id,hash,physical).await?&&super::cutout_jobs::source(state,physical,actor).await?==path&&crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?==before&&!cancel.is_cancelled(),"historical original authority/data changed");
+  Ok(Some(cache))
+ })
 }

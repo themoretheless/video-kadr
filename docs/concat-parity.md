@@ -13342,3 +13342,27 @@ current binding is removed/rebound still needs reservation-aware resolution.
 Legacy registrations without a verified physical reservation are not guessed or
 backfilled from ambiguous old bindings. Those recovery and full GC gates remain
 unfinished.
+
+### Historical original resolution for preview and resave
+
+Saved video providers can now resolve the physical original named by a requested
+historical snapshot after its live logical slot is removed or rebound. Access
+requires current project editor membership and revision, plus either the matching
+live binding or an exact project/logical-source/video-hash/physical-file reservation.
+The original bytes are fingerprinted before and after restoring the exact model/
+runtime store. Temporal providers use the same original authority while retaining
+their separate snapshot-specific region reservations.
+
+Owned-origin selection and transfer preparation share this resolution, so saving
+an older imported snapshot can reuse the adopted namespace without contacting an
+obsolete external origin. Registration still checks both endpoint authorities;
+the target must have the restored physical source in its transaction's inventory.
+
+Qualification: all sixteen affected integration tests pass. Cold Selfie imports
+with both logical and physical IDs, and a cold SAM/VFR import, replace their current
+document with an empty composition. Their historical snapshots still render the
+same pixels and can be saved again with a stale external origin removed. Stale
+revisions, changed source hashes, viewer roles and a different unregistered file
+containing identical bytes refuse access. Existing cache-transfer, archive and
+version-one compatibility cases stay green. Legacy inactive slots without a proven
+physical reservation and the remaining history/GC/platform gates remain open.

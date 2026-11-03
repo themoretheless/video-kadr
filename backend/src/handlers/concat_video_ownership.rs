@@ -31,8 +31,16 @@ pub(crate) fn use_owned<'a>(
             saved.revision == context.expected_revision,
             "stale saved video project"
         );
-        if super::concat_cutout_access::library_id(&saved.document, source)? != physical
-            || !saved.source_ids.iter().any(|id| id == physical)
+        if !super::concat_video_source_access::allowed(
+            state,
+            actor,
+            &context.project_id,
+            context.expected_revision,
+            source,
+            &binding.source_hash,
+            physical,
+        )
+        .await?
         {
             return Ok(false);
         }

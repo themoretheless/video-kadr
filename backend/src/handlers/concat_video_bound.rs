@@ -42,12 +42,10 @@ impl BoundMasks {
    super::cutout_assets::authorize(state,&context.project_id,actor).await.map_err(|_|anyhow::anyhow!("project editor access required"))?;
    let saved=state.db.get_composition_project_for(&context.project_id,actor).await?.ok_or_else(||anyhow::anyhow!("project unavailable"))?;
    ensure!(saved.revision==context.expected_revision,"stale saved video project");
-   let physical=super::concat_cutout_access::library_id(&saved.document,owner_source)?;
-   ensure!(requested.library_source_id(&source).as_str()==physical,"requested video library binding differs from saved cache owner");
-   ensure!(saved.source_ids.iter().any(|id|id==&physical),"requested video source is not authorized by the saved project");
+   let physical=requested.library_source_id(&source).as_str().to_owned();
    let key=(source.clone(),binding.model_hash.clone(),binding.runtime_hash.clone(),binding.source_hash.clone(),context.project_id.clone(),owner_source.to_owned(),context.expected_revision);
    if !result.caches.contains_key(&key){
-    let cache=super::concat_video_cache::restore_for_model(state,actor,&context.project_id,owner_source,context.expected_revision,&binding.runtime_hash,&binding.model_hash,cancel).await?.ok_or_else(||anyhow::anyhow!("saved video mask cache missing"))?;
+    let cache=super::concat_video_cache::restore_requested(state,actor,&context.project_id,owner_source,context.expected_revision,&physical,&binding.source_hash,&binding.runtime_hash,&binding.model_hash,cancel).await?.ok_or_else(||anyhow::anyhow!("saved video mask cache missing"))?;
     ensure!(cache.video_hash()==binding.source_hash,"saved video source changed");result.caches.insert(key.clone(),cache);
    }
    ensure!(result.caches[&key].video_hash()==binding.source_hash,"inconsistent saved video source identities");
@@ -59,7 +57,7 @@ impl BoundMasks {
     let identity=format!("{:x}",Sha256::digest(serde_json::to_vec(&(&context.project_id,context.expected_revision,&snapshot))?));
     if !result.regions.contains_key(&identity){
      let used:u64=result.regions.values().map(|r|r.reader.snapshot().frames*256*256).sum();ensure!(used.checked_add(track.snapshot.frames*256*256).is_some_and(|n|n<=64*1024*1024*1024),"video region provider staging budget exceeded");
-     let lease=super::concat_video_region_cache::load(state,actor,&context.project_id,context.expected_revision,&snapshot,cancel).await?;result.regions.insert(identity.clone(),lease);
+     let lease=super::concat_video_region_cache::load_for_original(state,actor,&context.project_id,context.expected_revision,&snapshot,&physical,cancel).await?;result.regions.insert(identity.clone(),lease);
     }
     ensure!(requested.library_source_id(&SourceId::parse(&track.snapshot.mask_source_id)?).as_str()==result.regions[&identity].library_source_id,"requested region library binding differs from reserved asset");
     tracks.push((track.stroke,identity));

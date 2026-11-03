@@ -235,7 +235,17 @@ pub async fn import_and_preview(
         ))
         .await;
     } else {
-        Box::pin(original_after_import(&state, &app, &user.token, &saved)).await;
+        Box::pin(original_after_import(
+            &state,
+            &app,
+            &user.token,
+            &saved,
+            &project,
+            node,
+            time,
+            expected,
+        ))
+        .await;
     }
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
 }
@@ -393,6 +403,27 @@ async fn history_after_import(
         String::from_utf8_lossy(&pixels)
     );
     assert_eq!(pixels.as_ref(), expected);
+    let empty = serde_json::to_value(video_kadr_backend::domain::composition::Composition::new(
+        Default::default(),
+    ))
+    .unwrap();
+    let cleared = state
+        .db
+        .update_composition_project_for(
+            &saved.id,
+            "archive-owner",
+            &saved.name,
+            &empty,
+            &[],
+            current.revision,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    Box::pin(assert_historical_preview(
+        state, app, token, &cleared, snapshot, node, time, expected,
+    ))
+    .await;
     assert!(state
         .db
         .delete_composition_project_for(&saved.id, "archive-owner")
@@ -418,6 +449,10 @@ async fn original_after_import(
     app: &axum::Router,
     token: &str,
     saved: &video_kadr_backend::db::CompositionProject,
+    snapshot: &Value,
+    node: &str,
+    time: u64,
+    expected: &[u8],
 ) {
     let physical = saved.source_ids[0].clone();
     assert_eq!(saved.source_ids.len(), 1);
@@ -425,7 +460,7 @@ async fn original_after_import(
         Default::default(),
     ))
     .unwrap();
-    state
+    let current = state
         .db
         .update_composition_project_for(
             &saved.id,
@@ -446,6 +481,10 @@ async fn original_after_import(
             .unwrap(),
         1
     );
+    Box::pin(assert_historical_preview(
+        state, app, token, &current, snapshot, node, time, expected,
+    ))
+    .await;
     let delete = || {
         Request::builder()
             .method("DELETE")
@@ -474,5 +513,130 @@ async fn original_after_import(
     assert_eq!(
         app.clone().oneshot(delete()).await.unwrap().status(),
         StatusCode::NO_CONTENT
+    );
+}
+
+async fn assert_historical_preview(
+    state: &video_kadr_backend::state::AppState,
+    app: &axum::Router,
+    token: &str,
+    current: &video_kadr_backend::db::CompositionProject,
+    snapshot: &Value,
+    node: &str,
+    time: u64,
+    expected: &[u8],
+) {
+    let preview = |project: Value, revision: u64| {
+        Request::builder().method("POST").uri("/api/compositions/nested-preview").header("content-type","application/json").header("authorization",format!("Bearer {token}")).body(Body::from(json!({"project":project,"compositionId":node,"timeUs":time,"renderedOutputs":{},"savedProject":{"projectId":current.id,"expectedRevision":revision}}).to_string())).unwrap()
+    };
+    let response = app
+        .clone()
+        .oneshot(preview(snapshot.clone(), current.revision))
+        .await
+        .unwrap();
+    let status = response.status();
+    let pixels = to_bytes(response.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&pixels)
+    );
+    assert_eq!(pixels.as_ref(), expected);
+    assert!(!app
+        .clone()
+        .oneshot(preview(snapshot.clone(), current.revision + 1))
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    let mut wrong = snapshot.clone();
+    wrong["compositions"][node]["content"]["tracks"][0]["clips"][0]["concatCutout"]["sourceHash"] =
+        json!("0".repeat(64));
+    assert!(!app
+        .clone()
+        .oneshot(preview(wrong, current.revision))
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    let source = snapshot["compositions"][node]["content"]["tracks"][0]["clips"][0]["sourceId"]
+        .as_str()
+        .unwrap();
+    let native: video_kadr_backend::domain::nested_composition::NestedCompositionProject =
+        serde_json::from_value(snapshot.clone()).unwrap();
+    let physical = native
+        .library_source_id(
+            &video_kadr_backend::domain::composition::SourceId::parse(source).unwrap(),
+        )
+        .as_str()
+        .to_owned();
+    let entry = state.library.get(physical.as_str()).await.unwrap();
+    let original = state.library.resolve_media_path(&entry).await.unwrap();
+    let copy_id = format!("unregistered-copy-{}", uuid::Uuid::new_v4());
+    let filename = format!("{copy_id}.mkv");
+    tokio::fs::copy(original, state.sources_dir().join(&filename))
+        .await
+        .unwrap();
+    assert!(state.library.add(video_kadr_backend::library::MediaEntry::from_result("source",&json!({"id":copy_id,"filename":filename,"url":format!("/files/sources/{filename}"),"mediaType":"video","width":entry.width,"height":entry.height}))).await);
+    let mut copy = snapshot.clone();
+    let descriptor = copy["compositions"][node]["content"]["sources"][source].clone();
+    copy["projectMedia"][source] = json!({"source":descriptor,"librarySourceId":copy_id,"name":"Different physical copy","placeholder":false});
+    assert!(
+        !app.clone()
+            .oneshot(preview(copy, current.revision))
+            .await
+            .unwrap()
+            .status()
+            .is_success(),
+        "identical bytes must not borrow another physical file's reservation"
+    );
+    let delete = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/library/{copy_id}"))
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(delete).await.unwrap().status(),
+        StatusCode::NO_CONTENT
+    );
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new().filename(state.storage.join("app.db")),
+        )
+        .await
+        .unwrap();
+    sqlx::query("UPDATE composition_project_members SET role='viewer' WHERE project_id=? AND actor='archive-owner'").bind(&current.id).execute(&pool).await.unwrap();
+    assert!(!app
+        .clone()
+        .oneshot(preview(snapshot.clone(), current.revision))
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    sqlx::query("UPDATE composition_project_members SET role='owner' WHERE project_id=? AND actor='archive-owner'").bind(&current.id).execute(&pool).await.unwrap();
+    // Saving the old import snapshot must select this project's immutable original,
+    // despite an irrelevant external origin retained in the historical wire data.
+    let mut recovered = snapshot.clone();
+    let source = recovered["compositions"][node]["content"]["tracks"][0]["clips"][0]["sourceId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    recovered["compositions"][node]["content"]["tracks"][0]["clips"][0]["concatCutout"]["origin"] =
+        json!({"projectId":"unavailable-old-origin","expectedRevision":1,"sourceId":"unavailable"});
+    let update=Request::builder().method("PUT").uri(format!("/api/composition-projects/{}",current.id)).header("content-type","application/json").header("authorization",format!("Bearer {token}")).body(Body::from(json!({"schemaVersion":2,"mode":"composition","name":current.name,"document":recovered,"baseRevision":current.revision}).to_string())).unwrap();
+    let response = app.clone().oneshot(update).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
+    assert!(
+        status.is_success(),
+        "source {source}: {}",
+        String::from_utf8_lossy(&body)
     );
 }
