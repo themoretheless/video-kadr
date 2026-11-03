@@ -490,10 +490,22 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
             },
         )]),
     )]);
+    let public_input=json!({"request":{"schemaVersion":1,"document":prepared_input.document,"mediaBindings":prepared_input.media_bindings,"preserveMediaIds":true},"preparedVideos":[{"timelineId":"main","clipId":"prepared-clip","projectId":context.project_id,"compositionId":root,"sourceClipId":"clip","expectedRevision":context.expected_revision}]});
     let report = import_with_ready_bindings(prepared_input, &StillBindings::new(), &ready).unwrap();
     assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
     let prepared_native = report.project.unwrap();
     prepared_native.dependency_order().unwrap();
+    let before_count=delivery_state.library.list().await.len();
+    let response=delivery.clone().oneshot(request("/api/compositions/concat-project/import-ready",&owner.token,public_input.clone())).await.unwrap();
+    let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&bytes));
+    let public:Value=serde_json::from_slice(&bytes).unwrap();assert_eq!(public["status"],"converted");
+    let mut public_project:video_kadr_backend::domain::nested_composition::NestedCompositionProject=serde_json::from_value(public["project"].clone()).unwrap();
+    let response=delivery.clone().oneshot(request("/api/compositions/nested-preview",&owner.token,json!({"project":public_project,"timeUs":100000,"renderedOutputs":{}}))).await.unwrap();assert_eq!(response.status(),StatusCode::OK);assert_eq!(to_bytes(response.into_body(),1<<20).await.unwrap().as_ref(),expected_rgba.as_slice());
+    if let video_kadr_backend::domain::composition::CompositionTrack::Video{clips,..}=&mut public_project.compositions.get_mut("concat-timeline-0").unwrap().content.tracks[0]{assert_eq!(clips[0].concat_cutout.as_ref().unwrap().origin.as_ref().unwrap().source_id,"slot");clips[0].concat_cutout.as_mut().unwrap().origin=None;}
+    assert_eq!(serde_json::to_value(public_project).unwrap(),serde_json::to_value(&prepared_native).unwrap());
+    for mode in 0..3 {let mut wrong=public_input.clone();match mode{0=>wrong["preparedVideos"][0]["expectedRevision"]=json!(context.expected_revision+1),1=>wrong["preparedVideos"][0]["sourceClipId"]=json!("missing"),_=>{let reference=wrong["preparedVideos"][0].clone();wrong["preparedVideos"].as_array_mut().unwrap().push(reference);}}assert_eq!(delivery.clone().oneshot(request("/api/compositions/concat-project/import-ready",&owner.token,wrong)).await.unwrap().status(),StatusCode::CONFLICT);}
+    assert_eq!(delivery_state.library.list().await.len(),before_count);
+
     // An unsaved imported draft can reference the authorized source store,
     // without claiming ownership or requiring a configured inference engine.
     let mut draft=prepared_native.clone();

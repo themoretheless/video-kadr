@@ -13099,3 +13099,23 @@ SAM brush/eraser draft preview with renamed temporal regions, stale owner and
 unauthorized actor refusals, and frontend round-trip/schema checks. The public
 prepared-video import producer/selector and atomic final-save ownership adoption
 remain open; this bridge does not establish complete Concat parity.
+
+### Public prepared-video import references (partial workflow)
+
+`POST /api/compositions/concat-project/import-ready` also accepts
+`preparedVideos`, using the same source-project/composition/clip/revision
+reference shape as `preparedStills`. Either or both lists may be supplied.
+The server reads the selected saved clip, requires matching destination cutout
+settings, restores the registered model store, verifies each temporal snapshot
+and physical file access, and constructs the portable owner reference itself.
+The source is reverified after conversion. Client paths and mask assertions are
+not accepted. Reading and conversion create no new assets or saved projects.
+Referenced drafts must first acquire their own saved cache ownership before
+being selected as another import source; transitive origin grants are absent.
+
+The frontend API supports mixed still/video references. Qualification covers a
+real Selfie HTTP import, immediate model-free preview, equality with trusted
+conversion after removing only the owner reference, stale/missing/duplicate
+selection refusals, and preservation of the library inventory. The visible
+video selector, atomic final-save adoption, and public-route temporal-region
+qualification remain open.

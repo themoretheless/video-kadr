@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest'
-import {importConcatProjectWithSavedStills} from './api'
+import {importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts} from './api'
 afterEach(()=>vi.unstubAllGlobals())
 it('imports via authenticated saved references with distinct source and destination identities',async()=>{
  const report={schemaVersion:1,status:'needs_attention',project:null,diagnostics:['unsupported field'],sourceDocument:{version:1},timelineIds:{}}
@@ -14,4 +14,11 @@ it('imports via authenticated saved references with distinct source and destinat
 it('propagates stale or unauthorized saved references without falling back to unverified import',async()=>{
  const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify({error:'stale saved cutout revision'}),{status:409}));vi.stubGlobal('fetch',fetchMock)
  await expect(importConcatProjectWithSavedStills({}, {},[],undefined,'owner')).rejects.toThrow('stale saved cutout revision');expect(fetchMock).toHaveBeenCalledTimes(1)
+})
+
+it('sends prepared video references without accepting client mask metadata',async()=>{
+ const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify({status:'converted'})));vi.stubGlobal('fetch',fetchMock)
+ const references=[{timelineId:'main',clipId:'destination',projectId:'saved',compositionId:'root',sourceClipId:'source',expectedRevision:4}]
+ await importConcatProjectWithSavedCutouts({}, {},[],references,undefined,'owner',{},true)
+ expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({request:{schemaVersion:1,document:{},mediaBindings:{},preserveMediaIds:true},preparedStills:[],preparedVideos:references})
 })

@@ -2755,9 +2755,14 @@ export async function fillConcatMediaSlot(document:unknown,mediaId:string,entry:
 export interface ConcatSavedStillReference {
  readonly timelineId:string;readonly clipId:string;readonly projectId:string;readonly compositionId?:string|null;readonly sourceClipId:string;readonly expectedRevision:number
 }
+export type ConcatSavedVideoReference=ConcatSavedStillReference
 /** Reverify saved private bundles; client mask metadata/paths are never authority. */
+export function importConcatProjectWithSavedCutouts(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,preparedStills:readonly ConcatSavedStillReference[],preparedVideos:readonly ConcatSavedVideoReference[],signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={},preserveMediaIds=false):Promise<ConcatProjectImportReport>{
+ return requestJson('/api/compositions/concat-project/import-ready',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({request:{schemaVersion:1,document,mediaBindings,preserveMediaIds,...(Object.keys(fontBindings).length?{fontBindings}:{})},preparedStills,...(preparedVideos.length?{preparedVideos}:{})}),signal})
+}
+
 export function importConcatProjectWithSavedStills(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,preparedStills:readonly ConcatSavedStillReference[],signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={},preserveMediaIds=false):Promise<ConcatProjectImportReport>{
- return requestJson('/api/compositions/concat-project/import-ready',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({request:{schemaVersion:1,document,mediaBindings,preserveMediaIds,...(Object.keys(fontBindings).length?{fontBindings}:{})},preparedStills}),signal})
+ return importConcatProjectWithSavedCutouts(document,mediaBindings,preparedStills,[],signal,token,fontBindings,preserveMediaIds)
 }
 
 export type ConcatFontBinding={readonly data:string}|{readonly fallback:true}
