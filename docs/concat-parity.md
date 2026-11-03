@@ -13521,3 +13521,27 @@ Final scoped checks: Svelte typecheck reports zero errors/warnings; production
 build passes (22.95s, existing chunk warnings). Design-token, listener-lifecycle
 and diff checks pass. The full native-workspace mount issue above remains an
 unresolved verification gap rather than a passing browser claim.
+
+### Full native-workspace template download mount
+
+The earlier effect-depth failure was traced to the workspace test harness using
+Svelte's server `untrack` while mounting browser components from the client entry.
+Its playback-control regression tests already replace that one export with the
+client implementation. The workspace harness now does the same; production
+reactivity and playback code are unchanged.
+
+A complete mounted native workspace now draws an exact generated RGBA response,
+downloads the encoded saved-template URL, displays the status and preserves its
+document. Catalog requests deliberately return HTTP 503 to exercise unavailable
+optional services rather than returning invalid `[]` page shapes. Native duration
+and preview APIs have typed mock responses; clicking download does not restart
+their effects. Real template HTTP/binary behavior remains covered by the preceding
+backend export test, not by these mocks. All 29 tests across the complete workspace
+suite, playback, preview, template control and template API pass without unhandled
+errors. The historical mount failure is resolved for this harness; this is still
+not a live browser-to-server qualification or completion of template import,
+gallery, posters or video-mask packaging.
+
+The final strengthened full-workspace suite passes all twelve tests after adding
+an exact drawn-pixel assertion. Svelte typecheck and scoped lint pass; diff checks
+pass. No production files changed in this qualification milestone.

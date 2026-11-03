@@ -1,3 +1,7 @@
+import * as api from '$lib/api'
+import {nestedComposition,closeNestedComposition} from '$lib/state/nestedComposition.svelte'
+import {buildCompositionWireDocument} from '$lib/composition/payload'
+import {createComposition} from '$lib/composition/commands'
 import { importPreferences, readAutoPairAudioOnImport } from '$lib/state/importPreferences.svelte.js'
 // @ts-expect-error Vitest's SSR condition exposes server-only mount; this test needs Svelte's client entry.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
@@ -21,6 +25,14 @@ import { setAuthSessionForTests } from '$lib/state/auth.svelte.js'
 import { spacesState } from '$lib/state/spaces.svelte.js'
 import { createCompositionTemplate } from '$lib/composition/templates.js'
 import CompositionWorkspace from './CompositionWorkspace.svelte'
+
+// Mount browser components with browser untrack, as the playback-control tests do.
+vi.mock('svelte',async original=>{
+ const server=await original<typeof import('svelte')>()
+ // @ts-expect-error The Svelte client source has no declaration file.
+ const client=await import('../../../../node_modules/svelte/src/index-client.js')
+ return {...server,untrack:client.untrack}
+})
 
 let target: HTMLDivElement
 
@@ -55,6 +67,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  closeNestedComposition()
   setAuthSessionForTests(null)
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -575,4 +588,28 @@ describe('CompositionWorkspace local integrations', () => {
 
     await unmount(component)
   })
+})
+
+it('opens the native workspace with unavailable catalogs and downloads its saved template without restarting playback effects',async()=>{
+ vi.mocked(fetch).mockImplementation(()=>Promise.resolve(new Response(JSON.stringify({error:'offline fixture'}),{status:503})))
+ const content=buildCompositionWireDocument(createComposition({width:16,height:16,fps:24,backgroundColor:'#000000'}))
+ nestedComposition.document={schemaVersion:1,root:'root',compositions:{root:{content,instances:[]}}}
+ nestedComposition.activeCompositionId='root';nestedComposition.projectId='saved/native';nestedComposition.name='Unsaved title'
+ const before=JSON.stringify(nestedComposition.document),downloads:string[]=[]
+ const durations=vi.spyOn(api,'nestedDurations').mockResolvedValue({root:1000000})
+ const previews=vi.spyOn(api,'renderNestedPreview').mockResolvedValue({width:1,height:1,rgba:new Uint8ClampedArray([1,2,3,255])})
+ const put=vi.fn()
+ vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue({clearRect:vi.fn(),createImageData:()=>({data:new Uint8ClampedArray(4)}),putImageData:put} as unknown as CanvasRenderingContext2D)
+ vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(function(this:HTMLAnchorElement){downloads.push(this.getAttribute('href')!)})
+ const component=mount(CompositionWorkspace,{target})
+ try{
+  await vi.waitFor(()=>expect(put).toHaveBeenCalled())
+  expect(put.mock.calls[0]![0].data).toEqual(new Uint8ClampedArray([1,2,3,255]))
+  await settle();const durationCalls=durations.mock.calls.length,previewCalls=previews.mock.calls.length
+  button('Скачать шаблон сохранённой версии').click();await settle()
+  expect(downloads).toEqual(['/api/composition-projects/saved%2Fnative/template'])
+  expect(target.textContent).toContain('Загрузка шаблона сохранённой версии началась')
+  expect(JSON.stringify(nestedComposition.document)).toBe(before)
+  expect(durationCalls).toBeGreaterThan(0);expect(previewCalls).toBeGreaterThan(0);expect(durations).toHaveBeenCalledTimes(durationCalls);expect(previews).toHaveBeenCalledTimes(previewCalls)
+ }finally{await unmount(component)}
 })
