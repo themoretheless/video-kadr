@@ -13366,3 +13366,22 @@ revisions, changed source hashes, viewer roles and a different unregistered file
 containing identical bytes refuse access. Existing cache-transfer, archive and
 version-one compatibility cases stay green. Legacy inactive slots without a proven
 physical reservation and the remaining history/GC/platform gates remain open.
+
+### Verified adoption of legacy current bindings
+
+Restoring an older registered store now materializes its missing physical-original
+reservation only after verifying the current logical binding, encoded source hash,
+complete cache generation and final source authority. The guarded SQL statement
+requires the same project revision/editor, current physical source inventory and
+exact source/model/runtime/generation/manifest registration. Existing reservations
+skip writes. Equivalent duplicate legacy registrations select one proof and do
+not create duplicate ownership. No generation is republished.
+
+All sixteen affected integration tests pass. Real cold Selfie (logical and physical
+IDs) and SAM/VFR cases remove their original reservation to simulate legacy data,
+add a duplicate receipt registration, and verify that wrong source hashes and a
+controlled SQL failure leave no reservation. Successful preview creates exactly
+one reservation, after which source removal, historical preview and resave work.
+Archive, cache-transfer and compatibility gates remain green. Missing historical
+bindings without a current verified physical mapping still refuse; this migration
+does not infer provenance from matching bytes elsewhere in the library.

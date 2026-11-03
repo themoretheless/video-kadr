@@ -256,6 +256,21 @@ pub(crate) fn restore_requested<'a>(state:&'a AppState,actor:&'a str,project:&'a
   let suffix=generation.strip_prefix("concat-video-cache-").ok_or_else(||anyhow::anyhow!("invalid historical cache generation"))?;ensure!(uuid::Uuid::parse_str(suffix)?.to_string()==suffix,"invalid historical cache generation");
   let cache=RunCache::restore(&PublishedCache{model_hash:model.into(),runtime_hash:runtime.into(),video_hash:hash.into(),directory:state.storage.join("concat-video-caches").join(generation),manifest_hash},CACHE_BUDGET,cancel).await?;
   ensure!(super::concat_video_source_access::allowed(state,actor,project,revision,source_id,hash,physical).await?&&super::cutout_jobs::source(state,physical,actor).await?==path&&crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?==before&&!cancel.is_cancelled(),"historical original authority/data changed");
+  retain_verified_current(state,actor,project,source_id,revision,physical,&cache,cancel).await?;
   Ok(Some(cache))
+ })
+}
+
+/// Lazy migration is justified only by a verified store and its current physical
+/// binding. An absent/ambiguous historical mapping is never guessed.
+fn retain_verified_current<'a>(state:&'a AppState,actor:&'a str,project:&'a str,source:&'a str,revision:u64,physical:&'a str,cache:&'a RunCache,cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<()>>+Send+'a>>{
+ Box::pin(async move {
+  let exists:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM concat_video_project_source_refs WHERE project_id=? AND source_id=? AND video_hash=? AND library_source_id=?)").bind(project).bind(source).bind(cache.video_hash()).bind(physical).fetch_one(state.db.pool()).await?;
+  if exists{return Ok(())}
+  let receipt=cache.published_receipt()?;let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("verified cache generation missing"))?;
+  let mut transaction=state.db.pool().begin().await?;
+  let changed=sqlx::query("INSERT INTO concat_video_project_source_refs(project_id,source_id,video_hash,library_source_id) SELECT p.id,c.source_id,c.video_hash,s.source_id FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id JOIN concat_video_project_caches c ON c.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=? AND c.source_id=? AND c.video_hash=? AND c.model_hash=? AND c.runtime_hash=? AND c.generation=? AND c.manifest_hash=? LIMIT 1 ON CONFLICT(project_id,source_id,video_hash,library_source_id) DO UPDATE SET library_source_id=excluded.library_source_id")
+   .bind(project).bind(i64::try_from(revision)?).bind(actor).bind(physical).bind(source).bind(cache.video_hash()).bind(cache.model_hash()).bind(cache.runtime_hash()).bind(generation).bind(&receipt.manifest_hash).execute(&mut *transaction).await?.rows_affected();
+  ensure!(changed==1&&!cancel.is_cancelled(),"legacy original authority changed during verified adoption");transaction.commit().await?;Ok(())
  })
 }

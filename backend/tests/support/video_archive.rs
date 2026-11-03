@@ -209,6 +209,60 @@ pub async fn import_and_preview(
     .await
     .unwrap();
     assert_eq!(refs, if regions { 1 } else { 0 });
+    // Simulate a pre-reservation cache. Never backfill from a failed read.
+    // Duplicate receipt registrations are legal in the older cache schema.
+    sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation FROM concat_video_project_caches WHERE project_id=? LIMIT 1").bind(format!("legacy-copy-{}",uuid::Uuid::new_v4())).bind(id).execute(&pool).await.unwrap();
+
+    sqlx::query("DELETE FROM concat_video_project_source_refs WHERE project_id=?")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let preview = |project: Value| {
+        Request::builder().method("POST").uri("/api/compositions/nested-preview").header("content-type","application/json").header("authorization",format!("Bearer {}",user.token)).body(Body::from(json!({"project":project,"compositionId":node,"timeUs":time,"renderedOutputs":{},"savedProject":{"projectId":id,"expectedRevision":saved.revision}}).to_string())).unwrap()
+    };
+    let mut wrong = project.clone();
+    wrong["compositions"][node]["content"]["tracks"][0]["clips"][0]["concatCutout"]["sourceHash"] =
+        json!("0".repeat(64));
+    assert!(!app
+        .clone()
+        .oneshot(preview(wrong))
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM concat_video_project_source_refs WHERE project_id=?"
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        0
+    );
+    sqlx::query("CREATE TRIGGER reject_legacy_original BEFORE INSERT ON concat_video_project_source_refs BEGIN SELECT RAISE(ABORT,'controlled legacy adoption rejection'); END").execute(&pool).await.unwrap();
+    assert!(!app
+        .clone()
+        .oneshot(preview(project.clone()))
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM concat_video_project_source_refs WHERE project_id=?"
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        0
+    );
+    sqlx::query("DROP TRIGGER reject_legacy_original")
+        .execute(&pool)
+        .await
+        .unwrap();
     let request=Request::builder().method("POST").uri("/api/compositions/nested-preview").header("content-type","application/json").header("authorization",format!("Bearer {}",user.token)).body(Body::from(json!({"project":project,"compositionId":node,"timeUs":time,"renderedOutputs":{},"savedProject":{"projectId":id,"expectedRevision":saved.revision}}).to_string())).unwrap();
     let response = app.clone().oneshot(request).await.unwrap();
     let status = response.status();
@@ -222,6 +276,17 @@ pub async fn import_and_preview(
         String::from_utf8_lossy(&pixels)
     );
     assert_eq!(pixels.as_ref(), expected);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM concat_video_project_source_refs WHERE project_id=?"
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+
     if regions {
         Box::pin(history_after_import(
             &state,
