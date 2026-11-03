@@ -4,11 +4,16 @@ use tokio_util::sync::CancellationToken;
 use crate::{state::AppState, services::concat_video_analysis::{PublishedCache, RunCache}};
 const CACHE_BUDGET: u64 = 64 * 1024 * 1024 * 1024;
 
-async fn source(state: &AppState, actor: &str, project: &str, source_id: &str, revision: u64) -> Result<std::path::PathBuf> {
+async fn physical_id(state: &AppState, actor: &str, project: &str, source_id: &str, revision: u64) -> Result<String> {
     super::cutout_assets::authorize(state, project, actor).await.map_err(|_| anyhow::anyhow!("project editor access required"))?;
     let saved = state.db.get_composition_project_for(project, actor).await?.ok_or_else(|| anyhow::anyhow!("project unavailable"))?;
-    ensure!(saved.revision == revision && saved.source_ids.iter().any(|id| id == source_id), "stale project or unrelated video source");
-    super::cutout_jobs::source(state, source_id, actor).await
+    let physical = super::concat_cutout_access::library_id(&saved.document, source_id)?;
+    ensure!(saved.revision == revision && saved.source_ids.iter().any(|id| id == &physical), "stale project or unrelated video source");
+    Ok(physical)
+}
+async fn source(state: &AppState, actor: &str, project: &str, source_id: &str, revision: u64) -> Result<std::path::PathBuf> {
+    let physical = physical_id(state, actor, project, source_id, revision).await?;
+    super::cutout_jobs::source(state, &physical, actor).await
 }
 /// Publish first, then atomically register only if editor membership, revision and
 /// source reference still hold. Failed registration removes only this new generation.
@@ -26,7 +31,7 @@ pub async fn publish(state: &AppState, actor: &str, project: &str, source_id: &s
         let id = uuid::Uuid::new_v4().to_string();
         let changed = sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,p.id,?,?,?,?,?,? FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?")
             .bind(&id).bind(source_id).bind(&receipt.video_hash).bind(&receipt.model_hash).bind(&receipt.runtime_hash).bind(&receipt.manifest_hash).bind(generation)
-            .bind(project).bind(i64::try_from(revision)?).bind(actor).bind(source_id).execute(state.db.pool()).await?.rows_affected();
+            .bind(project).bind(i64::try_from(revision)?).bind(actor).bind(physical_id(state,actor,project,source_id,revision).await?).execute(state.db.pool()).await?.rows_affected();
         ensure!(changed == 1, "project changed before video cache registration");
         Ok(id)
     }.await;
@@ -43,8 +48,8 @@ pub async fn restore_for_model(state:&AppState,actor:&str,project:&str,source_id
     let path = source(state, actor, project, source_id, revision).await?;
     ensure!(!cancel.is_cancelled(), "video cache restore cancelled");
     let before = crate::project_archive::fingerprint_file_with_limit(&path, CACHE_BUDGET).await?;
-    let row: Option<(String, String)> = sqlx::query_as("SELECT c.generation,c.manifest_hash FROM concat_video_project_caches c JOIN composition_projects p ON p.id=c.project_id JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id AND s.source_id=c.source_id WHERE c.project_id=? AND c.source_id=? AND c.video_hash=? AND c.model_hash=? AND c.runtime_hash=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') ORDER BY c.rowid DESC LIMIT 1")
-        .bind(project).bind(source_id).bind(&before.1).bind(model_hash).bind(runtime_hash).bind(i64::try_from(revision)?).bind(actor).fetch_optional(state.db.pool()).await?;
+    let row: Option<(String, String)> = sqlx::query_as("SELECT c.generation,c.manifest_hash FROM concat_video_project_caches c JOIN composition_projects p ON p.id=c.project_id JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id AND s.source_id=? WHERE c.project_id=? AND c.source_id=? AND c.video_hash=? AND c.model_hash=? AND c.runtime_hash=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') ORDER BY c.rowid DESC LIMIT 1")
+        .bind(physical_id(state,actor,project,source_id,revision).await?).bind(project).bind(source_id).bind(&before.1).bind(model_hash).bind(runtime_hash).bind(i64::try_from(revision)?).bind(actor).fetch_optional(state.db.pool()).await?;
     let Some((generation, manifest_hash)) = row else { return Ok(None); };
     let suffix = generation.strip_prefix("concat-video-cache-").ok_or_else(|| anyhow::anyhow!("invalid stored cache generation"))?;
     ensure!(uuid::Uuid::parse_str(suffix)?.to_string() == suffix, "invalid stored cache generation");
@@ -63,8 +68,8 @@ pub async fn remember_choice(state:&AppState,actor:&str,project:&str,source_id:&
     let path=source(state,actor,project,source_id,revision).await?;
     ensure!(crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?.1==cache.video_hash(),"video choice source changed");
     ensure!(!cancel.is_cancelled(),"video model choice cancelled");
-    let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT p.id,c.source_id,c.video_hash,c.model_hash,c.runtime_hash FROM concat_video_project_caches c JOIN composition_projects p ON p.id=c.project_id JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id AND s.source_id=c.source_id WHERE c.project_id=? AND c.source_id=? AND c.video_hash=? AND c.model_hash=? AND c.runtime_hash=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') ORDER BY c.rowid DESC LIMIT 1 ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash")
-        .bind(project).bind(source_id).bind(cache.video_hash()).bind(cache.model_hash()).bind(cache.runtime_hash()).bind(i64::try_from(revision)?).bind(actor).execute(state.db.pool()).await?.rows_affected();
+    let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT p.id,c.source_id,c.video_hash,c.model_hash,c.runtime_hash FROM concat_video_project_caches c JOIN composition_projects p ON p.id=c.project_id JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id AND s.source_id=? WHERE c.project_id=? AND c.source_id=? AND c.video_hash=? AND c.model_hash=? AND c.runtime_hash=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') ORDER BY c.rowid DESC LIMIT 1 ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash")
+        .bind(physical_id(state,actor,project,source_id,revision).await?).bind(project).bind(source_id).bind(cache.video_hash()).bind(cache.model_hash()).bind(cache.runtime_hash()).bind(i64::try_from(revision)?).bind(actor).execute(state.db.pool()).await?.rows_affected();
     ensure!(changed==1,"published video cache required before choosing its model");Ok(())
 }
 pub async fn choice(state:&AppState,actor:&str,project:&str,source_id:&str,revision:u64,cancel:&CancellationToken)->Result<Option<Choice>>{
@@ -90,13 +95,13 @@ impl PublicationSession{
  }
  async fn check(&self,state:&AppState,cache:&RunCache,cancel:&CancellationToken)->Result<()>{
   ensure!(!cancel.is_cancelled()&&state.storage==self.storage&&cache.video_hash()==self.video_hash&&cache.model_hash()==self.model_hash&&cache.runtime_hash()==self.runtime_hash,"video publication context changed/cancelled");
-  let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?)").bind(&self.project).bind(i64::try_from(self.revision)?).bind(&self.actor).bind(&self.source_id).fetch_one(state.db.pool()).await?;ensure!(allowed,"video publication project/source access changed");ensure!(super::cutout_jobs::source(state,&self.source_id,&self.actor).await?==self.path,"video publication source path changed");Ok(())
+  ensure!(source(state,&self.actor,&self.project,&self.source_id,self.revision).await?==self.path,"video publication source path changed");Ok(())
  }
  pub async fn append(&self,state:&AppState,cache:&mut RunCache,cancel:&CancellationToken)->Result<()>{
   self.check(state,cache,cancel).await?;ensure!(!cache.is_empty(),"cannot publish an empty video prefix");let root=state.storage.join("concat-video-caches");tokio::fs::create_dir_all(&root).await?;let publication=cache.prepare_incremental(&root,CACHE_BUDGET,cancel).await?;
   let result:Result<()>=async{
-   self.check(state,cache,cancel).await?;let receipt=&publication.receipt;let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("invalid video generation"))?;let id=uuid::Uuid::new_v4().to_string();let mut transaction=state.db.pool().begin().await?;
-   let changed=sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,p.id,?,?,?,?,?,? FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?").bind(&id).bind(&self.source_id).bind(&receipt.video_hash).bind(&receipt.model_hash).bind(&receipt.runtime_hash).bind(&receipt.manifest_hash).bind(generation).bind(&self.project).bind(i64::try_from(self.revision)?).bind(&self.actor).bind(&self.source_id).execute(&mut *transaction).await?.rows_affected();ensure!(changed==1,"project changed before prefix registration");
+   self.check(state,cache,cancel).await?;let receipt=&publication.receipt;let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("invalid video generation"))?;let id=uuid::Uuid::new_v4().to_string();let physical=physical_id(state,&self.actor,&self.project,&self.source_id,self.revision).await?;let mut transaction=state.db.pool().begin().await?;
+   let changed=sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,p.id,?,?,?,?,?,? FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?").bind(&id).bind(&self.source_id).bind(&receipt.video_hash).bind(&receipt.model_hash).bind(&receipt.runtime_hash).bind(&receipt.manifest_hash).bind(generation).bind(&self.project).bind(i64::try_from(self.revision)?).bind(&self.actor).bind(&physical).execute(&mut *transaction).await?.rows_affected();ensure!(changed==1,"project changed before prefix registration");
    let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT project_id,source_id,video_hash,model_hash,runtime_hash FROM concat_video_project_caches WHERE id=? ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash").bind(&id).execute(&mut *transaction).await?.rows_affected();ensure!(changed==1&&!cancel.is_cancelled(),"video prefix choice registration cancelled");transaction.commit().await?;Ok(())
   }.await;
   if result.is_err(){let _=tokio::fs::remove_dir_all(&publication.receipt.directory).await;}else{cache.accept_publication(publication)?;}result
