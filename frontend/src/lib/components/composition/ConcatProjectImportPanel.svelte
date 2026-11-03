@@ -1,12 +1,15 @@
 <script lang="ts">
  import {untrack} from 'svelte'
  import type {CompositionSource} from '$lib/composition/types'
- import {importConcatProject,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
- import {concatImportMedia,concatImportFonts,type ConcatImportFont,type ConcatImportMedia,type ConcatImportSource} from '$lib/composition/concatProjectImport'
+ import {importConcatProject,importConcatProjectWithSavedStills,getCompositionProjects,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
+ import {concatImportMedia,concatImportFonts,concatImportStillDestinations,savedStillChoices,type SavedStillChoice,type ConcatImportFont,type ConcatImportMedia,type ConcatImportSource} from '$lib/composition/concatProjectImport'
  import {adoptImportedConcatProject,nestedComposition,nestedHistory} from '$lib/state/nestedComposition.svelte'
  let {token=null,sources=[],context,disabled=false}:{token?:string|null;sources?:readonly ConcatImportSource[];context?:unknown;disabled?:boolean}=$props()
  let document=$state<unknown>(null),media=$state<readonly ConcatImportMedia[]>([]),bindings=$state<Record<string,string>>({}),report=$state<ConcatProjectImportReport|null>(null),busy=$state(false),error=$state(''),applied=$state(false)
  let fonts=$state<readonly ConcatImportFont[]>([]),fontBindings=$state<Record<string,ConcatFontBinding>>({}),fontNames=$state<Record<string,string>>({})
+ let savedMasks=$state<readonly SavedStillChoice[]>([]),maskChoices=$state<Record<string,string>>({})
+ const stillDestinations=$derived(concatImportStillDestinations(document))
+ function chosenMask(key:string,mediaId:string){return savedMasks.find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let preserveMediaIds=$state(false)
  let slotChoices=$state<Record<string,string>>({})
  let sourceOverrides=$state<Record<string,CompositionSource>>({})
@@ -14,12 +17,12 @@
  let fontEpoch=0,fontTicket=0
  let fontTickets:Record<string,number>=Object.create(null)
  let request=0,controller:AbortController|undefined,expectedContext='',lastToken=untrack(()=>token)
- const ready=$derived(!!document&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path)))
- function identity(){return JSON.stringify([token,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,sources,preserveMediaIds])}
+ const ready=$derived(!!document&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path))&&stillDestinations.every(item=>!!chosenMask(item.key,item.mediaId)))
+ function identity(){return JSON.stringify([token,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,sources,preserveMediaIds,nestedComposition.revision,savedMasks,maskChoices])}
  function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false}
- $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;invalidate()})})
+ $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;savedMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
- async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
+ async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
  function fallbackFont(path:string){invalidate();fontTickets[path]=++fontTicket;fontNames={...fontNames,[path]:'Системная замена'};fontBindings={...fontBindings,[path]:{fallback:true}}}
  async function loadFont(path:string,file:File|undefined){
   invalidate();const epoch=fontEpoch,ticket=++fontTicket,currentDocument=document,currentToken=token;fontTickets[path]=ticket
@@ -53,7 +56,13 @@
   }catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}
  }
  function undoSlot(){if(busy||disabled||nestedHistory.busy)return;const previous=slotUndo.at(-1);if(!previous)return;invalidate();slotUndo=slotUndo.slice(0,-1);document=previous.document;bindings=previous.bindings;sourceOverrides=previous.sourceOverrides;media=concatImportMedia(document)}
- async function convert(){if(!ready||busy||disabled||nestedHistory.busy||!token)return;invalidate();busy=true;const serial=request;controller=new AbortController();expectedContext=identity();try{const mapped=Object.fromEntries(media.map(item=>{const entry=sources.find(entry=>entry.source.id===bindings[item.id]);if(!entry)throw new Error('Выбранный источник исчез из библиотеки');return[item.id,sourceOverrides[item.id]?.id===entry.source.id?sourceOverrides[item.id]:entry.source]}));const result=preserveMediaIds?await importConcatProject(document,mapped,controller.signal,token,fontBindings,true):fonts.length?await importConcatProject(document,mapped,controller.signal,token,fontBindings):await importConcatProject(document,mapped,controller.signal,token);if(serial!==request)return;if(identity()!==expectedContext)throw new Error('Текущий проект изменился; повторите проверку импорта');report=result}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}}
+ async function loadSavedMasks(){
+  if(!token||busy||disabled||nestedHistory.busy)return
+  invalidate();savedMasks=[];maskChoices={};busy=true;const serial=request,scope=identity();controller=new AbortController()
+  try{const projects=await getCompositionProjects(token,controller.signal);if(serial!==request)return;if(identity()!==scope)throw new Error('Контекст импорта изменился; обновите список масок');savedMasks=savedStillChoices(projects)}
+  catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}
+ }
+ async function convert(){if(!ready||busy||disabled||nestedHistory.busy||!token)return;invalidate();busy=true;const serial=request;controller=new AbortController();expectedContext=identity();try{const mapped=Object.fromEntries(media.map(item=>{const entry=sources.find(entry=>entry.source.id===bindings[item.id]);if(!entry)throw new Error('Выбранный источник исчез из библиотеки');return[item.id,sourceOverrides[item.id]?.id===entry.source.id?sourceOverrides[item.id]:entry.source]}));const references=stillDestinations.map(item=>{const selected=chosenMask(item.key,item.mediaId);if(!selected)throw new Error('Выберите сохранённую маску для каждого изображения');return{...selected.reference,timelineId:item.timelineId,clipId:item.clipId}});const result=references.length?await importConcatProjectWithSavedStills(document,mapped,references,controller.signal,token,fontBindings,preserveMediaIds):preserveMediaIds?await importConcatProject(document,mapped,controller.signal,token,fontBindings,true):fonts.length?await importConcatProject(document,mapped,controller.signal,token,fontBindings):await importConcatProject(document,mapped,controller.signal,token);if(serial!==request)return;if(identity()!==expectedContext)throw new Error('Текущий проект изменился; повторите проверку импорта');report=result}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}}
  async function apply(){if(!report?.project||busy||disabled||nestedHistory.busy||applied)return;const selected=report,serial=request;if(identity()!==expectedContext){error='Текущий проект изменился; повторите проверку импорта';return}const name=typeof document==='object'&&document&&'name'in document&&typeof document.name==='string'?document.name:'Импорт Concat';busy=true;const accepted=await adoptImportedConcatProject(selected.project!,name,()=>{if(serial!==request||identity()!==expectedContext)throw new Error('Контекст импорта изменился')});busy=false;if(accepted)applied=true;else error=nestedHistory.error||'Импорт не применён'}
  function download(){if(!report)return;const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const link=globalThis.document.createElement('a');link.href=url;link.download='concat-import-report.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),0)}
 </script>
@@ -73,7 +82,15 @@
   {/each}
   {#if fonts.length}<p>Выберите файлы шрифтов. Они сохранятся внутри проекта.</p>{/if}
   {#if media.length}<p>Недостающие файлы сначала добавьте в библиотеку.</p>{/if}
-  {#if media.length}<label><input type="checkbox" aria-label="Сохранять отдельные ID медиа Concat" checked={preserveMediaIds} onchange={event=>{invalidate();preserveMediaIds=event.currentTarget.checked}} />Сохранять отдельные слоты при общем файле</label>{#if preserveMediaIds}<p>Импорт готовых масок в этом режиме пока не поддержан.</p>{/if}{/if}
+  {#if media.length}<label><input type="checkbox" aria-label="Сохранять отдельные ID медиа Concat" checked={preserveMediaIds} onchange={event=>{invalidate();preserveMediaIds=event.currentTarget.checked}} />Сохранять отдельные слоты при общем файле</label>{/if}
+  {#if stillDestinations.length}
+   <p>Для каждого изображения с вырезанием выберите сохранённую маску с теми же настройками.</p>
+   <button class="btn ghost sm" type="button" onclick={()=>void loadSavedMasks()}>Обновить сохранённые маски</button>
+   {#each stillDestinations as item(item.key)}
+    <label>Маска {item.label} <select aria-label={`Сохранённая маска Concat ${item.timelineId} ${item.clipId}`} value={maskChoices[item.key]??''} onchange={event=>{invalidate();maskChoices={...maskChoices,[item.key]:event.currentTarget.value}}}><option value="">Выберите сохранённую маску</option>{#each savedMasks.filter(mask=>mask.sourceId===bindings[item.mediaId]) as mask(mask.key)}<option value={mask.key}>{mask.label}</option>{/each}</select></label>
+   {/each}
+   {#if !savedMasks.length}<p>Сначала выполните вырезание в проекте и сохраните его, затем обновите список масок.</p>{/if}
+  {/if}
   <button class="btn ghost sm" disabled={!ready} onclick={()=>void convert()}>Проверить импорт Concat</button>
   {#if report?.status==='converted'&&report.project}<p>Таймлайнов: {Object.keys(report.project.compositions).length}. Открытие создаст новый несохранённый проект; прежний доступен через undo.</p><button class="btn primary sm" disabled={applied} onclick={()=>void apply()}>Открыть импорт как новый проект</button>{/if}
   {#if report}<button class="btn ghost sm" onclick={download}>Скачать исходник и отчёт импорта</button>{/if}

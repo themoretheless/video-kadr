@@ -488,8 +488,8 @@ export function createCompositionProject(
   })
 }
 
-export function getCompositionProjects(token: string): Promise<CompositionProjectDto[]> {
-  return requestJson('/api/composition-projects', { headers: bearerHeaders(token) })
+export function getCompositionProjects(token: string,signal?:AbortSignal): Promise<CompositionProjectDto[]> {
+  return requestJson('/api/composition-projects', { headers: bearerHeaders(token),...(signal?{signal}:{}) })
 }
 
 export interface CompositionProjectListSnapshot {

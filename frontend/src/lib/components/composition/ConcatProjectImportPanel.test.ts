@@ -1,16 +1,16 @@
-import {writeFileSync} from 'node:fs'
+import {readFileSync,writeFileSync} from 'node:fs'
 // @ts-expect-error Svelte client entry is required for mounted components under Vitest.
 import {mount,tick,unmount} from '../../../../node_modules/svelte/src/index-client.js'
 import {afterEach,beforeEach,expect,it,vi} from 'vitest'
-import {importConcatProject,fillConcatMediaSlot,evaluateNestedFrame,type NativeNestedProject} from '$lib/api'
+import {importConcatProject,importConcatProjectWithSavedStills,getCompositionProjects,fillConcatMediaSlot,evaluateNestedFrame,type NativeNestedProject} from '$lib/api'
 import {closeNestedComposition,nestedComposition,nestedHistory,undoNestedComposition,redoNestedComposition} from '$lib/state/nestedComposition.svelte'
 import Panel from './ConcatProjectImportPanel.svelte'
-vi.mock('$lib/api',()=>({importConcatProject:vi.fn(),fillConcatMediaSlot:vi.fn(),evaluateNestedFrame:vi.fn()}))
+vi.mock('$lib/api',()=>({importConcatProject:vi.fn(),importConcatProjectWithSavedStills:vi.fn(),getCompositionProjects:vi.fn(),fillConcatMediaSlot:vi.fn(),evaluateNestedFrame:vi.fn()}))
 const original={version:1,name:'Original cut',media:[{id:'m1',name:'Camera.mov',kind:'video',path:'/never/open-this.mov'}],activeTimelineId:'TL1',timelines:[{id:'TL1',name:'Main',video:{width:16,height:16,rateNum:4,rateDen:1},tracks:[{id:'T1'}],clips:[{id:'clip',kind:'video',trackId:'T1',mediaId:'m1',start:1,duration:1,videoEffects:[{id:'concat.exposure',keys:{stops:[{at:0,value:0},{at:1,value:4,ease:[0.42,-0.5,0.58,1]}]}}]}]}]}
 const source={id:'source',kind:'video' as const,durationTicks:1000000,width:16,height:16,hasAudio:false}
 const project:NativeNestedProject={schemaVersion:1,root:'imported',compositions:{imported:{content:{schemaVersion:1,timeBase:1000000,canvas:{width:16,height:16,fpsMilli:4000,backgroundMode:'color',backgroundBlur:24,background:{red:0,green:0,blue:0,alpha:1}},sources:{},tracks:[]},instances:[]}}}
 let component:ReturnType<typeof mount>|undefined
-beforeEach(()=>{closeNestedComposition();vi.clearAllMocks();vi.mocked(evaluateNestedFrame).mockResolvedValue({entries:[]});vi.mocked(importConcatProject).mockResolvedValue({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:original,timelineIds:{TL1:'imported'}})})
+beforeEach(()=>{closeNestedComposition();vi.clearAllMocks();vi.mocked(getCompositionProjects).mockResolvedValue([]);vi.mocked(importConcatProjectWithSavedStills).mockResolvedValue({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:original,timelineIds:{TL1:'imported'}});vi.mocked(evaluateNestedFrame).mockResolvedValue({entries:[]});vi.mocked(importConcatProject).mockResolvedValue({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:original,timelineIds:{TL1:'imported'}})})
 afterEach(async()=>{if(component)await unmount(component);component=undefined;closeNestedComposition();document.body.innerHTML=''})
 function click(text:string){const button=[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()===text)!;expect(button).toBeDefined();button.click()}
 async function read(value:unknown=original){const input=document.querySelector<HTMLInputElement>('input[type=file]')!;const file=new File([JSON.stringify(value)],'concat.json',{type:'application/json'});Object.defineProperty(file,'text',{value:async()=>JSON.stringify(value)});Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new Event('change',{bubbles:true}));await vi.waitFor(()=>expect(document.querySelector('select[aria-label="Источник Concat m1"]')).not.toBeNull());await tick();const select=document.querySelector<HTMLSelectElement>('select[aria-label="Источник Concat m1"]')!;select.value='source';select.dispatchEvent(new Event('change',{bubbles:true}));await tick()}
@@ -91,4 +91,57 @@ it('reviews separate logical slots bound to the same file and invalidates review
  await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'))
  mode.checked=false;mode.dispatchEvent(new Event('change',{bubbles:true}));await tick()
  expect(document.body.textContent).not.toContain('Таймлайнов: 1');expect(nestedComposition.document).toBeNull()
+})
+
+const imageSource={...source,kind:'image' as const,durationTicks:0}
+const cutoutDocument={...original,media:[{...original.media[0],kind:'image'}],timelines:original.timelines.map(t=>({...t,clips:t.clips.map(c=>({...c,kind:'image',cutout:{mode:'auto',feather:0}}))}))}
+function savedMasks(){return [{id:'private-source',name:'Portrait',revision:7,document:{...project,projectMedia:{logical:{source:{...imageSource,id:'logical'},librarySourceId:'source',name:'Portrait'}},compositions:{imported:{...project.compositions.imported,content:{...project.compositions.imported!.content,sources:{logical:{...imageSource,id:'logical'},copy:{...imageSource,id:'copy'}},metadata:{clipNames:{'saved-clip':'Cut portrait'},mediaVersions:{'saved-clip':{originalSourceId:'logical',copySourceId:'copy',cutout:{sourceId:'logical'}}}},tracks:[{kind:'image',id:'images',name:'Images',clips:[{id:'saved-clip',sourceId:'copy'}]}]}}}}}] as unknown as Awaited<ReturnType<typeof getCompositionProjects>>}
+async function chooseSavedMask(){
+ click('Обновить сохранённые маски');await vi.waitFor(()=>expect(getCompositionProjects).toHaveBeenCalled());const select=document.querySelector<HTMLSelectElement>('select[aria-label="Сохранённая маска Concat TL1 clip"]')!
+ await vi.waitFor(()=>expect(select.options.length).toBe(2));select.value=select.options[1]!.value;select.dispatchEvent(new Event('change',{bubbles:true}));await tick()
+}
+it('selects a saved logical mask by its physical source and adopts the reviewed import with one undo step',async()=>{
+ vi.mocked(getCompositionProjects).mockResolvedValue(savedMasks());nestedComposition.document=project
+ component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Portrait',source:imageSource}]}});await tick();await read(cutoutDocument)
+ const check=[...document.querySelectorAll('button')].find(b=>b.textContent==='Проверить импорт Concat')!;expect(check.disabled).toBe(true)
+ await chooseSavedMask();expect(check.disabled).toBe(false);click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProjectWithSavedStills).toHaveBeenCalledWith(cutoutDocument,{m1:imageSource},[{projectId:'private-source',compositionId:'imported',sourceClipId:'saved-clip',expectedRevision:7,timelineId:'TL1',clipId:'clip'}],expect.any(AbortSignal),'session',{},false));expect(importConcatProject).not.toHaveBeenCalled()
+ await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'));click('Открыть импорт как новый проект');await vi.waitFor(()=>expect(nestedHistory.past).toHaveLength(1));expect(nestedComposition.projectId).toBeNull();undoNestedComposition();expect(nestedComposition.document).toEqual(project);redoNestedComposition();expect(nestedComposition.document).toEqual(project)
+})
+it('does not publish a saved-mask catalogue after the editor revision changes',async()=>{
+ let resolve!:(value:Awaited<ReturnType<typeof getCompositionProjects>>)=>void;vi.mocked(getCompositionProjects).mockReturnValue(new Promise(done=>{resolve=done}))
+ component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Portrait',source:imageSource}]}});await tick();await read(cutoutDocument);click('Обновить сохранённые маски');await vi.waitFor(()=>expect(getCompositionProjects).toHaveBeenCalled());nestedComposition.revision=9;resolve(savedMasks())
+ await vi.waitFor(()=>expect(document.body.textContent).toContain('Контекст импорта изменился'));expect(document.querySelector<HTMLSelectElement>('select[aria-label="Сохранённая маска Concat TL1 clip"]')!.options).toHaveLength(1);expect(nestedHistory.past).toHaveLength(0)
+})
+it('keeps the current editor and refuses fallback after saved-mask verification fails',async()=>{
+ vi.mocked(getCompositionProjects).mockResolvedValue(savedMasks());vi.mocked(importConcatProjectWithSavedStills).mockRejectedValue(new Error('stale saved cutout revision'));nestedComposition.document=project
+ component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Portrait',source:imageSource}]}});await tick();await read(cutoutDocument);await chooseSavedMask();click('Проверить импорт Concat');await vi.waitFor(()=>expect(document.body.textContent).toContain('stale saved cutout revision'));expect(importConcatProject).not.toHaveBeenCalled();expect(nestedHistory.past).toHaveLength(0);expect(nestedComposition.document).toEqual(project)
+})
+it('discards a verified ready import after the editor revision changes without a document edit',async()=>{
+ vi.mocked(getCompositionProjects).mockResolvedValue(savedMasks());let resolve!:(value:Awaited<ReturnType<typeof importConcatProjectWithSavedStills>>)=>void;vi.mocked(importConcatProjectWithSavedStills).mockReturnValue(new Promise(done=>{resolve=done}))
+ component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Portrait',source:imageSource}]}});await tick();await read(cutoutDocument);await chooseSavedMask();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProjectWithSavedStills).toHaveBeenCalled());nestedComposition.revision=10;resolve({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:cutoutDocument,timelineIds:{TL1:'imported'}})
+ await vi.waitFor(()=>expect(document.body.textContent).toContain('Текущий проект изменился'));expect(nestedHistory.past).toHaveLength(0)
+})
+const readyCapture=process.env.CONCAT_READY_IMPORT_UI_CAPTURE_INPUT
+it.skipIf(!readyCapture)('adopts an actual private RVM/SAM ready-import response with logical mask collisions and undo/redo',async()=>{
+ const capture=JSON.parse(readFileSync(readyCapture!,'utf8')) as {sourceProjects:Awaited<ReturnType<typeof getCompositionProjects>>;request:{document:unknown;mediaBindings:Record<string,typeof imageSource>;preserveMediaIds:boolean};references:Parameters<typeof importConcatProjectWithSavedStills>[2];report:Awaited<ReturnType<typeof importConcatProjectWithSavedStills>>}
+ vi.mocked(getCompositionProjects).mockResolvedValue(capture.sourceProjects);vi.mocked(importConcatProjectWithSavedStills).mockResolvedValue(capture.report);nestedComposition.document=project
+ component=mount(Panel,{target:document.body,props:{token:'session',sources:Object.values(capture.request.mediaBindings).map(source=>({label:source.id,source}))}});await tick()
+ const input=document.querySelector<HTMLInputElement>('input[type=file]')!,file=new File([JSON.stringify(capture.request.document)],'ready.json',{type:'application/json'});Object.defineProperty(file,'text',{value:async()=>JSON.stringify(capture.request.document)});Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new Event('change',{bubbles:true}))
+ await vi.waitFor(()=>expect(document.querySelectorAll('select[aria-label^="Источник Concat "]').length).toBe(Object.keys(capture.request.mediaBindings).length))
+ for(const [id,source]of Object.entries(capture.request.mediaBindings)){const select=[...document.querySelectorAll<HTMLSelectElement>('select')].find(s=>s.getAttribute('aria-label')===`Источник Concat ${id}`)!;select.value=source.id;select.dispatchEvent(new Event('change',{bubbles:true}))}await tick()
+ const mode=document.querySelector<HTMLInputElement>('input[aria-label="Сохранять отдельные ID медиа Concat"]')!;mode.checked=true;mode.dispatchEvent(new Event('change',{bubbles:true}));await tick();click('Обновить сохранённые маски')
+ const target=capture.references[0]!;const select=document.querySelector<HTMLSelectElement>(`select[aria-label="Сохранённая маска Concat ${target.timelineId} ${target.clipId}"]`)!
+ const choice=JSON.stringify([target.projectId,target.compositionId??null,target.sourceClipId]);await vi.waitFor(()=>expect([...select.options].some(option=>option.value===choice)).toBe(true));select.value=choice;select.dispatchEvent(new Event('change',{bubbles:true}));await tick();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProjectWithSavedStills).toHaveBeenCalled());expect(vi.mocked(importConcatProjectWithSavedStills).mock.calls[0]![2]).toEqual(capture.references)
+ await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'));click('Открыть импорт как новый проект');await vi.waitFor(()=>expect(nestedComposition.document).toEqual(capture.report.project));expect(nestedHistory.past).toHaveLength(1);undoNestedComposition();expect(nestedComposition.document).toEqual(project);redoNestedComposition();expect(nestedComposition.document).toEqual(capture.report.project)
+})
+it('clears private mask choices and rejects late conversion when the account changes',async()=>{
+ vi.mocked(getCompositionProjects).mockResolvedValue(savedMasks());let resolve!:(value:Awaited<ReturnType<typeof importConcatProjectWithSavedStills>>)=>void;vi.mocked(importConcatProjectWithSavedStills).mockReturnValue(new Promise(done=>{resolve=done}));nestedComposition.projectId='session'
+ component=mount(Panel,{target:document.body,props:{get token(){return nestedComposition.projectId},sources:[{label:'Portrait',source:imageSource}]}});await tick();await read(cutoutDocument);await chooseSavedMask();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProjectWithSavedStills).toHaveBeenCalled())
+ const signal=vi.mocked(importConcatProjectWithSavedStills).mock.calls[0]![3]!;nestedComposition.projectId='different-account';await tick();expect(signal.aborted).toBe(true);expect(document.querySelector<HTMLSelectElement>('select[aria-label="Сохранённая маска Concat TL1 clip"]')!.options).toHaveLength(1)
+ resolve({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:cutoutDocument,timelineIds:{TL1:'imported'}});await tick();expect(document.body.textContent).not.toContain('Таймлайнов: 1');expect(nestedHistory.past).toHaveLength(0)
+})
+it('invalidates a reviewed mask when its file changes and clears choices on a failed refresh',async()=>{
+ vi.mocked(getCompositionProjects).mockResolvedValue(savedMasks());component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Portrait',source:imageSource},{label:'Other',source:{...imageSource,id:'other'}}]}});await tick();await read(cutoutDocument);await chooseSavedMask();click('Проверить импорт Concat');await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'))
+ const select=document.querySelector<HTMLSelectElement>('select[aria-label="Источник Concat m1"]')!;select.value='other';select.dispatchEvent(new Event('change',{bubbles:true}));await tick();expect(document.body.textContent).not.toContain('Таймлайнов: 1');expect([...document.querySelectorAll('button')].find(b=>b.textContent==='Проверить импорт Concat')!.disabled).toBe(true)
+ select.value='source';select.dispatchEvent(new Event('change',{bubbles:true}));await tick();vi.mocked(getCompositionProjects).mockRejectedValue(new Error('access revoked'));click('Обновить сохранённые маски');await vi.waitFor(()=>expect(document.body.textContent).toContain('access revoked'));expect(document.querySelector<HTMLSelectElement>('select[aria-label="Сохранённая маска Concat TL1 clip"]')!.options).toHaveLength(1);expect(nestedHistory.past).toHaveLength(0)
 })
