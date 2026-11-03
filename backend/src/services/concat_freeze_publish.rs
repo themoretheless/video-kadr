@@ -104,6 +104,10 @@ pub async fn prepare(
         saved.revision == target.revision,
         "stale freeze project revision"
     );
+    let native_project=if saved.document.get("compositions").is_some(){
+        let project:crate::domain::nested_composition::NestedCompositionProject=serde_json::from_value(saved.document.clone())?;
+        project.dependency_order()?;Some(project)
+    }else{None};
     let content = if saved.document.get("compositions").is_some() {
         let id = target
             .composition
@@ -163,7 +167,7 @@ pub async fn prepare(
         return Ok(None);
     }
     let capture = clock.still_capture(target.time)?;
-    let id = clip.source_id.as_str().to_owned();
+    let id = native_project.as_ref().map(|project|project.library_source_id(&clip.source_id)).unwrap_or(&clip.source_id).as_str().to_owned();
     ensure!(
         saved.source_ids.contains(&id),
         "freeze source not referenced by saved project"
