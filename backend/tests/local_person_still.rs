@@ -59,6 +59,15 @@ async fn actual_person_still_enters_common_runner_with_rectangular_verified_mask
  let project=report.project.unwrap();let c=&project.compositions["concat-timeline-0"].content;c.validate().unwrap();
  let snapshot=&c.metadata.as_ref().unwrap().media_versions[&video_kadr_backend::domain::composition::CompositionClipId::parse("clip").unwrap()].cutout;
  assert_eq!(snapshot.as_ref().unwrap().model_hash,PERSON_MODEL_HASH);assert_eq!(snapshot.as_ref().unwrap().correction,correction.correction);
+ // Rebind the actual generated bundle into stable Concat slots, including a
+ // collision between a source slot and the physical processed-copy ID.
+ let mut logical_doc=report.source_document.clone();logical_doc["media"].as_array_mut().unwrap().push(serde_json::json!({"id":"copy","kind":"image"}));
+ let logical_request:ImportRequest=serde_json::from_value(serde_json::json!({"schemaVersion":1,"preserveMediaIds":true,"document":logical_doc,"mediaBindings":{"media":descriptor("raw",37,23),"copy":descriptor("unrelated-copy",37,23)}})).unwrap();
+ let logical_report=import_with_still_bindings(logical_request,&bindings).unwrap();assert_eq!(logical_report.status,"converted","{:?}",logical_report.diagnostics);
+ let logical=logical_report.project.unwrap();logical.dependency_order().unwrap();
+ let assets=video_kadr_backend::domain::concat_cutout_binding::saved_still(&serde_json::to_value(&logical).unwrap(),Some(&logical.root),&video_kadr_backend::domain::composition::CompositionClipId::parse("clip").unwrap()).unwrap();
+ assert_eq!(assets.original.id.as_str(),"media");assert_eq!(assets.snapshot.source_id,"media");assert_ne!(assets.copy.id.as_str(),"copy");assert_eq!(logical.library_source_id(&assets.copy.id).as_str(),"copy");assert_eq!(logical.library_source_id(&assets.original.id).as_str(),"raw");
+ video_kadr_backend::services::concat_cutout_asset::verify_still_bundle(&source,&prepared.copy,&prepared.mask,&assets,&correction,ExpectedIdentity{source_hash:&hash,model_hash:PERSON_MODEL_HASH,runtime_hash:&prepared.binding.runtime_hash},&cancel).await.unwrap();
  let temporary_copy=prepared.copy.clone();let temporary_mask=prepared.mask.clone();
 
  let(state,_state_dir)=support::make_state(true,false).await;
@@ -201,6 +210,24 @@ async fn actual_new_smart_region_http_generates_reuses_and_replaces_regions(){
   if pass==1{assert_eq!(id,last_region);}if pass==2{assert_ne!(id,last_region);assert!(state.library.get(&last_region).await.is_some());}last_region=id.clone();
   assert_eq!(state.db.source_space_id(&id).await.unwrap().as_deref(),Some(space.id.as_str()));
   let expected=plan(&body["cutout"]).unwrap();let candidate=video_kadr_backend::handlers::concat_cutout_access::verify_saved_still(&state,&owner.user.username,&project.id,None,&clip,revision+1,&expected,&cancel).await.unwrap();assert_eq!(candidate.assets.regions.len(),1);
+  if pass==1{
+   use video_kadr_backend::domain::concat_project_import::{ImportRequest,ReadyStillBinding,StillBindings,import_with_still_bindings};
+   let mut other=candidate.assets.original.clone();other.id=video_kadr_backend::domain::composition::SourceId::parse("unrelated-region").unwrap();
+   image::RgbaImage::new(37,23).save(state.sources_dir().join("unrelated-region.png")).unwrap();assert!(state.library.add(video_kadr_backend::library::MediaEntry::from_result("source",&serde_json::json!({"id":"unrelated-region","filename":"unrelated-region.png","url":"/files/sources/unrelated-region.png","mediaType":"image","width":37,"height":23}))).await);
+   let doc=serde_json::json!({"version":1,"media":[{"id":"slot","kind":"image"},{"id":id,"kind":"image"}],"timelines":[{"id":"main","video":{"width":40,"height":24,"rateNum":24,"rateDen":1},"tracks":[{"id":"images"}],"clips":[{"id":"clip","trackId":"images","mediaId":"slot","kind":"image","duration":1,"cutout":body["cutout"]}]}]});
+   let request:ImportRequest=serde_json::from_value(serde_json::json!({"schemaVersion":1,"preserveMediaIds":true,"document":doc,"mediaBindings":{"slot":candidate.assets.original,id.clone():other}})).unwrap();
+   let snapshot=&candidate.assets.snapshot;let binding=ReadyStillBinding{assets:candidate.assets.clone(),source_settings:expected.clone(),source_hash:snapshot.source_hash.clone(),model_hash:snapshot.model_hash.clone(),runtime_hash:snapshot.runtime_hash.clone()};
+   let bindings:StillBindings=std::collections::BTreeMap::from([("main".into(),std::collections::BTreeMap::from([("clip".into(),binding)]))]);
+   let report=import_with_still_bindings(request,&bindings).unwrap();assert_eq!(report.status,"converted","{:?}",report.diagnostics);let project=report.project.unwrap();project.dependency_order().unwrap();
+   let assets=video_kadr_backend::domain::concat_cutout_binding::saved_still(&serde_json::to_value(&project).unwrap(),Some(&project.root),&clip).unwrap();let region=assets.snapshot.correction.strokes[0].region.as_ref().unwrap();assert_eq!(assets.snapshot.source_id,"slot");assert_eq!(region.source_id,"slot");assert_ne!(region.mask_source_id,id);
+   let path=|id:&video_kadr_backend::domain::composition::SourceId|candidate.paths[project.library_source_id(id).as_str()].clone();
+   let regions=assets.regions.iter().map(|s|(s.id.as_str().to_owned(),path(&s.id))).collect();
+   concat_cutout_asset::verify_still_bundle_with_regions(&path(&assets.original.id),&path(&assets.copy.id),&path(&assets.mask.id),&assets,&expected,concat_cutout_asset::ExpectedIdentity{source_hash:&snapshot.source_hash,model_hash:&snapshot.model_hash,runtime_hash:&snapshot.runtime_hash},&regions,&cancel).await.unwrap();
+   let physical=project.compositions.values().flat_map(|n|n.content.sources.keys()).chain(project.project_media.keys()).map(|id|project.library_source_id(id).as_str().to_owned()).collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>();
+   let imported=state.db.create_space_composition_project("Rebound learned region",&serde_json::to_value(&project).unwrap(),&physical,&owner.user.username,&space.id).await.unwrap();
+   let reopened=video_kadr_backend::handlers::concat_cutout_access::verify_saved_still(&state,&owner.user.username,&imported.id,Some(&project.root),&clip,imported.revision,&expected,&cancel).await.unwrap();assert_eq!(reopened.assets.snapshot.source_id,"slot");assert_ne!(reopened.assets.snapshot.correction.strokes[0].region.as_ref().unwrap().mask_source_id,id);
+
+  }
   let copy_path=state.library.resolve_media_path(&state.library.get(candidate.assets.copy.id.as_str()).await.unwrap()).await.unwrap();assert_eq!(concat_cutout_asset::load_verified_image(&copy_path,None,&cancel).await.unwrap().width,37);
  }
 }

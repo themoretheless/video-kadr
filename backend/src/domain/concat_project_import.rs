@@ -138,6 +138,77 @@ pub fn import_with_still_bindings(request:ImportRequest,ready:&StillBindings)->R
         },
     })
 }
+/// Ready assets are already server verified. Rebind editorial IDs only; hashes,
+/// encoded assets, pixel corrections and physical library ownership stay unchanged.
+fn rebind_ready_stills(
+    timelines:&[Value], ready:&StillBindings,
+    physical:&BTreeMap<String,CompositionSource>, logical:&BTreeMap<String,CompositionSource>,
+    project_media:&mut BTreeMap<super::composition::SourceId,super::project_media::ProjectMediaItem>,
+)->Result<StillBindings>{
+    use super::composition::SourceId;
+    use sha2::{Digest,Sha256};
+    let mut descriptors=BTreeMap::new();
+    let mut reserved:BTreeSet<SourceId>=logical.values().map(|s|s.id.clone()).collect();
+    for clips in ready.values(){for binding in clips.values(){
+        for asset in [&binding.assets.original,&binding.assets.copy,&binding.assets.mask].into_iter().chain(binding.assets.regions.iter()){
+            asset.validate()?;
+            if let Some(previous)=descriptors.insert(asset.id.clone(),asset.clone()){ensure!(previous==*asset,"conflicting prepared asset metadata");}
+            reserved.insert(asset.id.clone());
+        }
+    }}
+    let mut remap:BTreeMap<SourceId,SourceId>=BTreeMap::new();
+    let mut result=ready.clone();
+    for (timeline,clips) in &mut result{for (clip_id,binding) in clips{
+        let clip=timelines.iter().find(|t|t.get("id").and_then(Value::as_str)==Some(timeline.as_str()))
+            .and_then(|t|t.get("clips")).and_then(Value::as_array)
+            .and_then(|clips|clips.iter().find(|c|c.get("id").and_then(Value::as_str)==Some(clip_id.as_str())))
+            .context("unused or stale cutout binding")?;
+        binding.assets.snapshot.validate()?;
+        ensure!(binding.assets.snapshot.mask_source_id==binding.assets.mask.id.as_str()&&binding.assets.copy.id!=binding.assets.original.id&&binding.assets.copy.id!=binding.assets.mask.id,"prepared cutout source IDs mismatch");
+        let media=text(clip,"mediaId")?;
+        let physical=physical.get(media).context("prepared cutout media binding missing")?;
+        ensure!(&binding.assets.original==physical&&binding.assets.snapshot.source_id==physical.id.as_str(),"prepared cutout original differs from registered media binding");
+        let original=logical.get(media).context("logical cutout source missing")?;
+        binding.assets.original=original.clone();
+        binding.assets.snapshot.source_id=original.id.as_str().to_owned();
+        for stroke in &mut binding.assets.snapshot.correction.strokes{
+            if let Some(region)=&mut stroke.region{
+                ensure!(region.source_id==physical.id.as_str(),"prepared region belongs to another original");
+                region.source_id=original.id.as_str().to_owned();
+            }
+        }
+        // A source Concat slot may be named exactly like a processed library
+        // asset. Allocate an independent logical name instead of overwriting it.
+        for asset in [&mut binding.assets.copy,&mut binding.assets.mask].into_iter().chain(binding.assets.regions.iter_mut()){
+            let old=asset.id.clone();
+            let new=if let Some(id)=remap.get(&old){id.clone()}else{
+                let mut id=old.clone();
+                if logical.values().any(|s|s.id==old){
+                    let mut nonce=0u64;
+                    loop{
+                        id=SourceId::parse(format!("concat-cutout-{:x}",Sha256::digest(format!("{}:{nonce}",old.as_str()))))?;
+                        if reserved.insert(id.clone()){break}
+                        nonce=nonce.checked_add(1).context("cutout ID allocation exhausted")?;
+                    }
+                }
+                remap.insert(old.clone(),id.clone());id
+            };
+            if new!=old{
+                asset.id=new.clone();
+                let record=super::project_media::ProjectMediaItem{source:asset.clone(),library_source_id:Some(old.clone()),name:"Ресурс вырезания".into(),placeholder:false,concat_metadata:Default::default()};
+                if let Some(previous)=project_media.insert(new.clone(),record.clone()){ensure!(previous==record,"conflicting prepared cutout asset metadata");}
+            }
+        }
+        if let Some(id)=remap.get(&SourceId::parse(&binding.assets.snapshot.mask_source_id)?){binding.assets.snapshot.mask_source_id=id.as_str().to_owned();}
+        for stroke in &mut binding.assets.snapshot.correction.strokes{
+            if let Some(region)=&mut stroke.region{
+                if let Some(id)=remap.get(&SourceId::parse(&region.mask_source_id)?){region.mask_source_id=id.as_str().to_owned();}
+            }
+        }
+        binding.assets.snapshot.validate()?;
+    }}
+    Ok(result)
+}
 fn convert(
     document: &Value,
     bindings: &BTreeMap<String, CompositionSource>,
@@ -145,7 +216,6 @@ fn convert(
     ready:&StillBindings,
     preserve_media_ids:bool,
 ) -> Result<(NestedCompositionProject, BTreeMap<String, String>)> {
-    ensure!(!preserve_media_ids || ready.is_empty(),"Logical media bindings for prepared cutout imports require dedicated asset rebinding");
     let physical_bindings=bindings;
     let logical_bindings;
     let bindings=if preserve_media_ids {
@@ -274,6 +344,11 @@ fn convert(
         "document.timelines: expected1..16 timelines"
     );
     ensure!(ready.len()<=16&&ready.values().all(|clips|clips.len()<=512),"cutout binding budget exceeded");
+    let rebound;
+    let ready=if preserve_media_ids{
+        rebound=rebind_ready_stills(timelines,ready,physical_bindings,bindings,&mut project_media)?;
+        &rebound
+    }else{ready};
     let mut used_cutouts=BTreeSet::new();
     let mut compositions = BTreeMap::new();
     let mut mapping = BTreeMap::new();
