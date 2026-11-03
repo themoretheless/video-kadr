@@ -154,6 +154,26 @@ export async function fillNestedMedia(mediaId:string,sourceId:string,token:strin
  },true,undefined,undefined,0,undefined,guard)
 }
 
+/** Fill every template slot off-document; publish one history entry only on success. */
+export async function fillAllNestedMedia(fills:Readonly<Record<string,string>>,token:string,validateCommit?:()=>void):Promise<void>{
+ const requested={...fills},currentGeneration=generation
+ const guard=()=>{assertHistoryUnlocked();if(generation!==currentGeneration)throw new Error('Проект изменился');validateCommit?.()}
+ await editNestedDocument(async document=>{
+  guard()
+  const slots=Object.entries(document.projectMedia??{}).filter(([,item])=>item.placeholder===true).map(([id])=>id)
+  if(!slots.length)throw new Error('В проекте нет незаполненных слотов')
+  if(slots.some(id=>!requested[id])||Object.keys(requested).some(id=>!slots.includes(id)))throw new Error('Выберите файл для каждого слота шаблона')
+  const {fillNativeProjectMedia}=await import('$lib/api')
+  let staged=document
+  for(const id of slots){
+   guard()
+   staged=await fillNativeProjectMedia(staged,id,requested[id]!,token)
+  }
+  guard()
+  return staged
+ },true,undefined,undefined,0,undefined,guard)
+}
+
 export async function removeNestedMedia(sourceId: string): Promise<void> {
   const guard = () => assertHistoryUnlocked()
   await editNestedDocument(async document => {

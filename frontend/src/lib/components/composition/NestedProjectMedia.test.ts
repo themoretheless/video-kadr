@@ -2,7 +2,7 @@
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, expect, it, vi } from 'vitest'
 import * as api from '$lib/api'
-import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, fillNestedMedia, undoNestedComposition, redoNestedComposition } from '$lib/state/nestedComposition.svelte'
+import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, fillNestedMedia, fillAllNestedMedia, undoNestedComposition, redoNestedComposition } from '$lib/state/nestedComposition.svelte'
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import Controls from './NestedProjectMedia.svelte'
@@ -75,4 +75,54 @@ it('keeps native FillSlot atomic on refusal, context changes and close',async()=
  let resolve!:(value:api.NativeNestedProject)=>void;vi.mocked(api.fillNativeProjectMedia).mockImplementation(()=>new Promise(done=>{resolve=done}))
  let current=true;const pending=fillNestedMedia(source.id,'replacement','session',()=>{if(!current)throw new Error('source context changed')});await vi.waitFor(()=>expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(2));current=false;resolve({...initial,projectMedia:{}});await pending;expect(nestedComposition.document).toEqual(initial);expect(nestedHistory.past).toHaveLength(0)
  const late=fillNestedMedia(source.id,'replacement','session');await vi.waitFor(()=>expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(3));closeNestedComposition();resolve(initial);await late;expect(nestedComposition.document).toBeNull();expect(nestedHistory.past).toHaveLength(0)
+})
+
+function template():api.NativeNestedProject{
+ const initial=project()
+ initial.projectMedia={one:{source:{...source,id:'one'},name:'One',placeholder:true},two:{source:{...source,id:'two'},name:'Two',placeholder:true}}
+ return initial
+}
+it('fills all template slots off-document and commits one Undo/Redo through the mounted control',async()=>{
+ const initial=template();nestedComposition.document=initial;nestedComposition.renderedOutputs={root:'old movie'}
+ const inputs:api.NativeNestedProject[]=[]
+ vi.mocked(api.fillNativeProjectMedia).mockImplementation(async(p,id,replacement)=>{
+  inputs.push(p);expect(nestedComposition.document).toEqual(initial);expect(nestedHistory.past).toHaveLength(0)
+  return {...p,projectMedia:{...p.projectMedia,[id]:{...p.projectMedia![id]!,placeholder:false,librarySourceId:replacement}}}
+ })
+ component=mount(Controls,{target:document.body,props:{token:'session',sources:[{label:'New',source:{...source,id:'replacement'}}]}});await tick()
+ const button=[...document.querySelectorAll('button')].find(b=>b.textContent==='Заполнить все слоты шаблона')!
+ expect(button.disabled).toBe(true)
+ for(const select of document.querySelectorAll('select')){select.value='replacement';select.dispatchEvent(new Event('change',{bubbles:true}))}
+ await tick();expect(button.disabled).toBe(false);button.click()
+ await vi.waitFor(()=>expect(nestedHistory.past).toHaveLength(1))
+ expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(2);expect(inputs[1]!.projectMedia!.one!.placeholder).toBe(false)
+ const filled=nestedComposition.document;expect(Object.values(filled!.projectMedia!).every(item=>item.placeholder===false)).toBe(true)
+ expect(nestedComposition.renderedOutputs).toEqual({})
+ undoNestedComposition();expect(nestedComposition.document).toEqual(initial);expect(nestedComposition.renderedOutputs).toEqual({root:'old movie'})
+ redoNestedComposition();expect(nestedComposition.document).toEqual(filled)
+})
+it('does not publish a partial template when a later slot refuses or a choice is missing',async()=>{
+ const initial=template();nestedComposition.document=initial;nestedComposition.renderedOutputs={root:'old movie'}
+ await fillAllNestedMedia({one:'replacement'},'session')
+ expect(api.fillNativeProjectMedia).not.toHaveBeenCalled();expect(nestedHistory.error).toContain('каждого слота')
+ vi.mocked(api.fillNativeProjectMedia).mockImplementation(async(p,id)=>{
+  if(id==='two')throw new Error('derived binding needs reanalysis')
+  return {...p,projectMedia:{...p.projectMedia,one:{...p.projectMedia!.one!,placeholder:false}}}
+ })
+ await fillAllNestedMedia({one:'replacement',two:'replacement'},'session')
+ expect(nestedComposition.document).toEqual(initial);expect(nestedHistory.past).toHaveLength(0);expect(nestedComposition.renderedOutputs).toEqual({root:'old movie'})
+ expect(nestedHistory.error).toBe('derived binding needs reanalysis')
+})
+it('drops staged template fills on context change and project close',async()=>{
+ const initial=template();nestedComposition.document=initial
+ let resolve!:(value:api.NativeNestedProject)=>void
+ vi.mocked(api.fillNativeProjectMedia).mockImplementation(()=>new Promise(done=>{resolve=done}))
+ let current=true
+ const pending=fillAllNestedMedia({one:'replacement',two:'replacement'},'session',()=>{if(!current)throw new Error('context changed')})
+ await vi.waitFor(()=>expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(1));current=false;resolve(initial);await pending
+ expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(1);expect(nestedHistory.past).toHaveLength(0);expect(nestedComposition.document).toEqual(initial)
+ const late=fillAllNestedMedia({one:'replacement',two:'replacement'},'session')
+ await vi.waitFor(()=>expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(2));closeNestedComposition();resolve(initial)
+ await late;expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(2)
+ expect(nestedComposition.document).toBeNull();expect(nestedHistory.past).toHaveLength(0)
 })

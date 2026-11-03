@@ -14,7 +14,7 @@ source-application parity.
 | --- | --- | --- |
 | Timeline and media editing | Native timeline ordering/creation/removal, linked split/trim/replacement, clipboard, freeze, compatible joining, Concat-provenance audio reattachment, original/copy selection and AddClipAtFirstFree are covered by the milestones below. | Full source-command matrix; arbitrary render consolidation and admission outside the implemented command envelopes. The stricter synchronized-pair reattachment mode is distinct from Concat provenance-based reattachment. |
 | Project media / placeholders | `backend/src/domain/concat_media_slots.rs`, `project_media_fill.rs`; `backend/tests/concat_media_slots.rs`, `concat_registered_slot.rs`; staged and open-project FillSlot and logical media bindings. | FillSlot reanalysis/rebinding of derived versions and video cutouts; affected transitions, visual dependencies and dormant controls outside the admitted conversion envelope. |
-| Templates | Portable original/copy references and native multi-composition infrastructure exist. | Source template packs and end-to-end template behavior need a separate requirement audit. |
+| Templates | Portable original/copy references, native multi-composition infrastructure and all-slot filling in one Undo exist. | Source template packs and end-to-end template behavior need a separate requirement audit. |
 | Audio cleanup and narration | Native DSP, learned voice enhancement, Kokoro and Chatterbox narration, voice references, durable jobs/assets and model management exist. See `backend/src/domain/concat_enhance_voice.rs`, `backend/src/services/local_chatterbox.rs`, and `backend/tests/tts_*.rs`, `concat_enhance_*.rs`. | Whole source voice/model/quality/platform parity; implemented engines must not be described as universally equivalent. |
 | Captions and learned vision | Local Whisper jobs/model management, speech alignment, still/video enhancement, Person/Object/Selfie/SAM cutouts and smart temporal regions exist. See `backend/src/services/local_speech.rs`, `local_enhance*.rs`, `concat_video_analysis/` and `backend/tests/logical_video_cutout.rs`, `concat_video_smart.rs`. | Broader codec, source-clock, HDR and segmentation-quality qualification; derived-media FillSlot reanalysis. |
 | Saved mask ownership and archives | Prepared still/video import; atomic cache/region/original ownership; self-contained v2 archives; historical preview/resave; verified legacy current-binding adoption. See the final milestones, `backend/tests/project_archive_video.rs` and `backend/tests/support/video_archive.rs`. | Legacy inactive slots without proven physical mapping remain refused. General retired-asset GC and publication/history lifecycle acceptance remain open. |
@@ -13397,3 +13397,27 @@ one reservation, after which source removal, historical preview and resave work.
 Archive, cache-transfer and compatibility gates remain green. Missing historical
 bindings without a current verified physical mapping still refuse; this migration
 does not infer provenance from matching bytes elsewhere in the library.
+
+### Fill all open-template slots in one history operation
+
+The project-media panel now offers “Заполнить все слоты шаблона” once replacements
+are chosen for every placeholder. The state operation snapshots the requested
+mapping, rejects missing or extra slots before probing, and runs the existing
+ACL-bound native FillSlot endpoint sequentially against a private staged document.
+No intermediate document or render-cache invalidation reaches the editor. A later
+slot failure preserves the entire live document, rendered outputs and history;
+success commits one Undo/Redo entry for all fills. Account/library context changes
+and project close invalidate the staged operation. Each replacement still uses the
+existing server probe and source-access checks; there is no new media publication
+or project save.
+
+Twelve frontend tests pass across the mounted project-media controls and slot API:
+all-slot selection, progressive staged input, single Undo/Redo, later-slot refusal,
+missing selection, changed context and closed-project refusal. Scoped lint passes.
+These component tests mock HTTP; they do not establish a fresh real-server batch
+or browser qualification. Template bundle packaging/gallery/posters, derived-asset
+FillSlot rebinding and full source-application parity remain open.
+
+Final checks: Svelte typecheck reports zero errors/warnings; production build
+passes (39.54s, existing chunk warnings); design-token and listener-lifecycle
+checks and `git diff --check` pass. Backend media semantics are unchanged.

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, fillNestedMedia } from '$lib/state/nestedComposition.svelte'
+  import { nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, fillNestedMedia, fillAllNestedMedia } from '$lib/state/nestedComposition.svelte'
   import type { ConcatImportSource } from '$lib/composition/concatProjectImport'
   let { disabled = false, token = null, sources = [] }: { disabled?: boolean; token?: string|null; sources?:readonly ConcatImportSource[] } = $props()
   let choices=$state<Record<string,string>>({})
@@ -9,6 +9,12 @@
     const replacement=choices[id],auth=token,serial=epoch
     if(!auth||!replacement||disabled||nestedHistory.busy)return
     await fillNestedMedia(id,replacement,auth,()=>{if(serial!==epoch||auth!==token)throw new Error('Контекст заполнения слота изменился')})
+  }
+  async function fillAll(){
+    const auth=token,serial=epoch
+    if(!auth||disabled||nestedHistory.busy)return
+    const fills=Object.fromEntries(items.filter(item=>item.placeholder).map(item=>[item.id,choices[item.id]??'']))
+    await fillAllNestedMedia(fills,auth,()=>{if(serial!==epoch||auth!==token)throw new Error('Контекст заполнения слотов изменился')})
   }
   const project = $derived(nestedComposition.document)
   const items = $derived.by(() => {
@@ -26,6 +32,9 @@
 {#if project}
   <details>
     <summary>Медиа проекта и слоты шаблона</summary>
+    {#if items.some(item=>item.placeholder)}
+      <button disabled={disabled||nestedHistory.busy||!token||items.some(item=>item.placeholder&&!choices[item.id])} onclick={()=>{void fillAll()}}>Заполнить все слоты шаблона</button>
+    {/if}
     {#each items as item (item.id)}
       <label><input type="checkbox" aria-label={`Слот шаблона: ${item.name}`} checked={item.placeholder} disabled={disabled || nestedHistory.busy} onchange={event => { void setNestedMediaPlaceholder(item.id, event.currentTarget.checked) }} />{item.name} <span>Таймлайнов: {item.timelines}</span></label>
       {#if item.placeholder}
