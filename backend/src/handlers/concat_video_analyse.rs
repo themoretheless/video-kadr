@@ -22,7 +22,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
         &saved.document
     };
     let composition: Composition = serde_json::from_value(content.clone()).map_err(|_| AppError::bad_request("Неверная композиция"))?;
-    composition.validate().map_err(|e| AppError::bad_request(e.to_string()))?;
+    composition.validate_native_surface().map_err(|e| AppError::bad_request(e.to_string()))?;
     let id = CompositionClipId::parse(request.clip_id).map_err(|e| AppError::bad_request(e.to_string()))?;
     let clip = composition.tracks.iter().find_map(|track| match track {
         CompositionTrack::Video { locked: false, clips, .. } => clips.iter().find(|clip| clip.id == id && clip.enabled), _ => None,
@@ -35,7 +35,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
     let last = clock(end.checked_sub(1).ok_or_else(|| AppError::bad_request("Пустое видео"))?)?;
     let ranges = [(first.min(last) as f64 / 1_000_000., first.max(last) as f64 / 1_000_000.)];
     let source_id = clip.source_id.as_str().to_owned();
-    let path = super::cutout_jobs::source(&state, &source_id, &actor).await.map_err(|_| AppError::forbidden("Исходник недоступен"))?;
+    let path = super::concat_cutout_access::source_for_document(&state, &actor, &saved.document, &source_id).await.map_err(|_| AppError::forbidden("Исходник недоступен"))?;
     let lease=if let Some(id)=&request.operation_id{Some(state.concat_video_cancellations.begin(&actor,&project,id,&state.shutdown_token()).map_err(|error|AppError::conflict(error.to_string()))?)}else{None};
     let token=lease.as_ref().map(|lease|lease.token.clone()).unwrap_or_else(||state.shutdown_token().child_token());if token.is_cancelled(){return Err(AppError::conflict("Анализ отменён"))}let _cancel=token.clone().drop_guard();
     let work = tokio::spawn(async move { let _lease=lease;let result: Result<Analysed> = async {

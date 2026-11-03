@@ -73,7 +73,7 @@
   {/each}
   {#if fonts.length}<p>Выберите файлы шрифтов. Они сохранятся внутри проекта.</p>{/if}
   {#if media.length}<p>Недостающие файлы сначала добавьте в библиотеку.</p>{/if}
-  {#if media.length}<label><input type="checkbox" aria-label="Сохранять отдельные ID медиа Concat" checked={preserveMediaIds} onchange={event=>{invalidate();preserveMediaIds=event.currentTarget.checked}} />Сохранять отдельные слоты при общем файле</label>{#if preserveMediaIds}<p>Вырезание фона видео в этом режиме ещё не поддержано.</p>{/if}{/if}
+  {#if media.length}<label><input type="checkbox" aria-label="Сохранять отдельные ID медиа Concat" checked={preserveMediaIds} onchange={event=>{invalidate();preserveMediaIds=event.currentTarget.checked}} />Сохранять отдельные слоты при общем файле</label>{#if preserveMediaIds}<p>Умные области видео в этом режиме ещё не поддержаны.</p>{/if}{/if}
   <button class="btn ghost sm" disabled={!ready} onclick={()=>void convert()}>Проверить импорт Concat</button>
   {#if report?.status==='converted'&&report.project}<p>Таймлайнов: {Object.keys(report.project.compositions).length}. Открытие создаст новый несохранённый проект; прежний доступен через undo.</p><button class="btn primary sm" disabled={applied} onclick={()=>void apply()}>Открыть импорт как новый проект</button>{/if}
   {#if report}<button class="btn ghost sm" onclick={download}>Скачать исходник и отчёт импорта</button>{/if}

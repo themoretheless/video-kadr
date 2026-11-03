@@ -31,7 +31,9 @@ impl BoundMasks {
   // source/model/runtime cache is the authority; current document tuples are not.
   for(node,id,source,binding)in wanted{
    binding.validate()?;
-   ensure!(saved.source_ids.iter().any(|id|id==source.as_str()),"requested video source is not authorized by the saved project");
+   let physical=super::concat_cutout_access::library_id(&saved.document,source.as_str())?;
+   ensure!(requested.library_source_id(&source).as_str()==physical,"requested video library binding differs from saved cache owner");
+   ensure!(saved.source_ids.iter().any(|id|id==&physical),"requested video source is not authorized by the saved project");
    let key=(source.clone(),binding.model_hash.clone(),binding.runtime_hash.clone(),binding.source_hash.clone());
    if !result.caches.contains_key(&key){
     let cache=super::concat_video_cache::restore_for_model(state,actor,&context.project_id,source.as_str(),context.expected_revision,&binding.runtime_hash,&binding.model_hash,cancel).await?.ok_or_else(||anyhow::anyhow!("saved video mask cache missing"))?;

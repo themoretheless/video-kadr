@@ -25,7 +25,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
         &saved.document
     };
     let mut composition: Composition = serde_json::from_value(content.clone()).map_err(|_| AppError::bad_request("Неверная композиция"))?;
-    composition.validate().map_err(|e| AppError::bad_request(e.to_string()))?;
+    composition.validate_native_surface().map_err(|e| AppError::bad_request(e.to_string()))?;
     let id = CompositionClipId::parse(request.clip_id).map_err(|e| AppError::bad_request(e.to_string()))?;
     let selected = composition.tracks.iter().find_map(|track| match track {
         CompositionTrack::Video { locked: false, clips, .. } => clips.iter().find(|clip| clip.id == id && clip.enabled).cloned(), _ => None,
@@ -58,7 +58,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
             region_leases.push((track.stroke,super::concat_video_region_cache::load(&state,&actor,&project,request.expected_revision,&track.snapshot,&token).await?));
         }
         let mut sources = std::collections::BTreeMap::new();
-        for source in composition.sources.keys() { sources.insert(source.clone(), super::cutout_jobs::source(&state, source.as_str(), &actor).await?); }
+        for source in composition.sources.keys() { sources.insert(source.clone(), super::concat_cutout_access::source_for_document(&state, &actor, &saved.document, source.as_str()).await?); }
         let original_path = sources.get(&source_id).ok_or_else(|| anyhow::anyhow!("missing video source"))?.clone();
         let before = crate::project_archive::fingerprint_file_with_limit(&original_path, 64*1024*1024*1024).await?;
         let codecs = crate::services::local_enhance_video::resolve_tools().await?;
@@ -70,6 +70,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
             compositions: std::collections::BTreeMap::from([("solo".into(), crate::domain::nested_composition::NestedCompositionDocument { duration_us: None, content: composition, instances: vec![] })]),
         };
         let decode_path=original_path.clone();
+        let verified_source_id=source_id.clone();
         let render_token = token.clone();
         let frame = tokio::task::spawn_blocking(move || {
             let mut resolve=|source_us:u64,frame:&mut crate::domain::group_surface::GroupSurface|->Result<()>{
@@ -89,7 +90,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
         super::cutout_assets::authorize(&state, &project, &actor).await.map_err(|_| anyhow::anyhow!("project editor access revoked"))?;
         let current = state.db.get_composition_project_for(&project,&actor).await?.ok_or_else(|| anyhow::anyhow!("project unavailable"))?;
         ensure!(current.revision == request.expected_revision && current.document == saved.document && !token.is_cancelled(), "video preview target changed");
-        ensure!(crate::project_archive::fingerprint_file_with_limit(&original_path,64*1024*1024*1024).await? == before, "video preview source changed");
+        ensure!(super::concat_cutout_access::source_for_document(&state,&actor,&current.document,verified_source_id.as_str()).await?==original_path && crate::project_archive::fingerprint_file_with_limit(&original_path,64*1024*1024*1024).await? == before, "video preview source changed");
         Ok(frame)
     }.await; result });
     let frame = work.await.map_err(|e| AppError::internal("join video cutout preview",e))?.map_err(|e| AppError::conflict(e.to_string()))?;
