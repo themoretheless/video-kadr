@@ -140,3 +140,15 @@ it('reports server publication to the agent even if the editor closes while the 
  await expect(pending).rejects.toThrow('сохранён на сервере')
  expect(nestedComposition.document).toBeNull();expect(nestedHistory.past).toHaveLength(0)
 })
+
+it('keeps logical media bindings through saved freeze adoption and one Undo/Redo',async()=>{
+ const {document,saved,result,changed}=setup();if(!result.changed)throw new Error('fixture changed')
+ const source=document.compositions.root!.content.sources.source!
+ const records={source:{source,librarySourceId:'physical-video',name:'Slot',placeholder:true},alias:{source:{...source,id:'alias'},librarySourceId:'physical-video',name:'Other slot',placeholder:true}}
+ document.projectMedia=clone(records);saved.document.projectMedia=clone(records);changed.projectMedia=clone(records)
+ saved.sourceIds=['physical-video'];result.project.sourceIds=['physical-video','still'];nestedComposition.document=clone(document)
+ expect(await freezeNestedVideoClip('token','root','clip')).toBe('hold')
+ expect(nestedComposition.document?.projectMedia).toEqual(records);expect(nestedComposition.revision).toBe(4);expect(nestedHistory.past).toHaveLength(1)
+ undoNestedComposition();expect(nestedComposition.document).toEqual(document);expect(nestedComposition.document?.projectMedia).toEqual(records)
+ redoNestedComposition();expect(nestedComposition.document).toEqual(changed);expect(nestedComposition.document?.compositions.root!.content.tracks.filter(track=>track.kind==='video').flatMap(track=>track.clips).every(clip=>clip.sourceId==='source')).toBe(true)
+})

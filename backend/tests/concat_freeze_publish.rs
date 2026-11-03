@@ -695,3 +695,69 @@ async fn fractional_native_keys_are_published_with_their_clock_and_reloaded() {
     restored.validate_native_surface().unwrap();
     assert_eq!(freeze::recover_at_startup(&state).await.unwrap(),0);
 }
+
+async fn logical_freeze_setup()->(AppState,tempfile::TempDir,String,CompositionProject){
+    use video_kadr_backend::domain::concat_project_import::{import,ImportRequest};
+    let(state,dir,owner,_)=setup().await;
+    tokio::fs::copy(state.sources_dir().join("source.nut"),state.sources_dir().join("private-source.nut")).await.unwrap();
+    assert!(state.library.add(MediaEntry::from_result("source",&json!({"id":"private-source","filename":"private-source.nut","url":"/files/sources/private-source.nut","mediaType":"video","width":16,"height":16}))).await);
+    let decoy=Command::new("/opt/homebrew/bin/ffmpeg").args(["-v","error","-f","lavfi","-i","color=blue:s=16x16:r=10:d=1","-c:v","ffv1"]).arg(state.sources_dir().join("slot.nut")).output().unwrap();assert!(decoy.status.success());
+    assert!(state.library.add(MediaEntry::from_result("source",&json!({"id":"slot","filename":"slot.nut","url":"/files/sources/slot.nut","mediaType":"video","width":16,"height":16}))).await);
+    let descriptor=json!({"id":"private-source","kind":"video","durationTicks":1000000,"width":16,"height":16,"hasAudio":false});
+    let request:ImportRequest=serde_json::from_value(json!({"schemaVersion":1,"preserveMediaIds":true,"document":{"version":1,"media":[{"id":"slot","name":"Main slot","kind":"video","placeholder":true},{"id":"alias","name":"Other slot","kind":"video","placeholder":true}],"timelines":[{"id":"main","video":{"width":16,"height":16,"rateNum":10,"rateDen":1},"tracks":[{"id":"v"}],"clips":[{"id":"clip","mediaId":"slot","trackId":"v","kind":"video","start":0.,"duration":1.}]},{"id":"other","video":{"width":16,"height":16,"rateNum":10,"rateDen":1},"tracks":[{"id":"v"}],"clips":[{"id":"other-clip","mediaId":"alias","trackId":"v","kind":"video","start":0.,"duration":1.}]}]},"mediaBindings":{"slot":descriptor,"alias":descriptor}})).unwrap();
+    let report=import(request).unwrap();assert_eq!(report.status,"converted","{:?}",report.diagnostics);let document=serde_json::to_value(report.project.unwrap()).unwrap();
+    let space=state.db.create_space(&owner,"Private logical freeze").await.unwrap();
+    let saved=state.db.create_space_composition_project("Logical slots",&document,&["private-source".into()],&owner,&space.id).await.unwrap();
+    (state,dir,owner,saved)
+}
+async fn prepare_logical_freeze(state:&AppState,owner:&str,saved:&CompositionProject)->freeze::PreparedFreeze{
+    freeze::prepare(state,owner,Target{project:saved.id.clone(),revision:saved.revision,composition:Some(saved.document["root"].as_str().unwrap().into()),clip:"clip".into(),time:0.25},Tools{ffmpeg:Path::new("/opt/homebrew/bin/ffmpeg"),ffprobe:Path::new("/opt/homebrew/bin/ffprobe")},Duration::from_secs(30),&CancellationToken::new()).await.unwrap().unwrap()
+}
+fn assert_red_still(bytes:&[u8]){
+    let image=image::load_from_memory(bytes).unwrap().to_rgb8();assert!(image.pixels().all(|p|p[0]>200&&p[1]<30&&p[2]<30),"freeze used the decoy blue logical-ID file instead of the physical red source");
+}
+#[tokio::test]
+async fn logical_slot_http_freeze_uses_private_physical_file_and_preserves_aliases_and_other_timelines(){
+    use axum::{body::{to_bytes,Body},http::{Request,StatusCode}};use tower::ServiceExt;
+    let(state,_dir,owner,saved)=logical_freeze_setup().await;let token=state.db.login_auth_user(&owner,"freeze test password").await.unwrap().unwrap().token;
+    let outsider=state.db.register_auth_user("logical-freeze-outsider","freeze test password").await.unwrap().unwrap();
+    let app=support::router(state.clone());let root=saved.document["root"].as_str().unwrap();
+    let request=|auth:&str|Request::builder().method("POST").uri(format!("/api/composition-projects/{}/freeze-frame",saved.id)).header("content-type","application/json").header("authorization",format!("Bearer {auth}")).body(Body::from(json!({"revision":saved.revision,"compositionId":root,"clipId":"clip","time":0.25}).to_string())).unwrap();
+    assert_eq!(app.clone().oneshot(request(&outsider.token)).await.unwrap().status(),StatusCode::FORBIDDEN);
+    let response=app.clone().oneshot(request(&token)).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),4*1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&bytes));let result:Value=serde_json::from_slice(&bytes).unwrap();assert_eq!(result["changed"],true);
+    let id=result["media"]["id"].as_str().unwrap();assert_eq!(result["project"]["revision"],saved.revision+1);assert_eq!(result["project"]["document"]["projectMedia"],saved.document["projectMedia"]);
+    for (node_id,node) in saved.document["compositions"].as_object().unwrap(){if node_id!=root{assert_eq!(result["project"]["document"]["compositions"][node_id],*node);}}
+    let content=&result["project"]["document"]["compositions"][root]["content"];let tracks=content["tracks"].as_array().unwrap();let video=tracks.iter().find(|track|track["kind"]=="video").unwrap();assert_eq!(video["clips"].as_array().unwrap().len(),2);assert!(video["clips"].as_array().unwrap().iter().all(|clip|clip["sourceId"]=="slot"));
+    let sources=result["project"]["sourceIds"].as_array().unwrap();assert_eq!(sources.len(),2);assert!(sources.contains(&json!("private-source"))&&sources.contains(&json!(id)));assert!(!sources.contains(&json!("slot"))&&!sources.contains(&json!("alias")));
+    let media=state.library.get(id).await.unwrap();assert!(media.storage_key.as_deref().unwrap().starts_with("spaces/"));assert_red_still(&tokio::fs::read(state.library.resolve_media_path(&media).await.unwrap()).await.unwrap());
+    for time in [100_000,500_000,1_500_000]{
+        let response=app.clone().oneshot(Request::builder().method("POST").uri("/api/compositions/nested-preview").header("content-type","application/json").header("accept","image/png").header("authorization",format!("Bearer {token}")).body(Body::from(json!({"project":result["project"]["document"],"timeUs":time,"renderedOutputs":{}}).to_string())).unwrap()).await.unwrap();
+        let status=response.status();let png=to_bytes(response.into_body(),1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&png));let image=image::load_from_memory(&png).unwrap().to_rgb8();assert_eq!(image.dimensions(),(16,16));assert!(image.pixels().all(|pixel|pixel[0]>200&&pixel[1]<30&&pixel[2]<30),"logical freeze head/hold/tail preview used wrong pixels at {time}");
+    }
+    let loaded=state.db.get_composition_project_for(&saved.id,&owner).await.unwrap().unwrap();assert_eq!(loaded.document,result["project"]["document"]);assert_eq!(app.oneshot(request(&token)).await.unwrap().status(),StatusCode::CONFLICT);assert_eq!(jpeg_count(&state.sources_dir()),1);assert_eq!(freeze::recover_at_startup(&state).await.unwrap(),0);
+}
+#[tokio::test]
+async fn logical_freeze_rechecks_physical_source_but_does_not_treat_unused_logical_id_file_as_authority(){
+    use std::io::Write;
+    for changed_physical in [false,true]{
+        let(state,_dir,owner,saved)=logical_freeze_setup().await;let prepared=prepare_logical_freeze(&state,&owner,&saved).await;
+        let id=if changed_physical{"private-source"}else{"slot"};let entry=state.library.get(id).await.unwrap();let path=state.library.resolve_media_path(&entry).await.unwrap();std::fs::OpenOptions::new().append(true).open(path).unwrap().write_all(b"external change").unwrap();
+        let result=freeze::publish_native(&state,prepared,&CancellationToken::new()).await;
+        if changed_physical {assert!(result.is_err());let loaded=state.db.get_composition_project_for(&saved.id,&owner).await.unwrap().unwrap();assert_eq!(loaded.revision,saved.revision);assert_eq!(loaded.document,saved.document);assert_eq!(jpeg_count(&state.sources_dir()),0);}else{let result=result.unwrap();assert_red_still(&tokio::fs::read(state.library.resolve_media_path(&result.media).await.unwrap()).await.unwrap());assert_eq!(result.project.document["projectMedia"],saved.document["projectMedia"]);}
+        assert_eq!(freeze::recover_at_startup(&state).await.unwrap(),0);
+    }
+}
+
+#[tokio::test]
+async fn logical_freeze_cannot_publish_after_physical_source_space_access_is_revoked(){
+    use video_kadr_backend::{db::SpaceRole,domain::project_collaboration::ProjectRole};
+    let(state,_dir,owner,saved)=logical_freeze_setup().await;
+    let editor=state.db.register_auth_user("logical-freeze-editor","freeze test password").await.unwrap().unwrap().user.username;
+    let space=state.db.source_space_id("private-source").await.unwrap().unwrap();
+    state.db.set_space_member(&space,&owner,&editor,SpaceRole::Editor).await.unwrap().unwrap();
+    state.db.set_review_member(&saved.id,&owner,&editor,ProjectRole::Editor).await.unwrap().unwrap();
+    let prepared=prepare_logical_freeze(&state,&editor,&saved).await;let count=state.library.list().await.len();
+    assert_eq!(state.db.remove_space_member(&space,&owner,&editor).await.unwrap(),Some(true));
+    assert!(freeze::publish_native(&state,prepared,&CancellationToken::new()).await.is_err());
+    let loaded=state.db.get_composition_project_for(&saved.id,&owner).await.unwrap().unwrap();assert_eq!(loaded.revision,saved.revision);assert_eq!(loaded.document,saved.document);assert_eq!(state.library.list().await.len(),count);assert_eq!(jpeg_count(&state.sources_dir()),0);assert_eq!(freeze::recover_at_startup(&state).await.unwrap(),0);
+}
