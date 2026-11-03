@@ -108,3 +108,35 @@ impl PublicationSession{
  }
  pub async fn finish(&self,state:&AppState,cache:&RunCache,cancel:&CancellationToken)->Result<()>{self.check(state,cache,cancel).await?;ensure!(crate::project_archive::fingerprint_file_with_limit(&self.path,CACHE_BUDGET).await?.1==self.video_hash&&!cancel.is_cancelled(),"video source changed during progressive analysis");Ok(())}
 }
+
+/// Trusted project/source context; no client paths or publication receipts.
+#[derive(Clone,Copy)]
+pub struct ProjectSource<'a>{pub project:&'a str,pub source_id:&'a str,pub revision:u64}
+/// Give another saved logical slot independent authority over a verified store.
+/// Immutable generation files are shared; registry and family choice commit together.
+/// Clip settings/region reservations are deliberately a separate orchestration step.
+pub async fn transfer_for_model(state:&AppState,actor:&str,from:ProjectSource<'_>,to:ProjectSource<'_>,runtime_hash:&str,model_hash:&str,cancel:&CancellationToken)->Result<String>{
+    crate::services::concat_video_selection::model_from_hash(model_hash)?;
+    let physical=physical_id(state,actor,from.project,from.source_id,from.revision).await?;
+    ensure!(physical_id(state,actor,to.project,to.source_id,to.revision).await?==physical,"video cache transfer requires the same registered physical source");
+    let cache=restore_for_model(state,actor,from.project,from.source_id,from.revision,runtime_hash,model_hash,cancel).await?.ok_or_else(||anyhow::anyhow!("source project has no verified video cache"))?;
+    ensure!(!cache.is_empty(),"cannot transfer an empty video cache");
+    let receipt=cache.published_receipt()?;
+    let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("invalid video cache generation"))?;
+    let path=source(state,actor,from.project,from.source_id,from.revision).await?;
+    ensure!(source(state,actor,to.project,to.source_id,to.revision).await?==path&&crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?.1==cache.video_hash()&&!cancel.is_cancelled(),"video cache transfer source/access changed");
+    let mut transaction=state.db.pool().begin_with("BEGIN IMMEDIATE").await?;
+    for endpoint in [from,to]{
+        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?)").bind(endpoint.project).bind(i64::try_from(endpoint.revision)?).bind(actor).bind(&physical).fetch_one(&mut *transaction).await?;
+        ensure!(allowed,"video transfer project/source authority changed");
+    }
+    let source_row:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid DESC LIMIT 1").bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *transaction).await?;
+    let source_row=source_row.ok_or_else(||anyhow::anyhow!("verified source cache registration disappeared"))?;
+    let existing:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid LIMIT 1").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *transaction).await?;
+    let id=if let Some(id)=existing{id}else{
+        let id=uuid::Uuid::new_v4().to_string();
+        let changed=sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,?,?,video_hash,model_hash,runtime_hash,manifest_hash,generation FROM concat_video_project_caches WHERE id=?").bind(&id).bind(to.project).bind(to.source_id).bind(&source_row).execute(&mut *transaction).await?.rows_affected();ensure!(changed==1,"source cache disappeared during transfer");id
+    };
+    let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT project_id,source_id,video_hash,model_hash,runtime_hash FROM concat_video_project_caches WHERE id=? ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash").bind(&id).execute(&mut *transaction).await?.rows_affected();
+    ensure!(changed==1&&!cancel.is_cancelled(),"video cache transfer cancelled");transaction.commit().await?;Ok(id)
+}

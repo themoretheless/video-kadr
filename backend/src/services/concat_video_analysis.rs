@@ -78,6 +78,11 @@ impl RunCache {
     pub fn model_hash(&self)->&str{&self.model_hash}
     pub fn runtime_hash(&self)->&str{&self.runtime_hash}
     pub fn is_empty(&self)->bool{self.frames.is_empty()}
+    /// Exact verified publication, only while no unpublished runs were appended.
+    pub(crate) fn published_receipt(&self)->Result<&PublishedCache>{
+        let prefix=self.published.as_ref().ok_or_else(||anyhow::anyhow!("video cache is not published"))?;
+        ensure!(prefix.run_count==self.runs.len(),"video cache has unpublished changes");Ok(&prefix.receipt)
+    }
     pub fn identity(&self)->Result<String>{
         use sha2::Digest;
         let runs:Vec<_>=self.runs.iter().map(|run|(run.start_millis,&run.metadata)).collect();

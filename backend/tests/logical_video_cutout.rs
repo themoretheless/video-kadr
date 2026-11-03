@@ -365,6 +365,96 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
         .unwrap();
     assert!(output.status.success());
     assert_eq!(output.stdout, expected_rgba);
+    let mut transferred_document = bound.document.clone();
+    transferred_document["compositions"][&root]["content"]["tracks"][0]["clips"][0]["sourceId"] =
+        json!("alias");
+    let transferred = state
+        .db
+        .create_space_composition_project(
+            "Transferred video masks",
+            &transferred_document,
+            &["physical".into()],
+            "owner",
+            &space.id,
+        )
+        .await
+        .unwrap();
+    let transferred_native = serde_json::from_value(transferred_document).unwrap();
+    let transferred_context = SavedProject {
+        project_id: transferred.id.clone(),
+        expected_revision: transferred.revision,
+    };
+    assert!(BoundMasks::load(
+        &delivery_state,
+        "owner",
+        Some(&transferred_context),
+        &transferred_native,
+        &cancel
+    )
+    .await
+    .is_err());
+    let from = cache::ProjectSource {
+        project: &saved.id,
+        source_id: "slot",
+        revision: bound.revision,
+    };
+    let to = cache::ProjectSource {
+        project: &transferred.id,
+        source_id: "alias",
+        revision: transferred.revision,
+    };
+    let cache_id = cache::transfer_for_model(
+        &delivery_state,
+        "owner",
+        from,
+        to,
+        &chosen.runtime_hash,
+        &chosen.model_hash,
+        &cancel,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        cache::transfer_for_model(
+            &delivery_state,
+            "owner",
+            from,
+            to,
+            &chosen.runtime_hash,
+            &chosen.model_hash,
+            &cancel
+        )
+        .await
+        .unwrap(),
+        cache_id
+    );
+    assert_eq!(
+        BoundMasks::load(
+            &delivery_state,
+            "owner",
+            Some(&transferred_context),
+            &transferred_native,
+            &cancel
+        )
+        .await
+        .unwrap()
+        .identities()
+        .unwrap()
+        .keys()
+        .map(SourceId::as_str)
+        .collect::<Vec<_>>(),
+        vec!["alias"]
+    );
+    let response=delivery.clone().oneshot(request("/api/compositions/nested-preview",&owner.token,json!({"project":transferred_native,"compositionId":root,"timeUs":100000,"renderedOutputs":{},"savedProject":transferred_context}))).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
+    assert_eq!(bytes.as_ref(), expected_rgba);
     let decoy = state
         .library
         .resolve_media_path(&state.library.get("slot").await.unwrap())
