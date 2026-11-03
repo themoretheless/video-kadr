@@ -36,6 +36,7 @@ pub(crate) fn prepare<'a>(
     actor: &'a str,
     document: &'a Value,
     cancel: &'a tokio_util::sync::CancellationToken,
+    context: Option<&'a super::concat_video_bound::SavedProject>,
 ) -> std::pin::Pin<
     Box<dyn std::future::Future<Output = Result<(Value, Vec<PreparedTransfer>)>> + Send + 'a>,
 > {
@@ -88,7 +89,37 @@ pub(crate) fn prepare<'a>(
         let mut transfers = vec![];
         let mut seen = std::collections::BTreeSet::new();
         for (source, binding) in requests {
-            let origin = binding.origin.as_ref().unwrap();
+            let masks = binding
+                .region_tracks
+                .iter()
+                .map(|track| {
+                    Ok((
+                        track.snapshot.mask_source_id.clone(),
+                        super::concat_cutout_access::library_id(
+                            &final_document,
+                            &track.snapshot.mask_source_id,
+                        )?,
+                    ))
+                })
+                .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+            let physical = super::concat_cutout_access::library_id(&final_document, &source)?;
+            let owned = super::concat_video_ownership::use_owned(
+                state, actor, context, &source, &physical, &masks, &binding,
+            )
+            .await?;
+            let local_origin;
+            let origin = if owned {
+                let context = context.unwrap();
+                local_origin = crate::domain::concat_video_binding::CacheOrigin {
+                    project_id: context.project_id.clone(),
+                    expected_revision: context.expected_revision,
+                    source_id: source.clone(),
+                    region_sources: Default::default(),
+                };
+                &local_origin
+            } else {
+                binding.origin.as_ref().unwrap()
+            };
             let identity = serde_json::to_string(&(&source, &binding))?;
             if !seen.insert(identity) {
                 continue;

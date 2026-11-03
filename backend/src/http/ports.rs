@@ -212,10 +212,10 @@ impl SqliteCompositionProjectPort {
     }
 
     pub fn with_video_adoption(mut self,state:crate::state::AppState)->Self{self.video_state=Some(state);self}
-    async fn prepare_video(&self,actor:&str,document:&serde_json::Value,cancel:&tokio_util::sync::CancellationToken)->Result<(serde_json::Value,Vec<crate::handlers::concat_video_cache::PreparedTransfer>)>{
+    async fn prepare_video(&self,actor:&str,document:&serde_json::Value,cancel:&tokio_util::sync::CancellationToken,context:Option<&crate::handlers::concat_video_bound::SavedProject>)->Result<(serde_json::Value,Vec<crate::handlers::concat_video_cache::PreparedTransfer>)>{
         if !crate::handlers::concat_video_adoption::has_origins(document){return Ok((document.clone(),vec![]))}
         let state=self.video_state.as_ref().ok_or_else(||anyhow::anyhow!("video ownership adoption unavailable"))?;
-        crate::handlers::concat_video_adoption::prepare(state,actor,document,cancel).await
+        crate::handlers::concat_video_adoption::prepare(state,actor,document,cancel,context).await
     }
     async fn isolate_sources(&self, project: &CompositionProject) -> Result<()> {
         let Some(space_id) = project.space_id.as_deref() else {
@@ -242,7 +242,7 @@ impl CompositionProjectPort for SqliteCompositionProjectPort {
         owner: &str,
     ) -> Result<CompositionProject> {
         let cancel=tokio_util::sync::CancellationToken::new();let _guard=cancel.clone().drop_guard();
-        let (document,transfers)=self.prepare_video(owner,&draft.document,&cancel).await?;
+        let (document,transfers)=self.prepare_video(owner,&draft.document,&cancel,None).await?;
         let project=self.db.create_composition_project_adopting_video(&draft.name,&document,&draft.source_ids,owner,draft.space_id.as_deref(),&transfers).await?;
         self.isolate_sources(&project).await?;
         let _ = self.changes.send(CompositionProjectChange {
@@ -264,7 +264,8 @@ impl CompositionProjectPort for SqliteCompositionProjectPort {
         draft: CompositionProjectDraft,
     ) -> Result<Option<CompositionProject>> {
         let cancel=tokio_util::sync::CancellationToken::new();let _guard=cancel.clone().drop_guard();
-        let (document,transfers)=self.prepare_video(actor,&draft.document,&cancel).await?;
+        let context=crate::handlers::concat_video_bound::SavedProject{project_id:id.into(),expected_revision:draft.base_revision.expect("HTTP update validates base revision")};
+        let (document,transfers)=self.prepare_video(actor,&draft.document,&cancel,Some(&context)).await?;
         let project=self.db.update_composition_project_adopting_video(id,actor,&draft.name,&document,&draft.source_ids,draft.base_revision.expect("HTTP update validates base revision"),&transfers).await?;
         if let Some(project) = project.as_ref() {
             self.isolate_sources(project).await?;

@@ -13179,3 +13179,22 @@ the normal debug worker stack after fixing a stack overflow found by this test.
 These results qualify the HTTP create/update path. Archive/direct-DB adoption,
 full imported-history lifecycle/GC, and reuse of already-adopted caches by older
 Undo snapshots containing stale external origins remain outside this gate.
+
+### Historical origin snapshots after adoption
+
+When a saved project renders an older Undo snapshot containing an external
+origin, the provider first checks that project's own exact source/model/runtime
+registration and physical source binding. Every temporal region must also have
+current or historical authority in that project. If so, the provider uses the
+owned namespace and verifies its files normally. A missing registration may use
+the explicit external origin; corrupted owned data is an error, with no fallback.
+A stale saved revision or revoked target editor role is rejected.
+
+The update save path uses the same ownership decision. An old origin snapshot
+can therefore be saved again from the adopted namespace after external source
+access is revoked; the returned document remains free of external origins.
+Real Selfie and SAM cases exercise historical preview and update after revocation,
+and Selfie checks that a forged owned manifest registration refuses even when
+the external source remains valid. Provider loading and ownership selection use
+boxed futures; the SAM scenario passes on the normal debug stack. Archive/direct
+DB adoption and the wider imported-history lifecycle/GC remain unqualified.

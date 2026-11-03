@@ -546,6 +546,7 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
         project_id: prepared.id.clone(),
         expected_revision: prepared.revision,
     };
+    assert!(BoundMasks::load(&delivery_state,"owner",Some(&prepared_context),&draft,&cancel).await.is_ok(),"an unadopted saved slot must retain its authorized external provider");
     assert!(BoundMasks::load(
         &delivery_state,
         "owner",
@@ -669,5 +670,25 @@ async fn qualify_atomic_save(state:&video_kadr_backend::state::AppState,token:&s
  // Reapplying an origin pointing at this project's previous revision must
  // adopt within its own next revision, without leaving a stale self-reference.
  let mut self_draft=updated.document.clone();self_draft["compositions"]["concat-timeline-0"]["content"]["tracks"][0]["clips"][0]["concatCutout"]["origin"]=json!({"projectId":id,"expectedRevision":updated.revision,"sourceId":"prepared-slot"});
- let response=app.oneshot(update(json!({"schemaVersion":2,"mode":"composition","name":updated.name,"document":self_draft,"baseRevision":updated.revision}))).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert!(status.is_success(),"{}",String::from_utf8_lossy(&bytes));let own=state.db.get_composition_project_for(id,"owner").await.unwrap().unwrap();assert_eq!(own.document,owned.document);assert_eq!(own.revision,updated.revision+1);
+ let response=app.clone().oneshot(update(json!({"schemaVersion":2,"mode":"composition","name":updated.name,"document":self_draft,"baseRevision":updated.revision}))).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert!(status.is_success(),"{}",String::from_utf8_lossy(&bytes));let own=state.db.get_composition_project_for(id,"owner").await.unwrap().unwrap();assert_eq!(own.document,owned.document);assert_eq!(own.revision,updated.revision+1);
+ let origin_project=serde_json::to_value(draft).unwrap()["compositions"]["concat-timeline-0"]["content"]["tracks"][0]["clips"][0]["concatCutout"]["origin"]["projectId"].as_str().unwrap().to_owned();
+ sqlx::query("UPDATE composition_project_members SET role='viewer' WHERE project_id=? AND actor='owner'").bind(&origin_project).execute(&pool).await.unwrap();
+ let cancel=tokio_util::sync::CancellationToken::new();let context=SavedProject{project_id:id.into(),expected_revision:own.revision};
+ assert!(BoundMasks::load(state,"owner",None,draft,&cancel).await.is_err());
+ let response=app.clone().oneshot(request("/api/compositions/nested-preview",token,json!({"project":draft,"timeUs":100000,"renderedOutputs":{},"savedProject":context}))).await.unwrap();let status=response.status();let pixels=to_bytes(response.into_body(),1<<20).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&pixels));assert_eq!(pixels.as_ref(),expected);
+ let stale=SavedProject{expected_revision:own.revision-1,..context.clone()};assert!(BoundMasks::load(state,"owner",Some(&stale),draft,&cancel).await.is_err());
+ let response=app.clone().oneshot(update(json!({"schemaVersion":2,"mode":"composition","name":own.name,"document":draft,"baseRevision":own.revision}))).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert!(status.is_success(),"{}",String::from_utf8_lossy(&bytes));let own=state.db.get_composition_project_for(id,"owner").await.unwrap().unwrap();assert_eq!(own.document,owned.document);
+ sqlx::query("UPDATE composition_project_members SET role='owner' WHERE project_id=? AND actor='owner'").bind(&origin_project).execute(&pool).await.unwrap();
+ // A bad owned registration must refuse, even with a valid external provider.
+ assert!(BoundMasks::load(state,"owner",None,draft,&cancel).await.is_ok());
+ let latest=SavedProject{project_id:id.into(),expected_revision:own.revision};
+ sqlx::query("UPDATE composition_project_members SET role='viewer' WHERE project_id=? AND actor='owner'").bind(id).execute(&pool).await.unwrap();
+ assert!(BoundMasks::load(state,"owner",Some(&latest),draft,&cancel).await.is_err());
+ sqlx::query("UPDATE composition_project_members SET role='owner' WHERE project_id=? AND actor='owner'").bind(id).execute(&pool).await.unwrap();
+ let hash:String=sqlx::query_scalar("SELECT manifest_hash FROM concat_video_project_caches WHERE project_id=? LIMIT 1").bind(id).fetch_one(&pool).await.unwrap();
+ sqlx::query("UPDATE concat_video_project_caches SET manifest_hash=? WHERE project_id=?").bind("0".repeat(64)).bind(id).execute(&pool).await.unwrap();
+ let context=SavedProject{project_id:id.into(),expected_revision:own.revision};assert!(BoundMasks::load(state,"owner",Some(&context),draft,&cancel).await.is_err());
+ sqlx::query("UPDATE concat_video_project_caches SET manifest_hash=? WHERE project_id=?").bind(hash).bind(id).execute(&pool).await.unwrap();
+ assert!(BoundMasks::load(state,"owner",Some(&context),draft,&cancel).await.is_ok());
+
 }

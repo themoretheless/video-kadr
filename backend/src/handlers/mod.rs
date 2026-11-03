@@ -478,3 +478,5 @@ pub(crate) mod filmcraft_tracking_jobs;
 pub mod concat_registered_media;
 
 pub(crate) mod concat_video_adoption;
+
+pub(crate) mod concat_video_ownership;

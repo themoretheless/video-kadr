@@ -20,15 +20,20 @@ impl BoundMasks {
   // one source contribute every identity in deterministic cache-key order.
   grouped.into_iter().map(|(source,values)|{let identity=if values.len()==1{values[0].clone()}else{format!("{:x}",Sha256::digest(serde_json::to_vec(&values)?))};Ok((source,identity))}).collect()
  }
- pub async fn load(state:&AppState,actor:&str,context:Option<&SavedProject>,requested:&NestedCompositionProject,cancel:&CancellationToken)->Result<Self>{
+ pub fn load<'a>(state:&'a AppState,actor:&'a str,context:Option<&'a SavedProject>,requested:&'a NestedCompositionProject,cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<Self>>+Send+'a>>{
+  Box::pin(async move {
   let wanted:Vec<_>=requested.compositions.iter().flat_map(|(node,document)|document.content.tracks.iter().flat_map(move|track|match track{CompositionTrack::Video{clips,..}=>clips.iter().filter(|c|c.enabled).filter_map(move|clip|clip.concat_cutout.as_ref().map(|binding|(node.clone(),clip.id.clone(),clip.source_id.clone(),binding.clone()))).collect::<Vec<_>>(),_=>vec![]})).collect();
   let mut result=Self{authorities:Default::default(),owners:Default::default(),regions:Default::default(),caches:Default::default(),cancel:cancel.clone()};
   if wanted.is_empty(){return Ok(result)}
   // Undo/reapply and draft split/copy may reference a previously registered
   // family no longer active in the latest document. The project-owned verified
   // source/model/runtime cache is the authority; current document tuples are not.
-  for(node,id,source,binding)in wanted{
+  for(node,id,source,mut binding)in wanted{
    binding.validate()?;
+   if binding.origin.is_some(){
+    let masks=binding.region_tracks.iter().map(|track|Ok((track.snapshot.mask_source_id.clone(),requested.library_source_id(&SourceId::parse(&track.snapshot.mask_source_id)?).as_str().to_owned()))).collect::<Result<BTreeMap<_,_>>>()?;
+    if super::concat_video_ownership::use_owned(state,actor,context,source.as_str(),requested.library_source_id(&source).as_str(),&masks,&binding).await?{binding.origin=None;}
+   }
    let owned;
    let context=if let Some(origin)=&binding.origin {owned=SavedProject{project_id:origin.project_id.clone(),expected_revision:origin.expected_revision};&owned}else{context.ok_or_else(||anyhow::anyhow!("saved project identity required for enabled video cutout"))?};
    let owner_source=binding.origin.as_ref().map(|o|o.source_id.as_str()).unwrap_or(source.as_str());
@@ -62,6 +67,7 @@ impl BoundMasks {
   }
   recheck_authorities(state,actor,&result.authorities()).await?;
   ensure!(!cancel.is_cancelled(),"saved video provider cancelled");Ok(result)
+  })
  }
  pub fn apply(&mut self,node:&str,clip:&CompositionClipId,source:&SourceId,time:u64,frame:&mut crate::domain::group_surface::GroupSurface)->Result<()>{
   ensure!(!self.cancel.is_cancelled(),"saved video provider cancelled");
