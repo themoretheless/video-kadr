@@ -2,17 +2,29 @@
 
 Reference: https://github.com/jub0t/concat at `78e4be101c2d3c41a7dc73c112c6b1f11b9ce170` (AGPL-3.0). Source inspected in concat-project/commands, concat-api/message, concat-effects, concat-speech, concat-vision and keyboard documentation. This adoption implements behavior through our existing commands and native rendering; no Concat code was copied. The machine-readable command/API inventory is concat-catalog.json. Inventory does not establish parity.
 
-| Area | Current evidence and remaining work |
-| --- | --- |
-| Multi-track edits, split/trim/ripple/speed/keyframes | Existing canonical editor paths; new split-all command stages canonical splits and commits one Undo. Full source command parity not audited yet. |
-| Merge clips / freeze insertion / detach and reattach | Playback freeze and audio detachment already exist. Reattach now works for a synchronized linked source pair on the primary video, with gain/pan/automation transfer and one Undo. Processed/retimed detached audio that cannot be represented by embedded audio is retained and refused; compatible fragment joining is implemented with source/animation/link checks and one Undo. Full processed/multistream reattachment, arbitrary render consolidation, remaining join admission cases remain open. Inserted one-second holds with ripple, forward/reverse preview, one Undo and linked-participant admission are implemented. |
-| Multiple timelines and templates | Existing sequence/project facilities; Concat tab ordering, placeholders and fill-slot behavior remain to compare. |
-| Effects, transitions, titles, GPU preview | Existing Filmcraft/WeftCut effects and title pipelines; Concat catalogue, expressions, shaders and GPU output have not been qualified. |
-| Audio cleanup and voices | Existing DSP voice effects and mix; local learned voice enhancement, TTS and voice cloning are not adopted. |
-| Captions / vision | Existing subtitle import/edit/export and manual masks; local Whisper, segmentation and learned enhancement are not adopted. Earlier CapCut AI exclusions do not prove Concat adoption. |
-| Export | Existing native export; Concat H.264/HEVC/AV1, 4K60, ten-bit and mobile behavior need comparison. |
-| Automation | Existing revision-checked agent/MCP workflow; Concat JSON-RPC/gRPC/CLI contracts are inventoried, not implemented or proven equivalent. |
-| Offline model management / platforms | Model download/offline lifecycle, Android and full desktop parity remain open. |
+## Current adoption summary (2026-11-03)
+
+This table supersedes the initial inventory below. Dated entries are a chronological
+implementation and qualification log: their “pending” and “remaining” statements
+describe that checkpoint, not necessarily the current tree. Code and test presence
+show implementation coverage; they do not establish a fresh passing run or full
+source-application parity.
+
+| Area | Implemented paths and evidence | Remaining acceptance |
+| --- | --- | --- |
+| Timeline and media editing | Native timeline ordering/creation/removal, linked split/trim/replacement, clipboard, freeze, compatible joining, Concat-provenance audio reattachment, original/copy selection and AddClipAtFirstFree are covered by the milestones below. | Full source-command matrix; arbitrary render consolidation and admission outside the implemented command envelopes. The stricter synchronized-pair reattachment mode is distinct from Concat provenance-based reattachment. |
+| Project media / placeholders | `backend/src/domain/concat_media_slots.rs`, `project_media_fill.rs`; `backend/tests/concat_media_slots.rs`, `concat_registered_slot.rs`; staged and open-project FillSlot and logical media bindings. | FillSlot reanalysis/rebinding of derived versions and video cutouts; affected transitions, visual dependencies and dormant controls outside the admitted conversion envelope. |
+| Templates | Portable original/copy references and native multi-composition infrastructure exist. | Source template packs and end-to-end template behavior need a separate requirement audit. |
+| Audio cleanup and narration | Native DSP, learned voice enhancement, Kokoro and Chatterbox narration, voice references, durable jobs/assets and model management exist. See `backend/src/domain/concat_enhance_voice.rs`, `backend/src/services/local_chatterbox.rs`, and `backend/tests/tts_*.rs`, `concat_enhance_*.rs`. | Whole source voice/model/quality/platform parity; implemented engines must not be described as universally equivalent. |
+| Captions and learned vision | Local Whisper jobs/model management, speech alignment, still/video enhancement, Person/Object/Selfie/SAM cutouts and smart temporal regions exist. See `backend/src/services/local_speech.rs`, `local_enhance*.rs`, `concat_video_analysis/` and `backend/tests/logical_video_cutout.rs`, `concat_video_smart.rs`. | Broader codec, source-clock, HDR and segmentation-quality qualification; derived-media FillSlot reanalysis. |
+| Saved mask ownership and archives | Prepared still/video import; atomic cache/region/original ownership; self-contained v2 archives; historical preview/resave; verified legacy current-binding adoption. See the final milestones, `backend/tests/project_archive_video.rs` and `backend/tests/support/video_archive.rs`. | Legacy inactive slots without proven physical mapping remain refused. General retired-asset GC and publication/history lifecycle acceptance remain open. |
+| Effects, transitions, titles and export | Extensive native implementations and differential/render evidence are recorded below. | Complete source effect/expression/shader matrix, export codec/4K60/ten-bit/mobile and platform acceptance. Individual green render gates do not prove the full matrix. |
+| Automation | Revision-checked native agent/MCP paths and machine-readable Concat command/API inventory. | Exact Concat JSON-RPC/gRPC/CLI contracts are not established by inventory or by a different automation API. |
+| Offline models and platforms | Engine-specific owner model catalogs, verified download/selection, durable jobs and recovery are implemented for speech, narration, enhancement and vision. | Unified lifecycle/GC and full desktop/Android acceptance; per-engine evidence does not establish every platform. |
+
+Full Concat adoption remains **OPEN**. Full WeftCut and Filmcraft adoption also
+require their own current requirement-by-requirement audits. No aggregate feature
+count or completion percentage is inferred from the historical log.
 
 ## First implementation: split all lanes at playhead
 
