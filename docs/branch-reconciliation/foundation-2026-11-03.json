@@ -1,0 +1,278 @@
+{
+  "schemaVersion": 1,
+  "sourceBranch": "origin/round-1-foundation-ui",
+  "sourceCommit": "ff8c32d8672842b63ba218e73a91763a53a8cdd6",
+  "preservedMain": "ddba528365b585e55b8d5e0ad2146402ac9f8f22",
+  "authorization": "User explicitly authorized resolving conflicts while preserving current main functionality.",
+  "resolution": "Retain the migrated Rust/Svelte runtime; consolidate historical branch ancestry without resurrecting the deleted Vue runtime or a second project/queue/portable-container implementation.",
+  "runtimeDeltaFromPreservedMain": "none",
+  "limits": [
+    "This is ancestry consolidation, not proof of full feature parity.",
+    "Replacement paths prove implementation presence only.",
+    "Legacy browser-only WebKit, offline persistence, crash recovery, quota and identity-conflict contracts remain unqualified; their full source remains in the second-parent history.",
+    "Legacy VKADR and current veproj byte compatibility is not asserted.",
+    "The archived roadmap is historical, not current acceptance evidence."
+  ],
+  "entries": [
+    {
+      "commit": "34f5daa2e78a058ebc68ee2b49aae7702e2f0ce9",
+      "subject": "feat(projects): add canonical multitrack persistence",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/db/composition_projects.rs",
+        "frontend/src/lib/state/composition/projects.svelte.ts"
+      ]
+    },
+    {
+      "commit": "20b2008f06d80d166dd6dc659ecab36e9723e99d",
+      "subject": "feat(timeline): add structural editing and trim history",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/domain/composition.rs",
+        "frontend/src/lib/composition/commands.ts",
+        "frontend/src/lib/state/composition/timeline.svelte.ts"
+      ]
+    },
+    {
+      "commit": "25a3b33c51822fbc5095c89187726ed808c1520b",
+      "subject": "feat(media): add assets to active timeline",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/domain/composition.rs",
+        "frontend/src/lib/composition/commands.ts",
+        "frontend/src/lib/state/composition/timeline.svelte.ts"
+      ]
+    },
+    {
+      "commit": "28bc943db2e973df4e98488dc7a4a542f0769b07",
+      "subject": "feat(browser): persist local media assets",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "79bab70428869bef59dbd44d70d0e643035402ce",
+      "subject": "feat(browser): harden persistent media recovery",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "d01a731af3b342245635f7c0bba42e0d3a098b26",
+      "subject": "fix(browser): guard wav metadata fast path",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "76bbb65f2114b1a0a07ee2131d373f8b0c9d00de",
+      "subject": "feat(browser): make project media durable by content",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "69a150602901522318faa3ef8428af76da986f72",
+      "subject": "fix(browser): fail closed on media identity conflicts",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "ef5e601c29c8be6556a11ed6c6e5e5bb23635b45",
+      "subject": "feat(browser): persist media across WebKit reloads",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "07b3e760610b01093335ad1efdcf01d60a03227b",
+      "subject": "feat(browser): complete durable media storage",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "abeff027dbf40e48318c07c30ee92cc9eee855be",
+      "subject": "feat(browser): recover autosave after crashes",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "3c212adce0798a0c67e618171dd6fdf3866a645f",
+      "subject": "feat(browser): relink missing project media",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "frontend/src/lib/composition/relink.ts",
+        "backend/src/handlers/project_archive.rs"
+      ]
+    },
+    {
+      "commit": "f32993f081f7d879f73429a69bf3e377ac2402cb",
+      "subject": "feat(browser): bound memory and quota usage",
+      "resolution": "open-legacy-browser-contract-not-reintroduced",
+      "currentPaths": []
+    },
+    {
+      "commit": "090493ed7e4e525e01f4766b2defd29453e82b3d",
+      "subject": "feat(queue): persist derived media tasks",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/jobs/store.rs",
+        "backend/src/jobs/outbox.rs",
+        "backend/src/domain/filmcraft_export_queue.rs"
+      ]
+    },
+    {
+      "commit": "3f91a116c4eda462eac457820d5c4565cda5007e",
+      "subject": "feat(proxy): complete durable proxy media workflow",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/analysis/proxy.rs",
+        "backend/src/handlers/proxy.rs"
+      ]
+    },
+    {
+      "commit": "ce285654ffde24b0a70a8532aa7a6a88ffb7dca1",
+      "subject": "feat(preview): add durable optimized frame cache",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "frontend/src/lib/proxy/compositionPreviewController.ts",
+        "backend/src/handlers/proxy.rs"
+      ]
+    },
+    {
+      "commit": "c293b9132b3b52338cc497d2d11a052e1c5a957c",
+      "subject": "feat(projects): add portable VKADR archives",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/project_archive.rs",
+        "backend/src/handlers/project_archive.rs"
+      ]
+    },
+    {
+      "commit": "6262f9d20debf61719adce322c02b9636c60020e",
+      "subject": "feat(color): add primary grading controls",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/domain/color_pipeline.rs",
+        "backend/src/domain/composition.rs"
+      ]
+    },
+    {
+      "commit": "9181e4fb1bcbb9ff50a1b4dde0b13ce474f6fefd",
+      "subject": "feat(color): add lift gamma gain wheels",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/domain/color_pipeline.rs",
+        "backend/src/domain/composition.rs"
+      ]
+    },
+    {
+      "commit": "cf20ecf738ae0e507b3029f09ed7f6d90ee15153",
+      "subject": "feat(color): add selective HSL grading",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/domain/color_pipeline.rs",
+        "backend/src/domain/composition.rs"
+      ]
+    },
+    {
+      "commit": "565d5d9aba7fd5f3c7e22d98759bad69a023d5bd",
+      "subject": "feat(color): add realtime video scopes",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/handlers/scopes.rs",
+        "backend/src/domain/scopes/mod.rs",
+        "frontend/src/lib/components/edit/ColorScopes.svelte"
+      ]
+    },
+    {
+      "commit": "11ad5e6445e5460f9c8c1987da3ac589d93bfc10",
+      "subject": "feat(color): add SDR color management",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/domain/color_pipeline.rs",
+        "backend/src/domain/composition.rs"
+      ]
+    },
+    {
+      "commit": "2673b4af1352e36adfd5fe81869ad8549076d90d",
+      "subject": "feat(lut): add browser catalog and 33 cube baker",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/luts.rs",
+        "frontend/src/lib/components/edit/LutControl.svelte"
+      ]
+    },
+    {
+      "commit": "fef0b086a2fbf22420bb9352f4ae8c44e80c4469",
+      "subject": "feat(multicam): add synchronized switching and flattened export",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "frontend/src/lib/composition/multicam.ts",
+        "frontend/src/lib/components/composition/MulticamPanel.svelte"
+      ]
+    },
+    {
+      "commit": "604579f6fe8cb98c2b19358b1b36a3debaed4227",
+      "subject": "feat(export): add persistent batch queue",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/jobs/store.rs",
+        "backend/src/jobs/outbox.rs",
+        "backend/src/domain/filmcraft_export_queue.rs"
+      ]
+    },
+    {
+      "commit": "3306c57677079497a555e540db6d02063f2d9a7f",
+      "subject": "feat(export): add target-size estimation",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/handlers/composition.rs",
+        "backend/src/domain/output.rs",
+        "frontend/src/lib/components/edit/ExportControls.svelte"
+      ]
+    },
+    {
+      "commit": "15622fa8ec020f6e34663d0c1a50c01a1bb1fcf8",
+      "subject": "feat(capture): add screen and camera recording",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "frontend/src/lib/capture/CapturePanel.svelte",
+        "frontend/src/lib/capture/mediaRecorder.ts"
+      ]
+    },
+    {
+      "commit": "06fd3d1fe5d304a9671de06584a062102c8d7ca8",
+      "subject": "Add design hub with brand kits and project templates",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/db/space_brand.rs",
+        "backend/src/db/space_templates.rs",
+        "frontend/src/lib/composition/templates.ts",
+        "frontend/src/lib/components/collaboration/BrandKitPanel.svelte"
+      ]
+    },
+    {
+      "commit": "ff8c32d8672842b63ba218e73a91763a53a8cdd6",
+      "subject": "feat(timeline): add multi-clip render export, opacity, markers and preview guides",
+      "resolution": "replacement-present-parity-unverified",
+      "currentPaths": [
+        "backend/src/domain/composition.rs",
+        "frontend/src/lib/composition/commands.ts",
+        "frontend/src/lib/state/composition/timeline.svelte.ts"
+      ]
+    }
+  ],
+  "verification": {
+    "backendPassed": 59,
+    "backendIgnored": 0,
+    "frontendFilesPassed": 12,
+    "frontendTestsPassed": 48,
+    "frontendTypecheck": "0 errors, 0 warnings",
+    "designTokens": "passed",
+    "listenerLifecycle": "passed",
+    "productionBuild": "passed",
+    "runtimeDiffFromPreservedMain": "empty"
+  },
+  "duplicateSnapshot": {
+    "branch": "feat/appstate-arc-wrapping",
+    "tip": "43310e4a1807357f7db22014ea34b1a72ed2f688",
+    "alreadyIntegratedAt": "049bc1f3b4a0f9b4e2b71e81d69cacd0699c737e",
+    "treesEqual": true
+  }
+}
