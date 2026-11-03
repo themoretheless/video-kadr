@@ -499,6 +499,12 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
     let response=delivery.clone().oneshot(request("/api/compositions/concat-project/import-ready",&owner.token,public_input.clone())).await.unwrap();
     let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&bytes));
     let public:Value=serde_json::from_slice(&bytes).unwrap();assert_eq!(public["status"],"converted");
+    if let Some(path)=std::env::var_os("CONCAT_VIDEO_IMPORT_UI_CAPTURE_OUTPUT"){
+        let list=delivery.clone().oneshot(Request::builder().uri("/api/composition-projects").header("authorization",format!("Bearer {}",owner.token)).body(Body::empty()).unwrap()).await.unwrap();assert_eq!(list.status(),StatusCode::OK);
+        let projects:Value=serde_json::from_slice(&to_bytes(list.into_body(),4*1024*1024).await.unwrap()).unwrap();
+        std::fs::write(path,serde_json::to_vec(&json!({"projects":projects,"request":public_input["request"],"references":public_input["preparedVideos"],"report":public})).unwrap()).unwrap();
+    }
+
     let mut public_project:video_kadr_backend::domain::nested_composition::NestedCompositionProject=serde_json::from_value(public["project"].clone()).unwrap();
     let response=delivery.clone().oneshot(request("/api/compositions/nested-preview",&owner.token,json!({"project":public_project,"timeUs":100000,"renderedOutputs":{}}))).await.unwrap();assert_eq!(response.status(),StatusCode::OK);assert_eq!(to_bytes(response.into_body(),1<<20).await.unwrap().as_ref(),expected_rgba.as_slice());
     if let video_kadr_backend::domain::composition::CompositionTrack::Video{clips,..}=&mut public_project.compositions.get_mut("concat-timeline-0").unwrap().content.tracks[0]{assert_eq!(clips[0].concat_cutout.as_ref().unwrap().origin.as_ref().unwrap().source_id,"slot");clips[0].concat_cutout.as_mut().unwrap().origin=None;}

@@ -13119,3 +13119,22 @@ conversion after removing only the owner reference, stale/missing/duplicate
 selection refusals, and preservation of the library inventory. The visible
 video selector, atomic final-save adoption, and public-route temporal-region
 qualification remain open.
+
+### Prepared-video selection in the import panel
+
+The visible Concat importer now requires a saved video-mask selection for every
+video cutout destination, alongside existing still selections. Choices resolve
+saved logical sources to their physical library files, preserve composition/clip
+scope, and exclude imported origin references that have not acquired their own
+cache ownership. Conversion sends mixed references to the authenticated route;
+server validation remains authoritative. Catalogue changes, file binding changes,
+editor revisions, and account changes invalidate review state. Changing accounts
+clears both private catalogues and aborts outstanding requests.
+
+Qualification: the real Selfie backend test writes an optional temporary capture
+of its authenticated project list and import response. A mounted panel test
+consumes that capture, selects the source clip, sends its references, and adopts
+the returned native project with one Undo/Redo step. The generated JSON remains
+outside the repository. Video failure/account-change tests and existing still,
+media-binding, and API tests pass. Atomic final-save ownership adoption and
+public-route temporal-region qualification remain open.
