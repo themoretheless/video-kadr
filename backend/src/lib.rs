@@ -83,7 +83,7 @@ pub fn build_router_with_mcp(
     let composition_project_port = Arc::new(SqliteCompositionProjectPort::new(
         state.db.clone(),
         state.library.clone(),
-    ));
+    ).with_video_adoption(state.clone()));
     let project_review_port = Arc::new(SqliteProjectReviewPort::new(state.db.clone()));
     let space_port = Arc::new(SqliteSpacePort::new(
         state.db.clone(),

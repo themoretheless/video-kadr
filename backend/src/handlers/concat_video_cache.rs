@@ -167,11 +167,13 @@ pub(crate) fn prepare_transfer<'a>(state:&'a AppState,actor:&'a str,from:Project
     })
 }
 impl PreparedTransfer {
- pub(crate) async fn register(&self,connection:&mut sqlx::SqliteConnection,target_project:&str,target_revision:u64)->Result<String>{
+ pub(crate) fn video_hash(&self)->&str{self.cache.video_hash()}
+ pub(crate) fn register<'a>(&'a self,connection:&'a mut sqlx::SqliteConnection,target_project:&'a str,target_revision:u64)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<String>>+Send+'a>>{
+  Box::pin(async move {
     let stored:String=sqlx::query_scalar("SELECT document_json FROM composition_projects WHERE id=? AND revision=?").bind(target_project).bind(i64::try_from(target_revision)?).fetch_optional(&mut *connection).await?.ok_or_else(||anyhow::anyhow!("target project changed before video registration"))?;
     ensure!(document_identity(&serde_json::from_str(&stored)?)?==self.target_document_hash,"target video document differs from verified transfer plan");
     let actor=self.actor.as_str();let physical=&self.physical;let cache=&self.cache;let planned=&self.planned;let cancel=&self.cancel;
-    let from=ProjectSource{project:&self.source_project,source_id:&self.source_id,revision:self.source_revision};
+    let from=ProjectSource{project:&self.source_project,source_id:&self.source_id,revision:if self.source_project==target_project&&self.source_revision.checked_add(1)==Some(target_revision){target_revision}else{self.source_revision}};
     let to=ProjectSource{project:target_project,source_id:&self.target_source,revision:target_revision};
     let runtime_hash=cache.runtime_hash();let model_hash=cache.model_hash();
     let receipt=cache.published_receipt()?;
@@ -195,6 +197,7 @@ impl PreparedTransfer {
     }
     let changed=sqlx::query("INSERT INTO concat_video_model_choices(project_id,source_id,video_hash,model_hash,runtime_hash) SELECT project_id,source_id,video_hash,model_hash,runtime_hash FROM concat_video_project_caches WHERE id=? ON CONFLICT(project_id,source_id,video_hash) DO UPDATE SET model_hash=excluded.model_hash,runtime_hash=excluded.runtime_hash").bind(&id).execute(&mut *connection).await?.rows_affected();
     ensure!(changed==1&&!cancel.is_cancelled(),"video cache transfer cancelled");Ok(id)
+  })
  }
 }
 

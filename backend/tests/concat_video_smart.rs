@@ -137,11 +137,30 @@ async fn qualify_region_transfer(state:&video_kadr_backend::state::AppState,sour
    let response=app.clone().oneshot(render(source_view,json!({"projectId":source_project.id,"expectedRevision":source_revision}))).await.unwrap();let status=response.status();let reference=to_bytes(response.into_body(),1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&reference));if strokes==1{assert!(reference.chunks_exact(4).any(|p|p[3]>0),"brush fixture must have visible pixels");}
    let mut imported=target_view.clone();
    imported["compositions"]["root"]["content"]["tracks"][0]["clips"][0]["concatCutout"]["origin"]=json!({"projectId":source_project.id,"expectedRevision":source_revision,"sourceId":"slot","regionSources":{"imported-region":physical_mask}});
-   let response=app.clone().oneshot(render(imported,Value::Null)).await.unwrap();let status=response.status();let draft=to_bytes(response.into_body(),1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&draft));assert!(draft==reference,"unsaved origin preview differs with {strokes} strokes");
+   let response=app.clone().oneshot(render(imported.clone(),Value::Null)).await.unwrap();let status=response.status();let draft=to_bytes(response.into_body(),1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&draft));assert!(draft==reference,"unsaved origin preview differs with {strokes} strokes");
+   if strokes==2 {Box::pin(qualify_atomic_region_save(&model_free_state,space_id,&source_project.id,token,&imported,&reference)).await;}
    let response=app.oneshot(render(target_view,serde_json::to_value(&context).unwrap())).await.unwrap();let status=response.status();let actual=to_bytes(response.into_body(),1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&actual));assert!(actual==reference,"transferred native preview differs with {strokes} strokes");
   }
   let third=state.db.create_space_composition_project("Transferred again",&enabled.document,&["raw".into()],"smart-owner",space_id).await.unwrap();let chained:Vec<_>=moved.regions.iter().map(|snapshot|RegionTransfer{snapshot:snapshot.clone(),target_mask_source_id:"third-region".into()}).collect();
   let third_store=registry::transfer_with_regions(&model_free_state,"smart-owner",ProjectSource{project:&target.id,source_id:"alias",revision:retargeted.revision},ProjectSource{project:&third.id,source_id:"slot",revision:third.revision},&source_binding.runtime_hash,&source_binding.model_hash,&chained,&cancel).await.unwrap();
   sqlx::query("DELETE FROM composition_projects WHERE id=?").bind(&target.id).execute(&pool).await.unwrap();assert!(video_kadr_backend::handlers::concat_video_region_cache::load(&model_free_state,"smart-owner",&third.id,third.revision,&third_store.regions[0],&cancel).await.is_ok());
 
+}
+
+async fn qualify_atomic_region_save(state:&video_kadr_backend::state::AppState,space:&str,source_project:&str,token:&str,imported:&Value,expected:&[u8]){
+ let pool=sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(state.storage.join("app.db")).foreign_keys(true)).await.unwrap();let app=support::router(state.clone());
+ let command=|path:&str,body:Value|Request::builder().method("POST").uri(path).header("content-type","application/json").header("authorization",format!("Bearer {token}")).body(Body::from(body.to_string())).unwrap();
+ let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM composition_projects").fetch_one(&pool).await.unwrap();
+ let body=json!({"schemaVersion":2,"mode":"composition","name":"Atomic region adoption","spaceId":space,"document":imported});
+ sqlx::query("CREATE TRIGGER reject_atomic_region BEFORE INSERT ON concat_video_project_region_refs BEGIN SELECT RAISE(ABORT,'controlled region save rejection'); END").execute(&pool).await.unwrap();
+ assert!(!app.clone().oneshot(command("/api/composition-projects",body.clone())).await.unwrap().status().is_success());
+ let after:i64=sqlx::query_scalar("SELECT COUNT(*) FROM composition_projects").fetch_one(&pool).await.unwrap();assert_eq!(after,count);
+ sqlx::query("DROP TRIGGER reject_atomic_region").execute(&pool).await.unwrap();
+ let response=app.clone().oneshot(command("/api/composition-projects",body)).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),1024*1024).await.unwrap();assert!(status.is_success(),"{}",String::from_utf8_lossy(&bytes));let saved:Value=serde_json::from_slice(&bytes).unwrap();let id=saved["id"].as_str().unwrap();
+ let owned=state.db.get_composition_project_for(id,"smart-owner").await.unwrap().unwrap();assert!(owned.document["compositions"]["root"]["content"]["tracks"][0]["clips"][0]["concatCutout"].get("origin").is_none());
+ let refs:i64=sqlx::query_scalar("SELECT COUNT(*) FROM concat_video_project_region_refs WHERE project_id=?").bind(id).fetch_one(&pool).await.unwrap();assert_eq!(refs,1);
+ sqlx::query("UPDATE composition_project_members SET role='viewer' WHERE project_id=? AND actor='smart-owner'").bind(source_project).execute(&pool).await.unwrap();
+ let draft:video_kadr_backend::domain::nested_composition::NestedCompositionProject=serde_json::from_value(imported.clone()).unwrap();assert!(video_kadr_backend::handlers::concat_video_bound::BoundMasks::load(state,"smart-owner",None,&draft,&tokio_util::sync::CancellationToken::new()).await.is_err());
+ let response=app.oneshot(command("/api/compositions/nested-preview",json!({"project":owned.document,"compositionId":"root","timeUs":249999,"renderedOutputs":{},"savedProject":{"projectId":id,"expectedRevision":owned.revision}}))).await.unwrap();let status=response.status();let pixels=to_bytes(response.into_body(),1024*1024).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&pixels));assert_eq!(pixels.as_ref(),expected);
+ sqlx::query("UPDATE composition_project_members SET role='owner' WHERE project_id=? AND actor='smart-owner'").bind(source_project).execute(&pool).await.unwrap();
 }

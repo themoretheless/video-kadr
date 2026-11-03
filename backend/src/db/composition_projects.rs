@@ -161,13 +161,24 @@ pub(super) async fn migrate(pool: &sqlx::SqlitePool) -> Result<()> {
 }
 
 impl Db {
+    pub(crate) async fn create_composition_project_adopting_video(&self,name:&str,document:&Value,source_ids:&[String],owner:&str,space:Option<&str>,transfers:&[crate::handlers::concat_video_cache::PreparedTransfer])->Result<CompositionProject>{
+        if let Some(space)=space {
+            let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM collaboration_space_members WHERE space_id=? AND actor=? AND role IN ('owner','editor'))").bind(space).bind(owner).fetch_one(&self.pool).await?;
+            ensure!(allowed,"space role cannot create project");
+            self.create_composition_project_with_space(name,document,source_ids,owner,space,transfers).await
+        }else{self.create_composition_project_with_owner(name,document,source_ids,Some(owner),transfers).await}
+    }
+    pub(crate) async fn update_composition_project_adopting_video(&self,id:&str,actor:&str,name:&str,document:&Value,source_ids:&[String],revision:u64,transfers:&[crate::handlers::concat_video_cache::PreparedTransfer])->Result<Option<CompositionProject>>{
+        self.update_composition_project_at_revision(id,name,document,source_ids,Some(revision),Some(actor),transfers).await
+    }
+
     pub async fn create_composition_project(
         &self,
         name: &str,
         document: &Value,
         source_ids: &[String],
     ) -> Result<CompositionProject> {
-        self.create_composition_project_with_owner(name, document, source_ids, None)
+        self.create_composition_project_with_owner(name, document, source_ids, None, &[])
             .await
     }
 
@@ -178,7 +189,7 @@ impl Db {
         source_ids: &[String],
         owner: &str,
     ) -> Result<CompositionProject> {
-        self.create_composition_project_with_owner(name, document, source_ids, Some(owner))
+        self.create_composition_project_with_owner(name, document, source_ids, Some(owner), &[])
             .await
     }
 
@@ -201,7 +212,7 @@ impl Db {
             matches!(role.as_deref(), Some("owner" | "editor")),
             "space role cannot create project"
         );
-        self.create_composition_project_with_space(name, document, source_ids, owner, space_id)
+        self.create_composition_project_with_space(name, document, source_ids, owner, space_id, &[])
             .await
     }
 
@@ -211,6 +222,7 @@ impl Db {
         document: &Value,
         source_ids: &[String],
         owner: Option<&str>,
+        transfers: &[crate::handlers::concat_video_cache::PreparedTransfer],
     ) -> Result<CompositionProject> {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let id = Uuid::new_v4().to_string();
@@ -247,6 +259,7 @@ impl Db {
             .execute(&mut *transaction)
             .await?;
         }
+        for transfer in transfers {transfer.register(&mut transaction,&project.id,project.revision).await?;}
         transaction.commit().await?;
         Ok(project)
     }
@@ -258,6 +271,7 @@ impl Db {
         source_ids: &[String],
         owner: &str,
         space_id: &str,
+        transfers: &[crate::handlers::concat_video_cache::PreparedTransfer],
     ) -> Result<CompositionProject> {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let id = Uuid::new_v4().to_string();
@@ -278,6 +292,7 @@ impl Db {
         .bind(&project_id).bind(owner).bind(now).bind(now).bind(space_id)
         .execute(&mut *transaction).await?;
         let project = row_to_composition_project(row, source_ids.to_vec())?;
+        for transfer in transfers {transfer.register(&mut transaction,&project.id,project.revision).await?;}
         transaction.commit().await?;
         Ok(project)
     }
@@ -357,6 +372,7 @@ impl Db {
             source_ids,
             Some(expected_revision),
             Some(actor),
+            &[],
         )
         .await
     }
@@ -384,7 +400,7 @@ impl Db {
         document: &Value,
         source_ids: &[String],
     ) -> Result<Option<CompositionProject>> {
-        self.update_composition_project_at_revision(id, name, document, source_ids, None, None)
+        self.update_composition_project_at_revision(id, name, document, source_ids, None, None, &[])
             .await
     }
 
@@ -396,6 +412,7 @@ impl Db {
         source_ids: &[String],
         expected_revision: Option<u64>,
         editor: Option<&str>,
+        transfers: &[crate::handlers::concat_video_cache::PreparedTransfer],
     ) -> Result<Option<CompositionProject>> {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let now = now_secs() as i64;
@@ -449,6 +466,7 @@ impl Db {
         };
         replace_sources(&mut transaction, id, source_ids).await?;
         let project = row_to_composition_project(row, source_ids.to_vec())?;
+        for transfer in transfers {transfer.register(&mut transaction,&project.id,project.revision).await?;}
         transaction.commit().await?;
         Ok(Some(project))
     }

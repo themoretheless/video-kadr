@@ -530,6 +530,7 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
     let mut stale=draft.clone();
     if let video_kadr_backend::domain::composition::CompositionTrack::Video{clips,..}=&mut stale.compositions.get_mut("concat-timeline-0").unwrap().content.tracks[0]{clips[0].concat_cutout.as_mut().unwrap().origin.as_mut().unwrap().expected_revision+=1;}
     assert!(BoundMasks::load(&delivery_state,"owner",None,&stale,&cancel).await.is_err());
+    Box::pin(qualify_atomic_save(&delivery_state,&owner.token,&space.id,&draft,&expected_rgba)).await;
     let prepared = state
         .db
         .create_space_composition_project(
@@ -642,4 +643,31 @@ async fn logical_video_http_masks_bind_preview_and_restore_without_engines() {
             .status(),
         StatusCode::CONFLICT
     );
+}
+
+async fn qualify_atomic_save(state:&video_kadr_backend::state::AppState,token:&str,space:&str,draft:&video_kadr_backend::domain::nested_composition::NestedCompositionProject,expected:&[u8]){
+ let pool=sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(state.storage.join("app.db")).foreign_keys(true)).await.unwrap();
+ let app=support::router(state.clone());
+ let count=||async{sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM composition_projects").fetch_one(&pool).await.unwrap()};
+ let before=count().await;
+ let body=json!({"schemaVersion":2,"mode":"composition","name":"Atomic imported video","spaceId":space,"document":draft});
+ sqlx::query("CREATE TRIGGER reject_adopted_video BEFORE INSERT ON concat_video_model_choices BEGIN SELECT RAISE(ABORT,'controlled atomic save rejection'); END").execute(&pool).await.unwrap();
+ let response=app.clone().oneshot(request("/api/composition-projects",token,body.clone())).await.unwrap();assert!(!response.status().is_success());assert_eq!(count().await,before);
+ sqlx::query("DROP TRIGGER reject_adopted_video").execute(&pool).await.unwrap();
+ let response=app.clone().oneshot(request("/api/composition-projects",token,body)).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert!(status.is_success(),"{}",String::from_utf8_lossy(&bytes));
+ let saved:Value=serde_json::from_slice(&bytes).unwrap();let id=saved["id"].as_str().unwrap();let owned=state.db.get_composition_project_for(id,"owner").await.unwrap().unwrap();
+ assert!(owned.document["compositions"]["concat-timeline-0"]["content"]["tracks"][0]["clips"][0]["concatCutout"].get("origin").is_none());
+ let cache_count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM concat_video_project_caches WHERE project_id=?").bind(id).fetch_one(&pool).await.unwrap();assert_eq!(cache_count,1);assert_eq!(count().await,before+1);
+ let update=|value:Value|Request::builder().method("PUT").uri(format!("/api/composition-projects/{id}")).header("content-type","application/json").header("authorization",format!("Bearer {token}")).body(Body::from(value.to_string())).unwrap();
+ let update_body=json!({"schemaVersion":2,"mode":"composition","name":"Updated adopted video","document":draft,"baseRevision":owned.revision});
+ sqlx::query("CREATE TRIGGER reject_adopted_video BEFORE INSERT ON concat_video_model_choices BEGIN SELECT RAISE(ABORT,'controlled atomic update rejection'); END").execute(&pool).await.unwrap();
+ let response=app.clone().oneshot(update(update_body.clone())).await.unwrap();assert!(!response.status().is_success());let unchanged=state.db.get_composition_project_for(id,"owner").await.unwrap().unwrap();assert_eq!(unchanged.revision,owned.revision);assert_eq!(unchanged.document,owned.document);assert_eq!(unchanged.name,owned.name);
+ sqlx::query("DROP TRIGGER reject_adopted_video").execute(&pool).await.unwrap();
+ let response=app.clone().oneshot(update(update_body.clone())).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert!(status.is_success(),"{}",String::from_utf8_lossy(&bytes));let updated=state.db.get_composition_project_for(id,"owner").await.unwrap().unwrap();assert_eq!(updated.revision,owned.revision+1);assert_eq!(updated.document,owned.document);
+ assert!(!app.clone().oneshot(update(update_body)).await.unwrap().status().is_success());
+ let response=app.clone().oneshot(request("/api/compositions/nested-preview",token,json!({"project":updated.document,"timeUs":100000,"renderedOutputs":{},"savedProject":{"projectId":id,"expectedRevision":updated.revision}}))).await.unwrap();let status=response.status();let pixels=to_bytes(response.into_body(),1<<20).await.unwrap();assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&pixels));assert_eq!(pixels.as_ref(),expected);
+ // Reapplying an origin pointing at this project's previous revision must
+ // adopt within its own next revision, without leaving a stale self-reference.
+ let mut self_draft=updated.document.clone();self_draft["compositions"]["concat-timeline-0"]["content"]["tracks"][0]["clips"][0]["concatCutout"]["origin"]=json!({"projectId":id,"expectedRevision":updated.revision,"sourceId":"prepared-slot"});
+ let response=app.oneshot(update(json!({"schemaVersion":2,"mode":"composition","name":updated.name,"document":self_draft,"baseRevision":updated.revision}))).await.unwrap();let status=response.status();let bytes=to_bytes(response.into_body(),1<<20).await.unwrap();assert!(status.is_success(),"{}",String::from_utf8_lossy(&bytes));let own=state.db.get_composition_project_for(id,"owner").await.unwrap().unwrap();assert_eq!(own.document,owned.document);assert_eq!(own.revision,updated.revision+1);
 }

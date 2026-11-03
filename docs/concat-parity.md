@@ -13154,3 +13154,28 @@ transfer uses these same stages inside its own immediate transaction.
 This is the transaction boundary needed by final-save adoption, not a claim that
 the create/update project ports already invoke adoption. Those ports and removal
 of imported origin references on successful save remain open.
+
+### Atomic adoption during project save
+
+The runtime composition-project create/update ports now prepare imported video
+origins before writing. They remove origin references from the final document
+and register the verified stores, family choices and temporal-region reservations
+inside the same SQLite transaction as the document, source inventory and project
+memberships. Any registration error rolls back the save. The prepared plan is
+bound to the exact final document and source hash; registration rechecks saved
+source authority. Updating a project from its own previous-revision origin is
+supported without retaining a stale self-reference. The frontend already applies
+the canonical document returned by save.
+
+Real Selfie qualification covers create/update rollback under a controlled SQL
+choice failure, successful canonical saves, stale update rejection, owned-cache
+preview and same-project origin adoption. Real SAM qualification covers rollback
+under a region-reservation failure and successful shared temporal-region adoption;
+after source-project editor access is revoked, the imported draft refuses that
+source while the saved owner still renders identical pixels without inference.
+Preparation and registration futures are boxed; the actual SAM case passes on
+the normal debug worker stack after fixing a stack overflow found by this test.
+
+These results qualify the HTTP create/update path. Archive/direct-DB adoption,
+full imported-history lifecycle/GC, and reuse of already-adopted caches by older
+Undo snapshots containing stale external origins remain outside this gate.
