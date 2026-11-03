@@ -51,3 +51,24 @@ async fn saved_assets_require_editor_current_revision_and_accessible_library_sou
  std::fs::remove_file(state.sources_dir().join("mask.png")).unwrap();
  assert!(resolve_saved_still(&state,"owner",&project.id,None,&id,project.revision).await.is_err());
 }
+
+#[tokio::test]
+async fn saved_logical_cutout_verifies_physical_pixels_without_using_a_same_id_library_decoy(){
+ use sha2::{Digest,Sha256};use video_kadr_backend::{handlers::concat_cutout_access::{resolve_saved_still,verify_saved_still},library::MediaEntry};
+ let(state,_dir)=support::make_state(true,false).await;let(c,mut assets)=setup();let clip=CompositionClipId::parse("clip").unwrap();let settings=plan(&json!({"mode":"auto","feather":0})).unwrap();
+ for id in ["physical","raw","copy","mask"]{
+  let filename=format!("{id}.png");
+  if id=="mask"{image::GrayImage::new(256,256).save(state.sources_dir().join(&filename)).unwrap();}else{image::RgbaImage::from_pixel(2,2,image::Rgba(if id=="raw"{[0,0,255,255]}else{[0,0,0,0]})).save(state.sources_dir().join(&filename)).unwrap();}
+  assert!(state.library.add(MediaEntry::from_result("source",&json!({"id":id,"filename":filename,"url":format!("/files/sources/{filename}")}))).await);
+ }
+ #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;std::fs::set_permissions(state.sources_dir().join("mask.png"),std::fs::Permissions::from_mode(0o600)).unwrap();}
+ let hash=|bytes:&[u8]|format!("{:x}",Sha256::digest(bytes));assets.snapshot.source_hash=hash(&std::fs::read(state.sources_dir().join("physical.png")).unwrap());assets.snapshot.mask_hash=hash(&vec![0;256*256]);assets.snapshot.mask_file_hash=hash(&std::fs::read(state.sources_dir().join("mask.png")).unwrap());
+ let bound=bind_still(&c,&clip,&settings,&assets,&assets.snapshot.source_hash,SELFIE_MODEL_HASH,&assets.snapshot.runtime_hash).unwrap();let mut alias=assets.original.clone();alias.id=video_kadr_backend::domain::composition::SourceId::parse("alias").unwrap();
+ let document=json!({"schemaVersion":1,"root":"root","projectMedia":{"raw":{"source":assets.original,"librarySourceId":"physical","name":"Logical source"},"alias":{"source":alias,"librarySourceId":"physical","name":"Other slot","placeholder":true}},"compositions":{"root":{"content":bound,"instances":[]}}});
+ let space=state.db.create_space("owner","Logical saved cutout").await.unwrap();let saved=state.db.create_space_composition_project("Logical bundle",&document,&["copy".into(),"mask".into(),"physical".into()],"owner",&space.id).await.unwrap();let cancel=tokio_util::sync::CancellationToken::new();
+ let candidate=verify_saved_still(&state,"owner",&saved.id,Some("root"),&clip,saved.revision,&settings,&cancel).await.unwrap();assert_eq!(candidate.assets.original.id.as_str(),"raw");assert_eq!(candidate.assets.snapshot.source_id,"raw");assert_eq!(candidate.paths["raw"],state.sources_dir().join("physical.png").canonicalize().unwrap());
+ assert!(resolve_saved_still(&state,"outsider",&saved.id,Some("root"),&clip,saved.revision).await.is_err());assert!(resolve_saved_still(&state,"owner",&saved.id,Some("root"),&clip,saved.revision+1).await.is_err());
+ image::RgbaImage::from_pixel(2,2,image::Rgba([0,255,0,255])).save(state.sources_dir().join("raw.png")).unwrap();verify_saved_still(&state,"owner",&saved.id,Some("root"),&clip,saved.revision,&settings,&cancel).await.unwrap();
+ image::RgbaImage::from_pixel(2,2,image::Rgba([255,0,0,255])).save(state.sources_dir().join("physical.png")).unwrap();assert!(verify_saved_still(&state,"owner",&saved.id,Some("root"),&clip,saved.revision,&settings,&cancel).await.is_err());
+ assert_eq!(state.db.get_composition_project_for(&saved.id,"owner").await.unwrap().unwrap().document,document);
+}

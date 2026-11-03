@@ -70,7 +70,7 @@ async fn actual_person_still_enters_common_runner_with_rectangular_verified_mask
  let mut base=video_kadr_backend::domain::composition::Composition::new(canvas);let raw=prepared.binding.assets.original.clone();base.sources.insert(raw.id.clone(),raw);
  base.tracks=serde_json::from_value(serde_json::json!([{"kind":"image","id":"images","name":"Images","clips":[{"id":"clip","sourceId":"raw","timelineStartTick":0,"durationTicks":1000000,"transform":video_kadr_backend::domain::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1},"blendMode":"normal"}]}])).unwrap();
  let project=state.db.create_space_composition_project("Import",&serde_json::to_value(base).unwrap(),&["raw".into()],"owner",&space.id).await.unwrap();
- let registered=video_kadr_backend::handlers::concat_cutout_publish::register(&state,"owner",&project.id,prepared,&cancel).await.unwrap();
+ let registered=video_kadr_backend::handlers::concat_cutout_publish::register(&state,"owner",&project.id,project.revision,prepared,&cancel).await.unwrap();
  assert!(!temporary_copy.exists()&&!temporary_mask.exists());
  let copy_path=state.library.resolve_media_path(&registered.copy).await.unwrap();let mask_path=state.library.resolve_media_path(&registered.mask).await.unwrap();
  assert!(copy_path.is_file()&&mask_path.is_file());
@@ -83,6 +83,9 @@ async fn actual_person_still_enters_common_runner_with_rectangular_verified_mask
  use video_kadr_backend::handlers::concat_cutout_publish::apply_registered;
  assert!(apply_registered(&state,"outsider",&project.id,None,&clip,project.revision,&registered,&cancel).await.is_err());
  assert!(apply_registered(&state,"owner",&project.id,None,&clip,project.revision+1,&registered,&cancel).await.is_err());
+ let other=state.db.create_space_composition_project("Other cutout target",&project.document,&project.source_ids,"owner",&space.id).await.unwrap();
+ assert!(apply_registered(&state,"owner",&other.id,None,&clip,other.revision,&registered,&cancel).await.is_err());
+ assert_eq!(state.db.get_composition_project_for(&other.id,"owner").await.unwrap().unwrap().document,other.document);
  let applied=apply_registered(&state,"owner",&project.id,None,&clip,project.revision,&registered,&cancel).await.unwrap();assert_eq!(applied.revision,project.revision+1);
  assert_eq!(applied.document["metadata"]["mediaVersions"]["clip"]["copySourceId"],registered.copy.id);
  assert_eq!(applied.document["metadata"]["mediaVersions"]["clip"]["cutout"]["modelHash"],PERSON_MODEL_HASH);
@@ -154,7 +157,7 @@ async fn actual_person_prepares_binding_with_verified_retained_smart_region(){
  base.tracks=serde_json::from_value(serde_json::json!([{"kind":"image","id":"images","name":"Images","clips":[{"id":"clip","sourceId":"raw","timelineStartTick":0,"durationTicks":1000000,"transform":video_kadr_backend::domain::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1},"blendMode":"normal"}]}])).unwrap();
  let space=state.db.create_space(&owner.user.username,"Smart region replay").await.unwrap();
  let project=state.db.create_space_composition_project("Smart",&serde_json::to_value(base).unwrap(),&["raw".into(),"region".into()],&owner.user.username,&space.id).await.unwrap();
- let registered=video_kadr_backend::handlers::concat_cutout_publish::register(&state,&owner.user.username,&project.id,prepared,&token).await.unwrap();assert!(!copy.exists());
+ let registered=video_kadr_backend::handlers::concat_cutout_publish::register(&state,&owner.user.username,&project.id,project.revision,prepared,&token).await.unwrap();assert!(!copy.exists());
  let clip=video_kadr_backend::domain::composition::CompositionClipId::parse("clip").unwrap();
  let saved=video_kadr_backend::handlers::concat_cutout_publish::apply_registered(&state,&owner.user.username,&project.id,None,&clip,project.revision,&registered,&token).await.unwrap();
  use tower::ServiceExt;let app=support::router(state.clone());let endpoint=format!("/api/composition-projects/{}/concat-cutout",project.id);

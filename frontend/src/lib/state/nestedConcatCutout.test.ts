@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs'
 import {beforeEach,expect,it,vi} from 'vitest'
 import fixture from '../../../../backend/tests/fixtures/concat-merge-preview.json'
 import * as api from '$lib/api'
@@ -28,4 +29,21 @@ it('does not adopt a late result after switching project or cancelling',async()=
  await vi.waitFor(()=>expect(api.analyseNestedCutout).toHaveBeenCalled())
  nestedComposition.projectId='other';finish({...saved,revision:8});expect(await pending).toBe(false);expect(nestedHistory.past).toHaveLength(0)
  setup();const cancel=new AbortController();cancel.abort();expect(await analyseNestedImageCutout('token',saved.document.root,'image','auto',0,cancel.signal)).toBe(false)
+})
+
+it.runIf(!!process.env.CONCAT_LOGICAL_CUTOUT_HISTORY_INPUT)('adopts a real logical RVM reanalysis response with one Undo/Redo and preserved physical bindings',async()=>{
+ const captured=JSON.parse(readFileSync(process.env.CONCAT_LOGICAL_CUTOUT_HISTORY_INPUT!,'utf8')) as {before:api.NestedCompositionProjectDto;after:api.NestedCompositionProjectDto}
+ const {before,after}=captured,root=before.document.root
+ Object.assign(nestedComposition,{projectId:before.id,revision:before.revision,name:before.name,document:structuredClone(before.document),activeCompositionId:root,renderedOutputs:{[root]:'old movie'}})
+ vi.mocked(api.getNestedCompositionProject).mockResolvedValue(before);vi.mocked(api.analyseNestedCutout).mockResolvedValue(after)
+ expect(await analyseNestedImageCutout('token',root,'clip','person',0.03)).toBe(true)
+ expect(nestedComposition.document).toEqual(after.document);expect(nestedHistory.past).toHaveLength(1);expect(nestedComposition.renderedOutputs).toEqual({})
+ expect(nestedComposition.document?.projectMedia).toEqual(before.document.projectMedia)
+ expect(nestedComposition.document?.projectMedia?.slot?.librarySourceId).toBe('physical')
+ expect(after.sourceIds).toContain('physical');expect(after.sourceIds).not.toContain('slot')
+ const oldPair=before.document.compositions[root]!.content.metadata!.mediaVersions!.clip!,newPair=after.document.compositions[root]!.content.metadata!.mediaVersions!.clip!
+ expect(newPair.originalSourceId).toBe('slot');expect(newPair.copySourceId).not.toBe(oldPair.copySourceId)
+ expect(api.analyseNestedCutout).toHaveBeenCalledWith(before.id,root,'clip',before.revision,'person',0.03,'token',undefined,oldPair.cutout!.correction)
+ undoNestedComposition();expect(nestedComposition.document).toEqual(before.document);expect(nestedComposition.revision).toBe(after.revision)
+ redoNestedComposition();expect(nestedComposition.document).toEqual(after.document);expect(nestedHistory.past).toHaveLength(1)
 })

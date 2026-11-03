@@ -30,7 +30,7 @@ pub fn bind_still(composition:&Composition,clip_id:&CompositionClipId,plan:&Plan
  let metadata=changed.metadata.get_or_insert_with(Default::default);
  if let Some(existing)=metadata.media_versions.get(clip_id){ensure!(existing==&pair,"cutout clip already has another media version");}
  if let Some(name)=metadata.source_names.get(&assets.original.id).cloned(){metadata.source_names.entry(assets.copy.id.clone()).or_insert(name);}
- metadata.media_versions.insert(clip_id.clone(),pair);changed.validate()?;Ok(changed)
+ metadata.media_versions.insert(clip_id.clone(),pair);changed.validate_native_surface()?;Ok(changed)
 }
 
 /// Extract saved descriptors only; physical files and access remain unverified.
@@ -39,7 +39,7 @@ pub fn saved_still(document:&serde_json::Value,timeline:Option<&str>,clip:&Compo
   let id=timeline.ok_or_else(||anyhow::anyhow!("timeline required"))?;
   nodes.get(id).and_then(|node|node.get("content")).ok_or_else(||anyhow::anyhow!("timeline missing"))?
  }else{ensure!(timeline.is_none(),"unexpected timeline");document};
- let composition:Composition=serde_json::from_value(content.clone())?;composition.validate()?;
+ let composition:Composition=serde_json::from_value(content.clone())?;composition.validate_native_surface()?;
  let pair=composition.metadata.as_ref().and_then(|m|m.media_versions.get(clip)).ok_or_else(||anyhow::anyhow!("saved media pair missing"))?;
  let snapshot=pair.cutout.clone().ok_or_else(||anyhow::anyhow!("saved image cutout missing"))?;
  ensure!(snapshot.source_id==pair.original_source_id.as_str(),"saved cutout original mismatch");
@@ -51,7 +51,7 @@ pub fn saved_still(document:&serde_json::Value,timeline:Option<&str>,clip:&Compo
 
 /// Explicit reanalysis keeps old sources available and replaces only this pair.
 pub fn rebind_still(composition:&Composition,clip:&CompositionClipId,plan:&Plan,assets:&StillAssets,source_hash:&str,model_hash:&str,runtime_hash:&str)->Result<Composition>{
- composition.validate()?;
+ composition.validate_native_surface()?;
  let pair=composition.metadata.as_ref().and_then(|m|m.media_versions.get(clip)).ok_or_else(||anyhow::anyhow!("saved media pair missing"))?;
  ensure!(pair.cutout.is_some()&&pair.video_cutout.is_none()&&pair.original_source_id==assets.original.id,"reanalysis belongs to another original");
  ensure!(composition.sources.get(&pair.original_source_id)==Some(&assets.original),"reanalysis original metadata changed");

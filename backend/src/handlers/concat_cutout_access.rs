@@ -2,6 +2,17 @@
 use std::{collections::BTreeMap,path::PathBuf};
 use anyhow::{ensure,Result};
 use crate::{state::AppState,domain::{composition::CompositionClipId,concat_cutout_binding::{saved_still,StillAssets}}};
+/// File authority is physical; mask recipes and native descriptors remain logical.
+pub(crate) fn library_id(document:&serde_json::Value,id:&str)->Result<String>{
+ let id=crate::domain::composition::SourceId::parse(id)?;
+ if document.get("compositions").is_some(){
+  let project:crate::domain::nested_composition::NestedCompositionProject=serde_json::from_value(document.clone())?;
+  project.dependency_order()?;Ok(project.library_source_id(&id).as_str().to_owned())
+ }else{Ok(id.as_str().to_owned())}
+}
+pub(crate) async fn source_for_document(state:&AppState,actor:&str,document:&serde_json::Value,id:&str)->Result<PathBuf>{
+ let physical=library_id(document,id)?;super::cutout_jobs::source(state,&physical,actor).await
+}
 /// Deliberately not deserializable: paths come exclusively from the library.
 #[derive(Debug)]
 pub struct SavedStillCandidate {
@@ -18,13 +29,13 @@ pub async fn resolve_saved_still(state:&AppState,actor:&str,project:&str,timelin
  let mut paths=BTreeMap::new();
  for descriptor in [&assets.original,&assets.copy,&assets.mask].into_iter().chain(assets.regions.iter()){
   let id=descriptor.id.as_str();
-  paths.insert(id.to_owned(),super::cutout_jobs::source(state,id,actor).await?);
+  paths.insert(id.to_owned(),source_for_document(state,actor,&saved.document,id).await?);
  }
  // Access and document can change while asynchronous library resolution runs.
  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("project editor access revoked"))?;
  let current=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("project unavailable"))?;
  ensure!(current.revision==revision&&current.document==saved.document,"saved project changed during resolution");
- for (id,path) in &paths{ensure!(super::cutout_jobs::source(state,id,actor).await?==*path,"source changed during resolution");}
+ for (id,path) in &paths{ensure!(source_for_document(state,actor,&current.document,id).await?==*path,"source changed during resolution");}
  Ok(SavedStillCandidate{assets,paths,revision})
 }
 

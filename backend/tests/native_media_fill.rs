@@ -901,3 +901,22 @@ fn cross_kind_lane_split_respects_track_budget_and_existing_solo_or_primary_audi
         .to_string()
         .contains("legacy primary-audio"));
 }
+
+#[test]
+fn source_owned_automatic_video_mask_refuses_fill_before_rebinding_its_family() {
+    let original = fixture("video");
+    let mut value = serde_json::to_value(&original).unwrap();
+    for node in value["compositions"].as_object_mut().unwrap().values_mut() {
+        node["content"]["tracks"][0]["clips"][0]["concatCutout"] = json!({"sourceHash":"a".repeat(64),"modelHash":video_kadr_backend::domain::cutout::PERSON_MODEL_HASH,"runtimeHash":"b".repeat(64),"subject":"person"});
+    }
+    let bound: NestedCompositionProject = serde_json::from_value(value.clone()).unwrap();
+    bound.dependency_order().unwrap();
+    let (item, source) = replacement("video");
+    assert!(
+        fill(&bound, &SourceId::parse("slot").unwrap(), &item, &source)
+            .unwrap_err()
+            .to_string()
+            .contains("video cutout asset rebinding")
+    );
+    assert_eq!(serde_json::to_value(bound).unwrap(), value);
+}

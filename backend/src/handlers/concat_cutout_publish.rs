@@ -2,11 +2,15 @@
 use anyhow::{ensure,Result};
 use crate::{state::AppState,library::MediaEntry,services::concat_cutout_still::PreparedStill,domain::{composition::SourceId,concat_project_import::ReadyStillBinding}};
 use tokio_util::sync::CancellationToken;
-pub struct RegisteredStill {pub binding:ReadyStillBinding,pub copy:MediaEntry,pub mask:MediaEntry}
-pub async fn register(state:&AppState,actor:&str,project:&str,mut prepared:PreparedStill,cancel:&CancellationToken)->Result<RegisteredStill>{
+pub struct RegisteredStill {pub binding:ReadyStillBinding,pub copy:MediaEntry,pub mask:MediaEntry,project:String,revision:u64,original_library_id:String}
+pub async fn register(state:&AppState,actor:&str,project:&str,revision:u64,mut prepared:PreparedStill,cancel:&CancellationToken)->Result<RegisteredStill>{
  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("project editor access required"))?;
- let source=super::cutout_jobs::source(state,prepared.binding.assets.original.id.as_str(),actor).await?;
- for region in &prepared.binding.assets.regions{let id=region.id.as_str();prepared.region_paths.insert(id.into(),super::cutout_jobs::source(state,id,actor).await?);}
+ let saved=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("project unavailable"))?;
+ ensure!(saved.revision==revision,"stale cutout registration revision");
+ let original_library_id=super::concat_cutout_access::library_id(&saved.document,prepared.binding.assets.original.id.as_str())?;
+ ensure!(saved.source_ids.contains(&original_library_id),"cutout original not referenced by project");
+ let source=super::concat_cutout_access::source_for_document(state,actor,&saved.document,prepared.binding.assets.original.id.as_str()).await?;
+ for region in &prepared.binding.assets.regions{let id=region.id.as_str();prepared.region_paths.insert(id.into(),super::concat_cutout_access::source_for_document(state,actor,&saved.document,id).await?);}
 
  let copy_id=uuid::Uuid::new_v4().to_string();let mask_id=uuid::Uuid::new_v4().to_string();
  prepared.binding.assets.copy.id=SourceId::parse(copy_id.clone())?;prepared.binding.assets.mask.id=SourceId::parse(mask_id.clone())?;prepared.binding.assets.snapshot.mask_source_id=mask_id.clone();
@@ -31,7 +35,9 @@ pub async fn register(state:&AppState,actor:&str,project:&str,mut prepared:Prepa
    let copy=build(&copy_id,&copy_path,published.binding.assets.copy.width,published.binding.assets.copy.height)?;
    let mask=build(&mask_id,&mask_path,published.binding.assets.mask.width,published.binding.assets.mask.height)?;
    super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("project access revoked"))?;
-   ensure!(super::cutout_jobs::source(state,published.binding.assets.original.id.as_str(),actor).await?==source,"original source path changed");
+   let current=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("project unavailable"))?;
+   ensure!(current.revision==revision&&current.document==saved.document,"cutout project/binding changed during registration");
+   ensure!(super::concat_cutout_access::source_for_document(state,actor,&current.document,published.binding.assets.original.id.as_str()).await?==source,"original source path changed");
    ensure!(!cancel.is_cancelled(),"cutout registration cancelled");
    copy_added=state.library.add(copy.clone()).await;ensure!(copy_added,"copy library persistence failed");
    mask_added=state.library.add(mask.clone()).await;ensure!(mask_added,"mask library persistence failed");
@@ -41,7 +47,7 @@ pub async fn register(state:&AppState,actor:&str,project:&str,mut prepared:Prepa
   let (copy,mask)=match registration{Ok(entries)=>entries,Err(error)=>{if copy_added{let _=state.library.remove(&copy_id).await;}if mask_added{let _=state.library.remove(&mask_id).await;}if copy_linked&&state.library.get(&copy_id).await.is_none(){let _=tokio::fs::remove_file(&copy_path).await;}if mask_linked&&state.library.get(&mask_id).await.is_none(){let _=tokio::fs::remove_file(&mask_path).await;}if let Some(dir)=published.copy.parent(){let _=tokio::fs::remove_dir_all(dir).await;}return Err(error)}};
   if let Some(dir)=published.copy.parent(){let _=tokio::fs::remove_dir_all(dir).await;}
   state.index_media(&copy).await;state.index_media(&mask).await;
-  Ok(RegisteredStill{binding:published.binding,copy,mask})
+  Ok(RegisteredStill{binding:published.binding,copy,mask,project:project.into(),revision,original_library_id})
  }.await;
  if result.is_err(){if state.library.get(&copy_id).await.is_none(){let _=state.db.release_space_source_claim(&copy_id).await;}if state.library.get(&mask_id).await.is_none(){let _=state.db.release_space_source_claim(&mask_id).await;}}
  result
@@ -54,12 +60,14 @@ pub async fn apply_registered(state:&AppState,actor:&str,project:&str,timeline:O
  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("project editor access required"))?;
  let saved=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("project unavailable"))?;
  ensure!(saved.revision==revision,"stale project revision");
+ ensure!(registered.project==project&&registered.revision==revision,"registered cutout belongs to another project/revision");
  let binding=&registered.binding;let assets=&binding.assets;
  ensure!(registered.copy.id==assets.copy.id.as_str()&&registered.mask.id==assets.mask.id.as_str(),"registered cutout IDs changed");
- let source=super::cutout_jobs::source(state,assets.original.id.as_str(),actor).await?;
+ ensure!(super::concat_cutout_access::library_id(&saved.document,assets.original.id.as_str())?==registered.original_library_id,"registered cutout physical source changed");
+ let source=super::concat_cutout_access::source_for_document(state,actor,&saved.document,assets.original.id.as_str()).await?;
  let copy=super::cutout_jobs::source(state,assets.copy.id.as_str(),actor).await?;
  let mask=super::cutout_jobs::source(state,assets.mask.id.as_str(),actor).await?;
- let mut regions=std::collections::BTreeMap::new();for region in &assets.regions{regions.insert(region.id.as_str().to_owned(),super::cutout_jobs::source(state,region.id.as_str(),actor).await?);}
+ let mut regions=std::collections::BTreeMap::new();for region in &assets.regions{regions.insert(region.id.as_str().to_owned(),super::concat_cutout_access::source_for_document(state,actor,&saved.document,region.id.as_str()).await?);}
  crate::services::concat_cutout_asset::verify_still_bundle_with_regions(&source,&copy,&mask,assets,&binding.source_settings,crate::services::concat_cutout_asset::ExpectedIdentity{source_hash:&binding.source_hash,model_hash:&binding.model_hash,runtime_hash:&binding.runtime_hash},&regions,cancel).await?;
  let mut document=saved.document.clone();
  let content=if document.get("compositions").is_some(){

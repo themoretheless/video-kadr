@@ -15,7 +15,7 @@ pub async fn handler(State(state):State<AppState>,Path(project):Path<String>,hea
  if saved.revision!=request.expected_revision{return Err(AppError::conflict("Проект изменился"))}
  let content=if let Some(nodes)=saved.document.get("compositions"){&nodes[request.composition_id.as_deref().ok_or_else(||AppError::bad_request("Нужен таймлайн"))?]["content"]}else{if request.composition_id.is_some(){return Err(AppError::bad_request("Лишний таймлайн"))}&saved.document};
  let composition:Composition=serde_json::from_value(content.clone()).map_err(|_|AppError::bad_request("Неверная композиция"))?;
- composition.validate().map_err(|e|AppError::bad_request(e.to_string()))?;
+ composition.validate_native_surface().map_err(|e|AppError::bad_request(e.to_string()))?;
  let source_id=composition.tracks.iter().find_map(|track|match track{CompositionTrack::Image{locked:false,clips,..}=>clips.iter().find(|c|c.id==clip).map(|c|c.source_id.clone()),_=>None}).ok_or_else(||AppError::bad_request("Нужно незаблокированное изображение"))?;
  let source_id=if let Some(pair)=composition.metadata.as_ref().and_then(|m|m.media_versions.get(&clip)){
   if pair.cutout.is_none(){return Err(AppError::conflict("Клип содержит другую обработанную версию"))}
@@ -28,11 +28,11 @@ pub async fn handler(State(state):State<AppState>,Path(project):Path<String>,hea
  for attached in region_correction.strokes.iter().filter_map(|s|s.region.as_ref()){
   let id=crate::domain::composition::SourceId::parse(attached.mask_source_id.clone()).map_err(|e|AppError::bad_request(e.to_string()))?;
   let descriptor=composition.sources.get(&id).ok_or_else(||AppError::conflict("Источник области не найден"))?.clone();
-  let path=super::cutout_jobs::source(&state,id.as_str(),&actor).await.map_err(|_|AppError::forbidden("Область недоступна"))?;
+  let path=super::concat_cutout_access::source_for_document(&state,&actor,&saved.document,id.as_str()).await.map_err(|_|AppError::forbidden("Область недоступна"))?;
   if !regions.paths.contains_key(id.as_str()){regions.sources.push(descriptor);regions.paths.insert(id.as_str().into(),path);}
  }
 
- let source=super::cutout_jobs::source(&state,source_id.as_str(),&actor).await.map_err(|_|AppError::forbidden("Исходник недоступен"))?;
+ let source=super::concat_cutout_access::source_for_document(&state,&actor,&saved.document,source_id.as_str()).await.map_err(|_|AppError::forbidden("Исходник недоступен"))?;
  let token=tokio_util::sync::CancellationToken::new();let _cancel=token.clone().drop_guard();
  // The spawned task owns the permit and is not abandoned when HTTP is dropped.
  let work=tokio::spawn(async move{let mut generated=Vec::new();let result:Result<crate::db::CompositionProject>=async{
@@ -42,7 +42,7 @@ pub async fn handler(State(state):State<AppState>,Path(project):Path<String>,hea
   if let Some(correction)=regions.correction.as_mut(){
    for stroke in &mut correction.strokes{
     if correction.custom&&matches!(stroke.tool,crate::domain::cutout::Tool::SmartBrush|crate::domain::cutout::Tool::SmartEraser)&&stroke.at.is_some()&&stroke.region.is_none(){
-     let(attachment,descriptor,path)=super::concat_smart_region::generate(&state,&actor,&project,&original,&source,&hash,&stroke.points,&token).await?;
+     let(attachment,descriptor,path)=super::concat_smart_region::generate(&state,&actor,&project,request.expected_revision,&original,&source,&hash,&stroke.points,&token).await?;
      generated.push(descriptor.id.as_str().to_owned());regions.paths.insert(descriptor.id.as_str().into(),path);regions.sources.push(descriptor);stroke.region=Some(attachment);
     }
    }
@@ -58,7 +58,7 @@ pub async fn handler(State(state):State<AppState>,Path(project):Path<String>,hea
   let mut copy=original.clone();copy.id=crate::domain::composition::SourceId::parse(uuid::Uuid::new_v4().to_string())?;
   let mut mask=copy.clone();mask.id=crate::domain::composition::SourceId::parse(uuid::Uuid::new_v4().to_string())?;mask.width=analysed.metadata.mask_width;mask.height=analysed.metadata.mask_height;
   let prepared=analysed.prepare_binding_with_regions(&state.process_runtime,&source,settings,original,copy,mask,regions,&token,std::time::Duration::from_secs(1800),&tx).await?;
-  let registered=super::concat_cutout_publish::register(&state,&actor,&project,prepared,&token).await?;
+  let registered=super::concat_cutout_publish::register(&state,&actor,&project,request.expected_revision,prepared,&token).await?;
   super::concat_cutout_publish::apply_registered(&state,&actor,&project,request.composition_id.as_deref(),&clip,request.expected_revision,&registered,&token).await
  }.await;
  if result.is_err(){for id in generated{if state.db.composition_source_reference_count(&id).await.unwrap_or(1)==0{let _=state.library.remove(&id).await;if state.library.get(&id).await.is_none(){let _=state.db.release_space_source_claim(&id).await;}}}}

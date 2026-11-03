@@ -52,6 +52,21 @@ fn retain_lane_fields(track: &mut Value, kind: &str) {
         .unwrap()
         .retain(|key, _| allowed.contains(&key.as_str()));
 }
+fn derived_source_reference(value: &Value, id: &str) -> bool {
+    match value {
+        Value::Object(values) => values.iter().any(|(key, value)| {
+            matches!(
+                key.as_str(),
+                "originalSourceId" | "copySourceId" | "sourceId" | "maskSourceId"
+            ) && value.as_str() == Some(id)
+                || derived_source_reference(value, id)
+        }),
+        Value::Array(values) => values
+            .iter()
+            .any(|value| derived_source_reference(value, id)),
+        _ => false,
+    }
+}
 fn visual_dependency(value: &Value) -> bool {
     match value {
         Value::Object(values) => values.iter().any(|(key, value)| {
@@ -70,6 +85,33 @@ pub fn fill(
     physical: &CompositionSource,
 ) -> Result<NestedCompositionProject> {
     project.dependency_order()?;
+    for node in project.compositions.values() {
+        if let Some(metadata) = &node.content.metadata {
+            ensure!(
+                !derived_source_reference(
+                    &serde_json::to_value(&metadata.media_versions)?,
+                    id.as_str()
+                ),
+                "FillSlot needs derived-media asset rebinding"
+            );
+        }
+        for track in &node.content.tracks {
+            if let super::composition::CompositionTrack::Video { clips, .. } = track {
+                for clip in clips {
+                    if let Some(binding) = &clip.concat_cutout {
+                        ensure!(
+                            clip.source_id != *id
+                                && !derived_source_reference(
+                                    &serde_json::to_value(binding)?,
+                                    id.as_str()
+                                ),
+                            "FillSlot needs video cutout asset rebinding"
+                        );
+                    }
+                }
+            }
+        }
+    }
     physical.validate()?;
     let old = project.project_media.get(id).context("SlotGone")?;
     ensure!(old.placeholder, "NotASlot");
