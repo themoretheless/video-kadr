@@ -435,6 +435,7 @@ pub mod composition_audio_preview;
 pub mod concat_effect_upgrade;
 
 pub mod concat_project_import;
+pub mod concat_project_import_ready;
 
 pub mod concat_cutout_access;
 pub mod concat_cutout_publish;

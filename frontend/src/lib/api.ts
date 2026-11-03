@@ -2751,6 +2751,15 @@ export async function fillConcatMediaSlot(document:unknown,mediaId:string,entry:
  return {document:reply.document,source:reply.source}
 }
 
+/** Saved server-owned cutout, addressed independently from its destination. */
+export interface ConcatSavedStillReference {
+ readonly timelineId:string;readonly clipId:string;readonly projectId:string;readonly compositionId?:string|null;readonly sourceClipId:string;readonly expectedRevision:number
+}
+/** Reverify saved private bundles; client mask metadata/paths are never authority. */
+export function importConcatProjectWithSavedStills(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,preparedStills:readonly ConcatSavedStillReference[],signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={},preserveMediaIds=false):Promise<ConcatProjectImportReport>{
+ return requestJson('/api/compositions/concat-project/import-ready',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({request:{schemaVersion:1,document,mediaBindings,preserveMediaIds,...(Object.keys(fontBindings).length?{fontBindings}:{})},preparedStills}),signal})
+}
+
 export type ConcatFontBinding={readonly data:string}|{readonly fallback:true}
 export function importConcatProject(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={},preserveMediaIds=false):Promise<ConcatProjectImportReport>{
  return requestJson('/api/compositions/concat-project/import',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({schemaVersion:1,document,mediaBindings,preserveMediaIds,...(Object.keys(fontBindings).length?{fontBindings}:{})}),signal})

@@ -125,6 +125,7 @@ pub fn build_router_with_mcp(
         .route("/compositions/concat-project/fill-registered-slot", post(handlers::concat_registered_media::fill_handler).layer(DefaultBodyLimit::max(5*1024*1024)))
         .route("/compositions/concat-project/media-slots", post(handlers::concat_project_import::media_slot_handler).layer(DefaultBodyLimit::max(5*1024*1024)))
         .route("/compositions/concat-project/export", post(handlers::concat_project_import::export_handler).layer(DefaultBodyLimit::max(32*1024*1024)))
+        .route("/compositions/concat-project/import-ready", post(handlers::concat_project_import_ready::handler).layer(DefaultBodyLimit::max(4 * 1024 * 1024 + crate::domain::concat_project_fonts::MAX_FONT_JSON_BYTES + 1024*1024)))
         .route("/compositions/concat-project/import", post(handlers::concat_project_import::import_handler).layer(DefaultBodyLimit::max(4 * 1024 * 1024 + crate::domain::concat_project_fonts::MAX_FONT_JSON_BYTES + 1024*1024)))
         .route("/compositions/concat-effects/upgrade", post(handlers::concat_effect_upgrade::upgrade_handler).layer(DefaultBodyLimit::max(512 * 1024)))
         .route(

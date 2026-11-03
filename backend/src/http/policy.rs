@@ -337,6 +337,7 @@ pub const ROUTE_POLICIES: &[RoutePolicy] = &[
     RoutePolicy {method:"POST",path:"/api/composition-projects/:id/concat-video-cutout/smart-region",class:RouteClass::JsonCommand,controls:JSON},
     RoutePolicy {method:"POST",path:"/api/composition-projects/:id/concat-video-cutout/binding",class:RouteClass::JsonCommand,controls:JSON},
     RoutePolicy {method:"POST",path:"/api/compositions/project-font-file",class:RouteClass::JsonCommand,controls:JSON},
+    RoutePolicy {method:"POST",path:"/api/compositions/concat-project/import-ready",class:RouteClass::JsonCommand,controls:JSON},
     RoutePolicy {
         method: "POST",
         path: "/api/compositions/concat-project/import",
