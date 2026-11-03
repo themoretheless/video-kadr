@@ -135,7 +135,7 @@ pub fn transfer_with_regions<'a>(state:&'a AppState,actor:&'a str,from:ProjectSo
 /// Opaque verified input for registration inside a caller-owned save transaction.
 /// No authority is granted until `register` rechecks both saved endpoints.
 pub(crate) struct PreparedTransfer {
- actor:String,source_project:String,source_id:String,source_revision:u64,target_source:String,
+ actor:String,source_project:Option<String>,source_id:String,source_revision:u64,target_source:String,
  physical:String,target_document_hash:String,cache:RunCache,planned:Vec<(String,String,crate::domain::video_region::Attachment)>,cancel:CancellationToken,
 }
 pub(crate) fn prepare_transfer<'a>(state:&'a AppState,actor:&'a str,from:ProjectSource<'a>,target_source:&'a str,target_document:&'a serde_json::Value,runtime_hash:&'a str,model_hash:&'a str,regions:&'a [RegionTransfer],cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<PreparedTransfer>>+Send+'a>>{
@@ -163,7 +163,7 @@ pub(crate) fn prepare_transfer<'a>(state:&'a AppState,actor:&'a str,from:Project
     cache.published_receipt()?;
     let path=source(state,actor,from.project,from.source_id,from.revision).await?;
     ensure!(crate::project_archive::fingerprint_file_with_limit(&path,CACHE_BUDGET).await?.1==cache.video_hash()&&!cancel.is_cancelled(),"video cache transfer source/access changed");
-    Ok(PreparedTransfer{actor:actor.into(),source_project:from.project.into(),source_id:from.source_id.into(),source_revision:from.revision,target_source:target_source.into(),physical,target_document_hash:document_identity(target_document)?,cache,planned,cancel:cancel.clone()})
+    Ok(PreparedTransfer{actor:actor.into(),source_project:Some(from.project.into()),source_id:from.source_id.into(),source_revision:from.revision,target_source:target_source.into(),physical,target_document_hash:document_identity(target_document)?,cache,planned,cancel:cancel.clone()})
     })
 }
 impl PreparedTransfer {
@@ -173,25 +173,29 @@ impl PreparedTransfer {
     let stored:String=sqlx::query_scalar("SELECT document_json FROM composition_projects WHERE id=? AND revision=?").bind(target_project).bind(i64::try_from(target_revision)?).fetch_optional(&mut *connection).await?.ok_or_else(||anyhow::anyhow!("target project changed before video registration"))?;
     ensure!(document_identity(&serde_json::from_str(&stored)?)?==self.target_document_hash,"target video document differs from verified transfer plan");
     let actor=self.actor.as_str();let physical=&self.physical;let cache=&self.cache;let planned=&self.planned;let cancel=&self.cancel;
-    let from=ProjectSource{project:&self.source_project,source_id:&self.source_id,revision:if self.source_project==target_project&&self.source_revision.checked_add(1)==Some(target_revision){target_revision}else{self.source_revision}};
+    let from=self.source_project.as_deref().map(|project|ProjectSource{project,source_id:&self.source_id,revision:if project==target_project&&self.source_revision.checked_add(1)==Some(target_revision){target_revision}else{self.source_revision}});
     let to=ProjectSource{project:target_project,source_id:&self.target_source,revision:target_revision};
     let runtime_hash=cache.runtime_hash();let model_hash=cache.model_hash();
     let receipt=cache.published_receipt()?;
     let generation=receipt.directory.file_name().and_then(|s|s.to_str()).ok_or_else(||anyhow::anyhow!("invalid video cache generation"))?;
     ensure!(!cancel.is_cancelled(),"video cache transfer cancelled");
-    for endpoint in [from,to]{
+    for endpoint in from.into_iter().chain(std::iter::once(to)){
         let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_projects p JOIN composition_project_members m ON m.project_id=p.id JOIN composition_project_sources s ON s.project_id=p.id WHERE p.id=? AND p.revision=? AND m.actor=? AND m.role IN ('owner','editor') AND s.source_id=?)").bind(endpoint.project).bind(i64::try_from(endpoint.revision)?).bind(actor).bind(physical).fetch_one(&mut *connection).await?;
         ensure!(allowed,"video transfer project/source authority changed");
     }
-    let source_row:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid DESC LIMIT 1").bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *connection).await?;
-    let source_row=source_row.ok_or_else(||anyhow::anyhow!("verified source cache registration disappeared"))?;
+    let source_row=if let Some(from)=from {
+        let source_row:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid DESC LIMIT 1").bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *connection).await?;
+        Some(source_row.ok_or_else(||anyhow::anyhow!("verified source cache registration disappeared"))?)
+    }else{None};
     let existing:Option<String>=sqlx::query_scalar("SELECT id FROM concat_video_project_caches WHERE project_id=? AND source_id=? AND video_hash=? AND model_hash=? AND runtime_hash=? AND generation=? AND manifest_hash=? ORDER BY rowid LIMIT 1").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(generation).bind(&receipt.manifest_hash).fetch_optional(&mut *connection).await?;
     let id=if let Some(id)=existing{id}else{
         let id=uuid::Uuid::new_v4().to_string();
-        let changed=sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,?,?,video_hash,model_hash,runtime_hash,manifest_hash,generation FROM concat_video_project_caches WHERE id=?").bind(&id).bind(to.project).bind(to.source_id).bind(&source_row).execute(&mut *connection).await?.rows_affected();ensure!(changed==1,"source cache disappeared during transfer");id
+        let changed=if let Some(source_row)=&source_row {sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) SELECT ?,?,?,video_hash,model_hash,runtime_hash,manifest_hash,generation FROM concat_video_project_caches WHERE id=?").bind(&id).bind(to.project).bind(to.source_id).bind(&source_row).execute(&mut *connection).await?.rows_affected()}else{
+            sqlx::query("INSERT INTO concat_video_project_caches(id,project_id,source_id,video_hash,model_hash,runtime_hash,manifest_hash,generation) VALUES(?,?,?,?,?,?,?,?)").bind(&id).bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(model_hash).bind(runtime_hash).bind(&receipt.manifest_hash).bind(generation).execute(&mut *connection).await?.rows_affected()
+        };ensure!(changed==1,"source cache disappeared during transfer");id
     };
     for(source_mask,library,snapshot)in planned{
-        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_project_sources WHERE project_id=? AND source_id=?) OR EXISTS(SELECT 1 FROM person_video_project_resources WHERE project_id=? AND role='sam-video-regions' AND source_id=? AND file_hash=?) OR EXISTS(SELECT 1 FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND library_source_id=? AND file_hash=?)").bind(from.project).bind(library).bind(from.project).bind(library).bind(&snapshot.mask_file_hash).bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(source_mask).bind(library).bind(&snapshot.mask_file_hash).fetch_one(&mut *connection).await?;ensure!(allowed,"source region authority changed");
+        let allowed:bool=if let Some(from)=from {sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_project_sources WHERE project_id=? AND source_id=?) OR EXISTS(SELECT 1 FROM person_video_project_resources WHERE project_id=? AND role='sam-video-regions' AND source_id=? AND file_hash=?) OR EXISTS(SELECT 1 FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND library_source_id=? AND file_hash=?)").bind(from.project).bind(library).bind(from.project).bind(library).bind(&snapshot.mask_file_hash).bind(from.project).bind(from.source_id).bind(cache.video_hash()).bind(source_mask).bind(library).bind(&snapshot.mask_file_hash).fetch_one(&mut *connection).await?}else{sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM composition_project_sources WHERE project_id=? AND source_id=?)").bind(to.project).bind(library).fetch_one(&mut *connection).await?};ensure!(allowed,"source region authority changed");
         let existing:Option<String>=sqlx::query_scalar("SELECT library_source_id FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND file_hash=?").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(&snapshot.mask_source_id).bind(&snapshot.mask_file_hash).fetch_optional(&mut *connection).await?;ensure!(existing.as_ref().is_none_or(|old|old==library),"target region reservation changed physical file");
         sqlx::query("INSERT INTO concat_video_project_region_refs(project_id,source_id,video_hash,mask_source_id,library_source_id,file_hash) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING").bind(to.project).bind(to.source_id).bind(cache.video_hash()).bind(&snapshot.mask_source_id).bind(library).bind(&snapshot.mask_file_hash).execute(&mut *connection).await?;
     }
@@ -203,4 +207,28 @@ impl PreparedTransfer {
 
 fn document_identity(document:&serde_json::Value)->Result<String>{
  use sha2::{Digest,Sha256};Ok(format!("{:x}",Sha256::digest(serde_json::to_vec(document)?)))
+}
+
+/// Archived bytes are uploaded data, not authority borrowed from another project.
+/// Verify all data before the save transaction grants this target independent ownership.
+pub(crate) fn prepare_archive<'a>(state:&'a AppState,actor:&'a str,target_source:&'a str,target_document:&'a serde_json::Value,original:&'a std::path::Path,receipt:&'a PublishedCache,identity:&'a crate::services::concat_video_analysis::portable::Identity,regions:&'a [(crate::domain::video_region::Attachment,String,std::path::PathBuf)],cancel:&'a CancellationToken)->std::pin::Pin<Box<dyn std::future::Future<Output=Result<PreparedTransfer>>+Send+'a>>{
+ Box::pin(async move {
+    ensure!(receipt.directory.parent()==Some(state.storage.join("concat-video-caches").as_path()),"archive generation is outside the owned cache root");
+    let cache=RunCache::restore(receipt,CACHE_BUDGET,cancel).await?;
+    ensure!(!cache.is_empty()&&cache.portable_identity()?==*identity,"archived cache identity mismatch");
+    ensure!(crate::project_archive::fingerprint_file(original).await?.1==cache.video_hash(),"archived original hash differs from cache");
+    let physical=super::concat_cutout_access::library_id(target_document,target_source)?;
+    let mut planned=vec![];let mut seen=std::collections::BTreeSet::new();let mut total=0u64;
+    ensure!(regions.len()<=1024,"too many archived temporal regions");
+    for(snapshot,library,movie)in regions {
+        ensure!(snapshot.source_id==target_source&&snapshot.source_hash==cache.video_hash()&&super::concat_cutout_access::library_id(target_document,&snapshot.mask_source_id)?==*library,"archived temporal region scope mismatch");
+        let key=serde_json::to_string(snapshot)?;if seen.insert(key){
+            total=total.checked_add(snapshot.frames.checked_mul(256*256).ok_or_else(||anyhow::anyhow!("archive region size overflow"))?).ok_or_else(||anyhow::anyhow!("archive region size overflow"))?;ensure!(total<=CACHE_BUDGET,"archive region budget exceeded");
+            drop(super::concat_video_region_cache::verify_movie(state,movie,snapshot,library,cancel).await?);
+        }
+        planned.push((snapshot.mask_source_id.clone(),library.clone(),snapshot.clone()));
+    }
+    ensure!(!cancel.is_cancelled(),"archive video verification cancelled");
+    Ok(PreparedTransfer{actor:actor.into(),source_project:None,source_id:target_source.into(),source_revision:0,target_source:target_source.into(),physical,target_document_hash:document_identity(target_document)?,cache,planned,cancel:cancel.clone()})
+ })
 }

@@ -13265,3 +13265,35 @@ after source-project access is revoked and includes both the portable automatic
 store and the hash-matching temporal-region media. Existing version-one HTTP and
 version-two format tests remain green. Atomic HTTP import of these cache records
 is still open and explicitly rejected until its registration path is ready.
+
+### HTTP restore of self-contained video archives
+
+Version-two HTTP imports now restore portable automatic stores and verify every
+referenced temporal-region movie before granting project ownership. Physical
+media IDs are replaced while logical slots and source-time snapshots are retained.
+Encoded source hashes, portable identities, model/runtime layouts and region file/
+plane hashes must match. External origin references are removed from the imported
+document. No original projects, cache registrations or inference models are needed.
+
+New standalone generations are guarded until project creation succeeds. Media
+placement in the target Space completes before the database commit; the project,
+source inventory, automatic-store rows, model choices and historical region refs
+are registered together. A failure removes the newly published cache generations,
+library records, source files and staging. Target Space write access is checked
+before work and again within the creation transaction. Import continues in its
+owned publication task if the HTTP client disconnects.
+
+Qualification: 18 integration tests pass, including actual Selfie imports with
+both logical and physical IDs into a fresh storage instance, and actual SAM/VFR
+region import into another fresh instance. All inference engines are disabled at
+the destination; preview pixels and cache identities match the source. The tests
+also cover valid outer archive checksums around corrupt inner mask bytes, forced
+cache/region registration failures, a target-role demotion inside the transaction,
+viewer refusal, and absence of residual project rows, cache rows, library metadata,
+source files, cache generations or staging after failures. Version-one HTTP and
+version-two framing tests remain green. This qualifies these archive round trips;
+whole-project feature parity and the wider history/GC/platform gates remain open.
+
+Additional focused unit gates for this restore change: all 11 archive tests and
+all 8 composition-project DB tests pass. The archive unsupported-version test now
+uses version three because version two is supported.

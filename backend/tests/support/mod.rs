@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+pub mod video_archive;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};

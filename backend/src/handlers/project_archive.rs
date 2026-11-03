@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 mod video_export;
+mod video_import;
 
 use axum::body::Body;
 use axum::extract::{multipart::MultipartError, Multipart, Path as AxPath, State};
@@ -314,10 +315,13 @@ async fn import_parsed_archive(
     space_id: Option<String>,
 ) -> AppResult<ProjectArchiveImportResponse> {
     let ParsedProjectArchive { manifest, media,video_caches } = parsed;
-    if !video_caches.is_empty(){return Err(AppError::bad_request("Восстановление видеокэша из архива ещё не подключено"));}
     let ProjectArchiveManifest {
-        project, sources, ..
+        mut project, sources, video_caches:cache_entries, ..
     } = manifest;
+    if let Some(space_id)=space_id.as_deref(){
+        let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM collaboration_space_members WHERE space_id=? AND actor=? AND role IN ('owner','editor'))").bind(space_id).bind(&owner).fetch_one(state.db.pool()).await.map_err(|error|AppError::internal("authorize archive target Space",error))?;
+        if !allowed{return Err(AppError::forbidden("Недостаточно прав для импорта в пространство"));}
+    }
     let mut reserved_ids = HashSet::with_capacity(sources.len());
     let mut source_mapping = BTreeMap::new();
     let mut prepared = Vec::with_capacity(sources.len());
@@ -372,7 +376,12 @@ async fn import_parsed_archive(
         });
     }
 
+    let old_document=project.document.clone();
+    if !cache_entries.is_empty(){video_import::remove_origins(&mut project.document);}
     let document = rewrite_document_source_ids(project.document, &source_mapping)?;
+    let cancel=tokio_util::sync::CancellationToken::new();let _guard=cancel.clone().drop_guard();
+    let mut video=run_with_timeout(video_import::prepare(&state,&owner,&old_document,&document,&source_mapping,&prepared,&cache_entries,&video_caches,&cancel),ARCHIVE_IO_TIMEOUT,"проверка видеокэша архива превысила лимит времени").await?.map_err(|error|AppError::bad_request(error.to_string()))?;
+
     let source_ids = crate::db::extract_document_source_ids(&document)
         .map_err(|error| AppError::bad_request(error.to_string()))?;
     let project = publish_with_rollback(
@@ -383,10 +392,12 @@ async fn import_parsed_archive(
         &source_ids,
         &owner,
         space_id.as_deref(),
+        &video.registrations,
     )
     .await?;
+    video.commit();
     for source in &prepared {
-        state.index_media(&source.entry).await;
+        if let Some(entry)=state.library.get(&source.new_id).await{state.index_media(&entry).await;}
     }
     Ok(ProjectArchiveImportResponse {
         project,
@@ -402,6 +413,7 @@ async fn publish_with_rollback(
     source_ids: &[String],
     owner: &str,
     space_id: Option<&str>,
+    registrations:&[crate::handlers::concat_video_cache::PreparedTransfer],
 ) -> AppResult<CompositionProject> {
     let mut published = Vec::with_capacity(prepared.len());
     let target = ImportTarget { owner, space_id };
@@ -413,6 +425,7 @@ async fn publish_with_rollback(
         source_ids,
         target,
         &mut published,
+        registrations,
     )
     .await
     {
@@ -438,6 +451,7 @@ async fn publish_sources_and_project(
     source_ids: &[String],
     target: ImportTarget<'_>,
     published: &mut Vec<PublishedSource>,
+    registrations:&[crate::handlers::concat_video_cache::PreparedTransfer],
 ) -> AppResult<CompositionProject> {
     for source in prepared {
         let destination = state.sources_dir().join(&source.destination_filename);
@@ -465,23 +479,15 @@ async fn publish_sources_and_project(
             .await
             .map_err(|error| AppError::internal("persist imported source metadata", error))?;
     }
-    let result = if let Some(space_id) = target.space_id {
-        state
-            .db
-            .create_space_composition_project(
-                project_name,
-                document,
-                source_ids,
-                target.owner,
-                space_id,
-            )
-            .await
-    } else {
-        state
-            .db
-            .create_owned_composition_project(project_name, document, source_ids, target.owner)
-            .await
-    };
+    // Complete filesystem placement before the database save can commit.
+    if let Some(space_id)=target.space_id {
+        for source in &mut *published {
+            state.library.relocate_source_to_space(&source.id,space_id).await.map_err(|error|AppError::internal("isolate imported Space source",error))?;
+            let entry=state.library.get(&source.id).await.ok_or_else(||AppError::conflict("Импортированный источник исчез"))?;
+            source.path=validated_source_path(state,&entry).await?;
+        }
+    }
+    let result=state.db.create_composition_project_adopting_video(project_name,document,source_ids,target.owner,target.space_id,registrations).await;
     let project = result.map_err(|error| {
         if error.to_string().contains("space role cannot")
             || error
@@ -493,15 +499,6 @@ async fn publish_sources_and_project(
             AppError::internal("persist imported composition project", error)
         }
     })?;
-    if let Some(space_id) = project.space_id.as_deref() {
-        for source_id in &project.source_ids {
-            state
-                .library
-                .relocate_source_to_space(source_id, space_id)
-                .await
-                .map_err(|error| AppError::internal("isolate imported Space source", error))?;
-        }
-    }
     Ok(project)
 }
 
@@ -1042,6 +1039,7 @@ mod tests {
             &[new_id.into()],
             "owner",
             None,
+            &[],
         )
         .await
         .is_err());

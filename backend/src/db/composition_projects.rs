@@ -293,6 +293,8 @@ impl Db {
         .execute(&mut *transaction).await?;
         let project = row_to_composition_project(row, source_ids.to_vec())?;
         for transfer in transfers {transfer.register(&mut transaction,&project.id,project.revision).await?;}
+        let still_allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM collaboration_space_members WHERE space_id=? AND actor=? AND role IN ('owner','editor'))").bind(space_id).bind(owner).fetch_one(&mut *transaction).await?;
+        ensure!(still_allowed,"space role cannot create project");
         transaction.commit().await?;
         Ok(project)
     }

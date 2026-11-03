@@ -919,7 +919,7 @@ mod tests {
         ));
 
         let mut unsupported = bytes.clone();
-        unsupported[8..10].copy_from_slice(&2_u16.to_be_bytes());
+        unsupported[8..10].copy_from_slice(&3_u16.to_be_bytes());
         let unsupported_path = directory.path().join("unsupported.veproj");
         tokio::fs::write(&unsupported_path, unsupported)
             .await

@@ -27,16 +27,24 @@ pub async fn load(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:
  };
  ensure!(historical,"unrelated region source: no current reference or exact project reservation");
  let movie=super::cutout_jobs::source(state,&library_source_id,actor).await?;
- let metadata=crate::services::local_person_mask_video::Metadata{width:256,height:256,frames:snapshot.frames,frame_rate:snapshot.frame_rate,mask_hash:snapshot.mask_hash.clone(),file_hash:snapshot.mask_file_hash.clone(),size_bytes:tokio::fs::metadata(&movie).await?.len()};
+ let lease=verify_movie(state,&movie,snapshot,&library_source_id,cancel).await?;
+  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access revoked"))?;
+  let current=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("region project unavailable"))?;
+  ensure!(current.revision==revision&&current.document==saved.document&&!cancel.is_cancelled(),"region project changed");ensure!(super::cutout_jobs::source(state,&library_source_id,actor).await?==movie,"region file access/path changed"); Ok(lease)
+
+}
+
+/// File verification only; callers separately own project/upload authorization.
+pub(crate) async fn verify_movie(state:&AppState,movie:&std::path::Path,snapshot:&Attachment,library_source_id:&str,cancel:&CancellationToken)->Result<Lease>{
+ snapshot.validate()?;
+ let metadata=crate::services::local_person_mask_video::Metadata{width:256,height:256,frames:snapshot.frames,frame_rate:snapshot.frame_rate,mask_hash:snapshot.mask_hash.clone(),file_hash:snapshot.mask_file_hash.clone(),size_bytes:tokio::fs::metadata(movie).await?.len()};
  let root=state.storage.join("concat-video-region-stages");tokio::fs::create_dir_all(&root).await?;let stage=root.join(uuid::Uuid::new_v4().to_string());tokio::fs::create_dir(&stage).await?;
  #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;tokio::fs::set_permissions(&stage,std::fs::Permissions::from_mode(0o700)).await?;}
  let result=async{
   let codecs=crate::services::local_enhance_video::resolve_tools().await?;let raw=stage.join("regions.raw");let(tx,_rx)=tokio::sync::mpsc::unbounded_channel();
-  crate::services::local_person_mask_video::decode(&state.process_runtime,crate::services::local_person_mask_video::Tools{ffmpeg:&codecs.ffmpeg,ffprobe:&codecs.ffprobe},&movie,&metadata,&raw,64*1024*1024*1024,cancel,Duration::from_secs(3600),&tx).await?;
+  crate::services::local_person_mask_video::decode(&state.process_runtime,crate::services::local_person_mask_video::Tools{ffmpeg:&codecs.ffmpeg,ffprobe:&codecs.ffprobe},movie,&metadata,&raw,64*1024*1024*1024,cancel,Duration::from_secs(3600),&tx).await?;
   let reader=crate::services::concat_video_regions::open(&raw,snapshot,cancel).await?;
-  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access revoked"))?;
-  let current=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("region project unavailable"))?;
-  ensure!(current.revision==revision&&current.document==saved.document&&!cancel.is_cancelled(),"region project changed");ensure!(super::cutout_jobs::source(state,&library_source_id,actor).await?==movie,"region file access/path changed");Ok::<_,anyhow::Error>(reader)
+Ok::<_,anyhow::Error>(reader)
  }.await;
- match result{Ok(reader)=>Ok(Lease{reader,library_source_id,stage}),Err(error)=>{let _=tokio::fs::remove_dir_all(stage).await;Err(error)}}
+ match result{Ok(reader)=>Ok(Lease{reader,library_source_id:library_source_id.into(),stage}),Err(error)=>{let _=tokio::fs::remove_dir_all(stage).await;Err(error)}}
 }
