@@ -914,6 +914,21 @@ export async function importCompositionProjectArchive(
   return res.json()
 }
 
+export interface NativeTemplateSlotReference {readonly mediaId:string;readonly sourceId:string}
+export interface NativeTemplateImportResponse {project:NestedCompositionProjectDto;sourceMapping:Record<string,string>}
+/** The server verifies package files and probes every registered slot replacement. */
+export async function importNativeTemplate(file:File,fills:readonly NativeTemplateSlotReference[],token:string,spaceId?:string,signal?:AbortSignal):Promise<NativeTemplateImportResponse>{
+ if(file.size>MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES)throw new Error('Шаблон превышает лимит 2 ГиБ')
+ if(new Set(fills.map(fill=>fill.mediaId)).size!==fills.length||fills.some(fill=>!fill.mediaId||!fill.sourceId))throw new Error('Некорректные замены шаблона')
+ const body=new FormData();body.append('file',file)
+ const headers=bearerHeaders(token);if(spaceId)headers['X-Space-Id']=spaceId
+ const reply=await requestJson<NativeTemplateImportResponse>(`/api/composition-projects/template-import?fills=${encodeURIComponent(JSON.stringify(fills))}`,{method:'POST',headers,body,signal})
+ if(signal?.aborted)throw new DOMException('Aborted','AbortError')
+ const project=reply?.project,document=project?.document
+ if(!project?.id||project.mode!=='composition'||project.schemaVersion!==2||document?.schemaVersion!==1||!document.compositions?.[document.root]||fills.some(fill=>document.projectMedia?.[fill.mediaId]?.librarySourceId!==fill.sourceId||document.projectMedia?.[fill.mediaId]?.placeholder===true)||Object.values(document.projectMedia??{}).some(item=>item.placeholder===true))throw new Error('Native template import returned invalid project')
+ return reply
+}
+
 /** Ask the backend to cancel a running/pending job. Best-effort. */
 export async function cancelJob(jobId: string): Promise<void> {
   try {

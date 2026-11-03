@@ -264,6 +264,9 @@ pub struct StagedAsset {
     path: PathBuf,
 }
 impl StagedAsset {
+    pub(crate) fn into_archive(mut self,filename:String)->crate::project_archive::StagedArchiveMedia {
+        crate::project_archive::StagedArchiveMedia::from_staged_file(self.key.as_str().into(),filename,std::mem::take(&mut self.path))
+    }
     pub fn path(&self) -> &Path {
         &self.path
     }

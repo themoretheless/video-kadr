@@ -928,6 +928,10 @@ pub fn build_router_with_mcp(
             ),
         )
         .route(
+            "/composition-projects/template-import",
+            post(handlers::composition_project_template_import_handler).layer(DefaultBodyLimit::max(crate::project_archive::MAX_ARCHIVE_MULTIPART_BYTES)),
+        )
+        .route(
             "/composition-projects/:id/template",
             get(handlers::composition_project_template_export_handler),
         )

@@ -13577,3 +13577,42 @@ held last frames and silence after EOF. The initial replacement fixture omitted
 its inert `library:` path; it was fixed without changing runtime admission and
 the full gate was rerun. Diff checks pass. Durable project creation remains the
 next integration boundary, not a completion claim for template instantiation UI.
+
+### Verified native template HTTP instantiation
+
+`POST /composition-projects/template-import?fills=...` accepts one bounded package
+upload and explicit logical-slot/registered-source references. It verifies the
+bundle, probes design resources, allocates fresh design library identities and
+checks design media kinds against the manifest. Slot files are authorized and
+freshly probed; their library entries, physical paths, revisions and metadata are
+checked again before publication. Duplicate, unknown or missing slot assignments
+refuse before a project can be saved.
+
+The detached admitted task owns upload/extraction guards and its admission permit
+through success or rollback, including client disconnect. Pure instantiation
+feeds the existing project-archive publisher: fresh design files, library metadata,
+Space relocation and saved-project creation use its compensating rollback and
+transactional final target-role check. Existing chosen slot files are referenced,
+not republished or removed during rollback. Returned documents have independent
+design bindings and no placeholders. A typed frontend API helper sends only the
+package and slot identities, validates the canonical returned native project and
+leaves multipart content-type construction to the browser.
+
+This is the HTTP/API bridge, not yet the file-picker, slot-selection, gallery or
+poster workflow. Template video-mask stores and derived-media FillSlot boundaries
+remain unchanged. Native font/LUT data stays inside the package document.
+
+
+Final qualification: eight backend tests pass across the actual HTTP template
+import/export and bundle/instantiation suites. A real generated PNG package is
+imported into an independent saved project with a fresh design library ID; design
+bytes exactly match the package input and the selected replacement bytes remain
+unchanged. Missing slot assignments and unknown replacement files leave no staged
+or published design files. A controlled SQLite project-insert failure rolls back
+new library entries, metadata and files; retry succeeds without residue. The test
+uses a separate connection to its test database for fault injection rather than
+exposing the private DB pool. Six frontend API tests, Svelte typecheck (zero
+errors/warnings), scoped lint, token/listener checks and production build (35.50s,
+existing chunk warnings) pass. No model or network runtime is used for package
+media probing. Diff checks pass. The picker/slot-selection UI, gallery/posters,
+Space-race/quality coverage and complete application parity remain open.

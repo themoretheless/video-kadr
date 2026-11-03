@@ -10,6 +10,8 @@ use std::time::Duration;
 mod video_export;
 mod video_import;
 mod template_export;
+mod template_import;
+pub use template_import::import as composition_project_template_import_handler;
 pub use template_export::export as composition_project_template_export_handler;
 
 use axum::body::Body;

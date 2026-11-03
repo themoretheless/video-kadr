@@ -104,6 +104,7 @@ pub struct StagedArchiveMedia {
 }
 
 impl StagedArchiveMedia {
+    pub(crate) fn from_staged_file(source_id:String,filename:String,path:PathBuf)->Self { Self{source_id,filename,path} }
     pub fn source_id(&self) -> &str {
         &self.source_id
     }
