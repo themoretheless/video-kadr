@@ -1,5 +1,8 @@
 //! Native template packages. Callers must authorize every input file before packing.
 //! This codec never resolves a path supplied by an imported document.
+mod instantiate;
+pub use instantiate::{instantiate,SlotFill};
+
 use crate::domain::{
     composition::{CompositionTrack, SourceId},
     nested_composition::NestedCompositionProject,

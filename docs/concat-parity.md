@@ -13545,3 +13545,35 @@ gallery, posters or video-mask packaging.
 The final strengthened full-workspace suite passes all twelve tests after adding
 an exact drawn-pixel assertion. Svelte typecheck and scoped lint pass; diff checks
 pass. No production files changed in this qualification milestone.
+
+### Atomic native template instantiation core
+
+A pure `template_bundle::instantiate` operation assembles a project from a
+validated package manifest, newly allocated design-file bindings and server-probed
+slot replacements. It requires the exact design key set, distinct fresh physical
+identities for distinct design records, and exactly one replacement for every
+placeholder. All rebinding and canonical native FillSlot operations run on a
+private document; a later failure returns no partial project. Logical design/slot
+IDs remain editorial IDs while physical library ownership changes. The final
+project has no placeholders and passes native dependency and saved-project
+physical inventory validation.
+
+This operation does not probe files, grant access, publish library entries or
+commit a project; its future HTTP caller must verify the package and media, own
+those resources and perform publication/rollback. It preserves the existing
+FillSlot admission boundaries, including derived-media and video-mask refusals.
+HTTP upload, durable template gallery and standalone project publication remain
+unfinished.
+
+Final qualification passes seventeen backend tests with ignored runtime tests
+explicitly enabled: six package/instantiation tests, ten native FillSlot tests
+and one actual template HTTP export test. A real packaged PNG is parsed before
+assembly; two filled slots retain logical IDs and editorial windows in both
+active and shelved timelines, including image-to-video conversion. Incomplete
+mapping, unfilled slots, reuse of package keys as physical bindings and a later
+incompatible replacement return no project and leave the template unchanged.
+Existing actual FFmpeg moving-video/audio tests still verify new physical files,
+held last frames and silence after EOF. The initial replacement fixture omitted
+its inert `library:` path; it was fixed without changing runtime admission and
+the full gate was rerun. Diff checks pass. Durable project creation remains the
+next integration boundary, not a completion claim for template instantiation UI.
