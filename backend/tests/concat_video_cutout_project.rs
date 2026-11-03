@@ -123,7 +123,7 @@ fn unverified_stale_or_mismatched_video_bindings_never_return_partial_projects()
         import(request(doc.clone(), true)).unwrap().status,
         "needs_attention"
     );
-    for mode in 0..10 {
+    for mode in 0..13 {
         let mut videos = videos();
         let ready = videos.get_mut("a").unwrap().get_mut("same").unwrap();
         match mode {
@@ -138,9 +138,12 @@ fn unverified_stale_or_mismatched_video_bindings_never_return_partial_projects()
             8 => {
                 videos.insert("missing".into(), BTreeMap::new());
             }
-            _ => {
+            9 => {
                 videos.remove("b");
             }
+            10 => ready.regions.push(ready.regions[0].clone()),
+            11 => ready.binding.region_tracks[0].snapshot.width += 2,
+            _ => ready.binding.region_tracks[0].snapshot.height += 2,
         }
         let report =
             import_with_ready_bindings(request(doc.clone(), true), &StillBindings::new(), &videos)

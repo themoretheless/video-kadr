@@ -108,13 +108,18 @@ pub(crate) fn prepare(
                 if let Some(previous) = descriptors.insert(asset.id.clone(), asset.clone()) {
                     ensure!(previous == *asset, "conflicting temporal region metadata");
                 }
-                assets.insert(asset.id.clone(), asset.clone());
+                ensure!(
+                    assets.insert(asset.id.clone(), asset.clone()).is_none(),
+                    "duplicate temporal region descriptor"
+                );
             }
             let mut used = BTreeSet::new();
             let target = logical.get(id).context("logical video original missing")?;
             for track in &mut ready.binding.region_tracks {
                 ensure!(
-                    track.snapshot.source_id == source.id.as_str(),
+                    track.snapshot.source_id == source.id.as_str()
+                        && track.snapshot.width == source.width
+                        && track.snapshot.height == source.height,
                     "prepared region belongs to another video original"
                 );
                 let old = SourceId::parse(&track.snapshot.mask_source_id)?;
