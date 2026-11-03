@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { setNativeProjectMediaPlaceholder, removeNativeProjectMedia, importConcatProject, type NativeNestedProject } from './api'
+import { setNativeProjectMediaPlaceholder, removeNativeProjectMedia, importConcatProject, fillNativeProjectMedia, type NativeNestedProject } from './api'
 import { createComposition } from './composition/commands'
 import { buildCompositionWireDocument } from './composition/payload'
 afterEach(() => vi.unstubAllGlobals())
@@ -34,4 +34,13 @@ it('imports Concat with stable logical media IDs while sending physical library 
   await importConcatProject(document,mediaBindings,undefined,'session',{},false)
   expect(JSON.parse(fetcher.mock.calls[1][1].body).preserveMediaIds).toBe(false)
   expect(mediaBindings['slot-a'].id).toBe('library-image')
+})
+
+it('native FillSlot sends only stable slot ID and registered file ID and validates returned binding',async()=>{
+ const descriptor={id:'slot',kind:'image' as const,durationTicks:0,width:16,height:16,hasAudio:false}
+ const filled={...project,projectMedia:{slot:{source:descriptor,librarySourceId:'replacement',name:'Fresh'}}}
+ const fetcher=vi.fn().mockImplementation(()=>Promise.resolve(new Response(JSON.stringify({schemaVersion:1,applied:true,project:filled}))));vi.stubGlobal('fetch',fetcher)
+ expect(await fillNativeProjectMedia(project,'slot','replacement','session')).toEqual(filled)
+ expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({project,mediaId:'slot',sourceId:'replacement'})
+ await expect(fillNativeProjectMedia(project,'slot','wrong','session')).rejects.toThrow('invalid project')
 })

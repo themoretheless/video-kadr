@@ -471,7 +471,7 @@ fn convert(
     project.dependency_order()?;
     Ok((project, mapping))
 }
-fn convert_clip(
+pub(crate) fn convert_clip(
     clip: &Value,
     bindings: &BTreeMap<String, CompositionSource>,
     width: f64,

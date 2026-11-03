@@ -1065,6 +1065,13 @@ export async function setNativeProjectMediaPlaceholder(project: NativeNestedProj
   if (!reply || typeof reply.applied !== 'boolean' || !reply.project || reply.project.root !== project.root || reply.project.schemaVersion !== 1) throw new Error('Native media placeholder returned invalid project')
   return reply.applied ? reply.project : project
 }
+export async function fillNativeProjectMedia(project:NativeNestedProject,mediaId:string,sourceId:string,token:string,signal?:AbortSignal):Promise<NativeNestedProject>{
+ const reply=await requestJson<{schemaVersion:number;applied:boolean;project:NativeNestedProject}>('/api/compositions/nested-media-fill',{method:'POST',headers:bearerHeaders(token,true),body:JSON.stringify({project,mediaId,sourceId}),signal})
+ if(signal?.aborted)throw new DOMException('Aborted','AbortError')
+ const item=reply?.project?.projectMedia?.[mediaId]
+ if(reply?.schemaVersion!==1||reply.applied!==true||reply.project.schemaVersion!==1||reply.project.root!==project.root||!item||item.placeholder===true||item.source.id!==mediaId||item.librarySourceId!==sourceId)throw new Error('Native FillSlot returned invalid project')
+ return reply.project
+}
 export async function removeNativeProjectMedia(project: NativeNestedProject, sourceId: string, signal?: AbortSignal): Promise<NativeNestedProject> {
   const reply = await requestJson<{ project: NativeNestedProject; applied: boolean }>('/api/compositions/nested-media-remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, sourceId }), signal })
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')

@@ -183,3 +183,11 @@ fn media_controls(clip:&Value,kind:&str,out:&mut Value)->Result<()>{
  let links=specs.iter().map(|spec|super::concat_effect_upgrade::AppliedFilter{id:spec.id.clone(),params:spec.params.iter().map(|(name,value)|(name.clone(),*value as f64)).collect(),enabled:!spec.bypass,keys:spec.concat_source_keys.clone()}).collect::<Vec<_>>();
  ensure!(super::concat_audio_import::convert(&links)?==specs,"Native DSP animation cannot be exported losslessly");let mut filters=serde_json::to_value(links)?;for link in filters.as_array_mut().unwrap(){if let Some(keys)=link.get_mut("keys"){*keys=source_keys(keys)?;}}out["filters"]=filters;Ok(())
 }
+
+/// Canonical source controls for a single native media clip.
+pub(crate) fn media_clip(clip:&Value,kind:&str,width:f64,height:f64)->Result<Value>{
+ let (start,duration)=if kind=="image"{(clip["timelineStartTick"].as_u64().context("Missing image start")?,clip["durationTicks"].as_u64().context("Missing image duration")?)}else{media_timing(clip)?};
+ let mut view=clip.clone();view["timelineStartTick"]=json!(start);view["timelineEndTick"]=json!(start.checked_add(duration).context("Media end overflow")?);
+ let mut out=if kind=="audio"{json!({"id":clip["id"],"kind":"audio","mediaId":clip["sourceId"],"start":start as f64/1e6,"duration":duration as f64/1e6})}else{visual(&view,width,height,Some(kind))?};
+ media_controls(clip,kind,&mut out)?;Ok(out)
+}

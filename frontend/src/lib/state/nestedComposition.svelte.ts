@@ -145,6 +145,15 @@ export async function setNestedMediaPlaceholder(sourceId: string, placeholder: b
   }, false, undefined, undefined, 0, undefined, guard)
 }
 
+export async function fillNestedMedia(mediaId:string,sourceId:string,token:string,validateCommit?:()=>void):Promise<void>{
+ const guard=()=>{assertHistoryUnlocked();validateCommit?.()}
+ await editNestedDocument(async document=>{
+  guard()
+  const {fillNativeProjectMedia}=await import('$lib/api')
+  return fillNativeProjectMedia(document,mediaId,sourceId,token)
+ },true,undefined,undefined,0,undefined,guard)
+}
+
 export async function removeNestedMedia(sourceId: string): Promise<void> {
   const guard = () => assertHistoryUnlocked()
   await editNestedDocument(async document => {

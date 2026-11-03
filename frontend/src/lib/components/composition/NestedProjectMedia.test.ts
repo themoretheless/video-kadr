@@ -2,11 +2,11 @@
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, expect, it, vi } from 'vitest'
 import * as api from '$lib/api'
-import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, undoNestedComposition, redoNestedComposition } from '$lib/state/nestedComposition.svelte'
+import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, fillNestedMedia, undoNestedComposition, redoNestedComposition } from '$lib/state/nestedComposition.svelte'
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import Controls from './NestedProjectMedia.svelte'
-vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn(), removeNativeProjectMedia: vi.fn() }))
+vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn(), removeNativeProjectMedia: vi.fn(), fillNativeProjectMedia: vi.fn() }))
 const source = { id: 'source-a', kind: 'image' as const, durationTicks: 0, width: 16, height: 16, hasAudio: false }
 function project(): api.NativeNestedProject {
   const content = { ...buildCompositionWireDocument(createComposition({ width: 16, height: 16, fps: 24, backgroundColor: '#000000' })), sources: { [source.id]: source } }
@@ -57,4 +57,22 @@ it('keeps the project and history on refusal and ignores a removal after close',
   const pending=removeNestedMedia(source.id); await vi.waitFor(()=>expect(api.removeNativeProjectMedia).toHaveBeenCalledTimes(2))
   closeNestedComposition(); resolve(initial); await pending
   expect(nestedComposition.document).toBeNull(); expect(nestedHistory.past).toHaveLength(0)
+})
+
+it('fills a project slot through the registered-source route with one Undo/Redo and drops stale output',async()=>{
+ const initial=project();initial.projectMedia={[source.id]:{source,name:'Slot',placeholder:true}};nestedComposition.document=initial;nestedComposition.renderedOutputs={root:'old movie'}
+ const filled={...initial,projectMedia:{[source.id]:{source,librarySourceId:'replacement',name:'Fresh'}}}
+ vi.mocked(api.fillNativeProjectMedia).mockResolvedValue(filled)
+ component=mount(Controls,{target:document.body,props:{token:'session',sources:[{label:'New file',source:{...source,id:'replacement'}}]}});await tick()
+ const select=document.querySelector<HTMLSelectElement>('select')!;select.value='replacement';select.dispatchEvent(new Event('change',{bubbles:true}));await tick()
+ document.querySelector<HTMLButtonElement>('button[aria-label="Заполнить слот проекта: Slot"]')!.click()
+ await vi.waitFor(()=>expect(nestedHistory.past).toHaveLength(1));expect(api.fillNativeProjectMedia).toHaveBeenCalledExactlyOnceWith(initial,source.id,'replacement','session');expect(nestedComposition.document).toEqual(filled);expect(nestedComposition.renderedOutputs).toEqual({})
+ undoNestedComposition();expect(nestedComposition.document).toEqual(initial);expect(nestedComposition.renderedOutputs).toEqual({root:'old movie'});redoNestedComposition();expect(nestedComposition.document).toEqual(filled)
+})
+it('keeps native FillSlot atomic on refusal, context changes and close',async()=>{
+ const initial=project();nestedComposition.document=initial;vi.mocked(api.fillNativeProjectMedia).mockRejectedValue(new Error('retained controls'))
+ await fillNestedMedia(source.id,'replacement','session');expect(nestedComposition.document).toEqual(initial);expect(nestedHistory.past).toHaveLength(0);expect(nestedHistory.error).toBe('retained controls')
+ let resolve!:(value:api.NativeNestedProject)=>void;vi.mocked(api.fillNativeProjectMedia).mockImplementation(()=>new Promise(done=>{resolve=done}))
+ let current=true;const pending=fillNestedMedia(source.id,'replacement','session',()=>{if(!current)throw new Error('source context changed')});await vi.waitFor(()=>expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(2));current=false;resolve({...initial,projectMedia:{}});await pending;expect(nestedComposition.document).toEqual(initial);expect(nestedHistory.past).toHaveLength(0)
+ const late=fillNestedMedia(source.id,'replacement','session');await vi.waitFor(()=>expect(api.fillNativeProjectMedia).toHaveBeenCalledTimes(3));closeNestedComposition();resolve(initial);await late;expect(nestedComposition.document).toBeNull();expect(nestedHistory.past).toHaveLength(0)
 })

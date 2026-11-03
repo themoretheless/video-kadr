@@ -18,7 +18,10 @@ static SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
-    document: Value,
+    #[serde(default)]
+    document: Option<Value>,
+    #[serde(default)]
+    project: Option<crate::domain::nested_composition::NestedCompositionProject>,
     media_id: String,
     source_id: SourceId,
 }
@@ -29,17 +32,42 @@ pub async fn fill_handler(
 ) -> AppResult<Response> {
     super::publish::authenticated_actor(&state, &headers).await?;
     super::library::authorize_source_access(&state, request.source_id.as_str(), &headers).await?;
-    crate::domain::concat_media_slots::admit(&request.document)
-        .map_err(|e| AppError::bad_request(e.to_string()))?;
-    if !request.document["media"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|item| item["id"] == request.media_id && item["placeholder"] == true)
-    {
-        return Err(AppError::bad_request(
-            "FillSlot requires an existing placeholder",
-        ));
+    match (&request.document, &request.project) {
+        (Some(document), None) => {
+            crate::domain::concat_media_slots::admit(document)
+                .map_err(|e| AppError::bad_request(e.to_string()))?;
+            if !document["media"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["id"] == request.media_id && item["placeholder"] == true)
+            {
+                return Err(AppError::bad_request(
+                    "FillSlot requires an existing placeholder",
+                ));
+            }
+        }
+        (None, Some(project)) => {
+            project
+                .dependency_order()
+                .map_err(|e| AppError::bad_request(e.to_string()))?;
+            let id = SourceId::parse(request.media_id.clone())
+                .map_err(|e| AppError::bad_request(e.to_string()))?;
+            if !project
+                .project_media
+                .get(&id)
+                .is_some_and(|item| item.placeholder)
+            {
+                return Err(AppError::bad_request(
+                    "FillSlot requires an existing placeholder",
+                ));
+            }
+        }
+        _ => {
+            return Err(AppError::bad_request(
+                "Provide one source document or native project",
+            ))
+        }
     }
     if !state.tools.ffmpeg {
         return Err(AppError::service_unavailable("Требуется локальный ffprobe"));
@@ -116,9 +144,30 @@ pub async fn fill_handler(
         &probe,
     )
     .map_err(|e| AppError::bad_request(e.to_string()))?;
-    let document =
-        crate::domain::concat_media_slots::fill(&request.document, &request.media_id, &replacement)
-            .map_err(|e| AppError::bad_request(e.to_string()))?;
+    let mut result = match (&request.document, &request.project) {
+        (Some(document), None) => {
+            json!({"document":crate::domain::concat_media_slots::fill(document,&request.media_id,&replacement).map_err(|e|AppError::bad_request(e.to_string()))?})
+        }
+        (None, Some(project)) => {
+            let id = SourceId::parse(request.media_id.clone())
+                .map_err(|e| AppError::bad_request(e.to_string()))?;
+            let project = project.clone();
+            let replacement = replacement.clone();
+            let source = source.clone();
+            let project = tokio::task::spawn_blocking(move || {
+                crate::domain::project_media_fill::fill(&project, &id, &replacement, &source)
+            })
+            .await
+            .map_err(|e| AppError::bad_request(e.to_string()))?
+            .map_err(|e| AppError::bad_request(format!("{e:#}")))?;
+            json!({"project":project})
+        }
+        _ => unreachable!(),
+    };
+    result["schemaVersion"] = json!(1);
+    result["applied"] = json!(true);
+    result["source"] =
+        serde_json::to_value(&source).map_err(|e| AppError::bad_request(e.to_string()))?;
     super::library::authorize_source_access(&state, request.source_id.as_str(), &headers).await?;
     let current = state
         .library
@@ -147,9 +196,5 @@ pub async fn fill_handler(
             "Источник изменился; повторите заполнение",
         ));
     }
-    Ok((
-        [(header::CACHE_CONTROL, "private, no-store")],
-        Json(json!({"schemaVersion":1,"document":document,"applied":true,"source":source})),
-    )
-        .into_response())
+    Ok(([(header::CACHE_CONTROL, "private, no-store")], Json(result)).into_response())
 }

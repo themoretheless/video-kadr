@@ -442,6 +442,12 @@ pub fn build_router_with_mcp(
             )),
         )
         .route(
+            "/compositions/nested-media-fill",
+            post(handlers::concat_registered_media::fill_handler).layer(DefaultBodyLimit::max(
+                db::MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES + 64 * 1024,
+            )),
+        )
+        .route(
             "/compositions/nested-media-remove",
             post(handlers::nested_composition::project_media_remove_handler).layer(DefaultBodyLimit::max(
                 db::MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES + 64 * 1024,

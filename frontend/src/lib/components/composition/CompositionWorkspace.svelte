@@ -552,7 +552,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
       <NestedMarkers disabled={compositionState.save.busy} />
       <NestedTrackControls disabled={compositionState.save.busy} />
       <NestedMediaInsert disabled={compositionState.save.busy} />
-      <NestedProjectMedia disabled={compositionState.save.busy} />
+      <NestedProjectMedia disabled={compositionState.save.busy} token={authState.token} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
       <NestedClipTransfer disabled={compositionState.save.busy} />
       <NestedConcatTitleInsert disabled={compositionState.save.busy} />
       <NestedConcatTitleInspector disabled={compositionState.save.busy} />

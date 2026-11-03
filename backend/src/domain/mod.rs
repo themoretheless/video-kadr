@@ -826,3 +826,5 @@ pub mod project_media;
 pub mod concat_media_slots;
 
 pub mod concat_registered_media;
+
+pub mod project_media_fill;
