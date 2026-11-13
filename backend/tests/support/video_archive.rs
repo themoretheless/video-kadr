@@ -705,3 +705,170 @@ async fn assert_historical_preview(
         String::from_utf8_lossy(&body)
     );
 }
+
+pub async fn template_round_trip(
+    original: &video_kadr_backend::state::AppState,
+    project_id: &str,
+    token: &str,
+    node: &str,
+    time: u64,
+    expected: &[u8],
+    regions: bool,
+) {
+    let response = super::router(original.clone())
+        .oneshot(
+            Request::get(format!("/api/composition-projects/{project_id}/template"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
+
+    let (state, _dir) = super::make_state(true, false).await;
+    let state = state
+        .with_person_config(None)
+        .with_selfie_config(None)
+        .with_sam_config(None);
+    let user = state
+        .db
+        .register_auth_user("template-mask-owner", "template mask test password")
+        .await
+        .unwrap()
+        .unwrap();
+    let app = super::router(state.clone());
+    let parsed = video_kadr_backend::template_bundle::read(
+        std::io::Cursor::new(bytes.as_ref()),
+        &state.staging_dir(),
+    )
+    .unwrap();
+    assert_eq!(parsed.video_caches.len(), 1);
+    let identity = parsed.manifest.video_caches[0].identity.clone();
+    drop(parsed);
+    let upload = |uri: &str| {
+        let mut body = b"--TPLMASK\r\nContent-Disposition: form-data; name=\"file\"; filename=\"mask.vktemplate\"\r\n\r\n".to_vec();
+        body.extend_from_slice(&bytes);
+        body.extend_from_slice(b"\r\n--TPLMASK--\r\n");
+        Request::post(uri)
+            .header("authorization", format!("Bearer {}", user.token))
+            .header("content-type", "multipart/form-data; boundary=TPLMASK")
+            .body(Body::from(body))
+            .unwrap()
+    };
+    let uri = "/api/composition-projects/template-import?fills=%5B%5D";
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new().filename(state.storage.join("app.db")),
+        )
+        .await
+        .unwrap();
+    sqlx::query("CREATE TRIGGER reject_template_cache BEFORE INSERT ON concat_video_model_choices BEGIN SELECT RAISE(ABORT,'template cache failure'); END")
+        .execute(&pool).await.unwrap();
+    assert!(!app
+        .clone()
+        .oneshot(upload(uri))
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    assert_clean(&state, &pool).await;
+    sqlx::query("DROP TRIGGER reject_template_cache")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let direct = app.clone().oneshot(upload(uri)).await.unwrap();
+    let installed = app
+        .clone()
+        .oneshot(upload("/api/template-library"))
+        .await
+        .unwrap();
+    assert_eq!(installed.status(), StatusCode::CREATED);
+    let entry: Value =
+        serde_json::from_slice(&to_bytes(installed.into_body(), 1 << 20).await.unwrap()).unwrap();
+    let stored = app
+        .clone()
+        .oneshot(
+            Request::post(format!(
+                "/api/template-library/{}/create?fills=%5B%5D",
+                entry["id"].as_str().unwrap()
+            ))
+            .header("authorization", format!("Bearer {}", user.token))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut imported_sources = std::collections::BTreeSet::new();
+    for response in [direct, stored] {
+        let status = response.status();
+        let body = to_bytes(response.into_body(), 8 * 1024 * 1024)
+            .await
+            .unwrap();
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&body)
+        );
+        let imported: Value = serde_json::from_slice(&body).unwrap();
+        let saved = &imported["project"];
+        let id = saved["id"].as_str().unwrap();
+        let mut document = saved["document"].clone();
+        let clip = &mut document["compositions"][node]["content"]["tracks"][0]["clips"][0];
+        clip["enabled"] = json!(true);
+        let source = clip["sourceId"].as_str().unwrap().to_owned();
+        assert!(clip["concatCutout"].get("origin").is_none());
+        let physical = document["projectMedia"][&source]["librarySourceId"]
+            .as_str()
+            .unwrap();
+        assert!(imported_sources.insert(physical.to_owned()));
+        let cache = concat_video_cache::restore_for_model(
+            &state,
+            "template-mask-owner",
+            id,
+            &source,
+            saved["revision"].as_u64().unwrap(),
+            &identity.runtime_hash,
+            &identity.model_hash,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(cache.identity().unwrap(), identity.cache_identity);
+        let refs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM concat_video_project_region_refs WHERE project_id=?",
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(refs, i64::from(regions));
+        let response = app.clone().oneshot(Request::post("/api/compositions/nested-preview")
+            .header("authorization", format!("Bearer {}", user.token))
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"project":document,"compositionId":node,"timeUs":time,
+                "renderedOutputs":{},"savedProject":{"projectId":id,"expectedRevision":saved["revision"]}}).to_string())).unwrap())
+            .await.unwrap();
+        let status = response.status();
+        let pixels = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&pixels)
+        );
+        assert_eq!(pixels.as_ref(), expected);
+    }
+    assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
+}

@@ -8,6 +8,7 @@ use crate::domain::{
     nested_composition::NestedCompositionProject,
     project_media::ProjectMediaItem,
 };
+use crate::project_archive::{ArchiveVideoCacheInput, ArchivedVideoCache, StagedArchiveVideoCache};
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -29,6 +30,8 @@ pub struct Manifest {
     pub name: String,
     pub project: NestedCompositionProject,
     pub assets: Vec<Asset>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub video_caches: Vec<ArchivedVideoCache>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poster: Option<Poster>,
 }
@@ -85,14 +88,6 @@ pub fn plan(project: &NestedCompositionProject) -> Result<Plan> {
     project.dependency_order()?;
     let mut next = project.clone();
     for node in project.compositions.values() {
-        for track in &node.content.tracks {
-            if let CompositionTrack::Video { clips, .. } = track {
-                ensure!(
-                    clips.iter().all(|clip| clip.concat_cutout.is_none()),
-                    "Video mask stores require template cache packaging"
-                );
-            }
-        }
         for (id, source) in &node.content.sources {
             if let Some(item) = next.project_media.get(id) {
                 ensure!(
@@ -139,11 +134,61 @@ pub fn plan(project: &NestedCompositionProject) -> Result<Plan> {
             item.library_source_id = Some(assets[physical].clone());
         }
     }
+    for node in next.compositions.values_mut() {
+        for track in &mut node.content.tracks {
+            if let CompositionTrack::Video { clips, .. } = track {
+                for clip in clips {
+                    if let Some(binding) = &mut clip.concat_cutout {
+                        binding.origin = None;
+                    }
+                }
+            }
+        }
+    }
+    validate_mask_sources(&next)?;
     next.dependency_order()?;
     Ok(Plan {
         project: next,
         assets,
     })
+}
+/// A mask belongs to the exact original bytes. Its source and region movies
+/// must be fixed design assets, since placeholders omit their original bytes.
+fn validate_mask_sources(project: &NestedCompositionProject) -> Result<()> {
+    for node in project.compositions.values() {
+        for track in &node.content.tracks {
+            if let CompositionTrack::Video { clips, .. } = track {
+                for clip in clips {
+                    let Some(binding) = &clip.concat_cutout else {
+                        continue;
+                    };
+                    ensure!(
+                        binding.origin.is_none(),
+                        "Template video mask retains an external origin"
+                    );
+                    ensure!(
+                        project
+                            .project_media
+                            .get(&clip.source_id)
+                            .is_some_and(|item| !item.placeholder
+                                && item.source.kind
+                                    == crate::domain::composition::SourceKind::Video),
+                        "Video masks require a fixed template video asset",
+                    );
+                    for region in &binding.region_tracks {
+                        ensure!(
+                            project
+                                .project_media
+                                .get(&SourceId::parse(region.snapshot.mask_source_id.as_str())?)
+                                .is_some_and(|item| !item.placeholder),
+                            "Video mask regions require fixed template assets",
+                        );
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 fn validate(manifest: &Manifest) -> Result<()> {
     ensure!(manifest.schema_version == 1, "Unsupported template version");
@@ -164,14 +209,6 @@ fn validate(manifest: &Manifest) -> Result<()> {
                     .is_some_and(|item| item.source == *source),
                 "Template source has no canonical bin record"
             );
-        }
-        for track in &node.content.tracks {
-            if let CompositionTrack::Video { clips, .. } = track {
-                ensure!(
-                    clips.iter().all(|clip| clip.concat_cutout.is_none()),
-                    "Video mask stores require template cache packaging"
-                );
-            }
         }
     }
     for item in manifest.project.project_media.values() {
@@ -205,6 +242,23 @@ fn validate(manifest: &Manifest) -> Result<()> {
         bytes = bytes
             .checked_add(asset.byte_length)
             .context("Template asset size overflow")?;
+    }
+    validate_mask_sources(&manifest.project)?;
+    crate::project_archive::video::validate_bindings(
+        &serde_json::to_value(&manifest.project)?,
+        &manifest.video_caches,
+        true,
+        |physical, hash| {
+            manifest
+                .assets
+                .iter()
+                .any(|asset| asset.key.as_str() == physical && asset.sha256 == hash)
+        },
+    )?;
+    for cache in &manifest.video_caches {
+        bytes = bytes
+            .checked_add(cache.byte_length)
+            .context("Template size overflow")?;
     }
     if let Some(poster) = &manifest.poster {
         ensure!(
@@ -275,6 +329,22 @@ pub fn write_with_poster<W: Write + Seek>(
     inputs: &[Input],
     poster_png: Option<&[u8]>,
 ) -> Result<W> {
+    write_with_resources(writer, name, project, inputs, poster_png, &[], &[])
+}
+
+pub(crate) fn write_with_resources<W: Write + Seek>(
+    writer: W,
+    name: &str,
+    project: &NestedCompositionProject,
+    inputs: &[Input],
+    poster_png: Option<&[u8]>,
+    video_caches: &[ArchivedVideoCache],
+    video_inputs: &[ArchiveVideoCacheInput],
+) -> Result<W> {
+    ensure!(
+        video_caches.len() == video_inputs.len(),
+        "Template video cache payload count differs"
+    );
     let poster = poster_png.map(poster_info).transpose()?;
     let prepared = plan(project)?;
     let files: BTreeMap<_, _> = inputs
@@ -301,6 +371,7 @@ pub fn write_with_poster<W: Write + Seek>(
         name: name.into(),
         project: prepared.project,
         assets,
+        video_caches: video_caches.to_vec(),
         poster,
     };
     validate(&manifest)?;
@@ -328,6 +399,19 @@ pub fn write_with_poster<W: Write + Seek>(
     if let Some(bytes) = poster_png {
         zip.start_file("poster.png", options)?;
         zip.write_all(bytes)?;
+    }
+    for (cache, input) in video_caches.iter().zip(video_inputs) {
+        ensure!(cache.key == input.key, "Template video cache order differs");
+        zip.start_file(format!("video-caches/{}", cache.key), options)?;
+        let (length, hash) = digest(
+            &mut File::open(&input.path)?,
+            Some(&mut zip),
+            cache.byte_length,
+        )?;
+        ensure!(
+            length == cache.byte_length && hash == cache.sha256,
+            "Template video cache changed during packaging"
+        );
     }
     Ok(zip.finish()?)
 }
@@ -359,6 +443,7 @@ pub struct Parsed {
     pub manifest: Manifest,
     pub assets: Vec<StagedAsset>,
     pub poster_png: Option<Vec<u8>>,
+    pub video_caches: Vec<StagedArchiveVideoCache>,
 }
 /// Stages only allowlisted records under fresh names; never extracts ZIP paths.
 pub fn read<R: Read + Seek>(reader: R, staging: &Path) -> Result<Parsed> {
@@ -381,7 +466,11 @@ pub fn read<R: Read + Seek>(reader: R, staging: &Path) -> Result<Parsed> {
     };
     validate(&manifest)?;
     ensure!(
-        zip.len() == manifest.assets.len() + 1 + usize::from(manifest.poster.is_some()),
+        zip.len()
+            == manifest.assets.len()
+                + 1
+                + usize::from(manifest.poster.is_some())
+                + manifest.video_caches.len(),
         "Template contains missing or unexpected records"
     );
     let mut assets = Vec::new();
@@ -430,9 +519,39 @@ pub fn read<R: Read + Seek>(reader: R, staging: &Path) -> Result<Parsed> {
     } else {
         None
     };
+    let mut video_caches = Vec::new();
+    let cache_offset = manifest.assets.len() + 1 + usize::from(manifest.poster.is_some());
+    for (index, cache) in manifest.video_caches.iter().enumerate() {
+        let mut entry = zip.by_index(cache_offset + index)?;
+        ensure!(
+            entry.name() == format!("video-caches/{}", cache.key)
+                && entry.size() == cache.byte_length,
+            "Invalid template video cache record",
+        );
+        let staged = StagedArchiveVideoCache::new(
+            cache.key.clone(),
+            staging.join(format!("{}.template-video-cache", uuid::Uuid::new_v4())),
+        );
+        let mut options = File::options();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(staged.path())?;
+        let (length, hash) = digest(&mut entry, Some(&mut file), cache.byte_length)?;
+        ensure!(
+            length == cache.byte_length && hash == cache.sha256,
+            "Template video cache checksum mismatch"
+        );
+        file.flush()?;
+        video_caches.push(staged);
+    }
     Ok(Parsed {
         manifest,
         assets,
         poster_png,
+        video_caches,
     })
 }

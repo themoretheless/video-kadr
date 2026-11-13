@@ -22,6 +22,9 @@ pub struct StagedArchiveVideoCache {
     path: PathBuf,
 }
 impl StagedArchiveVideoCache {
+    pub(crate) fn new(key: String, path: PathBuf) -> Self {
+        Self { key, path }
+    }
     pub fn key(&self) -> &str {
         &self.key
     }
@@ -36,20 +39,34 @@ impl Drop for StagedArchiveVideoCache {
 }
 
 pub(super) fn validate(manifest: &ProjectArchiveManifest) -> Result<(), ArchiveError> {
-    if manifest.video_caches.len() > MAX_COMPOSITION_PROJECT_SOURCES {
+    validate_bindings(
+        &manifest.project.document,
+        &manifest.video_caches,
+        manifest.schema_version == ARCHIVE_VIDEO_FORMAT_VERSION,
+        |physical, hash| {
+            manifest
+                .sources
+                .iter()
+                .any(|s| s.source_id == physical && s.media_type == "video" && s.sha256 == hash)
+        },
+    )
+}
+pub(crate) fn validate_bindings(
+    document: &Value,
+    caches: &[ArchivedVideoCache],
+    require_complete: bool,
+    has_source: impl Fn(&str, &str) -> bool,
+) -> Result<(), ArchiveError> {
+    if caches.len() > MAX_COMPOSITION_PROJECT_SOURCES {
         return Err(ArchiveError::Limit("too many video cache entries"));
     }
     let mut keys = HashSet::new();
     let mut tuples = HashSet::new();
-    let clips: Vec<_> = if let Some(nodes) = manifest
-        .project
-        .document
-        .get("compositions")
-        .and_then(Value::as_object)
+    let clips: Vec<_> = if let Some(nodes) = document.get("compositions").and_then(Value::as_object)
     {
         nodes.values().filter_map(|n| n.get("content")).collect()
     } else {
-        vec![&manifest.project.document]
+        vec![document]
     };
     let bindings: Vec<_> = clips
         .iter()
@@ -74,7 +91,7 @@ pub(super) fn validate(manifest: &ProjectArchiveManifest) -> Result<(), ArchiveE
                 .map(|binding| (clip, binding))
         })
         .collect();
-    for cache in &manifest.video_caches {
+    for cache in caches {
         if !valid_composition_source_id(&cache.key)
             || !keys.insert(&cache.key)
             || !valid_composition_source_id(&cache.source_id)
@@ -116,14 +133,10 @@ pub(super) fn validate(manifest: &ProjectArchiveManifest) -> Result<(), ArchiveE
         )) {
             return Err(ArchiveError::Invalid("duplicate video cache binding"));
         }
-        let physical = crate::handlers::concat_cutout_access::library_id(
-            &manifest.project.document,
-            &cache.source_id,
-        )
-        .map_err(|_| ArchiveError::Invalid("invalid video cache library binding"))?;
-        if !manifest.sources.iter().any(|s| {
-            s.source_id == physical && s.media_type == "video" && s.sha256 == identity.video_hash
-        }) {
+        let physical =
+            crate::handlers::concat_cutout_access::library_id(document, &cache.source_id)
+                .map_err(|_| ArchiveError::Invalid("invalid video cache library binding"))?;
+        if !has_source(&physical, &identity.video_hash) {
             return Err(ArchiveError::Invalid(
                 "video cache does not match archived source",
             ));
@@ -135,10 +148,9 @@ pub(super) fn validate(manifest: &ProjectArchiveManifest) -> Result<(), ArchiveE
             return Err(ArchiveError::Invalid("unused video cache entry"));
         }
     }
-    if manifest.schema_version == ARCHIVE_VIDEO_FORMAT_VERSION {
+    if require_complete {
         for (clip, binding) in bindings {
-            if !manifest
-                .video_caches
+            if !caches
                 .iter()
                 .any(|cache| matches_binding(clip, binding, cache))
             {

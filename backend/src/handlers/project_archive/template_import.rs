@@ -238,8 +238,16 @@ pub(super) async fn create(
         .iter()
         .map(|(a, b)| (a.as_str().into(), b.as_str().into()))
         .collect();
-    let project = tokio::task::spawn_blocking(move || {
-        template_bundle::instantiate(&parsed.manifest, &design, &fills)
+    let entries = parsed.manifest.video_caches.clone();
+    let payloads = parsed.video_caches;
+    let (project, old_document) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let project = template_bundle::instantiate(&parsed.manifest, &design, &fills)?;
+        let old_document = if !parsed.manifest.video_caches.is_empty() {
+            serde_json::to_value(&parsed.manifest.project)?
+        } else {
+            Value::Null
+        };
+        Ok((project, old_document))
     })
     .await
     .map_err(|e| AppError::internal("join template assembly", e))?
@@ -271,6 +279,25 @@ pub(super) async fn create(
     }
     let source_ids = crate::db::extract_document_source_ids(&document)
         .map_err(|e| AppError::bad_request(e.to_string()))?;
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let _cancel_on_drop = cancel.clone().drop_guard();
+    let mut video = run_with_timeout(
+        video_import::prepare(
+            &state,
+            &actor,
+            &old_document,
+            &document,
+            &mapping,
+            &prepared,
+            &entries,
+            &payloads,
+            &cancel,
+        ),
+        ARCHIVE_IO_TIMEOUT,
+        "Проверка видеомасок шаблона превысила лимит времени",
+    )
+    .await?
+    .map_err(|error| AppError::bad_request(error.to_string()))?;
     let saved = publish_with_rollback(
         &state,
         &prepared,
@@ -279,9 +306,10 @@ pub(super) async fn create(
         &source_ids,
         &actor,
         space.as_deref(),
-        &[],
+        &video.registrations,
     )
     .await?;
+    video.commit();
     for source in &prepared {
         if let Some(entry) = state.library.get(&source.new_id).await {
             state.index_media(&entry).await;

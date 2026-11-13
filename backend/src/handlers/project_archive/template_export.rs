@@ -92,6 +92,26 @@ pub async fn export(
     } else {
         None
     };
+    let mut media_bytes = poster.as_ref().map_or(0, |bytes| bytes.len() as u64);
+    for input in &inputs {
+        let length = tokio::fs::metadata(&input.path)
+            .await
+            .map_err(|error| AppError::internal("stat template asset", error))?
+            .len();
+        media_bytes = media_bytes
+            .checked_add(length)
+            .ok_or_else(|| AppError::payload_too_large("Пакет шаблона слишком большой"))?;
+    }
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let _cancel_on_drop = cancel.clone().drop_guard();
+    let video = run_with_timeout(
+        video_export::collect(&state, &actor, &project, media_bytes, &cancel),
+        ARCHIVE_IO_TIMEOUT,
+        "Сбор видеомасок шаблона превысил лимит времени",
+    )
+    .await?
+    .map_err(|error| AppError::conflict(error.to_string()))?;
+    let authorities = video.authorities.clone();
     let output = state
         .staging_dir()
         .join(format!("{}.vktemplate-export", Uuid::new_v4()));
@@ -105,8 +125,16 @@ pub async fn export(
             .read(true)
             .create_new(true)
             .open(archive.path())?;
-        template_bundle::write_with_poster(file, &name, &native, &inputs, poster.as_deref())?
-            .sync_all()?;
+        template_bundle::write_with_resources(
+            file,
+            &name,
+            &native,
+            &inputs,
+            poster.as_deref(),
+            &video.entries,
+            &video.inputs,
+        )?
+        .sync_all()?;
         Ok(archive)
     })
     .await
@@ -130,6 +158,9 @@ pub async fn export(
             return Err(AppError::conflict("Ресурс шаблона изменился"));
         }
     }
+    crate::handlers::concat_video_bound::recheck_authorities(&state, &actor, &authorities)
+        .await
+        .map_err(|error| AppError::conflict(error.to_string()))?;
     archive_actor(&state, &headers, true).await?;
     let current = state
         .db

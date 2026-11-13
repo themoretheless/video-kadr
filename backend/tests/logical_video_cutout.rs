@@ -707,6 +707,7 @@ async fn qualify_archive_export(state:&video_kadr_backend::state::AppState,token
  let missing=state.db.create_space_composition_project("Missing archived cache",&document,&own.source_ids,"owner",space).await.unwrap();assert_eq!(app.clone().oneshot(export(&missing.id)).await.unwrap().status(),StatusCode::CONFLICT);
  assert!(std::fs::read_dir(state.staging_dir()).unwrap().all(|entry|!entry.unwrap().file_name().to_string_lossy().contains("veproj-export")));
  Box::pin(support::video_archive::import_and_preview(&bytes,Some("concat-timeline-0"),100000,expected,false)).await;
+ Box::pin(support::video_archive::template_round_trip(state,&own.id,token,"concat-timeline-0",100000,expected,false)).await;
  // Physical-ID flat projects use the same archive path and acquire fresh IDs.
  let physical=own.source_ids[0].clone();let mut flat=own.document["compositions"]["concat-timeline-0"]["content"].clone();let mut descriptor=flat["sources"].as_object_mut().unwrap().remove("prepared-slot").unwrap();descriptor["id"]=json!(physical);flat["sources"][&physical]=descriptor;
  for clip in flat["tracks"][0]["clips"].as_array_mut().unwrap(){clip["sourceId"]=json!(physical);}
