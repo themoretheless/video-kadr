@@ -1,4 +1,5 @@
-//! Saved native-project template download. No slot file is opened.
+//! Saved native-project template download with an optional rendered poster.
+
 use super::*;
 use crate::{
     domain::{composition::SourceId, nested_composition::NestedCompositionProject},
@@ -6,10 +7,17 @@ use crate::{
     template_bundle,
 };
 
+#[derive(Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Options {
+    poster_time_us: Option<u64>,
+    poster_composition_id: Option<String>,
+}
 pub async fn export(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
     headers: HeaderMap,
+    axum::extract::Query(options): axum::extract::Query<Options>,
 ) -> AppResult<Response> {
     let actor = archive_actor(&state, &headers, true).await?;
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
@@ -26,7 +34,20 @@ pub async fn export(
     let plan = template_bundle::plan(&native).map_err(|e| AppError::bad_request(e.to_string()))?;
     let mut inputs = Vec::new();
     let mut originals = Vec::new();
-    for source in plan.assets.keys() {
+    let mut required: std::collections::BTreeSet<_> = plan.assets.keys().cloned().collect();
+    let composition = options
+        .poster_composition_id
+        .as_deref()
+        .unwrap_or(&native.root);
+    if let Some(time) = options.poster_time_us {
+        let ids = native
+            .frame_image_sources(composition, time, &Default::default())
+            .map_err(|e| AppError::bad_request(e.to_string()))?;
+        required.extend(ids.iter().map(|id| native.library_source_id(id).clone()));
+    } else if options.poster_composition_id.is_some() {
+        return Err(AppError::bad_request("Укажите время кадра обложки"));
+    }
+    for source in &required {
         if !project.source_ids.iter().any(|id| id == source.as_str()) {
             return Err(AppError::conflict(
                 "Ресурс шаблона отсутствует в сохранённом проекте",
@@ -44,13 +65,33 @@ pub async fn export(
         let revision = SourceVideoRevision::read(&path)
             .await
             .map_err(|_| AppError::conflict("Ресурс шаблона отсутствует"))?;
-        inputs.push(template_bundle::Input {
-            source_id: SourceId::parse(source.as_str())
-                .map_err(|e| AppError::bad_request(e.to_string()))?,
-            path: path.clone(),
-        });
+        if plan.assets.contains_key(source) {
+            inputs.push(template_bundle::Input {
+                source_id: SourceId::parse(source.as_str())
+                    .map_err(|e| AppError::bad_request(e.to_string()))?,
+                path: path.clone(),
+            });
+        }
         originals.push((source.clone(), entry, path, revision));
     }
+    let poster = if let Some(time) = options.poster_time_us {
+        Some(
+            Box::pin(super::template_frame::render(
+                state.clone(),
+                headers.clone(),
+                native.clone(),
+                crate::handlers::concat_video_bound::SavedProject {
+                    project_id: id.clone(),
+                    expected_revision: project.revision,
+                },
+                composition.to_owned(),
+                time,
+            ))
+            .await?,
+        )
+    } else {
+        None
+    };
     let output = state
         .staging_dir()
         .join(format!("{}.vktemplate-export", Uuid::new_v4()));
@@ -64,7 +105,8 @@ pub async fn export(
             .read(true)
             .create_new(true)
             .open(archive.path())?;
-        template_bundle::write(file, &name, &native, &inputs)?.sync_all()?;
+        template_bundle::write_with_poster(file, &name, &native, &inputs, poster.as_deref())?
+            .sync_all()?;
         Ok(archive)
     })
     .await

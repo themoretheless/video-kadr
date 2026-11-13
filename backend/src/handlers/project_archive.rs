@@ -10,6 +10,7 @@ use std::time::Duration;
 mod video_export;
 mod video_import;
 mod template_export;
+mod template_frame;
 mod template_import;
 mod template_library;
 pub use template_library::{poster as native_template_poster_handler,list as native_template_list_handler,install as native_template_install_handler,download as native_template_download_handler,remove as native_template_remove_handler,instantiate as native_template_create_handler};

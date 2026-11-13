@@ -6,10 +6,15 @@ it('downloads the saved template directly without fetching its binary',async()=>
  const target=document.createElement('div');document.body.append(target);const urls:string[]=[]
  const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(function(this:HTMLAnchorElement){urls.push(this.getAttribute('href')!)})
  const fetcher=vi.spyOn(globalThis,'fetch')
- const component=mount(Control,{target,props:{projectId:'saved/native'}})
+ const component=mount(Control,{target,props:{projectId:'saved/native',timeUs:500000,compositionId:'other/timeline'}})
  try{
   await tick();target.querySelector('button')!.click();await tick()
-  expect(urls).toEqual(['/api/composition-projects/saved%2Fnative/template']);expect(fetcher).not.toHaveBeenCalled()
+  expect(urls).toEqual(['/api/composition-projects/saved%2Fnative/template'])
+  target.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()
+  await tick()
+  target.querySelector('button')!.click()
+  expect(urls[1]).toBe('/api/composition-projects/saved%2Fnative/template?posterTimeUs=500000&posterCompositionId=other%2Ftimeline')
+  expect(fetcher).not.toHaveBeenCalled()
   expect(target.textContent).toContain('Загрузка шаблона сохранённой версии началась');expect(document.querySelector('a[href*="saved%2Fnative"]')).toBeNull()
  }finally{await unmount(component);target.remove();click.mockRestore();fetcher.mockRestore()}
 })

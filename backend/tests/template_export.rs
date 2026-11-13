@@ -53,6 +53,9 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     );
     let source = |id: &str| json!({"id":id,"kind":"image","durationTicks":0,"width":16,"height":8,"hasAudio":false});
     let mut content = serde_json::to_value(Composition::new(CanvasSpec::default())).unwrap();
+    content["canvas"]["width"] = json!(16);
+    content["canvas"]["height"] = json!(8);
+    content["tracks"] = json!([{"id":"pictures","kind":"image","name":"Pictures","clips":[{"id":"stand-in","sourceId":"slot","timelineStartTick":0,"durationTicks":2000000,"transform":video_kadr_backend::domain::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1},"blendMode":"normal"}]}]);
     content["sources"] = json!({"slot":source("slot"),"design":source("design")});
     let document = json!({"schemaVersion":1,"root":"root","compositions":{"root":{"content":content,"instances":[]}},"projectMedia":{"slot":{"source":source("slot"),"librarySourceId":"missing-original","name":"Replace","placeholder":true},"design":{"source":source("design"),"librarySourceId":"design-file","name":"Design"}}});
     let saved = state
@@ -135,6 +138,49 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     drop(response);
+    assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
+    let poster_uri = format!("{uri}?posterTimeUs=500000&posterCompositionId=root");
+    let poster_request = || {
+        Request::get(&poster_uri)
+            .header(
+                header::COOKIE,
+                format!("video_kadr_session={}", owner.token),
+            )
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(
+        app.clone()
+            .oneshot(poster_request())
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
+    );
+    let original_path = state.sources_dir().join("original.png");
+    image::RgbaImage::from_pixel(16, 8, image::Rgba([12, 90, 160, 255]))
+        .save(&original_path)
+        .unwrap();
+    let mut original_entry = state.library.get("design-file").await.unwrap();
+    original_entry.id = "missing-original".into();
+    original_entry.filename = "original.png".into();
+    original_entry.url = "/files/sources/original.png".into();
+    original_entry.size_bytes = Some(std::fs::metadata(&original_path).unwrap().len());
+    assert!(state.library.add(original_entry).await);
+    let response = app.clone().oneshot(poster_request()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    let parsed =
+        video_kadr_backend::template_bundle::read(std::io::Cursor::new(bytes), &stage).unwrap();
+    assert_eq!(parsed.assets.len(), 1);
+    let png = parsed.poster_png.as_ref().unwrap();
+    let image = image::load_from_memory(png).unwrap().to_rgba8();
+    assert!(image.width() <= 320 && image.height() <= 180);
+    assert_eq!(
+        image.get_pixel(image.width() / 2, image.height() / 2).0,
+        [12, 90, 160, 255]
+    );
+    drop(parsed);
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
     std::fs::remove_file(&path).unwrap();
     assert_eq!(

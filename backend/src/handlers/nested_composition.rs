@@ -111,12 +111,12 @@ pub async fn nested_group_handler(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NestedPreviewRequest {
     #[serde(default)]
-    saved_project: Option<super::concat_video_bound::SavedProject>,
-    project: NestedCompositionProject,
-    time_us: u64,
-    rendered_outputs: std::collections::BTreeMap<String, String>,
+    pub(crate) saved_project: Option<super::concat_video_bound::SavedProject>,
+    pub(crate) project: NestedCompositionProject,
+    pub(crate) time_us: u64,
+    pub(crate) rendered_outputs: std::collections::BTreeMap<String, String>,
     #[serde(default)]
-    composition_id: Option<String>,
+    pub(crate) composition_id: Option<String>,
 }
 
 /// Raw RGBA preview of authorized, previously rendered local compositions.

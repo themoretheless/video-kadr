@@ -887,8 +887,15 @@ export async function revokeProjectReviewShare(
  * Direct navigation keeps multi-gigabyte archives streaming to disk instead
  * of materializing them as an in-memory browser Blob.
  */
-export function compositionProjectTemplateUrl(id:string):string{
- return `/api/composition-projects/${encodeURIComponent(id)}/template`
+export function compositionProjectTemplateUrl(
+  id: string,
+  poster?: { timeUs: number; compositionId?: string },
+): string {
+  const path = `/api/composition-projects/${encodeURIComponent(id)}/template`
+  if (!poster) return path
+  const query = new URLSearchParams({ posterTimeUs: String(poster.timeUs) })
+  if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
+  return `${path}?${query}`
 }
 
 export function compositionProjectArchiveUrl(id: string): string {
