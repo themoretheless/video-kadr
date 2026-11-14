@@ -36,3 +36,24 @@ export async function readConcatTemplateFolder(files: readonly File[]) {
   const poster = cover && cover.size > 0 && cover.size <= 8 * 1024 * 1024 ? cover : undefined
   return { document, media, design, fonts, poster }
 }
+
+/** Concat lists used slots by their first appearance, then unused slots in bin order. */
+export function concatTemplateSlotStats(document: unknown) {
+  const data = document as { activeTimelineId?: unknown; timelines?: unknown } | null
+  const timelines = Array.isArray(data?.timelines) ? data.timelines : []
+  const timeline = timelines.find(item => item?.id === data?.activeTimelineId) ?? timelines[0]
+  const stats = new Map<string, { first: number; seconds: number }>()
+  if (!Array.isArray(timeline?.clips)) return stats
+
+  for (const clip of timeline.clips) {
+    if (typeof clip?.mediaId !== 'string') continue
+    const previous = stats.get(clip.mediaId) ?? { first: Infinity, seconds: 0 }
+    stats.set(clip.mediaId, {
+      first: Number.isFinite(clip.start) ? Math.min(previous.first, clip.start) : previous.first,
+      seconds: Number.isFinite(clip.duration) && clip.duration > 0
+        ? previous.seconds + clip.duration
+        : previous.seconds,
+    })
+  }
+  return stats
+}

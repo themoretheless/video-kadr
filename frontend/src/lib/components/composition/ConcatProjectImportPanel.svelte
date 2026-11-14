@@ -5,7 +5,7 @@
  import type {CompositionSource} from '$lib/composition/types'
  import {importConcatProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
  import {concatImportMedia,concatImportFonts,concatImportStillDestinations,concatImportVideoDestinations,savedStillChoices,savedVideoChoices,type SavedStillChoice,type ConcatImportFont,type ConcatImportMedia,type ConcatImportSource} from '$lib/composition/concatProjectImport'
- import {readConcatTemplateFolder} from '$lib/composition/concatTemplateFolder'
+ import {concatTemplateSlotStats,readConcatTemplateFolder} from '$lib/composition/concatTemplateFolder'
  import {doUpload} from '$lib/state/store.svelte'
  import {compositionSourceFromMediaInfo} from '$lib/state/composition/media.svelte'
  import {adoptImportedConcatProject,nestedComposition,nestedHistory} from '$lib/state/nestedComposition.svelte'
@@ -90,7 +90,13 @@
    fontNames={...fontNames,[path]:file.name};fontBindings={...fontBindings,[path]:{data:btoa(binary)}}
   }catch(failure){if(current())error=failure instanceof Error?failure.message:String(failure)}
  }
- const pendingSlots = $derived(media.filter(item => item.placeholder))
+ const slotStats = $derived(concatTemplateSlotStats(document))
+ const firstUse = (id: string) => slotStats.get(id)?.first ?? Infinity
+ const pendingSlots = $derived(media.filter(item => item.placeholder).sort((a, b) => {
+  const left = firstUse(a.id), right = firstUse(b.id)
+  return left === right ? 0 : left < right ? -1 : 1
+ }))
+ const orderedMedia = $derived([...pendingSlots, ...media.filter(item => !item.placeholder)])
  function replacementFor(id: string) {
   return availableSources.find(entry => entry.source.id === slotChoices[id])
  }
@@ -155,10 +161,10 @@
     void loadFolder(files)
   }} /></label>
   {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}
-  {#each media as item(item.id)}
+  {#each orderedMedia as item(item.id)}
    <label>{item.name} <select aria-label={`Источник Concat ${item.id}`} value={bindings[item.id]??''} onchange={event=>{invalidate();bindings={...bindings,[item.id]:event.currentTarget.value}}}><option value="">Выберите медиа из библиотеки</option>{#each availableSources.filter(entry=>(entry.source.kind===item.kind||sourceOverrides[item.id]?.id===entry.source.id&&sourceOverrides[item.id]?.kind===item.kind)) as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
    {#if item.placeholder}
-    <label>Заполнить слот {item.name} <select aria-label={`Заполнение слота Concat ${item.id}`} value={slotChoices[item.id]??''} onchange={event=>{slotChoices={...slotChoices,[item.id]:event.currentTarget.value}}}><option value="">Выберите замену из библиотеки</option>{#each availableSources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
+    <label>Заполнить слот {item.name} · {(slotStats.get(item.id)?.seconds ?? 0).toLocaleString('ru-RU',{maximumFractionDigits:3})} с <select aria-label={`Заполнение слота Concat ${item.id}`} value={slotChoices[item.id]??''} onchange={event=>{slotChoices={...slotChoices,[item.id]:event.currentTarget.value}}}><option value="">Выберите замену из библиотеки</option>{#each availableSources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
     <button class="btn ghost sm" type="button" disabled={!slotChoices[item.id]} aria-label={`Заполнить слот Concat ${item.id}`} onclick={()=>void fillSlots([item.id])}>Заполнить слот</button>
    {/if}
   {/each}

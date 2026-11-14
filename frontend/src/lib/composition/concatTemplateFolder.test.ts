@@ -30,3 +30,19 @@ it.each(['assets/../outside.png', '/absolute.png', 'assets/missing.png'])(
     await expect(readConcatTemplateFolder([manifest])).rejects.toThrow()
   },
 )
+
+it('uses the active timeline and sums editorial durations of repeated slots', async () => {
+  const { concatTemplateSlotStats } = await import('./concatTemplateFolder')
+  const stats = concatTemplateSlotStats({
+    activeTimelineId: 'selected',
+    timelines: [
+      { id: 'other', clips: [{ mediaId: 'slot', start: 0, duration: 99 }] },
+      { id: 'selected', clips: [
+        { mediaId: 'slot', start: 7, duration: 2 },
+        { mediaId: 'slot', start: 2, duration: 3 },
+      ] },
+    ],
+  })
+  expect(stats.get('slot')).toEqual({ first: 2, seconds: 5 })
+  expect(stats.has('unused')).toBe(false)
+})
