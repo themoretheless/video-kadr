@@ -13,8 +13,12 @@ async function setup(){const oncreated=vi.fn().mockResolvedValue(undefined);comp
 it('lists stored designs and creates from the chosen record without downloading or reuploading it',async()=>{
  vi.mocked(api.listNativeTemplateLibrary).mockResolvedValue([entry]);vi.mocked(api.createProjectFromNativeLibrary).mockResolvedValue({project:{id:'new',name:'Fresh'}} as api.NativeTemplateImportResponse)
  const oncreated=await setup();button('Design ·').click();await tick();expect(button('Создать проект из библиотечного шаблона').disabled).toBe(true)
- const select=document.querySelector('select')!;select.value='chosen';select.dispatchEvent(new Event('change',{bubbles:true}));await tick();button('Создать проект из библиотечного шаблона').click()
- await vi.waitFor(()=>expect(oncreated).toHaveBeenCalledTimes(1));expect(api.createProjectFromNativeLibrary).toHaveBeenCalledWith('stored',[{mediaId:'slot',sourceId:'chosen'}],'owner','space',expect.any(AbortSignal));expect(api.installNativeTemplate).not.toHaveBeenCalled();expect(document.body.textContent).toContain('Создан проект «Fresh»')
+ const select=document.querySelector('select')!;select.value='chosen';select.dispatchEvent(new Event('change',{bubbles:true}));await tick();const name = document.querySelector<HTMLInputElement>('input[type=text]')!
+ name.value = ' Winter edit '
+ name.dispatchEvent(new Event('input', { bubbles: true }))
+ await tick()
+ button('Создать проект из библиотечного шаблона').click()
+ await vi.waitFor(()=>expect(oncreated).toHaveBeenCalledTimes(1));expect(api.createProjectFromNativeLibrary).toHaveBeenCalledWith('stored',[{mediaId:'slot',sourceId:'chosen'}],'owner','space',expect.any(AbortSignal),'Winter edit');expect(api.installNativeTemplate).not.toHaveBeenCalled();expect(document.body.textContent).toContain('Создан проект «Fresh»')
 })
 it('installs a selected file and removes the stored record through owner APIs',async()=>{
  vi.mocked(api.listNativeTemplateLibrary).mockResolvedValue([]);vi.mocked(api.installNativeTemplate).mockResolvedValue(entry);vi.mocked(api.removeNativeTemplate).mockResolvedValue(undefined)

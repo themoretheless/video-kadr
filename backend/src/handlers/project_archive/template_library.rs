@@ -181,6 +181,7 @@ pub async fn instantiate(
     let (actor, entry) = owned(&state, &headers, &id, false).await?;
     let space = archive_space_id(&headers)?;
     let refs = template_import::parse_references(&options.fills)?;
+    let name = template_import::project_name(options.name)?;
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
@@ -201,7 +202,7 @@ pub async fn instantiate(
     let result = tokio::spawn(async move {
         let _slot = slot;
         Box::pin(template_import::create(
-            state, snapshot, actor, space, headers, refs,
+            state, snapshot, actor, space, headers, refs, name,
         ))
         .await
     })

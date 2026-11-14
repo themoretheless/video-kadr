@@ -3,9 +3,10 @@
  import type {ConcatImportSource} from '$lib/composition/concatProjectImport'
  let {token,spaceId,context,disabled=false,sources=[],oncreated}:{token:string|null;spaceId?:string;context:unknown;disabled?:boolean;sources?:readonly ConcatImportSource[];oncreated:(result:NativeTemplateImportResponse,guard:()=>void)=>Promise<void>}=$props()
  let file=$state<File|null>(null),info=$state<NativeTemplatePackageInfo|null>(null),choices=$state<Record<string,string>>({}),busy=$state(false),error=$state(''),message=$state(''),progress=$state('')
+ let projectName = $state('')
  let epoch=0,controller:AbortController|undefined
- $effect(()=>{void token;void spaceId;void context;epoch++;controller?.abort();file=null;info=null;choices={};error='';message='';busy=false;return()=>{epoch++;controller?.abort()}})
- function choose(event:Event){controller?.abort();epoch++;file=(event.currentTarget as HTMLInputElement).files?.[0]??null;(event.currentTarget as HTMLInputElement).value='';info=null;choices={};error='';message=''}
+ $effect(()=>{void token;void spaceId;void context;epoch++;controller?.abort();file=null;info=null;choices={};projectName='';error='';message='';busy=false;return()=>{epoch++;controller?.abort()}})
+ function choose(event:Event){controller?.abort();epoch++;file=(event.currentTarget as HTMLInputElement).files?.[0]??null;(event.currentTarget as HTMLInputElement).value='';info=null;choices={};projectName='';error='';message=''}
  async function inspect(){
   if(!token||!file||busy||disabled)return
   const serial=epoch,request=new AbortController();controller=request;busy=true;error='';progress='Проверяю шаблон…'
@@ -20,7 +21,7 @@
   const guard=()=>{if(serial!==epoch||request.signal.aborted)throw new Error('Контекст создания проекта изменился')}
   try{
    const fills=info.template.slots.map(slot=>({mediaId:slot.mediaId,sourceId:choices[slot.mediaId]!}))
-   const result=await importNativeTemplate(file,fills,token,spaceId,request.signal);guard()
+   const result=await importNativeTemplate(file,fills,token,spaceId,request.signal,projectName.trim() || undefined);guard()
    // Do not offer another creation if opening the saved project subsequently fails.
    info=null;file=null;choices={};message=`Создан проект «${result.project.name}»`
    progress='Открываю проект…';await oncreated(result,guard)
@@ -34,6 +35,7 @@
  {#if file}<p>{file.name}</p>{/if}
  <button class="btn ghost sm" disabled={disabled||busy||!token||!file} onclick={()=>void inspect()}>Проверить шаблон</button>
  {#if info}
+  <label>Название проекта <input type="text" bind:value={projectName} placeholder="Название шаблона" disabled={disabled || busy} /></label>
   <p>{info.name} · {info.template.width} × {info.template.height}</p>
   {#each info.template.slots as slot(slot.mediaId)}
    <label>{slot.name} · {slot.kind==='image'?'Изображение':slot.kind==='video'?'Видео':'Аудио'} · {slot.seconds.toLocaleString('ru-RU',{maximumFractionDigits:3})} с

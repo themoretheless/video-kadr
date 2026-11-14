@@ -938,12 +938,17 @@ export async function inspectNativeTemplatePackage(file:File,token:string,signal
 export interface NativeTemplateSlotReference {readonly mediaId:string;readonly sourceId:string}
 export interface NativeTemplateImportResponse {project:NestedCompositionProjectDto;sourceMapping:Record<string,string>}
 /** The server verifies package files and probes every registered slot replacement. */
-export async function importNativeTemplate(file:File,fills:readonly NativeTemplateSlotReference[],token:string,spaceId?:string,signal?:AbortSignal):Promise<NativeTemplateImportResponse>{
+function nativeTemplateCreationQuery(fills: readonly NativeTemplateSlotReference[], name?: string): string {
+  const query = new URLSearchParams({ fills: JSON.stringify(fills) })
+  if (name) query.set('name', name)
+  return query.toString()
+}
+export async function importNativeTemplate(file:File,fills:readonly NativeTemplateSlotReference[],token:string,spaceId?:string,signal?:AbortSignal,name?:string):Promise<NativeTemplateImportResponse>{
  if(file.size>MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES)throw new Error('Шаблон превышает лимит 2 ГиБ')
  if(new Set(fills.map(fill=>fill.mediaId)).size!==fills.length||fills.some(fill=>!fill.mediaId||!fill.sourceId))throw new Error('Некорректные замены шаблона')
  const body=new FormData();body.append('file',file)
  const headers=bearerHeaders(token);if(spaceId)headers['X-Space-Id']=spaceId
- const reply=await requestJson<NativeTemplateImportResponse>(`/api/composition-projects/template-import?fills=${encodeURIComponent(JSON.stringify(fills))}`,{method:'POST',headers,body,signal})
+ const reply=await requestJson<NativeTemplateImportResponse>(`/api/composition-projects/template-import?${nativeTemplateCreationQuery(fills,name)}`,{method:'POST',headers,body,signal})
  if(signal?.aborted)throw new DOMException('Aborted','AbortError')
  const project=reply?.project,document=project?.document
  if(!project?.id||project.mode!=='composition'||project.schemaVersion!==2||document?.schemaVersion!==1||!document.compositions?.[document.root]||fills.some(fill=>document.projectMedia?.[fill.mediaId]?.librarySourceId!==fill.sourceId||document.projectMedia?.[fill.mediaId]?.placeholder===true)||Object.values(document.projectMedia??{}).some(item=>item.placeholder===true))throw new Error('Native template import returned invalid project')
@@ -981,10 +986,10 @@ export async function installNativeTemplate(file:File,token:string,signal?:Abort
 export async function removeNativeTemplate(id:string,token:string,signal?:AbortSignal):Promise<void>{
  const response=await safeFetch(nativeTemplateLibraryUrl(id),{method:'DELETE',headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось удалить шаблон')
 }
-export async function createProjectFromNativeLibrary(id:string,fills:readonly NativeTemplateSlotReference[],token:string,spaceId?:string,signal?:AbortSignal):Promise<NativeTemplateImportResponse>{
+export async function createProjectFromNativeLibrary(id:string,fills:readonly NativeTemplateSlotReference[],token:string,spaceId?:string,signal?:AbortSignal,name?:string):Promise<NativeTemplateImportResponse>{
  if(new Set(fills.map(fill=>fill.mediaId)).size!==fills.length||fills.some(fill=>!fill.mediaId||!fill.sourceId))throw new Error('Некорректные замены шаблона')
  const headers=bearerHeaders(token);if(spaceId)headers['X-Space-Id']=spaceId
- const reply=await requestJson<NativeTemplateImportResponse>(`${nativeTemplateLibraryUrl(id)}/create?fills=${encodeURIComponent(JSON.stringify(fills))}`,{method:'POST',headers,signal})
+ const reply=await requestJson<NativeTemplateImportResponse>(`${nativeTemplateLibraryUrl(id)}/create?${nativeTemplateCreationQuery(fills,name)}`,{method:'POST',headers,signal})
  if(signal?.aborted)throw new DOMException('Aborted','AbortError')
  const project=reply?.project,document=project?.document
  if(!project?.id||project.mode!=='composition'||project.schemaVersion!==2||document?.schemaVersion!==1||!document.compositions?.[document.root]||fills.some(fill=>document.projectMedia?.[fill.mediaId]?.librarySourceId!==fill.sourceId)||Object.values(document.projectMedia??{}).some(item=>item.placeholder===true))throw new Error('Native template library returned invalid project')

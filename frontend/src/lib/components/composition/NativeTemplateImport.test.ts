@@ -22,8 +22,12 @@ it('inspects a chosen package and creates only after every ordered slot has a li
  const result={project:{id:'saved',name:'New edit'},sourceMapping:{}} as api.NativeTemplateImportResponse;vi.mocked(api.importNativeTemplate).mockResolvedValue(result)
  const{file,oncreated}=await setup();await inspect()
  expect(api.inspectNativeTemplatePackage).toHaveBeenCalledWith(file,'owner',expect.any(AbortSignal));expect([...document.querySelectorAll('select')].map(s=>s.getAttribute('aria-label'))).toEqual(['Файл для слота Second','Файл для слота First'])
- expect(button('Создать проект из выбранного шаблона').disabled).toBe(true);await selectAll();button('Создать проект из выбранного шаблона').click()
- await vi.waitFor(()=>expect(oncreated).toHaveBeenCalledTimes(1));expect(api.importNativeTemplate).toHaveBeenCalledWith(file,[{mediaId:'b',sourceId:'chosen'},{mediaId:'a',sourceId:'chosen'}],'owner','space',expect.any(AbortSignal))
+ expect(button('Создать проект из выбранного шаблона').disabled).toBe(true);await selectAll();const name = document.querySelector<HTMLInputElement>('input[type=text]')!
+ name.value = ' Winter edit '
+ name.dispatchEvent(new Event('input', { bubbles: true }))
+ await tick()
+ button('Создать проект из выбранного шаблона').click()
+ await vi.waitFor(()=>expect(oncreated).toHaveBeenCalledTimes(1));expect(api.importNativeTemplate).toHaveBeenCalledWith(file,[{mediaId:'b',sourceId:'chosen'},{mediaId:'a',sourceId:'chosen'}],'owner','space',expect.any(AbortSignal),'Winter edit')
  expect(oncreated.mock.calls[0]![0]).toBe(result);expect(()=>oncreated.mock.calls[0]![1]()).not.toThrow();expect(document.body.textContent).toContain('Создан проект «New edit»');expect(document.querySelectorAll('select')).toHaveLength(0)
 })
 it('retains selections on server refusal and can retry without an extra inspection',async()=>{

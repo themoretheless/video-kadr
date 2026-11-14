@@ -12,12 +12,26 @@ use serde_json::json;
 #[serde(deny_unknown_fields)]
 pub struct Options {
     pub(super) fills: String,
+    pub(super) name: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Reference {
     media_id: SourceId,
     source_id: SourceId,
+}
+pub(super) fn project_name(name: Option<String>) -> AppResult<Option<String>> {
+    name.map(|name| {
+        let name = name.trim();
+        if name.is_empty()
+            || name.len() > crate::db::MAX_COMPOSITION_PROJECT_NAME_BYTES
+            || name.chars().any(char::is_control)
+        {
+            return Err(AppError::bad_request("Некорректное название проекта"));
+        }
+        Ok(name.to_owned())
+    })
+    .transpose()
 }
 pub(super) fn parse_references(raw: &str) -> AppResult<Vec<Reference>> {
     if raw.len() > 65536 {
@@ -48,6 +62,7 @@ pub async fn import(
     let actor = archive_actor(&state, &headers, false).await?;
     let space = archive_space_id(&headers)?;
     let refs = parse_references(&options.fills)?;
+    let name = project_name(options.name)?;
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
@@ -65,7 +80,7 @@ pub async fn import(
     // Once admitted, this task owns staging and reaches commit or compensating rollback.
     let result = tokio::spawn(async move {
         let _slot = slot;
-        Box::pin(create(state, archive, actor, space, headers, refs)).await
+        Box::pin(create(state, archive, actor, space, headers, refs, name)).await
     })
     .await
     .map_err(|e| AppError::internal("join template import", e))??;
@@ -78,6 +93,7 @@ pub(super) async fn create(
     space: Option<String>,
     headers: HeaderMap,
     refs: Vec<Reference>,
+    name: Option<String>,
 ) -> AppResult<ProjectArchiveImportResponse> {
     if let Some(space) = &space {
         let allowed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM collaboration_space_members WHERE space_id=? AND actor=? AND role IN ('owner','editor'))").bind(space).bind(&actor).fetch_one(state.db.pool()).await.map_err(|e|AppError::internal("authorize template destination",e))?;
@@ -233,7 +249,7 @@ pub(super) async fn create(
         );
         originals.push((reference.source_id, entry, path, revision, metadata));
     }
-    let name = parsed.manifest.name.clone();
+    let name = name.unwrap_or_else(|| parsed.manifest.name.clone());
     let mapping = design
         .iter()
         .map(|(a, b)| (a.as_str().into(), b.as_str().into()))
