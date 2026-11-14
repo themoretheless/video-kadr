@@ -90,21 +90,50 @@
    fontNames={...fontNames,[path]:file.name};fontBindings={...fontBindings,[path]:{data:btoa(binary)}}
   }catch(failure){if(current())error=failure instanceof Error?failure.message:String(failure)}
  }
- async function fillSlot(mediaId:string){
-  if(!document||busy||disabled||nestedHistory.busy||!token)return
-  const entry=availableSources.find(entry=>entry.source.id===slotChoices[mediaId])
-  if(!entry||!media.some(item=>item.id===mediaId&&item.placeholder))return
-  invalidate();busy=true;const serial=request,before=document,beforeBindings={...bindings},beforeOverrides={...sourceOverrides},scope=identity();controller=new AbortController()
-  try{
-   const result=await fillConcatMediaSlot(before,mediaId,entry,controller.signal,token)
-   if(serial!==request)return
-   if(identity()!==scope)throw new Error('Текущий проект изменился; повторите заполнение слота')
-   const nextMedia=concatImportMedia(result.document)
-   const filled=nextMedia.find(item=>item.id===mediaId)
-   if(!filled||filled.placeholder||filled.kind!==result.source.kind)throw new Error('Ответ не содержит заполненный слот')
-   slotUndo=[...slotUndo.slice(-19),{document:before,bindings:beforeBindings,sourceOverrides:beforeOverrides}]
-   document=result.document;media=nextMedia;bindings={...bindings,[mediaId]:entry.source.id};sourceOverrides={...sourceOverrides,[mediaId]:result.source}
-  }catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}
+ const pendingSlots = $derived(media.filter(item => item.placeholder))
+ function replacementFor(id: string) {
+  return availableSources.find(entry => entry.source.id === slotChoices[id])
+ }
+ async function fillSlots(ids: readonly string[]) {
+  if (!document || busy || disabled || nestedHistory.busy || !token || !ids.length) return
+  const replacements = ids.map(id => ({ id, source: replacementFor(id) }))
+  if (replacements.some(({ id, source }) => !source || !pendingSlots.some(slot => slot.id === id))) return
+  invalidate()
+  busy = true
+  const serial = request
+  const scope = identity()
+  const session = token
+  const previous = { document, bindings: { ...bindings }, sourceOverrides: { ...sourceOverrides } }
+  let nextBindings = { ...bindings }
+  let nextOverrides = { ...sourceOverrides }
+  let stagedDocument = document
+  let stagedMedia = media
+  controller = new AbortController()
+  try {
+   for (const { id, source } of replacements) {
+    if (!source) throw new Error('Выберите замену для каждого слота')
+    const result = await fillConcatMediaSlot(stagedDocument, id, source, controller.signal, session)
+    if (serial !== request) return
+    if (identity() !== scope) throw new Error('Текущий проект изменился; повторите заполнение')
+    stagedMedia = concatImportMedia(result.document)
+    const filled = stagedMedia.find(item => item.id === id)
+    if (!filled || filled.placeholder || filled.kind !== result.source.kind) {
+     throw new Error('Ответ не содержит заполненный слот')
+    }
+    stagedDocument = result.document
+    nextBindings = { ...nextBindings, [id]: source.source.id }
+    nextOverrides = { ...nextOverrides, [id]: result.source }
+   }
+   slotUndo = [...slotUndo.slice(-19), previous]
+   document = stagedDocument
+   media = stagedMedia
+   bindings = nextBindings
+   sourceOverrides = nextOverrides
+  } catch (failure) {
+   if (serial === request) error = failure instanceof Error ? failure.message : String(failure)
+  } finally {
+   if (serial === request) busy = false
+  }
  }
  function undoSlot(){if(busy||disabled||nestedHistory.busy)return;const previous=slotUndo.at(-1);if(!previous)return;invalidate();slotUndo=slotUndo.slice(0,-1);document=previous.document;bindings=previous.bindings;sourceOverrides=previous.sourceOverrides;media=concatImportMedia(document)}
  async function loadSavedMasks(){
@@ -130,9 +159,13 @@
    <label>{item.name} <select aria-label={`Источник Concat ${item.id}`} value={bindings[item.id]??''} onchange={event=>{invalidate();bindings={...bindings,[item.id]:event.currentTarget.value}}}><option value="">Выберите медиа из библиотеки</option>{#each availableSources.filter(entry=>(entry.source.kind===item.kind||sourceOverrides[item.id]?.id===entry.source.id&&sourceOverrides[item.id]?.kind===item.kind)) as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
    {#if item.placeholder}
     <label>Заполнить слот {item.name} <select aria-label={`Заполнение слота Concat ${item.id}`} value={slotChoices[item.id]??''} onchange={event=>{slotChoices={...slotChoices,[item.id]:event.currentTarget.value}}}><option value="">Выберите замену из библиотеки</option>{#each availableSources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
-    <button class="btn ghost sm" type="button" disabled={!slotChoices[item.id]} aria-label={`Заполнить слот Concat ${item.id}`} onclick={()=>void fillSlot(item.id)}>Заполнить слот</button>
+    <button class="btn ghost sm" type="button" disabled={!slotChoices[item.id]} aria-label={`Заполнить слот Concat ${item.id}`} onclick={()=>void fillSlots([item.id])}>Заполнить слот</button>
    {/if}
   {/each}
+  {#if pendingSlots.length > 1}
+   <button class="btn ghost sm" type="button" disabled={pendingSlots.some(slot => !replacementFor(slot.id))}
+     onclick={() => void fillSlots(pendingSlots.map(slot => slot.id))}>Заполнить все слоты Concat</button>
+  {/if}
   {#if slotUndo.length}<button class="btn ghost sm" type="button" onclick={undoSlot}>Отменить заполнение слота</button><p>Слот заполнен в исходном документе. Проверьте импорт: неподдерживаемые параметры будут показаны в отчёте.</p>{/if}
   {#each fonts as font(font.path)}
    <label>Шрифт {font.family} <input type="file" accept=".ttf,.otf,.ttc" aria-label={`Файл шрифта Concat ${font.path}`} onchange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';void loadFont(font.path,file)}} />{#if Object.hasOwn(fontBindings,font.path)}<span>{fontNames[font.path]}</span>{/if}</label><button class="btn ghost sm" type="button" aria-label={`Системная замена шрифта Concat ${font.path}`} onclick={()=>fallbackFont(font.path)}>Использовать системную замену</button>

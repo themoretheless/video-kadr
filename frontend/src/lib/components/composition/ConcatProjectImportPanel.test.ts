@@ -231,3 +231,41 @@ it('uploads the selected template design and binds its bundled font before conve
   revokeUrl.mockRestore()
  }
 })
+
+it('commits a batch of slot replacements together and undoes it in one step', async () => {
+ const template = {
+  ...original,
+  media: [
+   { ...original.media[0], placeholder: true },
+   { ...original.media[0], id: 'm2', placeholder: true },
+  ],
+ }
+ const first = { ...template, media: [{ ...template.media[0], placeholder: false }, template.media[1]] }
+ const filled = { ...first, media: first.media.map(item => ({ ...item, placeholder: false })) }
+ vi.mocked(fillConcatMediaSlot)
+  .mockResolvedValueOnce({document: first, source})
+  .mockRejectedValueOnce(new Error('Вторая замена недоступна'))
+  .mockResolvedValueOnce({document: first, source})
+  .mockResolvedValueOnce({document: filled, source})
+ component = mount(Panel, { target: document.body, props: {
+  token: 'session', sources: [{ label: 'Camera', source }],
+ } })
+ await tick()
+ await read(template)
+ for (const select of document.querySelectorAll<HTMLSelectElement>('select[aria-label^="Заполнение слота Concat"]')) {
+  select.value = 'source'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+ }
+ await tick()
+ click('Заполнить все слоты Concat')
+ await vi.waitFor(() => expect(document.querySelector('[role=alert]')?.textContent).toContain('Вторая замена'))
+ expect(document.querySelectorAll('select[aria-label^="Заполнение слота Concat"]')).toHaveLength(2)
+ expect(document.body.textContent).not.toContain('Отменить заполнение слота')
+
+ click('Заполнить все слоты Concat')
+ await vi.waitFor(() => expect(document.querySelectorAll('select[aria-label^="Заполнение слота Concat"]')).toHaveLength(0))
+ expect(fillConcatMediaSlot).toHaveBeenNthCalledWith(4, first, 'm2', expect.objectContaining({source}), expect.any(AbortSignal), 'session')
+ click('Отменить заполнение слота')
+ await vi.waitFor(() => expect(document.querySelectorAll('select[aria-label^="Заполнение слота Concat"]')).toHaveLength(2))
+ expect(document.body.textContent).not.toContain('Отменить заполнение слота')
+})
