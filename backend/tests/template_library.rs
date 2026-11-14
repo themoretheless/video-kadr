@@ -175,6 +175,20 @@ async fn private_library_survives_reopen_creates_without_reupload_and_rolls_back
     assert_eq!(response.status(), StatusCode::CREATED);
     let created = json_body(response).await;
     assert_eq!(created["project"]["name"], "Saved design");
+    let response = restarted
+        .clone()
+        .oneshot(req(
+            "POST",
+            &format!("{path}/create?fills=%5B%5D&name=Second+cut"),
+            &owner.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let named = json_body(response).await;
+    assert_eq!(named["project"]["name"], "Second cut");
+    assert_ne!(named["project"]["id"], created["project"]["id"]);
+
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
     let stored = state
         .storage

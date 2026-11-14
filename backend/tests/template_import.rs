@@ -203,15 +203,16 @@ async fn imports_template_to_independent_project_and_rolls_back_design_publicati
         .execute(&pool)
         .await
         .unwrap();
-    let response = app
-        .oneshot(request(&bytes, &owner.token, fills))
-        .await
+    let mut named = request(&bytes, &owner.token, fills);
+    *named.uri_mut() = format!("{}&name=Winter+cut+%26+titles", named.uri())
+        .parse()
         .unwrap();
+    let response = app.oneshot(named).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
     let body: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
             .unwrap();
-    assert_eq!(body["project"]["name"], "Fresh edit");
+    assert_eq!(body["project"]["name"], "Winter cut & titles");
     assert_eq!(
         body["project"]["document"]["projectMedia"]["slot"]["librarySourceId"],
         "replacement"
