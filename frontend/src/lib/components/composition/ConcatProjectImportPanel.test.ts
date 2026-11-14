@@ -37,7 +37,7 @@ it('requires every declared font and keeps simultaneous file reads independent',
  const documentWithFonts={version:1,media:[],fonts:[{family:'First',path:'__proto__'},{family:'Second',path:'/never/open/second.ttf'}]}
  const input=document.querySelector<HTMLInputElement>('input[type=file]')!,file=new File([JSON.stringify(documentWithFonts)],'fonts.json',{type:'application/json'})
  Object.defineProperty(file,'text',{value:async()=>JSON.stringify(documentWithFonts)});Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new Event('change',{bubbles:true}))
- await vi.waitFor(()=>expect(document.querySelectorAll('input[type=file]')).toHaveLength(3))
+ await vi.waitFor(()=>expect(document.querySelectorAll('input[aria-label^="Файл шрифта Concat"]')).toHaveLength(2))
  const button=[...document.querySelectorAll('button')].find(button=>button.textContent?.trim()==='Проверить импорт Concat')!;expect(button.disabled).toBe(true)
  let finishFirst!:(value:ArrayBuffer)=>void,finishSecond!:(value:ArrayBuffer)=>void
  for(const [path,promise] of [['__proto__',new Promise<ArrayBuffer>(done=>{finishFirst=done})],['/never/open/second.ttf',new Promise<ArrayBuffer>(done=>{finishSecond=done})]] as const){
@@ -180,4 +180,45 @@ it('clears private video choices and ignores late replies after account changes'
  component=mount(Panel,{target:document.body,props:{get token(){return nestedComposition.projectId},sources:[{label:'Video',source}]}});await tick();await read(videoCutoutDocument);await chooseVideoMask();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProjectWithSavedCutouts).toHaveBeenCalled())
  const signal=vi.mocked(importConcatProjectWithSavedCutouts).mock.calls[0]![4]!;nestedComposition.projectId='other-account';await tick();expect(signal.aborted).toBe(true);expect(document.querySelector<HTMLSelectElement>('select[aria-label="Сохранённая видеомаска Concat TL1 clip"]')!.options).toHaveLength(1)
  resolve({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:videoCutoutDocument,timelineIds:{TL1:'imported'}});await tick();expect(document.body.textContent).not.toContain('Таймлайнов: 1');expect(nestedHistory.past).toHaveLength(0)
+})
+
+it('uploads the selected template design and binds its bundled font before conversion', async () => {
+ const store = await import('$lib/state/store.svelte')
+ const upload = vi.spyOn(store, 'doUpload').mockResolvedValue({
+  id: 'bundled', filename: 'design.mov', url: '/files/sources/design.mov',
+  mediaType: 'video', duration: 1, width: 16, height: 16,
+ })
+ try {
+  component = mount(Panel, { target: document.body, props: { token: 'session' } })
+  await tick()
+  const template = {
+   ...original,
+   media: [{ ...original.media[0], path: 'assets/design.mov' }],
+   fonts: [{ family: 'Title', path: 'assets/title.otf' }],
+  }
+  const files = [
+   new File([JSON.stringify(template)], 'template.json'),
+   new File(['movie'], 'design.mov'),
+   new File(['font'], 'title.otf'),
+  ]
+  for (const [index, path] of ['template.json', 'assets/design.mov', 'assets/title.otf'].entries()) {
+   Object.defineProperty(files[index]!, 'webkitRelativePath', { value: `Design/${path}` })
+  }
+  const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
+  Object.defineProperty(picker, 'files', { value: files })
+  picker.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() => {
+   const verify = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Проверить импорт Concat')
+   expect(verify?.closest('fieldset')?.disabled).toBe(false)
+   expect(verify?.disabled).toBe(false)
+  })
+  expect(upload).toHaveBeenCalledExactlyOnceWith(files[1], false)
+  click('Проверить импорт Concat')
+  await vi.waitFor(() => expect(importConcatProject).toHaveBeenCalledWith(
+   template, { m1: expect.objectContaining({ id: 'bundled' }) }, expect.any(AbortSignal),
+   'session', { 'assets/title.otf': { data: 'Zm9udA==' } }, true,
+  ))
+ } finally {
+  upload.mockRestore()
+ }
 })
