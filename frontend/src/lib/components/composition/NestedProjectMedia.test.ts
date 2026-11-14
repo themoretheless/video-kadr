@@ -146,3 +146,17 @@ it('shows native slot order and durations for the active timeline and cancels st
  resolve({schemaVersion:1,compositionId:'root',width:16,height:16,slots:[{mediaId:'one',name:'One',kind:'image',seconds:999},{mediaId:'two',name:'Two',kind:'image',seconds:0}]})
  await tick();expect(document.body.textContent).not.toContain('999 с')
 })
+
+it('keeps the slot checkbox and history unchanged when the server refuses marking it', async () => {
+  const initial = project()
+  nestedComposition.document = initial
+  vi.mocked(api.setNativeProjectMediaPlaceholder).mockRejectedValue(new Error('Файл связан с видеомаской'))
+  component = mount(Controls, { target: document.body })
+  await tick()
+  const checkbox = document.querySelector<HTMLInputElement>('input[type=checkbox]')!
+  checkbox.click()
+  await vi.waitFor(() => expect(nestedHistory.error).toContain('видеомаской'))
+  expect(checkbox.checked).toBe(false)
+  expect(nestedHistory.past).toHaveLength(0)
+  expect(nestedComposition.document).toEqual(initial)
+})

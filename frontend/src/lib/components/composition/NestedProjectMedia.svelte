@@ -50,7 +50,11 @@
       <button disabled={disabled||nestedHistory.busy||!token||items.some(item=>item.placeholder&&!choices[item.id])} onclick={()=>{void fillAll()}}>Заполнить все слоты шаблона</button>
     {/if}
     {#each items as item (item.id)}
-      <label><input type="checkbox" aria-label={`Слот шаблона: ${item.name}`} checked={item.placeholder} disabled={disabled || nestedHistory.busy} onchange={event => { void setNestedMediaPlaceholder(item.id, event.currentTarget.checked) }} />{item.name} <span>Таймлайнов: {item.timelines}</span></label>
+      <label><input type="checkbox" aria-label={`Слот шаблона: ${item.name}`} checked={item.placeholder} disabled={disabled || nestedHistory.busy} onchange={event => {
+        const requested = event.currentTarget.checked
+        event.currentTarget.checked = item.placeholder
+        void setNestedMediaPlaceholder(item.id, requested)
+      }} />{item.name} <span>Таймлайнов: {item.timelines}</span></label>
       {#if item.placeholder}
         {@const slot=templateInfo?.slots.find(slot=>slot.mediaId===item.id)}
         {#if slot}<p>Тип: {slot.kind==='video'?'Видео':slot.kind==='audio'?'Аудио':'Изображение'} · Длительность на активном таймлайне: {slot.seconds.toLocaleString('ru-RU',{maximumFractionDigits:3})} с</p>{/if}

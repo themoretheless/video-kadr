@@ -911,6 +911,17 @@ fn source_owned_automatic_video_mask_refuses_fill_before_rebinding_its_family() 
     }
     let bound: NestedCompositionProject = serde_json::from_value(value.clone()).unwrap();
     bound.dependency_order().unwrap();
+    let id = SourceId::parse("slot").unwrap();
+    let (fixed, changed) =
+        video_kadr_backend::domain::project_media::set_placeholder(&bound, &id, false).unwrap();
+    assert!(changed);
+    assert!(
+        video_kadr_backend::domain::project_media::set_placeholder(&fixed, &id, true)
+            .unwrap_err()
+            .to_string()
+            .contains("видеомаской")
+    );
+    assert!(!fixed.project_media[&id].placeholder);
     let (item, source) = replacement("video");
     assert!(
         fill(&bound, &SourceId::parse("slot").unwrap(), &item, &source)

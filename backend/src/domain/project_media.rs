@@ -121,6 +121,29 @@ pub fn set_placeholder(
     let Some(mut entry) = entry else {
         return Ok((project.clone(), false));
     };
+    if placeholder {
+        use super::composition::CompositionTrack;
+        for node in project.compositions.values() {
+            for track in &node.content.tracks {
+                let CompositionTrack::Video { clips, .. } = track else {
+                    continue;
+                };
+                for clip in clips {
+                    let Some(binding) = &clip.concat_cutout else {
+                        continue;
+                    };
+                    ensure!(
+                        &clip.source_id != id
+                            && !binding
+                                .region_tracks
+                                .iter()
+                                .any(|region| region.snapshot.mask_source_id == id.as_str()),
+                        "Этот файл связан с видеомаской. Оставьте его постоянным ресурсом шаблона."
+                    );
+                }
+            }
+        }
+    }
     entry.placeholder = placeholder;
     let mut next = project.clone();
     next.project_media.insert(id.clone(), entry);
