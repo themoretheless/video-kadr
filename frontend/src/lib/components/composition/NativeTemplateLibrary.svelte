@@ -2,13 +2,13 @@
  import NativeTemplatePoster from './NativeTemplatePoster.svelte'
  import {listNativeTemplateLibrary,installNativeTemplate,removeNativeTemplate,createProjectFromNativeLibrary,nativeTemplateLibraryUrl,type NativeTemplateLibraryEntry,type NativeTemplateImportResponse} from '$lib/api'
  import type {ConcatImportSource} from '$lib/composition/concatProjectImport'
- let {token,spaceId,context,disabled=false,sources=[],oncreated}:{token:string|null;spaceId?:string;context:unknown;disabled?:boolean;sources?:readonly ConcatImportSource[];oncreated:(result:NativeTemplateImportResponse,guard:()=>void)=>Promise<void>}=$props()
+ let {refresh=0,token,spaceId,context,disabled=false,sources=[],oncreated}:{refresh?:number;token:string|null;spaceId?:string;context:unknown;disabled?:boolean;sources?:readonly ConcatImportSource[];oncreated:(result:NativeTemplateImportResponse,guard:()=>void)=>Promise<void>}=$props()
  let expanded=$state(false),entries=$state<NativeTemplateLibraryEntry[]>([]),selected=$state<string|null>(null),choices=$state<Record<string,string>>({}),file=$state<File|null>(null),busy=$state(false),error=$state(''),message=$state('')
  let epoch=0,controller:AbortController|undefined
  const entry=$derived(entries.find(item=>item.id===selected))
  const ready=$derived(!!entry&&entry.info.slots.every(slot=>sources.some(source=>source.source.id===choices[slot.mediaId])))
  $effect(()=>{
-  const auth=token,open=expanded;void spaceId;void context
+  const auth=token,open=expanded;void spaceId;void context;void refresh
   epoch++;const serial=epoch;controller?.abort();entries=[];selected=null;choices={};file=null;error='';message='';busy=false
   if(!auth||!open)return
   const request=new AbortController();controller=request;busy=true

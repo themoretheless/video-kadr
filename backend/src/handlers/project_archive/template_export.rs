@@ -20,6 +20,54 @@ pub async fn export(
     axum::extract::Query(options): axum::extract::Query<Options>,
 ) -> AppResult<Response> {
     let actor = archive_actor(&state, &headers, true).await?;
+    let (archive, name) = Box::pin(build_package(&state, &headers, &actor, &id, options)).await?;
+    let file = tokio::fs::File::open(archive.path())
+        .await
+        .map_err(|e| AppError::internal("open template package", e))?;
+    let length = file
+        .metadata()
+        .await
+        .map_err(|e| AppError::internal("stat template package", e))?
+        .len();
+    let base = archive_download_filename(&name);
+    let filename = format!("{}.vktemplate", base.trim_end_matches(".veproj"));
+    let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+        .map_err(|e| AppError::internal("template disposition", e))?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/vnd.video-kadr.template")
+        .header(header::CONTENT_DISPOSITION, disposition)
+        .header(header::CONTENT_LENGTH, length)
+        .header(header::CACHE_CONTROL, "private, no-store")
+        .body(Body::from_stream(ReaderStream::new(
+            archive.into_reader(file),
+        )))
+        .map_err(|e| AppError::internal("template response", e))
+}
+
+pub async fn save_to_library(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+    axum::extract::Query(options): axum::extract::Query<Options>,
+) -> AppResult<(StatusCode, Json<crate::db::NativeTemplateEntry>)> {
+    let actor = archive_actor(&state, &headers, false).await?;
+    let (archive, _) = Box::pin(build_package(&state, &headers, &actor, &id, options)).await?;
+    let permit = state.try_acquire_upload_slot().ok_or_else(|| {
+        AppError::too_many_requests("слишком много операций с локальными файлами")
+    })?;
+    let entry =
+        super::template_library::publish_package(state, actor, archive, Some(permit)).await?;
+    Ok((StatusCode::CREATED, Json(entry)))
+}
+
+async fn build_package(
+    state: &AppState,
+    headers: &HeaderMap,
+    actor: &str,
+    id: &str,
+    options: Options,
+) -> AppResult<(TemporaryFile, String)> {
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
@@ -81,7 +129,7 @@ pub async fn export(
                 headers.clone(),
                 native.clone(),
                 crate::handlers::concat_video_bound::SavedProject {
-                    project_id: id.clone(),
+                    project_id: id.to_owned(),
                     expected_revision: project.revision,
                 },
                 composition.to_owned(),
@@ -105,7 +153,7 @@ pub async fn export(
     let cancel = tokio_util::sync::CancellationToken::new();
     let _cancel_on_drop = cancel.clone().drop_guard();
     let video = run_with_timeout(
-        video_export::collect(&state, &actor, &project, media_bytes, &cancel),
+        video_export::collect(state, actor, &project, media_bytes, &cancel),
         ARCHIVE_IO_TIMEOUT,
         "Сбор видеомасок шаблона превысил лимит времени",
     )
@@ -158,10 +206,10 @@ pub async fn export(
             return Err(AppError::conflict("Ресурс шаблона изменился"));
         }
     }
-    crate::handlers::concat_video_bound::recheck_authorities(&state, &actor, &authorities)
+    crate::handlers::concat_video_bound::recheck_authorities(state, actor, &authorities)
         .await
         .map_err(|error| AppError::conflict(error.to_string()))?;
-    archive_actor(&state, &headers, true).await?;
+    archive_actor(state, headers, true).await?;
     let current = state
         .db
         .get_composition_project_for(&id, &actor)
@@ -176,26 +224,5 @@ pub async fn export(
             "Проект изменился во время упаковки шаблона",
         ));
     }
-    let file = tokio::fs::File::open(archive.path())
-        .await
-        .map_err(|e| AppError::internal("open template package", e))?;
-    let length = file
-        .metadata()
-        .await
-        .map_err(|e| AppError::internal("stat template package", e))?
-        .len();
-    let base = archive_download_filename(&project.name);
-    let filename = format!("{}.vktemplate", base.trim_end_matches(".veproj"));
-    let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
-        .map_err(|e| AppError::internal("template disposition", e))?;
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/vnd.video-kadr.template")
-        .header(header::CONTENT_DISPOSITION, disposition)
-        .header(header::CONTENT_LENGTH, length)
-        .header(header::CACHE_CONTROL, "private, no-store")
-        .body(Body::from_stream(ReaderStream::new(
-            archive.into_reader(file),
-        )))
-        .map_err(|e| AppError::internal("template response", e))
+    Ok((archive, project.name))
 }

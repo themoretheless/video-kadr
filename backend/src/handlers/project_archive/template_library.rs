@@ -59,8 +59,18 @@ pub async fn install(
         "Загрузка шаблона превысила лимит времени",
     )
     .await??;
-    let result = tokio::spawn(async move {
-        let _slot = slot;
+    let result = publish_package(state, actor, upload, Some(slot)).await?;
+    Ok((StatusCode::CREATED, Json(result)))
+}
+
+pub(super) async fn publish_package(
+    state: AppState,
+    actor: String,
+    upload: TemporaryFile,
+    permit: Option<crate::state::UploadPermit>,
+) -> AppResult<NativeTemplateEntry> {
+    tokio::spawn(async move {
+        let _permit = permit;
         let stage = state.staging_dir();
         let (upload, info, name, poster) =
             tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
@@ -89,10 +99,10 @@ pub async fn install(
             .await
             .map_err(|e| AppError::internal("create template library", e))?;
         let path = package(&state, &entry.id)?;
-        let mut installed = TemporaryFile::new(path.clone());
         tokio::fs::hard_link(upload.path(), &path)
             .await
             .map_err(|e| AppError::internal("publish template package", e))?;
+        let mut installed = TemporaryFile::new(path);
         state
             .db
             .insert_native_template(&actor, &entry, poster.as_deref())
@@ -110,8 +120,7 @@ pub async fn install(
         Ok::<_, AppError>(entry)
     })
     .await
-    .map_err(|e| AppError::internal("join template install", e))??;
-    Ok((StatusCode::CREATED, Json(result)))
+    .map_err(|e| AppError::internal("join template install", e))?
 }
 pub async fn download(
     State(state): State<AppState>,

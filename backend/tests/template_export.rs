@@ -182,6 +182,42 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     );
     drop(parsed);
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
+    let save_request = || {
+        Request::post(&poster_uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty())
+            .unwrap()
+    };
+    let response = app.clone().oneshot(save_request()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let saved_template: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+    assert_eq!(saved_template["hasPoster"], true);
+    let download = Request::get(format!(
+        "/api/template-library/{}",
+        saved_template["id"].as_str().unwrap()
+    ))
+    .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+    .body(Body::empty())
+    .unwrap();
+    let response = app.clone().oneshot(download).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let parsed =
+        video_kadr_backend::template_bundle::read(std::io::Cursor::new(bytes), &stage).unwrap();
+    assert!(parsed.poster_png.is_some());
+    drop(parsed);
+    assert_eq!(
+        app.clone().oneshot(save_request()).await.unwrap().status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        std::fs::read_dir(state.storage.join("template-library"))
+            .unwrap()
+            .count(),
+        1
+    );
+    assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
     std::fs::remove_file(&path).unwrap();
     assert_eq!(
         app.oneshot(request(Some(&owner.token)))

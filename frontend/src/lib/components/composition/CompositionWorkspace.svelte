@@ -274,6 +274,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   let pendingVoiceover = $state.raw<File | null>(null)
   let archivePicker = $state<HTMLInputElement>()
   let archiveBusy = $state(false)
+  let templateLibraryRevision = $state(0)
   let archiveMessage = $state('')
   let archiveError = $state('')
   let reviewThreads = $state<ReviewThreadDto[]>([])
@@ -470,7 +471,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
     </select>
     {#if activeSavedProjectId}
       <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={downloadProjectArchive}>Экспорт .veproj</button>
-      {#if nestedComposition.document}<NativeTemplateDownload projectId={activeSavedProjectId} timeUs={nestedComposition.timeUs} compositionId={nestedComposition.activeCompositionId ?? undefined} disabled={archiveBusy||!authState.token}/>{/if}
+      {#if nestedComposition.document}<NativeTemplateDownload token={authState.token} onSaved={() => { templateLibraryRevision++ }} projectId={activeSavedProjectId} timeUs={nestedComposition.timeUs} compositionId={nestedComposition.activeCompositionId ?? undefined} disabled={archiveBusy||!authState.token}/>{/if}
       <button class="btn ghost sm danger" disabled={Boolean(nestedComposition.document) || compositionState.save.busy || !authState.token} onclick={() => void deleteCompositionProject(compositionState.projectId!)}>Удалить проект</button>
     {/if}
     <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={() => archivePicker?.click()}>Импорт .veproj</button>
@@ -546,7 +547,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   {#if voiceoverMessage}<p class="composition-voiceover-message" role="status">{voiceoverMessage}</p>{/if}
   {#if voiceoverError && !voiceoverOpen}<p class="composition-workspace-error error" role="alert">{voiceoverError}</p>{/if}
 
-  <NativeTemplateLibrary token={authState.token} spaceId={spacesState.selectedId||undefined} context={nestedComposition.document??compositionState.document} disabled={compositionState.save.busy||nestedHistory.busy||archiveBusy} oncreated={templateCreated} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})}/>
+  <NativeTemplateLibrary refresh={templateLibraryRevision} token={authState.token} spaceId={spacesState.selectedId||undefined} context={nestedComposition.document??compositionState.document} disabled={compositionState.save.busy||nestedHistory.busy||archiveBusy} oncreated={templateCreated} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})}/>
   <NativeTemplateImport token={authState.token} spaceId={spacesState.selectedId||undefined} context={nestedComposition.document??compositionState.document} disabled={compositionState.save.busy||nestedHistory.busy||archiveBusy} oncreated={templateCreated} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})}/>
   <ConcatProjectImportPanel token={authState.token} context={compositionState.document} disabled={compositionState.save.busy} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
   <ConcatProjectExportPanel disabled={compositionState.save.busy} />

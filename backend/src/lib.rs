@@ -941,7 +941,7 @@ pub fn build_router_with_mcp(
         )
         .route(
             "/composition-projects/:id/template",
-            get(handlers::composition_project_template_export_handler),
+            get(handlers::composition_project_template_export_handler).post(handlers::composition_project_template_save_handler),
         )
         .route(
             "/composition-projects/:id/archive",

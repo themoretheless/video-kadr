@@ -956,6 +956,16 @@ export async function getNativeTemplatePoster(id:string,token:string,signal?:Abo
  if(blob.size===0||blob.size>1024*1024)throw new Error('Invalid template poster size')
  return blob
 }
+export function saveProjectTemplate(
+  id: string,
+  token: string,
+  poster?: Parameters<typeof compositionProjectTemplateUrl>[1],
+  signal?: AbortSignal,
+): Promise<NativeTemplateLibraryEntry> {
+  return requestJson(compositionProjectTemplateUrl(id, poster), {
+    method: 'POST', headers: bearerHeaders(token), signal,
+  })
+}
 export function nativeTemplateLibraryUrl(id:string):string{return `/api/template-library/${encodeURIComponent(id)}`}
 export function listNativeTemplateLibrary(token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry[]>{return requestJson('/api/template-library',{headers:bearerHeaders(token),signal})}
 export async function installNativeTemplate(file:File,token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry>{
