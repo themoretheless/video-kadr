@@ -269,3 +269,30 @@ it('commits a batch of slot replacements together and undoes it in one step', as
  await vi.waitFor(() => expect(document.querySelectorAll('select[aria-label^="Заполнение слота Concat"]')).toHaveLength(2))
  expect(document.body.textContent).not.toContain('Отменить заполнение слота')
 })
+
+it('requires FillSlot before converting a Concat template folder', async () => {
+ const template = { ...original, media: [{ ...original.media[0], path: '', placeholder: true }] }
+ const filled = { ...template, media: [{ ...template.media[0], placeholder: false }] }
+ vi.mocked(fillConcatMediaSlot).mockResolvedValueOnce({ document: filled, source })
+ component = mount(Panel, { target: document.body, props: { token: 'session', sources: [{ label: 'Camera', source }] } })
+ await tick()
+ const file = new File([JSON.stringify(template)], 'template.json')
+ Object.defineProperty(file, 'webkitRelativePath', { value: 'Design/template.json' })
+ const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
+ Object.defineProperty(picker, 'files', { value: [file] })
+ picker.dispatchEvent(new Event('change', { bubbles: true }))
+ const slot = 'select[aria-label="Заполнение слота Concat m1"]'
+ await vi.waitFor(() => expect(document.querySelector(slot)).not.toBeNull())
+ expect(document.querySelector('select[aria-label="Источник Concat m1"]')).toBeNull()
+ const verify = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Проверить импорт Concat')!
+ const replacement = document.querySelector<HTMLSelectElement>(slot)!
+ replacement.value = 'source'
+ replacement.dispatchEvent(new Event('change', { bubbles: true }))
+ await tick()
+ expect(verify.disabled).toBe(true)
+ document.querySelector<HTMLButtonElement>('button[aria-label="Заполнить слот Concat m1"]')!.click()
+ await vi.waitFor(() => expect(verify.disabled).toBe(false))
+ expect(fillConcatMediaSlot).toHaveBeenCalledWith(template, 'm1', expect.objectContaining({ source }), expect.any(AbortSignal), 'session')
+ click('Отменить заполнение слота')
+ await vi.waitFor(() => expect(verify.disabled).toBe(true))
+})

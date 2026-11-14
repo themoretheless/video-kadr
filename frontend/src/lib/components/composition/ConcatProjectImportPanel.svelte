@@ -17,6 +17,7 @@
  const videoDestinations=$derived(concatImportVideoDestinations(document))
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
+ let importingTemplate = $state(false)
  let folderPoster=$state<File>()
  let posterUrl=$state('')
  $effect(()=>{
@@ -35,12 +36,12 @@
  let fontEpoch=0,fontTicket=0
  let fontTickets:Record<string,number>=Object.create(null)
  let request=0,controller:AbortController|undefined,expectedContext='',lastToken=untrack(()=>token)
- const ready=$derived(!!document&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path))&&stillDestinations.every(item=>!!chosenMask(item.key,item.mediaId))&&videoDestinations.every(item=>!!chosenMask(item.key,item.mediaId,true)))
+ const ready=$derived(!!document&&(!importingTemplate||!media.some(item=>item.placeholder))&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path))&&stillDestinations.every(item=>!!chosenMask(item.key,item.mediaId))&&videoDestinations.every(item=>!!chosenMask(item.key,item.mediaId,true)))
  function identity(){return JSON.stringify([token,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,availableSources,preserveMediaIds,nestedComposition.revision,savedMasks,savedVideoMasks,maskChoices])}
  function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false}
  $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderPoster=undefined;folderSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
- async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;folderSources=[];preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
+ async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;folderSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
  async function loadFolder(files:File[]){
   await load(undefined)
   if(!token||!files.length)return
@@ -65,6 +66,7 @@
     mapped[item.id]=entry.source.id
    }
    document=folder.document;media=folder.media;fonts=folder.fonts
+   importingTemplate=true
    folderPoster=folder.poster
    folderSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
@@ -162,7 +164,7 @@
   }} /></label>
   {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}
   {#each orderedMedia as item(item.id)}
-   <label>{item.name} <select aria-label={`Источник Concat ${item.id}`} value={bindings[item.id]??''} onchange={event=>{invalidate();bindings={...bindings,[item.id]:event.currentTarget.value}}}><option value="">Выберите медиа из библиотеки</option>{#each availableSources.filter(entry=>(entry.source.kind===item.kind||sourceOverrides[item.id]?.id===entry.source.id&&sourceOverrides[item.id]?.kind===item.kind)) as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
+   {#if !importingTemplate || !item.placeholder}<label>{item.name} <select aria-label={`Источник Concat ${item.id}`} value={bindings[item.id]??''} onchange={event=>{invalidate();bindings={...bindings,[item.id]:event.currentTarget.value}}}><option value="">Выберите медиа из библиотеки</option>{#each availableSources.filter(entry=>(entry.source.kind===item.kind||sourceOverrides[item.id]?.id===entry.source.id&&sourceOverrides[item.id]?.kind===item.kind)) as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>{/if}
    {#if item.placeholder}
     <label>Заполнить слот {item.name} · {(slotStats.get(item.id)?.seconds ?? 0).toLocaleString('ru-RU',{maximumFractionDigits:3})} с <select aria-label={`Заполнение слота Concat ${item.id}`} value={slotChoices[item.id]??''} onchange={event=>{slotChoices={...slotChoices,[item.id]:event.currentTarget.value}}}><option value="">Выберите замену из библиотеки</option>{#each availableSources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
     <button class="btn ghost sm" type="button" disabled={!slotChoices[item.id]} aria-label={`Заполнить слот Concat ${item.id}`} onclick={()=>void fillSlots([item.id])}>Заполнить слот</button>
