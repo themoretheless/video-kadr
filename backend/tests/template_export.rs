@@ -183,7 +183,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     drop(parsed);
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
     let save_request = || {
-        Request::post(&poster_uri)
+        Request::post(format!("{poster_uri}&name=Alternate+design"))
             .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
             .body(Body::empty())
             .unwrap()
@@ -193,6 +193,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     let saved_template: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
     assert_eq!(saved_template["hasPoster"], true);
+    assert_eq!(saved_template["name"], "Alternate design");
     let download = Request::get(format!(
         "/api/template-library/{}",
         saved_template["id"].as_str().unwrap()
@@ -206,6 +207,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     let parsed =
         video_kadr_backend::template_bundle::read(std::io::Cursor::new(bytes), &stage).unwrap();
     assert!(parsed.poster_png.is_some());
+    assert_eq!(parsed.manifest.name, "Alternate design");
     drop(parsed);
     assert_eq!(
         app.clone().oneshot(save_request()).await.unwrap().status(),

@@ -890,12 +890,16 @@ export async function revokeProjectReviewShare(
 export function compositionProjectTemplateUrl(
   id: string,
   poster?: { timeUs: number; compositionId?: string },
+  name?: string,
 ): string {
   const path = `/api/composition-projects/${encodeURIComponent(id)}/template`
-  if (!poster) return path
-  const query = new URLSearchParams({ posterTimeUs: String(poster.timeUs) })
-  if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
-  return `${path}?${query}`
+  const query = new URLSearchParams()
+  if (poster) {
+    query.set('posterTimeUs', String(poster.timeUs))
+    if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
+  }
+  if (name) query.set('name', name)
+  return query.size ? `${path}?${query}` : path
 }
 
 export function compositionProjectArchiveUrl(id: string): string {
@@ -961,8 +965,9 @@ export function saveProjectTemplate(
   token: string,
   poster?: Parameters<typeof compositionProjectTemplateUrl>[1],
   signal?: AbortSignal,
+  name?: string,
 ): Promise<NativeTemplateLibraryEntry> {
-  return requestJson(compositionProjectTemplateUrl(id, poster), {
+  return requestJson(compositionProjectTemplateUrl(id, poster, name), {
     method: 'POST', headers: bearerHeaders(token), signal,
   })
 }

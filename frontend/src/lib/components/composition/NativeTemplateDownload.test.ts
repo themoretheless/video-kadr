@@ -38,7 +38,11 @@ it('saves the selected frame directly to the authenticated template library', as
   })
   try {
     await tick()
-    target.querySelector<HTMLInputElement>('input')!.click()
+    target.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()
+    await tick()
+    const title = target.querySelector<HTMLInputElement>('input[type=text]')!
+    title.value = 'Alternate design'
+    title.dispatchEvent(new Event('input', { bubbles: true }))
     await tick()
     const save = [...target.querySelectorAll('button')].find(button =>
       button.textContent?.includes('Сохранить шаблон в библиотеку'),
@@ -46,7 +50,7 @@ it('saves the selected frame directly to the authenticated template library', as
     save.click()
     await vi.waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(fetcher).toHaveBeenCalledExactlyOnceWith(
-      '/api/composition-projects/saved/template?posterTimeUs=500000&posterCompositionId=root',
+      '/api/composition-projects/saved/template?posterTimeUs=500000&posterCompositionId=root&name=Alternate+design',
       expect.objectContaining({ method: 'POST', headers: { Authorization: 'Bearer session' } }),
     )
     expect(target.textContent).toContain('Шаблон сохранён в библиотеку')

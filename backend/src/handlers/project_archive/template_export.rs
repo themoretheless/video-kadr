@@ -10,6 +10,7 @@ use crate::{
 #[derive(Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Options {
+    name: Option<String>,
     poster_time_us: Option<u64>,
     poster_composition_id: Option<String>,
 }
@@ -77,6 +78,19 @@ async fn build_package(
         .await
         .map_err(|e| AppError::internal("load template project", e))?
         .ok_or_else(|| AppError::not_found("Проект не найден"))?;
+    let name = match options.name.as_deref() {
+        Some(value) => {
+            let value = value.trim();
+            if value.is_empty()
+                || value.len() > crate::db::MAX_COMPOSITION_PROJECT_NAME_BYTES
+                || value.chars().any(char::is_control)
+            {
+                return Err(AppError::bad_request("Некорректное название шаблона"));
+            }
+            value.to_owned()
+        }
+        None => project.name.clone(),
+    };
     let native: NestedCompositionProject = serde_json::from_value(project.document.clone())
         .map_err(|_| AppError::bad_request("Шаблоны требуют нативный проект с таймлайнами"))?;
     let plan = template_bundle::plan(&native).map_err(|e| AppError::bad_request(e.to_string()))?;
@@ -163,7 +177,7 @@ async fn build_package(
     let output = state
         .staging_dir()
         .join(format!("{}.vktemplate-export", Uuid::new_v4()));
-    let name = project.name.clone();
+    let package_name = name.clone();
     // The worker owns the output guard and admission permit even after HTTP cancellation.
     let archive = tokio::task::spawn_blocking(move || -> anyhow::Result<TemporaryFile> {
         let _slot = slot;
@@ -175,7 +189,7 @@ async fn build_package(
             .open(archive.path())?;
         template_bundle::write_with_resources(
             file,
-            &name,
+            &package_name,
             &native,
             &inputs,
             poster.as_deref(),
@@ -224,5 +238,5 @@ async fn build_package(
             "Проект изменился во время упаковки шаблона",
         ));
     }
-    Ok((archive, project.name))
+    Ok((archive, name))
 }

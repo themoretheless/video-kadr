@@ -8,9 +8,10 @@
     onSaved?: () => void
     disabled?: boolean
   } = $props()
+  let name = $state('')
   let includePoster = $state(false)
   let message=$state(''),error=$state('')
-  $effect(()=>{void projectId;message='';error=''})
+  $effect(()=>{void projectId;name='';message='';error=''})
   let busy = $state(false)
   let request: AbortController | undefined
   $effect(() => {
@@ -27,7 +28,7 @@
     error = ''
     try {
       const poster = includePoster ? { timeUs, compositionId } : undefined
-      await saveProjectTemplate(projectId, token, poster, controller.signal)
+      await saveProjectTemplate(projectId, token, poster, controller.signal, name.trim() || undefined)
       if (controller.signal.aborted) return
       message = 'Шаблон сохранён в библиотеку'
       onSaved?.()
@@ -42,7 +43,7 @@
     message='';error=''
     const anchor=document.createElement('a')
     try{
-      anchor.href = compositionProjectTemplateUrl(projectId, includePoster ? { timeUs, compositionId } : undefined)
+      anchor.href = compositionProjectTemplateUrl(projectId, includePoster ? { timeUs, compositionId } : undefined, name.trim() || undefined)
       anchor.download = ''
       anchor.rel='noopener';document.body.append(anchor);anchor.click()
       message='Загрузка шаблона сохранённой версии началась'
@@ -50,6 +51,7 @@
     finally{anchor.remove()}
   }
 </script>
+<label>Название шаблона <input type="text" bind:value={name} placeholder="Название проекта" disabled={disabled || busy} /></label>
 <label><input type="checkbox" bind:checked={includePoster} {disabled} /> Обложка из кадра сохранённой версии</label>
 <button class="btn ghost sm" {disabled} onclick={download}>Скачать шаблон сохранённой версии</button>
 {#if token}
