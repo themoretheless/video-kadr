@@ -32,5 +32,7 @@ export async function readConcatTemplateFolder(files: readonly File[]) {
   if (fonts.reduce((size, font) => size + font.file.size, 0) > 8 * 1024 * 1024) {
     throw new Error('Шрифты проекта превышают 8 МиБ')
   }
-  return { document, media, design, fonts }
+  const cover = index.get('poster.jpg')
+  const poster = cover && cover.size > 0 && cover.size <= 8 * 1024 * 1024 ? cover : undefined
+  return { document, media, design, fonts, poster }
 }

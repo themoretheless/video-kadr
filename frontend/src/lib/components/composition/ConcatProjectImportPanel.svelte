@@ -17,6 +17,15 @@
  const videoDestinations=$derived(concatImportVideoDestinations(document))
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
+ let folderPoster=$state<File>()
+ let posterUrl=$state('')
+ $effect(()=>{
+  const file=folderPoster
+  if(!file){posterUrl='';return}
+  const url=URL.createObjectURL(new Blob([file],{type:'image/jpeg'}))
+  posterUrl=url
+  return()=>URL.revokeObjectURL(url)
+ })
  let folderSources=$state<ConcatImportSource[]>([])
  const availableSources=$derived([...sources,...folderSources.filter(entry=>!sources.some(source=>source.source.id===entry.source.id))])
  let preserveMediaIds=$state(false)
@@ -29,9 +38,9 @@
  const ready=$derived(!!document&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path))&&stillDestinations.every(item=>!!chosenMask(item.key,item.mediaId))&&videoDestinations.every(item=>!!chosenMask(item.key,item.mediaId,true)))
  function identity(){return JSON.stringify([token,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,availableSources,preserveMediaIds,nestedComposition.revision,savedMasks,savedVideoMasks,maskChoices])}
  function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false}
- $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
+ $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderPoster=undefined;folderSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
- async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderSources=[];preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
+ async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;folderSources=[];preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
  async function loadFolder(files:File[]){
   await load(undefined)
   if(!token||!files.length)return
@@ -56,6 +65,7 @@
     mapped[item.id]=entry.source.id
    }
    document=folder.document;media=folder.media;fonts=folder.fonts
+   folderPoster=folder.poster
    folderSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
     await loadFont(font.path,font.file,false)
@@ -115,6 +125,7 @@
     event.currentTarget.value=''
     void loadFolder(files)
   }} /></label>
+  {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}
   {#each media as item(item.id)}
    <label>{item.name} <select aria-label={`Источник Concat ${item.id}`} value={bindings[item.id]??''} onchange={event=>{invalidate();bindings={...bindings,[item.id]:event.currentTarget.value}}}><option value="">Выберите медиа из библиотеки</option>{#each availableSources.filter(entry=>(entry.source.kind===item.kind||sourceOverrides[item.id]?.id===entry.source.id&&sourceOverrides[item.id]?.kind===item.kind)) as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
    {#if item.placeholder}
@@ -147,4 +158,4 @@
  {#if report?.diagnostics.length}<ul>{#each report.diagnostics as message,index (index)}<li>{message}</li>{/each}</ul>{/if}
  {#if error}<p role="alert">{error}</p>{/if}{#if applied}<p>Импорт открыт. Для сохранения используйте «Сохранить».</p>{/if}
 </details>
-<style>fieldset{border:0;padding:0.5rem 0;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center}label{display:flex;gap:0.5rem;align-items:center}p{flex-basis:100%}select{max-width:24rem}</style>
+<style>fieldset{border:0;padding:0.5rem 0;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center}label{display:flex;gap:0.5rem;align-items:center}p{flex-basis:100%}select{max-width:24rem}img{object-fit:contain}</style>

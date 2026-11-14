@@ -188,6 +188,8 @@ it('uploads the selected template design and binds its bundled font before conve
   id: 'bundled', filename: 'design.mov', url: '/files/sources/design.mov',
   mediaType: 'video', duration: 1, width: 16, height: 16,
  })
+ const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:concat-poster')
+ const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
  try {
   component = mount(Panel, { target: document.body, props: { token: 'session' } })
   await tick()
@@ -200,8 +202,9 @@ it('uploads the selected template design and binds its bundled font before conve
    new File([JSON.stringify(template)], 'template.json'),
    new File(['movie'], 'design.mov'),
    new File(['font'], 'title.otf'),
+   new File(['jpeg'], 'poster.jpg'),
   ]
-  for (const [index, path] of ['template.json', 'assets/design.mov', 'assets/title.otf'].entries()) {
+  for (const [index, path] of ['template.json', 'assets/design.mov', 'assets/title.otf', 'poster.jpg'].entries()) {
    Object.defineProperty(files[index]!, 'webkitRelativePath', { value: `Design/${path}` })
   }
   const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
@@ -212,13 +215,19 @@ it('uploads the selected template design and binds its bundled font before conve
    expect(verify?.closest('fieldset')?.disabled).toBe(false)
    expect(verify?.disabled).toBe(false)
   })
+  expect(document.querySelector('img[alt="Обложка шаблона Concat"]')?.getAttribute('src')).toBe('blob:concat-poster')
   expect(upload).toHaveBeenCalledExactlyOnceWith(files[1], false)
   click('Проверить импорт Concat')
   await vi.waitFor(() => expect(importConcatProject).toHaveBeenCalledWith(
    template, { m1: expect.objectContaining({ id: 'bundled' }) }, expect.any(AbortSignal),
    'session', { 'assets/title.otf': { data: 'Zm9udA==' } }, true,
   ))
+  await unmount(component!)
+  component = undefined
+  expect(revokeUrl).toHaveBeenCalledWith('blob:concat-poster')
  } finally {
   upload.mockRestore()
+  createUrl.mockRestore()
+  revokeUrl.mockRestore()
  }
 })
