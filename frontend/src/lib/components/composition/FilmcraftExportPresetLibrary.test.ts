@@ -304,3 +304,28 @@ it('updates a user preset in place and keeps its category and description', asyn
   }, expect.any(AbortSignal)))
   await vi.waitFor(() => expect(button('Применить правки к экспорту').disabled).toBe(true))
 })
+
+it('switches formats and resolves the rate mode and the MXF codec', async () => {
+  const preset = { ...builtin, settings: { format: 'h264', bitrateMode: 'vbr2Pass', proresProfile: 'lt' } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [preset], default: preset.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: apply } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  const select = async (label: string, value: string) => {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!
+    control.value = value
+    control.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+  }
+  await select('Формат пресета Filmcraft', 'hevc')
+  expect(document.querySelector('[aria-label="Профиль H.264 пресета Filmcraft"]')).toBeNull()
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenLastCalledWith(preset.name, { format: 'hevc', bitrateMode: 'vbr1Pass' })
+
+  await select('Формат пресета Filmcraft', 'mxf-op1a')
+  await select('Кодек MXF пресета Filmcraft', 'proRes')
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenLastCalledWith(preset.name, { format: 'mxf-op1a', mxfVideoCodec: 'proRes', proresProfile: 'hq' })
+})

@@ -10,6 +10,14 @@
   let query = $state('')
   let favorites = $state(false)
   let name = $state('')
+  let format = $state('')
+  let mxfCodec = $state('')
+  const formats = [
+    ['h264', 'H.264'], ['hevc', 'HEVC'], ['mjpeg', 'Motion JPEG'], ['prores', 'Apple ProRes'],
+    ['dnxhr', 'Avid DNxHR'], ['apv', 'APV'], ['mxf-op1a', 'MXF OP1a'], ['mxf-opatom', 'MXF OP-Atom'],
+    ['png', 'PNG-последовательность'], ['tiff', 'TIFF-последовательность'], ['bmp', 'BMP-последовательность'],
+    ['gif', 'GIF'], ['wav', 'WAV'], ['aiff', 'AIFF'],
+  ] as const
   let width = $state('')
   let height = $state('')
   let bitrate = $state('')
@@ -75,14 +83,17 @@
   let controller: AbortController | null = null
   let generation = 0
   const picked = $derived(entries.find(p => p.name === selected))
-  const audioOnly = $derived(picked?.settings.format === 'wav' || picked?.settings.format === 'aiff')
-  const silent = $derived(['gif', 'png', 'tiff', 'bmp'].some(format => picked?.settings.format === format))
-  const h26x = $derived(picked?.settings.format === 'h264' || picked?.settings.format === 'hevc')
-  const h264 = $derived(picked?.settings.format === 'h264' || picked?.settings.mxfVideoCodec === 'h264')
+  const effectiveFormat = $derived(format || picked?.settings.format)
+  const mxf = $derived(effectiveFormat === 'mxf-op1a' || effectiveFormat === 'mxf-opatom')
+  const effectiveMxfCodec = $derived(effectiveFormat === 'mxf-opatom' ? 'dnxhr' : (mxfCodec || picked?.settings.mxfVideoCodec || 'dnxhr'))
+  const audioOnly = $derived(effectiveFormat === 'wav' || effectiveFormat === 'aiff')
+  const silent = $derived(['gif', 'png', 'tiff', 'bmp'].some(item => effectiveFormat === item))
+  const h26x = $derived(effectiveFormat === 'h264' || effectiveFormat === 'hevc')
+  const h264 = $derived(effectiveFormat === 'h264' || (mxf && effectiveMxfCodec === 'h264'))
   const videoBitrate = $derived(h26x || h264)
   const selectedBitrateMode = $derived(!h264 && bitrateMode === 'vbr2Pass' ? '' : bitrateMode)
   const effectiveBitrateMode = $derived(selectedBitrateMode || picked?.settings.bitrateMode)
-  const forcedPcm = $derived(audioOnly || picked?.settings.format === 'mxf-op1a' || picked?.settings.format === 'mxf-opatom')
+  const forcedPcm = $derived(audioOnly || mxf)
   const forcedAac = $derived(h26x && (multiplexer || picked?.settings.multiplexer) !== 'mov')
   const audioSettings = $derived(picked?.settings.audio as { codec?: string } | undefined)
   const effectiveAac = $derived(forcedAac || (!forcedPcm && (
@@ -90,9 +101,9 @@
     || (h26x && (audioCodec || audioSettings?.codec || 'auto') === 'auto')
   )))
   const canEditAudio = $derived(!silent && (audioOnly || audio !== 'none'))
-  const profileGroup = $derived(intraProfiles.find(group => group.format === picked?.settings.format))
+  const profileGroup = $derived(intraProfiles.find(group => group.format === effectiveFormat))
   const selectedIntraProfile = $derived(profileGroup?.options.some(([value]) => value === intraProfile) ? intraProfile : '')
-  const mjpeg = $derived(picked?.settings.format === 'mjpeg')
+  const mjpeg = $derived(effectiveFormat === 'mjpeg')
   const savedMetadata = $derived(picked?.settings.metadata as Record<string, unknown> | undefined)
   function metadataValue(key: keyof FilmcraftExportMetadata): string {
     const inherited = savedMetadata?.[key]
@@ -170,6 +181,8 @@
   })
   function resetDraft() {
     name = ''
+    format = ''
+    mxfCodec = ''
     width = ''
     height = ''
     bitrate = ''
@@ -232,6 +245,13 @@
   function open() { opened = true; void run(refresh) }
   function draftSettings() {
     const settings: Record<string, unknown> = {}
+    if (format) settings.format = format
+    if (mxf && (format || mxfCodec)) {
+      settings.mxfVideoCodec = effectiveMxfCodec
+      if (effectiveMxfCodec === 'dnxhr') settings.dnxProfile = 'hq'
+      if (effectiveMxfCodec === 'proRes') settings.proresProfile = 'hq'
+    }
+    if (effectiveFormat === 'hevc' && effectiveBitrateMode === 'vbr2Pass') settings.bitrateMode = 'vbr1Pass'
     if (matchSource) { settings.frameSize = null; settings.scale = Number(scale) }
     else if (width && height) settings.frameSize = [Number(width), Number(height)]
     if (!audioOnly) {
@@ -286,7 +306,7 @@
     else if (bitrate) { settings.bitrateKbps = Number(bitrate); settings.adaptiveBitrate = null }
     if (captions !== 'preset') settings.burnCaptions = captions === 'burn'
     if (sidecar !== 'preset') settings.captionSidecar = sidecar === 'none' ? null : sidecar
-    if (h264Level !== 'preset' && (picked?.settings.format === 'h264' || picked?.settings.mxfVideoCodec === 'h264')) settings.h264Level = h264Level === 'auto' ? null : Number(h264Level)
+    if (h264Level !== 'preset' && h264) settings.h264Level = h264Level === 'auto' ? null : Number(h264Level)
     return settings
   }
   function save(overwrite: boolean) {
@@ -347,6 +367,16 @@
       <button type="button" disabled={busy || disabled} onclick={favorite}>{picked.favorite ? 'Убрать из избранного' : 'В избранное'}</button>
       <button type="button" disabled={busy || disabled || picked.builtin} onclick={remove}>Удалить пресет</button>
       <button type="button" disabled={busy || disabled} onclick={exportFile}>Скачать пресет</button>
+      <label>Формат <select aria-label="Формат пресета Filmcraft" value={format} onchange={event => { format = event.currentTarget.value }} disabled={busy || disabled}>
+        <option value="">Как в исходном пресете</option>
+        {#each formats as [value, label] (value)}<option {value}>{label}</option>{/each}
+      </select></label>
+      {#if effectiveFormat === 'mxf-op1a'}
+        <label>Кодек MXF <select aria-label="Кодек MXF пресета Filmcraft" value={mxfCodec} onchange={event => { mxfCodec = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="">Как в исходном пресете</option>
+          <option value="dnxhr">DNxHR HQ</option><option value="proRes">ProRes 422 HQ</option><option value="h264">H.264</option>
+        </select></label>
+      {/if}
       <label>Название копии <input aria-label="Название нового пресета Filmcraft" bind:value={name} disabled={busy || disabled} /></label>
       <label><input aria-label="Размер секвенции нового пресета Filmcraft" type="checkbox" bind:checked={matchSource} disabled={busy || disabled} /> Размер секвенции × масштаб</label>
       {#if matchSource}<label>Масштаб <input aria-label="Масштаб нового пресета Filmcraft" inputmode="decimal" bind:value={scale} disabled={busy || disabled} /></label>{/if}
@@ -461,7 +491,7 @@
       {#if sidecar !== 'none' && (sidecar !== 'preset' || typeof picked.settings.captionSidecar === 'string')}
         <p>Файл содержит первый трек субтитров со сдвигом к началу экспорта. Реплики за концом диапазона сохраняются.</p>
       {/if}
-      {#if picked.settings.format === 'h264' || picked.settings.mxfVideoCodec === 'h264'}
+      {#if h264}
         <label>Уровень H.264 <select aria-label="Уровень H.264 нового пресета Filmcraft" value={h264Level} onchange={(event) => { const value = event.currentTarget.value; if (value === 'preset' || value === 'auto' || levels.includes(Number(value))) h264Level = value }} disabled={busy || disabled}>
           <option value="preset">Как в исходном пресете</option><option value="auto">Автоматически</option>
           {#each levels as level (level)}<option value={String(level)}>{(level / 10).toFixed(1)}</option>{/each}
