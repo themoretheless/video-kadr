@@ -104,7 +104,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     retainOriginalField(source)
   }
   const height = record(video)?.height
-  for (const key of ['fontFamily', 'fontSize', 'fontWeight', 'italic', 'strokeWidth'] as const) {
+  for (const key of ['fontFamily', 'fontSize', 'fontWeight', 'italic', 'strokeWidth', 'align'] as const) {
     const value = editedText[key]
     if (value === previousText[key]) continue
     if (!style || clip.concatTitle) return undefined
@@ -121,6 +121,19 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
         if (typeof value !== 'boolean') return undefined
         style = { ...style, italic: value }
         break
+      case 'align': {
+        if (value !== 'left' && value !== 'center' && value !== 'right') return undefined
+        const animation = clip.transform?.concatAnimation
+        const changesPivot = animation && (animation.keys.scale || animation.keys.rotation ||
+          animation.rest.rotationDegrees !== 0 || animation.rest.scaleX !== 1 || animation.rest.scaleY !== 1 ||
+          animation.stretch.some(scale => scale !== 1))
+        if (value !== 'center' && (changesPivot || Array.isArray(after.keys) && after.keys.some(key => {
+          const property = record(key)?.property
+          return property === 'scale' || property === 'rotation'
+        }))) return undefined
+        style = { ...style, align: value }
+        break
+      }
       case 'fontSize':
       case 'strokeWidth': {
         if (typeof value !== 'number' || typeof height !== 'number') return undefined

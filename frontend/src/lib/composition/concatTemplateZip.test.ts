@@ -91,15 +91,25 @@ it('opens an archived template directory without mixing in sibling assets', asyn
       } }],
       clips[1],
     ])
-  const styled = { ...first, text: { ...first.text, fontSize: 0.1, fontFamily: 'Arial', fontWeight: 700, italic: true, strokeWidth: 2 / 180 } }
+  const styled = { ...first, text: { ...first.text, fontSize: 0.1, fontFamily: 'Arial', fontWeight: 700, italic: true, strokeWidth: 2 / 180, align: 'right' } }
   const withStyle = { ...source, timelines: [{ id: 'TL1', video, clips: [styled, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
     .resolves.toEqual([
-      ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 18, fontFamily: 'Arial', bold: true, italic: true, strokeWidth: 2 } }],
+      ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 18, fontFamily: 'Arial', bold: true, italic: true, strokeWidth: 2, align: 'right' } }],
       clips[1],
     ])
   styled.text.fontWeight = 550
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
+    .resolves.toEqual([clips[1]])
+  const pivoted = { ...first, keys: [{ property: 'rotation', at: 0, value: 30 }],
+    text: { ...first.text, align: 'center' } }
+  const pivotSidecar = new File([JSON.stringify({ manifestSha256, clips: [
+    ['TL1', staticClip, { clip: pivoted, video }], captured[1],
+  ] })], 'video-kadr-caption-clips.json')
+  const withPivot = { ...source, timelines: [{ id: 'TL1', video, clips: [
+    { ...pivoted, text: { ...pivoted.text, align: 'left' } }, second,
+  ] }] }
+  await expect(readConcatTemplateCaptions(pivotSidecar, new File([JSON.stringify(withPivot)], 'template.json')))
     .resolves.toEqual([clips[1]])
   const narrowed = { ...first, text: { ...first.text, maxWidth: 0.625, shadow: false } }
   const withWidth = { ...source, timelines: [{ id: 'TL1', video, clips: [narrowed, second] }] }
