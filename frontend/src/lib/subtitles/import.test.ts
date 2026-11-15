@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSubtitleDocument } from './import.js'
+import { parseSubtitleDocument, parseSubtitleDocumentWithReport } from './import.js'
 import { cuesToTextClips, MAX_SRT_BYTES } from './srt.js'
 
 describe('subtitle document import', () => {
@@ -46,5 +46,18 @@ Dialogue: 0:00:02.00,0:00:04.00,Default,Named style
     ]) expect(() => parseSubtitleDocument(`[Events]\nFormat: Start, End, Text\n${event}`)).toThrow()
     expect(() => parseSubtitleDocument('[Events]\nDialogue: 0,1,text')).toThrow()
     expect(() => parseSubtitleDocument('x'.repeat(MAX_SRT_BYTES + 1))).toThrow()
+  })
+
+  it('reports skipped effects per cue without applying their nested commands', () => {
+    const result = parseSubtitleDocumentWithReport(String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\k50\t(0,300,\fs80\b1)\i1}Still readable
+Dialogue: 0:00:01.00,0:00:02.00,{\b1}Supported
+`)
+    expect(result.simplifiedCueCount).toBe(1)
+    expect(result.cues[0]).toMatchObject({ text: 'Still readable', startTicks: 0, endTicks: 1_000_000, style: { italic: true } })
+    expect(result.cues[0]?.style).not.toHaveProperty('fontSizePx')
+    expect(result.cues[0]?.style).not.toHaveProperty('bold')
+    expect(result.cues[1]?.style).toEqual({ bold: true })
   })
 })

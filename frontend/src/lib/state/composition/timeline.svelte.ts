@@ -31,7 +31,7 @@ import { moveSelectedKeyframeTracks, scaleSelectedKeyframeTracks } from '../../c
 import { setClipLocked } from '../../composition/commands.js'
 import { moveClipsToNewTrack } from '../../composition/commands.js'
 import { setClipsEnabled } from '../../composition/commands.js'
-import { parseSubtitleDocument } from '../../subtitles/import.js'
+import { parseSubtitleDocumentWithReport } from '../../subtitles/import.js'
 import { linkedClipIds } from '../../composition/links.js'
 import {
   findClipLocation,
@@ -249,8 +249,8 @@ export function addCompositionTrack(kind: TrackKind): string {
 }
 
 
-export function importSrtToComposition(serialized: string, requestedTrackId?: string): number {
-  const cues = parseSubtitleDocument(serialized)
+export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void): number {
+  const { cues, simplifiedCueCount } = parseSubtitleDocumentWithReport(serialized)
   if (!cues.length) throw new Error('Файл не содержит субтитров')
   let document = compositionState.document
   const candidateTrack = requestedTrackId
@@ -296,6 +296,7 @@ export function importSrtToComposition(serialized: string, requestedTrackId?: st
   } }
   commitDocument(document)
   selectCompositionClip(firstTrackId, clips[0]!.id)
+  report?.(simplifiedCueCount)
   return clips.length
 }
 

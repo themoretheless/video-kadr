@@ -1184,10 +1184,12 @@ describe('composition editor state', () => {
 
   it.each([
     ['VTT', 'WEBVTT\n\n00:01.125 --> 00:02.500\nHello'],
-    ['ASS', '[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.12,0:00:02.50,{\\pos(100,50)}Hello'],
+    ['ASS', '[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.12,0:00:02.50,{\\pos(100,50)\\k50}Hello'],
   ])('imports %s through the same atomic edit and Undo', (_format, body) => {
     const before = JSON.stringify(compositionState.document)
-    expect(importSrtToComposition(body)).toBe(1)
+    const report = vi.fn()
+    expect(importSrtToComposition(body, undefined, report)).toBe(1)
+    expect(report).toHaveBeenCalledExactlyOnceWith(_format === 'ASS' ? 1 : 0)
     expect(compositionState.document.tracks.find((track) => track.kind === 'text')?.clips[0])
       .toMatchObject({
         text: 'Hello', timelineStartTicks: _format === 'VTT' ? 1_125_000 : 1_120_000,

@@ -59,7 +59,11 @@ it('imports overlapping subtitles with one native validation and one Undo',async
  const {importNestedCaptionFile}=await import('./nestedComposition.svelte')
  const before=JSON.stringify(nestedComposition.document)
  const validate=vi.spyOn(api,'nestedDurations').mockResolvedValue({root:4_000_000})
- expect(await importNestedCaptionFile('root','WEBVTT\n\n00:01.500 --> 00:02.500\nImported')).toBe(true)
+ const report = vi.fn()
+ expect(await importNestedCaptionFile('root',String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:01.50,0:00:02.50,{\k20}Imported`,0,report)).toBe(true)
+ expect(report).toHaveBeenCalledExactlyOnceWith(1)
  expect(validate).toHaveBeenCalledTimes(1)
  expect(nestedHistory.past).toHaveLength(1)
  expect(nestedComposition.document!.compositions.root!.content.tracks).toHaveLength(2)

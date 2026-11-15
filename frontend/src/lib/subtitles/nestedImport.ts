@@ -3,7 +3,7 @@ import {createComposition} from '../composition/commands'
 import {textClipToWire} from '../composition/payload'
 import {isStableId} from '../composition/validation'
 import {MAX_COMPOSITION_CLIPS,MAX_COMPOSITION_TRACKS,MAX_COMPOSITION_DURATION_TICKS,type WireCompositionTrack} from '../composition/types'
-import {parseSubtitleDocument} from './import'
+import {parseSubtitleDocumentWithReport} from './import'
 import {cuesToTextClips} from './srt'
 
 /** Import copies into a single authored composition; existing instances keep their windows. */
@@ -11,7 +11,8 @@ export function importNestedSubtitles(project:NativeNestedProject, compositionId
   const node=Object.hasOwn(project.compositions,compositionId)?project.compositions[compositionId]:undefined
   if(!node)throw new Error('Композиция не найдена')
   if(!Number.isSafeInteger(offsetUs)||offsetUs<0)throw new Error('Некорректное смещение субтитров')
-  const cues=parseSubtitleDocument(serialized).map(cue=>({...cue,startTicks:cue.startTicks+offsetUs,endTicks:cue.endTicks+offsetUs})).sort((a,b)=>a.startTicks-b.startTicks)
+  const parsed = parseSubtitleDocumentWithReport(serialized)
+  const cues=parsed.cues.map(cue=>({...cue,startTicks:cue.startTicks+offsetUs,endTicks:cue.endTicks+offsetUs})).sort((a,b)=>a.startTicks-b.startTicks)
   if(!cues.length)throw new Error('Файл не содержит субтитров')
   if(cues.some(cue=>!Number.isSafeInteger(cue.endTicks)||cue.endTicks>MAX_COMPOSITION_DURATION_TICKS))throw new Error('Субтитры выходят за пределы композиции')
   if(node.content.tracks.reduce((sum,track)=>sum+track.clips.length,0)+cues.length>MAX_COMPOSITION_CLIPS)throw new Error('Превышен лимит клипов композиции')
@@ -46,5 +47,5 @@ export function importNestedSubtitles(project:NativeNestedProject, compositionId
   const content={...node.content,tracks:tracks as readonly WireCompositionTrack[],metadata:{...node.content.metadata,captionTextTracks:tracks.filter(track=>track.kind==='text'&&roles.has(track.id)).map(track=>track.id)}}
   const end=Math.max(...cues.map(cue=>cue.endTicks))
   const document={...project,compositions:{...project.compositions,[compositionId]:{...node,...(node.durationUs!==undefined?{durationUs:Math.max(node.durationUs,end)}:{}),content}}}
-  return {document,count:cues.length,firstTrackId,firstClipId}
+  return {document,count:cues.length,firstTrackId,firstClipId,simplifiedCueCount:parsed.simplifiedCueCount}
 }

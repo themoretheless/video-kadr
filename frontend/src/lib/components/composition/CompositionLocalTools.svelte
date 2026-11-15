@@ -178,8 +178,9 @@
     if (!file) return
     try {
       if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
-      const count = importSrtToComposition(await file.text(), targetTextTrackId || undefined)
-      showSuccess(`Импортировано субтитров: ${count}`)
+      let simplified = 0
+      const count = importSrtToComposition(await file.text(), targetTextTrackId || undefined, value => { simplified = value })
+      showSuccess(`Импортировано субтитров: ${count}${simplified ? `. Неподдерживаемые эффекты ASS пропущены в ${simplified} репл.` : ''}`)
     } catch (error) {
       showError(error)
     }
@@ -329,7 +330,7 @@
   <details class="composition-tool-section">
     <summary>Субтитры SRT / VTT / ASS / TXT</summary>
     <div class="composition-tool-body">
-      <p>Импорт SRT, VTT, ASS/SSA и TXT с таймкодами выполняется локально в UTF-8, без сервера и распознавания речи. VTT и ASS/SSA импортируют текст и время; оформление и анимация заменяются стилем text-дорожки. Пересекающиеся реплики распределяются по свободным дорожкам субтитров.</p>
+      <p>Файлы в UTF-8 импортируются локально. Для ASS сохраняются поддерживаемые стили. Пересекающиеся реплики распределяются по свободным дорожкам субтитров.</p>
       <label>
         Дорожка для импорта
         <select bind:value={targetTextTrackId}>

@@ -1011,19 +1011,23 @@ export async function mergeNestedCaptionClips(compositionId: string, ids: readon
   if (!nestedHistory.error && expected && JSON.stringify(nestedComposition.document) !== expected) nestedHistory.error = 'Проект изменился во время объединения субтитров'
 }
 
-export async function importNestedCaptionFile(compositionId:string, serialized:string, offsetUs=0):Promise<boolean> {
+export async function importNestedCaptionFile(compositionId:string, serialized:string, offsetUs=0, report?: (simplifiedCueCount: number) => void):Promise<boolean> {
   if(!nestedComposition.document||nestedHistory.busy)return false
   const startedGeneration=generation
   let expected=''
+  let simplifiedCueCount=0
   await editNestedDocument(async project=>{
     const result=importNestedSubtitles(project,compositionId,serialized,prefix=>`${prefix}-${crypto.randomUUID()}`,offsetUs)
     expected=JSON.stringify(result.document)
+    simplifiedCueCount=result.simplifiedCueCount
     await nestedDurations(result.document)
     return result.document
   },true)
   if(generation!==startedGeneration)return false
   if(!nestedHistory.error&&expected&&JSON.stringify(nestedComposition.document)!==expected)nestedHistory.error='Проект изменился во время импорта субтитров'
-  return !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected
+  const committed = !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected
+  if (committed) report?.(simplifiedCueCount)
+  return committed
 }
 
 /** Session generation belongs to the document context, not its saved DB revision. */

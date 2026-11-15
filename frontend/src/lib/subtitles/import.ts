@@ -5,11 +5,16 @@ import { parseWebVtt } from './webvtt.js'
 
 /** Normalize subtitle documents to the composition clock before any mutation. */
 export function parseSubtitleDocument(input: string): SubtitleCue[] {
+  return parseSubtitleDocumentWithReport(input).cues
+}
+
+export function parseSubtitleDocumentWithReport(input: string) {
   if (new TextEncoder().encode(input).byteLength > MAX_SRT_BYTES) {
     throw new SubtitleFormatError('Subtitle file exceeds 2 MiB')
   }
   const body = input.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim()
   let cues: SubtitleCue[]
+  let simplifiedCueCount = 0
   if (/^WEBVTT(?:\s|$)/.test(body)) {
     cues = parseWebVtt(`${body}\n`).cues.map((cue, index) => ({
       id: `subtitle-${index + 1}`,
@@ -18,13 +23,15 @@ export function parseSubtitleDocument(input: string): SubtitleCue[] {
       text: plainVttText(cue.text),
     }))
   } else if (/^\[Events\]$/im.test(body)) {
-    cues = parseAss(body)
+    const parsed = parseAss(body)
+    cues = parsed.cues
+    simplifiedCueCount = parsed.simplifiedCueCount
   } else {
     cues = parseTimecodedText(body)
   }
   // Reuse the same bounds and text validation as SRT and text-clip creation.
   formatSrt(cues)
-  return cues
+  return { cues, simplifiedCueCount }
 }
 
 function plainVttText(text: string): string {
@@ -32,12 +39,13 @@ function plainVttText(text: string): string {
     ({ amp: '&', lt: '<', gt: '>', nbsp: '\u00a0', lrm: '\u200e', rlm: '\u200f' })[entity]!)
 }
 
-function parseAss(body: string): SubtitleCue[] {
+function parseAss(body: string) {
   let section = ''
   let fields: string[] = []
   let styleFields: string[] = []
   const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor'] }>()
   const cues: SubtitleCue[] = []
+  let simplifiedCueCount = 0
   for (const line of body.split('\n')) {
     const trimmed = line.trim()
     if (/^\[.*\]$/.test(trimmed)) {
@@ -68,11 +76,14 @@ function parseAss(body: string): SubtitleCue[] {
       const style = { ...namedStyle?.style }
       let anchor = namedStyle?.anchor
       let position: SubtitleCue['position']
+      let simplified = false
       const text = values.slice(fields.length - 1).join(',').replace(/\{([^}]*)\}/g, (_whole, block: string) => {
-        for (const rawTag of block.split('\\')) {
+        for (const rawTag of assTags(block)) {
           const tag = rawTag.trim()
-          applyAssOverride(style, tag)
-          position = assPosition(tag) ?? position
+          if (!tag) continue
+          const coordinates = assPosition(tag)
+          if (coordinates) position = coordinates
+          else if (!applyAssOverride(style, tag)) simplified = true
           anchor = assAnchor(/^an([1-9])$/i.exec(tag)?.[1]) ?? anchor
         }
         return ''
@@ -86,10 +97,28 @@ function parseAss(body: string): SubtitleCue[] {
         ...(position ? { position } : {}),
         ...(anchor ? { anchor } : {}),
       })
+      if (simplified) simplifiedCueCount++
       if (cues.length > MAX_SRT_CUES) throw new SubtitleFormatError('Subtitle cue count exceeds limit')
     }
   }
-  return cues
+  return { cues, simplifiedCueCount }
+}
+
+function assTags(block: string): string[] {
+  const tags: string[] = []
+  let depth = 0
+  let start = -1
+  for (let index = 0; index < block.length; index++) {
+    const char = block[index]
+    if (char === '(') depth++
+    if (char === ')') depth = Math.max(0, depth - 1)
+    if (char === '\\' && depth === 0) {
+      if (start >= 0) tags.push(block.slice(start, index))
+      start = index + 1
+    }
+  }
+  if (start >= 0) tags.push(block.slice(start))
+  return tags
 }
 
 function assPosition(tag: string): SubtitleCue['position'] {
@@ -161,20 +190,23 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
   return style
 }
 
-function applyAssOverride(style: AssStyle, tag: string) {
+function applyAssOverride(style: AssStyle, tag: string): boolean {
   const size = /^fs(\d+(?:\.\d+)?)$/i.exec(tag)
   const color = /^(?:1?c)(&H[0-9a-f]{1,8}&?)$/i.exec(tag)
   const align = /^an([1-9])$/i.exec(tag)
   const font = /^fn(.+)$/i.exec(tag)
   const face = /^([bi])(-?1|0)$/i.exec(tag)
-  if (size) style.fontSizePx = assNumber(size[1], 1, 512) ?? style.fontSizePx
+  const fontSize = assNumber(size?.[1], 1, 512)
+  if (fontSize !== undefined) style.fontSizePx = fontSize
   if (color) style.color = assColor(color[1]) ?? style.color
   if (align) style.align = assAlign(align[1]) ?? style.align
   if (font) {
     const family = assFont(font[1])
     if (family) style.fontFamily = family
+    return !!family
   }
   if (face) style[face[1]!.toLowerCase() === 'b' ? 'bold' : 'italic'] = face[2] !== '0'
+  return fontSize !== undefined || !!(color || align || face)
 }
 
 function assTimestamp(value: string): number {

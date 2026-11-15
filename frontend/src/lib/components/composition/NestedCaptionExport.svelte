@@ -16,8 +16,9 @@
       if(file.size>MAX_SRT_BYTES)throw new Error('Файл субтитров превышает лимит 2 МиБ')
       const body=await file.text()
       if(JSON.stringify(nestedComposition.document)!==identity||(nestedComposition.activeCompositionId??project.root)!==id)throw new Error('Проект или композиция изменились во время чтения файла')
-      if(!await importNestedCaptionFile(id,body,offset))throw new Error(nestedHistory.error||'Импорт отменён: проект изменился')
-      message='Субтитры импортированы'
+      let simplified = 0
+      if(!await importNestedCaptionFile(id,body,offset,value=>{simplified=value}))throw new Error(nestedHistory.error||'Импорт отменён: проект изменился')
+      message=`Субтитры импортированы${simplified ? `. Неподдерживаемые эффекты ASS пропущены в ${simplified} репл.` : ''}`
     } catch(cause){error=cause instanceof Error?cause.message:String(cause)}
     finally{importing=false}
   }
