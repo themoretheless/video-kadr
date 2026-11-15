@@ -42,6 +42,7 @@
   let history = $state<NestedExportHistoryEntry[]>([])
   let historyBusy = $state(false)
   let historyLoaded = $state(false)
+  let nextHistoryCursor = $state<string | null>(null)
   let historyError = $state('')
   const statusLabels = {
     pending: 'В очереди', running: 'В работе', done: 'Готово', error: 'Ошибка', cancelled: 'Отменено', interrupted: 'Прервано',
@@ -149,14 +150,18 @@
       if (!lifecycle.signal.aborted) { busy = false; error = failure instanceof Error ? failure.message : String(failure) }
     }
   }
-  async function refreshHistory() {
-    if (historyBusy) return
-    const owner = token
+  async function refreshHistory(older = false) {
+    if (historyBusy || (older && !nextHistoryCursor)) return
+    const owner = token, cursor = older ? nextHistoryCursor : null
     historyBusy = true; historyError = ''
     try {
-      const result = await listNestedExports(owner, lifecycle.signal)
+      const result = cursor ? await listNestedExports(owner, lifecycle.signal, cursor)
+        : await listNestedExports(owner, lifecycle.signal)
       if (lifecycle.signal.aborted || token !== owner) return
-      history = result.jobs; historyLoaded = true
+      const loaded = new SvelteSet(older ? history.map(entry => entry.jobId) : [])
+      history = older ? [...history, ...result.jobs.filter(entry => !loaded.has(entry.jobId))] : result.jobs
+      nextHistoryCursor = result.nextCursor
+      historyLoaded = true
     } catch (failure) {
       if (!lifecycle.signal.aborted && token === owner) historyError = failure instanceof Error ? failure.message : String(failure)
     } finally { historyBusy = false }
@@ -246,6 +251,9 @@
           </button></li>
         {/each}
       </ul>
+    {/if}
+    {#if nextHistoryCursor}
+      <button class="btn ghost sm" disabled={historyBusy} onclick={() => void refreshHistory(true)}>Показать более ранние задачи</button>
     {/if}
     <label>Идентификатор задачи<input type="text" bind:value={reopenId} disabled={busy} /></label>
     <button class="btn ghost sm" disabled={busy || !validReopenId} onclick={() => reopen(reopenId.trim())}>Открыть задачу</button>

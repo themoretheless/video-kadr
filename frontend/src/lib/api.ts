@@ -1287,8 +1287,10 @@ export function nestedDurations(project: NativeNestedProject, signal?: AbortSign
   })
 }
 export interface NestedExportHistoryEntry { jobId: string; status: Job['status']; createdAt: number }
-export function listNestedExports(token: string, signal?: AbortSignal): Promise<{ jobs: NestedExportHistoryEntry[] }> {
-  return requestJson('/api/compositions/nested-export', { headers: bearerHeaders(token), signal })
+export function listNestedExports(token: string, signal?: AbortSignal, cursor?: string):
+  Promise<{ jobs: NestedExportHistoryEntry[]; nextCursor: string | null }> {
+  const query = cursor ? `?${new URLSearchParams({ cursor })}` : ''
+  return requestJson(`/api/compositions/nested-export${query}`, { headers: bearerHeaders(token), signal })
 }
 
 export function exportNestedVideo(

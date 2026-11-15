@@ -301,19 +301,49 @@ pub(super) async fn authorize_job(state: &AppState, id: &str, headers: &HeaderMa
     Ok(())
 }
 
+#[derive(Deserialize)]
+pub struct ExportHistoryQuery {
+    cursor: Option<String>,
+    limit: Option<u32>,
+}
+
 pub async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,
+    axum::extract::Query(page): axum::extract::Query<ExportHistoryQuery>,
 ) -> AppResult<Json<Value>> {
     let actor = super::publish::authenticated_actor(&state, &headers).await?;
+    let limit = page.limit.unwrap_or(20);
+    if !(1..=50).contains(&limit) {
+        return Err(AppError::bad_request("Размер страницы должен быть 1–50"));
+    }
+    let cursor_time = if let Some(cursor) = &page.cursor {
+        let query = format!("SELECT j.created_at FROM jobs j {EXPORT_OWNER_JOIN}
+            WHERE j.id=? AND {EXPORT_OWNER}=?");
+        let time: Option<i64> = sqlx::query_scalar(&query).bind(cursor).bind(&actor)
+            .fetch_optional(state.db.pool()).await
+            .map_err(|e| AppError::internal("load nested export cursor", e))?;
+        Some(time.ok_or_else(|| AppError::bad_request("Некорректная страница экспорта"))?)
+    } else {
+        None
+    };
     let query = format!("SELECT DISTINCT j.id,j.status,j.created_at FROM jobs j {EXPORT_OWNER_JOIN}
-        WHERE {EXPORT_OWNER}=? ORDER BY j.created_at DESC,j.id DESC LIMIT 20");
-    let rows: Vec<(String, String, i64)> = sqlx::query_as(&query)
-        .bind(actor).fetch_all(state.db.pool()).await
+        WHERE {EXPORT_OWNER}=? AND (? IS NULL OR j.created_at<? OR (j.created_at=? AND j.id<?))
+        ORDER BY j.created_at DESC,j.id DESC LIMIT ?");
+    let mut rows: Vec<(String, String, i64)> = sqlx::query_as(&query)
+        .bind(actor).bind(cursor_time).bind(cursor_time).bind(cursor_time)
+        .bind(page.cursor).bind(i64::from(limit) + 1)
+        .fetch_all(state.db.pool()).await
         .map_err(|e| AppError::internal("list nested exports", e))?;
+    let next_cursor = if rows.len() > limit as usize {
+        rows.pop();
+        rows.last().map(|row| row.0.clone())
+    } else {
+        None
+    };
     let jobs: Vec<_> = rows.into_iter().map(|(id,status,created_at)|
         json!({"jobId":id,"status":status,"createdAt":created_at})).collect();
-    Ok(Json(json!({"jobs":jobs})))
+    Ok(Json(json!({"jobs":jobs,"nextCursor":next_cursor})))
 }
 
 pub async fn nested_export_handler(
@@ -523,15 +553,24 @@ mod caption_sidecar_tests {
         let bob = state.db.register_auth_user("bob-history", "bob-private-password").await.unwrap().unwrap();
         let alice_headers = login(&alice.token);
         let bob_headers = login(&bob.token);
-        for (id, owner) in [("alice-job", "alice-history"), ("bob-job", "bob-history")] {
+        for (id, owner) in [("alice-job", "alice-history"), ("alice-older", "alice-history"), ("bob-job", "bob-history")] {
             let created = state.enqueue_job(id.into(), JobKind::NestedExport, &json!({"owner":owner}), id).await.unwrap();
             assert!(matches!(created, EnqueueOutcome::Created(_)));
         }
         sqlx::query("UPDATE job_requests SET payload_json='null' WHERE job_id='alice-job'")
             .execute(state.db.pool()).await.unwrap();
-        let Json(history) = list(State(state.clone()), alice_headers.clone()).await.unwrap();
+        sqlx::query("UPDATE jobs SET created_at=42")
+            .execute(state.db.pool()).await.unwrap();
+        let page = |cursor| axum::extract::Query(ExportHistoryQuery { cursor, limit: Some(1) });
+        let Json(history) = list(State(state.clone()), alice_headers.clone(), page(None)).await.unwrap();
         assert_eq!(history["jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(history["jobs"][0]["jobId"], "alice-older");
+        assert_eq!(history["nextCursor"], "alice-older");
+        let Json(history) = list(State(state.clone()), alice_headers.clone(), page(Some("alice-older".into()))).await.unwrap();
         assert_eq!(history["jobs"][0]["jobId"], "alice-job");
+        assert!(history["nextCursor"].is_null());
+        let denied = list(State(state.clone()), alice_headers.clone(), page(Some("bob-job".into()))).await.unwrap_err();
+        assert_eq!(denied.into_response().status(), StatusCode::BAD_REQUEST);
         assert!(authorize_job(&state, "alice-job", &alice_headers).await.is_ok());
         let denied = authorize_job(&state, "alice-job", &bob_headers).await.unwrap_err();
         assert_eq!(denied.into_response().status(), StatusCode::FORBIDDEN);
