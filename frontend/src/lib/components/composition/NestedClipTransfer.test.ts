@@ -917,7 +917,7 @@ it('captures caption-only selection, keeps its saved text after an edit and past
 })
 
 
-it('edits native caption width on one track with undo', async () => {
+it('edits imported caption appearance and wrap width on one track with undo', async () => {
   closeNestedComposition()
   const project = structuredClone(fixture.nativeVersions[0]!.copy) as unknown as api.NativeNestedProject
   const compositionId = 'new-timeline'
@@ -946,6 +946,16 @@ it('edits native caption width on one track with undo', async () => {
     await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(2))
     expect(nestedComposition.document?.compositions[compositionId]?.content.captionTracks?.[0]?.style)
       .toEqual({ margin: 0.08 })
+    const appearance = target.querySelector('details:has([aria-label="Ширина переноса субтитров: Распознанная речь"])')!
+    const anchor = appearance.querySelector<HTMLSelectElement>('[aria-label="Положение субтитров"]')!
+    anchor.value = 'top'
+    anchor.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(3))
+    expect(nestedComposition.document?.compositions[compositionId]?.content.captionTracks?.[0]?.style)
+      .toEqual({ margin: 0.08, anchor: 'top' })
+    expect(nestedComposition.document?.compositions[compositionId]?.content.captionTracks?.[1])
+      .toEqual(node.content.captionTracks?.[1])
+    undoNestedComposition()
     undoNestedComposition()
     undoNestedComposition()
     expect(nestedComposition.document).toEqual(project)

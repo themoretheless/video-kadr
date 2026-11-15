@@ -7,8 +7,8 @@
   import {slipNestedLayer,raiseNestedLayers,rippleNestedComposition} from '$lib/state/nestedComposition.svelte'
   import {activityReveal} from '$lib/agent/activityReveal.svelte'
   import NestedCaptionTextEditor from './NestedCaptionTextEditor.svelte'
-  import CaptionWrapWidth from './CaptionWrapWidth.svelte'
-  import { editNestedFileCaptions, setNestedCaptionWrapWidth } from '$lib/state/nestedComposition.svelte'
+  import CaptionTrackStyle from './CaptionTrackStyle.svelte'
+  import { editNestedFileCaptions, setNestedCaptionTrackStyle } from '$lib/state/nestedComposition.svelte'
   import { untrack,tick } from 'svelte'
   import {SvelteSet} from 'svelte/reactivity'
   import VideoEnhancementPanel from './VideoEnhancementPanel.svelte'
@@ -355,9 +355,14 @@
       {/each}
     {/each}
     {#each captionTracks as track (track.id)}
-      <CaptionWrapWidth value={track.style?.wrapWidth} trackName={track.name}
+      <CaptionTrackStyle style={track.style} trackName={track.name}
         disabled={disabled || nestedHistory.busy || track.locked}
-        onchange={width => void setNestedCaptionWrapWidth(active, track.id, width)} />
+        onchange={style => {
+          const scope = active
+          void setNestedCaptionTrackStyle(scope, track.id, style, () => {
+            if (!alive || disabled || active !== scope) throw new Error('Таймлайн изменился')
+          })
+        }} />
       <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || track.locked}
         aria-label={`Добавить реплику на курсоре · ${track.name}`}
         onclick={() => addFileCaption(track.id)}>Добавить реплику на курсоре</button>

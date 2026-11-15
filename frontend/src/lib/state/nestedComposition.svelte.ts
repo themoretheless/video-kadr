@@ -1,5 +1,5 @@
 import { captionMicrosecondsCeil } from '$lib/composition/captionTime'
-import { MAX_COMPOSITION_DURATION_TICKS } from '$lib/composition/types'
+import { MAX_COMPOSITION_DURATION_TICKS, type CaptionStyle } from '$lib/composition/types'
 import { changeSubtitleDocuments, type SubtitleDocument } from '$lib/subtitles/documents'
 import {takeSourceRunCutTransaction} from '$lib/composition/sourceRunCutTransaction'
 import {authState} from './auth.svelte'
@@ -1135,23 +1135,21 @@ export async function updateNestedCaptionText(
   return !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected
 }
 
-export async function setNestedCaptionWrapWidth(compositionId: string, trackId: string, width: number | undefined): Promise<void> {
-  const guard = () => assertHistoryUnlocked()
+export async function setNestedCaptionTrackStyle(
+  compositionId: string, trackId: string, style: Partial<CaptionStyle>, admission: () => void,
+): Promise<void> {
+  const guard = () => { assertHistoryUnlocked(); admission() }
+  const nextStyle = { ...style }
+  if (nextStyle.wrapWidth === undefined) delete nextStyle.wrapWidth
   await editNestedDocument(async project => {
     guard()
-    if (width !== undefined && (!Number.isFinite(width) || width < 0.1 || width > 1)) {
-      throw new Error('Ширина переноса должна быть от 10% до 100% кадра')
-    }
-    const node = project.compositions[compositionId]
+    const node = Object.hasOwn(project.compositions, compositionId) ? project.compositions[compositionId] : undefined
     const tracks = node?.content.captionTracks ?? []
     const track = tracks.find(item => item.id === trackId)
     if (!node || !track) throw new Error('Дорожка субтитров не найдена')
     if (track.locked) throw new Error('Дорожка субтитров заблокирована')
-    if (track.style?.wrapWidth === width) return project
-    const style = { ...track.style }
-    if (width === undefined) delete style.wrapWidth
-    else style.wrapWidth = width
-    const captionTracks = tracks.map(item => item.id === trackId ? { ...item, style } : item)
+    if (JSON.stringify(track.style ?? {}) === JSON.stringify(nextStyle)) return project
+    const captionTracks = tracks.map(item => item.id === trackId ? { ...item, style: nextStyle } : item)
     const next = { ...project, compositions: { ...project.compositions,
       [compositionId]: { ...node, content: { ...node.content, captionTracks } },
     } }
