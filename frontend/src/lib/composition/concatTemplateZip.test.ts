@@ -104,11 +104,11 @@ it('opens an archived template directory without mixing in sibling assets', asyn
       } }],
       clips[1],
     ])
-  const styled = { ...first, text: { ...first.text, fontSize: 0.1, fontFamily: 'Arial', fontWeight: 700, italic: true, strokeWidth: 2 / 180, align: 'right' } }
+  const styled = { ...first, text: { ...first.text, fontSize: 0.1, fontFamily: 'Arial', fontWeight: 700, italic: true, strokeWidth: 2 / 180, tracking: -3 / 180, align: 'right' } }
   const withStyle = { ...source, timelines: [{ id: 'TL1', video, clips: [styled, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
     .resolves.toEqual([
-      ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 18, fontFamily: 'Arial', bold: true, italic: true, strokeWidth: 2, align: 'right' } }],
+      ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 18, fontFamily: 'Arial', bold: true, italic: true, strokeWidth: 2, tracking: -3, align: 'right' } }],
       clips[1],
     ])
   styled.text.fontWeight = 550

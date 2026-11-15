@@ -24,6 +24,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
     let mut parameters=GraphicTextParameters{
         text:clip.text.clone(),font:clip.style.font_family.clone(),size:clip.style.font_size as f32,
         font_style: font_style.into(),
+        tracking: clip.style.tracking.unwrap_or_default() * 1000. / clip.style.font_size as f32,
         box_width: clip.text_box_width.unwrap_or_default(),
         fill:true,fill_color:color,align:match clip.style.align {None|Some(super::composition::TextAlignment::Left)=>0,Some(super::composition::TextAlignment::Center)=>1,Some(super::composition::TextAlignment::Right)=>2},
         stroke:clip.style.stroke_width.round()>0.,stroke_width:clip.style.stroke_width.round()as f32,stroke_color:rgba(clip.style.stroke),stroke_type:0,
@@ -54,14 +55,15 @@ mod tests {
         let pixels=|clip:&TextClip|render(clip,(64,48),1500000,&mut||Ok(())).unwrap().unwrap().to_surface(&mut||Ok(())).unwrap();
         let original=pixels(&base);
         assert!(original.rgba.chunks_exact(4).any(|p|p[3]>0));
-        for variant in 0..5 {
+        for variant in 0..6 {
             let mut changed=base.clone();
             match variant {
                 0=>changed.style.background=Rgba{red:0.,green:0.5,blue:0.,alpha:0.8},
                 1=>{changed.style.stroke_width=2.;changed.style.stroke.alpha=1.;},
                 2=>changed.style.shadow.alpha=1.,
                 3=>changed.opacity=super::super::composition::AnimatableValue::Constant{value:0.25},
-                _=>changed.transform.x=super::super::composition::AnimatableValue::Constant{value:10.},
+                4=>changed.transform.x=super::super::composition::AnimatableValue::Constant{value:10.},
+                _=>changed.style.tracking=Some(3.),
             }
             assert_ne!(pixels(&changed),original,"style variant {variant}");
         }

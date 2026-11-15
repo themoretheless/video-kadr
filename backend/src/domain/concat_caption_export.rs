@@ -72,6 +72,7 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
         background_padding_y: 0.0,
         // Concat stores one shadow flag; its renderer owns the color, blur, and offset.
         shadow: clip.style.shadow.alpha > 0.0,
+        tracking: f64::from(clip.style.tracking.unwrap_or_default()) / f64::from(height),
         max_width: f64::from(clip.text_box_width.unwrap_or(0.0)) / f64::from(width),
         ..TitleStyle::default()
     };
