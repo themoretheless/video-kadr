@@ -101,7 +101,9 @@ impl TitleStyle {
             "bold" => 700.,
             "extrabold" | "ultrabold" => 800.,
             "black" | "heavy" => 900.,
-            _ => anyhow::bail!("Title face style cannot be represented by CSS weight and italic"),
+            _ => name.strip_prefix("weight").and_then(|weight| weight.parse::<f64>().ok())
+                .filter(|weight| (100.0..=900.0).contains(weight))
+                .ok_or_else(|| anyhow::anyhow!("Title face style cannot be represented by CSS weight and italic"))?,
         };
         self.font_weight = weight;
         self.italic = italic;

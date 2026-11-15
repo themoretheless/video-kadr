@@ -14,16 +14,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         let sampled=super::animated_color::PreparedColorTrack::new(super::animated_color::ColorSampleRequest{track:track.clone(),default,times_us:vec![]}).map_err(anyhow::Error::msg)?.sample(local as f64).map_err(anyhow::Error::msg)?;
         [sampled.r as f32/255.,sampled.g as f32/255.,sampled.b as f32/255.,sampled.a as f32/255.]
     }else{rgba(clip.style.color)};
-    let weight_style = clip.style.font_weight.map(|weight| {
-        let slant = if clip.style.italic { " Italic" } else { "" };
-        format!("Weight {}{slant}", weight.round())
-    });
-    let font_style = weight_style.as_deref().unwrap_or(match (clip.style.bold, clip.style.italic) {
-        (false, false) => "Regular",
-        (true, false) => "Bold",
-        (false, true) => "Italic",
-        (true, true) => "Bold Italic",
-    });
+    let font_style = clip.style.face_style();
     let size = clip.style.font_size as f32;
     let (dx, dy, shadow_color, shadow_blur) = if clip.style.concat_shadow {
         // Match the source offset and opacity, using the native mask blur.
@@ -36,12 +27,12 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
     };
     let leading = clip.style.line_height.map_or(0., |ratio| {
         use filmcraft_text::fonts::{face, resolve};
-        let metrics = face(resolve(&clip.style.font_family, font_style).face).metrics(size);
+        let metrics = face(resolve(&clip.style.font_family, &font_style).face).metrics(size);
         ratio * size - (metrics.ascent + metrics.descent + metrics.line_gap).max(size * 0.5)
     });
     let mut parameters=GraphicTextParameters{
         text:clip.text.clone(),font:clip.style.font_family.clone(),size,
-        font_style: font_style.into(),
+        font_style: font_style.into_owned(),
         leading,
         tracking: clip.style.tracking.unwrap_or_default() * 1000. / clip.style.font_size as f32,
         box_width: clip.text_box_width.unwrap_or_default(),

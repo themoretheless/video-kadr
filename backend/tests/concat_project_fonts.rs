@@ -212,7 +212,7 @@ fn explicit_missing_font_fallback_is_reported_and_does_not_leak_another_projects
 }
 
 #[test]
-fn font_status_does_not_hide_missing_faces_in_a_different_text_engine() {
+fn font_status_resolves_embedded_faces_in_both_text_engines() {
     let mut project = convert(request(false)).project.unwrap();
     if let CompositionTrack::Text { clips, .. } = &mut project
         .compositions
@@ -230,7 +230,40 @@ fn font_status_does_not_hide_missing_faces_in_a_different_text_engine() {
         .find(|status| status.usage.family == "KadrX" && status.usage.style == "Regular")
         .unwrap();
     assert_eq!(face.usage.count, 2);
-    assert!(face.missing);
+    assert!(!face.missing);
+    project.fonts.clear();
+    let status = video_kadr_backend::domain::font_inventory_status::project_fonts(&project).unwrap();
+    assert!(status.iter().find(|status| status.usage.family == "KadrX").unwrap().missing);
+}
+
+#[test]
+fn native_caption_font_status_and_replacement_use_the_rendered_face() {
+    use video_kadr_backend::domain::{composition_font_replace::{FontFace, FontSelection}, font_inventory_status, project_fonts};
+    let mut project = convert(request(false)).project.unwrap();
+    let node = project.compositions.get_mut(&project.root).unwrap();
+    let CompositionTrack::Text { clips, .. } = &mut node.content.tracks[0] else { panic!("expected text track") };
+    clips[0].concat_title = None;
+    clips[0].style.font_family = "KadrX".into();
+    clips[0].style.font_weight = Some(550.5);
+    clips[0].style.italic = true;
+    let status = font_inventory_status::project_fonts(&project).unwrap();
+    assert_eq!(status.len(), 1);
+    assert_eq!(status[0].usage.family, "KadrX");
+    assert_eq!(status[0].usage.style, "Weight 551 Italic");
+    assert!(!status[0].missing);
+    let changed = project_fonts::replace_fonts(
+        &project,
+        &FontSelection::Face(FontFace { family: "KadrX".into(), style: Some(status[0].usage.style.clone()) }),
+        &FontSelection::Family("JetBrains Mono".into()),
+    ).unwrap();
+    assert_eq!(changed.replaced, 1);
+    let CompositionTrack::Text { clips, .. } = &changed.project.compositions[&project.root].content.tracks[0]
+    else { panic!("expected text track") };
+    assert_eq!(clips[0].style.font_family, "JetBrains Mono");
+    assert_eq!(clips[0].style.font_weight, Some(550.5));
+    assert!(clips[0].style.italic);
+    project.fonts.clear();
+    assert!(font_inventory_status::project_fonts(&project).unwrap()[0].missing);
 }
 
 #[test]

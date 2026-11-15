@@ -1549,6 +1549,19 @@ pub struct TextStyle {
 }
 
 impl TextStyle {
+    pub(crate) fn face_style(&self) -> std::borrow::Cow<'static, str> {
+        if let Some(weight) = self.font_weight {
+            let slant = if self.italic { " Italic" } else { "" };
+            return format!("Weight {}{slant}", weight.round()).into();
+        }
+        match (self.bold, self.italic) {
+            (false, false) => "Regular",
+            (true, false) => "Bold",
+            (false, true) => "Italic",
+            (true, true) => "Bold Italic",
+        }.into()
+    }
+
     fn validate(&self, native: bool) -> Result<(), CompositionError> {
         let family_ok = if native {
             !self.font_family.trim().is_empty()

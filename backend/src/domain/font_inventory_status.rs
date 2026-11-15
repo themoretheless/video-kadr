@@ -40,13 +40,14 @@ pub fn composition_fonts(composition: &Composition) -> Result<Vec<FontStatus>> {
 }
 pub fn project_fonts(project: &NestedCompositionProject) -> Result<Vec<FontStatus>> {
     let usages = super::project_fonts::fonts_used(project)?;
+    let _fonts = super::concat_project_fonts::Scope::enter(&project.fonts)?;
     // All resources precede all resolutions: a shared family may be embedded in another asset.
     for document in project.compositions.values() {
         register_resources(&document.content);
     }
     let mut rich=std::collections::BTreeMap::<(String,String),usize>::new();
     for key in project.compositions.values().flat_map(|document|document.content.tracks.iter()).filter_map(|track|if let CompositionTrack::Text{clips,..}=track{Some(clips)}else{None}).flatten().filter_map(|clip|clip.concat_title.as_ref()).map(|title|(super::concat_project_fonts::family_name(&title.font_family).to_lowercase(),title.face_style().to_lowercase())){*rich.entry(key).or_default()+=1;}
-    let names=if rich.is_empty(){vec![]}else{super::concat_project_fonts::bank(&project.fonts)?.map(|fonts|fonts.families()).unwrap_or_else(||super::concat_title::fonts().families())};
+    let names=if rich.is_empty(){vec![]}else{super::concat_project_fonts::current().map(|fonts|fonts.families()).unwrap_or_else(||super::concat_title::fonts().families())};
     Ok(resolve(usages).into_iter().map(|mut status|{if let Some(count)=rich.get(&(status.usage.family.to_lowercase(),status.usage.style.to_lowercase())){let source_missing=!names.iter().any(|family|family.eq_ignore_ascii_case(&status.usage.family));status.missing=source_missing||(status.usage.count>*count&&status.missing);}status}).collect())
 }
 #[cfg(test)]

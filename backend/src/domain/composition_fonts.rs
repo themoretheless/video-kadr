@@ -96,6 +96,10 @@ impl Inventory {
 /// Includes hidden/disabled clips: they still retain font dependencies when saved.
 pub fn fonts_used(composition: &Composition) -> Result<Vec<FontUsage>> {
     composition.validate()?;
+    collect_fonts(composition, false)
+}
+
+pub(super) fn collect_fonts(composition: &Composition, native: bool) -> Result<Vec<FontUsage>> {
     let mut inventory = Inventory::default();
     for track in &composition.tracks {
         match track {
@@ -121,7 +125,13 @@ pub fn fonts_used(composition: &Composition) -> Result<Vec<FontUsage>> {
             }
             CompositionTrack::Text { clips, .. } => {
                 for clip in clips {
-                    if let Some(title)=&clip.concat_title {inventory.add(super::concat_project_fonts::family_name(&title.font_family),&title.face_style());}else{inventory.add(&clip.style.font_family, "Regular");}
+                    if let Some(title) = &clip.concat_title {
+                        inventory.add(super::concat_project_fonts::family_name(&title.font_family), &title.face_style());
+                    } else if native {
+                        inventory.add(&clip.style.font_family, &clip.style.face_style());
+                    } else {
+                        inventory.add(&clip.style.font_family, "Regular");
+                    }
                     inventory.effects(&clip.effects)?;
                 }
             }

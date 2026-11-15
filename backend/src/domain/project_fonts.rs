@@ -13,7 +13,7 @@ pub fn fonts_used(project: &NestedCompositionProject) -> Result<Vec<FontUsage>> 
     project.dependency_order()?;
     let mut combined: BTreeMap<(String, String), FontUsage> = BTreeMap::new();
     for document in project.compositions.values() {
-        for usage in composition_fonts::fonts_used(&document.content)? {
+        for usage in composition_fonts::collect_fonts(&document.content, true)? {
             let key = (
                 usage.family.to_ascii_lowercase(),
                 usage.style.to_ascii_lowercase(),
@@ -46,7 +46,7 @@ pub fn replace_fonts(
     let mut result = project.clone();
     let mut replaced = 0_usize;
     for document in result.compositions.values_mut() {
-        let changed = composition_font_replace::replace_fonts(&document.content, from, to)?;
+        let changed = composition_font_replace::replace_fonts_for_surface(&document.content, from, to, true)?;
         document.content = changed.composition;
         replaced = replaced
             .checked_add(changed.replaced)

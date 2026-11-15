@@ -1,6 +1,6 @@
 //! Atomic font substitution; preserves authored animation clocks and key metadata.
 use super::{
-    composition::{Composition, CompositionTrack, VideoEffect},
+    composition::{Composition, CompositionTrack, TextStyle, VideoEffect},
     graphic_clip::GraphicContent,
     graphic_text::GraphicTextParameters,
 };
@@ -158,6 +158,22 @@ impl Rule<'_> {
         *family = self.to.family().into();
         Ok(1)
     }
+    fn native_text(&self, style: &mut TextStyle) -> Result<usize> {
+        let face = style.face_style();
+        if !self.from.matches(&style.font_family, &face) {
+            return Ok(0);
+        }
+        let before = style.clone();
+        if let Some(target) = self.to.style().filter(|target| !target.eq_ignore_ascii_case(&face)) {
+            let mut parsed = super::concat_title::TitleStyle::default();
+            parsed.set_face_style(target)?;
+            style.bold = parsed.font_weight >= 600.;
+            style.italic = parsed.italic;
+            style.font_weight = (!matches!(parsed.font_weight, 400. | 700.)).then_some(parsed.font_weight);
+        }
+        style.font_family = self.to.family().into();
+        Ok(usize::from(*style != before))
+    }
     fn effects(&self, effects: &mut [VideoEffect]) -> Result<usize> {
         let mut count = 0;
         for effect in effects {
@@ -173,11 +189,21 @@ pub fn replace_fonts(
     from: &FontSelection,
     to: &FontSelection,
 ) -> Result<Replacement> {
+    replace_fonts_for_surface(composition, from, to, false)
+}
+
+pub(super) fn replace_fonts_for_surface(
+    composition: &Composition,
+    from: &FontSelection,
+    to: &FontSelection,
+    native: bool,
+) -> Result<Replacement> {
     ensure!(
         !from.family().trim().is_empty() && !to.family().trim().is_empty(),
         "font families cannot be empty"
     );
-    composition.validate()?;
+    let validate = if native { Composition::validate_native_surface } else { Composition::validate };
+    validate(composition)?;
     let rule = Rule { from, to };
     let mut result = composition.clone();
     let mut replaced = 0;
@@ -216,7 +242,11 @@ pub fn replace_fonts(
                             if let Some(style)=rule.to.style(){title.set_face_style(style)?;}
                         }
                         count+=usize::from(*title!=before);
-                    }else{count += rule.plain_text_family(&mut clip.style.font_family)?;}
+                    } else if native {
+                        count += rule.native_text(&mut clip.style)?;
+                    } else {
+                        count += rule.plain_text_family(&mut clip.style.font_family)?;
+                    }
                     count+=rule.effects(&mut clip.effects)?;
                 }
                 *locked
@@ -231,7 +261,7 @@ pub fn replace_fonts(
         );
         replaced += count;
     }
-    result.validate()?;
+    validate(&result)?;
     Ok(Replacement {
         composition: result,
         replaced,
