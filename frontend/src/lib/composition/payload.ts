@@ -431,7 +431,7 @@ function maskEffects(clip: VideoClip): WireVideoEffect[] {
       })
 }
 
-function colorToRgba(color: string): WireRgba {
+export function colorToRgba(color: string): WireRgba {
   const hex = color.slice(1)
   const alpha = hex.length === 8 ? Number.parseInt(hex.slice(6, 8), 16) / 255 : 1
   return {

@@ -1,5 +1,6 @@
 import type { NativeNestedProject } from '$lib/api'
 import type { WireTextClip } from './types'
+import { colorToRgba } from './payload'
 
 export const CONCAT_CAPTION_CLIPS = 'video-kadr-caption-clips.json'
 export const MAX_CONCAT_CAPTION_BYTES = 8 * 1024 * 1024
@@ -87,6 +88,19 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   const offsetY = typeof before.offsetY === 'number' ? before.offsetY : 0
 
 
+  let style = clip.style
+  const comparisonText: Record<string, unknown> = { ...editedText, content: previousText.content }
+  for (const [source, target] of [['color', 'color'], ['strokeColor', 'stroke'], ['background', 'background']] as const) {
+    const color = editedText[source]
+    if (color === previousText[source]) continue
+    if (!style || clip.concatTitle || (target === 'color' && clip.colorAnimation) ||
+        typeof color !== 'string' || !(/^#(?:[a-f0-9]{6}|[a-f0-9]{8})$/i.test(color) ||
+          (target === 'background' && color === ''))) return undefined
+    style = { ...style, [target]: colorToRgba(color || '#00000000') }
+    if (Object.hasOwn(previousText, source)) comparisonText[source] = previousText[source]
+    else delete comparisonText[source]
+  }
+
   // Text and whole-clip moves retain the original local clock. A static title
   // also accepts Concat's new duration and, for a head trim, its source in-point.
   // The imported document already carries the updated display name in clipNames.
@@ -96,7 +110,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     name: before.name,
     ...(retainKeys ? { keys: before.keys ?? [], opacity: before.opacity ?? 1 } : {}),
     ...(resized ? { duration: before.duration, sourceStart: before.sourceStart ?? 0 } : {}),
-    text: { ...editedText, content: previousText.content },
+    text: comparisonText,
   }
   const comparison = { ...before, name: before.name }
   if (!sameJson(normalizedClip(comparison), normalizedClip(unchangedFields))) return undefined
@@ -104,6 +118,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   const restored = {
     ...clip,
     text: editedText.content,
+    style,
     timelineStartTick: start,
     timelineEndTick: start + duration,
   }

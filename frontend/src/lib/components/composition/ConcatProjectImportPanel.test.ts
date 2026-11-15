@@ -198,7 +198,7 @@ it('uploads the selected template design and binds its bundled font before conve
   const positionKeys = [{ property: 'offsetY', at: 0, value: 0.25 }, { property: 'offsetY', at: 1, value: 0.5 }]
   const resizedKeys = [{ ...keys[0]!, value: 0.25 }, keys[1]!]
   const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, offsetY: 0.25, keys, text: { content: 'Dialogue', shadow: true } }
-  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, sourceStart: 0.25, keys: [...resizedKeys, ...positionKeys, ...pivotKeys], text: { ...beforeTitle.text, content: 'Revised dialogue' } }
+  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, sourceStart: 0.25, keys: [...resizedKeys, ...positionKeys, ...pivotKeys], text: { ...beforeTitle.text, content: 'Revised dialogue', color: '#ff800080' } }
   const template = {
    ...original,
    video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
@@ -281,7 +281,9 @@ it('uploads the selected template design and binds its bundled font before conve
   const restored = nestedComposition.document?.compositions.imported?.content
   expect(restored?.metadata?.captionTextTracks).toEqual(['lane-text'])
   expect(restored?.tracks[0]?.clips).toEqual([{
-   ...editedCaption, opacity: editedOpacity, transform: { ...caption.transform, concatAnimation: {
+   ...editedCaption, opacity: editedOpacity,
+   style: { ...caption.style, color: { red: 1, green: 128 / 255, blue: 0, alpha: 128 / 255 } },
+   transform: { ...caption.transform, concatAnimation: {
     ...animation, keys: { ...animation.keys, offsetY: [{ at: 0, value: 0 }, { at: 1, value: 0.25 }] }, rest: { ...animation.rest, y: 0 },
    } },
   }])

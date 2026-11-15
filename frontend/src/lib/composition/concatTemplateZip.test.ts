@@ -80,6 +80,17 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     ['TL1', animated, { clip: first, video }], captured[1],
   ] })], 'video-kadr-caption-clips.json')
   await expect(readConcatTemplateCaptions(animatedSidecar, trimmedFile)).resolves.toEqual([clips[1]])
+  const recolored = { ...first, text: { ...first.text, color: '#4080ff80', strokeColor: '#112233', background: '' } }
+  const changedColor = { ...source, timelines: [{ id: 'TL1', video, clips: [recolored, second] }] }
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changedColor)], 'template.json')))
+    .resolves.toEqual([
+      ['TL1', { ...staticClip, style: { ...staticClip.style,
+        color: { red: 64 / 255, green: 128 / 255, blue: 1, alpha: 128 / 255 },
+        stroke: { red: 17 / 255, green: 34 / 255, blue: 51 / 255, alpha: 1 },
+        background: { red: 0, green: 0, blue: 0, alpha: 0 },
+      } }],
+      clips[1],
+    ])
   changed.timelines[0]!.video.width = 640
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
     .resolves.toBeUndefined()
