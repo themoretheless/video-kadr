@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { listFilmcraftExportQueue, editFilmcraftExportQueue, type FilmcraftExportQueue, type FilmcraftExportQueueCommand, type FilmcraftVideoRequest } from '$lib/api'
+  import { downloadFilmcraftVideo, getFilmcraftVideoJob, listFilmcraftExportQueue, editFilmcraftExportQueue, type FilmcraftExportQueue, type FilmcraftExportQueueCommand, type FilmcraftExportQueueItem, type FilmcraftVideoRequest } from '$lib/api'
   import { exactExportRange } from '$lib/filmcraft/export-range'
+  import { SvelteMap } from 'svelte/reactivity'
   let { token, disabled = false, batchDisabled = false, input, sequences = [], activeSequence }: {
     token: string | null; disabled?: boolean; batchDisabled?: boolean; input: () => FilmcraftVideoRequest
     sequences?: Array<{ id: string; name: string; hasWorkArea: boolean }>; activeSequence?: string
@@ -18,13 +19,17 @@
   let queue = $state<FilmcraftExportQueue>({ running: false, items: [] })
   let busy = $state(false)
   let error = $state('')
+  let downloading = $state('')
+  let downloadError = $state('')
+  const outputFormats = ['mkv', 'mp4', 'mov', 'mxf', 'zip', 'gif', 'wav', 'aiff'] as const
+  const outputUrls = new SvelteMap<string, ReturnType<typeof setTimeout>>()
   let revision = 0
   let controller: AbortController | null = null
   $effect(() => {
     const actor = token
     const current = new AbortController()
     controller = current
-    queue = { running: false, items: [] }; error = ''; busy = false
+    queue = { running: false, items: [] }; error = ''; busy = false; downloading = ''; downloadError = ''
     let timer: ReturnType<typeof setTimeout> | undefined
     async function poll() {
       if (!actor) return
@@ -38,7 +43,13 @@
       if (!current.signal.aborted) timer = setTimeout(poll, 1000)
     }
     void poll()
-    return () => { current.abort(); clearTimeout(timer); if (controller === current) controller = null }
+    return () => {
+      current.abort()
+      clearTimeout(timer)
+      for (const [url, timeout] of outputUrls) { clearTimeout(timeout); URL.revokeObjectURL(url) }
+      outputUrls.clear()
+      if (controller === current) controller = null
+    }
   })
   async function command(value: FilmcraftExportQueueCommand) {
     const current = controller; const actor = token
@@ -60,6 +71,35 @@
     const bounds = resolved.filter(range => range !== undefined)
     void command({ action: 'add', input: input(), sequences: picked.map(sequence => sequence.id),
       ...(bounds.length ? { ranges: bounds } : {}) })
+  }
+  async function download(item: FilmcraftExportQueueItem) {
+    const current = controller
+    const actor = token
+    const format = outputFormats.find(format => format === item.container)
+    if (!current || !actor || downloading || item.status !== 'done' || !item.jobId || !format) return
+    downloading = item.id
+    downloadError = ''
+    try {
+      const job = await getFilmcraftVideoJob(actor, item.jobId, current.signal)
+      if (current.signal.aborted) return
+      const result = job.result
+      if (job.status !== 'done' || !result || typeof result !== 'object' || !('id' in result) || typeof result.id !== 'string') {
+        throw new Error('Готовый файл экспорта недоступен')
+      }
+      const blob = await downloadFilmcraftVideo(actor, result.id, current.signal, format)
+      if (current.signal.aborted) return
+      const url = URL.createObjectURL(blob)
+      outputUrls.set(url, setTimeout(() => { URL.revokeObjectURL(url); outputUrls.delete(url) }, 1000))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${result.id}.${format}`
+      document.body.append(anchor)
+      try { anchor.click() } finally { anchor.remove() }
+    } catch (failure) {
+      if (!current.signal.aborted) downloadError = failure instanceof Error ? failure.message : String(failure)
+    } finally {
+      if (!current.signal.aborted) downloading = ''
+    }
   }
   const labels = { ready: 'Ожидает', encoding: 'Экспортируется', done: 'Готово', failed: 'Ошибка', cancelled: 'Отменено' }
 </script>
@@ -108,6 +148,7 @@
   <button type="button" disabled={!token || busy || !queue.items.some(item => ['ready', 'encoding'].includes(item.status))} onclick={() => command({ action: 'cancel' })}>Отменить все</button>
   <button type="button" disabled={!token || busy || !queue.items.some(item => ['done', 'failed', 'cancelled'].includes(item.status))} onclick={() => command({ action: 'clear' })}>Убрать завершённые</button>
   {#if error}<p role="alert">{error}</p>{/if}
+  {#if downloadError}<p role="alert">{downloadError}</p>{/if}
   {#each queue.items as item, index (item.id)}
     <article aria-label={`Экспорт ${item.id}`}>
       <p>{item.sequenceName} · {item.preset} · {labels[item.status]}</p>
@@ -120,12 +161,17 @@
       {#if item.status === 'encoding' && item.etaText}<p>Осталось: {item.etaText}</p>{/if}
       {#if item.statusText}<p>{item.statusText}</p>{/if}
       {#if item.error}<p role="alert">{item.error}</p>{/if}
-      <button type="button" aria-label={`Поднять ${item.id}`} disabled={busy || index === 0} onclick={() => command({ action: 'move', id: item.id, by: -1 })}>↑</button>
+      <button type="button" aria-label={`Поднять ${item.id}`} disabled={busy || index === 0 || item.status === 'encoding'} onclick={() => command({ action: 'move', id: item.id, by: -1 })}>↑</button>
       <button type="button" aria-label={`Опустить ${item.id}`} disabled={busy || index === queue.items.length - 1} onclick={() => command({ action: 'move', id: item.id, by: 1 })}>↓</button>
       {#if item.status === 'ready' || item.status === 'encoding'}
         <button type="button" disabled={busy} onclick={() => command({ action: 'cancel', id: item.id })}>Отменить</button>
       {:else}
-        <button type="button" disabled={busy} onclick={() => command({ action: 'retry', id: item.id })}>Повторить</button>
+        <button type="button" disabled={busy} onclick={() => command({ action: 'retry', id: item.id, start: true })}>Повторить</button>
+      {/if}
+      {#if item.status === 'done' && item.jobId && outputFormats.some(format => format === item.container)}
+        <button type="button" disabled={!!downloading} onclick={() => download(item)}>
+          {downloading === item.id ? 'Скачивание…' : `Скачать ${item.container.toUpperCase()}`}
+        </button>
       {/if}
       <button type="button" disabled={busy || item.status === 'encoding'} onclick={() => command({ action: 'remove', id: item.id })}>Убрать</button>
     </article>
