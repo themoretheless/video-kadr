@@ -80,6 +80,56 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
   }
 })
 
+it('manages caption tracks through the nested timeline history', async () => {
+  closeNestedComposition()
+  const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
+  const cue = { id: 'cue', cueId: 'vtt-id', timelineStartTick: '254016000001', timelineEndTick: '508032000003', text: 'Keep' }
+  const imported = { id: 'imported', name: 'Imported', vttBlocks: ['NOTE keep'], clips: [cue] }
+  const original = { ...content, captionTracks: [imported] }
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { instances: [], content: original } } }
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  const tracks = () => nestedComposition.document?.compositions.root?.content.captionTracks
+  const field = <T extends HTMLElement>(label: string) => target.querySelector<T>(`[aria-label="${label}"]`)!
+  const change = (element: HTMLElement) => element.dispatchEvent(new Event('change', { bubbles: true }))
+  const click = (name: string) => [...target.querySelectorAll('button')].find(button => button.textContent?.trim() === name)!.click()
+  try {
+    await tick()
+    const language = field<HTMLInputElement>('Язык дорожки субтитров')
+    language.value = 'fr'
+    change(language)
+    await vi.waitFor(() => expect(tracks()?.[0]).toEqual({ ...imported, language: 'fr' }))
+    const format = field<HTMLSelectElement>('Формат новой дорожки субтитров')
+    format.value = 'CEA-608'
+    change(format)
+    click('Создать дорожку субтитров')
+    await vi.waitFor(() => expect(tracks()?.[0]).toMatchObject({ format: 'CEA-608', clips: [], style: { backgroundColor: '#000000ff' } }))
+    expect(field<HTMLSelectElement>('Активная дорожка субтитров').value).toBe(tracks()?.[0]?.id)
+    const lock = field<HTMLInputElement>('Блокировка дорожки субтитров')
+    lock.checked = true
+    change(lock)
+    await vi.waitFor(() => expect(tracks()?.[0]?.locked).toBe(true))
+    expect(field<HTMLInputElement>('Название дорожки субтитров').closest('fieldset')?.disabled).toBe(true)
+    click('Скрыть все субтитры')
+    await vi.waitFor(() => expect(tracks()?.every(track => track.hidden)).toBe(true))
+    const picker = field<HTMLSelectElement>('Активная дорожка субтитров')
+    picker.value = imported.id
+    change(picker)
+    await tick()
+    click('Удалить дорожку субтитров')
+    await vi.waitFor(() => expect(tracks()).toHaveLength(1))
+    expect(tracks()?.[0]).toMatchObject({ format: 'CEA-608', locked: true, hidden: true })
+    undoNestedComposition()
+    expect(tracks()?.[1]).toEqual({ ...imported, language: 'fr', hidden: true })
+    expect(nestedHistory.past).toHaveLength(4)
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+  }
+})
+
 it('adds a cue at the cursor on the chosen imported track and opens its editor', async () => {
   closeNestedComposition()
   const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
@@ -418,7 +468,7 @@ it('selects a clip, sends a native transfer to another timeline, focuses it and 
   const component = mount(NestedClipTransfer, { target })
   try {
     await tick()
-    const button = target.querySelector<HTMLButtonElement>('button')!
+    const button = [...target.querySelectorAll('button')].find(button => button.textContent === 'Перенести выбранные клипы')!
     expect(button.disabled).toBe(true)
     const checkbox = target.querySelector<HTMLInputElement>('[data-clip-id="picture"]')!
     checkbox.checked = true; checkbox.dispatchEvent(new Event('change', { bubbles: true }))

@@ -60,7 +60,7 @@
  <button type="button" class="btn ghost sm" disabled={busy} onclick={()=>void add()}>Добавить субтитр</button>
  <button type="button" class="btn ghost sm" disabled={!onseek} onclick={()=>navigate(false)}>Предыдущий субтитр</button>
  <button type="button" class="btn ghost sm" disabled={!onseek} onclick={()=>navigate(true)}>Следующий субтитр</button>
- <CaptionTrackSettings {composition} activeId={activeTrackId} disabled={busy} {onchange} onactive={id=>activeTrackId=id} />
+ <CaptionTrackSettings {composition} activeId={activeTrackId} disabled={busy} onchange={(next,id)=>{onchange(next);if(id!==undefined)activeTrackId=id}} onactive={id=>activeTrackId=id} />
  {#each composition.captionTracks??[] as track (track.id)}
   <fieldset disabled={busy}><legend>{track.name}{track.locked?' · Заблокировано':''}</legend>
    <fieldset disabled={track.locked}><CaptionTrackStyle style={track.style} onchange={style=>onchange({...composition,captionTracks:composition.captionTracks?.map(item=>item.id===track.id?{...item,style}:item)})} /></fieldset>

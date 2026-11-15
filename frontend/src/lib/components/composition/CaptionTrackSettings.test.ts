@@ -13,7 +13,7 @@ it('creates a front caption track with source format defaults and activates it i
  expect(onchange).toHaveBeenCalledOnce()
  const next=onchange.mock.calls[0][0] as Composition
  expect(next.captionTracks![0]).toMatchObject({name:'CEA-608',format:'CEA-608',language:'en',syncLock:true,hidden:false,locked:false,style:{backgroundColor:'#000000ff'},clips:[]})
- expect(next.captionTracks![1]).toBe(composition.captionTracks![0]);expect(onactive).toHaveBeenCalledWith(next.captionTracks![0].id)
+ expect(next.captionTracks![1]).toBe(composition.captionTracks![0]);expect(onchange.mock.calls[0][1]).toBe(next.captionTracks![0].id);expect(onactive).not.toHaveBeenCalled()
  expect(composition.captionTracks).toHaveLength(1)
  await unmount(component)
 })
@@ -43,7 +43,7 @@ it('deletes only the active unlocked track and activates the surviving neighbour
  const component=mount(Settings,{target,props:{composition,activeId:'second',onchange,onactive}});await tick()
  const remove=[...target.querySelectorAll('button')].find(button=>button.textContent==='Удалить дорожку субтитров')!;remove.click();await tick()
  expect(onchange).toHaveBeenCalledOnce();expect(onchange.mock.calls[0][0].captionTracks).toEqual([composition.captionTracks![0]])
- expect(onactive).toHaveBeenCalledWith('first');expect(composition.captionTracks).toHaveLength(2)
+ expect(onchange.mock.calls[0][1]).toBe('first');expect(onactive).not.toHaveBeenCalled();expect(composition.captionTracks).toHaveLength(2)
  await unmount(component)
 })
 

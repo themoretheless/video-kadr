@@ -7,8 +7,9 @@
   import {slipNestedLayer,raiseNestedLayers,rippleNestedComposition} from '$lib/state/nestedComposition.svelte'
   import {activityReveal} from '$lib/agent/activityReveal.svelte'
   import NestedCaptionTextEditor from './NestedCaptionTextEditor.svelte'
+  import CaptionTrackSettings from './CaptionTrackSettings.svelte'
   import CaptionTrackStyle from './CaptionTrackStyle.svelte'
-  import { editNestedFileCaptions, setNestedCaptionTrackStyle } from '$lib/state/nestedComposition.svelte'
+  import { editNestedFileCaptions, setNestedCaptionTracks, setNestedCaptionTrackStyle } from '$lib/state/nestedComposition.svelte'
   import { untrack,tick } from 'svelte'
   import {SvelteSet} from 'svelte/reactivity'
   import VideoEnhancementPanel from './VideoEnhancementPanel.svelte'
@@ -84,8 +85,10 @@
    return null
   })
   let copyStartSeconds = $state(0)
+  let captionTrackId = $state('')
   let captionSelected = $state<string[]>([])
-  const captionTracks = $derived(project?.compositions[active]?.content.captionTracks ?? [])
+  const captionContent = $derived(project?.compositions[active]?.content)
+  const captionTracks = $derived(captionContent?.captionTracks ?? [])
   let captionDelta = $state('1')
   let captionDeltaUnit = $state<'seconds' | 'frames'>('seconds')
 
@@ -173,7 +176,7 @@
   let alive = true
   $effect(() => () => { alive = false })
   let previousActive = ''
-  $effect(() => { if (active && active !== previousActive) { previousActive = active; selected = []; captionSelected = []; replacementSourceId = ''; targets = {}; destination = untrack(() => Object.keys(project?.compositions ?? {})).find(id => id !== active) ?? active } })
+  $effect(() => { if (active && active !== previousActive) { previousActive = active; selected = []; captionSelected = []; captionTrackId = ''; replacementSourceId = ''; targets = {}; destination = untrack(() => Object.keys(project?.compositions ?? {})).find(id => id !== active) ?? active } })
   $effect(() => {
     if (!project || !project.compositions[active]) return
     const known = new Set(tracks.flatMap(track => track.clips.map(clip => clip.id)))
@@ -181,7 +184,7 @@
     const next = expandNativeClipLinks(project, active, previous.filter(id => known.has(id)))
     if (next.length !== previous.length || next.some((id, index) => id !== previous[index])) selected = next
   })
-  $effect(()=>{const known=new Set(captionTracks.flatMap(track=>track.clips.map(cue=>cue.id)));const previous=untrack(()=>captionSelected), next=previous.filter(id=>known.has(id));if (next.length!==previous.length) captionSelected=next})
+  $effect(()=>{const known=new Set(captionTracks.flatMap(track=>track.locked ? [] : track.clips.map(cue=>cue.id)));const previous=untrack(()=>captionSelected), next=previous.filter(id=>known.has(id));if (next.length!==previous.length) captionSelected=next})
   let revealedRequest=''
   $effect(()=>{
     const request=activityReveal.request,scope=keyboardScope
@@ -354,6 +357,18 @@
         {/if}
       {/each}
     {/each}
+    {#if captionContent}
+      <details><summary>Дорожки субтитров</summary>
+        <CaptionTrackSettings composition={captionContent} activeId={captionTrackId}
+          disabled={disabled || nestedHistory.busy} onactive={id => captionTrackId = id}
+          onchange={(next, activate) => {
+            const scope = active
+            void setNestedCaptionTracks(scope, next.captionTracks ?? [], () => {
+              if (!alive || disabled || active !== scope) throw new Error('Таймлайн изменился')
+            }, () => { if (activate !== undefined) captionTrackId = activate })
+          }} />
+      </details>
+    {/if}
     {#each captionTracks as track (track.id)}
       <CaptionTrackStyle style={track.style} trackName={track.name}
         disabled={disabled || nestedHistory.busy || track.locked}

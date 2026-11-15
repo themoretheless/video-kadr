@@ -1,5 +1,5 @@
 import { captionMicrosecondsCeil } from '$lib/composition/captionTime'
-import { MAX_COMPOSITION_DURATION_TICKS, type CaptionStyle } from '$lib/composition/types'
+import { MAX_COMPOSITION_DURATION_TICKS, type CaptionStyle, type CaptionTrack } from '$lib/composition/types'
 import { changeSubtitleDocuments, type SubtitleDocument } from '$lib/subtitles/documents'
 import {takeSourceRunCutTransaction} from '$lib/composition/sourceRunCutTransaction'
 import {authState} from './auth.svelte'
@@ -1133,6 +1133,23 @@ export async function updateNestedCaptionText(
   if(generation!==startedGeneration)return false
   if(!nestedHistory.error&&expected&&JSON.stringify(nestedComposition.document)!==expected)nestedHistory.error='Проект изменился во время сохранения реплики'
   return !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected
+}
+
+export async function setNestedCaptionTracks(
+  compositionId: string, captionTracks: readonly CaptionTrack[], admission: () => void, onCommit?: () => void,
+): Promise<void> {
+  const guard = () => { assertHistoryUnlocked(); admission() }
+  await editNestedDocument(async project => {
+    guard()
+    const node = Object.hasOwn(project.compositions, compositionId) ? project.compositions[compositionId] : undefined
+    if (!node) throw new Error('Таймлайн не найден')
+    if (JSON.stringify(node.content.captionTracks ?? []) === JSON.stringify(captionTracks)) return project
+    const next = { ...project, compositions: { ...project.compositions, [compositionId]: {
+      ...node, content: { ...node.content, captionTracks },
+    } } }
+    await nestedDurations(next)
+    return next
+  }, true, undefined, undefined, 0, onCommit, guard)
 }
 
 export async function setNestedCaptionTrackStyle(
