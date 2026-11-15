@@ -918,6 +918,7 @@ export interface WireImageClip {
 }
 
 export interface WireTextStyle {
+  readonly lineHeight?: number
   readonly tracking?: number
   readonly bold?: boolean
   readonly italic?: boolean

@@ -21,9 +21,16 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         (false, true) => "Italic",
         (true, true) => "Bold Italic",
     };
+    let size = clip.style.font_size as f32;
+    let leading = clip.style.line_height.map_or(0., |ratio| {
+        use filmcraft_text::fonts::{face, resolve};
+        let metrics = face(resolve(&clip.style.font_family, font_style).face).metrics(size);
+        ratio * size - (metrics.ascent + metrics.descent + metrics.line_gap).max(size * 0.5)
+    });
     let mut parameters=GraphicTextParameters{
-        text:clip.text.clone(),font:clip.style.font_family.clone(),size:clip.style.font_size as f32,
+        text:clip.text.clone(),font:clip.style.font_family.clone(),size,
         font_style: font_style.into(),
+        leading,
         tracking: clip.style.tracking.unwrap_or_default() * 1000. / clip.style.font_size as f32,
         box_width: clip.text_box_width.unwrap_or_default(),
         fill:true,fill_color:color,align:match clip.style.align {None|Some(super::composition::TextAlignment::Left)=>0,Some(super::composition::TextAlignment::Center)=>1,Some(super::composition::TextAlignment::Right)=>2},
@@ -72,6 +79,28 @@ mod tests {
         let mut disabled=base;disabled.enabled=false;
         assert!(render(&disabled,(64,48),1500000,&mut||Ok(())).unwrap().is_none());
         assert!(render(&clip(),(64,48),1500000,&mut||anyhow::bail!("cancel")).is_err());
+    }
+
+    #[test]
+    fn caption_line_height_sets_the_distance_between_glyph_rows() {
+        let mut caption = clip();
+        caption.text = "H\nH".into();
+        for (ratio, pitch) in [(1.5, 18), (2.0, 24)] {
+            caption.style.line_height = Some(ratio);
+            let frame = render(&caption, (64, 64), 1500000, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
+            let mut starts = Vec::new();
+            let mut previous = false;
+            for (row, pixels) in frame.rgba.chunks_exact(64 * 4).enumerate() {
+                let visible = pixels.chunks_exact(4).any(|pixel| pixel[3] > 0);
+                if visible && !previous {
+                    starts.push(row);
+                }
+                previous = visible;
+            }
+            assert_eq!(starts.len(), 2);
+            assert_eq!(starts[1] - starts[0], pitch);
+        }
     }
 
     #[test]

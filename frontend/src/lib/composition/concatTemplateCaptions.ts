@@ -119,7 +119,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   const height = record(video)?.height
   for (const [key, fallback] of [
     ['fontFamily', undefined], ['fontSize', 0.09], ['fontWeight', 700], ['italic', false],
-    ['strokeWidth', 0], ['tracking', 0], ['align', 'center'],
+    ['strokeWidth', 0], ['tracking', 0], ['lineHeight', 1.2], ['align', 'center'],
   ] as const) {
     if (editedText[key] === previousText[key]) continue
     const value = editedText[key] === undefined ? fallback : editedText[key]
@@ -136,6 +136,10 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
       case 'italic':
         if (typeof value !== 'boolean') return undefined
         style = { ...style, italic: value }
+        break
+      case 'lineHeight':
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0.5) return undefined
+        style = { ...style, lineHeight: Math.fround(value) }
         break
       case 'align': {
         if (value !== 'left' && value !== 'center' && value !== 'right') return undefined
@@ -174,6 +178,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     const tracking = Math.fround(Math.fround(style.tracking * 1000) / Math.fround(style.fontSize))
     if (!(tracking >= -1000 && tracking <= 10000)) return undefined
   }
+  if (style?.lineHeight !== undefined &&
+      !(Math.fround(style.lineHeight * Math.fround(style.fontSize)) <= 5000)) return undefined
 
   let textBoxWidth = clip.textBoxWidth
   if (editedText.maxWidth !== previousText.maxWidth) {

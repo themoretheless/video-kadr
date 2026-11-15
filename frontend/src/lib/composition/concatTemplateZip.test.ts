@@ -56,7 +56,7 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(retimed)], 'template.json'))).resolves.toEqual(clips)
   const changed = { ...source, timelines: [{
     id: 'TL1', video: { width: 320, height: 180, rateNum: 24, rateDen: 1 }, clips: [
-      { ...first, text: { ...first.text, lineHeight: 1.5 } },
+      { ...first, text: { ...first.text, maxHeight: 0.5 } },
       { ...second, sourceStart: 0, mediaId: '', fadeIn: 0, filters: [] },
     ],
   }] }
@@ -104,11 +104,11 @@ it('opens an archived template directory without mixing in sibling assets', asyn
       } }],
       clips[1],
     ])
-  const styled = { ...first, text: { ...first.text, fontSize: 0.1, fontFamily: 'Arial', fontWeight: 700, italic: true, strokeWidth: 2 / 180, tracking: -3 / 180, align: 'right' } }
+  const styled = { ...first, text: { ...first.text, fontSize: 0.1, fontFamily: 'Arial', fontWeight: 700, italic: true, strokeWidth: 2 / 180, tracking: -3 / 180, lineHeight: 1.75, align: 'right' } }
   const withStyle = { ...source, timelines: [{ id: 'TL1', video, clips: [styled, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
     .resolves.toEqual([
-      ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 18, fontFamily: 'Arial', bold: true, italic: true, strokeWidth: 2, tracking: -3, align: 'right' } }],
+      ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 18, fontFamily: 'Arial', bold: true, italic: true, strokeWidth: 2, tracking: -3, lineHeight: 1.75, align: 'right' } }],
       clips[1],
     ])
   styled.text.fontWeight = 550
