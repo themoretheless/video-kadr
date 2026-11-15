@@ -174,6 +174,15 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     clip["style"]["italic"] = json!(true);
     clip["style"]["strokeWidth"] = json!(1);
     clip["style"]["color"] = json!({"red":1,"green":0.5,"blue":0,"alpha":1});
+    clip["opacity"] = json!({
+        "mode":"keyframes","track":{"timeBase":1000000,"interpolation":"linear","keyframes":[
+            {"tick":0,"value":0},
+            {"tick":100000,"value":1},
+            {"tick":800000,"value":1},
+            {"tick":800001,"value":0.5},
+            {"tick":1111111,"value":0}
+        ]}
+    });
     let project = serde_json::from_value(project).unwrap();
     let converted = export(&project).unwrap();
     let title = converted["timelines"][0]["clips"].as_array().unwrap().iter()
@@ -189,12 +198,29 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     assert_eq!(title["text"]["maxWidth"], 0.9);
     assert!(title["offsetY"].as_f64().unwrap() < 54.0 / 120.0);
 
+    assert_eq!(title["keys"].as_array().unwrap().len(), 5);
+    assert!(title["keys"].as_array().unwrap().iter().all(|key| key["property"] == "opacity"));
     let restored = convert(converted);
     let content = &restored.compositions[&restored.root].content;
+    let opacity = content.tracks.iter().find_map(|track| match track {
+        video_kadr_backend::domain::composition::CompositionTrack::Text { clips, .. } =>
+            clips.iter().find(|clip| clip.id.as_str() == "words")
+                .and_then(|clip| clip.transform.concat_animation.as_ref()),
+        _ => None,
+    }).expect("editable opacity keys after reimport");
+    for (time, expected) in [(0, 0.0), (50000, 0.5), (200000, 1.0), (800000, 1.0), (800001, 0.5), (1111111, 0.0)] {
+        assert!((opacity.sample(time).unwrap().opacity - expected).abs() < 1e-10, "opacity at {time}");
+    }
     let frame = frame(content, 1_500_000);
     let orange = frame.chunks_exact(4).enumerate().filter(|(_, rgba)| {
         rgba[0] > 160 && rgba[1] > 65 && rgba[1] < 180 && rgba[2] < 12
     }).map(|(pixel, _)| pixel / 160).collect::<Vec<_>>();
     assert!(!orange.is_empty(), "caption must be visible after reopening");
     assert!(orange.iter().all(|row| (70..=117).contains(row)), "caption must remain near the bottom");
+
+    let mut unsupported = serde_json::to_value(project).unwrap();
+    let root = unsupported["root"].as_str().unwrap().to_owned();
+    unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!("bounce_in");
+    let error = export(&serde_json::from_value(unsupported).unwrap()).unwrap_err();
+    assert!(format!("{error:#}").contains("Caption opacity key requires a Concat mapping"));
 }

@@ -1,8 +1,12 @@
 use anyhow::{ensure, Result};
+use std::collections::BTreeMap;
 
 use super::{
-    composition::{AnimatableValue, Rgba, TextAlignment, TextClip},
+    composition::{AnimatableValue, Rgba, TextAlignment, TextClip, DEFAULT_TIME_BASE},
+    concat_clip_animation::{Pose, SourceAnimation},
+    concat_effect_upgrade::ParamKey,
     concat_title::{self, TitleStyle},
+    keyframes::{Extrapolation, Interpolation},
 };
 
 fn color(value: Rgba) -> String {
@@ -85,6 +89,68 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
             *value += delta;
         }
     }
+    opacity_animation(clip, width, height)?;
     clip.concat_title = Some(style);
+    Ok(())
+}
+
+// Native ASS fades use linear keys on the clip-local microsecond clock.
+// Concat samples the same segments at normalized clip progress.
+fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
+    let AnimatableValue::Keyframes { track } = &clip.opacity else {
+        return Ok(());
+    };
+    ensure!(
+        track.time_base == u64::from(DEFAULT_TIME_BASE)
+            && track.sample_clock.is_none()
+            && track.extrapolation.unwrap_or_default() == Extrapolation::default(),
+        "Caption opacity clock or extrapolation requires a Concat mapping"
+    );
+    let duration = i64::try_from(
+        clip.timeline_end_tick
+            .checked_sub(clip.timeline_start_tick)
+            .filter(|duration| *duration > 0)
+            .ok_or_else(|| anyhow::anyhow!("Invalid caption duration"))?,
+    )?;
+    let mut keys = Vec::with_capacity(track.keyframes.len());
+    for (index, key) in track.keyframes.iter().enumerate() {
+        ensure!(
+            key.tangents.is_none()
+                && (index + 1 == track.keyframes.len()
+                    || key.interpolation.unwrap_or(track.interpolation) == Interpolation::Linear)
+                && (0..=duration).contains(&key.tick)
+                && (0.0..=1.0).contains(&key.value),
+            "Caption opacity key requires a Concat mapping"
+        );
+        keys.push(ParamKey {
+            derived: false,
+            at: key.tick as f64 / duration as f64,
+            value: key.value,
+            ease: [0.0, 0.0, 1.0, 1.0],
+        });
+    }
+    let transform = &mut clip.transform;
+    let (AnimatableValue::Constant { value: x }, AnimatableValue::Constant { value: y }) =
+        (&transform.x, &transform.y)
+    else {
+        anyhow::bail!("Animated caption position requires a Concat mapping");
+    };
+    let animation = SourceAnimation {
+        duration_ticks: duration,
+        rest: Pose {
+            scale_x: 1.0,
+            scale_y: 1.0,
+            x: *x / f64::from(width),
+            y: *y / f64::from(height),
+            rotation_degrees: 0.0,
+            opacity: 1.0,
+        },
+        keys: BTreeMap::from([("opacity".to_owned(), keys)]),
+        stretch: [1.0, 1.0],
+        canvas: [f64::from(width), f64::from(height)],
+    };
+    animation.validate()?;
+    transform.concat_animation = Some(animation);
+    clip.opacity = AnimatableValue::constant(1.0);
     Ok(())
 }
