@@ -14,7 +14,7 @@ vi.mock('$lib/api', () => ({
  prepareCaptionFileImport: vi.fn(),
 }))
 
-it('imports an exact-clock caption track at the cursor with one Undo', async () => {
+it.each(['picker', 'drop'])('imports an exact-clock caption track at the cursor through %s with one Undo', async method => {
  closeNestedComposition()
  vi.mocked(nestedDurations).mockClear()
  const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
@@ -37,11 +37,29 @@ it('imports an exact-clock caption track at the cursor with one Undo', async () 
   atPlayhead.dispatchEvent(new Event('change', { bubbles: true }))
   await tick()
   nestedComposition.timeUs = 1000000
-  const input = target.querySelector<HTMLInputElement>('[aria-label="Импорт на дорожку субтитров"]')!
-  Object.defineProperty(input, 'files', { value: [new File(['mock MCC'], 'broadcast.mcc')] })
-  input.dispatchEvent(new Event('change', { bubbles: true }))
+  const file = new File(['mock MCC'], 'broadcast.MCC')
+  if (method === 'picker') {
+   const input = target.querySelector<HTMLInputElement>('[aria-label="Импорт на дорожку субтитров"]')!
+   Object.defineProperty(input, 'files', { value: [file] })
+   input.dispatchEvent(new Event('change', { bubbles: true }))
+  } else {
+   const zone = target.querySelector('[aria-label="Область импорта на дорожку субтитров"]')!
+   const drop = (files: File[]) => {
+    const event = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: { files } })
+    expect(zone.dispatchEvent(event)).toBe(false)
+   }
+   drop([new File([], 'video.mov')])
+   await tick()
+   expect(target.querySelector('[role="alert"]')?.textContent).toContain('DFXP')
+   drop([file, file])
+   await tick()
+   expect(target.querySelector('[role="alert"]')?.textContent).toContain('один файл')
+   expect(prepareCaptionFileImport).not.toHaveBeenCalled()
+   drop([file])
+  }
   await vi.waitFor(() => expect(target.textContent).toContain('Source warning'))
-  expect(prepareCaptionFileImport).toHaveBeenCalledExactlyOnceWith(btoa('mock MCC'), 'broadcast.mcc', { num: 24000, den: 1000 })
+  expect(prepareCaptionFileImport).toHaveBeenCalledExactlyOnceWith(btoa('mock MCC'), 'broadcast.MCC', { num: 24000, den: 1000 })
   expect(nestedDurations).toHaveBeenCalledOnce()
   expect(nestedHistory.past).toHaveLength(1)
   expect(nestedComposition.document?.compositions.root?.content.captionTracks).toMatchObject([{

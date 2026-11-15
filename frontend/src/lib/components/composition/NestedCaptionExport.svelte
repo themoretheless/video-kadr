@@ -8,6 +8,8 @@
   import CaptionFileExport from './CaptionFileExport.svelte'
   import { authState } from '$lib/state/auth.svelte'
   let error = $state(''), message = $state(''), importing = $state(false), atPlayhead = $state(false)
+  let draggingTrack = $state(false)
+  const trackFormats = ['.srt', '.vtt', '.scc', '.mcc', '.stl', '.ttml', '.dfxp']
   const documents = $derived(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments)
   const activeId = $derived(nestedComposition.activeCompositionId ?? nestedComposition.document?.root)
   const content = $derived(activeId ? nestedComposition.document?.compositions[activeId]?.content : undefined)
@@ -16,9 +18,24 @@
   let disposed = false
   $effect(() => () => { disposed = true })
   const selectedTrack = $derived(fileTracks.find(track => track.id === trackId) ?? fileTracks[0])
-  async function importTrack(input: HTMLInputElement) {
-    const file = input.files?.[0], project = nestedComposition.document, id = activeId
-    if (!file || !project || !id || !content || importing || nestedHistory.busy) return
+  function selectTrack(files: FileList | null | undefined, dropped = false) {
+    if (!content || importing || nestedHistory.busy || !files?.length) return
+    error = ''; message = ''
+    if (files.length !== 1) {
+      error = 'Выберите один файл субтитров'
+      return
+    }
+    const file = files[0]!
+    if (dropped && !trackFormats.some(extension => file.name.toLowerCase().endsWith(extension))) {
+      error = 'Выберите файл SRT, VTT, SCC, MCC, STL, TTML или DFXP'
+      return
+    }
+    void importTrack(file)
+  }
+
+  async function importTrack(file: File) {
+    const project = nestedComposition.document, id = activeId
+    if (!project || !id || !content) return
     const snapshot = JSON.stringify(project), owner = authState.token
     const offset = atPlayhead ? nestedComposition.timeUs : 0
     const { fpsMilli, fpsRate } = content.canvas
@@ -43,7 +60,6 @@
       if (!disposed) error = cause instanceof Error ? cause.message : String(cause)
     } finally {
       importing = false
-      input.value = ''
     }
   }
   async function importFile(file: File, dropTime?: number, saveSource = false): Promise<boolean> {
@@ -87,10 +103,30 @@
   <label><input type="checkbox" bind:checked={atPlayhead} disabled={importing||nestedHistory.busy} />Начать субтитры в позиции курсора</label>
   <SubtitleFilePicker label="Импорт субтитров вложенной композиции" disabled={importing||nestedHistory.busy}
     project={nestedComposition.document} {documents} ondocumentschange={editNestedSubtitleDocuments} onfile={importFile} onerror={notice=>{message='';error=notice}} />
-  <label>Импорт на дорожку субтитров
-    <input type="file" aria-label="Импорт на дорожку субтитров" accept=".srt,.vtt,.scc,.mcc,.stl,.ttml,.dfxp"
-      disabled={!content||importing||nestedHistory.busy} onchange={event=>void importTrack(event.currentTarget)} />
-  </label>
+  <div role="group" aria-label="Область импорта на дорожку субтитров" class="track-drop" class:dragging={draggingTrack}
+    ondragover={event => {
+      const transfer = event.dataTransfer
+      if (!transfer?.types.includes('Files')) return
+      event.preventDefault()
+      draggingTrack = !!content && !importing && !nestedHistory.busy
+      transfer.dropEffect = draggingTrack ? 'copy' : 'none'
+    }}
+    ondragleave={event => {
+      if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) draggingTrack = false
+    }}
+    ondrop={event => {
+      event.preventDefault()
+      draggingTrack = false
+      selectTrack(event.dataTransfer?.files, true)
+    }}>
+    <label>Выберите или перетащите файл на дорожку субтитров
+      <input type="file" aria-label="Импорт на дорожку субтитров" accept={trackFormats.join(',')}
+        disabled={!content||importing||nestedHistory.busy} onchange={event=>{
+          selectTrack(event.currentTarget.files)
+          event.currentTarget.value = ''
+        }} />
+    </label>
+  </div>
   {#if message}<p role="status">{message}</p>{/if}
   <button class="btn ghost sm" type="button" onclick={() => download('srt')}>Субтитры активной композиции · SRT</button>
   <button class="btn ghost sm" type="button" onclick={() => download('vtt')}>Субтитры активной композиции · VTT</button>
@@ -108,3 +144,9 @@
   {/if}
   {#if error}<p role="alert">{error}</p>{/if}
 </section>
+
+
+<style>
+  .track-drop { outline: 1px dashed transparent; }
+  .track-drop.dragging { outline-color: currentColor; }
+</style>
