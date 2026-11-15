@@ -11,7 +11,51 @@ import NestedClipTransfer from './NestedClipTransfer.svelte'
 import { closeNestedComposition, nestedComposition, nestedHistory, undoNestedComposition, trimNestedClipEnds, nestedClipboard } from '$lib/state/nestedComposition.svelte'
 import { addClip, addTrack, createComposition, registerSource } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
+import { cuesToTextClips, parseSrt } from '$lib/subtitles/srt'
 vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
+
+it('saves subtitle text and typography together and restores them with one Undo', async () => {
+  closeNestedComposition()
+  const [cue] = cuesToTextClips(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nOriginal'), () => 'cue')
+  const base = createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' })
+  const draft = addTrack(base, { id: 'captions', kind: 'text', name: 'Subtitles', hidden: false, locked: false, clips: [cue!] })
+  const content = buildCompositionWireDocument({ ...draft, metadata: { captionTextTracks: ['captions'] } })
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { content, instances: [] } } }
+  nestedComposition.activeCompositionId = 'root'
+  const before = JSON.stringify(nestedComposition.document)
+  vi.mocked(api.nestedDurations).mockClear()
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  try {
+    await tick()
+    const editor = target.querySelector<HTMLDetailsElement>('[data-caption-editor="cue"]')!
+    editor.open = true
+    const fields = editor.querySelectorAll<HTMLInputElement>('input[type="number"]')
+    for (const [index, value] of ['28', '550.5', '-2', '1.6'].entries()) {
+      fields[index]!.value = value
+      fields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    const textarea = editor.querySelector('textarea')!
+    textarea.value = 'Edited'
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+    const save = [...editor.querySelectorAll('button')].find(button => button.textContent === 'Сохранить реплику')!
+    expect(save.disabled).toBe(false)
+    save.click()
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
+    expect(api.nestedDurations).toHaveBeenCalledTimes(1)
+    expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
+      text: 'Edited', style: { fontSize: 28, fontWeight: 550.5, tracking: -2, lineHeight: 1.6 },
+    })
+    undoNestedComposition()
+    expect(JSON.stringify(nestedComposition.document)).toBe(before)
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+  }
+})
 it('selects a clip, sends a native transfer to another timeline, focuses it and restores everything with Undo', async () => {
   closeNestedComposition()
   let source = registerSource(createComposition({ width: 16, height: 16, fps: 10, backgroundColor: '#000000' }), { id: 'source', kind: 'video', durationTicks: 4_000_000, width: 4, height: 4, hasAudio: false })

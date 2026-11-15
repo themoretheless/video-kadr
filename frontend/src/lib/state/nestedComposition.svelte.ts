@@ -1084,18 +1084,23 @@ export async function applyNestedAgentDocument(expected: string, document: Nativ
   }
 }
 
-export async function updateNestedCaptionText(compositionId:string,clipId:string,text:string,expectedText:string):Promise<boolean> {
+export async function updateNestedCaptionText(
+  compositionId: string, clipId: string, text: string, expectedText: string,
+  typography?: Parameters<typeof setNativeCaptionText>[5],
+): Promise<boolean> {
   if(!nestedComposition.document||nestedHistory.busy)return false
   const startedGeneration=generation
+  const guard = () => assertHistoryUnlocked()
   let expected=''
   await editNestedDocument(async project=>{
-    const document=setNativeCaptionText(project,compositionId,clipId,text,expectedText)
+    guard()
+    const document=setNativeCaptionText(project,compositionId,clipId,text,expectedText,typography)
     expected=JSON.stringify(document)
     await nestedDurations(document)
     return document
-  },true)
+  },true,undefined,undefined,0,undefined,guard)
   if(generation!==startedGeneration)return false
-  if(!nestedHistory.error&&expected&&JSON.stringify(nestedComposition.document)!==expected)nestedHistory.error='Проект изменился во время сохранения текста'
+  if(!nestedHistory.error&&expected&&JSON.stringify(nestedComposition.document)!==expected)nestedHistory.error='Проект изменился во время сохранения реплики'
   return !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected
 }
 
