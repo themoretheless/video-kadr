@@ -46,3 +46,24 @@ it('uses the active timeline and sums editorial durations of repeated slots', as
   expect(stats.get('slot')).toEqual({ first: 2, seconds: 5 })
   expect(stats.has('unused')).toBe(false)
 })
+
+it('shows the active timeline format and inherits missing fields from the shared format', async () => {
+  const manifest = file('template.json', JSON.stringify({
+    video: { width: 1920, height: 1080, rateNum: 30, rateDen: 1 },
+    activeTimelineId: 'vertical',
+    timelines: [
+      { id: 'wide', video: { width: 1920, height: 1080 } },
+      { id: 'vertical', video: { width: 1080, height: 1920, rateNum: 24_000, rateDen: 1_001 } },
+    ],
+  }))
+  expect((await readConcatTemplateFolder([manifest])).format).toEqual({
+    width: 1080, height: 1920, rateNum: 24_000, rateDen: 1_001,
+  })
+  const partial = file('template.json', JSON.stringify({
+    video: { width: 1920, height: 1080, rateNum: 30, rateDen: 1 },
+    timelines: [{ id: 'first', video: { rateNum: 25 } }],
+  }))
+  expect((await readConcatTemplateFolder([partial])).format).toEqual({
+    width: 1920, height: 1080, rateNum: 25, rateDen: 1,
+  })
+})

@@ -195,7 +195,11 @@ it('uploads the selected template design and binds its bundled font before conve
   await tick()
   const template = {
    ...original,
-   video: { width: 1920, height: 1080, rateNum: 30_000, rateDen: 1_001 },
+   video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
+   timelines: [
+    { ...original.timelines[0], video: { width: 1920, height: 1080, rateNum: 30_000, rateDen: 1_001 } },
+    { ...original.timelines[0], id: 'shelved' },
+   ],
    media: [{ ...original.media[0], path: 'assets/design.mov' }],
    fonts: [{ family: 'Title', path: 'assets/title.otf' }],
   }
@@ -261,7 +265,7 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
   const design = file('B/assets/design.mov', 'video')
   const manifest = file('B/template.json', JSON.stringify({
    ...original, name: 'Selected template',
-   video: { width: 1280, height: 720, rateNum: 25, rateDen: 1 },
+   timelines: [{ ...original.timelines[0], video: { width: 1280, height: 720, rateNum: 25, rateDen: 1 } }],
    media: [{ ...original.media[0], path: 'assets/design.mov' }],
   }))
   component = mount(Panel, { target: document.body, props: { token: 'session' } })

@@ -22,7 +22,9 @@ fn request(value: Value) -> Request<Body> {
 async fn imports_multiple_timelines_bindings_and_original_effect_keys() {
     let (state, _dir) = support::make_state(false, false).await;
     let app = support::router(state);
-    let original = source();
+    let mut original = source();
+    original["video"] = json!({"width": 320, "height": 180, "rateNum": 24, "rateDen": 1});
+    original["timelines"][1]["video"] = json!({"width": 180, "height": 320, "rateNum": 24000, "rateDen": 1001});
     let (status, result, _) = support::send(&app, request(body(original.clone()))).await;
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(result["status"], "converted", "{result}");
@@ -32,6 +34,15 @@ async fn imports_multiple_timelines_bindings_and_original_effect_keys() {
         result["project"]["timelineOrder"],
         json!(["concat-timeline-0", "concat-timeline-1"])
     );
+    let compositions = &result["project"]["compositions"];
+    let first = &compositions["concat-timeline-0"]["content"]["canvas"];
+    assert_eq!(first["width"], 16);
+    assert_eq!(first["height"], 16);
+    assert_eq!(first["fpsRate"], json!({"numerator": 4, "denominator": 1}));
+    let active = &compositions["concat-timeline-1"]["content"]["canvas"];
+    assert_eq!(active["width"], 180);
+    assert_eq!(active["height"], 320);
+    assert_eq!(active["fpsRate"], json!({"numerator": 24000, "denominator": 1001}));
     let clip =
         &result["project"]["compositions"]["concat-timeline-0"]["content"]["tracks"][0]["clips"][0];
     assert_eq!(clip["sourceId"], "source");

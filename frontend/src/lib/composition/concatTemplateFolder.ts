@@ -19,10 +19,20 @@ export function concatTemplateFolders(files: readonly File[]) {
     .sort((left, right) => left.name.localeCompare(right.name))
 }
 
+function activeTimeline(document: unknown) {
+  const data = document as { activeTimelineId?: unknown; timelines?: unknown } | null
+  const timelines = Array.isArray(data?.timelines) ? data.timelines : []
+  return timelines.find(item => item?.id === data?.activeTimelineId) ?? timelines[0]
+}
+
+function videoFields(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
 function outputFormat(document: { video?: unknown }) {
-  const video = document.video
-  if (!video || typeof video !== 'object') return undefined
-  const { width, height, rateNum, rateDen } = video as Record<string, unknown>
+  const shared = videoFields(document.video)
+  const active = videoFields(activeTimeline(document)?.video)
+  const { width, height, rateNum, rateDen } = { ...shared, ...active }
   const positive = (value: unknown): value is number =>
     typeof value === 'number' && Number.isSafeInteger(value) && value > 0
   if (!positive(width) || !positive(height) || !positive(rateNum) || !positive(rateDen)) return undefined
@@ -74,9 +84,7 @@ export async function readConcatTemplateFolder(files: readonly File[]) {
 
 /** Concat lists used slots by their first appearance, then unused slots in bin order. */
 export function concatTemplateSlotStats(document: unknown) {
-  const data = document as { activeTimelineId?: unknown; timelines?: unknown } | null
-  const timelines = Array.isArray(data?.timelines) ? data.timelines : []
-  const timeline = timelines.find(item => item?.id === data?.activeTimelineId) ?? timelines[0]
+  const timeline = activeTimeline(document)
   const stats = new Map<string, { first: number; seconds: number }>()
   if (!Array.isArray(timeline?.clips)) return stats
 
