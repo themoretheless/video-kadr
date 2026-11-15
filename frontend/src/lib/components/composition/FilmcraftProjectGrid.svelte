@@ -1,10 +1,12 @@
 <script lang="ts">
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { FilmcraftImportResult } from '$lib/api'
+  import { on } from 'svelte/events'
+  import { editFilmcraftMarks, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
-  let { project, sources, token, selected = $bindable<string[]>([]), disabled = false }: {
-    project: FilmcraftImportResult; sources: Record<string, string>; token: string | null; selected?: string[]; disabled?: boolean
+  let { project, sources, token, sequenceId, clipId, onedit, selected = $bindable<string[]>([]), disabled = false }: {
+    project: FilmcraftImportResult; sources: Record<string, string>; token: string | null; sequenceId: string; clipId: string
+    onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean; selected?: string[]; disabled?: boolean
   } = $props()
   const pageSize = 12
   let open = $state(false)
@@ -13,6 +15,9 @@
   let page = $state(0)
   let hoverEnabled = $state(true)
   let hover = $state<{ item: string; fraction: number }>()
+  let marking = $state(false)
+  let markError = $state('')
+  let markRequest: AbortController | undefined
 
 
   const bins = $derived(project.projectBins ?? [])
@@ -72,6 +77,46 @@
     if (hover?.item !== id || hover.fraction !== fraction) hover = { item: id, fraction }
   }
 
+  $effect(() => {
+    if (!open) return
+    const stop = on(window, 'keydown', markHovered, { capture: true })
+    return () => { stop(); markRequest?.abort() }
+  })
+
+  function markHovered(event: KeyboardEvent) {
+    if (!hoverEnabled || !hover || !token || disabled || event.defaultPrevented || event.isComposing
+      || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+    const target = event.target
+    if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) return
+    const key = event.key.toLowerCase()
+    if (key !== 'i' && key !== 'o') return
+    if (!visible.some(entry => entry.kind === 'item' && entry.item.id === hover?.item
+      && (entry.item.kind === 'Media' || entry.item.kind === 'Sequence'))) return
+    event.preventDefault()
+    if (marking || event.repeat) return
+    void applyHoverMark(token, hover, key === 'i' ? 'in' : 'out')
+  }
+
+  async function applyHoverMark(owner: string, at: { item: string; fraction: number }, side: 'in' | 'out') {
+    const expected = { document: project.documentText, sequenceId, clipId, token: owner }
+    const request = new AbortController()
+    markRequest = request
+    marking = true
+    markError = ''
+    try {
+      const result = await editFilmcraftMarks(owner, 'project.setMarks', {
+        document: expected.document, item: at.item, hoverMark: { side, fraction: at.fraction },
+      }, request.signal)
+      if (!request.signal.aborted) onedit(result, expected)
+    } catch (error) {
+      if (!request.signal.aborted && project.documentText === expected.document && token === owner) {
+        markError = error instanceof Error ? error.message : String(error)
+      }
+    } finally {
+      if (markRequest === request) { markRequest = undefined; marking = false }
+    }
+  }
+
   function select(id: string, event: MouseEvent) {
     selected = event.metaKey || event.ctrlKey || event.shiftKey
       ? selected.includes(id) ? selected.filter(item => item !== id) : [...selected, id]
@@ -93,6 +138,7 @@
         <button type="button" aria-label="Следующая страница карточек" disabled={currentPage + 1 >= pages} onclick={() => { page = currentPage + 1; hover = undefined }}>›</button>
       {/if}
     </div>
+    {#if markError}<p role="alert">{markError}</p>{/if}
     {#if visible.length}
       <ul aria-label="Карточки проекта Filmcraft">
         {#each visible as entry (entry.kind === 'bin' ? `bin-${entry.folder.id}` : `item-${entry.item.id}`)}

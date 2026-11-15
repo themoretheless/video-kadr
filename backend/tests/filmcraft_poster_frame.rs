@@ -197,3 +197,31 @@ async fn saved_poster_and_clear_select_different_real_video_pixels() {
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 }
+
+#[test]
+fn hover_marks_use_source_frame_times_before_thumbnail_quantization() {
+    use video_kadr_backend::domain::filmcraft_marks::edit;
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let mut document = fixture["cases"][0]["document"].clone();
+    document["project"]["items"]["1"]["kind"]["Media"]["info"]["duration"] =
+        json!(609_638_400_000_i64);
+    let input = edit(
+        "project.setMarks",
+        json!({"document":document,"item":"1","hoverMark":{"side":"in","fraction":0.65}}),
+    )
+    .unwrap();
+    let media = "/project/items/1/kind/Media";
+    let marked = input["document"].pointer(media).unwrap();
+    assert_eq!(marked["mark_in"], 391_608_000_000_i64);
+    assert!(marked["mark_out"].is_null());
+    let output = edit("project.setMarks", json!({"document":input["documentText"],"item":"1","hoverMark":{"side":"out","fraction":1.0}})).unwrap();
+    let marked = output["document"].pointer(media).unwrap();
+    assert_eq!(marked["mark_in"], 391_608_000_000_i64);
+    assert_eq!(marked["mark_out"], 599_054_400_000_i64);
+    assert!(edit(
+        "project.setMarks",
+        json!({"document":document,"item":"1","in":"0","hoverMark":{"side":"in","fraction":0.65}})
+    )
+    .is_err());
+}

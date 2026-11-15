@@ -506,7 +506,7 @@
         <label>Позиция правки, кадров <input aria-label="Позиция правки, кадров" type="text" inputmode="numeric" value={editPositionFrames} oninput={(event) => { editPositionFrames = event.currentTarget.value; pastePositionTicks = '' }} disabled={busy} /></label>
       <FilmcraftLabelControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} palette={project.labelPalette ?? []} bind:selected={projectSelection} clipSelection={timelineSelection} onselection={adoptLabelSelection} clipLabel={sequence?.clips?.find(clip => clip.id === clipId)?.label} disabled={busy} onedit={commitEdit} />
       {#if projectPanelOpen && project.projectItems?.length}
-        <FilmcraftProjectGrid {project} sources={activeBindings} {token} bind:selected={projectSelection} disabled={busy} />
+        <FilmcraftProjectGrid {project} sources={activeBindings} {token} {sequenceId} {clipId} onedit={commitEdit} bind:selected={projectSelection} disabled={busy} />
       {/if}
       {#if projectPanelOpen && selectedPosterItem && (selectedPosterItem.kind === 'Media' || selectedPosterItem.kind === 'Sequence')}
         <FilmcraftPosterPreview document={project.documentText} item={selectedPosterItem.id} name={selectedPosterItem.name} sources={activeBindings} {token} />

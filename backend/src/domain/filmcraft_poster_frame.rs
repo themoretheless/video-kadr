@@ -118,18 +118,10 @@ pub(crate) fn preview_clock(
     let rate = filmcraft_source_inspect::frame_rate(&index, id)?.sane();
     let time = if let Some(fraction) = hover_fraction {
         ensure!(
-            matches!(view, PreviewView::Card) && (0.0..=1.0).contains(&fraction),
-            "invalid thumbnail hover position"
+            matches!(view, PreviewView::Card),
+            "hover is only available on cards"
         );
-        let duration = super::filmcraft_project_inspect::duration(item)?;
-        ensure!(
-            duration > 0 && duration <= Tick::MAX.0,
-            "invalid thumbnail duration"
-        );
-        let frame_duration = i128::from(filmcraft_time::TICKS_PER_SECOND) * i128::from(rate.den)
-            / i128::from(rate.num);
-        let last = (i128::from(duration) - frame_duration).max(0) as i64;
-        snap(rate, (duration as f64 * fraction) as i64)?.min(last)
+        hover_tick(&index, id, fraction)?
     } else if let Some(tick) = stored_tick(item) {
         tick.parse()?
     } else {
@@ -141,6 +133,29 @@ pub(crate) fn preview_clock(
     };
     let quarter = filmcraft_time::TICKS_PER_SECOND / 4;
     Ok((kind, snap(rate, time / quarter * quarter)?))
+}
+
+/// The source clock under the pointer, before thumbnail cache quantization.
+pub(super) fn hover_tick(index: &ProjectIndex<'_>, id: u64, fraction: f64) -> Result<i64> {
+    ensure!(
+        (0.0..=1.0).contains(&fraction),
+        "invalid thumbnail hover position"
+    );
+    let item = index.item(id).context("hover item is gone")?;
+    ensure!(
+        item.pointer("/kind/Media").is_some() || item.pointer("/kind/Sequence").is_some(),
+        "item does not support In/Out"
+    );
+    let duration = super::filmcraft_project_inspect::duration(item)?;
+    ensure!(
+        duration > 0 && duration <= Tick::MAX.0,
+        "invalid thumbnail duration"
+    );
+    let rate = filmcraft_source_inspect::frame_rate(index, id)?.sane();
+    let frame_duration =
+        i128::from(filmcraft_time::TICKS_PER_SECOND) * i128::from(rate.den) / i128::from(rate.num);
+    let last = (i128::from(duration) - frame_duration).max(0) as i64;
+    Ok(snap(rate, (duration as f64 * fraction) as i64)?.min(last))
 }
 
 pub fn edit(command: &str, params: Value) -> Result<Value> {

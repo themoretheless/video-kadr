@@ -154,11 +154,37 @@ pub fn edit(command: &str, mut params: Value) -> Result<Value> {
         v => serde_json::to_vec(&v)?,
     };
     let mut doc = SourceProjectDocument::read(&bytes)?;
-    ProjectIndex::new(&doc)?;
+    let index = ProjectIndex::new(&doc)?;
     let source = id(context.source_item)?;
     let active = id(context.active_sequence)?;
     let source_target = params["target"] == "source";
     let direct = command == "project.setMarks";
+    if let Some(hover) = params.get("hoverMark") {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "lowercase")]
+        enum Side {
+            In,
+            Out,
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct HoverMark {
+            side: Side,
+            fraction: f64,
+        }
+        ensure!(
+            direct && params.get("in").is_none() && params.get("out").is_none(),
+            "hoverMark requires a single direct mark"
+        );
+        let hover: HoverMark = serde_json::from_value(hover.clone())?;
+        let item = target_id(params.get("item").cloned())?
+            .context("hoverMark requires an explicit item")?;
+        let tick = super::filmcraft_poster_frame::hover_tick(&index, item, hover.fraction)?;
+        params[match hover.side {
+            Side::In => "in",
+            Side::Out => "out",
+        }] = json!(tick);
+    }
     let path = if direct || source_target && !command.starts_with("markers.clear") {
         let item = if direct {
             target_id(params.get("item").cloned())?.or(source)

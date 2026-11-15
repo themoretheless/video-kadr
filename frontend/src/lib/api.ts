@@ -2214,7 +2214,7 @@ export async function editFilmcraftAttributes(token: string, command: FilmcraftA
   if (raw?.attributeEdit !== true || typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) throw new Error('Attributes command returned invalid edit result')
   return { ...await importFilmcraftCommandSnapshot(raw, signal), attributeEdit: true, changedClipCount: count }
 }
-export async function editFilmcraftMarks(token: string, command: FilmcraftMarksCommand, input: { document: string; item?: string; in?: string | null; out?: string | null; target?: 'program' | 'source'; time?: string; frame?: string; seconds?: number; timecode?: string; context?: { activeSequence?: string | null; sourceItem?: string | null; playhead?: string; sourcePlayhead?: string } }, signal?: AbortSignal): Promise<FilmcraftMarkEditResult> {
+export async function editFilmcraftMarks(token: string, command: FilmcraftMarksCommand, input: { document: string; item?: string; in?: string | null; out?: string | null; hoverMark?: { side: 'in' | 'out'; fraction: number }; target?: 'program' | 'source'; time?: string; frame?: string; seconds?: number; timecode?: string; context?: { activeSequence?: string | null; sourceItem?: string | null; playhead?: string; sourcePlayhead?: string } }, signal?: AbortSignal): Promise<FilmcraftMarkEditResult> {
   const raw = await runFilmcraftExportCommand<{ markEdit?: unknown; documentText?: unknown }>(token, command, input, signal)
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
   if (raw?.markEdit !== true) throw new Error('Marks command returned no accepted edit marker')
