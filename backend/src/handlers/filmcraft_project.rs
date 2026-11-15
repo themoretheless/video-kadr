@@ -673,6 +673,7 @@ pub struct PosterPreviewRequest {
     item: String,
     #[serde(default)]
     view: crate::domain::filmcraft_poster_frame::PreviewView,
+    hover_fraction: Option<f64>,
     #[serde(default)]
     sources: BTreeMap<String, String>,
 }
@@ -686,7 +687,7 @@ pub async fn poster_preview(
     use crate::services::filmcraft_video_preview::{frame_cached, SourceVideoRevision};
     let id = request.item.parse::<u64>().map_err(|_| AppError::bad_request("invalid poster item ID"))?;
     let document = decode(&request.document)?;
-    let (kind, ticks) = preview_clock(&document, id, request.view).map_err(|error| AppError::bad_request(error.to_string()))?;
+    let (kind, ticks) = preview_clock(&document, id, request.view, request.hover_fraction).map_err(|error| AppError::bad_request(error.to_string()))?;
     if matches!(kind, PreviewKind::Sequence) {
         return execute_preview(state, headers, PreviewFrameRequest {
             document: request.document, sequence_id: request.item, sources: request.sources,

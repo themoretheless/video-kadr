@@ -139,26 +139,44 @@ async fn saved_poster_and_clear_select_different_real_video_pixels() {
         json!({"document":set["documentText"],"item":"1"}),
     )
     .unwrap();
-    let request = |input: &Value, token: &str, view: &str| {
+    let request = |input: &Value, token: &str, view: &str, fraction: Option<f64>| {
         axum::http::Request::post("/api/compositions/filmcraft/poster-preview")
             .header("content-type", "application/json")
             .header("authorization", format!("Bearer {token}"))
             .body(axum::body::Body::from(
-                json!({"document":input,"item":"1","view":view,"sources":{"1":"poster-video"}})
+                json!({"document":input,"item":"1","view":view,"hoverFraction":fraction,"sources":{"1":"poster-video"}})
                     .to_string(),
             ))
             .unwrap()
     };
-    let (status, _, _) =
-        support::send(&app, request(&set["documentText"], &outsider.token, "card")).await;
+    let (status, _, _) = support::send(
+        &app,
+        request(&set["documentText"], &outsider.token, "card", None),
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    for (snapshot, view, ticks, green) in [
-        (&set["documentText"], "selected", "317520000000", true),
-        (&set["documentText"], "card", "317520000000", true),
-        (&clear["documentText"], "selected", "190512000000", false),
-        (&clear["documentText"], "card", "127008000000", false),
+    for (snapshot, view, fraction, ticks, green) in [
+        (&set["documentText"], "selected", None, "317520000000", true),
+        (&set["documentText"], "card", None, "317520000000", true),
+        (
+            &clear["documentText"],
+            "selected",
+            None,
+            "190512000000",
+            false,
+        ),
+        (&clear["documentText"], "card", None, "127008000000", false),
+        (&set["documentText"], "card", Some(0.1), "0", false),
+        (
+            &clear["documentText"],
+            "card",
+            Some(0.65),
+            "381024000000",
+            true,
+        ),
     ] {
-        let (status, body, _) = support::send(&app, request(snapshot, &owner.token, view)).await;
+        let (status, body, _) =
+            support::send(&app, request(snapshot, &owner.token, view, fraction)).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["sampleTicks"], ticks);
         let pixel = body["rgbaHex"].as_str().unwrap();
@@ -172,5 +190,10 @@ async fn saved_poster_and_clear_select_different_real_video_pixels() {
             },
             "{pixel:.8}"
         );
+    }
+    for (view, fraction) in [("card", -0.1), ("selected", 0.5)] {
+        let (status, _, _) =
+            support::send(&app, request(&document, &owner.token, view, Some(fraction))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 }

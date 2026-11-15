@@ -2382,7 +2382,7 @@ export async function exportFilmcraftFrame(input: FilmcraftPreviewInput, token?:
   await requireOk(response, 'Не удалось экспортировать кадр проекта')
   return response.blob()
 }
-export function getFilmcraftPosterPreview(input: { document: string; item: string; view?: 'card'; sources: Record<string, string> }, signal?: AbortSignal, token?: string | null): Promise<FilmcraftMonitorFrame> {
+export function getFilmcraftPosterPreview(input: { document: string; item: string; view?: 'card'; hoverFraction?: number; sources: Record<string, string> }, signal?: AbortSignal, token?: string | null): Promise<FilmcraftMonitorFrame> {
   return requestJson('/api/compositions/filmcraft/poster-preview', { method: 'POST', headers: { ...(token ? bearerHeaders(token) : {}), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
 }
 export function getFilmcraftPreviewFrame(input: FilmcraftPreviewInput, signal?: AbortSignal, token?: string | null): Promise<FilmcraftPreviewFrame> {

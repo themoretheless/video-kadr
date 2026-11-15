@@ -93,6 +93,7 @@ pub(crate) fn preview_clock(
     document: &SourceProjectDocument,
     id: u64,
     view: PreviewView,
+    hover_fraction: Option<f64>,
 ) -> Result<(PreviewKind, i64)> {
     let index = ProjectIndex::new(document)?;
     let item = index.item(id).context("poster item is gone")?;
@@ -114,7 +115,22 @@ pub(crate) fn preview_clock(
             anyhow::bail!("item media does not support thumbnail preview")
         }
     };
-    let time = if let Some(tick) = stored_tick(item) {
+    let rate = filmcraft_source_inspect::frame_rate(&index, id)?.sane();
+    let time = if let Some(fraction) = hover_fraction {
+        ensure!(
+            matches!(view, PreviewView::Card) && (0.0..=1.0).contains(&fraction),
+            "invalid thumbnail hover position"
+        );
+        let duration = super::filmcraft_project_inspect::duration(item)?;
+        ensure!(
+            duration > 0 && duration <= Tick::MAX.0,
+            "invalid thumbnail duration"
+        );
+        let frame_duration = i128::from(filmcraft_time::TICKS_PER_SECOND) * i128::from(rate.den)
+            / i128::from(rate.num);
+        let last = (i128::from(duration) - frame_duration).max(0) as i64;
+        snap(rate, (duration as f64 * fraction) as i64)?.min(last)
+    } else if let Some(tick) = stored_tick(item) {
         tick.parse()?
     } else {
         let duration = super::filmcraft_project_inspect::duration(item)?;
@@ -124,7 +140,6 @@ pub(crate) fn preview_clock(
         }
     };
     let quarter = filmcraft_time::TICKS_PER_SECOND / 4;
-    let rate = filmcraft_source_inspect::frame_rate(&index, id)?;
     Ok((kind, snap(rate, time / quarter * quarter)?))
 }
 

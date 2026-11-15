@@ -11,6 +11,9 @@
   let bin = $state('')
   let query = $state('')
   let page = $state(0)
+  let hoverEnabled = $state(true)
+  let hover = $state<{ item: string; fraction: number }>()
+
 
   const bins = $derived(project.projectBins ?? [])
   const items = $derived(project.projectItems ?? [])
@@ -53,9 +56,22 @@
 
   function enter(id: string) {
     bin = id
+    hover = undefined
     query = ''
     page = 0
   }
+  function scrub(id: string, event: PointerEvent) {
+    if (!hoverEnabled || event.pointerType === 'touch' || event.buttons) return
+    const thumbnail = (event.currentTarget as HTMLElement).querySelector('figure')
+    const rect = thumbnail?.getBoundingClientRect()
+    if (!rect?.width || event.clientY < rect.top || event.clientY > rect.bottom) {
+      hover = undefined
+      return
+    }
+    const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+    if (hover?.item !== id || hover.fraction !== fraction) hover = { item: id, fraction }
+  }
+
   function select(id: string, event: MouseEvent) {
     selected = event.metaKey || event.ctrlKey || event.shiftKey
       ? selected.includes(id) ? selected.filter(item => item !== id) : [...selected, id]
@@ -63,17 +79,18 @@
   }
 </script>
 
-<details ontoggle={event => { open = event.currentTarget.open }}>
+<details ontoggle={event => { open = event.currentTarget.open; if (!open) hover = undefined }}>
   <summary>Сетка проекта Filmcraft</summary>
   {#if open}
     <div class="toolbar">
       {#if parent}<button type="button" disabled={disabled} onclick={() => enter(parent.id)}>На уровень выше</button>{/if}
       {#if activeBin}<span>{activeBin.name}</span>{/if}
-      <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { query = event.currentTarget.value; page = 0 }} /></label>
+      <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { query = event.currentTarget.value; page = 0; hover = undefined }} /></label>
+      <label><input type="checkbox" bind:checked={hoverEnabled} onchange={() => { hover = undefined }} />Просмотр при наведении</label>
       {#if pages > 1}
-        <button type="button" aria-label="Предыдущая страница карточек" disabled={currentPage === 0} onclick={() => { page = currentPage - 1 }}>‹</button>
+        <button type="button" aria-label="Предыдущая страница карточек" disabled={currentPage === 0} onclick={() => { page = currentPage - 1; hover = undefined }}>‹</button>
         <span>{currentPage + 1} / {pages}</span>
-        <button type="button" aria-label="Следующая страница карточек" disabled={currentPage + 1 >= pages} onclick={() => { page = currentPage + 1 }}>›</button>
+        <button type="button" aria-label="Следующая страница карточек" disabled={currentPage + 1 >= pages} onclick={() => { page = currentPage + 1; hover = undefined }}>›</button>
       {/if}
     </div>
     {#if visible.length}
@@ -82,9 +99,9 @@
           {#if entry.kind === 'bin'}
             <li><button type="button" class="folder" disabled={disabled} onclick={() => enter(entry.folder.id)}>Папка «{entry.folder.name}»</button></li>
           {:else}
-            <li class:selected={selected.includes(entry.item.id)}>
+            <li class:selected={selected.includes(entry.item.id)} onpointermove={event => scrub(entry.item.id, event)} onpointerleave={() => { hover = undefined }}>
               {#if entry.item.kind === 'Media' || entry.item.kind === 'Sequence'}
-                <FilmcraftPosterPreview card document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} />
+                <FilmcraftPosterPreview card document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} hoverFraction={hoverEnabled && hover?.item === entry.item.id ? hover.fraction : undefined} />
               {/if}
               <button type="button" class="item" aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onclick={event => select(entry.item.id, event)}>{entry.item.name || entry.item.id}</button>
             </li>
