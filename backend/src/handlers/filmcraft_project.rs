@@ -43,7 +43,7 @@ fn manifest(document:&SourceProjectDocument)->AppResult<Value> {
         let rate=serde_json::from_value::<filmcraft_time::FrameRate>(sequence["settings"]["frame_rate"].clone()).unwrap_or_default().sane();
         let den=254_016_000_000i128*rate.den as i128;let frames=(end*rate.num as i128+den-1)/den;
         let tracks:Vec<_>=["video_tracks","audio_tracks"].into_iter().flat_map(|kind|sequence[kind].as_array().into_iter().flatten().map(move |track|json!({"id":track["id"].as_u64().map(|id|id.to_string()),"name":track["name"],"kind":kind,"locked":track["locked"].as_bool().unwrap_or(false)}))).collect();
-        json!({"tracks":tracks,"marks":crate::domain::filmcraft_marks::sequence_marks(sequence),"transitions":transitions,"clips":clips,"id":id.to_string(),"name":index.item(id).and_then(|v|v.get("name")),"settings":sequence["settings"],"sampleRate":sequence["settings"]["sample_rate"],"durationSeconds":end as f64/254_016_000_000.,"durationFrames":frames.to_string()})
+        json!({"tracks":tracks,"markers":crate::domain::filmcraft_sequence_markers::describe(sequence,rate),"marks":crate::domain::filmcraft_marks::sequence_marks(sequence),"transitions":transitions,"clips":clips,"id":id.to_string(),"name":index.item(id).and_then(|v|v.get("name")),"settings":sequence["settings"],"sampleRate":sequence["settings"]["sample_rate"],"durationSeconds":end as f64/254_016_000_000.,"durationFrames":frames.to_string()})
     }).collect();
     let usage = crate::domain::filmcraft_project_sort::usage(&index);
     let project_items:Vec<_>=index.items().map(|(id,item)|json!({

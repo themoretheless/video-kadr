@@ -7,6 +7,7 @@
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
   import FilmcraftMetadataControls from './FilmcraftMetadataControls.svelte'
+  import FilmcraftSequenceMarkers from './FilmcraftSequenceMarkers.svelte'
   import FilmcraftTimelineFind from './FilmcraftTimelineFind.svelte'
   import type { FilmcraftTimelineFindResult } from '$lib/api'
   import FilmcraftProjectGrid from './FilmcraftProjectGrid.svelte'
@@ -259,7 +260,7 @@
     const clipEditSelection = 'clipEditSelection' in edited && Array.isArray(edited.clipEditSelection) ? edited.clipEditSelection as string[] : undefined
     if (clipEditSelection?.some(id => !edited.sequences.find(sequence => sequence.id === sequenceId)?.clips?.some(clip => clip.id === id))) return false
     // Original Duplicate and Clear push an edit frame even for an accepted no-op.
-    if (project && (edited.documentText !== project.documentText || 'duplicatedItemIds' in edited && Array.isArray(edited.duplicatedItemIds) || 'deletedItemIds' in edited && Array.isArray(edited.deletedItemIds) || 'clipEdit' in edited && edited.clipEdit === true || 'modifyEdit' in edited && edited.modifyEdit === true || 'videoOptionsEdit' in edited && edited.videoOptionsEdit === true || 'replacementEdit' in edited && edited.replacementEdit === true || 'attributeEdit' in edited && edited.attributeEdit === true || 'markEdit' in edited && edited.markEdit === true || 'posterEdit' in edited && edited.posterEdit === true || 'matteEdit' in edited && edited.matteEdit === true || 'freeformEdit' in edited && edited.freeformEdit === true || placement?.sourceEdit === true || !!subclip)) { undo = boundedHistory([...undo, project]); redo = [] }
+    if (project && (edited.documentText !== project.documentText || 'duplicatedItemIds' in edited && Array.isArray(edited.duplicatedItemIds) || 'deletedItemIds' in edited && Array.isArray(edited.deletedItemIds) || 'clipEdit' in edited && edited.clipEdit === true || 'modifyEdit' in edited && edited.modifyEdit === true || 'videoOptionsEdit' in edited && edited.videoOptionsEdit === true || 'replacementEdit' in edited && edited.replacementEdit === true || 'attributeEdit' in edited && edited.attributeEdit === true || 'markEdit' in edited && edited.markEdit === true || 'posterEdit' in edited && edited.posterEdit === true || 'sequenceMarkerEdit' in edited && edited.sequenceMarkerEdit === true || 'matteEdit' in edited && edited.matteEdit === true || 'freeformEdit' in edited && edited.freeformEdit === true || placement?.sourceEdit === true || !!subclip)) { undo = boundedHistory([...undo, project]); redo = [] }
     if ('duplicateSources' in edited && Array.isArray(edited.duplicateSources)) {
       const inherited = { ...bindings }
       for (const record of edited.duplicateSources) if (edited.media.some(media => media.id === record.id) && inherited[record.sourceId]) inherited[record.id] = inherited[record.sourceId]
@@ -491,7 +492,7 @@
   const valid = $derived(sequence && Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start && Math.floor(end * sequence.sampleRate) - Math.floor(start * sequence.sampleRate) <= 4194304)
   $effect(() => () => { controller?.abort(); transitionController?.abort(); cardNavigation?.abort(); matteRequest?.abort(); if (download) URL.revokeObjectURL(download); for (const [url, timer] of savedFiles) { clearTimeout(timer); URL.revokeObjectURL(url) } savedFiles.clear() })
   function clearDownload() { if (download) URL.revokeObjectURL(download); download = '' }
-  function adoptTimelineFind(result: FilmcraftTimelineFindResult) {
+  function adoptTimelineFind(result: Pick<FilmcraftTimelineFindResult, 'sequence' | 'time' | 'timeFrames' | 'clip'>) {
     if (result.sequence !== sequenceId || result.time === undefined || result.timeFrames === undefined) return
     if (result.clip !== undefined) {
       if (!sequence?.clips?.some(clip => clip.id === result.clip)) return
@@ -593,6 +594,9 @@
       <button type="button" disabled={busy || !valid} onclick={saveSession}>Сохранить рабочую сессию</button>
         <label>Позиция правки, кадров <input aria-label="Позиция правки, кадров" type="text" inputmode="numeric" value={editPositionFrames} oninput={(event) => { editPositionFrames = event.currentTarget.value; pastePositionTicks = '' }} disabled={busy} /></label>
       <FilmcraftTimelineFind document={project.documentText} sequence={sequenceId} {token} disabled={busy} onhit={adoptTimelineFind} />
+      <FilmcraftSequenceMarkers document={project.documentText} {sequenceId} {clipId} {token}
+        markers={sequence?.markers ?? []} timeTicks={pastePositionTicks || undefined} timeFrames={editPositionFrames}
+        disabled={busy} onedit={commitEdit} onseek={adoptTimelineFind} />
       <FilmcraftLabelControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} palette={project.labelPalette ?? []} bind:selected={projectSelection} clipSelection={timelineSelection} onselection={adoptLabelSelection} clipLabel={sequence?.clips?.find(clip => clip.id === clipId)?.label} disabled={busy} onedit={commitEdit} />
       {#if projectPanelOpen && project.projectItems?.length}
         <FilmcraftProjectGrid {project} sources={activeBindings} {token} {sequenceId} {clipId} onedit={commitEdit} onopen={openProjectCard} bind:previewArea={projectPreviewArea} bind:thumbnailEffects={projectThumbnailEffects} bind:selected={projectSelection} disabled={busy} />

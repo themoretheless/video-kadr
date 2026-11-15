@@ -355,6 +355,16 @@ fn catalog(params: Value) -> AppResult<Value> {
         ("markers.goToSplitAudioIn","markers.goToSplitAudioIn","{document:object|string,item?:id,target?:program|source,time?:ticks,frame?:i64,seconds?:number,context?:{activeSequence?,sourceItem?,sourcePlayhead?,playhead?,playheadFrames?,selection?,projectSelection?,targetedTrackIds?,linkedSelection?,selectionFollowsPlayhead?,stillImageDuration?,stillImageUnit?}}; context-only navigation; no document/history mutation"),
         ("markers.goToSplitAudioOut","markers.goToSplitAudioOut","{document:object|string,item?:id,target?:program|source,time?:ticks,frame?:i64,seconds?:number,context?:{activeSequence?,sourceItem?,sourcePlayhead?,playhead?,playheadFrames?,selection?,projectSelection?,targetedTrackIds?,linkedSelection?,selectionFollowsPlayhead?,stillImageDuration?,stillImageUnit?}}; context-only navigation; no document/history mutation"),
         ("project.setMarks","project.setMarks","{document:object|string,item?:id,in?:ticks|null,out?:ticks|null,hoverMark?:{side:in|out,fraction:number},target?:program|source,time?:ticks,frame?:i64,seconds?:number,timecode?:str,context?:{activeSequence?,sourceItem?,playhead?,sourcePlayhead?}}; exact snapshot In/Out edit; one accepted edit frame"),
+        ("markers.add","Add Marker","{document:object|string,sequence:id,time?:ticks,frame?:i64,name?:str,comment?:str,color?:label,durationFrames?:i64}"),
+        ("markers.addRange","Add Range Marker","{document:object|string,sequence:id,time?:ticks,duration?:ticks}"),
+        ("markers.addRangeInOut","Add In/Out Range Marker","{document:object|string,sequence:id,name?:str}"),
+        ("markers.addChapter","Add Chapter Marker","{document:object|string,sequence:id,time?:ticks,name?:str}"),
+        ("markers.addFlashCue","Add Flash Cue Marker","{document:object|string,sequence:id,time?:ticks,name?:str}"),
+        ("markers.edit","Edit Marker","{document:object|string,sequence:id,marker:id,name?:str,comment?:str,color?:label,duration?:ticks}"),
+        ("markers.clearCurrent","Clear Marker","{document:object|string,sequence:id,marker?:id,time?:ticks}"),
+        ("markers.clearAll","Clear All Markers","{document:object|string,sequence:id}"),
+        ("markers.goNext","Next Marker","{document:object|string,sequence:id,time?:ticks,frame?:i64}"),
+        ("markers.goPrev","Previous Marker","{document:object|string,sequence:id,time?:ticks,frame?:i64}"),
         ("markers.markIn","markers.markIn","{document:object|string,item?:id,in?:ticks|null,out?:ticks|null,target?:program|source,time?:ticks,frame?:i64,seconds?:number,timecode?:str,context?:{activeSequence?,sourceItem?,playhead?,sourcePlayhead?}}; exact snapshot In/Out edit; one accepted edit frame"),
         ("markers.markOut","markers.markOut","{document:object|string,item?:id,in?:ticks|null,out?:ticks|null,target?:program|source,time?:ticks,frame?:i64,seconds?:number,timecode?:str,context?:{activeSequence?,sourceItem?,playhead?,sourcePlayhead?}}; exact snapshot In/Out edit; one accepted edit frame"),
         ("markers.clearIn","markers.clearIn","{document:object|string,item?:id,in?:ticks|null,out?:ticks|null,target?:program|source,time?:ticks,frame?:i64,seconds?:number,timecode?:str,context?:{activeSequence?,sourceItem?,playhead?,sourcePlayhead?}}; exact snapshot In/Out edit; one accepted edit frame"),
@@ -574,6 +584,10 @@ async fn dispatch(
     }
     if matches!(request.command.as_str(), "sequence.matchFrame" | "clip.revealInProject" | "sequence.revealInProject" | "source.open" | "source.setPlayhead" | "markers.goToIn" | "markers.goToOut" | "markers.goToSplitVideoIn" | "markers.goToSplitVideoOut" | "markers.goToSplitAudioIn" | "markers.goToSplitAudioOut") {
         let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_navigation::navigate(&request.command, params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if crate::domain::filmcraft_sequence_markers::COMMANDS.contains(&request.command.as_str()) {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_sequence_markers::run(&request.command, params)).await.map_err(bad)?;
         return Ok(Json(value));
     }
     if matches!(request.command.as_str(), "project.setMarks" | "markers.markIn" | "markers.markOut" | "markers.clearIn" | "markers.clearOut" | "markers.clearInOut" | "markers.markSplitVideoIn" | "markers.markSplitVideoOut" | "markers.markSplitAudioIn" | "markers.markSplitAudioOut") {

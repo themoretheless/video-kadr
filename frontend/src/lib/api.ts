@@ -1697,7 +1697,7 @@ export interface FilmcraftImportResult {
   projectItems?: Array<{ id: string; name: string; kind: FilmcraftProjectItemKind; mediaInterpretation?: FilmcraftMediaInterpretation | null; subclip?: FilmcraftSubclipInfo | null; sourceMarks?: FilmcraftMarks; posterFrame?: string | null; matteColor?: string | null; iconSort?: FilmcraftIconSortKeys; freeformArrangements?: string[]; freeformStack?: string | null; freeformPosition?: { x: number; y: number; size: number | null } | null; cardMarkRange?: { start: number; end: number } | null; label?: FilmcraftLabel }>
   documentText: string
   originalSchema: number
-  sequences: Array<{ tracks?: Array<{ id: string; name: string; kind: 'video_tracks' | 'audio_tracks'; locked: boolean }>; marks?: FilmcraftMarks; id: string; name: string; settings: unknown; sampleRate: number; durationSeconds: number; durationFrames?: string; transitions?: FilmcraftAppliedTransition[]; clips?: Array<{ id: string; sourceItemId?: string | null; name: string; label?: FilmcraftLabel; trackId: string; trackKind: string; locked: boolean; linkId?: string | null; startTicks: string; durationTicks: string }> }>
+  sequences: Array<{ markers?: FilmcraftSequenceMarker[]; tracks?: Array<{ id: string; name: string; kind: 'video_tracks' | 'audio_tracks'; locked: boolean }>; marks?: FilmcraftMarks; id: string; name: string; settings: unknown; sampleRate: number; durationSeconds: number; durationFrames?: string; transitions?: FilmcraftAppliedTransition[]; clips?: Array<{ id: string; sourceItemId?: string | null; name: string; label?: FilmcraftLabel; trackId: string; trackKind: string; locked: boolean; linkId?: string | null; startTicks: string; durationTicks: string }> }>
   media: Array<{ id: string; name: string; path: string; offline: boolean }>
 }
 export function importFilmcraftProject(documentText: string, signal?: AbortSignal): Promise<FilmcraftImportResult> {
@@ -1932,7 +1932,7 @@ export interface FilmcraftSourceEditFence { sourceItem?: string | null; sourcePl
 export type FilmcraftEffectRackCommand = 'effects.remove' | 'effects.toggleEnabled' | 'effects.reset'
 export type FilmcraftBinEditCommand = 'file.newBin' | 'file.newBinFromSelection' | 'project.moveToBin'
 export type FilmcraftSelectionCommand = 'edit.selectAllMatching' | 'project.selectAll' | 'project.deselectAll' | 'project.select'
-export type FilmcraftNativeCommand = FilmcraftClipEditCommand | FilmcraftMediaModifyCommand | FilmcraftVideoOptionsCommand | FilmcraftReplaceCommand | 'edit.pasteAttributes' | 'edit.removeAttributes' | FilmcraftSubclipCommand | 'clip.subclipDefaults' | FilmcraftSourcePlacementCommand | FilmcraftNavigationCommand | FilmcraftMarksCommand | 'project.delete' | 'edit.duplicate' | FilmcraftSelectionCommand | 'edit.selectLabelGroup' | FilmcraftLabelCommand | FilmcraftBinEditCommand | 'project.renameBin' | 'clip.rename' | 'clip.setPosterFrame' | 'clip.clearPosterFrame' | 'project.freeform.move' | 'project.freeform.stack' | 'project.freeform.unstack' | 'project.freeform.arrangements' | 'project.matteColor' | 'metadata.get' | 'metadata.set' | 'edit.find' | 'edit.findNext' | 'file.newSearchBin' | 'project.searchBinItems' | 'project.editSearchBin' | 'project.deleteSearchBin' | FilmcraftArrangementCommand | FilmcraftLayoutCommand | FilmcraftExportCommand | FilmcraftEffectRackCommand | 'effects.apply' | 'masks.track' | 'jobs.list' | 'jobs.cancel' | 'masks.add' | 'masks.remove' | 'masks.set' | 'masks.moveVertex' | 'masks.translate' | 'masks.addVertex' | 'masks.removeVertex' | 'masks.toggleVertexSmooth' | 'masks.list' | 'masks.select' | 'effects.toggleAnimation' | 'effects.addKeyframe' | 'effects.setParam' | 'effects.deleteKeyframe' | 'effects.moveKeyframe' | 'effects.setInterpolation' | 'effects.setKeyframe' | 'project.inspect' | 'sequence.inspect' | 'source.inspect' | 'effects.list' | 'command.list' | 'command.batch'
+export type FilmcraftNativeCommand = FilmcraftSequenceMarkerCommand | FilmcraftClipEditCommand | FilmcraftMediaModifyCommand | FilmcraftVideoOptionsCommand | FilmcraftReplaceCommand | 'edit.pasteAttributes' | 'edit.removeAttributes' | FilmcraftSubclipCommand | 'clip.subclipDefaults' | FilmcraftSourcePlacementCommand | FilmcraftNavigationCommand | FilmcraftMarksCommand | 'project.delete' | 'edit.duplicate' | FilmcraftSelectionCommand | 'edit.selectLabelGroup' | FilmcraftLabelCommand | FilmcraftBinEditCommand | 'project.renameBin' | 'clip.rename' | 'clip.setPosterFrame' | 'clip.clearPosterFrame' | 'project.freeform.move' | 'project.freeform.stack' | 'project.freeform.unstack' | 'project.freeform.arrangements' | 'project.matteColor' | 'metadata.get' | 'metadata.set' | 'edit.find' | 'edit.findNext' | 'file.newSearchBin' | 'project.searchBinItems' | 'project.editSearchBin' | 'project.deleteSearchBin' | FilmcraftArrangementCommand | FilmcraftLayoutCommand | FilmcraftExportCommand | FilmcraftEffectRackCommand | 'effects.apply' | 'masks.track' | 'jobs.list' | 'jobs.cancel' | 'masks.add' | 'masks.remove' | 'masks.set' | 'masks.moveVertex' | 'masks.translate' | 'masks.addVertex' | 'masks.removeVertex' | 'masks.toggleVertexSmooth' | 'masks.list' | 'masks.select' | 'effects.toggleAnimation' | 'effects.addKeyframe' | 'effects.setParam' | 'effects.deleteKeyframe' | 'effects.moveKeyframe' | 'effects.setInterpolation' | 'effects.setKeyframe' | 'project.inspect' | 'sequence.inspect' | 'source.inspect' | 'effects.list' | 'command.list' | 'command.batch'
 export function runFilmcraftExportCommand<T = unknown>(token: string, command: FilmcraftNativeCommand, params: Record<string, unknown> = {}, signal?: AbortSignal, deadlineUnixMs?: number): Promise<T> {
   return requestJson('/api/compositions/filmcraft/command', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ command, params, ...(deadlineUnixMs !== undefined ? { deadlineUnixMs } : {}) }), signal })
 }
@@ -2029,6 +2029,31 @@ export interface FilmcraftFindResult {
 }
 export function findFilmcraftProjectItems(token: string, input: FilmcraftFindQuery & { document: string; index?: number }, signal?: AbortSignal): Promise<FilmcraftFindResult> {
   return runFilmcraftExportCommand(token, input.index === undefined ? 'edit.find' : 'edit.findNext', { ...input }, signal)
+}
+export interface FilmcraftSequenceMarker {
+  id: string
+  name: string
+  comment: string
+  kind: string
+  color: FilmcraftLabel
+  start: string
+  duration: string
+  frame: string
+  durationFrames: string
+  timecode: string
+}
+export type FilmcraftSequenceMarkerEditCommand = 'markers.add' | 'markers.addRange' | 'markers.addRangeInOut' | 'markers.addChapter' | 'markers.addFlashCue' | 'markers.edit' | 'markers.clearCurrent' | 'markers.clearAll'
+export type FilmcraftSequenceMarkerCommand = FilmcraftSequenceMarkerEditCommand | 'markers.goNext' | 'markers.goPrev'
+export type FilmcraftMarkerPosition = { sequence: string; time: string; timeFrames: string; timecode: string }
+type FilmcraftMarkerClock = { document: string; sequence: string; time?: string; frame?: string }
+export async function editFilmcraftSequenceMarker(token: string, command: FilmcraftSequenceMarkerEditCommand, input: FilmcraftMarkerClock & { marker?: string; name?: string; comment?: string; color?: FilmcraftLabel; durationFrames?: string }, signal?: AbortSignal): Promise<{ project: FilmcraftImportResult & { sequenceMarkerEdit: true }; marker?: string }> {
+  const response = await runFilmcraftExportCommand<{ result: { marker?: string } | null; sequenceMarkerEdit?: boolean }>(token, command, input, signal)
+  if (response.sequenceMarkerEdit !== true) throw new Error('Изменение маркера не подтверждено')
+  return { project: { ...await importFilmcraftCommandSnapshot(response, signal), sequenceMarkerEdit: true }, marker: response.result?.marker }
+}
+export async function navigateFilmcraftSequenceMarker(token: string, command: 'markers.goNext' | 'markers.goPrev', input: FilmcraftMarkerClock, signal?: AbortSignal): Promise<FilmcraftMarkerPosition | null> {
+  const response = await runFilmcraftExportCommand<{ result: FilmcraftMarkerPosition | null }>(token, command, input, signal)
+  return response.result
 }
 export type FilmcraftTimelineFindScope = 'all' | 'clips' | 'markers'
 export interface FilmcraftTimelineFindResult {
