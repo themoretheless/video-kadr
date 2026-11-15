@@ -140,7 +140,7 @@
       <button class="btn ghost sm" type="button" disabled={busy || !missingStats.length} onclick={() => void measure()}>Измерить сцены</button>
       {#key JSON.stringify([clip.id, clip.sourceId, clipSpan, scan.sourceHash, authState.token, spacesState.selectedId])}
         <SceneDescriptionReview sourceId={clip.sourceId} sourceHash={scan.sourceHash}
-          token={authState.token} spaceId={spacesState.selectedId} disabled={busy}>
+          token={authState.token} spaceId={spacesState.selectedId} disabled={busy} batchSpans={clipSpan ? rows : []}>
           {#snippet children(describe)}
             {#if clipSpan && rows.length > 1}
               {@render describe(clipSpan, 'Описать весь клип')}

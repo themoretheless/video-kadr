@@ -100,7 +100,7 @@
     </div>
     <button class="btn ghost sm" type="button" disabled={busy || !pending.length} onclick={() => void measure()}>Измерить сцены исходника</button>
     {#key scan.sourceHash}
-      <SceneDescriptionReview {sourceId} sourceHash={scan.sourceHash} {token} {spaceId} disabled={busy}>
+      <SceneDescriptionReview {sourceId} sourceHash={scan.sourceHash} {token} {spaceId} disabled={busy} batchSpans={review.rows}>
         {#snippet children(describe)}
           <ol aria-label="Сцены исходника">
             {#each review.rows as row, index (row.id)}

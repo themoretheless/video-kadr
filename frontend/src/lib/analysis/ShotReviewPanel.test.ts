@@ -58,7 +58,7 @@ it('describes a reverse trimmed clip in source time and cancels on selection cha
       expectedSourceHash: sourceHash, focus: 'general', language: 'ru',
     })
 
-    button('Описать сцену').click()
+    button('Описать все сцены (2)').click()
     await tick()
     expect(request(1).span).toEqual({ startTicks: 2_000_000, endTicks: 3_500_000 })
     expect(target.textContent).toContain('Модель описывает кадры')

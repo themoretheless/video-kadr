@@ -83,6 +83,54 @@ afterEach(async () => {
 })
 
 describe('MediaLibrary', () => {
+  it('processes scene descriptions serially, stops after the current scene and resumes unfinished rows', async () => {
+    authState.token = 'scene-reviewer'
+    const sourceHash = 'b'.repeat(64)
+    let finishFirst!: (response: Response) => void
+    const first = new Promise<Response>(resolve => { finishFirst = resolve })
+    const requested: number[] = []
+    const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/library/video-two/shots') {
+        return Response.json({
+          version: 1, sourceHash, durationTicks: 3_000_000, floor: 0.05,
+          cuts: [1_000_000, 2_000_000].map(tick => ({ tick, score: 0.8 })),
+        })
+      }
+      expect(path).toBe('/api/library/video-two/shots/describe')
+      const { span } = JSON.parse(String(init?.body))
+      requested.push(span.startTicks)
+      if (requested.length === 1) return first
+      if (requested.length === 2) return Response.json({ error: 'Модель временно недоступна' }, { status: 503 })
+      return Response.json({ text: `Описание кадра ${span.startTicks}`, tags: [] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    component = mount(MediaLibrary, { target })
+    await settle()
+    target.querySelector<HTMLButtonElement>('[aria-label="Сцены · City B-roll"]')!.click()
+    await vi.waitFor(() => buttonByText(target, 'Анализировать исходник'))
+    buttonByText(target, 'Анализировать исходник').click()
+    await vi.waitFor(() => buttonByText(target, 'Описать все сцены (3)'))
+    buttonByText(target, 'Описать все сцены (3)').click()
+    await vi.waitFor(() => expect(requested).toEqual([0]))
+    expect(target.textContent).toContain('Готово 0 из 3')
+    buttonByText(target, 'Остановить после текущей сцены').click()
+    await tick()
+    expect(target.textContent).toContain('останавливаю…')
+    finishFirst(Response.json({ text: 'Первое описание', tags: [] }))
+    await vi.waitFor(() => expect(target.textContent).toContain('Пакет остановлен. Готово 1 из 3.'))
+    expect(target.textContent).toContain('Первое описание')
+    expect(requested).toEqual([0])
+
+    buttonByText(target, 'Описать все сцены (2)').click()
+    await vi.waitFor(() => expect(target.textContent).toContain('Модель временно недоступна'))
+    expect(requested).toEqual([0, 1_000_000])
+    buttonByText(target, 'Описать все сцены (2)').click()
+    await vi.waitFor(() => expect(target.textContent).toContain('Все сцены описаны'))
+    expect(requested).toEqual([0, 1_000_000, 1_000_000, 2_000_000])
+    expect(target.textContent).toContain('Первое описание')
+    expect(target.textContent).toContain('Описание кадра 2000000')
+  })
+
   it('reviews, measures and describes scenes of an unplaced library video and compares frames', async () => {
     authState.token = 'scene-reviewer'
     const sourceHash = 'a'.repeat(64)
