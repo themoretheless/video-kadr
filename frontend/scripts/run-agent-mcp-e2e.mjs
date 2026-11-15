@@ -51,6 +51,7 @@ qualification: try {
   await server.listen()
   browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) })
   const page = await browser.newPage()
+  page.setDefaultTimeout(20_000)
   await page.goto(frontendUrl)
   await page.getByRole('button', { name: 'Multitrack', exact: true }).click()
   await page.locator('summary', { hasText: 'Агент и история' }).click()
@@ -363,17 +364,20 @@ qualification: try {
   const marqueeA = page.locator('[data-track-id="link-track-A"] .composition-clip.text')
   const marqueeB = page.locator('[data-track-id="link-track-B"] .composition-clip.text')
   await marqueeB.scrollIntoViewIfNeeded()
-  const boxA = await marqueeA.boundingBox()
-  const boxB = await marqueeB.boundingBox()
-  assert.ok(boxA && boxB)
+  const gapClipBox = await marqueeB.boundingBox()
+  assert.ok(gapClipBox)
   const marqueeZoom = await page.evaluate(async () => (await import('/src/lib/state/composition.svelte.ts')).compositionState.ui.zoomPxPerSecond)
-  await page.mouse.click(boxB.x - marqueeZoom * 0.25, boxB.y + 15)
+  await page.mouse.click(gapClipBox.x - marqueeZoom * 0.25, gapClipBox.y + 15)
   const blankClick = await page.evaluate(async () => {
     const { compositionState } = await import('/src/lib/state/composition.svelte.ts')
     return { gap: compositionState.ui.selectedGap, playhead: compositionState.transport.playheadTicks }
   })
   assert.equal(blankClick.gap?.trackId, 'link-track-B')
   assert.ok(blankClick.playhead > 0)
+  // Selecting the gap can move the timeline as the editor updates its layout.
+  const boxA = await marqueeA.boundingBox()
+  const boxB = await marqueeB.boundingBox()
+  assert.ok(boxA && boxB)
   const boxStart = { x: Math.max(boxA.x + boxA.width, boxB.x + boxB.width) + 12, y: boxB.y + boxB.height + 3 }
   const boxEnd = { x: Math.min(boxA.x, boxB.x) + 12, y: boxA.y + 2 }
   const selectionIds = () => page.evaluate(async () => (await import('/src/lib/state/composition.svelte.ts')).compositionState.ui.selectedClipIds)
@@ -579,7 +583,18 @@ qualification: try {
   assert.equal((await tool('undo')).failed, false)
   linked = await tool('get_project')
   assert.equal((await tool('apply_batch', { expectedRevision: linked.data.revision, operations: [{ op: 'split_layer', clipId: 'link-clip-A', atTicks: 1_750_000, rightClipId: 'link-right' }] })).failed, false)
-  assert.equal((await tool('get_project')).data.document.links[0].memberIds.length, 4)
+  const splitDocument = (await tool('get_project')).data.document
+  const rightPieces = ['A', 'B'].map((name) => {
+    const track = splitDocument.tracks.find((track) => track.id === `link-track-${name}`)
+    assert.equal(track.clips.length, 2)
+    assert.equal(track.clips[1].timelineStartTicks, 1_750_000)
+    return track.clips[1].id
+  })
+  assert.equal(rightPieces[0], 'link-right')
+  assert.deepEqual(splitDocument.links.map((link) => [...link.memberIds].sort()), [
+    ['link-clip-A', 'link-clip-B'],
+    rightPieces.sort(),
+  ])
   assert.equal((await tool('undo')).failed, false)
   await page.getByRole('slider', { name: 'Плейхед на дорожке Link A', exact: true }).focus()
   await page.keyboard.press('Alt+Shift+g')
@@ -1080,7 +1095,7 @@ qualification: try {
     assert.deepEqual((await tool('get_project')).data.document, original)
   }
 
-  // Real session commands must preserve the new authored-key trim/split contracts.
+  // Both split pieces retain the authored keys that define their curve at the cut.
   for (const operation of ['trim', 'split']) {
     const snapshot = await tool('get_project')
     const original = snapshot.data.document
@@ -1093,13 +1108,13 @@ qualification: try {
     const changed = (await tool('get_project')).data.document
     const left = scaleOf(changed)
     const track = originalClip.animation.scaleX.track
-    const expectedLeft = operation === 'trim' ? track.keyframes.map(key => ({ ...key, tick: key.tick - 250_000 })) : track.keyframes.filter(key => key.tick <= 750_000)
+    const expectedLeft = operation === 'trim' ? track.keyframes.map(key => ({ ...key, tick: key.tick - 250_000 })) : track.keyframes
     assert.deepEqual(left.animation.scaleX.track.keyframes, expectedLeft)
     assert.deepEqual(left.animation.scaleX, left.animation.scaleY)
     if (operation === 'split') {
       const right = changed.tracks.flatMap(track => track.clips).find(clip => clip.id === 'scale-split-right')
       assert.ok(right)
-      assert.deepEqual(right.animation.scaleX.track.keyframes, track.keyframes.filter(key => key.tick > 750_000).map(key => ({ ...key, tick: key.tick - 750_000 })))
+      assert.deepEqual(right.animation.scaleX.track.keyframes, track.keyframes.map(key => ({ ...key, tick: key.tick - 750_000 })))
       assert.deepEqual(right.animation.scaleX, right.animation.scaleY)
     }
     assert.equal((await tool('get_history')).data.undoCount, depth + 1)
