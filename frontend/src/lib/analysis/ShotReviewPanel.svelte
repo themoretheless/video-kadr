@@ -5,6 +5,7 @@
   import { authState } from '../state/auth.svelte.js'
   import { spacesState } from '../state/spaces.svelte.js'
   import { agentSession } from '../agent/session.svelte.js'
+  import ShotCover from './ShotCover.svelte'
   import { reviewShotRows, type ShotRow } from './shots.js'
   import { shotAnalysisState, applyCompositionShotReview, measurementKey, setShotReviewSettings } from './shotState.svelte.js'
 
@@ -135,6 +136,11 @@
         {#each rows as row, index (row.id)}
           {@const stats = shotAnalysisState.measurements[measurementKey(scan, row.startTicks, row.endTicks)]}
           <li>
+            {#key `${clip.sourceId}/${scan.sourceHash}`}
+              <ShotCover sourceId={clip.sourceId}
+                sourceTick={clip.playbackMode?.mode === 'freeze' ? clip.playbackMode.sourceTick : row.startTicks + Math.floor((row.endTicks - row.startTicks) / 2)}
+                token={authState.token} spaceId={spacesState.selectedId} label={`Кадр сцены ${index + 1}`} />
+            {/key}
             <label><input type="checkbox" checked={!discardedIds.includes(row.id)} disabled={busy} onchange={(event) => { discardedIds = event.currentTarget.checked ? discardedIds.filter((id) => id !== row.id) : [...discardedIds, row.id] }} /> Оставить сцену {index + 1}</label>
             <button class="btn ghost sm" type="button" onclick={() => setCompositionPlayhead(row.timelineStartTicks)}>{(row.timelineStartTicks / 1_000_000).toFixed(3)}–{(row.timelineEndTicks / 1_000_000).toFixed(3)} с</button>
             {#if row.score !== undefined}<span>Переход: {row.score.toFixed(3)}</span><button class="btn ghost sm" type="button" disabled={busy} onclick={() => void compare(row)}>Сравнить кадры</button>{/if}

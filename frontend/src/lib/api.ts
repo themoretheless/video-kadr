@@ -1066,8 +1066,8 @@ export async function measureLibraryShots(id: string, spans: readonly import('./
 export async function compareLibraryFrames(id: string, leftTick: number, rightTick: number, token?: string | null, spaceId?: string | null): Promise<{ leftTick: number; rightTick: number; similarity: number; motion: number }> {
   return requestJson(`/api/library/${encodeURIComponent(id)}/compare-frames`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ leftTick, rightTick }) })
 }
-export async function getLibraryAnalysisFrame(id: string, tick: number, token?: string | null, spaceId?: string | null): Promise<Blob> {
-  const response = await safeFetch(`/api/library/${encodeURIComponent(id)}/analysis-frame?tick=${tick}`, { headers: libraryAccessHeaders(token, spaceId) })
+export async function getLibraryAnalysisFrame(id: string, tick: number, token?: string | null, spaceId?: string | null, signal?: AbortSignal): Promise<Blob> {
+  const response = await safeFetch(`/api/library/${encodeURIComponent(id)}/analysis-frame?tick=${tick}`, { headers: libraryAccessHeaders(token, spaceId), signal })
   if (!response.ok) throw await responseError(response, 'Кадр недоступен')
   return response.blob()
 }
