@@ -89,6 +89,7 @@ describe('MediaLibrary', () => {
     let finishFirst!: (response: Response) => void
     const first = new Promise<Response>(resolve => { finishFirst = resolve })
     const requested: number[] = []
+    const cache = new Map<number, { text: string; tags: string[] }>()
     const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/library/video-two/shots') {
         return Response.json({
@@ -96,20 +97,38 @@ describe('MediaLibrary', () => {
           cuts: [1_000_000, 2_000_000].map(tick => ({ tick, score: 0.8 })),
         })
       }
+      if (path === '/api/library/video-two/shots/descriptions') {
+        const body = JSON.parse(String(init?.body)) as {
+          expectedSourceHash: string
+          spans: { startTicks: number; endTicks: number }[]
+        }
+        expect(body.expectedSourceHash).toBe(sourceHash)
+        return Response.json(body.spans.flatMap(span => {
+          const description = cache.get(span.startTicks)
+          return description ? [{ span, description }] : []
+        }))
+      }
       expect(path).toBe('/api/library/video-two/shots/describe')
       const { span } = JSON.parse(String(init?.body))
       requested.push(span.startTicks)
-      if (requested.length === 1) return first
+      if (requested.length === 1) {
+        const response = await first
+        cache.set(span.startTicks, await response.clone().json())
+        return response
+      }
       if (requested.length === 2) return Response.json({ error: 'Модель временно недоступна' }, { status: 503 })
-      return Response.json({ text: `Описание кадра ${span.startTicks}`, tags: [] })
+      const description = { text: `Описание кадра ${span.startTicks}`, tags: [] }
+      cache.set(span.startTicks, description)
+      return Response.json(description)
     })
     vi.stubGlobal('fetch', fetchMock)
     component = mount(MediaLibrary, { target })
     await settle()
-    target.querySelector<HTMLButtonElement>('[aria-label="Сцены · City B-roll"]')!.click()
+    const toggle = target.querySelector<HTMLButtonElement>('[aria-label="Сцены · City B-roll"]')!
+    toggle.click()
     await vi.waitFor(() => buttonByText(target, 'Анализировать исходник'))
     buttonByText(target, 'Анализировать исходник').click()
-    await vi.waitFor(() => buttonByText(target, 'Описать все сцены (3)'))
+    await vi.waitFor(() => expect(buttonByText(target, 'Описать все сцены (3)').disabled).toBe(false))
     buttonByText(target, 'Описать все сцены (3)').click()
     await vi.waitFor(() => expect(requested).toEqual([0]))
     expect(target.textContent).toContain('Готово 0 из 3')
@@ -129,6 +148,16 @@ describe('MediaLibrary', () => {
     expect(requested).toEqual([0, 1_000_000, 1_000_000, 2_000_000])
     expect(target.textContent).toContain('Первое описание')
     expect(target.textContent).toContain('Описание кадра 2000000')
+
+    toggle.click()
+    await tick()
+    toggle.click()
+    await vi.waitFor(() => buttonByText(target, 'Анализировать исходник'))
+    buttonByText(target, 'Анализировать исходник').click()
+    await vi.waitFor(() => expect(target.textContent).toContain('Все сцены описаны'))
+    expect(target.textContent).toContain('Первое описание')
+    expect(target.textContent).toContain('Описание кадра 2000000')
+    expect(requested).toEqual([0, 1_000_000, 1_000_000, 2_000_000])
   })
 
   it('reviews, measures and describes scenes of an unplaced library video and compares frames', async () => {
@@ -140,6 +169,7 @@ describe('MediaLibrary', () => {
     }
     const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/library/video-two/shots') return Response.json(scan)
+      if (path === '/api/library/video-two/shots/descriptions') return Response.json([])
       if (path === '/api/library/video-two/shots/measure') {
         const { spans, expectedSourceHash } = JSON.parse(String(init?.body))
         expect(expectedSourceHash).toBe(sourceHash)
@@ -185,6 +215,7 @@ describe('MediaLibrary', () => {
     focus.value = 'shot-type'
     focus.dispatchEvent(new Event('change', { bubbles: true }))
     await tick()
+    await vi.waitFor(() => expect(buttonByText(target, 'Описать сцену').disabled).toBe(false))
     buttonByText(target, 'Описать сцену').click()
     await vi.waitFor(() => expect(rows()[0]?.textContent).toContain('Панорама города'))
     expect(rows()[0]?.textContent).toContain('общий план · улица')
@@ -203,7 +234,7 @@ describe('MediaLibrary', () => {
     toggle.click()
     await tick()
     expect(rows()).toHaveLength(0)
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+    expect(fetchMock.mock.calls.map(([path]) => path).filter(path => !path.endsWith('/descriptions'))).toEqual([
       '/api/library/video-two/shots',
       '/api/library/video-two/shots/measure',
       '/api/library/video-two/shots/describe',

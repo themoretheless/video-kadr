@@ -1068,6 +1068,29 @@ export interface SceneDescription {
   tags: string[]
 }
 
+interface SceneDescriptionOptions {
+  expectedSourceHash: string
+  focus: 'general' | 'shot-type'
+  language: 'ru' | 'en'
+}
+
+export interface CachedSceneDescription {
+  span: import('./analysis/shots.js').ShotSpan
+  description: SceneDescription
+}
+
+export function readLibraryShotDescriptions(
+  id: string,
+  body: SceneDescriptionOptions & { spans: readonly import('./analysis/shots.js').ShotSpan[] },
+  token: string,
+  spaceId?: string | null,
+  signal?: AbortSignal,
+): Promise<CachedSceneDescription[]> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/shots/descriptions`, {
+    method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify(body), signal,
+  })
+}
+
 export interface SceneModelStatus {
   model: string
   phase: 'missing' | 'installing' | 'failed' | 'ready' | 'offline'
@@ -1084,12 +1107,7 @@ export function installSceneModel(token: string, signal?: AbortSignal): Promise<
 
 export async function describeLibraryShot(
   id: string,
-  body: {
-    span: import('./analysis/shots.js').ShotSpan
-    expectedSourceHash: string
-    focus: 'general' | 'shot-type'
-    language: 'ru' | 'en'
-  },
+  body: SceneDescriptionOptions & { span: import('./analysis/shots.js').ShotSpan },
   token: string,
   spaceId?: string | null,
   signal?: AbortSignal,

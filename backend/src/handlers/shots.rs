@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[derive(Deserialize)]
@@ -43,18 +43,7 @@ async fn source(
             "Анализ сцен требует локальный FFmpeg",
         ));
     }
-    authorize_source_access(state, id, headers).await?;
-    let entry = state
-        .library
-        .get(id)
-        .await
-        .filter(|entry| entry.kind == "source")
-        .ok_or_else(|| AppError::not_found("Источник не найден"))?;
-    let path = state
-        .library
-        .resolve_media_path(&entry)
-        .await
-        .map_err(|_| AppError::not_found("Медиафайл не найден"))?;
+    let path = source_path(state, id, headers).await?;
     let probe = crate::tools::probe_video(&state.process_runtime, &path)
         .await
         .map_err(|error| AppError::bad_request(error.to_string()))?;
@@ -66,6 +55,26 @@ async fn source(
     }
     Ok((path, probe))
 }
+
+async fn source_path(
+    state: &AppState,
+    id: &str,
+    headers: &HeaderMap,
+) -> AppResult<std::path::PathBuf> {
+    authorize_source_access(state, id, headers).await?;
+    let entry = state
+        .library
+        .get(id)
+        .await
+        .filter(|entry| entry.kind == "source")
+        .ok_or_else(|| AppError::not_found("Источник не найден"))?;
+    state
+        .library
+        .resolve_media_path(&entry)
+        .await
+        .map_err(|_| AppError::not_found("Медиафайл не найден"))
+}
+
 async fn cache_location(
     state: &AppState,
     path: &std::path::Path,
@@ -296,7 +305,7 @@ pub async fn library_shot_describe_handler(
     headers: HeaderMap,
     ApiJson(request): ApiJson<DescribeShotRequest>,
 ) -> AppResult<Json<crate::analysis::scene_description::Description>> {
-    use crate::analysis::scene_description::{sample_ticks, Description};
+    use crate::analysis::scene_description::sample_ticks;
 
     super::publish::authenticated_actor(&state, &headers).await?;
     let config = state
@@ -323,19 +332,7 @@ pub async fn library_shot_describe_handler(
         start_ticks,
         end_ticks,
     } = request.span;
-    let model_digest = if let Some(managed) = &config.managed {
-        Some(
-            managed
-                .installed_digest(&config.client)
-                .await
-                .map_err(|_| AppError::service_unavailable("Локальная служба Ollama недоступна"))?
-                .ok_or_else(|| {
-                    AppError::service_unavailable("Сначала установите модель описания сцен")
-                })?,
-        )
-    } else {
-        None
-    };
+    let model_digest = scene_description_digest(config).await?;
     let key = config.cache_key(
         start_ticks,
         end_ticks,
@@ -347,11 +344,9 @@ pub async fn library_shot_describe_handler(
     let lock = state.render_lock(&file.to_string_lossy()).await;
     let _guard = lock.lock().await;
     authorize_source_access(&state, &id, &headers).await?;
-    if let Some(result) = shots::read_cache::<Description>(&file).await {
-        if result.validate().is_ok() {
-            verify_source_hash(&path, &hash).await?;
-            return Ok(Json(result));
-        }
+    if let Some(result) = read_scene_description(&file).await {
+        verify_source_hash(&path, &hash).await?;
+        return Ok(Json(result));
     }
 
     let (width, height) = shots::measurement_raster(probe.width, probe.height)
@@ -392,6 +387,98 @@ pub async fn library_shot_describe_handler(
         .await
         .map_err(|error| AppError::internal("write scene description", error))?;
     Ok(Json(result))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadSceneDescriptions {
+    spans: Vec<Span>,
+    expected_source_hash: String,
+    #[serde(default)]
+    focus: crate::analysis::scene_description::Focus,
+    #[serde(default)]
+    language: crate::analysis::scene_description::Language,
+}
+
+#[derive(Serialize)]
+pub struct CachedSceneDescription {
+    span: Span,
+    description: crate::analysis::scene_description::Description,
+}
+
+pub async fn library_shot_descriptions_handler(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+    ApiJson(request): ApiJson<ReadSceneDescriptions>,
+) -> AppResult<Json<Vec<CachedSceneDescription>>> {
+    super::publish::authenticated_actor(&state, &headers).await?;
+    if request.spans.is_empty()
+        || request.spans.len() > 128
+        || request
+            .spans
+            .iter()
+            .any(|span| span.start_ticks >= span.end_ticks)
+    {
+        return Err(AppError::bad_request(
+            "Чтение описаний принимает 1–128 непустых интервалов",
+        ));
+    }
+    let path = source_path(&state, &id, &headers).await?;
+    let Some(config) = state.scene_description.as_ref().as_ref() else {
+        return Ok(Json(Vec::new()));
+    };
+    let _permit = state
+        .acquire_job_slot(ResourceClass::Analysis)
+        .await
+        .map_err(|_| AppError::service_unavailable("Анализ останавливается"))?;
+    let (hash, directory) = cache_location(&state, &path).await?;
+    if request.expected_source_hash != hash {
+        return Err(AppError::bad_request(
+            "Источник изменился; повторите анализ сцен",
+        ));
+    }
+    let digest = scene_description_digest(config).await?;
+    let mut results = Vec::new();
+    for span in request.spans {
+        let key = config.cache_key(
+            span.start_ticks,
+            span.end_ticks,
+            request.focus,
+            request.language,
+            digest.as_deref(),
+        );
+        if let Some(description) =
+            read_scene_description(&directory.join(format!("description-{key}.json"))).await
+        {
+            results.push(CachedSceneDescription { span, description });
+        }
+    }
+    authorize_source_access(&state, &id, &headers).await?;
+    verify_source_hash(&path, &hash).await?;
+    Ok(Json(results))
+}
+
+async fn scene_description_digest(
+    config: &crate::analysis::scene_description::Config,
+) -> AppResult<Option<String>> {
+    let Some(managed) = &config.managed else {
+        return Ok(None);
+    };
+    managed
+        .installed_digest(&config.client)
+        .await
+        .map_err(|_| AppError::service_unavailable("Локальная служба Ollama недоступна"))?
+        .map(Some)
+        .ok_or_else(|| AppError::service_unavailable("Сначала установите модель описания сцен"))
+}
+
+async fn read_scene_description(
+    file: &std::path::Path,
+) -> Option<crate::analysis::scene_description::Description> {
+    let result: crate::analysis::scene_description::Description = shots::read_cache(file).await?;
+    result.validate().ok()?;
+    Some(result)
 }
 
 pub async fn scene_model_status(

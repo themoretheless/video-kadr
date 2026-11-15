@@ -1,16 +1,17 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
-  import { describeLibraryShot, type SceneDescription } from '../api.js'
+  import { describeLibraryShot, readLibraryShotDescriptions, type SceneDescription } from '../api.js'
   import type { ShotSpan } from './shots.js'
   import SceneModelSetup from './SceneModelSetup.svelte'
 
-  let { sourceId, sourceHash, token, spaceId, disabled, batchSpans, children }: {
+  let { sourceId, sourceHash, token, spaceId, disabled, batchSpans, wholeSpan, children }: {
     sourceId: string
     sourceHash: string
     token?: string | null
     spaceId?: string | null
     disabled?: boolean
     batchSpans: readonly ShotSpan[]
+    wholeSpan?: ShotSpan
     children: Snippet<[Snippet<[ShotSpan, string]>]>
   } = $props()
 
@@ -22,14 +23,55 @@
   let failure = $state<{ key: string; text: string }>()
   let batch = $state<{ done: number; total: number; stop: boolean }>()
   let batchMessage = $state('')
+  let readingCache = $state(false)
   const lifecycle = new AbortController()
   $effect(() => () => lifecycle.abort())
   const batchKey = $derived(batchSpans.map(({ startTicks, endTicks }) => `${startTicks}:${endTicks}`).join(','))
   const remaining = $derived(batchSpans.filter(span => !descriptions[descriptionKey(span)]))
   const working = $derived(Boolean(pending || batch))
+  const cacheSpans = $derived.by(() => {
+    const spans = batchSpans.map(({ startTicks, endTicks }) => ({ startTicks, endTicks }))
+    const whole = wholeSpan
+    if (whole && !spans.some(span => span.startTicks === whole.startTicks && span.endTicks === whole.endTicks)) spans.push(whole)
+    return spans
+  })
 
-  function descriptionKey({ startTicks, endTicks }: ShotSpan): string {
-    return `${startTicks}:${endTicks}:${focus}:${language}`
+  $effect(() => {
+    if (!token || !cacheSpans.length) {
+      readingCache = false
+      return
+    }
+    const controller = new AbortController()
+    const owner = token
+    const spans = cacheSpans
+    const options = { expectedSourceHash: sourceHash, focus, language }
+    const source = sourceId
+    const space = spaceId
+    readingCache = true
+    void restore()
+    return () => controller.abort()
+
+    async function restore() {
+      try {
+        for (let index = 0; index < spans.length; index += 128) {
+          const cached = await readLibraryShotDescriptions(source, {
+            ...options, spans: spans.slice(index, index + 128),
+          }, owner, space, controller.signal)
+          if (controller.signal.aborted) return
+          for (const { span, description } of cached) {
+            descriptions[descriptionKey(span, options.focus, options.language)] ??= description
+          }
+        }
+      } catch {
+        // Lookup is optional. An explicit description request reports service failures.
+      } finally {
+        if (!controller.signal.aborted) readingCache = false
+      }
+    }
+  })
+
+  function descriptionKey({ startTicks, endTicks }: ShotSpan, viewFocus = focus, viewLanguage = language): string {
+    return `${startTicks}:${endTicks}:${viewFocus}:${viewLanguage}`
   }
 
   async function describe({ startTicks, endTicks }: ShotSpan, owner: string): Promise<boolean> {
@@ -55,13 +97,13 @@
   }
 
   function describeOne(span: ShotSpan) {
-    if (working || disabled || !token) return
+    if (working || disabled || readingCache || !token) return
     batchMessage = ''
     void describe(span, token)
   }
 
   async function describeBatch() {
-    if (working || disabled || !token || !remaining.length) return
+    if (working || disabled || readingCache || !token || !remaining.length) return
     const spans = remaining
     const owner = token
     const initialKey = batchKey
@@ -104,13 +146,14 @@
     </label>
     <small>Запрос описания передаёт кадры настроенной на сервере модели.</small>
   </fieldset>
+  {#if readingCache}<small role="status">Восстанавливаю готовые описания…</small>{/if}
   {#if batch}
     <button class="btn ghost sm" type="button" disabled={batch.stop} onclick={() => { if (batch) batch.stop = true }}>
       Остановить после текущей сцены
     </button>
     <small role="status">Готово {batch.done} из {batch.total}{batch.stop ? ' · останавливаю…' : ''}</small>
   {:else if batchSpans.length > 1 && remaining.length}
-    <button class="btn ghost sm" type="button" disabled={disabled || working} onclick={() => void describeBatch()}>
+    <button class="btn ghost sm" type="button" disabled={disabled || working || readingCache} onclick={() => void describeBatch()}>
       Описать все сцены ({remaining.length})
     </button>
   {/if}
@@ -133,7 +176,7 @@
       <p>{description.text}</p>
       {#if description.tags.length}<small>{description.tags.join(' · ')}</small>{/if}
     {:else}
-      <button class="btn ghost sm" type="button" disabled={disabled || working} onclick={() => describeOne(span)}>
+      <button class="btn ghost sm" type="button" disabled={disabled || working || readingCache} onclick={() => describeOne(span)}>
         {label}
       </button>
       {#if pending === key}<small role="status">Модель описывает кадры…</small>{/if}

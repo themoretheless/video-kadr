@@ -364,7 +364,7 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     )
     .unwrap();
     let model = tokio::spawn(async move { axum::serve(bind, model).await.unwrap() });
-    let app = router(state.clone().with_scene_description(Some(config)));
+    let app = router(state.clone().with_scene_description(Some(config.clone())));
     let request = |token: Option<&str>, language: &str, hash: &Value| {
         let mut request = post(
             "/api/library/scene/shots/describe",
@@ -381,6 +381,26 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
         request
     };
     let hash = &scan["sourceHash"];
+    let cached = |language: &str, hash: &Value, token: Option<&str>| {
+        let mut req = post(
+            "/api/library/scene/shots/descriptions",
+            json!({
+                "spans":[{"startTicks":0,"endTicks":1_000_000},{"startTicks":0,"endTicks":2_000_000}],
+                "expectedSourceHash":hash, "language":language, "focus":"shot-type"
+            }),
+        );
+        if let Some(token) = token {
+            req.headers_mut()
+                .insert("authorization", format!("Bearer {token}").parse().unwrap());
+        }
+        req
+    };
+    assert_eq!(
+        send(&app, cached("en", hash, None)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, cold, _) = send(&app, cached("en", hash, Some(&user.token))).await;
+    assert_eq!((status, cold), (StatusCode::OK, json!([])));
     assert_eq!(
         send(&app, request(None, "en", hash)).await.0,
         StatusCode::UNAUTHORIZED
@@ -396,6 +416,30 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
         assert_eq!(status, StatusCode::OK, "{result}");
         assert_eq!(result, json!({"text":"A hard cut","tags":["cut"]}));
     }
+    model.abort();
+    let _ = model.await;
+    let mut without_ffmpeg = state.clone().with_scene_description(Some(config));
+    let mut tools = (*state.tools).clone();
+    tools.ffmpeg = false;
+    without_ffmpeg.tools = Arc::new(tools);
+    let offline = router(without_ffmpeg);
+    let (status, warm, _) = send(&offline, cached("en", hash, Some(&user.token))).await;
+    assert_eq!(
+        (status, warm),
+        (
+            StatusCode::OK,
+            json!([{
+                "span":{"startTicks":0,"endTicks":2_000_000},
+                "description":{"text":"A hard cut","tags":["cut"]}
+            }])
+        )
+    );
+    assert_eq!(
+        send(&offline, cached("en", &json!("stale"), Some(&user.token)))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0]["model"], "test-vision");
@@ -420,7 +464,6 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
         .as_str()
         .unwrap()
         .contains("Russian"));
-    model.abort();
 }
 
 #[tokio::test]

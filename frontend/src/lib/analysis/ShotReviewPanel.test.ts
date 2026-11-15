@@ -39,7 +39,8 @@ it('describes a reverse trimmed clip in source time and cancels on selection cha
     .mockImplementation(async () => Response.json({ text: 'Стоп-кадр', tags: [] }))
     .mockResolvedValueOnce(Response.json({ text: 'Весь диапазон', tags: ['общий план'] }))
     .mockReturnValueOnce(delayed)
-  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('fetch', (url: string, init?: RequestInit) =>
+    url.endsWith('/shots/descriptions') ? Promise.resolve(Response.json([])) : fetchMock(url, init))
   const target = document.createElement('div')
   document.body.append(target)
   const panel = mount(ShotReviewPanel, { target })
@@ -49,6 +50,7 @@ it('describes a reverse trimmed clip in source time and cancels on selection cha
   try {
     await tick()
     expect(fetchMock).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(button('Описать весь клип').disabled).toBe(false))
     button('Описать весь клип').click()
     await vi.waitFor(() => expect(target.textContent).toContain('Весь диапазон'))
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/library/timeline-source/shots/describe')
@@ -67,6 +69,7 @@ it('describes a reverse trimmed clip in source time and cancels on selection cha
     await tick()
     expect(signal?.aborted).toBe(true)
     finishScene(Response.json({ text: 'Описание другого клипа', tags: [] }))
+    await vi.waitFor(() => expect(button('Описать клип').disabled).toBe(false))
     button('Описать клип').click()
     await vi.waitFor(() => expect(target.textContent).toContain('Стоп-кадр'))
     expect(request(2).span).toEqual({ startTicks: 2_500_000, endTicks: 2_500_001 })
