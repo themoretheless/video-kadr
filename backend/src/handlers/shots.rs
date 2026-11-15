@@ -323,7 +323,26 @@ pub async fn library_shot_describe_handler(
         start_ticks,
         end_ticks,
     } = request.span;
-    let key = config.cache_key(start_ticks, end_ticks, request.focus, request.language);
+    let model_digest = if let Some(managed) = &config.managed {
+        Some(
+            managed
+                .installed_digest(&config.client)
+                .await
+                .map_err(|_| AppError::service_unavailable("Локальная служба Ollama недоступна"))?
+                .ok_or_else(|| {
+                    AppError::service_unavailable("Сначала установите модель описания сцен")
+                })?,
+        )
+    } else {
+        None
+    };
+    let key = config.cache_key(
+        start_ticks,
+        end_ticks,
+        request.focus,
+        request.language,
+        model_digest.as_deref(),
+    );
     let file = directory.join(format!("description-{key}.json"));
     let lock = state.render_lock(&file.to_string_lossy()).await;
     let _guard = lock.lock().await;
@@ -358,8 +377,66 @@ pub async fn library_shot_describe_handler(
         })?;
     verify_source_hash(&path, &hash).await?;
     authorize_source_access(&state, &id, &headers).await?;
+    if let Some(managed) = &config.managed {
+        let installed = managed
+            .installed_digest(&config.client)
+            .await
+            .map_err(|_| AppError::service_unavailable("Локальная служба Ollama недоступна"))?;
+        if installed != model_digest {
+            return Err(AppError::service_unavailable(
+                "Локальная модель изменилась во время описания",
+            ));
+        }
+    }
     shots::write_cache(&file, &result)
         .await
         .map_err(|error| AppError::internal("write scene description", error))?;
     Ok(Json(result))
+}
+
+pub async fn scene_model_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Option<crate::analysis::scene_model::Status>>> {
+    let actor = super::publish::authenticated_actor(&state, &headers).await?;
+    let Some(config) = state.scene_description.as_ref().as_ref() else {
+        return Ok(Json(None));
+    };
+    let result = match &config.managed {
+        Some(managed) => Some(managed.status(&config.client, &actor).await),
+        None => None,
+    };
+    Ok(Json(result))
+}
+
+pub async fn install_scene_model(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<crate::analysis::scene_model::Status>> {
+    use crate::analysis::scene_model::{Status, MODEL};
+
+    let actor = super::publish::authenticated_actor(&state, &headers).await?;
+    let config = state
+        .scene_description
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::service_unavailable("Локальная модель не настроена"))?;
+    let managed = config
+        .managed
+        .as_ref()
+        .ok_or_else(|| AppError::service_unavailable("Локальная модель не настроена"))?;
+    if actor != managed.installer {
+        return Err(AppError::forbidden(
+            "Этой учётной записи недоступна установка модели",
+        ));
+    }
+    let phase = managed
+        .install(&config.client)
+        .await
+        .map_err(|_| AppError::service_unavailable("Локальная служба Ollama недоступна"))?;
+    Ok(Json(Status {
+        model: MODEL,
+        phase,
+        can_install: true,
+    }))
 }

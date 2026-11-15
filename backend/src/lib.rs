@@ -891,6 +891,7 @@ pub fn build_router_with_mcp(
             "/library/:id/shots/measure",
             post(handlers::library_shot_measure_handler),
         )
+        .route("/scene-model", get(handlers::scene_model_status).post(handlers::install_scene_model))
         .route(
             "/library/:id/shots/describe",
             post(handlers::library_shot_describe_handler),

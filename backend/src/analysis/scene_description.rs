@@ -4,7 +4,9 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::{fmt, time::Duration};
+use std::{fmt, sync::Arc, time::Duration};
+
+use super::scene_model::{Managed, MODEL};
 
 const PROMPT_REVISION: &str = "scene-description-v1";
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
@@ -14,12 +16,17 @@ pub struct Config {
     endpoint: Url,
     model: String,
     token: Option<String>,
-    client: Client,
+    pub(crate) client: Client,
+    pub(crate) managed: Option<Arc<Managed>>,
 }
 
 impl PartialEq for Config {
     fn eq(&self, other: &Self) -> bool {
-        self.endpoint == other.endpoint && self.model == other.model && self.token == other.token
+        self.endpoint == other.endpoint
+            && self.model == other.model
+            && self.token == other.token
+            && self.managed.as_ref().map(|config| &config.installer)
+                == other.managed.as_ref().map(|config| &config.installer)
     }
 }
 
@@ -35,6 +42,17 @@ impl fmt::Debug for Config {
 
 impl Config {
     pub fn from_lookup(lookup: &mut impl FnMut(&str) -> Option<String>) -> Result<Option<Self>> {
+        if let Some(origin) =
+            lookup("SCENE_DESCRIPTION_OLLAMA_URL").filter(|value| !value.trim().is_empty())
+        {
+            ensure!(
+                lookup("SCENE_DESCRIPTION_ENDPOINT").is_none_or(|value| value.trim().is_empty()),
+                "Configure only one scene description provider"
+            );
+            let installer = lookup("SCENE_DESCRIPTION_INSTALLER")
+                .context("SCENE_DESCRIPTION_INSTALLER is required")?;
+            return Ok(Some(Self::new_ollama(&origin, installer)?));
+        }
         let Some(endpoint) =
             lookup("SCENE_DESCRIPTION_ENDPOINT").filter(|value| !value.trim().is_empty())
         else {
@@ -77,11 +95,30 @@ impl Config {
             model,
             token,
             client,
+            managed: None,
         })
     }
 
-    pub fn cache_key(&self, start: u64, end: u64, focus: Focus, language: Language) -> String {
-        let identity = json!([
+    pub fn new_ollama(origin: &str, installer: String) -> Result<Self> {
+        let managed = Managed::new(origin, installer)?;
+        let mut config = Self::new(
+            managed.origin.join("/v1/chat/completions")?.as_str(),
+            MODEL.into(),
+            None,
+        )?;
+        config.managed = Some(Arc::new(managed));
+        Ok(config)
+    }
+
+    pub fn cache_key(
+        &self,
+        start: u64,
+        end: u64,
+        focus: Focus,
+        language: Language,
+        digest: Option<&str>,
+    ) -> String {
+        let mut identity = json!([
             PROMPT_REVISION,
             self.endpoint.as_str(),
             self.model,
@@ -90,6 +127,9 @@ impl Config {
             focus,
             language
         ]);
+        if let (Some(digest), Some(parts)) = (digest, identity.as_array_mut()) {
+            parts.push(json!(digest));
+        }
         format!("{:x}", Sha256::digest(identity.to_string()))
     }
 

@@ -66,6 +66,7 @@ async fn real_source_analysis_cache_metrics_and_frame_endpoints() {
     assert_eq!(status, StatusCode::OK, "{scan}");
     assert_eq!(scan["cuts"][0]["tick"], 1_000_000);
     describe_scene(&state, &scan).await;
+    install_and_use_scene_model(&state, &scan).await;
     let mut dirs = tokio::fs::read_dir(state.storage.join("shot-analysis"))
         .await
         .unwrap();
@@ -172,6 +173,162 @@ async fn real_source_analysis_cache_metrics_and_frame_endpoints() {
             .0,
         StatusCode::NOT_FOUND
     );
+}
+
+async fn install_and_use_scene_model(state: &video_kadr_backend::state::AppState, scan: &Value) {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use video_kadr_backend::analysis::{scene_description::Config, scene_model::MODEL};
+
+    let install_actor = "scene-installer";
+    let installer = state
+        .db
+        .register_auth_user(install_actor, "synthetic installer password")
+        .await
+        .unwrap()
+        .unwrap();
+    let viewer = state
+        .db
+        .register_auth_user("scene-viewer", "synthetic viewer password")
+        .await
+        .unwrap()
+        .unwrap();
+    let pulls = Arc::new(AtomicUsize::new(0));
+    let release = Arc::new(tokio::sync::Notify::new());
+    let completions = Arc::new(AtomicUsize::new(0));
+    let digest_version = Arc::new(AtomicUsize::new(0));
+    let live = std::env::var("KADR_TEST_SCENE_OLLAMA_URL").ok();
+    let (origin, mock) = if let Some(origin) = &live {
+        (origin.clone(), None)
+    } else {
+        let model = axum::Router::new()
+            .route("/api/tags", axum::routing::get({
+                let versions = digest_version.clone();
+                move || {
+                    let version = versions.load(Ordering::SeqCst);
+                    async move {
+                        let models = if version == 0 { vec![] } else { vec![json!({"name": MODEL, "digest": format!("{version:064x}")})] };
+                        axum::Json(json!({"models":models}))
+                    }
+                }
+            }))
+            .route("/api/pull", axum::routing::post({
+                let (pulls, release, versions) = (pulls.clone(), release.clone(), digest_version.clone());
+                move |axum::Json(body): axum::Json<Value>| {
+                    let (pulls, release, versions) = (pulls.clone(), release.clone(), versions.clone());
+                    async move {
+                        assert_eq!(body, json!({"model":MODEL,"stream":false}));
+                        pulls.fetch_add(1, Ordering::SeqCst);
+                        release.notified().await;
+                        versions.store(1, Ordering::SeqCst);
+                        axum::Json(json!({"status":"success"}))
+                    }
+                }
+            }))
+            .route("/v1/chat/completions", axum::routing::post({
+                let completions = completions.clone();
+                move |axum::Json(body): axum::Json<Value>| {
+                    completions.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        assert_eq!(body["model"], MODEL);
+                        axum::Json(json!({"choices":[{"message":{"content":"{\"text\":\"Wide shot\",\"tags\":[\"cut\"]}"}}]}))
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        (
+            origin,
+            Some(tokio::spawn(async move {
+                axum::serve(listener, model).await.unwrap()
+            })),
+        )
+    };
+    let config = Config::new_ollama(&origin, install_actor.into()).unwrap();
+    let app = router(state.clone().with_scene_description(Some(config)));
+    let model_request = |method, token: &str| {
+        Request::builder()
+            .method(method)
+            .uri("/api/scene-model")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(
+        send(&app, support::get("/api/scene-model")).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, model_request("POST", &viewer.token)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, initial, _) = send(&app, model_request("GET", &viewer.token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(initial["canInstall"], false);
+    if mock.is_some() {
+        assert_eq!(initial["phase"], "missing");
+    }
+    let (first, second) = tokio::join!(
+        send(&app, model_request("POST", &installer.token)),
+        send(&app, model_request("POST", &installer.token))
+    );
+    for (status, data, _) in [first, second] {
+        assert_eq!(status, StatusCode::OK, "{data}");
+        assert_eq!(data["model"], MODEL);
+        assert!(data["phase"] == "installing" || data["phase"] == "ready");
+    }
+    release.notify_one();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(if live.is_some() { 900 } else { 5 }),
+        async {
+            loop {
+                let (_, status, _) = send(&app, model_request("GET", &viewer.token)).await;
+                if status["phase"] == "ready" {
+                    break;
+                }
+                assert_eq!(status["phase"], "installing", "{status}");
+                tokio::time::sleep(std::time::Duration::from_millis(if live.is_some() {
+                    1000
+                } else {
+                    20
+                }))
+                .await;
+            }
+        },
+    )
+    .await
+    .unwrap();
+    let request_description = || {
+        let mut req = post(
+            "/api/library/scene/shots/describe",
+            json!({
+                "span":{"startTicks":0,"endTicks":2_000_000},
+                "expectedSourceHash": scan["sourceHash"], "language":"en",
+            }),
+        );
+        req.headers_mut().insert(
+            "authorization",
+            format!("Bearer {}", viewer.token).parse().unwrap(),
+        );
+        req
+    };
+    for _ in 0..2 {
+        let (status, result, _) = send(&app, request_description()).await;
+        assert_eq!(status, StatusCode::OK, "{result}");
+        assert!(!result["text"].as_str().unwrap().is_empty());
+    }
+    if let Some(mock) = mock {
+        assert_eq!(pulls.load(Ordering::SeqCst), 1);
+        assert_eq!(completions.load(Ordering::SeqCst), 1);
+        digest_version.store(2, Ordering::SeqCst);
+        assert_eq!(send(&app, request_description()).await.0, StatusCode::OK);
+        assert_eq!(completions.load(Ordering::SeqCst), 2);
+        mock.abort();
+    }
 }
 
 async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Value) {

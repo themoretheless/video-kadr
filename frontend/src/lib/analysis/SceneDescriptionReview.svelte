@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import { describeLibraryShot, type SceneDescription } from '../api.js'
   import type { ShotSpan } from './shots.js'
+  import SceneModelSetup from './SceneModelSetup.svelte'
 
   let { sourceId, sourceHash, token, spaceId, disabled, children }: {
     sourceId: string
@@ -16,6 +17,7 @@
   let language = $state<'ru' | 'en'>('ru')
   let descriptions = $state<Record<string, SceneDescription>>({})
   let pending = $state<string>()
+  let setupOpen = $state(false)
   let failure = $state<{ key: string; text: string }>()
   const lifecycle = new AbortController()
   $effect(() => () => lifecycle.abort())
@@ -60,6 +62,10 @@
     </label>
     <small>Запрос описания передаёт кадры настроенной на сервере модели.</small>
   </fieldset>
+  <details ontoggle={event => setupOpen = event.currentTarget.open}>
+    <summary>Локальная модель</summary>
+    {#if setupOpen}<SceneModelSetup {token} />{/if}
+  </details>
 {/if}
 
 {#snippet action(span: ShotSpan, label: string)}

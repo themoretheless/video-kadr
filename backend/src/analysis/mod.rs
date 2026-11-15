@@ -7,4 +7,5 @@ pub mod quality;
 pub mod thumbnail;
 
 pub mod scene_description;
+pub mod scene_model;
 pub mod shots;

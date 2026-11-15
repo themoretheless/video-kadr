@@ -1068,6 +1068,20 @@ export interface SceneDescription {
   tags: string[]
 }
 
+export interface SceneModelStatus {
+  model: string
+  phase: 'missing' | 'installing' | 'failed' | 'ready' | 'offline'
+  canInstall: boolean
+}
+
+export function getSceneModelStatus(token: string, signal?: AbortSignal): Promise<SceneModelStatus | null> {
+  return requestJson('/api/scene-model', { headers: libraryAccessHeaders(token), signal })
+}
+
+export function installSceneModel(token: string, signal?: AbortSignal): Promise<SceneModelStatus> {
+  return requestJson('/api/scene-model', { method: 'POST', headers: libraryAccessHeaders(token), signal })
+}
+
 export async function describeLibraryShot(
   id: string,
   body: {
