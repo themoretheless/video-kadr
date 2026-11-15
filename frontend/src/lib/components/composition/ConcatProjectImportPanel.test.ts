@@ -264,15 +264,27 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
   component = mount(Panel, { target: document.body, props: { token: 'session' } })
   await tick()
   const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
-  Object.defineProperty(picker, 'files', { value: [manifest, design, file('A/template.json', 'invalid')] })
+  const other = file('C/template.json', JSON.stringify({
+   ...original, name: 'Another template',
+   media: [{ ...original.media[0], path: '', placeholder: true }],
+  }))
+  const missing = file('D/template.json', JSON.stringify({
+   ...original, name: 'Missing footage',
+   media: [{ ...original.media[0], path: 'assets/missing.mov' }],
+  }))
+  Object.defineProperty(picker, 'files', {
+   value: [manifest, design, file('A/template.json', 'invalid'), other, missing],
+  })
   picker.dispatchEvent(new Event('change', { bubbles: true }))
-  await tick()
+  await vi.waitFor(() => expect(document.querySelector('select')).not.toBeNull())
   const select = document.querySelector<HTMLSelectElement>('select')!
-  expect([...select.options].map(option => option.textContent)).toEqual(['Выберите шаблон', 'A', 'B'])
+  expect([...select.options].map(option => option.textContent)).toEqual([
+   'Выберите шаблон', 'Another template', 'Selected template',
+  ])
   expect(upload).not.toHaveBeenCalled()
   select.value = '1'
   select.dispatchEvent(new Event('change', { bubbles: true }))
-  await vi.waitFor(() => expect(document.body.textContent).toContain('Selected template'))
+  await vi.waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe('Selected template'))
   expect(upload).toHaveBeenCalledExactlyOnceWith(design, false)
  } finally {
   upload.mockRestore()

@@ -18,7 +18,7 @@
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
- let templateFolders = $state<ReturnType<typeof concatTemplateFolders>>([])
+ let templateFolders = $state<{ name: string; files: readonly File[] }[]>([])
  let selectedFolder = $state('')
  let templateProjectName = $state('')
  let templateDetails = $state<Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount'>>()
@@ -51,15 +51,40 @@
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
  async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;uploadedSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
  async function chooseDirectory(files: File[]) {
-  templateFolders = concatTemplateFolders(files)
+  templateFolders = []
   selectedFolder = ''
-  const first = templateFolders[0]
+  const candidates = concatTemplateFolders(files)
+  const first = candidates[0]
   if (first?.direct) {
    await loadFolder(first.files)
    return
   }
   await load(undefined)
-  if (files.length && !templateFolders.length) error = 'В выбранной папке нет шаблонов Concat'
+  if (!files.length) return
+  const serial = request
+  const owner = token
+  const current = () => serial === request && owner === token
+  const valid: typeof templateFolders = []
+  busy = true
+  try {
+   for (const candidate of candidates) {
+    try {
+     const folder = await readConcatTemplateFolder(candidate.files)
+     if (!current()) return
+     const title = folder.document.name
+     valid.push({
+      name: typeof title === 'string' && title.trim() ? title.trim() : candidate.name,
+      files: candidate.files,
+     })
+    } catch {
+     if (!current()) return
+    }
+   }
+   templateFolders = valid.sort((left, right) => left.name.localeCompare(right.name))
+   if (!valid.length) error = 'В выбранной папке нет доступных шаблонов Concat'
+  } finally {
+   if (current()) busy = false
+  }
  }
  async function chooseTemplate(key: string) {
   selectedFolder = key
@@ -233,7 +258,7 @@
     event.currentTarget.value=''
     void chooseDirectory(files)
   }} /></label>
-  {#if templateFolders.length && !templateFolders[0]?.direct}
+  {#if templateFolders.length}
    <label>Шаблон Concat
     <select value={selectedFolder} onchange={event=>void chooseTemplate(event.currentTarget.value)}>
      <option value="">Выберите шаблон</option>
