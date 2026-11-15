@@ -238,3 +238,27 @@ it('applies portable limiter and loudness effects with inherited starting values
     loudness: { enabled: true, target_lufs: -18, true_peak_dbtp: -2 },
   } })
 })
+
+it('overrides caption text and disables timecode while retaining inherited placement', async () => {
+  const preset = { ...builtin, settings: { format: 'png', effects: { name_overlay: { placement: 'topLeft' } } } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [preset], default: preset.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: apply } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  for (const [label, value] of [['Подпись', 'on'], ['Таймкод', 'off']]) {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label} в пресете Filmcraft"]`)!
+    control.value = value
+    control.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  await tick()
+  expect(document.querySelector<HTMLSelectElement>('[aria-label="Подпись: положение в пресете Filmcraft"]')?.value).toBe('topLeft')
+  await input('Подпись: текст пресета Filmcraft', 'Review')
+  await input('Подпись: X в пресете Filmcraft', '12')
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenCalledWith(preset.name, { effects: {
+    name_overlay: { enabled: true, text: 'Review', offset: [12, 0] },
+    timecode_overlay: { enabled: false },
+  } })
+})

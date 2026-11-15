@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { exportOverlayPlacements as placements } from '$lib/filmcraft/export-overlay'
   import { exportMetadataFields as metadataFields, validExportMetadata } from '$lib/filmcraft/export-metadata'
   import { filmcraftDownloadName } from '$lib/filmcraft/export-filename'
   import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
@@ -139,7 +140,6 @@
   let loudnessPeak = $state<number | undefined>(-2)
   const loudnessValid = $derived(loudnessTarget !== undefined && loudnessPeak !== undefined && Number.isFinite(loudnessTarget) && Number.isFinite(loudnessPeak) && loudnessPeak >= -24 && loudnessPeak <= 0)
   const overlayKinds = [{ key: 'nameOverlay', label: 'Подпись' }, { key: 'timecodeOverlay', label: 'Таймкод' }] as const
-  const placements: Array<[FilmcraftOverlayPlacement, string]> = [['topLeft', 'Сверху слева'], ['topCenter', 'Сверху по центру'], ['topRight', 'Сверху справа'], ['centerLeft', 'По центру слева'], ['center', 'По центру'], ['centerRight', 'По центру справа'], ['bottomLeft', 'Снизу слева'], ['bottomCenter', 'Снизу по центру'], ['bottomRight', 'Снизу справа']]
   const defaultOverlay = (): FilmcraftTextOverlay => ({ enabled: false, text: '', placement: 'bottomCenter', offset: [0, 0], sizePercent: 5, opacity: 100 })
   let overlays = $state({ nameOverlay: defaultOverlay(), timecodeOverlay: defaultOverlay() })
   const overlaysValid = $derived(Object.values(overlays).every(o => !o.enabled || (new TextEncoder().encode(o.text).length <= 16000 && !o.text.includes('\0') && [o.offset[0], o.offset[1], o.sizePercent, o.opacity].every(Number.isFinite) && o.offset.every(n => Math.abs(n) <= 1000000))))

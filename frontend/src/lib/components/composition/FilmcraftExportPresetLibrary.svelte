@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { exportOverlayPlacements } from '$lib/filmcraft/export-overlay'
   import { exportMetadataFields, validExportMetadata } from '$lib/filmcraft/export-metadata'
-  import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile, type FilmcraftScaling, type FilmcraftExportMetadata } from '$lib/api'
+  import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftOverlayPlacement } from '$lib/api'
   let { token, disabled = false, onapply }: { token: string | null; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void } = $props()
   let opened = $state(false)
   let entries = $state<FilmcraftLibraryPreset[]>([])
@@ -29,6 +30,17 @@
   let renderQuality = $state('preset')
   let intraProfile = $state('')
   let jpegQuality = $state('')
+  const overlayFields = [
+    { key: 'name_overlay', label: 'Подпись', textLabel: 'Текст' },
+    { key: 'timecode_overlay', label: 'Таймкод', textLabel: 'Префикс' },
+  ] as const
+  type OverlayKey = typeof overlayFields[number]['key']
+  type PortableOverlay = {
+    text: string; placement: FilmcraftOverlayPlacement; offset: [number, number]
+    size_percent: number; opacity: number
+  }
+  let overlayModes = $state<Partial<Record<OverlayKey, string>>>({})
+  let textOverlays = $state<Record<OverlayKey, Partial<PortableOverlay>>>({ name_overlay: {}, timecode_overlay: {} })
   let limiter = $state('preset')
   let limiterMin = $state<number>()
   let limiterMax = $state<number>()
@@ -88,7 +100,20 @@
   const savedEffects = $derived(picked?.settings.effects as {
     video_limiter?: { min_percent?: number; max_percent?: number }
     loudness?: { target_lufs?: number; true_peak_dbtp?: number }
-  } | undefined)
+  } & Partial<Record<OverlayKey, PortableOverlay>> | undefined)
+  function overlayValue(key: OverlayKey): PortableOverlay {
+    return {
+      text: '', placement: 'bottomCenter', offset: [0, 0], size_percent: 5, opacity: 100,
+      ...savedEffects?.[key], ...textOverlays[key],
+    }
+  }
+  const overlaysValid = $derived(overlayFields.every(({ key }) => {
+    if (overlayModes[key] !== 'on') return true
+    const { text, offset, size_percent, opacity } = overlayValue(key)
+    return !text.includes('\0') && new TextEncoder().encode(text).length <= 16000
+      && offset.every(item => Number.isFinite(item) && Math.abs(item) <= 1000000)
+      && size_percent >= 1 && size_percent <= 50 && opacity >= 0 && opacity <= 100
+  }))
   const limiterValid = $derived(limiter !== 'on'
     || (limiterMin !== undefined && limiterMax !== undefined && limiterMin >= 0 && limiterMin <= 100 && limiterMax >= 0 && limiterMax <= 100))
   const loudnessValid = $derived(loudness !== 'on'
@@ -104,7 +129,7 @@
       && (!adaptiveBitrate || (Number.isFinite(Number(adaptiveBitrate)) && Number(adaptiveBitrate) > 0))
     ))
     && (audioOnly || silent || metadataValid)
-    && (audioOnly || limiterValid) && (!canEditAudio || loudnessValid)
+    && (audioOnly || (limiterValid && overlaysValid)) && (!canEditAudio || loudnessValid)
     && (audioOnly || aspect !== 'custom' || (
       positive(aspectNum) && positive(aspectDen)
       && Number(aspectNum) <= 2147483647 && Number(aspectDen) <= 2147483647
@@ -118,7 +143,7 @@
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; metadata = {}; limiter = 'preset'; limiterMin = undefined; limiterMax = undefined; loudness = 'preset'; loudnessTarget = undefined; loudnessPeak = undefined; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; metadata = {}; overlayModes = {}; textOverlays = { name_overlay: {}, timecode_overlay: {} }; limiter = 'preset'; limiterMin = undefined; limiterMax = undefined; loudness = 'preset'; loudnessTarget = undefined; loudnessPeak = undefined; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
     return () => { void owner; ++generation; controller?.abort() }
   })
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
@@ -155,6 +180,12 @@
     }
     if (!audioOnly && !silent && audio !== 'preset') settings.includeAudio = audio === 'include'
     const effects: Record<string, unknown> = {}
+    if (!audioOnly) {
+      for (const { key } of overlayFields) {
+        if (overlayModes[key] === 'on') effects[key] = { ...textOverlays[key], enabled: true }
+        if (overlayModes[key] === 'off') effects[key] = { enabled: false }
+      }
+    }
     if (!audioOnly && limiter !== 'preset') {
       effects.video_limiter = limiter === 'on'
         ? { enabled: true, min_percent: limiterMin, max_percent: limiterMax }
@@ -361,6 +392,37 @@
       <details>
         <summary>Эффекты пресета</summary>
         {#if !audioOnly}
+          {#each overlayFields as { key, label, textLabel } (key)}
+            <fieldset disabled={busy || disabled}>
+              <legend>{label}</legend>
+              <select aria-label={`${label} в пресете Filmcraft`} value={overlayModes[key] ?? 'preset'}
+                onchange={event => { overlayModes[key] = event.currentTarget.value }}>
+                <option value="preset">Как в исходном пресете</option><option value="on">Включить</option><option value="off">Выключить</option>
+              </select>
+              {#if overlayModes[key] === 'on'}
+                {@const current = overlayValue(key)}
+                <label>{textLabel}<textarea aria-label={`${label}: текст пресета Filmcraft`} maxlength="16000" value={current.text}
+                  oninput={event => { textOverlays[key].text = event.currentTarget.value }}></textarea></label>
+                <label>Положение <select aria-label={`${label}: положение в пресете Filmcraft`} value={current.placement}
+                  onchange={event => { textOverlays[key].placement = event.currentTarget.value as FilmcraftOverlayPlacement }}>
+                  {#each exportOverlayPlacements as [value, name] (value)}<option {value}>{name}</option>{/each}
+                </select></label>
+                {#each ['X', 'Y'] as axis, index (axis)}
+                  <label>Смещение {axis}, px <input aria-label={`${label}: ${axis} в пресете Filmcraft`} type="number" step="0.1" value={current.offset[index]}
+                    oninput={event => {
+                      const offset: [number, number] = [...current.offset]
+                      offset[index] = event.currentTarget.valueAsNumber
+                      textOverlays[key].offset = offset
+                    }} /></label>
+                {/each}
+                <label>Размер, % высоты <input aria-label={`${label}: размер в пресете Filmcraft`} type="number" min="1" max="50" step="0.1" value={current.size_percent}
+                  oninput={event => { textOverlays[key].size_percent = event.currentTarget.valueAsNumber }} /></label>
+                <label>Непрозрачность, % <input aria-label={`${label}: непрозрачность в пресете Filmcraft`} type="number" min="0" max="100" step="0.1" value={current.opacity}
+                  oninput={event => { textOverlays[key].opacity = event.currentTarget.valueAsNumber }} /></label>
+              {/if}
+            </fieldset>
+          {/each}
+          {#if !overlaysValid}<p role="alert">Проверьте текст и числовые параметры наложений.</p>{/if}
           <label>Ограничитель яркости <select aria-label="Ограничитель яркости пресета Filmcraft" value={limiter} disabled={busy || disabled}
             onchange={event => {
               limiter = event.currentTarget.value
