@@ -211,8 +211,8 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     for (time, expected) in [(0, 0.0), (50000, 0.5), (200000, 1.0), (800000, 1.0), (800001, 0.5), (1111111, 0.0)] {
         assert!((opacity.sample(time).unwrap().opacity - expected).abs() < 1e-10, "opacity at {time}");
     }
-    let frame = frame(content, 1_500_000);
-    let orange = frame.chunks_exact(4).enumerate().filter(|(_, rgba)| {
+    let pixels = frame(content, 1_500_000);
+    let orange = pixels.chunks_exact(4).enumerate().filter(|(_, rgba)| {
         rgba[0] > 160 && rgba[1] > 65 && rgba[1] < 180 && rgba[2] < 12
     }).map(|(pixel, _)| pixel / 160).collect::<Vec<_>>();
     assert!(!orange.is_empty(), "caption must be visible after reopening");
@@ -303,6 +303,28 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
         let actual = animation.sample(tick as u64).unwrap().opacity;
         assert!((actual - expected).abs() < 1e-10, "hold opacity at {tick}: {actual} vs {expected}");
     }
+
+    let mut shadowed = serde_json::to_value(&project).unwrap();
+    let root = shadowed["root"].as_str().unwrap().to_owned();
+    let style = &mut shadowed["compositions"][root]["content"]["tracks"][0]["clips"][0]["style"];
+    style["shadow"] = json!({"red":0.2,"green":0.4,"blue":0.8,"alpha":0.5});
+    style["shadowX"] = json!(4);
+    style["shadowY"] = json!(-2);
+    let shadowed = export(&serde_json::from_value(shadowed).unwrap()).unwrap();
+    let title = shadowed["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert_eq!(title["text"]["shadow"], true);
+    let unshadowed = export(&project).unwrap();
+    let title = unshadowed["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert_eq!(title["text"]["shadow"], false);
+    let shadowed = convert(shadowed);
+    let unshadowed = convert(unshadowed);
+    assert_ne!(
+        frame(&shadowed.compositions[&shadowed.root].content, 1_500_000),
+        frame(&unshadowed.compositions[&unshadowed.root].content, 1_500_000),
+        "Concat's standard shadow must be rendered after reopening",
+    );
 
     let mut unsupported = serde_json::to_value(project).unwrap();
     let root = unsupported["root"].as_str().unwrap().to_owned();

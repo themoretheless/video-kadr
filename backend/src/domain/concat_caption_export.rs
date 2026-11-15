@@ -21,10 +21,6 @@ fn color(value: Rgba) -> String {
 }
 
 pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
-    ensure!(
-        clip.style.shadow.alpha == 0.0,
-        "Caption shadow parameters require a Concat mapping"
-    );
     let transform = &mut clip.transform;
     ensure!(
         transform.concat_animation.is_none(),
@@ -55,7 +51,8 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
         background_radius: 0.0,
         background_padding_x: 0.0,
         background_padding_y: 0.0,
-        shadow: false,
+        // Concat stores one shadow flag; its renderer owns the color, blur, and offset.
+        shadow: clip.style.shadow.alpha > 0.0,
         max_width: f64::from(clip.text_box_width.unwrap_or(0.0)) / f64::from(width),
         ..TitleStyle::default()
     };
