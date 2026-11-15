@@ -34,9 +34,13 @@ function normalizedClip(value: unknown): unknown {
   }
 }
 
-function normalizedVideo(value: unknown): unknown {
-  const video = record(value)
-  return video ? { colorSpace: 'sdr', ...video } : value
+function captionCanvas(video: Record<string, unknown>, shared?: Record<string, unknown>) {
+  // Caption positions use canvas pixels and their local clock uses microseconds.
+  return {
+    width: video.width ?? shared?.width ?? 1920,
+    height: video.height ?? shared?.height ?? 1080,
+    colorSpace: video.colorSpace ?? 'sdr',
+  }
 }
 
 function hasStaticCaptionPose(clip: WireTextClip): boolean {
@@ -331,9 +335,10 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
   const digest = await crypto.subtle.digest('SHA-256', await manifest.arrayBuffer())
   const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
   const unchanged = hash === sidecar.manifestSha256
-  const timelines = new Map<string, { video: unknown; clips: Map<string, unknown> }>()
+  const timelines = new Map<string, { video: ReturnType<typeof captionCanvas>; clips: Map<string, unknown> }>()
   if (!unchanged) {
     const document = record(JSON.parse(await manifest.text()))
+    const sharedVideo = record(document?.video)
     for (const value of Array.isArray(document?.timelines) ? document.timelines : []) {
       const timeline = record(value)
       if (!timeline || typeof timeline.id !== 'string' || !Array.isArray(timeline.clips)) continue
@@ -342,7 +347,8 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
         const clip = record(entry)
         if (typeof clip?.id === 'string') clips.set(clip.id, clip)
       }
-      timelines.set(timeline.id, { video: timeline.video, clips })
+      const video = record(timeline.video ?? document?.video ?? {})
+      if (video) timelines.set(timeline.id, { video: captionCanvas(video, sharedVideo), clips })
     }
   }
   const eligible: [string, WireTextClip, ImportedAnimation?][] = []
@@ -353,10 +359,11 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
     }
     const [timelineId, clip, baselineValue] = entry
     const baseline = record(baselineValue)
+    const baselineVideo = record(baseline?.video)
     const timeline = timelines.get(timelineId)
     if (unchanged) {
       eligible.push([timelineId, clip])
-    } else if (baseline && timeline && sameJson(normalizedVideo(baseline.video), normalizedVideo(timeline.video))) {
+    } else if (baseline && baselineVideo && timeline && sameJson(captionCanvas(baselineVideo), timeline.video)) {
       const merged = mergeCaptionEdits(clip, baseline.clip, timeline.clips.get(clip.id), timeline.video)
       if (merged) eligible.push([timelineId, ...merged])
     }
