@@ -2,7 +2,7 @@
  import {writeCaptionFile,type CaptionFileFormat} from '$lib/api'
  import type {CaptionTrack, CompositionCanvas} from '$lib/composition/types'
  import {captionFileDocument} from '$lib/composition/captionFileExport'
- import {exactCaptionTicks} from '$lib/composition/captionTime'
+ import {exactCaptionTicks,parseCaptionEditSeconds} from '$lib/composition/captionTime'
  import {canvasTimeGrid} from '$lib/composition/timeGrid'
  let {composition,activeId='',playheadTicks}:{
   composition:{readonly canvas:Pick<CompositionCanvas,'fps'|'fpsRate'>;readonly captionTracks?:readonly CaptionTrack[]}
@@ -10,7 +10,7 @@
   playheadTicks?:number
  }=$props()
  let format=$state<CaptionFileFormat>('srt'),dropFrame=$state(true),busy=$state(false),error=$state(''),url=$state(''),filename=$state('')
- let fromPlayhead=$state(false)
+ let fromPlayhead=$state(false),endSeconds=$state('')
  const track=$derived(composition.captionTracks?.find(track=>track.id===activeId)??composition.captionTracks?.[0])
  const formats=['srt','vtt','scc','mcc','stl','ttml','dfxp'] as const
  function clear(){if(url)URL.revokeObjectURL(url);url='';filename=''}
@@ -21,9 +21,13 @@
   busy=true;error='';clear()
   try{
    const rate=canvasTimeGrid(composition.canvas),name=track.name
-   const offset=fromPlayhead && playheadTicks !== undefined ? exactCaptionTicks(playheadTicks).toString() : undefined
+   const offset=fromPlayhead && playheadTicks !== undefined ? exactCaptionTicks(playheadTicks) : undefined
+   const end=endSeconds.trim() ? parseCaptionEditSeconds(endSeconds) : undefined
+   if(end !== undefined && end <= (offset ?? 0n)) throw new Error('Конец экспорта должен быть позже начала')
+   if(end !== undefined) exactCaptionTicks(end.toString())
    const result=await writeCaptionFile(captionFileDocument(track),format,{
-    dropFrame,rate:{num:rate.numerator,den:rate.denominator},...(offset === undefined ? {} : {offsetTick:offset}),
+    dropFrame,rate:{num:rate.numerator,den:rate.denominator},...(offset === undefined ? {} : {offsetTick:offset.toString()}),
+    ...(end === undefined ? {} : {endTick:end.toString()}),
    })
    if(disposed)return
    const binary=atob(result.dataBase64),bytes=Uint8Array.from(binary,char=>char.charCodeAt(0))
@@ -38,6 +42,7 @@
  {#if playheadTicks !== undefined}
   <label class="check"><input type="checkbox" disabled={busy} checked={fromPlayhead} onchange={event=>fromPlayhead=event.currentTarget.checked} />Экспортировать от курсора</label>
  {/if}
+ <label>Конец экспорта, с<input type="text" inputmode="decimal" placeholder="До конца" disabled={busy} bind:value={endSeconds} /></label>
  <button type="button" class="btn ghost sm" disabled={busy||!track} onclick={()=>void exportFile()}>Экспортировать дорожку субтитров</button>
  {#if url}<a href={url} download={filename}>Скачать {filename}</a>{/if}
  {#if busy}<span role="status">Экспорт субтитров…</span>{/if}

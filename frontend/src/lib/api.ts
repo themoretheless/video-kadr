@@ -1565,7 +1565,7 @@ export type CaptionFileFormat='srt'|'vtt'|'scc'|'mcc'|'stl'|'ttml'|'dfxp'
 export function readCaptionFile(dataBase64:string,options?:{readonly format?:CaptionFileFormat;readonly extension?:string;readonly snapToRate?:{readonly num:number;readonly den:number}},signal?:AbortSignal):Promise<{readonly format:CaptionFileFormat;readonly document:CaptionFileDocument}> {
  return requestJson('/api/compositions/captions/file/read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataBase64,...options}),signal})
 }
-export function writeCaptionFile(document:CaptionFileDocument,format:CaptionFileFormat,options?:{readonly dropFrame?:boolean;readonly rate?:{readonly num:number;readonly den:number};readonly offsetTick?:string},signal?:AbortSignal):Promise<{readonly extension:CaptionFileFormat;readonly dataBase64:string}> {
+export function writeCaptionFile(document:CaptionFileDocument,format:CaptionFileFormat,options?:{readonly dropFrame?:boolean;readonly rate?:{readonly num:number;readonly den:number};readonly offsetTick?:string;readonly endTick?:string},signal?:AbortSignal):Promise<{readonly extension:CaptionFileFormat;readonly dataBase64:string}> {
  return requestJson('/api/compositions/captions/file/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document,format,...options}),signal})
 }
 

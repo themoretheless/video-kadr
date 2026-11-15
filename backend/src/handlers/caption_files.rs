@@ -104,6 +104,7 @@ pub struct WriteRequest {
     pub drop_frame: bool,
     pub rate: Option<FrameRate>,
     pub offset_tick: Option<String>,
+    pub end_tick: Option<String>,
 }
 fn drop_frame_default() -> bool {
     true
@@ -140,11 +141,12 @@ fn write_file(request: WriteRequest) -> anyhow::Result<WriteResponse> {
     let format = Format::from_name(&request.format)
         .ok_or_else(|| anyhow::anyhow!("unsupported caption format"))?;
     let document = Document::try_from(request.document)?;
-    let document = match request.offset_tick {
-        Some(offset) => {
-            crate::domain::caption_file_timing::document_for_range(&document, Tick(offset.parse()?))?
-        }
-        None => document,
+    let document = if request.offset_tick.is_some() || request.end_tick.is_some() {
+        let offset = request.offset_tick.as_deref().unwrap_or("0").parse()?;
+        let end = request.end_tick.map(|end| end.parse().map(Tick)).transpose()?;
+        crate::domain::caption_file_timing::document_for_range(&document, Tick(offset), end)?
+    } else {
+        document
     };
     let bytes = filmcraft_captions::write(
         &document,
@@ -208,6 +210,7 @@ mod tests {
                 drop_frame: true,
                 rate: None,
                 offset_tick: None,
+                end_tick: None,
             })
             .unwrap();
             assert_eq!(
@@ -322,6 +325,27 @@ mod tests {
         assert_eq!(rebased["document"], expected);
         assert_eq!(
             send("/write", json!({"format":"vtt","document":ranged,"offsetTick":i64::MIN.to_string()})).await.0,
+            StatusCode::BAD_REQUEST,
+        );
+        let end = (TICKS_PER_SECOND * 2).to_string();
+        let mut after_end = ranged["cues"][0].clone();
+        after_end["id"] = json!("at-end");
+        after_end["startTick"] = json!(end);
+        after_end["endTick"] = json!((TICKS_PER_SECOND * 3).to_string());
+        ranged["cues"].as_array_mut().unwrap().push(after_end);
+        let (status, bounded) = send(
+            "/write",
+            json!({"format":"vtt","document":ranged,"offsetTick":offset,"endTick":end}),
+        ).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, rebased) = send(
+            "/read", json!({"dataBase64":bounded["dataBase64"],"format":"vtt"}),
+        ).await;
+        assert_eq!(status, StatusCode::OK);
+        expected["cues"][0]["endTick"] = json!((TICKS_PER_SECOND / 2).to_string());
+        assert_eq!(rebased["document"], expected);
+        assert_eq!(
+            send("/write", json!({"format":"vtt","document":ranged,"offsetTick":offset,"endTick":offset})).await.0,
             StatusCode::BAD_REQUEST,
         );
         let mut invalid = parsed["document"].clone();

@@ -132,6 +132,21 @@ it('exports a selected native caption track from the active timeline with its ex
    offsetTick: '381024254016', dropFrame: true, rate: { num: 30000, den: 1001 },
   })
   await vi.waitFor(() => expect(target.querySelector('a[download]')).not.toBeNull())
+  const end = target.querySelector<HTMLInputElement>('input[placeholder="До конца"]')!
+  const setEnd = async (value: string) => {
+   end.value = value
+   end.dispatchEvent(new Event('input', { bubbles: true }))
+   await tick()
+   exportButton.click()
+  }
+  await setEnd('1')
+  await vi.waitFor(() => expect(target.querySelector('[role="alert"]')?.textContent).toContain('Конец экспорта'))
+  expect(writeCaptionFile).toHaveBeenCalledTimes(2)
+  await setEnd('2,000000000004')
+  await vi.waitFor(() => expect(target.querySelector('a[download]')).not.toBeNull())
+  expect(vi.mocked(writeCaptionFile).mock.calls[2]?.[2]).toEqual({
+   offsetTick: '381024254016', endTick: '508032000001', dropFrame: true, rate: { num: 30000, den: 1001 },
+  })
   nestedComposition.activeCompositionId = 'root'
   await tick()
   expect(revoke).toHaveBeenCalledWith('blob:caption')

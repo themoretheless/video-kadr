@@ -12,7 +12,12 @@ pub fn snap_document_for_sequence(
 }
 
 /// Original document_from_track range semantics; retained cues keep file metadata.
-pub fn document_for_range(document: &Document, offset: Tick) -> anyhow::Result<Document> {
+pub fn document_for_range(
+    document: &Document,
+    offset: Tick,
+    end: Option<Tick>,
+) -> anyhow::Result<Document> {
+    anyhow::ensure!(end.is_none_or(|end| end > offset), "caption export end must follow the start");
     let rebase = |time: Tick| {
         time.0
             .checked_sub(offset.0)
@@ -22,11 +27,11 @@ pub fn document_for_range(document: &Document, offset: Tick) -> anyhow::Result<D
     let cues = document
         .cues
         .iter()
-        .filter(|cue| cue.end > offset)
+        .filter(|cue| cue.end > offset && end.is_none_or(|end| cue.start < end))
         .map(|cue| {
             let mut cue = cue.clone();
             cue.start = if cue.start <= offset { Tick::ZERO } else { rebase(cue.start)? };
-            cue.end = rebase(cue.end)?;
+            cue.end = rebase(end.map_or(cue.end, |end| cue.end.min(end)))?;
             Ok(cue)
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
@@ -122,7 +127,7 @@ mod tests {
                 .cues
                 .iter()
                 .any(|c| c.start.0 % 254016 != 0 || c.end.0 % 254016 != 0);
-            let output = document_for_range(&snapped, Tick(case["offset"].as_i64().unwrap())).unwrap();
+            let output = document_for_range(&snapped, Tick(case["offset"].as_i64().unwrap()), None).unwrap();
             assert_eq!(output, decode(&case["exported"]));
             assert_eq!(before, decode(&case["input"]));
             assert_eq!(snapped, decode(&case["snapped"]));
