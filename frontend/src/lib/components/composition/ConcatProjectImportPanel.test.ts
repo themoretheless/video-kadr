@@ -222,6 +222,15 @@ it('uploads the selected template design and binds its bundled font before conve
    template, { m1: expect.objectContaining({ id: 'bundled' }) }, expect.any(AbortSignal),
    'session', { 'assets/title.otf': { data: 'Zm9udA==' } }, true,
   ))
+  const name = document.querySelector<HTMLInputElement>('input[type="text"]')!
+  expect(name.value).toBe(template.name)
+  name.value = '  Client cut  '
+  name.dispatchEvent(new Event('input', { bubbles: true }))
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Таймлайнов: 1'))
+  click('Открыть импорт как новый проект')
+  await vi.waitFor(() => expect(nestedComposition.name).toBe('Client cut'))
+  expect(nestedComposition.projectId).toBeNull()
+  expect(importConcatProject).toHaveBeenCalledTimes(1)
   await unmount(component!)
   component = undefined
   expect(revokeUrl).toHaveBeenCalledWith('blob:concat-poster')

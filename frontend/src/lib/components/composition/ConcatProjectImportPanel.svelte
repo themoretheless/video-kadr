@@ -18,6 +18,7 @@
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
+ let templateProjectName = $state('')
  let folderPoster=$state<File>()
  let posterUrl=$state('')
  $effect(()=>{
@@ -38,6 +39,10 @@
  let request=0,controller:AbortController|undefined,expectedContext='',lastToken=untrack(()=>token)
  const ready=$derived(!!document&&(!importingTemplate||!media.some(item=>item.placeholder))&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path))&&stillDestinations.every(item=>!!chosenMask(item.key,item.mediaId))&&videoDestinations.every(item=>!!chosenMask(item.key,item.mediaId,true)))
  function identity(){return JSON.stringify([token,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,availableSources,preserveMediaIds,nestedComposition.revision,savedMasks,savedVideoMasks,maskChoices])}
+ function importedName(value: unknown) {
+  return typeof value === 'object' && value && 'name' in value && typeof value.name === 'string'
+   ? value.name : 'Импорт Concat'
+ }
  function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false}
  $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderPoster=undefined;uploadedSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
@@ -67,6 +72,7 @@
    }
    document=folder.document;media=folder.media;fonts=folder.fonts
    importingTemplate=true
+   templateProjectName=importedName(folder.document)
    folderPoster=folder.poster
    uploadedSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
@@ -178,7 +184,24 @@
   catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}
  }
  async function convert(){if(!ready||busy||disabled||nestedHistory.busy||!token)return;invalidate();busy=true;const serial=request;controller=new AbortController();expectedContext=identity();try{const mapped=Object.fromEntries(media.map(item=>{const entry=availableSources.find(entry=>entry.source.id===bindings[item.id]);if(!entry)throw new Error('Выбранный источник исчез из библиотеки');return[item.id,sourceOverrides[item.id]?.id===entry.source.id?sourceOverrides[item.id]:entry.source]}));const references=stillDestinations.map(item=>{const selected=chosenMask(item.key,item.mediaId);if(!selected)throw new Error('Выберите сохранённую маску для каждого изображения');return{...selected.reference,timelineId:item.timelineId,clipId:item.clipId}});const videoReferences=videoDestinations.map(item=>{const selected=chosenMask(item.key,item.mediaId,true);if(!selected)throw new Error('Выберите сохранённую маску для каждого видео');return{...selected.reference,timelineId:item.timelineId,clipId:item.clipId}});const result=videoReferences.length?await importConcatProjectWithSavedCutouts(document,mapped,references,videoReferences,controller.signal,token,fontBindings,preserveMediaIds):references.length?await importConcatProjectWithSavedStills(document,mapped,references,controller.signal,token,fontBindings,preserveMediaIds):preserveMediaIds?await importConcatProject(document,mapped,controller.signal,token,fontBindings,true):fonts.length?await importConcatProject(document,mapped,controller.signal,token,fontBindings):await importConcatProject(document,mapped,controller.signal,token);if(serial!==request)return;if(identity()!==expectedContext)throw new Error('Текущий проект изменился; повторите проверку импорта');report=result}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}}
- async function apply(){if(!report?.project||busy||disabled||nestedHistory.busy||applied)return;const selected=report,serial=request;if(identity()!==expectedContext){error='Текущий проект изменился; повторите проверку импорта';return}const name=typeof document==='object'&&document&&'name'in document&&typeof document.name==='string'?document.name:'Импорт Concat';busy=true;const accepted=await adoptImportedConcatProject(selected.project!,name,()=>{if(serial!==request||identity()!==expectedContext)throw new Error('Контекст импорта изменился')});busy=false;if(accepted)applied=true;else error=nestedHistory.error||'Импорт не применён'}
+ async function apply() {
+  const project = report?.project
+  if (!project || busy || disabled || nestedHistory.busy || applied) return
+  const serial = request
+  if (identity() !== expectedContext) {
+   error = 'Текущий проект изменился; повторите проверку импорта'
+   return
+  }
+  const chosenName = importingTemplate ? templateProjectName.trim() : ''
+  busy = true
+  const accepted = await adoptImportedConcatProject(project, chosenName || importedName(document), () => {
+   if (serial !== request || identity() !== expectedContext) throw new Error('Контекст импорта изменился')
+  })
+  if (serial !== request) return
+  busy = false
+  if (accepted) applied = true
+  else error = nestedHistory.error || 'Импорт не применён'
+ }
  function download(){if(!report)return;const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const link=globalThis.document.createElement('a');link.href=url;link.download='concat-import-report.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),0)}
 </script>
 <details><summary>Импорт проекта Concat</summary>
@@ -190,6 +213,9 @@
     void loadFolder(files)
   }} /></label>
   {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}
+  {#if importingTemplate}
+   <label>Название нового проекта <input type="text" bind:value={templateProjectName} /></label>
+  {/if}
   {#each orderedMedia as item(item.id)}
    {#if !importingTemplate || !item.placeholder}<label>{item.name} <select aria-label={`Источник Concat ${item.id}`} value={bindings[item.id]??''} onchange={event=>{invalidate();bindings={...bindings,[item.id]:event.currentTarget.value}}}><option value="">Выберите медиа из библиотеки</option>{#each availableSources.filter(entry=>(entry.source.kind===item.kind||sourceOverrides[item.id]?.id===entry.source.id&&sourceOverrides[item.id]?.kind===item.kind)) as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>{/if}
    {#if item.placeholder}
