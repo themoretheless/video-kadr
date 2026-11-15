@@ -336,6 +336,7 @@ pub async fn job_status_handler(
     super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
     super::stabilization_jobs::authorize_job(&state,&id,&headers,true).await?;
     super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::nested_export::authorize_job(&state, &id, &headers).await?;
     match state
         .get_job(&id)
         .await
@@ -367,6 +368,7 @@ pub async fn cancel_handler(
     super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
     super::stabilization_jobs::authorize_job(&state,&id,&headers,false).await?;
     super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,false).await?;
+    super::nested_export::authorize_job(&state, &id, &headers).await?;
     match state
         .cancel_open_job(&id)
         .await
@@ -418,6 +420,7 @@ pub async fn retry_job_handler(
     super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
     super::stabilization_jobs::authorize_job(&state,&id,&headers,true).await?;
     super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::nested_export::authorize_job(&state, &id, &headers).await?;
     super::filmcraft_export_queue::authorize_external_retry(&state,&id,&headers).await?;
     if state
         .get_job(&id)
@@ -457,6 +460,7 @@ pub async fn discard_job_handler(
     super::sam_model_downloads::authorize_job(&state,&id,&headers).await?;
     super::stabilization_jobs::authorize_job(&state,&id,&headers,true).await?;
     super::filmcraft_video_jobs::authorize_job(&state,&id,&headers,true).await?;
+    super::nested_export::authorize_job(&state, &id, &headers).await?;
     let discarded = state
         .job_store
         .discard_failed(&id, "local-operator", None)

@@ -133,8 +133,8 @@ export async function getLut(id: string): Promise<LutAsset> {
   return res.json()
 }
 
-export async function getJob(jobId: string, signal?: AbortSignal): Promise<Job> {
-  const res = await safeFetch(`/api/jobs/${jobId}`, { signal })
+export async function getJob(jobId: string, signal?: AbortSignal, token?: string): Promise<Job> {
+  const res = await safeFetch(`/api/jobs/${encodeURIComponent(jobId)}`, { signal, ...(token ? { headers: bearerHeaders(token) } : {}) })
   await requireOk(res, `job poll -> HTTP ${res.status}`)
   return res.json()
 }
@@ -1006,9 +1006,9 @@ export async function createProjectFromNativeLibrary(id:string,fills:readonly Na
 }
 
 /** Ask the backend to cancel a running/pending job. Best-effort. */
-export async function cancelJob(jobId: string): Promise<void> {
+export async function cancelJob(jobId: string, token?: string): Promise<void> {
   try {
-    await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' })
+    await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', ...(token ? { headers: bearerHeaders(token) } : {}) })
   } catch {
     // The poll loop will surface the resulting state.
   }
@@ -1286,6 +1286,11 @@ export function nestedDurations(project: NativeNestedProject, signal?: AbortSign
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project }), signal,
   })
 }
+export interface NestedExportHistoryEntry { jobId: string; status: Job['status']; createdAt: number }
+export function listNestedExports(token: string, signal?: AbortSignal): Promise<{ jobs: NestedExportHistoryEntry[] }> {
+  return requestJson('/api/compositions/nested-export', { headers: bearerHeaders(token), signal })
+}
+
 export function exportNestedVideo(
   project: NativeNestedProject, compositionId: string, startUs: number, endUs: number,
   renderedOutputs: Readonly<Record<string, string>>, token: string, signal?: AbortSignal, mode: 'video_only' | 'video_audio' = 'video_only',

@@ -499,7 +499,7 @@ pub fn build_router_with_mcp(
             "/compositions/nested-export",
             post(handlers::nested_export::nested_export_handler).layer(DefaultBodyLimit::max(
                 db::MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES + 64 * 1024,
-            )),
+            )).get(handlers::nested_export::list),
         )
         .route(
             "/compositions/scopes-rgba",

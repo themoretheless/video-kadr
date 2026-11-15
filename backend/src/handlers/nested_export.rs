@@ -279,6 +279,43 @@ async fn bindings(
     }
     Ok(result)
 }
+// Terminal jobs erase their request. Older completed exports still have an output ACL.
+const EXPORT_OWNER_JOIN: &str = "
+    JOIN job_requests r ON r.job_id=j.id AND r.kind='nested_export'
+    LEFT JOIN nested_export_job_access a ON a.job_id=j.id
+    LEFT JOIN output_access o ON o.output_id=json_extract(j.result_json, '$.id')
+";
+const EXPORT_OWNER: &str = "COALESCE(a.owner, json_extract(r.payload_json, '$.owner'), o.actor)";
+
+pub(super) async fn authorize_job(state: &AppState, id: &str, headers: &HeaderMap) -> AppResult<()> {
+    let query = format!("SELECT {EXPORT_OWNER} FROM jobs j {EXPORT_OWNER_JOIN} WHERE j.id=?");
+    let owners: Vec<Option<String>> = sqlx::query_scalar(&query)
+        .bind(id).fetch_all(state.db.pool()).await
+        .map_err(|e| AppError::internal("load nested export access", e))?;
+    if !owners.is_empty() {
+        let actor = super::publish::authenticated_actor(state, headers).await?;
+        if !owners.iter().any(|owner| owner.as_deref() == Some(actor.as_str())) {
+            return Err(AppError::forbidden("Это задание другого пользователя"));
+        }
+    }
+    Ok(())
+}
+
+pub async fn list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Value>> {
+    let actor = super::publish::authenticated_actor(&state, &headers).await?;
+    let query = format!("SELECT DISTINCT j.id,j.status,j.created_at FROM jobs j {EXPORT_OWNER_JOIN}
+        WHERE {EXPORT_OWNER}=? ORDER BY j.created_at DESC,j.id DESC LIMIT 20");
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(&query)
+        .bind(actor).fetch_all(state.db.pool()).await
+        .map_err(|e| AppError::internal("list nested exports", e))?;
+    let jobs: Vec<_> = rows.into_iter().map(|(id,status,created_at)|
+        json!({"jobId":id,"status":status,"createdAt":created_at})).collect();
+    Ok(Json(json!({"jobs":jobs})))
+}
+
 pub async fn nested_export_handler(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -468,6 +505,39 @@ pub(super) fn spawn_nested_export_job(
 #[cfg(test)]
 mod caption_sidecar_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nested_export_history_and_results_are_owner_scoped() {
+        use axum::response::IntoResponse;
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().to_path_buf();
+        let db = crate::db::Db::open(&storage).await.unwrap();
+        let library = crate::library::Library::load(storage.clone()).await;
+        let state = AppState::new(storage, 2, crate::state::ToolInfo::default(), library, db);
+        let login = |token: &str| {
+            let mut headers = HeaderMap::new();
+            headers.insert("authorization", format!("Bearer {token}").parse().unwrap());
+            headers
+        };
+        let alice = state.db.register_auth_user("alice-history", "alice-private-password").await.unwrap().unwrap();
+        let bob = state.db.register_auth_user("bob-history", "bob-private-password").await.unwrap().unwrap();
+        let alice_headers = login(&alice.token);
+        let bob_headers = login(&bob.token);
+        for (id, owner) in [("alice-job", "alice-history"), ("bob-job", "bob-history")] {
+            let created = state.enqueue_job(id.into(), JobKind::NestedExport, &json!({"owner":owner}), id).await.unwrap();
+            assert!(matches!(created, EnqueueOutcome::Created(_)));
+        }
+        sqlx::query("UPDATE job_requests SET payload_json='null' WHERE job_id='alice-job'")
+            .execute(state.db.pool()).await.unwrap();
+        let Json(history) = list(State(state.clone()), alice_headers.clone()).await.unwrap();
+        assert_eq!(history["jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(history["jobs"][0]["jobId"], "alice-job");
+        assert!(authorize_job(&state, "alice-job", &alice_headers).await.is_ok());
+        let denied = authorize_job(&state, "alice-job", &bob_headers).await.unwrap_err();
+        assert_eq!(denied.into_response().status(), StatusCode::FORBIDDEN);
+        let denied = authorize_job(&state, "alice-job", &HeaderMap::new()).await.unwrap_err();
+        assert_eq!(denied.into_response().status(), StatusCode::UNAUTHORIZED);
+    }
 
     #[test]
     fn nested_caption_sidecar_uses_selected_track_and_video_bounds() {

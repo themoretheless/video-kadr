@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS job_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_job_requests_kind_created
     ON job_requests(kind, created_at DESC);
+CREATE TABLE IF NOT EXISTS nested_export_job_access (
+    job_id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_nested_export_job_owner ON nested_export_job_access(owner, job_id);
 CREATE TABLE IF NOT EXISTS job_dedupe (
     dedupe_key TEXT PRIMARY KEY,
     job_id TEXT NOT NULL,
@@ -245,6 +250,15 @@ impl SqliteJobStore {
         .bind(now)
         .execute(&mut *tx)
         .await?;
+        if kind == JobKind::NestedExport {
+            if let Some(owner) = payload.get("owner").and_then(Value::as_str) {
+                sqlx::query("INSERT INTO nested_export_job_access (job_id, owner) VALUES (?, ?)")
+                    .bind(&job_id)
+                    .bind(owner)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
         inject_enqueue_fault(fail_after, 2)?;
         append_event(
             &mut tx,

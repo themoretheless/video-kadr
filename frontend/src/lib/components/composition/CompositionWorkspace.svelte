@@ -625,7 +625,9 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
           </select>
         </label>
       {/each}
-      <NestedExportPanel token={authState.token} disabled={compositionState.save.busy} />
+      {#key authState.token}
+        <NestedExportPanel token={authState.token} disabled={compositionState.save.busy} />
+      {/key}
       <ProjectFonts disabled={compositionState.save.busy} />
       <NestedEffectStack disabled={compositionState.save.busy} />
       <NestedLutInspector disabled={compositionState.save.busy} />

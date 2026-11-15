@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, nestedDurations, type CaptionFileFormat } from '$lib/api'
+  import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, listNestedExports, nestedDurations, type CaptionFileFormat, type NestedExportHistoryEntry } from '$lib/api'
   import { nestedComposition, nestedHistory } from '$lib/state/nestedComposition.svelte'
   import { loadLibrary } from '$lib/state/store.svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -39,6 +39,13 @@
   const sidecarFormats = ['srt', 'vtt', 'scc', 'mcc', 'stl', 'ttml', 'dfxp'] as const
   let sidecarFormat = $state<CaptionFileFormat | ''>('')
   let sidecarDropFrame = $state(true)
+  let history = $state<NestedExportHistoryEntry[]>([])
+  let historyBusy = $state(false)
+  let historyLoaded = $state(false)
+  let historyError = $state('')
+  const statusLabels = {
+    pending: 'В очереди', running: 'В работе', done: 'Готово', error: 'Ошибка', cancelled: 'Отменено', interrupted: 'Прервано',
+  } satisfies Record<Job['status'], string>
   let reopenId = $state('')
   const validReopenId = $derived(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(reopenId.trim()))
   const storedSidecar = $derived.by(() => {
@@ -79,7 +86,7 @@
     if (!jobId || lifecycle.signal.aborted) return
     monitoring = true; error = ''
     try {
-      const current = await getJob(jobId, lifecycle.signal)
+      const current = await getJob(jobId, lifecycle.signal, token)
       if (lifecycle.signal.aborted) return
       job = current
       if (current.status === 'done' || current.status === 'cancelled' || current.status === 'error' || current.status === 'interrupted') {
@@ -142,10 +149,22 @@
       if (!lifecycle.signal.aborted) { busy = false; error = failure instanceof Error ? failure.message : String(failure) }
     }
   }
-  function reopen() {
-    if (!validReopenId || busy) return
+  async function refreshHistory() {
+    if (historyBusy) return
+    const owner = token
+    historyBusy = true; historyError = ''
+    try {
+      const result = await listNestedExports(owner, lifecycle.signal)
+      if (lifecycle.signal.aborted || token !== owner) return
+      history = result.jobs; historyLoaded = true
+    } catch (failure) {
+      if (!lifecycle.signal.aborted && token === owner) historyError = failure instanceof Error ? failure.message : String(failure)
+    } finally { historyBusy = false }
+  }
+  function reopen(id: string) {
+    if (busy) return
     job = null; submittedCaptions = undefined; busy = true
-    jobId = reopenId.trim()
+    jobId = id
     void observe()
   }
   function closeObservation() {
@@ -183,7 +202,7 @@
   async function cancel(): Promise<void> {
     if (!jobId || cancelling) return
     cancelling = true
-    await cancelJob(jobId)
+    await cancelJob(jobId, token)
     if (!lifecycle.signal.aborted && !monitoring) void observe()
   }
 </script>
@@ -215,9 +234,21 @@
     <button class="btn ghost sm" onclick={downloadStoredCaptions}>Скачать субтитры {storedSidecar.extension.toUpperCase()}</button>
   {/if}
   <details>
-    <summary>Открыть задачу экспорта</summary>
+    <summary>Недавние задачи экспорта</summary>
+    <button class="btn ghost sm" disabled={historyBusy} onclick={() => void refreshHistory()}>Обновить список задач</button>
+    {#if historyError}<p role="alert">{historyError}</p>{/if}
+    {#if historyLoaded && !history.length}<p>Задач экспорта пока нет</p>{/if}
+    {#if history.length}
+      <ul>
+        {#each history as entry (entry.jobId)}
+          <li><button class="btn ghost sm" disabled={busy} onclick={() => reopen(entry.jobId)}>
+            {new Date(entry.createdAt * 1000).toLocaleString('ru-RU')} · {statusLabels[entry.status]}
+          </button></li>
+        {/each}
+      </ul>
+    {/if}
     <label>Идентификатор задачи<input type="text" bind:value={reopenId} disabled={busy} /></label>
-    <button class="btn ghost sm" disabled={busy || !validReopenId} onclick={reopen}>Открыть задачу</button>
+    <button class="btn ghost sm" disabled={busy || !validReopenId} onclick={() => reopen(reopenId.trim())}>Открыть задачу</button>
   </details>
   {#if filename && submittedCaptions && !storedSidecar}
     <details aria-label="Субтитры к готовому видео">

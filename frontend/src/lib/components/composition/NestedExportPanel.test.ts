@@ -1,11 +1,11 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, nestedDurations, writeCaptionFile, type NativeNestedProject } from '$lib/api'
+import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, listNestedExports, nestedDurations, writeCaptionFile, type NativeNestedProject } from '$lib/api'
 import { loadLibrary } from '$lib/state/store.svelte'
 import { closeNestedComposition, nestedComposition } from '$lib/state/nestedComposition.svelte'
 import NestedExportPanel from './NestedExportPanel.svelte'
-vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), nestedDurations: vi.fn(), writeCaptionFile: vi.fn() }))
+vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), listNestedExports: vi.fn(), nestedDurations: vi.fn(), writeCaptionFile: vi.fn() }))
 vi.mock('$lib/state/store.svelte', () => ({ loadLibrary: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 beforeEach(() => {
@@ -42,7 +42,7 @@ it('requests cancellation and aborts observation on disposal without cancelling 
   vi.mocked(getJob).mockReturnValue(new Promise(done => { resolve = done }))
   await ready(); button('Экспортировать видео').click()
   await vi.waitFor(() => expect(getJob).toHaveBeenCalledOnce()); await tick()
-  button('Отменить экспорт').click(); await vi.waitFor(() => expect(cancelJob).toHaveBeenCalledWith('job-1'))
+  button('Отменить экспорт').click(); await vi.waitFor(() => expect(cancelJob).toHaveBeenCalledWith('job-1', 'owner-token'))
   const signal = vi.mocked(getJob).mock.calls[0]![1]!
   await unmount(component!); component = undefined
   expect(signal.aborted).toBe(true)
@@ -186,11 +186,12 @@ it('reopens a job and downloads the persisted caption artifact without the origi
     component = undefined
     node.content = { ...node.content, captionTracks: [] }
     await ready()
-    const input = [...document.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Идентификатор задачи')!.querySelector('input')!
-    input.value = id
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await tick()
-    button('Открыть задачу').click()
+    vi.mocked(listNestedExports).mockResolvedValue({ jobs: [{ jobId: id, status: 'done', createdAt: 1_700_000_000 }] })
+    button('Обновить список задач').click()
+    await vi.waitFor(() => expect(document.querySelector('details ul button')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('details ul button')!.click()
+    expect(listNestedExports).toHaveBeenCalledWith('owner-token', expect.any(AbortSignal))
+    expect(getJob).toHaveBeenLastCalledWith(id, expect.any(AbortSignal), 'owner-token')
     await vi.waitFor(() => expect(button('Скачать субтитры VTT')).toBeDefined())
     button('Скачать субтитры VTT').click()
     expect(click.mock.instances[0]).toMatchObject({ download: `${id}.vtt` })
