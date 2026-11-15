@@ -17,6 +17,13 @@
   let rateDen = $state('1001')
   let scaling = $state<FilmcraftScaling | ''>('')
   let audio = $state('preset')
+  let audioCodec = $state('')
+  let audioRate = $state('')
+  let audioChannels = $state('')
+  let audioBits = $state('')
+  let audioBitrate = $state('')
+  const audioRates = [32000, 44100, 48000, 96000]
+  const audioBitrates = [128, 160, 192, 256, 320]
   let captions = $state<'preset' | 'burn' | 'none'>('preset')
   let h264Level = $state('preset')
   let sidecar = $state('preset')
@@ -29,6 +36,15 @@
   const picked = $derived(entries.find(p => p.name === selected))
   const audioOnly = $derived(picked?.settings.format === 'wav' || picked?.settings.format === 'aiff')
   const silent = $derived(['gif', 'png', 'tiff', 'bmp'].some(format => picked?.settings.format === format))
+  const h26x = $derived(picked?.settings.format === 'h264' || picked?.settings.format === 'hevc')
+  const forcedPcm = $derived(audioOnly || picked?.settings.format === 'mxf-op1a' || picked?.settings.format === 'mxf-opatom')
+  const forcedAac = $derived(h26x && picked?.settings.multiplexer !== 'mov')
+  const audioSettings = $derived(picked?.settings.audio as { codec?: string } | undefined)
+  const effectiveAac = $derived(forcedAac || (!forcedPcm && (
+    (audioCodec || audioSettings?.codec) === 'aac'
+    || (h26x && (audioCodec || audioSettings?.codec || 'auto') === 'auto')
+  )))
+  const canEditAudio = $derived(!silent && (audioOnly || audio !== 'none'))
   const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
@@ -41,7 +57,7 @@
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; audio = 'preset'; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
     return () => { void owner; ++generation; controller?.abort() }
   })
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
@@ -72,6 +88,15 @@
       if (scaling) settings.scaling = scaling
     }
     if (!audioOnly && !silent && audio !== 'preset') settings.includeAudio = audio === 'include'
+    if (canEditAudio) {
+      const audioPatch: Record<string, unknown> = {}
+      if (audioCodec && !forcedPcm && !forcedAac) audioPatch.codec = audioCodec
+      if (audioRate) audioPatch.sample_rate = audioRate === 'source' ? null : Number(audioRate)
+      if (audioChannels) audioPatch.channels = Number(audioChannels)
+      if (effectiveAac && audioBitrate) audioPatch.bitrate_kbps = Number(audioBitrate)
+      if (!effectiveAac && audioBits) audioPatch.bits = Number(audioBits)
+      if (Object.keys(audioPatch).length) settings.audio = audioPatch
+    }
     if (bitrate) { settings.bitrateKbps = Number(bitrate); settings.adaptiveBitrate = null }
     if (captions !== 'preset') settings.burnCaptions = captions === 'burn'
     if (sidecar !== 'preset') settings.captionSidecar = sidecar === 'none' ? null : sidecar
@@ -152,6 +177,35 @@
             <option value="preset">Как в исходном пресете</option>
             <option value="include">Включить звук</option>
             <option value="none">Без звука</option>
+          </select></label>
+        {/if}
+      {/if}
+      {#if canEditAudio}
+        {#if !forcedPcm && !forcedAac}
+          <label>Аудиокодек <select aria-label="Аудиокодек пресета Filmcraft" value={audioCodec} onchange={event => { audioCodec = event.currentTarget.value }} disabled={busy || disabled}>
+            <option value="">Как в исходном пресете</option>
+            <option value="aac">AAC</option>
+            <option value="pcm">PCM</option>
+          </select></label>
+        {/if}
+        <label>Частота аудио <select aria-label="Частота аудио пресета Filmcraft" value={audioRate} onchange={event => { audioRate = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="">Как в исходном пресете</option>
+          <option value="source">Как в секвенции</option>
+          {#each audioRates as rate (rate)}<option value={String(rate)}>{rate} Гц</option>{/each}
+        </select></label>
+        <label>Каналы <select aria-label="Каналы пресета Filmcraft" value={audioChannels} onchange={event => { audioChannels = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="">Как в исходном пресете</option>
+          <option value="1">Моно</option><option value="2">Стерео</option><option value="6">5.1</option>
+        </select></label>
+        {#if effectiveAac}
+          <label>Битрейт AAC <select aria-label="Битрейт AAC пресета Filmcraft" value={audioBitrate} onchange={event => { audioBitrate = event.currentTarget.value }} disabled={busy || disabled}>
+            <option value="">Как в исходном пресете</option>
+            {#each audioBitrates as rate (rate)}<option value={String(rate)}>{rate} кбит/с</option>{/each}
+          </select></label>
+        {:else}
+          <label>Разрядность PCM <select aria-label="Разрядность PCM пресета Filmcraft" value={audioBits} onchange={event => { audioBits = event.currentTarget.value }} disabled={busy || disabled}>
+            <option value="">Как в исходном пресете</option>
+            <option value="16">16 бит</option><option value="24">24 бит</option>
           </select></label>
         {/if}
       {/if}

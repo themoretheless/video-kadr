@@ -111,3 +111,28 @@ it('downloads a portable preset file with an authenticated export request', asyn
     expect(create).toHaveBeenCalledWith(expect.any(Blob)); expect(revoke).toHaveBeenCalledWith('blob:preset')
   } finally { create.mockRestore(); revoke.mockRestore(); click.mockRestore() }
 })
+
+it('applies PCM options to an audio-only preset and keeps its codec fixed', async () => {
+  const wav = { ...builtin, name: 'Wave', settings: { format: 'wav', audio: { codec: 'auto', sample_rate: 48000 } } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [wav], default: wav.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: apply } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  expect(document.querySelector('[aria-label="Аудиокодек пресета Filmcraft"]')).toBeNull()
+  expect(document.querySelector('[aria-label="Битрейт AAC пресета Filmcraft"]')).toBeNull()
+  for (const [label, value] of [
+    ['Частота аудио пресета Filmcraft', 'source'],
+    ['Каналы пресета Filmcraft', '6'],
+    ['Разрядность PCM пресета Filmcraft', '24'],
+  ]) {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!
+    control.value = value
+    control.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  await tick()
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenCalledWith('Wave', { audio: { sample_rate: null, channels: 6, bits: 24 } })
+  expect(editFilmcraftExportPresets).not.toHaveBeenCalled()
+})
