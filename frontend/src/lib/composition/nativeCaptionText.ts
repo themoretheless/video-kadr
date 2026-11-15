@@ -3,7 +3,8 @@ import {colorToRgba} from './payload'
 import {MAX_TEXT_LENGTH, type WireRgba, type WireTextClip, type WireTextStyle} from './types'
 
 export type CaptionAppearance = Pick<WireTextStyle,
-  'fontFamily' | 'fontSize' | 'fontWeight' | 'italic' | 'align' | 'tracking' | 'lineHeight' | 'backgroundRadius' | 'strokeWidth'> &
+  'fontFamily' | 'fontSize' | 'fontWeight' | 'italic' | 'align' | 'tracking' | 'lineHeight' | 'backgroundRadius' |
+  'strokeWidth' | 'concatShadow' | 'shadowX' | 'shadowY'> &
   Pick<WireTextClip, 'textBoxWidth' | 'textBoxHeight'> & {
     readonly textColor: string
     readonly textAlpha: number
@@ -11,6 +12,8 @@ export type CaptionAppearance = Pick<WireTextStyle,
     readonly backgroundAlpha: number
     readonly strokeColor: string
     readonly strokeAlpha: number
+    readonly shadowColor: string
+    readonly shadowAlpha: number
     readonly paddingX?: number
     readonly paddingY?: number
   }
@@ -33,6 +36,8 @@ export function captionAppearance(clip: WireTextClip): CaptionAppearance {
     textColor: rgbHex(style.color), textAlpha: style.color.alpha,
     backgroundColor: rgbHex(style.background), backgroundAlpha: style.background.alpha,
     strokeColor: rgbHex(style.stroke), strokeAlpha: style.stroke.alpha, strokeWidth: style.strokeWidth,
+    shadowColor: rgbHex(style.shadow), shadowAlpha: style.shadow.alpha,
+    shadowX: style.shadowX, shadowY: style.shadowY, concatShadow: style.concatShadow,
     paddingX: style.backgroundPadding?.[0], paddingY: style.backgroundPadding?.[1],
   }
 }
@@ -45,6 +50,8 @@ export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionApp
     left.textColor === right.textColor && left.textAlpha === right.textAlpha &&
     left.backgroundColor === right.backgroundColor && left.strokeColor === right.strokeColor &&
     left.strokeAlpha === right.strokeAlpha && left.strokeWidth === right.strokeWidth &&
+    left.shadowColor === right.shadowColor && left.shadowAlpha === right.shadowAlpha &&
+    left.shadowX === right.shadowX && left.shadowY === right.shadowY && left.concatShadow === right.concatShadow &&
     left.backgroundRadius === right.backgroundRadius && left.backgroundAlpha === right.backgroundAlpha &&
     left.paddingX === right.paddingX && left.paddingY === right.paddingY
 }
@@ -70,10 +77,13 @@ export function setNativeCaptionText(
   if (appearance && current && !sameCaptionAppearance(current, appearance.value)) {
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
     const { textBoxWidth, textBoxHeight, textColor, textAlpha, backgroundColor, backgroundAlpha,
-      strokeColor, strokeAlpha, paddingX, paddingY, ...style } = appearance.value
+      strokeColor, strokeAlpha, shadowColor, shadowAlpha, paddingX, paddingY, ...style } = appearance.value
     if (!(style.fontSize >= 1 && style.fontSize <= 1000)) throw new Error('Размер шрифта должен быть от 1 до 1000 px')
     if (!style.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
     if (!(style.strokeWidth >= 0 && style.strokeWidth <= 100)) throw new Error('Толщина обводки должна быть от 0 до 100 px')
+    if (!(Math.hypot(Math.round(Math.abs(style.shadowX)), Math.round(Math.abs(style.shadowY))) <= 1000)) {
+      throw new Error('Смещение тени должно быть не больше 1000 px')
+    }
     const backgroundPadding = paddingX === undefined && paddingY === undefined
       ? undefined : [paddingX ?? 0, paddingY ?? 0] as const
     edited = { ...edited, textBoxWidth, textBoxHeight, style: {
@@ -81,6 +91,7 @@ export function setNativeCaptionText(
       color: editedColor(clip.style.color, textColor, textAlpha),
       background: editedColor(clip.style.background, backgroundColor, backgroundAlpha),
       stroke: editedColor(clip.style.stroke, strokeColor, strokeAlpha),
+      shadow: editedColor(clip.style.shadow, shadowColor, shadowAlpha),
     } }
   } else if (text === clip.text) {
     return project

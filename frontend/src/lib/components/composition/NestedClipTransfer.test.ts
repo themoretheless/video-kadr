@@ -53,6 +53,20 @@ it('saves subtitle text, typography and background together and restores them wi
       colors[index]!.value = value
       colors[index]!.dispatchEvent(new Event('input', { bubbles: true }))
     }
+    const shadow = [...editor.querySelectorAll('details')].find(section => section.querySelector('summary')?.textContent === 'Тень текста')!
+    shadow.open = true
+    const mode = shadow.querySelector('select')!
+    mode.value = 'custom'
+    mode.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    const shadowColor = shadow.querySelector<HTMLInputElement>('input[type="color"]')!
+    shadowColor.value = '#0000ff'
+    shadowColor.dispatchEvent(new Event('input', { bubbles: true }))
+    const shadowFields = shadow.querySelectorAll<HTMLInputElement>('input[type="number"]')
+    for (const [index, value] of ['0.4', '-3', '4'].entries()) {
+      shadowFields[index]!.value = value
+      shadowFields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
+    }
     const textarea = editor.querySelector('textarea')!
     textarea.value = 'Edited'
     textarea.dispatchEvent(new Event('input', { bubbles: true }))
@@ -70,6 +84,27 @@ it('saves subtitle text, typography and background together and restores them wi
         background: { red: 0, green: 0, blue: 1, alpha: 0.6 }, backgroundRadius: 4, backgroundPadding: [8, 6],
         stroke: { red: 0, green: 1, blue: 0, alpha: 0.8 }, strokeWidth: 2 },
     })
+    expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
+      style: { shadow: { red: 0, green: 0, blue: 1, alpha: 0.4 }, shadowX: -3, shadowY: 4 },
+    })
+    mode.value = 'concat'
+    mode.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    save.click()
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(2))
+    expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
+      style: { concatShadow: true, shadow: { alpha: 0.4 } },
+    })
+    mode.value = 'off'
+    mode.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    save.click()
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(3))
+    expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
+      style: { concatShadow: undefined, shadow: { alpha: 0 } },
+    })
+    undoNestedComposition()
+    undoNestedComposition()
     undoNestedComposition()
     expect(JSON.stringify(nestedComposition.document)).toBe(before)
   } finally {

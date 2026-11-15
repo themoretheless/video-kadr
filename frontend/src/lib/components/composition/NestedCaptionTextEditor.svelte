@@ -10,6 +10,7 @@
     fontFamily: 'Noto Sans', fontSize: 24,
     textColor: '#ffffff', textAlpha: 1, backgroundColor: '#000000', backgroundAlpha: 0,
     strokeColor: '#000000', strokeAlpha: 0, strokeWidth: 0,
+    shadowColor: '#000000', shadowAlpha: 0, shadowX: 0, shadowY: 0,
   }
   let appearance=$state<{ -readonly [Field in keyof CaptionAppearance]: CaptionAppearance[Field] }>({...defaultAppearance})
   let baseAppearance=$state<CaptionAppearance>({...defaultAppearance})
@@ -19,6 +20,12 @@
   ])])
   const changed=$derived(draft!==base || !sameCaptionAppearance(appearance, baseAppearance))
   const conflict=$derived(base!==clip.text || !sameCaptionAppearance(baseAppearance, captionAppearance(clip)))
+  const shadowMode=$derived(appearance.concatShadow ? 'concat' : appearance.shadowAlpha === 0 ? 'off' : 'custom')
+  function changeShadowMode(mode: string) {
+    appearance.concatShadow=mode==='concat' || undefined
+    if(mode==='off')appearance.shadowAlpha=0
+    else if(mode==='custom' && appearance.shadowAlpha===0)appearance.shadowAlpha=0.6
+  }
   $effect(()=>{
     const nextScope=`${nestedComposition.projectId}/${nestedAgentGeneration()}/${compositionId}/${clip.id}`,text=clip.text
     const style=captionAppearance(clip)
@@ -78,6 +85,22 @@
       <label>Скругление фона, px<input type="number" min="0" max="1000" step="any" placeholder="0" bind:value={appearance.backgroundRadius} disabled={disabled||nestedHistory.busy} /></label>
       <label>Отступ фона по горизонтали, px<input type="number" min="0" max="100000" step="any" placeholder="0" bind:value={appearance.paddingX} disabled={disabled||nestedHistory.busy} /></label>
       <label>Отступ фона по вертикали, px<input type="number" min="0" max="100000" step="any" placeholder="0" bind:value={appearance.paddingY} disabled={disabled||nestedHistory.busy} /></label>
+    </details>
+    <details>
+      <summary>Тень текста</summary>
+      <label>Режим тени
+        <select value={shadowMode} onchange={event=>changeShadowMode(event.currentTarget.value)} disabled={disabled||nestedHistory.busy}>
+          <option value="off">Без тени</option>
+          <option value="concat">Стиль Concat</option>
+          <option value="custom">Своя тень</option>
+        </select>
+      </label>
+      {#if shadowMode==='custom'}
+        <label>Цвет тени<input type="color" bind:value={appearance.shadowColor} disabled={disabled||nestedHistory.busy} /></label>
+        <label>Непрозрачность тени<input type="number" min="0" max="1" step="any" bind:value={appearance.shadowAlpha} disabled={disabled||nestedHistory.busy} /></label>
+        <label>Смещение тени по горизонтали, px<input type="number" step="1" bind:value={appearance.shadowX} disabled={disabled||nestedHistory.busy} /></label>
+        <label>Смещение тени по вертикали, px<input type="number" step="1" bind:value={appearance.shadowY} disabled={disabled||nestedHistory.busy} /></label>
+      {/if}
     </details>
     <details>
       <summary>Цвет текста и обводка</summary>
