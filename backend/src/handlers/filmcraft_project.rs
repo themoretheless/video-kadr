@@ -54,7 +54,7 @@ fn manifest(document:&SourceProjectDocument)->AppResult<Value> {
         let file=item.pointer("/kind/Media/media/File/path")?.as_str()?;
         Some(json!({"id":id,"name":item["name"],"path":file,"offline":item.pointer("/kind/Media/offline").and_then(Value::as_bool).unwrap_or(false)}))
     }).collect();
-    Ok(json!({"documentText":String::from_utf8(document.encode_preserved().map_err(|e|AppError::bad_request(e.to_string()))?).map_err(|e|AppError::bad_request(e.to_string()))?,"document":document.envelope,"originalSchema":document.original_schema,"sequences":sequences,"media":media,"projectItems":project_items,"labelPalette":crate::domain::filmcraft_labels::palette(),"projectBins":crate::domain::filmcraft_bin_rename::list(document).map_err(|e|AppError::bad_request(e.to_string()))?}))
+    Ok(json!({"documentText":String::from_utf8(document.encode_preserved().map_err(|e|AppError::bad_request(e.to_string()))?).map_err(|e|AppError::bad_request(e.to_string()))?,"document":document.envelope,"originalSchema":document.original_schema,"sequences":sequences,"media":media,"projectItems":project_items,"labelPalette":crate::domain::filmcraft_labels::palette(),"searchBins":crate::domain::filmcraft_search_bins::list(document),"projectBins":crate::domain::filmcraft_bin_rename::list(document).map_err(|e|AppError::bad_request(e.to_string()))?}))
 }
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]

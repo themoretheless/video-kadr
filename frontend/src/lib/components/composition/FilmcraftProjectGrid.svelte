@@ -3,7 +3,7 @@
   import { on } from 'svelte/events'
   import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftIconSortKeys, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
-  import { findFilmcraftProjectItems, type FilmcraftFindOperator, type FilmcraftFindQuery, type FilmcraftFindResult, type FilmcraftFindRow } from '$lib/api'
+  import { editFilmcraftSearchBin, findFilmcraftProjectItems, getFilmcraftSearchBin, type FilmcraftFindOperator, type FilmcraftFindQuery, type FilmcraftFindResult, type FilmcraftFindRow, type FilmcraftSearchBinContents } from '$lib/api'
 
   let { project, sources, token, sequenceId, clipId, onedit, onopen, previewArea = $bindable(true), thumbnailEffects = $bindable(true), selected = $bindable<string[]>([]), disabled = false }: {
     project: FilmcraftImportResult; sources: Record<string, string>; token: string | null; sequenceId: string; clipId: string
@@ -45,6 +45,39 @@
   let lastFind = $state<{ document: string; input: FilmcraftFindQuery; result: FilmcraftFindResult }>()
   let findRequest: AbortController | undefined
   const activeFind = $derived(lastFind?.document === project.documentText ? lastFind : undefined)
+  let searchBinId = $state('')
+  let searchBinName = $state('')
+  let searchBinContents = $state<FilmcraftSearchBinContents>()
+  let loadedSearchBin = ''
+  let loadingSearchBin = $state(false)
+  const activeSearchBin = $derived(project.searchBins?.find(candidate => candidate.id === searchBinId))
+
+  $effect(() => {
+    const owner = token
+    const bin = activeSearchBin?.id
+    const document = project.documentText
+    searchBinContents = undefined
+    loadingSearchBin = false
+    if (!open || !owner || !bin) return
+    const request = new AbortController()
+    loadingSearchBin = true
+    void getFilmcraftSearchBin(owner, document, bin, request.signal).then(result => {
+      if (request.signal.aborted) return
+      searchBinContents = result
+      if (loadedSearchBin !== bin) {
+        loadedSearchBin = bin
+        searchBinName = result.name
+        findRows = result.query.rows.length ? result.query.rows : [{ column: 'All', operator: 'contains', text: '' }]
+        matchAll = result.query.matchAll
+        caseSensitive = result.query.caseSensitive
+      }
+    }).catch(error => {
+      if (!request.signal.aborted) findError = error instanceof Error ? error.message : String(error)
+    }).finally(() => {
+      if (!request.signal.aborted) loadingSearchBin = false
+    })
+    return () => request.abort()
+  })
   const sortOptions = [
     ['user', 'Порядок в проекте'], ['name', 'Имя'], ['label', 'Метка'], ['mediaType', 'Тип медиа'],
     ['frameRate', 'Частота кадров'], ['mediaStart', 'Начало медиа'], ['mediaEnd', 'Конец медиа'],
@@ -303,11 +336,13 @@
         if (search) for (const child of children.get(folder.id) ?? []) queue.push(child)
       }
     }
-    const folders = search || activeFind || !activeBin ? [] : children.get(activeBin.id) ?? []
+    const folders = search || activeFind || activeSearchBin || !activeBin ? [] : children.get(activeBin.id) ?? []
     const available = activeBin && (search || activeBin.itemIds !== undefined)
       ? [...memberIds].flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
       : items
-    const matches = activeFind
+    const matches = activeSearchBin
+      ? (searchBinContents?.items ?? []).flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
+      : activeFind
       ? activeFind.result.items.flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
       : available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
     const column = listView ? (listSort && availableColumns.has(listSort) ? listSort : undefined) : sortColumn
@@ -517,7 +552,43 @@
     findRequest?.abort()
     lastFind = undefined
     findError = ''
+    searchBinId = ''
+    loadedSearchBin = ''
     page = 0
+  }
+
+  function openSearchBin(id: string) {
+    clearFind()
+    query = ''
+    searchBinId = id
+  }
+
+  function captureFindQuery(): FilmcraftFindQuery {
+    return { rows: findRows.map(row => ({ ...row })), matchAll, caseSensitive }
+  }
+
+  async function saveSearchBin(command: 'file.newSearchBin' | 'project.editSearchBin' | 'project.deleteSearchBin') {
+    const owner = token
+    const document = project.documentText
+    const bin = activeSearchBin?.id
+    if (!owner || finding || disabled || (command !== 'file.newSearchBin' && !bin)) return
+    const request = new AbortController()
+    const expected = { document, sequenceId, clipId, token: owner }
+    findRequest = request
+    finding = true
+    findError = ''
+    try {
+      const result = await editFilmcraftSearchBin(owner, command, {
+        document, bin, ...(command === 'project.deleteSearchBin' ? {} : { name: searchBinName, query: captureFindQuery() }),
+      }, request.signal)
+      if (request.signal.aborted || !onedit(result.project, expected)) return
+      if (command === 'project.deleteSearchBin') clearFind()
+      else openSearchBin(result.bin)
+    } catch (error) {
+      if (!request.signal.aborted && project.documentText === document) findError = error instanceof Error ? error.message : String(error)
+    } finally {
+      if (findRequest === request) { findRequest = undefined; finding = false }
+    }
   }
 
   async function runFind(next: boolean) {
@@ -527,7 +598,7 @@
     if (!owner || finding || (next && !previous)) return
     const input = next && previous
       ? previous.input
-      : { rows: findRows.map(row => ({ ...row })), matchAll, caseSensitive }
+      : captureFindQuery()
     const request = new AbortController()
     findRequest = request
     finding = true
@@ -537,6 +608,7 @@
         ...input, document, ...(next && previous ? { index: previous.result.index } : {}),
       }, request.signal)
       if (request.signal.aborted || project.documentText !== document || token !== owner) return
+      searchBinId = ''
       lastFind = { document, input, result }
       hover = undefined
       selected = result.item ? [result.item] : []
@@ -785,8 +857,22 @@
           <button type="button" disabled={!token || finding || !activeFind?.result.matches} onclick={() => runFind(true)}>Следующее совпадение</button>
           {#if activeFind}<button type="button" onclick={clearFind}>Очистить результаты</button>{/if}
         </div>
+        <div class="toolbar">
+          <label>Папка поиска
+            <select aria-label="Папка поиска" value={activeSearchBin?.id ?? ''} disabled={finding} onchange={event => openSearchBin(event.currentTarget.value)}>
+              <option value="">Выберите папку</option>
+              {#each project.searchBins ?? [] as folder (folder.id)}<option value={folder.id}>{folder.name}</option>{/each}
+            </select>
+          </label>
+          <label>Имя папки поиска <input bind:value={searchBinName} /></label>
+          <button type="button" disabled={!token || disabled || finding || !findRows.some(row => row.text)} onclick={() => saveSearchBin('file.newSearchBin')}>Создать папку поиска</button>
+          <button type="button" disabled={!token || disabled || finding || loadingSearchBin || !activeSearchBin} onclick={() => saveSearchBin('project.editSearchBin')}>Обновить папку поиска</button>
+          <button type="button" disabled={!token || disabled || finding || !activeSearchBin} onclick={() => saveSearchBin('project.deleteSearchBin')}>Удалить папку поиска</button>
+        </div>
       </form>
       {#if activeFind}<p role="status">Совпадений: {activeFind.result.matches}</p>{/if}
+      {#if loadingSearchBin}<p role="status">Загрузка папки поиска…</p>{/if}
+      {#if searchBinContents}<p role="status">Совпадений в папке: {searchBinContents.items.length}</p>{/if}
       {#if findError}<p role="alert">{findError}</p>{/if}
     </details>
     <details>

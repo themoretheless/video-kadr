@@ -393,6 +393,10 @@ fn catalog(params: Value) -> AppResult<Value> {
         ("project.moveToBin","Move to Bin","{document:object|string,items?:[id],bin?:id|null,context?:{projectSelection?:[id]}}; missing bin targets root"),
         ("project.renameBin","Rename Bin","{document:object|string,bin:id,name:str}; trims name, refuses empty names and root bin; explicit snapshot adoption"),
         ("project.matteColor","Color Matte Color","{document:object|string,item?:id,color:str,context?:{projectSelection:[id]}}"),
+        ("file.newSearchBin","New Search Bin","{document:object|string,name?:str,query:object}"),
+        ("project.searchBinItems","Search Bin Contents","{document:object|string,bin:id}"),
+        ("project.editSearchBin","Edit Search Bin","{document:object|string,bin:id,name?:str,query?:object}"),
+        ("project.deleteSearchBin","Delete Search Bin","{document:object|string,bin:id}"),
         ("edit.find","Find Project Items","{document:object|string,rows?:[object],column?:str,operator?:str,text?:str,matchAll?:bool,caseSensitive?:bool}"),
         ("edit.findNext","Find Next Project Item","{document:object|string,rows?:[object],index:number,matchAll?:bool,caseSensitive?:bool}"),
         ("metadata.get","Get Item Metadata","{document:object|string,item?:id,clip?:id,context?:object}"),
@@ -602,6 +606,10 @@ async fn dispatch(
     }
     if request.command == "project.renameBin" {
         let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_bin_rename::rename(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if crate::domain::filmcraft_search_bins::COMMANDS.contains(&request.command.as_str()) {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_search_bins::run(&request.command, params)).await.map_err(bad)?;
         return Ok(Json(value));
     }
     if matches!(request.command.as_str(), "edit.find" | "edit.findNext") {

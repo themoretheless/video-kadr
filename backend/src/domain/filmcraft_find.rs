@@ -6,7 +6,7 @@ use super::{
     filmcraft_project_sort::{item_media, item_rate, keys, timecode},
 };
 use anyhow::{bail, ensure, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -34,11 +34,11 @@ fn yes() -> bool {
     true
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Row {
     #[serde(default = "all")]
     column: String,
-    #[serde(default, alias = "op")]
+    #[serde(default, rename = "op", alias = "operator")]
     operator: Option<String>,
     #[serde(default)]
     text: String,
@@ -58,6 +58,38 @@ struct Request {
     #[serde(default)]
     index: usize,
     scope: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(super) struct Query {
+    rows: Vec<Row>,
+    #[serde(default = "yes", alias = "matchAll")]
+    match_all: bool,
+    #[serde(default, alias = "caseSensitive")]
+    case_sensitive: bool,
+}
+
+impl Query {
+    pub(super) fn first_text(&self) -> Option<&str> {
+        self.rows
+            .iter()
+            .map(|row| row.text.as_str())
+            .find(|text| !text.is_empty())
+    }
+
+    pub(super) fn normalized(mut self) -> Result<Self> {
+        for row in &mut self.rows {
+            row.operator = Some(Operator::parse(row.operator.as_deref())?.name().into());
+        }
+        Ok(self)
+    }
+
+    pub(super) fn browser_view(&self) -> Value {
+        let rows: Vec<_> = self.rows.iter().map(|row| json!({
+            "column":row.column,"operator":row.operator.as_deref().unwrap_or("contains"),"text":row.text
+        })).collect();
+        json!({"rows":rows,"matchAll":self.match_all,"caseSensitive":self.case_sensitive})
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -86,6 +118,16 @@ impl Operator {
                 _ => bail!("unknown Filmcraft Find operator"),
             },
         )
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Contains => "contains",
+            Self::Matches => "matches",
+            Self::BeginsWith => "beginsWith",
+            Self::EndsWith => "endsWith",
+            Self::DoesNotContain => "doesNotContain",
+        }
     }
 
     fn matches(self, text: &str, query: &str) -> bool {
@@ -157,31 +199,49 @@ pub fn find(command: &str, params: Value) -> Result<Value> {
             .is_none_or(|scope| scope.eq_ignore_ascii_case("project")),
         "Find requires project scope"
     );
-    let rows = request.rows.unwrap_or_else(|| vec![request.row]);
-    let active = rows
-        .into_iter()
-        .map(|row| {
-            let op = Operator::parse(row.operator.as_deref())?;
-            Ok((row, op))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let active: Vec<_> = active
-        .into_iter()
-        .filter(|(row, _)| !row.text.is_empty())
-        .map(|(mut row, op)| {
-            if !request.case_sensitive {
-                row.text = row.text.to_lowercase();
-            }
-            (row, op)
-        })
-        .collect();
-    ensure!(!active.is_empty(), "enter text to find");
+    let query = Query {
+        rows: request.rows.unwrap_or_else(|| vec![request.row]),
+        match_all: request.match_all,
+        case_sensitive: request.case_sensitive,
+    };
+    ensure!(query.first_text().is_some(), "enter text to find");
     let bytes = match request.document {
         Value::String(text) => text.into_bytes(),
         value => serde_json::to_vec(&value)?,
     };
     let document = SourceProjectDocument::read(&bytes)?;
-    let index = ProjectIndex::new(&document)?;
+    let hits = matching_ids(&document, &query)?;
+    let next = if command == "edit.findNext" {
+        request.index.saturating_add(1)
+    } else {
+        0
+    };
+    let selected = next % hits.len().max(1);
+    Ok(json!({"item":hits.get(selected),"index":selected,"matches":hits.len(),"items":hits}))
+}
+
+pub(super) fn matching_ids(document: &SourceProjectDocument, query: &Query) -> Result<Vec<String>> {
+    let rows = query
+        .rows
+        .iter()
+        .map(|row| {
+            let operator = Operator::parse(row.operator.as_deref())?;
+            let text = if query.case_sensitive {
+                row.text.clone()
+            } else {
+                row.text.to_lowercase()
+            };
+            Ok((row, operator, text))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let active: Vec<_> = rows
+        .into_iter()
+        .filter(|(_, _, text)| !text.is_empty())
+        .collect();
+    if active.is_empty() {
+        return Ok(vec![]);
+    }
+    let index = ProjectIndex::new(document)?;
     let mut seen = BTreeSet::new();
     let mut order = Vec::new();
     let mut pending = vec![&document.project()["root"]];
@@ -217,12 +277,12 @@ pub fn find(command: &str, params: Value) -> Result<Value> {
             } else {
                 item_rate(&index, *id, item)
             };
-            let mut matches = active.iter().map(|(row, operator)| {
+            let mut matches = active.iter().map(|(row, operator, needle)| {
                 let test = |text: &str| {
-                    if request.case_sensitive {
-                        operator.matches(text, &row.text)
+                    if query.case_sensitive {
+                        operator.matches(text, needle)
                     } else {
-                        operator.matches(&text.to_lowercase(), &row.text)
+                        operator.matches(&text.to_lowercase(), needle)
                     }
                 };
                 if row.column.is_empty() || row.column.eq_ignore_ascii_case("All") {
@@ -243,7 +303,7 @@ pub fn find(command: &str, params: Value) -> Result<Value> {
                 }
                 test(&column_text(item, &cells, media, rate, &row.column))
             });
-            if request.match_all {
+            if query.match_all {
                 matches.all(|hit| hit)
             } else {
                 matches.any(|hit| hit)
@@ -251,11 +311,5 @@ pub fn find(command: &str, params: Value) -> Result<Value> {
         })
         .map(|id| id.to_string())
         .collect();
-    let next = if command == "edit.findNext" {
-        request.index.saturating_add(1)
-    } else {
-        0
-    };
-    let selected = next % hits.len().max(1);
-    Ok(json!({"item":hits.get(selected),"index":selected,"matches":hits.len(),"items":hits}))
+    Ok(hits)
 }
