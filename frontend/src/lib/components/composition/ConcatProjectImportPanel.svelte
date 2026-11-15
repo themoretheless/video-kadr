@@ -20,8 +20,8 @@
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
- type TemplateDetails = Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount' | 'poster'>
- let templateFolders = $state<(TemplateDetails & { name: string; files: readonly File[] })[]>([])
+ type TemplateDetails = Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount' | 'poster' | 'subtitleDocuments'>
+ let templateFolders = $state<(Omit<TemplateDetails, 'subtitleDocuments'> & { name: string; files: readonly File[] })[]>([])
  let selectedFolder = $state<number>()
  let templateProjectName = $state('')
  let templateDetails = $state<TemplateDetails>()
@@ -118,7 +118,7 @@
    document=folder.document;media=folder.media;fonts=folder.fonts
    importingTemplate=true
    templateProjectName=importedName(folder.document)
-   templateDetails={format:folder.format,slotCount:folder.slotCount,poster:folder.poster}
+   templateDetails={format:folder.format,slotCount:folder.slotCount,poster:folder.poster,subtitleDocuments:folder.subtitleDocuments}
    uploadedSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
     await loadFont(font.path,font.file,false)
@@ -246,7 +246,18 @@
    error = 'Текущий проект изменился; повторите проверку импорта'
    return
   }
-  const candidate = cover ? { ...project, coverJpeg: cover } : project
+  let candidate = cover ? { ...project, coverJpeg: cover } : project
+  const subtitleDocuments = templateDetails?.subtitleDocuments
+  if (subtitleDocuments?.length) {
+   const root = candidate.compositions[candidate.root]
+   if (!root) {
+    busy = false
+    error = 'Корневая композиция шаблона отсутствует'
+    return
+   }
+   const content = { ...root.content, metadata: { ...root.content.metadata, subtitleDocuments: [...subtitleDocuments] } }
+   candidate = { ...candidate, compositions: { ...candidate.compositions, [candidate.root]: { ...root, content } } }
+  }
   const accepted = await adoptImportedConcatProject(candidate, chosenName || importedName(document), () => {
    if (serial !== request || identity() !== expectedContext) throw new Error('Контекст импорта изменился')
   })

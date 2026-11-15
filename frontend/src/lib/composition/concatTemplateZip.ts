@@ -1,7 +1,8 @@
+import { CONCAT_SUBTITLE_SIDECAR, MAX_SUBTITLE_SIDECAR_BYTES } from '../subtitles/documents'
 import type { FileEntry } from '@zip.js/zip.js'
 
 const MiB = 1024 * 1024
-const MAX_CONTENT = 2 * 1024 * MiB + 20 * MiB
+const MAX_CONTENT = 2 * 1024 * MiB + 20 * MiB + MAX_SUBTITLE_SIDECAR_BYTES
 
 /** Extract a single Concat bundle without writing paths to the local filesystem. */
 export async function readConcatTemplateZip(archive: File, signal: AbortSignal): Promise<File[]> {
@@ -35,9 +36,9 @@ export async function readConcatTemplateZip(archive: File, signal: AbortSignal):
     for (const [fullPath, entry] of entries) {
       if (!fullPath.startsWith(root)) continue
       const path = fullPath.slice(root.length)
-      if (path !== 'template.json' && path !== 'poster.jpg' && !path.startsWith('assets/')) continue
+      if (path !== 'template.json' && path !== 'poster.jpg' && path !== CONCAT_SUBTITLE_SIDECAR && !path.startsWith('assets/')) continue
       if (entry.encrypted) throw new Error('Зашифрованный ресурс шаблона')
-      const limit = path === 'template.json' ? 4 * MiB : path === 'poster.jpg' ? 8 * MiB : MAX_CONTENT
+      const limit = path === 'template.json' ? 4 * MiB : path === 'poster.jpg' ? 8 * MiB : path === CONCAT_SUBTITLE_SIDECAR ? MAX_SUBTITLE_SIDECAR_BYTES : MAX_CONTENT
       const size = entry.uncompressedSize
       total += size
       if (!Number.isSafeInteger(size) || size < 0 || size > limit || total > MAX_CONTENT) {

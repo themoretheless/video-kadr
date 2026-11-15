@@ -19,13 +19,16 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   })))
   await writer.add('Design/assets/design.png', new TextReader('bundled'))
   await writer.add('Design/poster.jpg', new TextReader('poster'))
+  const subtitles = [{ id: 'cue', name: 'cue.srt', text: '1\n00:00:00,000 --> 00:00:01,000\nТекст' }]
+  await writer.add('Design/video-kadr-subtitles.json', new TextReader(JSON.stringify(subtitles)))
   await writer.add('assets/design.png', new TextReader('unrelated'))
   const zip = new File([new Uint8Array(await writer.close())], 'Design.zip')
   const selected = await readConcatTemplateZip(zip, new AbortController().signal)
   const folder = await readConcatTemplateFolder(selected)
   expect(await folder.design[0]?.file.text()).toBe('bundled')
   expect(await folder.poster?.text()).toBe('poster')
-  expect(selected).toHaveLength(3)
+  expect(folder.subtitleDocuments).toEqual(subtitles)
+  expect(selected).toHaveLength(4)
 })
 
 it('rejects a ZIP with two candidate template directories', async () => {

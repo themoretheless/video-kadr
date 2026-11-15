@@ -74,7 +74,6 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     assert_eq!(reopened.document.pointer("/compositions/root/content/metadata/subtitleDocuments"), Some(&subtitle_documents));
     let app = support::router(state.clone());
     let mut portable = document.clone();
-    portable["compositions"]["root"]["content"]["metadata"] = json!({});
     portable["compositions"]["root"]["content"]["tracks"] = json!([]);
     use base64::{engine::general_purpose::STANDARD, Engine};
     let mut cover = std::io::Cursor::new(Vec::new());
@@ -102,7 +101,9 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     {
         use std::io::Read;
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
-        assert_eq!(zip.len(), 3);
+        assert_eq!(zip.len(), 4);
+        let packaged_subtitles: serde_json::Value = serde_json::from_reader(zip.by_name("video-kadr-subtitles.json").unwrap()).unwrap();
+        assert_eq!(packaged_subtitles, subtitle_documents);
         let manifest: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
         assert_eq!(manifest["name"], "Portable Concat");
         assert_eq!(manifest["video"], manifest["timelines"][0]["video"]);

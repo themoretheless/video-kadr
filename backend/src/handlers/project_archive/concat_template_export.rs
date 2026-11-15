@@ -160,6 +160,19 @@ pub async fn export(
         let fonts = std::mem::take(&mut native.fonts);
         concat_project_fonts::bank(&fonts)
             .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
+        let subtitles = native.compositions.get_mut(&native.root)
+            .and_then(|root| root.content.metadata.as_mut())
+            .map(|metadata| std::mem::take(&mut metadata.subtitle_documents))
+            .unwrap_or_default();
+        if !crate::domain::metadata_burnin::validate_subtitle_documents(&subtitles) {
+            return Err(AppError::bad_request("Некорректный пул субтитров"));
+        }
+        let subtitle_sidecar = if subtitles.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_vec(&subtitles)
+                .map_err(|error| AppError::internal("encode template subtitle documents", error))?)
+        };
         let mut document = export_with_paths(&native, &paths)
             .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
         document["name"] = Value::String(title);
@@ -195,6 +208,10 @@ pub async fn export(
                 .compression_method(zip::CompressionMethod::Stored);
             zip.start_file("template.json", options)?;
             zip.write_all(&manifest)?;
+            if let Some(bytes) = subtitle_sidecar {
+                zip.start_file("video-kadr-subtitles.json", options)?;
+                zip.write_all(&bytes)?;
+            }
             if let Some(bytes) = poster {
                 zip.start_file("poster.jpg", options)?;
                 zip.write_all(&bytes)?;

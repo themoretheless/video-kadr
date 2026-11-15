@@ -1,5 +1,8 @@
 import { MAX_SRT_BYTES } from './srt'
 
+export const CONCAT_SUBTITLE_SIDECAR = 'video-kadr-subtitles.json'
+export const MAX_SUBTITLE_SIDECAR_BYTES = 6 * MAX_SRT_BYTES + 32 * 1024
+
 export interface SubtitleDocument {
   readonly id: string
   readonly name: string

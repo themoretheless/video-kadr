@@ -1,3 +1,4 @@
+import { CONCAT_SUBTITLE_SIDECAR, MAX_SUBTITLE_SIDECAR_BYTES, validSubtitleDocuments } from '../subtitles/documents'
 import { concatImportFonts, concatImportMedia } from './concatProjectImport'
 
 export function concatTemplateFolders(files: readonly File[]) {
@@ -73,10 +74,18 @@ export async function readConcatTemplateFolder(files: readonly File[]) {
   if (fonts.reduce((size, font) => size + font.file.size, 0) > 8 * 1024 * 1024) {
     throw new Error('Шрифты проекта превышают 8 МиБ')
   }
+  const subtitleFile = index.get(CONCAT_SUBTITLE_SIDECAR)
+  let subtitleDocuments
+  if (subtitleFile) {
+    if (subtitleFile.size > MAX_SUBTITLE_SIDECAR_BYTES) throw new Error('Пул субтитров шаблона слишком большой')
+    const decoded: unknown = JSON.parse(await subtitleFile.text())
+    if (!validSubtitleDocuments(decoded)) throw new Error('Некорректный пул субтитров шаблона')
+    subtitleDocuments = decoded
+  }
   const cover = index.get('poster.jpg')
   const poster = cover && cover.size > 0 && cover.size <= 8 * 1024 * 1024 ? cover : undefined
   return {
-    document, media, design, fonts, poster,
+    document, media, design, fonts, poster, subtitleDocuments,
     format: outputFormat(document),
     slotCount: media.filter(item => item.placeholder).length,
   }

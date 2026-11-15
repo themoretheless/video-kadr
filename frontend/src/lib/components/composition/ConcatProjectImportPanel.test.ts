@@ -204,13 +204,15 @@ it('uploads the selected template design and binds its bundled font before conve
    fonts: [{ family: 'Title', path: 'assets/title.otf' }],
   }
   const cover = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAEsAAQEAAAAAAAAAAAAAAAAAAAAHAQEAAAAAAAAAAAAAAAAAAAAFEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAEAAQAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AlYBIa//Z'
+  const subtitles = [{ id: 'quotes', name: 'quotes.srt', text: '1\n00:00:00,000 --> 00:00:01,000\nDialogue' }]
   const files = [
    new File([JSON.stringify(template)], 'template.json'),
+   new File([JSON.stringify(subtitles)], 'video-kadr-subtitles.json'),
    new File(['movie'], 'design.mov'),
    new File(['font'], 'title.otf'),
    new File([Uint8Array.from(atob(cover), byte => byte.charCodeAt(0))], 'poster.jpg'),
   ]
-  for (const [index, path] of ['template.json', 'assets/design.mov', 'assets/title.otf', 'poster.jpg'].entries()) {
+  for (const [index, path] of ['template.json', 'video-kadr-subtitles.json', 'assets/design.mov', 'assets/title.otf', 'poster.jpg'].entries()) {
    Object.defineProperty(files[index]!, 'webkitRelativePath', { value: `Design/${path}` })
   }
   const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
@@ -224,7 +226,7 @@ it('uploads the selected template design and binds its bundled font before conve
   expect(document.querySelector('img[alt="Обложка шаблона Concat"]')?.getAttribute('src')).toBe('blob:concat-poster')
   expect(document.body.textContent).toContain('1920 × 1080 · 29,97 кадр/с')
   expect(document.body.textContent).toContain('Слоты: 0')
-  expect(upload).toHaveBeenCalledExactlyOnceWith(files[1], false)
+  expect(upload).toHaveBeenCalledExactlyOnceWith(files[2], false)
   click('Проверить импорт Concat')
   await vi.waitFor(() => expect(importConcatProject).toHaveBeenCalledWith(
    template, { m1: expect.objectContaining({ id: 'bundled' }) }, expect.any(AbortSignal),
@@ -238,10 +240,12 @@ it('uploads the selected template design and binds its bundled font before conve
   click('Открыть импорт как новый проект')
   await vi.waitFor(() => expect(nestedComposition.name).toBe('Client cut'))
   expect(nestedComposition.document?.coverJpeg).toBe(cover)
+  expect(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments).toEqual(subtitles)
   undoNestedComposition()
   expect(nestedComposition.document).toBeNull()
   redoNestedComposition()
   expect(nestedComposition.document?.coverJpeg).toBe(cover)
+  expect(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments).toEqual(subtitles)
   expect(nestedComposition.projectId).toBeNull()
   expect(importConcatProject).toHaveBeenCalledTimes(1)
   await unmount(component!)
