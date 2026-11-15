@@ -616,6 +616,11 @@ pub fn build_router_with_mcp(
                 .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
         .route(
+            "/compositions/filmcraft/quick-export/estimate",
+            post(handlers::filmcraft_quick_export::estimate)
+                .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .route(
             "/compositions/filmcraft/command",
             post(handlers::filmcraft_commands::execute)
                 .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),

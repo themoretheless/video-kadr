@@ -1,7 +1,7 @@
 <script lang="ts">
   import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
   import { captionExtensions, captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
-  import { listFilmcraftExportPresets, type FilmcraftLibraryPreset } from '$lib/api'
+  import { estimateFilmcraftQuickExport, listFilmcraftExportPresets, type FilmcraftQuickExportRequest, type FilmcraftLibraryPreset } from '$lib/api'
   import FilmcraftExportQueue from './FilmcraftExportQueue.svelte'
   import FilmcraftExportPresetLibrary from './FilmcraftExportPresetLibrary.svelte'
   import { startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, type FilmcraftVideoRequest, type FilmcraftVideoHistoryEntry, type FilmcraftExportPreset, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftTextOverlay, type FilmcraftOverlayPlacement, type FilmcraftImageOverlay, type FilmcraftBitrateSettings } from '$lib/api'
@@ -228,20 +228,41 @@
       }
     }
   }
+  let quickEstimate = $state<{ presetName: string; estimatedBytes: number }>()
+  $effect(() => {
+    quickEstimate = undefined
+    if (!token || !quickOptionsOpen || disabled || !quickRangeValid) return
+    const owner = token
+    void quickPresetName
+    const input = quickInput()
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      void estimateFilmcraftQuickExport(owner, input, controller.signal).then(result => {
+        if (!controller.signal.aborted) quickEstimate = result
+      }).catch(() => {})
+    }, 150)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  })
+  function quickInput(): FilmcraftQuickExportRequest {
+    const chosenPreset = quickSelection || libraryPreset
+    return {
+      document, sequenceId, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)),
+      ...(chosenPreset ? { preset: chosenPreset } : {}),
+      ...(quickCaptionOverride ? { settings: { burnCaptions, captionSidecar: captionFormat || null } } : {}),
+      ...(quickRange !== 'inOut' ? { range: quickRange } : {}),
+      ...(quickRange === 'custom' ? { sourceRange: customRange } : {}),
+    }
+  }
   async function quickExport() {
     const session = active
     if (!session?.token || !current(session) || submitting || retrying || disabled || !quickRangeValid) return
     const version = ++session.submit
     submitting = true; submitError = ''
     try {
-      const chosenPreset = quickSelection || libraryPreset
-      const accepted = await startFilmcraftQuickExportJob(session.token, {
-        document, sequenceId, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)),
-        ...(chosenPreset ? { preset: chosenPreset } : {}),
-        ...(quickCaptionOverride ? { settings: { burnCaptions, captionSidecar: captionFormat || null } } : {}),
-        ...(quickRange !== 'inOut' ? { range: quickRange } : {}),
-        ...(quickRange === 'custom' ? { sourceRange: customRange } : {}),
-      }, session.controller.signal)
+      const accepted = await startFilmcraftQuickExportJob(session.token, quickInput(), session.controller.signal)
       if (!current(session) || session.submit !== version) return
       quickPresetName = accepted.presetName
       clearTimeout(session.timer); ++session.poll
@@ -341,6 +362,9 @@
     {#if quickPresetError}<span role="alert">{quickPresetError}</span>{/if}
     <label><input type="checkbox" checked={quickCaptionOverride} disabled={submitting || retrying || disabled}
       onchange={event => { quickCaptionOverride = event.currentTarget.checked }} />Применить настройки субтитров из этой панели</label>
+    {#if quickEstimate}
+      <output>Примерный размер ({quickEstimate.presetName}) {new Intl.NumberFormat('ru', { maximumFractionDigits: 2 }).format(quickEstimate.estimatedBytes / 1e6)} МБ</output>
+    {/if}
   </details>
   <label>Диапазон быстрого экспорта
     <select aria-label="Диапазон быстрого экспорта" value={quickRange} disabled={submitting || retrying || disabled}

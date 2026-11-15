@@ -599,3 +599,71 @@ async fn authenticated_http_library_preserves_source_settings_and_owner_boundari
             .await
     );
 }
+
+#[tokio::test]
+async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enqueuing() {
+    use axum::{
+        body::{to_bytes, Body},
+        http::{Request, StatusCode},
+    };
+    use serde_json::Value;
+    use tower::ServiceExt;
+
+    let (state, _directory) = support::make_state(false, false).await;
+    let owner = state
+        .db
+        .register_auth_user("estimate-owner", "test password")
+        .await
+        .unwrap()
+        .unwrap();
+    let app = support::router(state);
+    let call = |uri: &str, input: Value| {
+        let app = app.clone();
+        let request = Request::post(format!("/api/compositions/filmcraft/{uri}"))
+            .header("authorization", format!("Bearer {}", owner.token))
+            .header("content-type", "application/json")
+            .body(Body::from(input.to_string()))
+            .unwrap();
+        async move {
+            let response = app.oneshot(request).await.unwrap();
+            let status = response.status();
+            let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+            (status, serde_json::from_slice::<Value>(&bytes).unwrap())
+        }
+    };
+    let (status, saved) = call("export-presets", json!({
+        "action":"save","name":"Review estimate","settings":{
+            "format":"h264","bitrateKbps":5000,"includeAudio":false,"frameRate":{"num":24,"den":1}
+        }
+    })).await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/filmcraft-caption-sequence.json")).unwrap();
+    let mut input = json!({
+        "document":fixture["cases"][0]["document"],"sequenceId":"6","preset":"Review estimate",
+        "range":"custom","sourceRange":{"startTicks":"0","endTicks":"254016000000"}
+    });
+    let (status, estimate) = call("quick-export/estimate", input.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{estimate}");
+    assert_eq!(estimate, json!({"presetName":"Review estimate","estimatedBytes":625000}));
+    input["sourceRange"]["endTicks"] = json!("508032000000");
+    let (status, estimate) = call("quick-export/estimate", input.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{estimate}");
+    assert_eq!(estimate["estimatedBytes"], 1250000);
+    input["settings"] = json!({"format":"wav","audio":{"sample_rate":48000,"channels":2,"bits":24}});
+    let (status, estimate) = call("quick-export/estimate", input).await;
+    assert_eq!(status, StatusCode::OK, "{estimate}");
+    assert_eq!(estimate["estimatedBytes"], 576000);
+    let response = app
+        .oneshot(
+            Request::get("/api/compositions/filmcraft/video-jobs")
+                .header("authorization", format!("Bearer {}", owner.token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let history: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(history["jobs"], json!([]));
+}

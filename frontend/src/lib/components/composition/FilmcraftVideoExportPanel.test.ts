@@ -1,9 +1,9 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets } from '$lib/api'
+import { estimateFilmcraftQuickExport, listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets } from '$lib/api'
 import FilmcraftVideoExportPanel from './FilmcraftVideoExportPanel.svelte'
-vi.mock('$lib/api', () => ({ startFilmcraftQuickExportJob: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), listFilmcraftExportPresets: vi.fn(), editFilmcraftExportPresets: vi.fn() }))
+vi.mock('$lib/api', () => ({ estimateFilmcraftQuickExport: vi.fn(), startFilmcraftQuickExportJob: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), listFilmcraftExportPresets: vi.fn(), editFilmcraftExportPresets: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 const id = '12345678-1234-1234-1234-123456789abc'
 function button(text: string) { return [...document.querySelectorAll('button')].find(button => button.textContent === text)! }
@@ -1003,6 +1003,7 @@ it('offers favorites first and applies subtitle overrides only when requested', 
   const other = { ...common, name: 'Other', category: 'Archive' }
   vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [common, other, favorite], default: 'Common' })
   vi.mocked(startFilmcraftQuickExportJob).mockResolvedValue({ jobId: 'quick-job', mode: 'video_only', container: 'mp4', presetName: 'Favorite' })
+  vi.mocked(estimateFilmcraftQuickExport).mockResolvedValue({ presetName: 'Favorite', estimatedBytes: 2500000 })
   await open()
   const details = [...document.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Настройки быстрого экспорта')!
   details.open = true
@@ -1010,6 +1011,12 @@ it('offers favorites first and applies subtitle overrides only when requested', 
   const select = document.querySelector<HTMLSelectElement>('[aria-label="Пресет быстрого экспорта"]')!
   await vi.waitFor(() => expect([...select.options].map(option => option.value)).toEqual(['', 'Favorite', 'Common']))
   select.value = 'Favorite'; select.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  const range = document.querySelector<HTMLSelectElement>('[aria-label="Диапазон быстрого экспорта"]')!
+  range.value = 'entire'; range.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() => expect(estimateFilmcraftQuickExport).toHaveBeenLastCalledWith('owner',
+    expect.objectContaining({ preset: 'Favorite', range: 'entire' }), expect.any(AbortSignal)))
+  await vi.waitFor(() => expect(details.querySelector('output')?.textContent).toContain('2,5 МБ'))
+  expect(startFilmcraftQuickExportJob).not.toHaveBeenCalled()
   button('Быстрый экспорт').click()
   await vi.waitFor(() => expect(startFilmcraftQuickExportJob).toHaveBeenLastCalledWith('owner',
     expect.not.objectContaining({ settings: expect.anything() }), expect.any(AbortSignal)))

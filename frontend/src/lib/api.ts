@@ -1923,6 +1923,9 @@ export function startFilmcraftVideoJob(token: string, input: FilmcraftVideoReque
   return requestJson('/api/compositions/filmcraft/video-jobs', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
 }
 export type FilmcraftQuickExportRequest = { wait?: boolean; document: string; sequenceId: string; sources: Record<string, string>; preset?: string; settings?: Record<string, unknown>; range?: 'entire' | 'inOut' | 'workArea' | 'custom'; sourceRange?: { startTicks: string; endTicks: string } }
+export function estimateFilmcraftQuickExport(token: string, input: FilmcraftQuickExportRequest, signal?: AbortSignal): Promise<{ presetName: string; estimatedBytes: number }> {
+  return requestJson('/api/compositions/filmcraft/quick-export/estimate', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
 export type FilmcraftQuickExportJob = Awaited<ReturnType<typeof startFilmcraftVideoJob>> & { presetName: string; status?: Job['status']; result?: Job['result'] | null; error?: string | null }
 export function startFilmcraftQuickExportJob(token: string, input: FilmcraftQuickExportRequest, signal?: AbortSignal): Promise<FilmcraftQuickExportJob> {
   return requestJson('/api/compositions/filmcraft/quick-export', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })

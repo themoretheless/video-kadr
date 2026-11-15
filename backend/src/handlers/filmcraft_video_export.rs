@@ -759,6 +759,56 @@ impl VideoRequest {
             self.max_render_quality,
         )
     }
+    /// Filmcraft's nominal codec rates applied to the actual native export plan.
+    pub(super) fn estimate_bytes(&self) -> Result<u64> {
+        use filmcraft_prores::Profile;
+        use ExportPreset::*;
+
+        let (spec, start) = self.spec()?;
+        let fps = f64::from(spec.frame_rate.numerator) / f64::from(spec.frame_rate.denominator);
+        let pixels = (spec.width * spec.height) as f64;
+        let nominal_bytes = |mbps| mbps * 1e6 * pixels / (1920.0 * 1080.0) / 29.97 / 8.0;
+        let prores_bytes = |profile: Profile| nominal_bytes(profile.nominal_mbps_1080p30());
+        let video_bytes_per_frame = match self.preset {
+            preset if preset.h264() || matches!(preset, Hevc) => {
+                let bitrate = self.bitrate.unwrap_or_default().resolve(
+                    spec.width,
+                    spec.height,
+                    spec.frame_rate,
+                )?;
+                f64::from(bitrate.target_kbps) * 1000.0 / 8.0 / fps
+            }
+            ProresProxy => prores_bytes(Profile::Proxy),
+            ProresLt => prores_bytes(Profile::Lt),
+            ProresStandard => prores_bytes(Profile::Standard),
+            ProresHq | MxfProresHq => prores_bytes(Profile::Hq),
+            DnxhrLb => nominal_bytes(45.0),
+            DnxhrSq => nominal_bytes(145.0),
+            DnxhrHq | MxfDnxhrHq | MxfAtomDnxhrHq => nominal_bytes(220.0),
+            Apv42210 => pixels * 3.0 / 8.0,
+            Apv42212 => pixels * 3.6 / 8.0,
+            Mjpeg => pixels * (0.4 + f64::from(self.mjpeg_quality) / 50.0) / 8.0,
+            PngSequence => pixels * 4.0 * 0.45,
+            TiffSequence => pixels * 4.0,
+            BmpSequence => pixels * 3.0,
+            Gif => pixels * 0.6,
+            Wav16 | Wav24 | Aiff16 => 0.0,
+            _ => anyhow::bail!("no size estimate for this codec"),
+        };
+        let audio_bytes = if self.has_audio() {
+            let audio = self.resolved_audio()?;
+            let (_, samples) = self.audio_range(spec, start)?;
+            if self.audio_codec() == "aac" {
+                samples as f64 / f64::from(audio.sample_rate()) * f64::from(audio.aac_bps()) / 8.0
+            } else {
+                samples as f64 * f64::from(audio.channels()) * f64::from(self.audio_bits() / 8)
+            }
+        } else {
+            0.0
+        };
+        Ok((video_bytes_per_frame * spec.frames as f64 + audio_bytes).round() as u64)
+    }
+
     pub(super) fn spec(&self) -> Result<(RasterVideoSpec, i64)> {
         let exact_range = self
             .source_range

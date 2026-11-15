@@ -37,19 +37,40 @@ pub async fn submit(
     ApiJson(request): ApiJson<QuickRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let owner = super::publish::authenticated_actor(&state, &headers).await?;
+    let wait = request.wait;
+    let (name, body) = resolve(&state, &owner, request).await?;
+    enqueue(&state, headers, owner, name, body, wait).await
+}
+
+pub async fn estimate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ApiJson(request): ApiJson<QuickRequest>,
+) -> AppResult<Json<Value>> {
+    let owner = super::publish::authenticated_actor(&state, &headers).await?;
+    let (name, body) = resolve(&state, &owner, request).await?;
+    let export: super::filmcraft_video_export::VideoRequest =
+        serde_json::from_value(body).map_err(|error| AppError::bad_request(error.to_string()))?;
+    let bytes = export
+        .estimate_bytes()
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    Ok(Json(json!({"presetName": name, "estimatedBytes": bytes})))
+}
+
+async fn resolve(state: &AppState, owner: &str, request: QuickRequest) -> AppResult<(String, Value)> {
     let name = match request.preset {
         Some(name) => name,
         None => state
             .filmcraft_quick_presets
             .lock()
             .await
-            .get(&owner)
+            .get(owner)
             .cloned()
             .unwrap_or_else(|| DEFAULT_PRESET.into()),
     };
     let library = state
         .db
-        .filmcraft_export_presets(&owner)
+        .filmcraft_export_presets(owner)
         .await
         .map_err(|error| AppError::internal("read quick export presets", error))?;
     let preset = library
@@ -90,7 +111,7 @@ pub async fn submit(
     body["sources"] = json!(request.sources);
     body["sourceRange"] = serde_json::to_value(range)
         .map_err(|error| AppError::internal("serialize quick range", error))?;
-    enqueue(&state, headers, owner, name, body, request.wait).await
+    Ok((name, body))
 }
 
 pub(super) async fn enqueue(
