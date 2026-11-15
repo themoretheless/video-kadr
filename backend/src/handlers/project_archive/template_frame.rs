@@ -8,6 +8,7 @@ pub(super) async fn render(
     saved: super::super::concat_video_bound::SavedProject,
     composition: String,
     time_us: u64,
+    format: image::ImageFormat,
 ) -> AppResult<Vec<u8>> {
     if !headers
         .get(header::AUTHORIZATION)
@@ -60,9 +61,13 @@ pub(super) async fn render(
         let image = image::RgbaImage::from_raw(canvas.width, canvas.height, bytes.to_vec())
             .ok_or_else(|| anyhow::anyhow!("Native poster frame has invalid dimensions"))?;
         let thumbnail = image::DynamicImage::ImageRgba8(image).thumbnail(320, 180);
-        let mut png = std::io::Cursor::new(Vec::new());
-        thumbnail.write_to(&mut png, image::ImageFormat::Png)?;
-        Ok(png.into_inner())
+        let mut encoded = std::io::Cursor::new(Vec::new());
+        if format == image::ImageFormat::Jpeg {
+            image::DynamicImage::ImageRgb8(thumbnail.to_rgb8()).write_to(&mut encoded, format)?;
+        } else {
+            thumbnail.write_to(&mut encoded, format)?;
+        }
+        Ok(encoded.into_inner())
     })
     .await
     .map_err(|e| AppError::internal("join native poster encoder", e))?

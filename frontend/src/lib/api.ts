@@ -906,8 +906,12 @@ export function compositionProjectArchiveUrl(id: string): string {
   return `/api/composition-projects/${encodeURIComponent(id)}/archive`
 }
 
-export function compositionProjectConcatTemplateUrl(id: string): string {
-  return `/api/composition-projects/${encodeURIComponent(id)}/concat-template`
+export function compositionProjectConcatTemplateUrl(id: string, poster?: { timeUs: number; compositionId?: string }): string {
+  const path = `/api/composition-projects/${encodeURIComponent(id)}/concat-template`
+  if (!poster) return path
+  const query = new URLSearchParams({ posterTimeUs: String(poster.timeUs) })
+  if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
+  return `${path}?${query}`
 }
 
 /** Upload, verify and relink a portable `.veproj` into a new local project. */

@@ -121,6 +121,24 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         let restored = imported.project.unwrap();
         assert_eq!(serde_json::to_value(restored.fonts).unwrap(), portable["fonts"]);
     }
+    let poster_zip = app.clone().oneshot(
+        Request::get(format!("{concat_uri}?posterTimeUs=0&posterCompositionId=root"))
+            .header(header::COOKIE, format!("video_kadr_session={}", owner.token))
+            .body(Body::empty()).unwrap()
+    ).await.unwrap();
+    let status = poster_zip.status();
+    let bytes = to_bytes(poster_zip.into_body(), 1024 * 1024).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    {
+        use std::io::Read;
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut jpeg = Vec::new();
+        zip.by_name("poster.jpg").unwrap().read_to_end(&mut jpeg).unwrap();
+        assert_eq!(image::guess_format(&jpeg).unwrap(), image::ImageFormat::Jpeg);
+        let poster = image::load_from_memory(&jpeg).unwrap().to_rgb8();
+        assert!(poster.width() <= 320 && poster.height() <= 180);
+        assert_eq!(poster.get_pixel(poster.width() / 2, poster.height() / 2).0, [0, 0, 0]);
+    }
     let uri = format!("/api/composition-projects/{}/template", saved.id);
     let request = |token: Option<&str>| {
         let mut r = Request::get(&uri);

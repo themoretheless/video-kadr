@@ -275,6 +275,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   let pendingVoiceover = $state.raw<File | null>(null)
   let archivePicker = $state<HTMLInputElement>()
   let archiveBusy = $state(false)
+  let includeConcatPoster = $state(false)
   let templateLibraryRevision = $state(0)
   let archiveMessage = $state('')
   let archiveError = $state('')
@@ -553,8 +554,12 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   <ConcatProjectImportPanel token={authState.token} context={compositionState.document} disabled={compositionState.save.busy} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
   <ConcatProjectExportPanel disabled={compositionState.save.busy} />
   {#if nestedComposition.document && activeSavedProjectId && authState.token}
+    <label><input type="checkbox" bind:checked={includeConcatPoster} /> Обложка для ZIP-шаблона Concat</label>
     <button class="btn ghost sm" disabled={archiveBusy || compositionState.save.busy}
-      onclick={() => downloadUrl(compositionProjectConcatTemplateUrl(activeSavedProjectId!))}>
+      onclick={() => downloadUrl(compositionProjectConcatTemplateUrl(activeSavedProjectId!, includeConcatPoster ? {
+        timeUs: nestedComposition.timeUs,
+        compositionId: nestedComposition.activeCompositionId ?? undefined,
+      } : undefined))}>
       Скачать архив шаблона Concat из сохранённой версии
     </button>
   {/if}

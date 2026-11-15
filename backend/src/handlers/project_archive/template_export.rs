@@ -148,6 +148,7 @@ async fn build_package(
                 },
                 composition.to_owned(),
                 time,
+                image::ImageFormat::Png,
             ))
             .await?,
         )

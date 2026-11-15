@@ -11,10 +11,18 @@ use crate::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::io::{Read, Write};
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Options {
+    poster_time_us: Option<u64>,
+    poster_composition_id: Option<String>,
+}
+
 pub async fn export(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
     headers: HeaderMap,
+    axum::extract::Query(options): axum::extract::Query<Options>,
 ) -> AppResult<Response> {
     let actor = archive_actor(&state, &headers, true).await?;
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
@@ -30,6 +38,31 @@ pub async fn export(
         .map_err(|_| AppError::bad_request("Шаблоны требуют нативный проект с таймлайнами"))?;
     let plan =
         template_bundle::plan(&native).map_err(|error| AppError::bad_request(error.to_string()))?;
+    let poster = if let Some(time) = options.poster_time_us {
+        let composition = options
+            .poster_composition_id
+            .unwrap_or_else(|| native.root.clone());
+        Some(
+            Box::pin(super::template_frame::render(
+                state.clone(),
+                headers.clone(),
+                native,
+                crate::handlers::concat_video_bound::SavedProject {
+                    project_id: id.clone(),
+                    expected_revision: project.revision,
+                },
+                composition,
+                time,
+                image::ImageFormat::Jpeg,
+            ))
+            .await?,
+        )
+    } else {
+        if options.poster_composition_id.is_some() {
+            return Err(AppError::bad_request("Укажите время кадра обложки"));
+        }
+        None
+    };
     let mut originals = Vec::new();
     let mut names = BTreeMap::new();
     let mut total = 0_u64;
@@ -147,6 +180,10 @@ pub async fn export(
                 .compression_method(zip::CompressionMethod::Stored);
             zip.start_file("template.json", options)?;
             zip.write_all(&manifest)?;
+            if let Some(bytes) = poster {
+                zip.start_file("poster.jpg", options)?;
+                zip.write_all(&bytes)?;
+            }
             for (path, bytes) in font_files {
                 zip.start_file(path, options)?;
                 zip.write_all(&bytes)?;
