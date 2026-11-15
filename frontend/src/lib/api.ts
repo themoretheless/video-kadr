@@ -2030,6 +2030,21 @@ export interface FilmcraftFindResult {
 export function findFilmcraftProjectItems(token: string, input: FilmcraftFindQuery & { document: string; index?: number }, signal?: AbortSignal): Promise<FilmcraftFindResult> {
   return runFilmcraftExportCommand(token, input.index === undefined ? 'edit.find' : 'edit.findNext', { ...input }, signal)
 }
+export type FilmcraftTimelineFindScope = 'all' | 'clips' | 'markers'
+export interface FilmcraftTimelineFindResult {
+  sequence: string
+  index: number
+  matches: number
+  clip?: string
+  marker?: string
+  time?: string
+  timeFrames?: string
+  timecode?: string
+  name?: string
+}
+export function findFilmcraftTimeline(token: string, input: FilmcraftFindQuery & { document: string; sequence: string; in: FilmcraftTimelineFindScope; index?: number }, signal?: AbortSignal): Promise<FilmcraftTimelineFindResult> {
+  return runFilmcraftExportCommand(token, input.index === undefined ? 'edit.find' : 'edit.findNext', { ...input, scope: 'timeline' }, signal)
+}
 export interface FilmcraftSearchBinContents {
   bin: string
   name: string

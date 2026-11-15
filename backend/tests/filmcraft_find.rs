@@ -111,3 +111,29 @@ async fn saved_search_bins_round_trip_and_recompute_after_metadata_changes() {
     )
     .is_err());
 }
+
+#[test]
+fn timeline_find_orders_clip_and_marker_matches_and_keeps_exact_ticks() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let mut document = fixture["cases"][0]["document"].clone();
+    let sequence = &mut document["project"]["items"]["6"]["kind"]["Sequence"];
+    let clip = &mut sequence["video_tracks"][0]["items"][0];
+    let clip_id = clip["id"].as_u64().unwrap().to_string();
+    clip["name"] = json!("Find Clip");
+    clip["start"] = json!(9_007_199_254_740_995_i64);
+    sequence["markers"] = json!([
+        {"id":9_007_199_254_740_993_u64,"name":"Note","comment":"Find comment","start":9_007_199_254_740_993_i64}
+    ]);
+    let request = json!({"document":document,"scope":"timeline","sequence":"6","text":"Find"});
+    let first = find("edit.find", request.clone()).unwrap();
+    assert_eq!(first["marker"], "9007199254740993");
+    assert_eq!(first["time"], "9007199254740993");
+    assert_eq!(first["matches"], 2);
+    let second = find("edit.findNext", request.clone()).unwrap();
+    assert_eq!(second["clip"], clip_id);
+    assert_eq!(second["time"], "9007199254740995");
+    let mut clips = request;
+    clips["in"] = json!("clips");
+    assert_eq!(find("edit.find", clips).unwrap()["matches"], 1);
+}

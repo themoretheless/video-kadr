@@ -58,6 +58,9 @@ struct Request {
     #[serde(default)]
     index: usize,
     scope: Option<String>,
+    sequence: Option<Value>,
+    #[serde(rename = "in")]
+    within: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -192,12 +195,14 @@ fn column_text(
 
 pub fn find(command: &str, params: Value) -> Result<Value> {
     let request: Request = serde_json::from_value(params)?;
+    let scope = request
+        .scope
+        .as_deref()
+        .unwrap_or("project")
+        .to_ascii_lowercase();
     ensure!(
-        request
-            .scope
-            .as_deref()
-            .is_none_or(|scope| scope.eq_ignore_ascii_case("project")),
-        "Find requires project scope"
+        matches!(scope.as_str(), "project" | "timeline"),
+        "invalid Find scope"
     );
     let query = Query {
         rows: request.rows.unwrap_or_else(|| vec![request.row]),
@@ -210,17 +215,27 @@ pub fn find(command: &str, params: Value) -> Result<Value> {
         value => serde_json::to_vec(&value)?,
     };
     let document = SourceProjectDocument::read(&bytes)?;
-    let hits = matching_ids(&document, &query)?;
     let next = if command == "edit.findNext" {
         request.index.saturating_add(1)
     } else {
         0
     };
+    if scope == "timeline" {
+        let sequence = super::filmcraft_project_inspect::id(request.sequence)?
+            .or_else(|| document.project()["active_sequence"].as_u64());
+        let within = request
+            .within
+            .as_deref()
+            .unwrap_or("all")
+            .to_ascii_lowercase();
+        return timeline_find(&document, &query, sequence, &within, next);
+    }
+    let hits = matching_ids(&document, &query)?;
     let selected = next % hits.len().max(1);
     Ok(json!({"item":hits.get(selected),"index":selected,"matches":hits.len(),"items":hits}))
 }
 
-pub(super) fn matching_ids(document: &SourceProjectDocument, query: &Query) -> Result<Vec<String>> {
+fn prepare(query: &Query) -> Result<Vec<(&Row, Operator, String)>> {
     let rows = query
         .rows
         .iter()
@@ -234,10 +249,92 @@ pub(super) fn matching_ids(document: &SourceProjectDocument, query: &Query) -> R
             Ok((row, operator, text))
         })
         .collect::<Result<Vec<_>>>()?;
-    let active: Vec<_> = rows
+    Ok(rows
         .into_iter()
         .filter(|(_, _, text)| !text.is_empty())
-        .collect();
+        .collect())
+}
+
+fn timeline_find(
+    document: &SourceProjectDocument,
+    query: &Query,
+    sequence: Option<u64>,
+    within: &str,
+    next: usize,
+) -> Result<Value> {
+    use anyhow::Context;
+    let index = ProjectIndex::new(document)?;
+    let sequence = sequence.context("select a sequence to search")?;
+    let item = index.item(sequence).context("sequence not found")?;
+    let timeline = item
+        .pointer("/kind/Sequence")
+        .context("Find target is not a sequence")?;
+    let rate = item_rate(&index, sequence, item);
+    let active = prepare(query)?;
+    let test = |text: &str| {
+        let folded;
+        let text = if query.case_sensitive {
+            text
+        } else {
+            folded = text.to_lowercase();
+            &folded
+        };
+        let mut matches = active
+            .iter()
+            .map(|(_, op, needle)| op.matches(text, needle));
+        if query.match_all {
+            matches.all(|hit| hit)
+        } else {
+            matches.any(|hit| hit)
+        }
+    };
+    let mut hits = Vec::new();
+    if within != "markers" {
+        for kind in ["video_tracks", "audio_tracks"] {
+            for track in timeline[kind].as_array().into_iter().flatten() {
+                for clip in track["items"].as_array().into_iter().flatten() {
+                    let name = clip["name"]
+                        .as_str()
+                        .filter(|name| !name.is_empty())
+                        .or_else(|| index.item(clip["item"].as_u64()?)?["name"].as_str())
+                        .unwrap_or_default();
+                    if test(name) {
+                        if let (Some(id), Some(time)) =
+                            (clip["id"].as_u64(), clip["start"].as_i64())
+                        {
+                            hits.push((time, "clip", id, name));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if within != "clips" {
+        for marker in timeline["markers"].as_array().into_iter().flatten() {
+            let name = marker["name"].as_str().unwrap_or_default();
+            let comment = marker["comment"].as_str().unwrap_or_default();
+            if test(name) || (!comment.is_empty() && test(comment)) {
+                if let (Some(id), Some(time)) = (marker["id"].as_u64(), marker["start"].as_i64()) {
+                    hits.push((time, "marker", id, name));
+                }
+            }
+        }
+    }
+    hits.sort_by_key(|hit| hit.0);
+    let current = next % hits.len().max(1);
+    if let Some(&(time, kind, id, name)) = hits.get(current) {
+        let mut result = json!({"sequence":sequence.to_string(),"matches":hits.len(),"index":current,
+            "name":name,"time":time.to_string(),"timeFrames":rate.frame_at(filmcraft_time::Tick(time)).to_string(),
+            "timecode":timecode(i128::from(time), rate)});
+        result[kind] = json!(id.to_string());
+        Ok(result)
+    } else {
+        Ok(json!({"sequence":sequence.to_string(),"matches":0,"index":0}))
+    }
+}
+
+pub(super) fn matching_ids(document: &SourceProjectDocument, query: &Query) -> Result<Vec<String>> {
+    let active = prepare(query)?;
     if active.is_empty() {
         return Ok(vec![]);
     }

@@ -7,6 +7,8 @@
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
   import FilmcraftMetadataControls from './FilmcraftMetadataControls.svelte'
+  import FilmcraftTimelineFind from './FilmcraftTimelineFind.svelte'
+  import type { FilmcraftTimelineFindResult } from '$lib/api'
   import FilmcraftProjectGrid from './FilmcraftProjectGrid.svelte'
   import FilmcraftLabelControls from './FilmcraftLabelControls.svelte'
   import FilmcraftClipEditControls from './FilmcraftClipEditControls.svelte'
@@ -489,6 +491,20 @@
   const valid = $derived(sequence && Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start && Math.floor(end * sequence.sampleRate) - Math.floor(start * sequence.sampleRate) <= 4194304)
   $effect(() => () => { controller?.abort(); transitionController?.abort(); cardNavigation?.abort(); matteRequest?.abort(); if (download) URL.revokeObjectURL(download); for (const [url, timer] of savedFiles) { clearTimeout(timer); URL.revokeObjectURL(url) } savedFiles.clear() })
   function clearDownload() { if (download) URL.revokeObjectURL(download); download = '' }
+  function adoptTimelineFind(result: FilmcraftTimelineFindResult) {
+    if (result.sequence !== sequenceId || result.time === undefined || result.timeFrames === undefined) return
+    if (result.clip !== undefined) {
+      if (!sequence?.clips?.some(clip => clip.id === result.clip)) return
+      clipId = result.clip
+      rightClipId = ''
+      extraSelectedIds = []
+      editPoints = []
+    }
+    editPositionFrames = result.timeFrames
+    pastePositionTicks = result.time
+    pastePlayheadTicks = ''
+    clearDownload()
+  }
   function chooseSequence() { resetTrimShift(); pointTrimCount = null; nearestTargets = []; editPoints = []; batchTransitionCount = null; editingTransitionId = ''; transitionDraft = {}; pastePositionTicks = ''; pastePlayheadTicks = ''; editPositionFrames = '0'; extraSelectedIds = []; rightClipId = ''; clipId = ''; clearDownload(); start = 0; end = Math.min(sequence?.durationSeconds || 1, 4194304 / (sequence?.sampleRate || 48000)) }
   async function openFile(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -576,6 +592,7 @@
       <button type="button" disabled={busy} onclick={() => project && saveText(project.documentText, 'project.filmcraft.json')}>Скачать проект</button>
       <button type="button" disabled={busy || !valid} onclick={saveSession}>Сохранить рабочую сессию</button>
         <label>Позиция правки, кадров <input aria-label="Позиция правки, кадров" type="text" inputmode="numeric" value={editPositionFrames} oninput={(event) => { editPositionFrames = event.currentTarget.value; pastePositionTicks = '' }} disabled={busy} /></label>
+      <FilmcraftTimelineFind document={project.documentText} sequence={sequenceId} {token} disabled={busy} onhit={adoptTimelineFind} />
       <FilmcraftLabelControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} palette={project.labelPalette ?? []} bind:selected={projectSelection} clipSelection={timelineSelection} onselection={adoptLabelSelection} clipLabel={sequence?.clips?.find(clip => clip.id === clipId)?.label} disabled={busy} onedit={commitEdit} />
       {#if projectPanelOpen && project.projectItems?.length}
         <FilmcraftProjectGrid {project} sources={activeBindings} {token} {sequenceId} {clipId} onedit={commitEdit} onopen={openProjectCard} bind:previewArea={projectPreviewArea} bind:thumbnailEffects={projectThumbnailEffects} bind:selected={projectSelection} disabled={busy} />
@@ -601,7 +618,7 @@
       {#if clipId}<FilmcraftRenameControls document={project.documentText} {sequenceId} {clipId} {token} name={sequence?.clips?.find(clip => clip.id === clipId)?.name || ''} disabled={busy} onedit={commitEdit} />{/if}
       {#if clipId}<FilmcraftScalarParameterEditor trackKind={sequence?.clips?.find(clip => clip.id === clipId)?.trackKind === 'audio_tracks' ? 'Audio' : 'Video'} sources={activeBindings} document={project.documentText} {sequenceId} {clipId} {token} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />{/if}
       {#key sequenceId}<FilmcraftVideoExportPanel document={project.documentText} {sequenceId} sources={activeBindings} imageSources={library.filter(entry => entry.kind === 'source' && (entry.mediaType === 'image' || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(entry.filename)))} {token} initialFrames={sequence?.durationFrames ?? '24'} disabled={busy} />{/key}
-      <FilmcraftProgramPreview sources={activeBindings} document={project.documentText} {sequenceId} timeFrames={editPositionFrames} {token} />
+      <FilmcraftProgramPreview sources={activeBindings} document={project.documentText} {sequenceId} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} {token} />
       {#if sequence?.clips?.length}
         <label>Клип <select aria-label="Клип Filmcraft" value={clipId} onchange={(event) => { clipId = event.currentTarget.value; rightClipId = ''; extraSelectedIds = [] }} disabled={busy}><option value="">Выберите клип</option>{#each sequence.clips as clip}<option value={clip.id}>{clip.name || clip.id} · {clip.trackKind === 'video_tracks' ? 'Видео' : 'Звук'} {clip.trackId}</option>{/each}</select></label>
         <label>Режим <select aria-label="Режим обрезки" value={trimMode} onchange={(event) => trimMode = event.currentTarget.value as 'regular' | 'ripple'} disabled={busy}><option value="regular">Обычная</option><option value="ripple">Со сдвигом</option></select></label>
