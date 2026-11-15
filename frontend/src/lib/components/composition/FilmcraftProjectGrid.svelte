@@ -83,6 +83,12 @@
     }
   }
   const defaultColumns: ListColumn[] = ['name', 'mediaType', 'mediaDuration']
+  type PresetView = {
+    freeform: boolean; list: boolean; iconSize: number; fontSize: number; columns: Column[]
+    column: (typeof sortOptions)[number][0]; descending: boolean; listSort?: ListColumn; listDescending: boolean
+  }
+  type ViewPreset = { name: string; view: PresetView }
+  const presetSlots = 10
   let columns = $state<Column[]>(defaultColumns.map(key => ({ key, width: defaultWidth(key) })))
   let listSort = $state<ListColumn>()
   let listDescending = $state(false)
@@ -97,48 +103,122 @@
   let marking = $state(false)
   let markError = $state('')
   let markRequest: AbortController | undefined
+  let presets = $state<Array<ViewPreset | null>>(Array(presetSlots).fill(null))
+  let currentPreset = $state(-1)
+  let selectedPreset = $state(-1)
+  let presetName = $state('')
+  const emptyPreset = $derived(presets.indexOf(null))
 
+  function readPresetView(saved: Record<string, unknown>): PresetView {
+    const column = sortOptions.find(([column]) => column === saved.column)?.[0] ?? 'user'
+    const restored: Column[] = []
+    if (Array.isArray(saved.columns)) {
+      const unique = new SvelteSet<ListColumn>()
+      for (const candidate of saved.columns) {
+        const key = storedColumn(candidate?.key)
+        if (!key || unique.has(key) || !Number.isFinite(candidate.width)) continue
+        unique.add(key)
+        restored.push({ key, width: clampColumnWidth(candidate.width) })
+      }
+      if (!unique.has('name')) restored.unshift({ key: 'name', width: defaultWidth('name') })
+    } else {
+      restored.push(...defaultColumns.map(key => ({ key, width: defaultWidth(key) })))
+    }
+    return {
+      column, descending: column !== 'user' && saved.descending === true,
+      freeform: saved.freeform === true, list: saved.freeform !== true && saved.list === true,
+      iconSize: typeof saved.iconSize === 'number' && Number.isFinite(saved.iconSize)
+        ? Math.max(48, Math.min(400, saved.iconSize)) : 110,
+      fontSize: fontSizes.find(([size]) => size === saved.fontSize)?.[0] ?? 12,
+      columns: restored, listSort: storedColumn(saved.listSort), listDescending: saved.listDescending === true,
+    }
+  }
+
+  function applyPresetView(view: PresetView) {
+    sortColumn = view.column
+    descending = view.descending
+    freeform = view.freeform
+    listView = view.list
+    iconSize = view.iconSize
+    fontSize = view.fontSize
+    columns = view.columns.map(column => ({ ...column }))
+    listSort = view.listSort
+    listDescending = view.listDescending
+    hover = undefined
+    drag = undefined
+    columnResize = undefined
+    page = 0
+  }
 
   $effect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(viewStorageKey) ?? 'null')
       if (!saved || typeof saved !== 'object') return
-      const column = sortOptions.find(([column]) => column === saved.column)
-      if (column) sortColumn = column[0]
-      descending = column?.[0] !== 'user' && Boolean(column) && saved.descending === true
+      applyPresetView(readPresetView(saved))
       if (typeof saved.hover === 'boolean') hoverEnabled = saved.hover
-      if (typeof saved.freeform === 'boolean') freeform = saved.freeform
-      listView = !freeform && saved.list === true
       if (typeof saved.listThumbnails === 'boolean') listThumbnails = saved.listThumbnails
       if (typeof saved.previewArea === 'boolean') previewArea = saved.previewArea
-      if (fontSizes.some(([size]) => size === saved.fontSize)) fontSize = saved.fontSize
       if (typeof saved.snap === 'boolean') snapCards = saved.snap
-      if (Array.isArray(saved.columns)) {
-        const unique = new SvelteSet<ListColumn>()
-        const restored: Column[] = []
-        for (const candidate of saved.columns) {
-          const key = storedColumn(candidate?.key)
-          if (!key || unique.has(key) || !Number.isFinite(candidate.width)) continue
-          unique.add(key)
-          restored.push({ key, width: clampColumnWidth(candidate.width) })
+      if (Array.isArray(saved.presets)) {
+        const restored = Array.from({ length: presetSlots }, (_, slot): ViewPreset | null => {
+          const preset = saved.presets[slot]
+          return typeof preset?.name === 'string' && preset.name.trim() && preset.view && typeof preset.view === 'object'
+            ? { name: preset.name, view: readPresetView(preset.view) } : null
+        })
+        presets = restored
+        if (Number.isInteger(saved.currentPreset) && restored[saved.currentPreset]) {
+          currentPreset = saved.currentPreset
+          selectedPreset = saved.currentPreset
         }
-        if (!unique.has('name')) restored.unshift({ key: 'name', width: defaultWidth('name') })
-        columns = restored
-      }
-      listSort = storedColumn(saved.listSort)
-      listDescending = saved.listDescending === true
-      if (typeof saved.iconSize === 'number' && Number.isFinite(saved.iconSize)) {
-        iconSize = Math.max(48, Math.min(400, saved.iconSize))
       }
     } catch { /* Use defaults when browser storage is unavailable. */ }
   })
 
+  function capturePresetView(): PresetView {
+    return {
+      column: sortColumn, descending, freeform, iconSize, list: listView, fontSize,
+      columns: columns.map(column => ({ ...column })), listSort, listDescending,
+    }
+  }
+
   function saveView() {
     try {
       localStorage.setItem(viewStorageKey, JSON.stringify({
-        column: sortColumn, descending, hover: hoverEnabled, freeform, snap: snapCards, iconSize, list: listView, listThumbnails, previewArea, fontSize, columns, listSort, listDescending,
+        ...capturePresetView(), hover: hoverEnabled, snap: snapCards, listThumbnails, previewArea, presets, currentPreset,
       }))
     } catch { /* Keep the current view usable without storage. */ }
+  }
+
+  function savePreset(slot: number) {
+    if (slot < 0) return
+    const name = presetName.trim() || presets[slot]?.name || `Вид проекта ${slot + 1}`
+    presets[slot] = { name, view: capturePresetView() }
+    currentPreset = slot
+    selectedPreset = slot
+    presetName = ''
+    saveView()
+  }
+  function restorePreset() {
+    const preset = presets[selectedPreset]
+    if (!preset) return
+    applyPresetView(preset.view)
+    currentPreset = selectedPreset
+    saveView()
+  }
+  function renamePreset() {
+    const preset = presets[selectedPreset]
+    const name = presetName.trim()
+    if (!preset || !name) return
+    preset.name = name
+    presetName = ''
+    saveView()
+  }
+  function deletePreset() {
+    if (!presets[selectedPreset]) return
+    presets[selectedPreset] = null
+    if (currentPreset === selectedPreset) currentPreset = -1
+    selectedPreset = currentPreset
+    saveView()
   }
 
   const bins = $derived(project.projectBins ?? [])
@@ -533,6 +613,27 @@
         <button type="button" aria-label="Следующая страница карточек" disabled={currentPage + 1 >= pages} onclick={() => { page = currentPage + 1; hover = undefined }}>›</button>
       {/if}
     </div>
+    <details>
+      <summary>Пресеты вида</summary>
+      <div class="toolbar">
+        <label>Сохранённый вид
+          <select aria-label="Сохранённый вид" bind:value={selectedPreset}>
+            <option value={-1}>Выберите пресет</option>
+            {#each presets as preset, slot (slot)}
+              {#if preset}<option value={slot}>{preset.name} (№{slot + 1})</option>{/if}
+            {/each}
+          </select>
+        </label>
+        <label>Имя пресета <input bind:value={presetName} /></label>
+        <button type="button" disabled={emptyPreset < 0} onclick={() => savePreset(emptyPreset)}>Сохранить новый</button>
+        <button type="button" disabled={currentPreset < 0} onclick={() => savePreset(currentPreset)}>Обновить текущий</button>
+        <button type="button" disabled={selectedPreset < 0} onclick={restorePreset}>Применить</button>
+        <button type="button" disabled={selectedPreset < 0 || !presetName.trim()} onclick={renamePreset}>Переименовать</button>
+        <button type="button" disabled={selectedPreset < 0} onclick={deletePreset}>Удалить пресет</button>
+      </div>
+      {#if currentPreset >= 0}<span>Текущий пресет — {presets[currentPreset]?.name}</span>{/if}
+      {#if emptyPreset < 0}<span>Заняты все 10 мест для пресетов.</span>{/if}
+    </details>
     {#if listView}
       <details>
         <summary>Колонки списка</summary>
