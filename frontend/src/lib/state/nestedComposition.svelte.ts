@@ -1086,7 +1086,7 @@ export async function applyNestedAgentDocument(expected: string, document: Nativ
 
 export async function updateNestedCaptionText(
   compositionId: string, clipId: string, text: string, expectedText: string,
-  typography?: Parameters<typeof setNativeCaptionText>[5],
+  appearance?: Parameters<typeof setNativeCaptionText>[5],
 ): Promise<boolean> {
   if(!nestedComposition.document||nestedHistory.busy)return false
   const startedGeneration=generation
@@ -1094,7 +1094,7 @@ export async function updateNestedCaptionText(
   let expected=''
   await editNestedDocument(async project=>{
     guard()
-    const document=setNativeCaptionText(project,compositionId,clipId,text,expectedText,typography)
+    const document=setNativeCaptionText(project,compositionId,clipId,text,expectedText,appearance)
     expected=JSON.stringify(document)
     await nestedDurations(document)
     return document

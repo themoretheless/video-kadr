@@ -14,7 +14,7 @@ import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { cuesToTextClips, parseSrt } from '$lib/subtitles/srt'
 vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
 
-it('saves subtitle text and typography together and restores them with one Undo', async () => {
+it('saves subtitle text, typography and background together and restores them with one Undo', async () => {
   closeNestedComposition()
   const [cue] = cuesToTextClips(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nOriginal'), () => 'cue')
   const base = createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' })
@@ -44,7 +44,7 @@ it('saves subtitle text and typography together and restores them with one Undo'
     alignment.value = 'right'
     alignment.dispatchEvent(new Event('change', { bubbles: true }))
     const fields = editor.querySelectorAll<HTMLInputElement>('input[type="number"]')
-    for (const [index, value] of ['28', '550.5', '-2', '1.6'].entries()) {
+    for (const [index, value] of ['28', '550.5', '-2', '1.6', '200', '54', '0.6', '4', '8', '6'].entries()) {
       fields[index]!.value = value
       fields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
     }
@@ -58,8 +58,10 @@ it('saves subtitle text and typography together and restores them with one Undo'
     await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
     expect(api.nestedDurations).toHaveBeenCalledTimes(1)
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
-      text: 'Edited', style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
-        italic: true, align: 'right', tracking: -2, lineHeight: 1.6 },
+      text: 'Edited', textBoxWidth: 200, textBoxHeight: 54,
+      style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
+        italic: true, align: 'right', tracking: -2, lineHeight: 1.6,
+        background: { alpha: 0.6 }, backgroundRadius: 4, backgroundPadding: [8, 6] },
     })
     undoNestedComposition()
     expect(JSON.stringify(nestedComposition.document)).toBe(before)
