@@ -66,6 +66,18 @@ export function splitNativeClips(project: NativeNestedProject, compositionId: st
     const values = metadata[field]
     if (values) Object.assign(metadata, { [field]: Object.fromEntries([...Object.entries(values), ...[...tails].filter(([id]) => Object.hasOwn(values, id)).map(([id, tail]) => [tail, values[id]])]) })
   }
-  if (metadata.clipLinks) metadata.clipLinks = Object.fromEntries(Object.entries(metadata.clipLinks).map(([id, members]) => [id, members.flatMap(member => tails.has(member) ? [member, tails.get(member)!] : [member])]))
+  if (metadata.clipLinks) {
+    const groups = { ...metadata.clipLinks }
+    for (const members of Object.values(metadata.clipLinks)) {
+      const rightMembers = members.flatMap(member => tails.has(member) ? [tails.get(member)!] : [])
+      if (rightMembers.length < 2) continue
+      const base = `${rightMembers[0]!.slice(0, 110)}-link`
+      let id = base
+      let serial = 0
+      while (Object.hasOwn(groups, id)) id = `${base}-${serial++}`
+      groups[id] = rightMembers
+    }
+    metadata.clipLinks = groups
+  }
   return { ...project, compositions: { ...project.compositions, [compositionId]: { ...node, content: { ...node.content, tracks, metadata } } } }
 }

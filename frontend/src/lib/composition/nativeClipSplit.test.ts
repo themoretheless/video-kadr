@@ -15,12 +15,29 @@ it('splits the stored AV group atomically while retaining full source windows an
     expect(clips[1]).toMatchObject({ placement: { timelineStartTick: 3250000, sourceInTick: 1000000, sourceOutTick: 4000000, timelineDurationTick: 1750000, sourceTimelineOffsetTick: 1250000 } })
     expect(nativeClipEnd(clips[1]!)).toBe(5000000)
   }
-  expect(output.compositions['new-timeline']!.content.metadata!.clipLinks!['auto-first-link']).toHaveLength(4)
+  const links = input.compositions['new-timeline']!.content.metadata!.clipLinks!
+  expect(output.compositions['new-timeline']!.content.metadata!.clipLinks).toEqual({
+    ...links,
+    'tail-0-link': ['tail-0', 'tail-1'],
+  })
   expect(JSON.stringify(input)).toBe(before)
   expect(splitNativeClips(input, 'new-timeline', ['auto-first'], 2000000, () => 'unused')).toBe(input)
   const locked = editNativeTrack(input, 'new-timeline', { kind: 'flag', id: 'audio-2', flag: 'locked', value: true })
   expect(() => splitNativeClips(locked, 'new-timeline', ['auto-first'], 3250000, () => 'fresh')).toThrow('заблокирована')
   expect(() => splitNativeClips(input, 'new-timeline', ['auto-first'], 3250000, () => 'auto-first')).toThrow('идентификатор')
+})
+
+it('keeps an unsplit partner linked to the head and leaves a lone tail independent', () => {
+  const input = structuredClone(fixture.nativeFirstFree[0]!.after) as unknown as NativeNestedProject
+  const content = input.compositions['new-timeline']!.content
+  const audio = content.tracks[3]!.clips[0]!
+  if (!('placement' in audio)) throw new Error('Expected audio placement')
+  Object.assign(audio, { placement: { ...audio.placement, timelineStartTick: 3250000 } })
+  const output = splitNativeClips(input, 'new-timeline', ['auto-first'], 3250000, () => 'tail')
+  const result = output.compositions['new-timeline']!.content
+  expect(result.metadata!.clipLinks).toEqual(content.metadata!.clipLinks)
+  expect(result.tracks[1]!.clips[1]!.id).toBe('tail')
+  expect(result.tracks[3]!.clips).toEqual([audio])
 })
 it('keeps incoming fades on the head, outgoing fades on the tail and transfers an outgoing transition', () => {
   const input = JSON.parse(JSON.stringify(fixture.nativeFirstFree[0]!.after))

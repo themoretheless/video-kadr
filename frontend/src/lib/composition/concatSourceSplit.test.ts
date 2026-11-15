@@ -65,7 +65,10 @@ it('applies native clocks and every source key scope to linked AV clips in one i
   }
   expect(tracks[1]!.clips[1]).toMatchObject({ transform: { concatAnimation: { durationTicks: 1750000, keys: { opacity: [{ value: 0.65 }, { value: 0.65 }] } } }, effects: [{ concatKeys: [{ value: 0.65 }, { value: 0.65 }] }], audioFadeInTicks: 0, audioFadeOutTicks: 400000 })
   expect(tracks[1]).toMatchObject({ transitions: [{ fromClipId: 'tail-0' }] })
-  expect(output.compositions['new-timeline']!.content.metadata).toMatchObject({ clipNames: { 'tail-0': 'Camera A' }, clipLinks: { 'auto-first-link': ['auto-first', 'tail-0', expect.any(String), 'tail-1'] } })
+  expect(output.compositions['new-timeline']!.content.metadata).toMatchObject({
+    clipNames: { 'tail-0': 'Camera A' },
+    clipLinks: { 'auto-first-link': ['auto-first', expect.any(String)], 'tail-0-link': ['tail-0', 'tail-1'] },
+  })
   expect(JSON.stringify(input)).toBe(before)
   expect(() => splitNativeClips(input, 'new-timeline', ['auto-first'], 3250000, () => 'unsafe')).toThrow('нативного плана')
 })

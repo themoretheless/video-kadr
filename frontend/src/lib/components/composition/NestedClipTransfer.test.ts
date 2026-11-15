@@ -763,7 +763,18 @@ it('splits both linked clips at the cursor and restores them with one Undo', asy
     await tick()
     const selections = [...target.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-clip-id]')]
     expect(selections).toHaveLength(4)
-    expect(selections.every(input => input.checked)).toBe(true)
+    const selectedIds = () => selections.filter(input => input.checked).map(input => input.dataset.clipId)
+    const content = nestedComposition.document!.compositions['new-timeline']!.content
+    const heads = [1, 3].map(index => content.tracks[index]!.clips[0]!.id)
+    const tails = [1, 3].map(index => content.tracks[index]!.clips[1]!.id)
+    expect(selectedIds()).toEqual(heads)
+    for (const id of [heads[0]!, tails[0]!]) {
+      const checkbox = selections.find(input => input.dataset.clipId === id)!
+      checkbox.checked = !checkbox.checked
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+      await tick()
+    }
+    expect(selectedIds()).toEqual(tails)
     undoNestedComposition(); expect(nestedComposition.document).toEqual(document)
     await tick()
     expect(target.querySelectorAll('input[type="checkbox"][data-clip-id]')).toHaveLength(2)
