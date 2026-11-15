@@ -6,7 +6,9 @@ use super::{
     concat_clip_animation::{Pose, SourceAnimation},
     concat_effect_upgrade::ParamKey,
     concat_title::{self, TitleStyle},
-    keyframes::{bounce_out, Extrapolation, Interpolation},
+    keyframes::{
+        bounce_out, segment_interpolation, Extrapolation, Interpolation, ProceduralInterpolation,
+    },
 };
 
 fn color(value: Rgba) -> String {
@@ -186,16 +188,14 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
     };
     for (index, key) in track.keyframes.iter().enumerate() {
         ensure!(
-            key.tangents.is_none()
-                && (0..=duration).contains(&key.tick)
-                && (0.0..=1.0).contains(&key.value),
+            (0..=duration).contains(&key.tick) && (0.0..=1.0).contains(&key.value),
             "Caption opacity key requires a Concat mapping"
         );
         let ease = if index == 0 {
             LINEAR
         } else {
             let previous = &track.keyframes[index - 1];
-            match previous.interpolation.unwrap_or(track.interpolation) {
+            match segment_interpolation(previous, key, track.interpolation) {
                 Interpolation::Hold => {
                     if previous.value != key.value {
                         // Native time rounds to an integer microsecond. Bracket its
@@ -208,6 +208,13 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
                     LINEAR
                 }
                 Interpolation::Linear => LINEAR,
+                Interpolation::Procedural(ProceduralInterpolation::Bezier { p1, p2 }) => {
+                    ensure!(
+                        super::bezier::TimingBezier::new(p1, p2).is_some(),
+                        "Invalid caption easing control points"
+                    );
+                    [p1[0], p1[1], p2[0], p2[1]]
+                }
                 Interpolation::EaseIn => CUBIC_IN,
                 Interpolation::EaseOut => CUBIC_OUT,
                 Interpolation::EaseInOut | Interpolation::EaseInOutCubic => {

@@ -363,9 +363,38 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     assert_eq!(opacity[0]["value"], 0.25);
     assert_eq!(opacity[1]["value"], 0.9);
 
+    let mut bezier = serde_json::to_value(&project).unwrap();
+    let root = bezier["root"].as_str().unwrap().to_owned();
+    let track = &mut bezier["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"];
+    track["interpolation"] = json!({"kind":"bezier","p1":[0.2,0.4],"p2":[0.8,0.6]});
+    track["keyframes"] = json!([
+        {"tick":0,"value":0.1,"tangents":{"incoming":{"x":0.8,"y":0.6,"mode":"free"},"outgoing":{"x":0.3,"y":-0.2,"mode":"free"},"continuity":"broken"}},
+        {"tick":500001,"value":0.9,"tangents":{"incoming":{"x":0.7,"y":1.2,"mode":"free"},"outgoing":{"x":0.4,"y":0.2,"mode":"free"},"continuity":"broken"}},
+        {"tick":1111111,"value":0.3}
+    ]);
+    let native: video_kadr_backend::domain::keyframes::KeyframeTrack<f64> =
+        serde_json::from_value(track.clone()).unwrap();
+    let exported = export(&serde_json::from_value(bezier).unwrap()).unwrap();
+    let title = exported["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert_eq!(title["keys"][1]["ease"], json!([0.3, -0.2, 0.7, 1.2]));
+    assert_eq!(title["keys"][2]["ease"], json!([0.4, 0.2, 0.8, 0.6]));
+    let reopened = convert(exported);
+    let animation = reopened.compositions[&reopened.root].content.tracks.iter().find_map(|track| match track {
+        video_kadr_backend::domain::composition::CompositionTrack::Text { clips, .. } =>
+            clips.iter().find(|clip| clip.id.as_str() == "words")
+                .and_then(|clip| clip.transform.concat_animation.as_ref()),
+        _ => None,
+    }).unwrap();
+    for tick in (0..=1_111_111).step_by(337).chain([500000, 500001, 500002, 1111111]) {
+        let expected = native.sample_tick(tick).clamp(0.0, 1.0);
+        let actual = animation.sample(tick as u64).unwrap().opacity;
+        assert!((actual - expected).abs() < 2e-6, "Bezier opacity at {tick}: {actual} vs {expected}");
+    }
+
     let mut unsupported = serde_json::to_value(project).unwrap();
     let root = unsupported["root"].as_str().unwrap().to_owned();
-    unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!({"kind":"bezier","p1":[0.2,0.4],"p2":[0.8,0.6]});
+    unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!({"kind":"elastic","dir":"out","amplitude":1,"period":0.3});
     let error = export(&serde_json::from_value(unsupported).unwrap()).unwrap_err();
     assert!(format!("{error:#}").contains("Caption opacity key requires a Concat mapping"));
 }

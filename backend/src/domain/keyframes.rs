@@ -136,7 +136,7 @@ pub struct KeyframeTangents {
     pub continuity: Continuity,
 }
 
-fn segment_interpolation<T>(
+pub(super) fn segment_interpolation<T>(
     left: &Keyframe<T>,
     right: &Keyframe<T>,
     default: Interpolation,
