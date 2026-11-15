@@ -341,6 +341,29 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     assert_eq!(title["rotation"], 25.0);
     assert!(title["keys"].as_array().unwrap().iter().all(|key| key["property"] == "opacity"));
 
+    for (sx, sy, opacity_keys) in [(80.0, 0.8, true), (0.005, 0.5, false)] {
+        let mut extreme = serde_json::to_value(&project).unwrap();
+        let root = extreme["root"].as_str().unwrap().to_owned();
+        let caption = &mut extreme["compositions"][root]["content"]["tracks"][0]["clips"][0];
+        caption["textAnchor"] = json!([0.5,0.5]);
+        caption["transform"]["scaleX"]["value"] = json!(sx);
+        caption["transform"]["scaleY"]["value"] = json!(sy);
+        if !opacity_keys {
+            caption["opacity"] = json!({"mode":"constant","value":0.35});
+        }
+        let source = export(&serde_json::from_value(extreme).unwrap()).unwrap();
+        let title = source["timelines"][0]["clips"].as_array().unwrap().iter()
+            .find(|clip| clip["id"] == "words").unwrap();
+        let scale = title["scale"].as_f64().unwrap();
+        assert!((scale * title["stretchX"].as_f64().unwrap() - sx).abs() < 1e-12);
+        assert!((scale * title["stretchY"].as_f64().unwrap() - sy).abs() < 1e-12);
+        assert_eq!(!title["keys"].as_array().unwrap().is_empty(), opacity_keys);
+        if !opacity_keys {
+            assert_eq!(title["opacity"], 0.35);
+        }
+        convert(source);
+    }
+
     let mut reexport = serde_json::to_value(&project).unwrap();
     let root = reexport["root"].as_str().unwrap().to_owned();
     let caption = &mut reexport["compositions"][&root]["content"]["tracks"][0]["clips"][0];

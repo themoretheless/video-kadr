@@ -8,7 +8,8 @@ use super::{
     concat_title::{self, TitleStyle},
     elastic::Elastic,
     keyframes::{
-        bounce_out, segment_interpolation, Extrapolation, Interpolation, ProceduralInterpolation,
+        bounce_out, segment_interpolation, Extrapolation, Interpolation, KeyframeTrack,
+        ProceduralInterpolation,
     },
 };
 
@@ -220,22 +221,13 @@ fn elastic_keys(
     Ok(())
 }
 
-fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
-    let AnimatableValue::Keyframes { track } = &clip.opacity else {
-        return Ok(());
-    };
+fn opacity_keys(track: &KeyframeTrack<f64>, duration: i64) -> Result<Vec<ParamKey>> {
     ensure!(
         track.time_base == u64::from(DEFAULT_TIME_BASE)
             && track.sample_clock.is_none()
             && track.extrapolation.unwrap_or_default() == Extrapolation::default(),
         "Caption opacity clock or extrapolation requires a Concat mapping"
     );
-    let duration = i64::try_from(
-        clip.timeline_end_tick
-            .checked_sub(clip.timeline_start_tick)
-            .filter(|duration| *duration > 0)
-            .ok_or_else(|| anyhow::anyhow!("Invalid caption duration"))?,
-    )?;
     let mut keys = Vec::with_capacity(track.keyframes.len());
     let key_at = |tick: f64, value, ease| ParamKey {
         derived: false,
@@ -331,7 +323,16 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
         };
         keys.push(key_at(key.tick as f64, key.value, ease));
     }
+    Ok(keys)
+}
+
+fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
     let transform = &mut clip.transform;
+    if transform.concat_animation.is_some()
+        && matches!(clip.opacity, AnimatableValue::Constant { .. })
+    {
+        return Ok(());
+    }
     let (AnimatableValue::Constant { value: x }, AnimatableValue::Constant { value: y }) =
         (&transform.x, &transform.y)
     else {
@@ -349,18 +350,47 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
     else {
         anyhow::bail!("Animated caption pose requires a Concat mapping");
     };
+    // A single shared scale must keep both independent stretches in range.
+    let minimum = (sx.max(*sy) / 10.0).max(0.05);
+    let maximum = (sx.min(*sy) / 0.1).min(8.0);
+    let scale = 1.0_f64.max(minimum).min(maximum).clamp(0.05, 8.0);
+    let stretch = [*sx / scale, *sy / scale];
+    // Products at the source's inclusive limits can round by one ulp.
+    ensure!(
+        stretch
+            .iter()
+            .all(|value| (0.1 - 1e-14..=10.0 + 1e-14).contains(value)),
+        "Caption scale and stretch cannot be represented in Concat"
+    );
+    let opacity = match &clip.opacity {
+        AnimatableValue::Constant { .. } if scale == 1.0 => return Ok(()),
+        AnimatableValue::Constant { value } => *value,
+        AnimatableValue::Keyframes { .. } => 1.0,
+    };
+    let duration = i64::try_from(
+        clip.timeline_end_tick
+            .checked_sub(clip.timeline_start_tick)
+            .filter(|duration| *duration > 0)
+            .ok_or_else(|| anyhow::anyhow!("Invalid caption duration"))?,
+    )?;
+    let keys = match &clip.opacity {
+        AnimatableValue::Keyframes { track } => {
+            BTreeMap::from([("opacity".to_owned(), opacity_keys(track, duration)?)])
+        }
+        AnimatableValue::Constant { .. } => BTreeMap::new(),
+    };
     let animation = SourceAnimation {
         duration_ticks: duration,
         rest: Pose {
-            scale_x: 1.0,
-            scale_y: 1.0,
+            scale_x: scale,
+            scale_y: scale,
             x: *x / f64::from(width),
             y: *y / f64::from(height),
             rotation_degrees: *rotation,
-            opacity: 1.0,
+            opacity,
         },
-        keys: BTreeMap::from([("opacity".to_owned(), keys)]),
-        stretch: [*sx, *sy],
+        keys,
+        stretch: stretch.map(|value| value.clamp(0.1, 10.0)),
         canvas: [f64::from(width), f64::from(height)],
     };
     animation.validate()?;
