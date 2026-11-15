@@ -2,18 +2,10 @@
 //! Coordinates are explicit; evaluation never re-solves them after trim/split.
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TangentMode {
-    Auto,
-    Free,
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Continuity {
-    Smooth,
-    Broken,
-}
+#[path = "tangent_types.rs"]
+mod types;
+pub use types::{Continuity, TangentMode};
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tangent {

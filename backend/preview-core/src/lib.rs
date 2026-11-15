@@ -1,6 +1,8 @@
 //! Browser preview and HTTP sampling share the exact product color evaluator.
 #[path = "../../src/domain/animated_color.rs"]
 mod animated_color;
+#[path = "../../src/domain/tangent_types.rs"]
+mod tangents;
 pub use animated_color::{color_command_target, Color, ColorExportFrames, ColorSampleRequest, PreparedColorTrack};
 
 /// Strict JSON admission and sampling, shared by the host-independent ABI.
