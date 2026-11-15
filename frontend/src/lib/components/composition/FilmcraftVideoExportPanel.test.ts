@@ -1104,7 +1104,7 @@ it('shows resolved standard export settings without starting an export', async (
     preset: 'lossless', container: 'mkv', outputName: null, estimatedBytes: null, audio: null,
     source: { name: 'Монтаж', width: 3840, height: 2160, frameRate: { numerator: 24, denominator: 1 }, sampleRate: 48000 },
     sourceRange: { startTicks: '0', endTicks: '508032000000', durationSeconds: 2 },
-    video: { codec: 'ffv1', scaling: 'scaleToFit', width: 1920, height: 1080, frameRate: { numerator: 30000, denominator: 1001 }, pixelAspect: [1, 1], profile: null, level: null, keyframeDistance: null, mjpegQuality: null, bitrate: null },
+    video: { codec: 'ffv1', scaling: 'scaleToFit', burnCaptions: false, width: 1920, height: 1080, frameRate: { numerator: 30000, denominator: 1001 }, pixelAspect: [1, 1], profile: null, level: null, keyframeDistance: null, mjpegQuality: null, bitrate: null },
   })
   vi.mocked(getFilmcraftPreviewFrame).mockResolvedValue({
     kind: 'sequence', sequenceId: '18446744073709551615', scale: 1, effects: true, captions: true,
@@ -1127,7 +1127,7 @@ it('shows resolved standard export settings without starting an export', async (
   details.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()
   await vi.waitFor(() => expect(details.querySelector('canvas')?.width).toBe(1))
   expect(getFilmcraftPreviewFrame).toHaveBeenCalledWith(expect.objectContaining({
-    timeFrames: '0', effects: true, captions: true,
+    timeFrames: '0', effects: true, captions: false,
   }), expect.any(AbortSignal), 'owner')
   expect(context).toHaveBeenCalled()
   expect(startFilmcraftVideoJob).not.toHaveBeenCalled()

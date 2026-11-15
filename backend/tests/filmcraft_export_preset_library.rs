@@ -648,10 +648,12 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     let mut standard = input.clone();
     standard["libraryPreset"] = standard.as_object_mut().unwrap().remove("preset").unwrap();
     standard.as_object_mut().unwrap().remove("range");
+    standard["burnCaptions"] = json!(false);
     standard["outputName"] = json!("  Проверка монтажа  ");
     let (status, summary) = call("video-jobs/summary", standard.clone()).await;
     assert_eq!(status, StatusCode::OK, "{summary}");
     assert_eq!(summary["outputName"], "Проверка монтажа");
+    assert_eq!(summary["video"]["burnCaptions"], false);
     let mut invalid = standard.clone();
     invalid["outputName"] = json!("../outside");
     for endpoint in ["video-jobs/summary", "video-jobs"] {

@@ -1926,7 +1926,7 @@ export type FilmcraftExportSummary = {
   source: { name: string | null; width: number | null; height: number | null; frameRate: { numerator: number; denominator: number }; sampleRate: number | null }
   sourceRange: FilmcraftSourceRange & { durationSeconds: number }
   video: null | {
-    codec: string; width: number; height: number; scaling: FilmcraftScaling
+    codec: string; width: number; height: number; scaling: FilmcraftScaling; burnCaptions: boolean
     frameRate: { numerator: number; denominator: number }; pixelAspect: [number, number]
     profile: string | null; level: number | null; keyframeDistance: number | null; mjpegQuality: number | null
     bitrate: null | { targetKbps: number; maxKbps: number; mode: string }

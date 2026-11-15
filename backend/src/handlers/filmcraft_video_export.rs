@@ -833,6 +833,7 @@ impl VideoRequest {
             "codec": self.preset.video_codec(),
             "width": spec.width, "height": spec.height,
             "scaling": self.scaling.unwrap_or_else(|| self.preset.scaling()),
+            "burnCaptions": self.burn_captions.unwrap_or(true),
             "frameRate": spec.frame_rate, "pixelAspect": self.pixel_aspect.unwrap_or((1, 1)),
             "profile": self.preset.h264().then_some(self.h264_profile),
             "level": self.h264_level.filter(|_| self.preset.h264()),

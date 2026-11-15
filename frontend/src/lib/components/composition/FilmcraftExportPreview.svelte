@@ -25,7 +25,7 @@
     const input = {
       document, sequenceId, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)),
       ...(timeTicks !== undefined ? { timeTicks } : { timeFrames }),
-      effects: true, captions: true,
+      effects: true, captions: video.burnCaptions,
     }
     const controller = new AbortController()
     pending = true
