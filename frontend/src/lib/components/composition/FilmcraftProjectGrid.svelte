@@ -3,6 +3,7 @@
   import { on } from 'svelte/events'
   import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftIconSortKeys, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
+  import { findFilmcraftProjectItems, type FilmcraftFindOperator, type FilmcraftFindQuery, type FilmcraftFindResult, type FilmcraftFindRow } from '$lib/api'
 
   let { project, sources, token, sequenceId, clipId, onedit, onopen, previewArea = $bindable(true), thumbnailEffects = $bindable(true), selected = $bindable<string[]>([]), disabled = false }: {
     project: FilmcraftImportResult; sources: Record<string, string>; token: string | null; sequenceId: string; clipId: string
@@ -29,6 +30,21 @@
   let drag = $state<{ pointer: number; startX: number; startY: number; x: number; y: number; items: string[]; document: string }>()
   let bin = $state('')
   let query = $state('')
+  const findColumns = ['All', 'Name', 'Label', 'Media Type', 'Frame Rate', 'Media Duration', 'Video Info',
+    'Audio Info', 'File Path', 'Tape Name', 'Description', 'Comment', 'Log Note', 'Scene', 'Shot']
+  const findColumnsId = $props.id()
+  const findOperators = [
+    ['contains', 'Содержит'], ['matches', 'Совпадает'], ['beginsWith', 'Начинается с'],
+    ['endsWith', 'Заканчивается на'], ['doesNotContain', 'Не содержит'],
+  ] as const satisfies readonly (readonly [FilmcraftFindOperator, string])[]
+  let findRows = $state<FilmcraftFindRow[]>([{ column: 'All', operator: 'contains', text: '' }])
+  let matchAll = $state(true)
+  let caseSensitive = $state(false)
+  let finding = $state(false)
+  let findError = $state('')
+  let lastFind = $state<{ document: string; input: FilmcraftFindQuery; result: FilmcraftFindResult }>()
+  let findRequest: AbortController | undefined
+  const activeFind = $derived(lastFind?.document === project.documentText ? lastFind : undefined)
   const sortOptions = [
     ['user', 'Порядок в проекте'], ['name', 'Имя'], ['label', 'Метка'], ['mediaType', 'Тип медиа'],
     ['frameRate', 'Частота кадров'], ['mediaStart', 'Начало медиа'], ['mediaEnd', 'Конец медиа'],
@@ -241,6 +257,9 @@
 
   const bins = $derived(project.projectBins ?? [])
   const items = $derived(project.projectItems ?? [])
+  const findSuggestions = $derived([...new SvelteSet([
+    ...findColumns, ...items.flatMap(item => Object.keys(item.iconSort?.metadata ?? {})),
+  ])])
   const listOptions = $derived.by(() => {
     const custom = new SvelteSet<string>()
     for (const item of items) {
@@ -284,11 +303,13 @@
         if (search) for (const child of children.get(folder.id) ?? []) queue.push(child)
       }
     }
-    const folders = search || !activeBin ? [] : children.get(activeBin.id) ?? []
+    const folders = search || activeFind || !activeBin ? [] : children.get(activeBin.id) ?? []
     const available = activeBin && (search || activeBin.itemIds !== undefined)
       ? [...memberIds].flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
       : items
-    const matches = available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
+    const matches = activeFind
+      ? activeFind.result.items.flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
+      : available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
     const column = listView ? (listSort && availableColumns.has(listSort) ? listSort : undefined) : sortColumn
     if (!freeform && column && column !== 'user') {
       const key = (item: typeof items[number]) => column === 'name' ? item.name
@@ -484,12 +505,48 @@
   }
 
   function enter(id: string) {
+    clearFind()
     bin = id
     arrangementChoice = ''
     arrangementName = ''
     hover = undefined
     query = ''
     page = 0
+  }
+  function clearFind() {
+    findRequest?.abort()
+    lastFind = undefined
+    findError = ''
+    page = 0
+  }
+
+  async function runFind(next: boolean) {
+    const owner = token
+    const document = project.documentText
+    const previous = activeFind
+    if (!owner || finding || (next && !previous)) return
+    const input = next && previous
+      ? previous.input
+      : { rows: findRows.map(row => ({ ...row })), matchAll, caseSensitive }
+    const request = new AbortController()
+    findRequest = request
+    finding = true
+    findError = ''
+    try {
+      const result = await findFilmcraftProjectItems(owner, {
+        ...input, document, ...(next && previous ? { index: previous.result.index } : {}),
+      }, request.signal)
+      if (request.signal.aborted || project.documentText !== document || token !== owner) return
+      lastFind = { document, input, result }
+      hover = undefined
+      selected = result.item ? [result.item] : []
+      const position = entries.findIndex(entry => entry.kind === 'item' && entry.item.id === result.item)
+      page = position < 0 ? 0 : Math.floor(position / pageSize)
+    } catch (error) {
+      if (!request.signal.aborted && project.documentText === document) findError = error instanceof Error ? error.message : String(error)
+    } finally {
+      if (findRequest === request) { findRequest = undefined; finding = false }
+    }
   }
   function scrub(id: string, event: PointerEvent) {
     if (!hoverEnabled || event.pointerType === 'touch' || event.buttons) return
@@ -633,14 +690,14 @@
 
 <details ontoggle={event => {
   open = event.currentTarget.open
-  if (!open) { thumbnailContact = undefined; hover = undefined }
+  if (!open) { thumbnailContact = undefined; hover = undefined; findRequest?.abort() }
 }}>
   <summary>Сетка проекта Filmcraft</summary>
   {#if open}
     <div class="toolbar">
       {#if parent}<button type="button" disabled={disabled} onclick={() => enter(parent.id)}>На уровень выше</button>{/if}
       {#if activeBin}<span>{activeBin.name}</span>{/if}
-      <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { query = event.currentTarget.value; page = 0; hover = undefined }} /></label>
+      <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { clearFind(); query = event.currentTarget.value; hover = undefined }} /></label>
       <label><input type="checkbox" checked={hoverEnabled} onchange={event => { hoverEnabled = event.currentTarget.checked; thumbnailContact = undefined; hover = undefined; saveView() }} />Просмотр при наведении</label>
       <label><input type="checkbox" checked={thumbnailAllDevices} onchange={event => { thumbnailAllDevices = event.currentTarget.checked; thumbnailContact = undefined; hover = undefined; saveView() }} />Просмотр миниатюр касанием и пером</label>
       <label><input type="checkbox" checked={freeform} onchange={event => { freeform = event.currentTarget.checked; if (freeform) listView = false; hover = undefined; drag = undefined; saveView() }} />Свободная раскладка</label>
@@ -702,6 +759,36 @@
         <button type="button" aria-label="Следующая страница карточек" disabled={currentPage + 1 >= pages} onclick={() => { page = currentPage + 1; hover = undefined }}>›</button>
       {/if}
     </div>
+    <details>
+      <summary>Поиск по проекту Filmcraft</summary>
+      <form onsubmit={event => { event.preventDefault(); void runFind(false) }}>
+        {#each findRows as row, index (row)}
+          <div class="toolbar">
+            <label>Поле <input aria-label={`Поле поиска ${index + 1}`} list={findColumnsId} bind:value={row.column} /></label>
+            <label>Условие <select aria-label={`Условие поиска ${index + 1}`} bind:value={row.operator}>
+              {#each findOperators as [key, label] (key)}<option value={key}>{label}</option>{/each}
+            </select></label>
+            <label>Текст <input aria-label={`Текст поиска ${index + 1}`} bind:value={row.text} /></label>
+            {#if findRows.length > 1}
+              <button type="button" aria-label={`Удалить условие ${index + 1}`} onclick={() => { findRows = findRows.filter(candidate => candidate !== row) }}>×</button>
+            {/if}
+          </div>
+        {/each}
+        <datalist id={findColumnsId}>
+          {#each findSuggestions as column (column)}<option value={column}></option>{/each}
+        </datalist>
+        <div class="toolbar">
+          <button type="button" onclick={() => { findRows = [...findRows, { column: 'All', operator: 'contains', text: '' }] }}>Добавить условие</button>
+          <label><input type="checkbox" bind:checked={matchAll} />Все условия</label>
+          <label><input type="checkbox" bind:checked={caseSensitive} />Учитывать регистр</label>
+          <button type="submit" disabled={!token || finding || !findRows.some(row => row.text)}>Найти в проекте</button>
+          <button type="button" disabled={!token || finding || !activeFind?.result.matches} onclick={() => runFind(true)}>Следующее совпадение</button>
+          {#if activeFind}<button type="button" onclick={clearFind}>Очистить результаты</button>{/if}
+        </div>
+      </form>
+      {#if activeFind}<p role="status">Совпадений: {activeFind.result.matches}</p>{/if}
+      {#if findError}<p role="alert">{findError}</p>{/if}
+    </details>
     <details>
       <summary>Пресеты вида</summary>
       <div class="toolbar">

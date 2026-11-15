@@ -799,6 +799,7 @@ pub mod filmcraft_poster_frame;
 pub mod filmcraft_freeform;
 pub mod filmcraft_matte_color;
 pub mod filmcraft_metadata;
+pub mod filmcraft_find;
 pub mod filmcraft_project_sort;
 
 pub mod filmcraft_bin_rename;
