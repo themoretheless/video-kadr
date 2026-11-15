@@ -3,9 +3,15 @@
   import { nestedCaptionExportCues, formatSubtitleExport, type SubtitleExportFormat } from '$lib/subtitles/export'
   import { MAX_SRT_BYTES } from '$lib/subtitles/srt'
   import SubtitleFilePicker from './SubtitleFilePicker.svelte'
+  import CaptionFileExport from './CaptionFileExport.svelte'
   import { authState } from '$lib/state/auth.svelte'
   let error = $state(''), message = $state(''), importing = $state(false), atPlayhead = $state(false)
   const documents = $derived(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments)
+  const activeId = $derived(nestedComposition.activeCompositionId ?? nestedComposition.document?.root)
+  const content = $derived(activeId ? nestedComposition.document?.compositions[activeId]?.content : undefined)
+  const fileTracks = $derived(content?.captionTracks ?? [])
+  let trackId = $state('')
+  const selectedTrack = $derived(fileTracks.find(track => track.id === trackId) ?? fileTracks[0])
   async function importFile(file: File, dropTime?: number, saveSource = false): Promise<boolean> {
     if(importing||nestedHistory.busy)return false
     error='';message='';importing=true
@@ -50,5 +56,16 @@
   {#if message}<p role="status">{message}</p>{/if}
   <button class="btn ghost sm" type="button" onclick={() => download('srt')}>Субтитры активной композиции · SRT</button>
   <button class="btn ghost sm" type="button" onclick={() => download('vtt')}>Субтитры активной композиции · VTT</button>
+  {#if content && selectedTrack}
+    <label>Дорожка для экспорта
+      <select aria-label="Дорожка для экспорта" value={selectedTrack.id} onchange={event=>{trackId=event.currentTarget.value}}>
+        {#each fileTracks as track (track.id)}<option value={track.id}>{track.name}</option>{/each}
+      </select>
+    </label>
+    {#key `${activeId}/${selectedTrack.id}`}
+      <CaptionFileExport composition={{ canvas: { fps: content.canvas.fpsMilli / 1000, fpsRate: content.canvas.fpsRate },
+        captionTracks: fileTracks }} activeId={selectedTrack.id} />
+    {/key}
+  {/if}
   {#if error}<p role="alert">{error}</p>{/if}
 </section>

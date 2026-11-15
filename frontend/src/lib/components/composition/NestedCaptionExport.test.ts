@@ -1,14 +1,70 @@
 // @ts-expect-error The mounted component needs Svelte's client runtime.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { expect, it, vi } from 'vitest'
-import { nestedDurations } from '$lib/api'
+import { nestedDurations, writeCaptionFile } from '$lib/api'
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { closeNestedComposition, nestedComposition, nestedHistory, undoNestedComposition } from '$lib/state/nestedComposition.svelte'
 import { dropSubtitle } from '$lib/subtitles/timelineDrop'
 import NestedCaptionExport from './NestedCaptionExport.svelte'
 
-vi.mock('$lib/api', () => ({ nestedDurations: vi.fn(async () => ({ root: 4_000_000 })) }))
+vi.mock('$lib/api', () => ({
+ nestedDurations: vi.fn(async () => ({ root: 4_000_000 })),
+ writeCaptionFile: vi.fn(),
+}))
+
+it('exports a selected native caption track from the active timeline with its exact clock and metadata', async () => {
+ closeNestedComposition()
+ const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
+ const root = { content, instances: [] }
+ nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root, edited: {
+  ...root, content: { ...content, canvas: { ...content.canvas, fpsMilli: 29970, fpsRate: { numerator: 30000, denominator: 1001 } },
+   captionTracks: [
+    { id: 'one', name: 'First', clips: [] },
+    { id: 'two', name: 'Dialogue', locked: true, vttBlocks: ['NOTE preserved'], clips: [{
+     id: 'native', cueId: 'original', timelineStartTick: '254016000001', timelineEndTick: '508032000003',
+     text: '<i>Dialogue</i>', speaker: 'Voice', settings: 'line:90%',
+    }] },
+   ],
+  },
+ } } }
+ nestedComposition.activeCompositionId = 'edited'
+ vi.mocked(writeCaptionFile).mockResolvedValue({ extension: 'vtt', dataBase64: btoa('WEBVTT\n') })
+ const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:caption')
+ const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+ const target = document.createElement('div')
+ const component = mount(NestedCaptionExport, { target })
+ try {
+  await tick()
+  const track = target.querySelector<HTMLSelectElement>('[aria-label="Дорожка для экспорта"]')!
+  track.value = 'two'
+  track.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  const currentFormat = target.querySelector<HTMLSelectElement>('[aria-label="Формат экспорта субтитров"]')!
+  currentFormat.value = 'vtt'
+  currentFormat.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  expect([...currentFormat.options].map(option => option.value)).toEqual(['srt','vtt','scc','mcc','stl','ttml','dfxp'])
+  const exportButton = [...target.querySelectorAll('button')].find(button => button.textContent === 'Экспортировать дорожку субтитров')!
+  exportButton.click()
+  await vi.waitFor(() => expect(target.querySelector('a[download]')).not.toBeNull())
+  expect(writeCaptionFile).toHaveBeenCalledExactlyOnceWith({
+   ticksPerSecond: '254016000000', blocks: ['NOTE preserved'], cues: [{
+    startTick: '254016000001', endTick: '508032000003', text: '<i>Dialogue</i>', speaker: 'Voice', id: 'original', settings: 'line:90%',
+   }],
+  }, 'vtt', { dropFrame: true, rate: { num: 30000, den: 1001 } })
+  expect(target.querySelector<HTMLAnchorElement>('a[download]')?.download).toBe('Dialogue.vtt')
+  nestedComposition.activeCompositionId = 'root'
+  await tick()
+  expect(revoke).toHaveBeenCalledWith('blob:caption')
+ } finally {
+  await unmount(component)
+  create.mockRestore()
+  revoke.mockRestore()
+  vi.mocked(writeCaptionFile).mockReset()
+  closeNestedComposition()
+ }
+})
 
 it('validates dropped files and imports subtitles at the cursor in one undo step', async () => {
  closeNestedComposition()

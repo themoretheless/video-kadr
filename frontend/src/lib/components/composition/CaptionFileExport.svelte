@@ -1,9 +1,12 @@
 <script lang="ts">
  import {writeCaptionFile,type CaptionFileFormat} from '$lib/api'
- import type {Composition} from '$lib/composition/types'
+ import type {CaptionTrack, CompositionCanvas} from '$lib/composition/types'
  import {captionFileDocument} from '$lib/composition/captionFileExport'
  import {canvasTimeGrid} from '$lib/composition/timeGrid'
- let {composition,activeId=''}:{composition:Composition;activeId?:string}=$props()
+ let {composition,activeId=''}:{
+  composition:{readonly canvas:Pick<CompositionCanvas,'fps'|'fpsRate'>;readonly captionTracks?:readonly CaptionTrack[]}
+  activeId?:string
+ }=$props()
  let format=$state<CaptionFileFormat>('srt'),dropFrame=$state(true),busy=$state(false),error=$state(''),url=$state(''),filename=$state('')
  const track=$derived(composition.captionTracks?.find(track=>track.id===activeId)??composition.captionTracks?.[0])
  const formats=['srt','vtt','scc','mcc','stl','ttml','dfxp'] as const
@@ -19,12 +22,12 @@
    if(disposed)return
    const binary=atob(result.dataBase64),bytes=Uint8Array.from(binary,char=>char.charCodeAt(0))
    url=URL.createObjectURL(new Blob([bytes],{type:'application/octet-stream'}))
-   filename=`${name.replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_')||'captions'}.${result.extension}`
+   filename=`${name.replace(/[\\/:*?"<>|\p{Cc}]/gu,'_')||'captions'}.${result.extension}`
   }catch(reason){error=String(reason)}finally{busy=false}
  }
 </script>
 <div class="export">
- <label>Формат экспорта<select aria-label="Формат экспорта субтитров" value={format} disabled={busy} onchange={event=>format=event.currentTarget.value as CaptionFileFormat}>{#each formats as item}<option value={item}>{item.toUpperCase()}</option>{/each}</select></label>
+ <label>Формат экспорта<select aria-label="Формат экспорта субтитров" value={format} disabled={busy} onchange={event=>format=event.currentTarget.value as CaptionFileFormat}>{#each formats as item (item)}<option value={item}>{item.toUpperCase()}</option>{/each}</select></label>
  <label class="check"><input type="checkbox" aria-label="Drop-frame субтитров" checked={dropFrame} disabled={busy} onchange={event=>dropFrame=event.currentTarget.checked}/>Drop-frame</label>
  <button type="button" class="btn ghost sm" disabled={busy||!track} onclick={()=>void exportFile()}>Экспортировать дорожку субтитров</button>
  {#if url}<a href={url} download={filename}>Скачать {filename}</a>{/if}
