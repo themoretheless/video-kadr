@@ -29,6 +29,12 @@
   let renderQuality = $state('preset')
   let intraProfile = $state('')
   let jpegQuality = $state('')
+  let limiter = $state('preset')
+  let limiterMin = $state<number>()
+  let limiterMax = $state<number>()
+  let loudness = $state('preset')
+  let loudnessTarget = $state<number>()
+  let loudnessPeak = $state<number>()
   let metadata = $state<FilmcraftExportMetadata>({})
   const intraProfiles = [
     { format: 'prores', field: 'proresProfile', options: [['proxy', '422 Proxy'], ['lt', '422 LT'], ['standard', '422'], ['hq', '422 HQ']] },
@@ -79,6 +85,15 @@
   const metadataValid = $derived(validExportMetadata(Object.fromEntries(
     exportMetadataFields.map(({ key }) => [key, metadataValue(key)]),
   )))
+  const savedEffects = $derived(picked?.settings.effects as {
+    video_limiter?: { min_percent?: number; max_percent?: number }
+    loudness?: { target_lufs?: number; true_peak_dbtp?: number }
+  } | undefined)
+  const limiterValid = $derived(limiter !== 'on'
+    || (limiterMin !== undefined && limiterMax !== undefined && limiterMin >= 0 && limiterMin <= 100 && limiterMax >= 0 && limiterMax <= 100))
+  const loudnessValid = $derived(loudness !== 'on'
+    || (loudnessTarget !== undefined && Number.isFinite(loudnessTarget)
+      && loudnessPeak !== undefined && loudnessPeak >= -24 && loudnessPeak <= 0))
   const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
@@ -89,6 +104,7 @@
       && (!adaptiveBitrate || (Number.isFinite(Number(adaptiveBitrate)) && Number(adaptiveBitrate) > 0))
     ))
     && (audioOnly || silent || metadataValid)
+    && (audioOnly || limiterValid) && (!canEditAudio || loudnessValid)
     && (audioOnly || aspect !== 'custom' || (
       positive(aspectNum) && positive(aspectDen)
       && Number(aspectNum) <= 2147483647 && Number(aspectDen) <= 2147483647
@@ -102,7 +118,7 @@
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; metadata = {}; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; metadata = {}; limiter = 'preset'; limiterMin = undefined; limiterMax = undefined; loudness = 'preset'; loudnessTarget = undefined; loudnessPeak = undefined; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
     return () => { void owner; ++generation; controller?.abort() }
   })
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
@@ -138,6 +154,18 @@
       if (mjpeg && jpegQuality) settings.quality = Number(jpegQuality)
     }
     if (!audioOnly && !silent && audio !== 'preset') settings.includeAudio = audio === 'include'
+    const effects: Record<string, unknown> = {}
+    if (!audioOnly && limiter !== 'preset') {
+      effects.video_limiter = limiter === 'on'
+        ? { enabled: true, min_percent: limiterMin, max_percent: limiterMax }
+        : { enabled: false }
+    }
+    if (canEditAudio && loudness !== 'preset') {
+      effects.loudness = loudness === 'on'
+        ? { enabled: true, target_lufs: loudnessTarget, true_peak_dbtp: loudnessPeak }
+        : { enabled: false }
+    }
+    if (Object.keys(effects).length) settings.effects = effects
     if (!audioOnly && !silent && Object.keys(metadata).length) settings.metadata = { ...metadata }
     if (canEditAudio) {
       const audioPatch: Record<string, unknown> = {}
@@ -330,6 +358,43 @@
         </select></label>
         <p>Если выбранный уровень слишком низкий для видео, энкодер повысит его автоматически.</p>
       {/if}
+      <details>
+        <summary>Эффекты пресета</summary>
+        {#if !audioOnly}
+          <label>Ограничитель яркости <select aria-label="Ограничитель яркости пресета Filmcraft" value={limiter} disabled={busy || disabled}
+            onchange={event => {
+              limiter = event.currentTarget.value
+              if (limiter === 'on') {
+                limiterMin ??= savedEffects?.video_limiter?.min_percent ?? 0
+                limiterMax ??= savedEffects?.video_limiter?.max_percent ?? 100
+              }
+            }}>
+            <option value="preset">Как в исходном пресете</option><option value="on">Включить</option><option value="off">Выключить</option>
+          </select></label>
+          {#if limiter === 'on'}
+            <label>Нижний порог, % <input aria-label="Нижний порог яркости пресета Filmcraft" type="number" min="0" max="100" step="0.1" bind:value={limiterMin} disabled={busy || disabled} /></label>
+            <label>Верхний порог, % <input aria-label="Верхний порог яркости пресета Filmcraft" type="number" min="0" max="100" step="0.1" bind:value={limiterMax} disabled={busy || disabled} /></label>
+            {#if !limiterValid}<p role="alert">Укажите пороги от 0 до 100 %.</p>{/if}
+          {/if}
+        {/if}
+        {#if canEditAudio}
+          <label>Нормализация громкости <select aria-label="Нормализация громкости пресета Filmcraft" value={loudness} disabled={busy || disabled}
+            onchange={event => {
+              loudness = event.currentTarget.value
+              if (loudness === 'on') {
+                loudnessTarget ??= savedEffects?.loudness?.target_lufs ?? -23
+                loudnessPeak ??= savedEffects?.loudness?.true_peak_dbtp ?? -2
+              }
+            }}>
+            <option value="preset">Как в исходном пресете</option><option value="on">Включить</option><option value="off">Выключить</option>
+          </select></label>
+          {#if loudness === 'on'}
+            <label>Целевая громкость, LUFS <input aria-label="Целевая громкость пресета Filmcraft" type="number" step="0.1" bind:value={loudnessTarget} disabled={busy || disabled} /></label>
+            <label>Предел true peak, dBTP <input aria-label="Предел true peak пресета Filmcraft" type="number" min="-24" max="0" step="0.1" bind:value={loudnessPeak} disabled={busy || disabled} /></label>
+            {#if !loudnessValid}<p role="alert">Укажите целевую громкость и предел true peak от −24 до 0 dBTP.</p>{/if}
+          {/if}
+        {/if}
+      </details>
       {#if !audioOnly && !silent}
         <details>
           <summary>Метаданные пресета</summary>

@@ -213,3 +213,28 @@ it('inherits untouched metadata and allows clearing a saved value for one export
   expect(document.querySelector<HTMLInputElement>('[aria-label="Название в пресете Filmcraft"]')?.value).toBe('Original')
   expect(button('Применить правки к экспорту').disabled).toBe(true)
 })
+
+it('applies portable limiter and loudness effects with inherited starting values', async () => {
+  const preset = { ...builtin, settings: { format: 'h264', effects: { video_limiter: { min_percent: 8, max_percent: 82 } } } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [preset], default: preset.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: apply } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  for (const label of ['Ограничитель яркости пресета Filmcraft', 'Нормализация громкости пресета Filmcraft']) {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!
+    control.value = 'on'
+    control.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  await tick()
+  await input('Верхний порог яркости пресета Filmcraft', '101')
+  expect(button('Применить правки к экспорту').disabled).toBe(true)
+  await input('Верхний порог яркости пресета Filmcraft', '75')
+  await input('Целевая громкость пресета Filmcraft', '-18')
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenCalledWith(preset.name, { effects: {
+    video_limiter: { enabled: true, min_percent: 8, max_percent: 75 },
+    loudness: { enabled: true, target_lufs: -18, true_peak_dbtp: -2 },
+  } })
+})
