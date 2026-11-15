@@ -11,12 +11,14 @@ import { clipEndTicks } from '../composition/types.js'
 import type { ShotScan } from '../analysis/shots.js'
 import { buildCompositionWireDocument } from '../composition/payload.js'
 import { closeNestedComposition, nestedComposition } from '../state/nestedComposition.svelte.js'
+import { defaultSceneDescriptionPreferences, setSceneDescriptionPreferences } from '../state/sceneDescriptionPreferences.svelte.js'
 
 vi.mock('../api.js', async (original) => ({ ...await original<typeof api>(), scanLibraryShots: vi.fn(), measureLibraryShots: vi.fn(), compareLibraryFrames: vi.fn(), describeLibraryShot: vi.fn(), getSceneDescriptionCatalog: vi.fn() }))
 const scan: ShotScan = { version: 1, sourceHash: 'a'.repeat(64), floor: 0.05, durationTicks: 4_000_000, cuts: [{ tick: 1_000_000, score: 0.8 }, { tick: 3_000_000, score: 0.7 }] }
 let clipId: string
 beforeEach(() => {
   vi.clearAllMocks()
+  setSceneDescriptionPreferences(defaultSceneDescriptionPreferences)
   setCompositionStorageForTests(null)
   resetCompositionForTests()
   shotAnalysisState.scans = {}; shotAnalysisState.measurements = {}
@@ -25,6 +27,25 @@ beforeEach(() => {
 })
 
 describe('MCP shot analysis', () => {
+  it('uses editor preferences for omitted description and cache arguments while honoring explicit overrides', async () => {
+    setSceneDescriptionPreferences({ focus: 'shot-type', language: 'en', fps: 4 })
+    const span = { startTicks: 0, endTicks: 4_000_000 }
+    vi.mocked(api.describeLibraryShot).mockResolvedValue({ text: 'Wide shot', tags: [] })
+    vi.mocked(api.getSceneDescriptionCatalog).mockResolvedValue({ sourceHash: scan.sourceHash, descriptions: [], nextCursor: null })
+    const access = { token: 'owner' }
+    await executeAgentRequest('agent', 'describe_clip', { clipId }, access)
+    expect(api.describeLibraryShot).toHaveBeenLastCalledWith('source', {
+      span, expectedSourceHash: scan.sourceHash, focus: 'shot-type', language: 'en', fps: 4,
+    }, 'owner', undefined, undefined)
+    await executeAgentRequest('agent', 'read_scene_descriptions', { media_id: 'source', language: 'ru' }, access)
+    expect(api.getSceneDescriptionCatalog).toHaveBeenLastCalledWith('source', {
+      focus: 'shot-type', language: 'ru', fps: 4,
+    }, 'owner', undefined, expect.any(AbortSignal))
+    await executeAgentRequest('agent', 'read_scene_descriptions', { media_id: 'source' }, access)
+    expect(api.getSceneDescriptionCatalog).toHaveBeenLastCalledWith('source', {
+      focus: 'shot-type', language: 'en', fps: 4,
+    }, 'owner', undefined, expect.any(AbortSignal))
+  })
   it('passes the resource view to the read-only catalog without scanning or describing', async () => {
     const cached = { sourceHash: scan.sourceHash, descriptions: [], nextCursor: null }
     vi.mocked(api.getSceneDescriptionCatalog).mockResolvedValue(cached)

@@ -3,6 +3,7 @@
   import { describeLibraryShot, readLibraryShotDescriptions, type SceneDescription } from '../api.js'
   import type { ShotSpan } from './shots.js'
   import SceneModelSetup from './SceneModelSetup.svelte'
+  import { sceneDescriptionPreferences, setSceneDescriptionPreferences, type SceneDescriptionPreferences } from '../state/sceneDescriptionPreferences.svelte.js'
 
   let { sourceId, sourceHash, token, spaceId, disabled, batchSpans, wholeSpan, children }: {
     sourceId: string
@@ -15,9 +16,7 @@
     children: Snippet<[Snippet<[ShotSpan, string]>]>
   } = $props()
 
-  let focus = $state<'general' | 'shot-type'>('general')
-  let language = $state<'ru' | 'en'>('ru')
-  let fps = $state(1)
+  const { focus, language, fps } = $derived(sceneDescriptionPreferences)
   const samplingRates = [0.1, 0.25, 0.5, 1, 2, 4, 8, 15, 30]
   let descriptions = $state<Record<string, SceneDescription>>({})
   let pending = $state<string>()
@@ -46,7 +45,7 @@
     const controller = new AbortController()
     const owner = token
     const spans = cacheSpans
-    const options = { expectedSourceHash: sourceHash, focus, language, fps }
+    const options = { expectedSourceHash: sourceHash, ...sceneDescriptionPreferences }
     const source = sourceId
     const space = spaceId
     readingCache = true
@@ -61,7 +60,7 @@
           }, owner, space, controller.signal)
           if (controller.signal.aborted) return
           for (const { span, description } of cached) {
-            descriptions[descriptionKey(span, options.focus, options.language, options.fps)] ??= description
+            descriptions[descriptionKey(span, options)] ??= description
           }
         }
       } catch {
@@ -72,18 +71,18 @@
     }
   })
 
-  function descriptionKey({ startTicks, endTicks }: ShotSpan, viewFocus = focus, viewLanguage = language, viewFps = fps): string {
-    return `${startTicks}:${endTicks}:${viewFocus}:${viewLanguage}:${viewFps}`
+  function descriptionKey({ startTicks, endTicks }: ShotSpan, view = sceneDescriptionPreferences): string {
+    return `${startTicks}:${endTicks}:${view.focus}:${view.language}:${view.fps}`
   }
 
-  async function describe({ startTicks, endTicks }: ShotSpan, owner: string): Promise<boolean> {
+  async function describe({ startTicks, endTicks }: ShotSpan, owner: string, view: SceneDescriptionPreferences): Promise<boolean> {
     const span = { startTicks, endTicks }
-    const key = descriptionKey(span)
+    const key = descriptionKey(span, view)
     pending = key
     failure = undefined
     try {
       const description = await describeLibraryShot(sourceId, {
-        span, expectedSourceHash: sourceHash, focus, language, fps,
+        span, expectedSourceHash: sourceHash, ...view,
       }, owner, spaceId, lifecycle.signal)
       if (lifecycle.signal.aborted) return false
       descriptions[key] = description
@@ -101,7 +100,7 @@
   function describeOne(span: ShotSpan) {
     if (working || disabled || readingCache || !token) return
     batchMessage = ''
-    void describe(span, token)
+    void describe(span, token, { ...sceneDescriptionPreferences })
   }
 
   async function describeBatch() {
@@ -109,17 +108,23 @@
     const spans = remaining
     const owner = token
     const initialKey = batchKey
+    const view = { ...sceneDescriptionPreferences }
     batchMessage = ''
     batch = { done: 0, total: spans.length, stop: false }
     try {
       for (const span of spans) {
-        if (!await describe(span, owner)) {
+        if (!await describe(span, owner, view)) {
           if (!lifecycle.signal.aborted) batchMessage = 'Пакет остановлен из-за ошибки. Готовые описания сохранены.'
           break
         }
         batch.done++
         if (batchKey !== initialKey) {
           batchMessage = 'Список сцен изменился. Пакет остановлен.'
+          break
+        }
+        const current = sceneDescriptionPreferences
+        if (current.focus !== view.focus || current.language !== view.language || current.fps !== view.fps) {
+          batchMessage = 'Настройки описания изменились. Пакет остановлен.'
           break
         }
         if (batch.stop) {
@@ -137,17 +142,18 @@
   <fieldset disabled={disabled || working}>
     <legend>Описание сцен моделью</legend>
     <label>Язык
-      <select value={language} onchange={event => { language = event.currentTarget.value === 'en' ? 'en' : 'ru'; batchMessage = '' }}>
+      <select value={language} onchange={event => { setSceneDescriptionPreferences({ language: event.currentTarget.value === 'en' ? 'en' : 'ru' }); batchMessage = '' }}>
         <option value="ru">Русский</option><option value="en">English</option>
       </select>
     </label>
     <label>Акцент
-      <select value={focus} onchange={event => { focus = event.currentTarget.value === 'shot-type' ? 'shot-type' : 'general'; batchMessage = '' }}>
+      <select value={focus} onchange={event => { setSceneDescriptionPreferences({ focus: event.currentTarget.value === 'shot-type' ? 'shot-type' : 'general' }); batchMessage = '' }}>
         <option value="general">Содержание сцены</option><option value="shot-type">Камера и план</option>
       </select>
     </label>
     <label>Кадров в секунду
-      <select value={String(fps)} onchange={event => { fps = Number(event.currentTarget.value); batchMessage = '' }}>
+      <select value={String(fps)} onchange={event => { setSceneDescriptionPreferences({ fps: Number(event.currentTarget.value) }); batchMessage = '' }}>
+        {#if !samplingRates.includes(fps)}<option value={String(fps)}>{fps.toLocaleString('ru')}</option>{/if}
         {#each samplingRates as rate (rate)}
           <option value={String(rate)}>{rate.toLocaleString('ru')}</option>
         {/each}

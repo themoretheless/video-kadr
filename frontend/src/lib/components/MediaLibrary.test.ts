@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { state } from '$lib/state/store.svelte.js'
 import { authState } from '$lib/state/auth.svelte.js'
+import { defaultSceneDescriptionPreferences, setSceneDescriptionPreferences } from '$lib/state/sceneDescriptionPreferences.svelte.js'
 import { proxyController } from '$lib/proxy/state.svelte.js'
 import type { MediaEntry } from '$lib/types.js'
 import MediaLibrary from './MediaLibrary.svelte'
@@ -65,6 +66,7 @@ function buttonByText(root: ParentNode, text: string): HTMLButtonElement {
 }
 
 beforeEach(() => {
+  setSceneDescriptionPreferences(defaultSceneDescriptionPreferences)
   proxyController.resetForTests()
   state.library = libraryItems()
   target = document.createElement('div')
@@ -244,6 +246,11 @@ describe('MediaLibrary', () => {
       '/api/library/video-two/shots/describe',
       '/api/library/video-two/compare-frames',
     ])
+    toggle.click()
+    await vi.waitFor(() => buttonByText(target, 'Анализировать исходник'))
+    buttonByText(target, 'Анализировать исходник').click()
+    await vi.waitFor(() => expect(target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(2) select')?.value).toBe('shot-type'))
+    expect(target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(3) select')?.value).toBe('2')
   })
 
   it('lazy-loads same-origin thumbnails with a fixed-frame skeleton and fallback', async () => {

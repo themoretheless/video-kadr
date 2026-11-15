@@ -1,6 +1,7 @@
 import { scanLibraryShots, measureLibraryShots, compareLibraryFrames, describeLibraryShot, getSceneDescriptionCatalog } from '../api.js'
 import { findClipLocation } from '../composition/commands.js'
 import { cloneComposition, compositionState, commitDocument, makeId, selectCompositionClip } from '../state/composition/core.svelte.js'
+import { sceneDescriptionPreferences, type SceneDescriptionPreferences } from '../state/sceneDescriptionPreferences.svelte.js'
 import { nestedComposition } from '../state/nestedComposition.svelte.js'
 import { agentSession, assertHistoryUnlocked } from './session.svelte.js'
 import { logAgentOperation, type AgentAccess } from './runtime.svelte.js'
@@ -121,11 +122,7 @@ async function compute(actor: string, tool: string, args: Record<string, unknown
 
 async function describeSource(sourceId: string, clipSpan: ShotSpan | undefined, args: Record<string, unknown>, access: AgentAccess) {
   if (!access.token) throw new Error('Scene description requires an authenticated editor')
-  const focus = args.focus === undefined ? 'general' : args.focus
-  const language = args.language === undefined ? 'ru' : args.language
-  const fps = descriptionSamplingRate(args.fps)
-  if (focus !== 'general' && focus !== 'shot-type') throw new Error('Invalid scene description focus')
-  if (language !== 'ru' && language !== 'en') throw new Error('Invalid scene description language')
+  const { focus, language, fps } = descriptionView(args)
 
   const supplied = args.sourceSpan
   let requestedSpan: ShotSpan | undefined
@@ -160,17 +157,12 @@ async function describeSource(sourceId: string, clipSpan: ShotSpan | undefined, 
 
 async function readSceneDescriptions(args: Record<string, unknown>, access: AgentAccess) {
   const { media_id: sourceId, startTicks, endTicks, cursor } = args
-  const focus = args.focus === undefined ? 'general' : args.focus
-  const language = args.language === undefined ? 'ru' : args.language
-  const fps = descriptionSamplingRate(args.fps)
   if (!access.token) throw new Error('Scene description requires an authenticated editor')
   if (typeof sourceId !== 'string' || !sourceId || sourceId.length > 128 ||
       Object.keys(args).some(key => !['media_id', 'focus', 'language', 'startTicks', 'endTicks', 'cursor', 'fps'].includes(key))) {
     throw new Error('Invalid scene description source')
   }
-  if ((focus !== 'general' && focus !== 'shot-type') || (language !== 'ru' && language !== 'en')) {
-    throw new Error('Invalid scene description settings')
-  }
+  const { focus, language, fps } = descriptionView(args)
   let span: ShotSpan | undefined
   if (startTicks !== undefined || endTicks !== undefined) {
     if (typeof startTicks !== 'number' || typeof endTicks !== 'number' ||
@@ -190,10 +182,14 @@ async function readSceneDescriptions(args: Record<string, unknown>, access: Agen
   return { sourceId, focus, language, fps, ...result }
 }
 
-function descriptionSamplingRate(value: unknown): number {
-  if (value === undefined) return 1
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 30) {
+function descriptionView(args: Record<string, unknown>): SceneDescriptionPreferences {
+  const focus = args.focus === undefined ? sceneDescriptionPreferences.focus : args.focus
+  const language = args.language === undefined ? sceneDescriptionPreferences.language : args.language
+  const fps = args.fps === undefined ? sceneDescriptionPreferences.fps : args.fps
+  if (focus !== 'general' && focus !== 'shot-type') throw new Error('Invalid scene description focus')
+  if (language !== 'ru' && language !== 'en') throw new Error('Invalid scene description language')
+  if (typeof fps !== 'number' || !Number.isFinite(fps) || fps <= 0 || fps > 30) {
     throw new Error('fps must be greater than 0 and at most 30')
   }
-  return Math.max(1, Math.round(value * 1000)) / 1000
+  return { focus, language, fps: Math.max(1, Math.round(fps * 1000)) / 1000 }
 }
