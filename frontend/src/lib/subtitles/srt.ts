@@ -11,7 +11,10 @@ export interface SubtitleCue {
   readonly style?: Partial<TextStyle>
   readonly position?: { x: number; y: number }
   readonly anchor?: readonly [number, number]
-  readonly fade?: { inTicks: number; outTicks: number }
+  readonly fade?: { inTicks: number; outTicks: number } | {
+    times: readonly [number, number, number, number]
+    opacities: readonly [number, number, number]
+  }
 }
 
 export class SubtitleFormatError extends Error {
@@ -114,6 +117,26 @@ export function cuesToTextClips(
 }
 
 function captionFade(fade: SubtitleCue['fade'], duration: number): CompositionVisualAnimation | undefined {
+  if (fade && 'times' in fade) {
+    const [startIn, endIn, startOut, endOut] = fade.times
+    const [before, middle, after] = fade.opacities
+    const sample = (tick: number) => {
+      if (tick < startIn) return before
+      if (tick < endIn) return before + (middle - before) * (tick - startIn) / (endIn - startIn)
+      if (tick < startOut) return middle
+      if (tick < endOut) return middle + (after - middle) * (tick - startOut) / (endOut - startOut)
+      return after
+    }
+    const boundaries = new Set([0, duration])
+    for (const tick of fade.times) {
+      if (tick > 0 && tick < duration) boundaries.add(tick)
+    }
+    // Preserve a zero-length transition at its exact boundary on the cue clock.
+    if (startIn === endIn && endIn > 0 && endIn <= duration) boundaries.add(endIn - 1)
+    if (startOut === endOut && endOut > 0 && endOut <= duration) boundaries.add(endOut - 1)
+    const keyframes = [...boundaries].sort((a, b) => a - b).map(tick => ({ tick, value: sample(tick) }))
+    return { opacity: { mode: 'keyframes', track: { timeBase: COMPOSITION_TIME_BASE, interpolation: 'linear', keyframes } } }
+  }
   const { inTicks = 0, outTicks = 0 } = fade ?? {}
   if (!inTicks && !outTicks) return undefined
   const keyframes: CompositionKeyframe[] = []

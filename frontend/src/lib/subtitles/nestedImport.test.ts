@@ -138,3 +138,21 @@ Dialogue: 0:00:04.00,0:00:05.00,{\fad(1200, 0)}Fade spans cue
   { tick: 0, value: 0 }, { tick: 1_000_000, value: 5 / 6 },
  ] } } })
 })
+
+it('imports exact ASS fade bounds, including a transition already in progress', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:02.00,{\fade(255,127,255,-100,100,750,750)}Timed
+Dialogue: 0:00:02.00,0:00:03.00,{\fade(255,0,255,500,100,600,700)}Invalid
+`, allocator())
+ const [timed, invalid] = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(timed).toMatchObject({ opacity: { mode: 'keyframes', track: { interpolation: 'linear', keyframes: [
+  { tick: 0, value: 64 / 255 },
+  { tick: 100_000, value: 128 / 255 },
+  { tick: 749_999, value: 128 / 255 },
+  { tick: 750_000, value: 0 },
+  { tick: 2_000_000, value: 0 },
+ ] } } })
+ expect(invalid).toMatchObject({ opacity: { mode: 'constant', value: 1 }, text: 'Invalid' })
+ expect(result.simplifiedCueCount).toBe(1)
+})

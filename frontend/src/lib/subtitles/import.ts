@@ -109,6 +109,19 @@ function parseAss(body: string) {
 }
 
 function assFade(tag: string): SubtitleCue['fade'] {
+  const timed = /^fade\(([^()]*)\)$/i.exec(tag)
+  if (timed) {
+    const values = timed[1]!.split(',').map(value => value.trim())
+    if (values.length !== 7 || values.some(value => !/^[+-]?\d+$/.test(value))) return undefined
+    const [a1, a2, a3, t1, t2, t3, t4] = values.map(Number) as [number, number, number, number, number, number, number]
+    if ([a1, a2, a3].some(value => value < 0 || value > 255) ||
+        [t1, t2, t3, t4].some(value => value < -2_147_483_648 || value > 2_147_483_647) ||
+        t1 > t2 || t2 > t3 || t3 > t4) return undefined
+    return {
+      times: [t1 * 1000, t2 * 1000, t3 * 1000, t4 * 1000],
+      opacities: [(255 - a1) / 255, (255 - a2) / 255, (255 - a3) / 255],
+    }
+  }
   const match = /^fad\(\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(tag)
   if (!match) return undefined
   const fadeIn = assNumber(match[1], 0, 2_147_483_647)
