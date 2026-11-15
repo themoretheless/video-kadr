@@ -36,7 +36,7 @@ function parseAss(body: string): SubtitleCue[] {
   let section = ''
   let fields: string[] = []
   let styleFields: string[] = []
-  const styles = new Map<string, Partial<TextStyle>>()
+  const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor'] }>()
   const cues: SubtitleCue[] = []
   for (const line of body.split('\n')) {
     const trimmed = line.trim()
@@ -50,7 +50,7 @@ function parseAss(body: string): SubtitleCue[] {
         const values = assFields(trimmed, false)
         const read = (field: string) => values[styleFields.indexOf(field)]
         const name = read('name')
-        if (name) styles.set(name, assStyle(read))
+        if (name) styles.set(name, { style: assStyle(read), anchor: assAnchor(read('alignment')) })
       }
       continue
     }
@@ -64,13 +64,16 @@ function parseAss(body: string): SubtitleCue[] {
       if (!fields.length) throw new SubtitleFormatError('ASS event Format is missing')
       const values = trimmed.slice(trimmed.indexOf(':') + 1).split(',')
       if (values.length < fields.length) throw new SubtitleFormatError('Incomplete ASS dialogue')
-      const style = { ...styles.get(values[fields.indexOf('style')]?.trim() ?? '') }
+      const namedStyle = styles.get(values[fields.indexOf('style')]?.trim() ?? '')
+      const style = { ...namedStyle?.style }
+      let anchor = namedStyle?.anchor
       let position: SubtitleCue['position']
       const text = values.slice(fields.length - 1).join(',').replace(/\{([^}]*)\}/g, (_whole, block: string) => {
         for (const rawTag of block.split('\\')) {
           const tag = rawTag.trim()
           applyAssOverride(style, tag)
           position = assPosition(tag) ?? position
+          anchor = assAnchor(/^an([1-9])$/i.exec(tag)?.[1]) ?? anchor
         }
         return ''
       }).replace(/\\[Nn]/g, '\n').replace(/\\h/g, '\u00a0').trim()
@@ -81,6 +84,7 @@ function parseAss(body: string): SubtitleCue[] {
         text,
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
+        ...(anchor ? { anchor } : {}),
       })
       if (cues.length > MAX_SRT_CUES) throw new SubtitleFormatError('Subtitle cue count exceeds limit')
     }
@@ -116,6 +120,12 @@ function assColor(value: string | undefined) {
 function assAlign(value: string | undefined) {
   if (!/^[1-9]$/.test(value ?? '')) return undefined
   return (['left', 'center', 'right'] as const)[(Number(value) - 1) % 3]
+}
+
+function assAnchor(value: string | undefined): SubtitleCue['anchor'] {
+  if (!/^[1-9]$/.test(value ?? '')) return undefined
+  const index = Number(value) - 1
+  return [(index % 3) / 2, 1 - Math.floor(index / 3) / 2]
 }
 
 function assFont(value: string | undefined): TextStyle['fontFamily'] {

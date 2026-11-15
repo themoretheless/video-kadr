@@ -80,10 +80,31 @@ Dialogue: 0:00:01.00,0:00:02.00,{\pos(9999999, 38)}Invalid position
  const clips = result.document.compositions.root!.content.tracks[0]!.clips
  expect(clips[0]).toMatchObject({
   text: 'Caption',
+  textAnchor: [0.5, 1],
   transform: { x: { mode: 'constant', value: -94.5 }, y: { mode: 'constant', value: -52 } },
  })
  expect(clips[1]).toMatchObject({
   text: 'Invalid position',
   transform: { x: { mode: 'constant', value: 0 }, y: { mode: 'constant', value: 0 } },
+ })
+})
+
+it('uses the named or inline ASS anchor, with safe-area positioning when pos is absent', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[V4+ Styles]
+Format: Name, Alignment
+Style: Top,7
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Top,Top left
+Dialogue: 0:00:01.00,0:00:02.00,Top,{\an3\pos(270,150)}Bottom right
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips[0]).toMatchObject({
+  textAnchor: [0, 0],
+  transform: { x: { value: -134.4 }, y: { value: -75.6 } },
+ })
+ expect(clips[1]).toMatchObject({
+  textAnchor: [1, 1], style: { align: 'right' },
+  transform: { x: { value: 110 }, y: { value: 60 } },
  })
 })

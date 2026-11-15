@@ -26,3 +26,31 @@ fn multiline_alignment_moves_the_short_line_and_preserves_legacy_default(){
  assert_eq!(l[1].1-l[1].0,c[1].1-c[1].0);assert_eq!(l[1].1-l[1].0,r[1].1-r[1].0);
  assert!(serde_json::from_value::<TextClip>({let mut value=serde_json::to_value(base).unwrap();value["style"]["align"]=json!("justify");value}).is_err());
 }
+
+#[test]
+fn explicit_text_anchor_moves_the_glyphs_around_a_fixed_position() {
+ let mut base = clip();
+ base.text = "MMMM".into();
+ let original = pixels(&base);
+ base.text_anchor = Some([0.5, 0.5]);
+ assert_eq!(pixels(&base), original);
+ let bounds = |clip: &TextClip| {
+  let frame = pixels(clip);
+  let mut bounds = [320, 180, 0, 0];
+  for (index, pixel) in frame.chunks_exact(4).enumerate() {
+   if pixel[3] == 0 { continue; }
+   let (x, y) = (index % 320, index / 320);
+   bounds = [bounds[0].min(x), bounds[1].min(y), bounds[2].max(x), bounds[3].max(y)];
+  }
+  bounds
+ };
+ base.text_anchor = Some([0.0, 0.0]);
+ let top_left = bounds(&base);
+ base.text_anchor = Some([1.0, 1.0]);
+ let bottom_right = bounds(&base);
+ // The layout box includes font bearings and line metrics beyond the ink.
+ assert!((160..=168).contains(&top_left[0]), "{top_left:?}");
+ assert!((90..=100).contains(&top_left[1]), "{top_left:?}");
+ assert!((152..=160).contains(&bottom_right[2]), "{bottom_right:?}");
+ assert!((80..=90).contains(&bottom_right[3]), "{bottom_right:?}");
+}

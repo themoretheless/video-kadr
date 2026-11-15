@@ -26,7 +26,8 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
     // Anchor against the complete multiline layout before the full-canvas clip transform.
     let (layer,_)=parameters.evaluate(true,canvas)?;
     let bounds=super::graphic_text_layout::text_layout(&layer.text).bounds;
-    parameters.anchor=[bounds[0]as f64+clip.transform.anchor_x*(bounds[2]-bounds[0])as f64,bounds[1]as f64+clip.transform.anchor_y*(bounds[3]-bounds[1])as f64];
+    let [anchor_x, anchor_y] = clip.text_anchor.unwrap_or([clip.transform.anchor_x, clip.transform.anchor_y]);
+    parameters.anchor=[bounds[0]as f64+anchor_x*(bounds[2]-bounds[0])as f64,bounds[1]as f64+anchor_y*(bounds[3]-bounds[1])as f64];
     let graphic=GraphicTimelineClip{concat_shape:None,concat_treatment:None,concat_shape_blend:None,id:clip.id.clone(),timeline_start_tick:clip.timeline_start_tick,timeline_end_tick:clip.timeline_end_tick,animation_offset_us:0,template:None,roll:None,responsive_time:None,width:canvas.0,height:canvas.1,
         graphic:GraphicClip{layers:vec![GraphicLayer{original_parameters:None,uid:1,enabled:true,pin:None,content:GraphicContent::Text{parameters,animation:None,source_text_animation:None}}]},effects:vec![],transform:clip.transform.clone(),opacity:clip.opacity.clone(),enabled:clip.enabled};
     graphic.render_timeline(canvas,time,&mut|_,_,_,_|Ok(()),checkpoint)

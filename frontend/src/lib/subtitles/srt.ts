@@ -10,6 +10,7 @@ export interface SubtitleCue {
   readonly text: string
   readonly style?: Partial<TextStyle>
   readonly position?: { x: number; y: number }
+  readonly anchor?: readonly [number, number]
 }
 
 export class SubtitleFormatError extends Error {
@@ -82,14 +83,20 @@ export function cuesToTextClips(
 ): TextClip[] {
   return cues.map((cue, index) => {
     validateCue(cue, index)
+    const anchor = cue.anchor ?? (cue.position ? [0.5, 1] as const : undefined)
+    const position = cue.position ?? (anchor && canvas ? {
+      x: canvas.width * (0.08 + 0.84 * anchor[0]),
+      y: canvas.height * (0.08 + 0.84 * anchor[1]),
+    } : undefined)
     return {
       id: idForCue(cue, index),
       kind: 'text',
       timelineStartTicks: cue.startTicks,
       durationTicks: cue.endTicks - cue.startTicks,
       text: cue.text,
-      x: cue.position && canvas ? cue.position.x - canvas.width / 2 : 0,
-      y: cue.position && canvas ? cue.position.y - canvas.height / 2 : 0,
+      x: position && canvas ? position.x - canvas.width / 2 : 0,
+      y: position && canvas ? position.y - canvas.height / 2 : 0,
+      ...(anchor ? { textAnchor: anchor } : {}),
       opacity: 1,
       style: {
         fontSizePx: 48,

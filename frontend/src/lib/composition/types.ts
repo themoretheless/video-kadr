@@ -402,6 +402,7 @@ export interface TextStyle {
 }
 
 export interface TextClip {
+  readonly textAnchor?: readonly [number, number]
   readonly colorAnimation?: CompositionAnimatableColor
   readonly position?: CompositionPositionAnimation
   /** Authoring link; true requires structurally identical X/Y scale tracks. */
@@ -928,6 +929,7 @@ export interface WireConcatTitleStyle {
  readonly lineHeight?:number;readonly tracking?:number;readonly maxWidth?:number;readonly maxHeight?:number
 }
 export interface WireTextClip {
+  readonly textAnchor?: readonly [number, number]
   readonly effects?:readonly WireVideoEffect[]
   readonly blendMode?:CompositionBlendMode
   readonly concatTitle?:WireConcatTitleStyle

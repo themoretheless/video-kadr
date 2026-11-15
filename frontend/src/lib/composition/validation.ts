@@ -1232,6 +1232,10 @@ function validateClip(
     validateVisualAnimation(clip.animation, `${path}.animation`, runtimeClipDuration(clip), add)
     if (clip.speedRamp !== undefined) add('speed-ramp-kind', `${path}.speedRamp`, 'Speed ramp is available only for video/audio clips')
   } else if (clip.kind === 'text') {
+    if (clip.textAnchor !== undefined && (!Array.isArray(clip.textAnchor) || clip.textAnchor.length !== 2 ||
+        clip.textAnchor.some(value => !isFiniteNumber(value) || value < 0 || value > 1))) {
+      add('text-anchor', `${path}.textAnchor`, 'Text anchor must contain two values between 0 and 1')
+    }
     validateDuration(clip.durationTicks, `${path}.durationTicks`, add)
     if (typeof clip.text !== 'string' || !clip.text.length || clip.text.length > MAX_TEXT_LENGTH || clip.text.includes('\0')) {
       add('text', `${path}.text`, `Text must contain 1 to ${MAX_TEXT_LENGTH} characters and no NUL bytes`)
