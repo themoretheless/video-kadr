@@ -51,27 +51,18 @@ impl Overlay {
     }
 }
 
-/// The caption face: Inter SemiBold at `px`.
-fn caption_style(px: f32) -> TextStyle {
-    TextStyle { style: "SemiBold".into(), size: px, ..Default::default() }
-}
-
-fn measure(text: &str, px: f32) -> f32 {
-    filmcraft_text::measure(text, &caption_style(px))
-}
-
 fn lin(c: [u8; 4]) -> [f32; 4] {
     let a = c[3] as f32 / 255.0;
     [srgb_to_linear(c[0] as f32 / 255.0) * a, srgb_to_linear(c[1] as f32 / 255.0) * a, srgb_to_linear(c[2] as f32 / 255.0) * a, a]
 }
 
 /// Word-wrap one line to `max_w` pixels.
-fn wrap(line: &str, px: f32, max_w: f32) -> Vec<String> {
+fn wrap(line: &str, text_style: &TextStyle, max_w: f32) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     for word in line.split(' ') {
         let cand = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
-        if !cur.is_empty() && measure(&cand, px) > max_w {
+        if !cur.is_empty() && filmcraft_text::measure(&cand, text_style) > max_w {
             out.push(std::mem::take(&mut cur));
             cur = word.to_string();
         } else {
@@ -82,9 +73,9 @@ fn wrap(line: &str, px: f32, max_w: f32) -> Vec<String> {
     out
 }
 
-fn wrap_shaped(line: &str, px: f32, max_w: f32) -> Vec<String> {
+fn wrap_shaped(line: &str, text_style: &TextStyle, max_w: f32) -> Vec<String> {
     let paragraph = ParagraphStyle { width: Some(max_w), ..Default::default() };
-    let shaped = layout(line, &caption_style(px), &paragraph);
+    let shaped = layout(line, text_style, &paragraph);
     let mut lines = Vec::new();
     for row in &shaped.lines {
         if row.width <= max_w {
@@ -100,7 +91,7 @@ fn wrap_shaped(line: &str, px: f32, max_w: f32) -> Vec<String> {
         let mut start = 0;
         while start + 1 < boundaries.len() {
             let available = &boundaries[start + 1..];
-            let fits = |&end: &usize| measure(line[boundaries[start]..end].trim(), px) <= max_w;
+            let fits = |&end: &usize| filmcraft_text::measure(line[boundaries[start]..end].trim(), text_style) <= max_w;
             let mut limit = 1;
             while limit < available.len() && fits(&available[limit - 1]) {
                 limit = (limit * 2).min(available.len());
@@ -152,6 +143,16 @@ pub(crate) fn render_caption_with_admission<R>(c:&Caption,style:&CaptionStyle,w:
     }
     let scale = h as f32 / 1080.0;
     let px = (style.size * scale).max(4.0);
+    let family = style.font.trim();
+    let face = filmcraft_text::resolve(family, "SemiBold");
+    let (family, face) = if face.missing {
+        let fallback = filmcraft_text::fonts::DEFAULT_FAMILY;
+        (fallback, filmcraft_text::resolve(fallback, "SemiBold"))
+    } else {
+        (family, face)
+    };
+    let text_style = TextStyle { family: family.into(), style: "SemiBold".into(), size: px, ..Default::default() };
+    let vm = filmcraft_text::fonts::face(face.face).metrics(px);
     let max_w = w as f32 * style.wrap_width.unwrap_or(0.9);
     let mut lines: Vec<String> = Vec::new();
     // (speaker names are metadata; like Premiere, they are not burned in)
@@ -159,16 +160,15 @@ pub(crate) fn render_caption_with_admission<R>(c:&Caption,style:&CaptionStyle,w:
         checkpoint()?;
         let line = l.trim();
         if style.wrap_width.is_some() {
-            lines.extend(wrap_shaped(line, px, max_w));
+            lines.extend(wrap_shaped(line, &text_style, max_w));
         } else {
-            lines.extend(wrap(line, px, max_w));
+            lines.extend(wrap(line, &text_style, max_w));
         }
     }
     lines.retain(|l| !l.is_empty());
     if lines.is_empty() {
         return Ok(None);
     }
-    let vm = filmcraft_text::fonts::face(filmcraft_text::resolve("Inter", "SemiBold").face).metrics(px);
     let (asc, desc) = (vm.ascent, vm.descent);
     let lh = px * style.line_spacing.max(0.8);
     let pad_x = (px * 0.3).round();
@@ -185,7 +185,7 @@ pub(crate) fn render_caption_with_admission<R>(c:&Caption,style:&CaptionStyle,w:
     .max(0.0)
     .round();
     let side = style.wrap_width.map_or(w as f32 * 0.05, |_| (w as f32 - max_w) / 2.0);
-    let widths: Vec<f32> = lines.iter().map(|l| measure(l, px)).collect();
+    let widths: Vec<f32> = lines.iter().map(|l| filmcraft_text::measure(l, &text_style)).collect();
     let xs: Vec<f32> = widths
         .iter()
         .map(|&lw| match align {
@@ -226,7 +226,7 @@ pub(crate) fn render_caption_with_admission<R>(c:&Caption,style:&CaptionStyle,w:
             }
         }
         let baseline = lt + (lh - (asc + desc)) / 2.0 + asc;
-        let l = layout(line, &caption_style(px), &ParagraphStyle::default());
+        let l = layout(line, &text_style, &ParagraphStyle::default());
         let mut m = filmcraft_text::Mask { w: ow, h: oh, a: std::mem::take(&mut cover) };
         render::draw(&l, &render::at(xs[i], baseline.round()), &mut m, (ox, oy));
         cover = m.a;
@@ -370,6 +370,30 @@ impl Overlay {
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test]
+ fn authored_caption_font_controls_layout_and_rasterization() {
+  let cue = Caption {
+   cue_id: None,
+   id: super::super::composition::CompositionClipId::parse("cue").unwrap(),
+   timeline_start_tick: 0_u64.into(),
+   timeline_end_tick: 1_000_000_u64.into(),
+   text: "Wide WWWW and narrow iiiii".into(),
+   speaker: None,
+   settings: String::new(),
+  };
+  for wrap_width in [None, Some(0.8)] {
+   let mut style = CaptionStyle { wrap_width, ..Default::default() };
+   let default = render_caption(&cue, &style, 320, 180).unwrap();
+   style.font = "  JetBrains Mono  ".into();
+   let custom = render_caption(&cue, &style, 320, 180).unwrap();
+   assert_ne!(custom.w, default.w);
+   assert_ne!(custom.px, default.px);
+   style.font = "Kadr Missing Test Family".into();
+   let fallback = render_caption(&cue, &style, 320, 180).unwrap();
+   assert_eq!((fallback.x, fallback.y, fallback.w, fallback.h), (default.x, default.y, default.w, default.h));
+   assert_eq!(fallback.px, default.px);
+  }
+ }
  #[test]
  fn original_caption_renderer_overlay_bits_and_bounds() {
   let fixture:serde_json::Value=serde_json::from_str(include_str!("../../tests/fixtures/filmcraft-caption-render.json")).unwrap();

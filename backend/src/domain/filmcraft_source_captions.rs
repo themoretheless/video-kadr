@@ -13,7 +13,9 @@ pub(crate) fn apply(context:&RenderContext,request:&FrameRequest<'_>,canvas:&mut
  for track in sequence.caption_tracks.iter().rev(){
   ensure!(!context.is_cancelled(),"caption rendering cancelled");if !track.raw["enabled"].as_bool().context("missing caption enabled state")?{continue}
   let Some(caption)=track.caption_at(request.at)else{continue};ensure!(caption.text.len()<=1_000_000,"caption text budget exceeded");
-  let style=style(track.raw.get("style"))?;
+  let mut style=style(track.raw.get("style"))?;
+  // The original Filmcraft source burn-in always uses Inter SemiBold.
+  style.font=filmcraft_text::fonts::DEFAULT_FAMILY.into();
   let cue=CaptionCue{id:CompositionClipId::parse(format!("source-caption-{}",caption.id))?,cue_id:None,timeline_start_tick:CaptionTime::SourceTicks(caption.start),timeline_end_tick:CaptionTime::SourceTicks(caption.end()?),text:caption.text.to_owned(),speaker:caption.raw["speaker"].as_str().map(str::to_owned),settings:caption.raw.get("settings").and_then(Value::as_str).unwrap_or("").to_owned()};
   let mut checkpoint=||{ensure!(!context.is_cancelled(),"caption rendering cancelled");Ok(())};
   if let Some(overlay)=caption_render::render_caption_with_admission(&cue,&style,canvas.w,canvas.h,|bytes|Ok(context.reserve_scratch(bytes)),&mut checkpoint)?{

@@ -51,3 +51,39 @@ fn caption_exact_export_sample_renders_start_end_nested_and_selected_range() {
   }
  }}
 }
+
+#[test]
+fn authored_caption_font_changes_nested_preview_and_export_pixels() {
+    use super::{
+        caption_frame_clock::CaptionFrameSample,
+        group_media::render_project_frame_sources_with_sample,
+    };
+    use std::{collections::BTreeMap, path::Path, sync::atomic::AtomicBool, time::Duration};
+
+    let mut project = fractional_caption_project(true, 0);
+    project.compositions.get_mut("child").unwrap().content.caption_tracks[0].clips[0]
+        .text = "Wide WWWW and narrow iiiii".into();
+    let sample = CaptionFrameSample::new(13, filmcraft_time::FrameRate::FPS_23_976, 0).unwrap();
+    let outputs = BTreeMap::new();
+    let sources = BTreeMap::new();
+    let cancel = AtomicBool::new(false);
+    let render = |project: &_, export: bool| {
+        let (time, exact) = if export {
+            (sample.host_us, Some(sample))
+        } else {
+            (sample.host_us + 1, None)
+        };
+        render_project_frame_sources_with_sample(
+            project, "root", Path::new("ffmpeg"), &outputs, &sources, time,
+            Duration::from_secs(5), &cancel, exact,
+        ).unwrap()
+    };
+    let inter = render(&project, false);
+    assert_eq!(inter, render(&project, true));
+
+    project.compositions.get_mut("child").unwrap().content.caption_tracks[0].style.font =
+        "JetBrains Mono".into();
+    let mono = render(&project, false);
+    assert_ne!(inter, mono);
+    assert_eq!(mono, render(&project, true));
+}
