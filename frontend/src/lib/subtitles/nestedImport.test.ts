@@ -70,3 +70,20 @@ Dialogue: 0:00:00.00,0:00:02.00,Note,{\1c&H0000FF&}Caption
    color: { red: 1, green: 0, blue: 0, alpha: 1 } },
  })
 })
+
+it('maps ASS absolute positions to editable canvas offsets', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\pos(65.5, 38)}Caption
+Dialogue: 0:00:01.00,0:00:02.00,{\pos(9999999, 38)}Invalid position
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips[0]).toMatchObject({
+  text: 'Caption',
+  transform: { x: { mode: 'constant', value: -94.5 }, y: { mode: 'constant', value: -52 } },
+ })
+ expect(clips[1]).toMatchObject({
+  text: 'Invalid position',
+  transform: { x: { mode: 'constant', value: 0 }, y: { mode: 'constant', value: 0 } },
+ })
+})

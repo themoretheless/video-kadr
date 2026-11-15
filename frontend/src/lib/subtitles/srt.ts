@@ -9,6 +9,7 @@ export interface SubtitleCue {
   readonly endTicks: number
   readonly text: string
   readonly style?: Partial<TextStyle>
+  readonly position?: { x: number; y: number }
 }
 
 export class SubtitleFormatError extends Error {
@@ -77,6 +78,7 @@ export function formatSrt(cues: readonly SubtitleCue[]): string {
 export function cuesToTextClips(
   cues: readonly SubtitleCue[],
   idForCue: (cue: SubtitleCue, index: number) => string,
+  canvas?: { width: number; height: number },
 ): TextClip[] {
   return cues.map((cue, index) => {
     validateCue(cue, index)
@@ -86,8 +88,8 @@ export function cuesToTextClips(
       timelineStartTicks: cue.startTicks,
       durationTicks: cue.endTicks - cue.startTicks,
       text: cue.text,
-      x: 0,
-      y: 0,
+      x: cue.position && canvas ? cue.position.x - canvas.width / 2 : 0,
+      y: cue.position && canvas ? cue.position.y - canvas.height / 2 : 0,
       opacity: 1,
       style: {
         fontSizePx: 48,

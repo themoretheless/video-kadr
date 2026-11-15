@@ -1,4 +1,5 @@
 import { COMPOSITION_TIME_BASE, type TextStyle } from '../composition/types.js'
+import { MAX_VISUAL_POSITION } from '../composition/validation.js'
 import { MAX_SRT_BYTES, MAX_SRT_CUES, SubtitleFormatError, formatSrt, parseTimecodedText, type SubtitleCue } from './srt.js'
 import { parseWebVtt } from './webvtt.js'
 
@@ -64,8 +65,13 @@ function parseAss(body: string): SubtitleCue[] {
       const values = trimmed.slice(trimmed.indexOf(':') + 1).split(',')
       if (values.length < fields.length) throw new SubtitleFormatError('Incomplete ASS dialogue')
       const style = { ...styles.get(values[fields.indexOf('style')]?.trim() ?? '') }
+      let position: SubtitleCue['position']
       const text = values.slice(fields.length - 1).join(',').replace(/\{([^}]*)\}/g, (_whole, block: string) => {
-        for (const tag of block.split('\\')) applyAssOverride(style, tag.trim())
+        for (const rawTag of block.split('\\')) {
+          const tag = rawTag.trim()
+          applyAssOverride(style, tag)
+          position = assPosition(tag) ?? position
+        }
         return ''
       }).replace(/\\[Nn]/g, '\n').replace(/\\h/g, '\u00a0').trim()
       cues.push({
@@ -74,11 +80,20 @@ function parseAss(body: string): SubtitleCue[] {
         endTicks: assTimestamp(values[fields.indexOf('end')]!.trim()),
         text,
         ...(Object.keys(style).length ? { style } : {}),
+        ...(position ? { position } : {}),
       })
       if (cues.length > MAX_SRT_CUES) throw new SubtitleFormatError('Subtitle cue count exceeds limit')
     }
   }
   return cues
+}
+
+function assPosition(tag: string): SubtitleCue['position'] {
+  const match = /^pos\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*\)$/i.exec(tag)
+  if (!match) return undefined
+  const x = assNumber(match[1], -MAX_VISUAL_POSITION, MAX_VISUAL_POSITION)
+  const y = assNumber(match[2], -MAX_VISUAL_POSITION, MAX_VISUAL_POSITION)
+  return x === undefined || y === undefined ? undefined : { x, y }
 }
 
 type AssStyle = { -readonly [Key in keyof TextStyle]?: TextStyle[Key] }

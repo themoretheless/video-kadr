@@ -37,7 +37,7 @@ export function importNestedSubtitles(project:NativeNestedProject, compositionId
       tracks.splice(last+1,0,{kind:'text',id,name:`Субтитры ${serial}`,hidden:false,locked:false,clips:[]})
       roles.add(id);candidates.push(id)
     }
-    const clip=textClipToWire(conversion,cuesToTextClips([cue],()=>nextId('subtitle'))[0]!)
+    const clip=textClipToWire(conversion,cuesToTextClips([cue],()=>nextId('subtitle'),canvas)[0]!)
     const index=tracks.findIndex(track=>track.id===id),track=tracks[index]!
     if(track.kind!=='text')throw new Error('Нужна текстовая дорожка')
     tracks[index]={...track,clips:[...track.clips,clip].sort((a,b)=>a.timelineStartTick-b.timelineStartTick)}

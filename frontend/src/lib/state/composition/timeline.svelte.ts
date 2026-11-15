@@ -271,6 +271,7 @@ export function importSrtToComposition(serialized: string, requestedTrackId?: st
   const clips = cuesToTextClips(
     [...cues].sort((a, b) => a.startTicks - b.startTicks),
     (_cue, index) => makeId(`subtitle-${index + 1}`),
+    document.canvas,
   )
   let firstTrackId = ''
   for (const clip of clips) {
