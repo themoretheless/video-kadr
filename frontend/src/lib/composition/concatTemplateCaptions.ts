@@ -27,7 +27,7 @@ function normalizedClip(value: unknown): unknown {
   const clip = record(value)
   if (!clip) return value
   return {
-    mediaId: '', sourceStart: 0, opacity: 1, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
+    mediaId: '', sourceStart: 0, offsetX: 0, offsetY: 0, opacity: 1, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
     preservePitch: true, stretchX: 1, stretchY: 1, flipH: false, flipV: false, keys: [], filters: [], videoEffects: [],
     ...clip,
     blend: clip.blend || 'normal',
@@ -84,9 +84,6 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   const centered = centeredCaption(clip)
   if (retainKeys && (!supportedCaptionKeys(before.keys, centered) || !supportedCaptionKeys(after.keys, centered))) return undefined
   if (retainKeys && clip.opacity?.mode === 'keyframes' && (!Array.isArray(before.keys) || !before.keys.length)) return undefined
-  const offsetX = typeof before.offsetX === 'number' ? before.offsetX : 0
-  const offsetY = typeof before.offsetY === 'number' ? before.offsetY : 0
-
 
   let style = clip.style
   const comparisonText: Record<string, unknown> = { ...editedText, content: previousText.content }
@@ -167,6 +164,29 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     retainOriginalField('shadow')
   }
 
+  let transform = clip.transform
+  const canvas = record(video)
+  for (const [field, axis, dimension] of [['offsetX', 'x', 'width'], ['offsetY', 'y', 'height']] as const) {
+    const previous = before[field] ?? 0
+    const current = after[field] ?? 0
+    if (previous === current) continue
+    const size = canvas?.[dimension]
+    const position = transform?.[axis]
+    if (typeof previous !== 'number' || !Number.isFinite(previous) ||
+        typeof current !== 'number' || !(Math.abs(current) <= 3) ||
+        typeof size !== 'number' || !(size > 0) || !Number.isFinite(size) ||
+        clip.concatTitle || transform?.position || position?.mode !== 'constant') return undefined
+    const delta = current - previous
+    const animation = transform.concatAnimation
+    transform = {
+      ...transform,
+      [axis]: { ...position, value: position.value + delta * size },
+      ...(animation ? { concatAnimation: { ...animation, rest: {
+        ...animation.rest, [axis]: animation.rest[axis] + delta,
+      } } } : {}),
+    }
+  }
+
   // Text and whole-clip moves retain the original local clock. A static title
   // also accepts Concat's new duration and, for a head trim, its source in-point.
   // The imported document already carries the updated display name in clipNames.
@@ -174,6 +194,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     ...after,
     start: before.start,
     name: before.name,
+    offsetX: before.offsetX ?? 0,
+    offsetY: before.offsetY ?? 0,
     ...(retainKeys ? { keys: before.keys ?? [], opacity: before.opacity ?? 1 } : {}),
     ...(resized ? { duration: before.duration, sourceStart: before.sourceStart ?? 0 } : {}),
     text: comparisonText,
@@ -185,11 +207,15 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     ...clip,
     text: editedText.content,
     style,
+    transform,
     ...(textBoxWidth === undefined ? {} : { textBoxWidth }),
     timelineStartTick: start,
     timelineEndTick: start + duration,
   }
-  return retainKeys ? [restored, { offsetX, offsetY }] : [restored]
+  return retainKeys ? [restored, {
+    offsetX: typeof after.offsetX === 'number' ? after.offsetX : 0,
+    offsetY: typeof after.offsetY === 'number' ? after.offsetY : 0,
+  }] : [restored]
 }
 
 export async function readConcatTemplateCaptions(file: File, manifest: File): Promise<Captions | undefined> {

@@ -121,6 +121,15 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   narrowed.text.maxWidth = 0
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withWidth)], 'template.json')))
     .resolves.toEqual([clips[1]])
+  const placed = { ...first, offsetX: 0.25, offsetY: -0.125 }
+  const withPlacement = { ...source, timelines: [{ id: 'TL1', video, clips: [placed, second] }] }
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withPlacement)], 'template.json')))
+    .resolves.toEqual([
+      ['TL1', { ...staticClip, transform: { ...staticClip.transform,
+        x: { mode: 'constant', value: 81 }, y: { mode: 'constant', value: -21.5 },
+      } }],
+      clips[1],
+    ])
   changed.timelines[0]!.video.width = 640
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
     .resolves.toBeUndefined()
