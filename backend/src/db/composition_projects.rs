@@ -227,7 +227,9 @@ impl Db {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let id = Uuid::new_v4().to_string();
         let now = now_secs() as i64;
-        let mut transaction = self.pool.begin().await?;
+        // Claiming sources reads before writing. Reserve the writer so a background
+        // job commit cannot invalidate that read snapshot.
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         claim_project_sources(&mut transaction, None, source_ids, owner.unwrap_or("project-create"), &id).await?;
         let row = sqlx::query(
             "INSERT INTO composition_projects \
@@ -276,7 +278,7 @@ impl Db {
         let document_json = validate_storage_input(name, document, source_ids)?;
         let id = Uuid::new_v4().to_string();
         let now = now_secs() as i64;
-        let mut transaction = self.pool.begin().await?;
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         claim_project_sources(&mut transaction, Some(space_id), source_ids, owner, &id).await?;
         let row = sqlx::query(
             "INSERT INTO composition_projects (id, space_id, name, document_json, schema_version, mode, created_at, updated_at, updated_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(updated_order) + 1 FROM composition_projects), 1)) RETURNING id, space_id, name, document_json, schema_version, mode, revision, created_at, updated_at",
