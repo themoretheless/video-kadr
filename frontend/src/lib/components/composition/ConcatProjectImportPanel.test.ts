@@ -213,7 +213,14 @@ it('uploads the selected template design and binds its bundled font before conve
   const subtitles = [{ id: 'quotes', name: 'quotes.srt', text: '1\n00:00:00,000 --> 00:00:01,000\nDialogue' }]
   const manifest = JSON.stringify(template)
   const beforeVideo = { width: 1920, height: 1080, rateNum: 24, rateDen: 1 }
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ ...template, timelines: [{ ...template.timelines[0], video: beforeVideo, clips: [...original.timelines[0]!.clips, beforeTitle] }, template.timelines[1]] })))
+  const beforeTemplate = {
+   ...template,
+   timelines: [
+    { ...template.timelines[0], clips: original.timelines[0]!.clips },
+    { ...template.timelines[1], video: beforeVideo, clips: [...original.timelines[0]!.clips, beforeTitle] },
+   ],
+  }
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(beforeTemplate)))
   const manifestSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
   const transparent = { red: 0, green: 0, blue: 0, alpha: 0 }
   const caption = {
@@ -248,7 +255,7 @@ it('uploads the selected template design and binds its bundled font before conve
   })
   const files = [
    new File([manifest], 'template.json'),
-   new File([JSON.stringify({ manifestSha256, clips: [['TL1', caption, { clip: beforeTitle, video: beforeVideo }]] })], 'video-kadr-caption-clips.json'),
+   new File([JSON.stringify({ manifestSha256, clips: [['shelved', caption, { clip: beforeTitle, video: beforeVideo, uniqueClipId: true }]] })], 'video-kadr-caption-clips.json'),
    new File([JSON.stringify(subtitles)], 'video-kadr-subtitles.json'),
    new File(['movie'], 'design.mov'),
    new File(['font'], 'title.otf'),

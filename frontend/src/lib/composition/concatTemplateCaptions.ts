@@ -336,6 +336,7 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
   const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
   const unchanged = hash === sidecar.manifestSha256
   const timelines = new Map<string, { video: ReturnType<typeof captionCanvas>; clips: Map<string, unknown> }>()
+  const clipLocations = new Map<string, string | null>()
   if (!unchanged) {
     const document = record(JSON.parse(await manifest.text()))
     const sharedVideo = record(document?.video)
@@ -345,7 +346,9 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
       const clips = new Map<string, unknown>()
       for (const entry of timeline.clips) {
         const clip = record(entry)
-        if (typeof clip?.id === 'string') clips.set(clip.id, clip)
+        if (typeof clip?.id !== 'string') continue
+        clips.set(clip.id, clip)
+        clipLocations.set(clip.id, clipLocations.has(clip.id) ? null : timeline.id)
       }
       const video = record(timeline.video ?? document?.video ?? {})
       if (video) timelines.set(timeline.id, { video: captionCanvas(video, sharedVideo), clips })
@@ -360,13 +363,17 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
     const [timelineId, clip, baselineValue] = entry
     const baseline = record(baselineValue)
     const baselineVideo = record(baseline?.video)
-    const timeline = timelines.get(timelineId)
     if (unchanged) {
       eligible.push([timelineId, clip])
-    } else if (baseline && baselineVideo && timeline && sameJson(captionCanvas(baselineVideo), timeline.video)) {
-      const merged = mergeCaptionEdits(clip, baseline.clip, timeline.clips.get(clip.id), timeline.video)
-      if (merged) eligible.push([timelineId, ...merged])
+      continue
     }
+    const destinationId = timelines.get(timelineId)?.clips.has(clip.id) ? timelineId
+      : baseline?.uniqueClipId === true ? clipLocations.get(clip.id) : undefined
+    const destination = destinationId ? timelines.get(destinationId) : undefined
+    if (!baseline || !baselineVideo || !destinationId || !destination ||
+        !sameJson(captionCanvas(baselineVideo), destination.video)) continue
+    const merged = mergeCaptionEdits(clip, baseline.clip, destination.clips.get(clip.id), destination.video)
+    if (merged) eligible.push([destinationId, ...merged])
   }
   return eligible.length ? eligible : undefined
 }

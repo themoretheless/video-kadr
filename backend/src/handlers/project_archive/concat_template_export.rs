@@ -199,11 +199,13 @@ pub async fn export(
             return Err(AppError::payload_too_large("Файл Concat превышает 4 МиБ"));
         }
         let mut exported_clips = std::collections::BTreeMap::new();
+        let mut clip_occurrences = std::collections::BTreeMap::new();
         for timeline in document["timelines"].as_array().into_iter().flatten() {
             let timeline_id = timeline["id"].as_str().expect("exported timeline identity");
             for clip in timeline["clips"].as_array().into_iter().flatten() {
                 let clip_id = clip["id"].as_str().expect("exported clip identity");
                 exported_clips.insert((timeline_id, clip_id), (clip, &timeline["video"]));
+                *clip_occurrences.entry(clip_id).or_insert(0_usize) += 1;
             }
         }
         let mut authored_captions = Vec::new();
@@ -218,6 +220,7 @@ pub async fn export(
                                 .ok_or_else(|| AppError::bad_request("Клип субтитров отсутствует в экспорте Concat"))?;
                             authored_captions.push((timeline_id, clip, serde_json::json!({
                                 "clip": baseline, "video": video,
+                                "uniqueClipId": clip_occurrences[clip.id.as_str()] == 1,
                             })));
                         }
                     }

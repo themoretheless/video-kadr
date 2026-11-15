@@ -35,7 +35,7 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     ['TL1', staticClip],
     ['TL1', { id: 'cue2', text: 'Other', timelineStartTick: 2000000, timelineEndTick: 3000000 }],
   ]
-  const captured = clips.map((entry, index) => [...entry, { clip: source.timelines[0]!.clips[index], video }])
+  const captured = clips.map((entry, index) => [...entry, { clip: source.timelines[0]!.clips[index], video, uniqueClipId: true }])
   await writer.add('Design/video-kadr-caption-clips.json', new TextReader(JSON.stringify({ manifestSha256, clips: captured })))
   await writer.add('Design/assets/design.png', new TextReader('bundled'))
   await writer.add('Design/poster.jpg', new TextReader('poster'))
@@ -63,6 +63,17 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
     .resolves.toEqual([clips[1]])
   const moved = { ...first, start: 5.000001, name: 'New name', text: { ...first.text, content: 'Edited' } }
+  const movedTimeline = { id: 'TL2', video, clips: [moved] }
+  const remainingTimeline = { id: 'TL1', video, clips: [second] }
+  const relocated = new File([JSON.stringify({ ...source, timelines: [remainingTimeline, movedTimeline] })], 'template.json')
+  await expect(readConcatTemplateCaptions(sidecar, relocated)).resolves.toEqual([
+    ['TL2', { ...staticClip, text: 'Edited', timelineStartTick: 5000001, timelineEndTick: 6000001 }],
+    clips[1],
+  ])
+  const ambiguous = new File([JSON.stringify({ ...source, timelines: [
+    remainingTimeline, movedTimeline, { ...movedTimeline, id: 'TL3' },
+  ] })], 'template.json')
+  await expect(readConcatTemplateCaptions(sidecar, ambiguous)).resolves.toEqual([clips[1]])
   const withEdit = { ...source, timelines: [{ id: 'TL1', video, clips: [moved, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withEdit)], 'template.json')))
     .resolves.toEqual([
