@@ -19,6 +19,7 @@
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
  let templateProjectName = $state('')
+ let templateDetails = $state<Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount'>>()
  let folderPoster=$state<File>()
  let posterUrl=$state('')
  $effect(()=>{
@@ -73,6 +74,7 @@
    document=folder.document;media=folder.media;fonts=folder.fonts
    importingTemplate=true
    templateProjectName=importedName(folder.document)
+   templateDetails={format:folder.format,slotCount:folder.slotCount}
    folderPoster=folder.poster
    uploadedSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
@@ -212,8 +214,18 @@
     event.currentTarget.value=''
     void loadFolder(files)
   }} /></label>
-  {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}
-  {#if importingTemplate}
+  {#if importingTemplate && templateDetails}
+   <div>
+    {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}
+    <p>
+     <strong>{importedName(document)}</strong>
+     {#if templateDetails.format}
+      {@const { width, height, rateNum, rateDen } = templateDetails.format}
+      · {width} × {height} · {(rateNum / rateDen).toLocaleString('ru-RU', { maximumFractionDigits: 3 })} кадр/с
+     {/if}
+     · Слоты: {templateDetails.slotCount}
+    </p>
+   </div>
    <label>Название нового проекта <input type="text" bind:value={templateProjectName} /></label>
   {/if}
   {#each orderedMedia as item(item.id)}

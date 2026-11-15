@@ -195,6 +195,7 @@ it('uploads the selected template design and binds its bundled font before conve
   await tick()
   const template = {
    ...original,
+   video: { width: 1920, height: 1080, rateNum: 30_000, rateDen: 1_001 },
    media: [{ ...original.media[0], path: 'assets/design.mov' }],
    fonts: [{ family: 'Title', path: 'assets/title.otf' }],
   }
@@ -216,6 +217,8 @@ it('uploads the selected template design and binds its bundled font before conve
    expect(verify?.disabled).toBe(false)
   })
   expect(document.querySelector('img[alt="Обложка шаблона Concat"]')?.getAttribute('src')).toBe('blob:concat-poster')
+  expect(document.body.textContent).toContain('1920 × 1080 · 29,97 кадр/с')
+  expect(document.body.textContent).toContain('Слоты: 0')
   expect(upload).toHaveBeenCalledExactlyOnceWith(files[1], false)
   click('Проверить импорт Concat')
   await vi.waitFor(() => expect(importConcatProject).toHaveBeenCalledWith(
@@ -297,6 +300,7 @@ it('uploads a local template slot replacement and requires FillSlot before conve
  picker.dispatchEvent(new Event('change', { bubbles: true }))
  const slot = 'select[aria-label="Заполнение слота Concat m1"]'
  await vi.waitFor(() => expect(document.querySelector(slot)).not.toBeNull())
+ expect(document.body.textContent).toContain('Слоты: 1')
  expect(document.querySelector('select[aria-label="Источник Concat m1"]')).toBeNull()
  const verify = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Проверить импорт Concat')!
  const replacement = document.querySelector<HTMLSelectElement>(slot)!

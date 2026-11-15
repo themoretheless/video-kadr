@@ -1,5 +1,15 @@
 import { concatImportFonts, concatImportMedia } from './concatProjectImport'
 
+function outputFormat(document: { video?: unknown }) {
+  const video = document.video
+  if (!video || typeof video !== 'object') return undefined
+  const { width, height, rateNum, rateDen } = video as Record<string, unknown>
+  const positive = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+  if (!positive(width) || !positive(height) || !positive(rateNum) || !positive(rateDen)) return undefined
+  return { width, height, rateNum, rateDen }
+}
+
 /** Index only files explicitly selected by the browser directory picker. */
 export async function readConcatTemplateFolder(files: readonly File[]) {
   const manifests = files.filter(file => /^[^/]+\/template\.json$/.test(file.webkitRelativePath))
@@ -34,7 +44,11 @@ export async function readConcatTemplateFolder(files: readonly File[]) {
   }
   const cover = index.get('poster.jpg')
   const poster = cover && cover.size > 0 && cover.size <= 8 * 1024 * 1024 ? cover : undefined
-  return { document, media, design, fonts, poster }
+  return {
+    document, media, design, fonts, poster,
+    format: outputFormat(document),
+    slotCount: media.filter(item => item.placeholder).length,
+  }
 }
 
 /** Concat lists used slots by their first appearance, then unused slots in bin order. */
