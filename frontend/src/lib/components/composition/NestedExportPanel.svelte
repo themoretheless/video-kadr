@@ -2,10 +2,13 @@
   import { cancelJob, exportNestedVideo, getJob, nestedDurations } from '$lib/api'
   import { nestedComposition, nestedHistory } from '$lib/state/nestedComposition.svelte'
   import { loadLibrary } from '$lib/state/store.svelte'
+  import { SvelteSet } from 'svelte/reactivity'
+  import { affectedTimelineIds } from '$lib/composition/timelineOrder'
   import CaptionFileExport from './CaptionFileExport.svelte'
   import type { Job } from '$lib/types'
   let { token, disabled = false }: { token: string; disabled?: boolean } = $props()
   let withAudio = $state(false)
+  let burnCaptions = $state(true)
   let startUs = $state(0)
   let endUs = $state(0)
   let duration = $state(0)
@@ -25,6 +28,10 @@
   const captionTracks = $derived(captionContent?.captionTracks ?? [])
   let captionTrackId = $state('')
   const captionTrack = $derived(captionTracks.find(track => track.id === captionTrackId) ?? captionTracks[0])
+  const hasCaptions = $derived(Object.values(nestedComposition.document?.compositions ?? {}).some(({ content }) =>
+    content.captionTracks?.some(track => !track.hidden && track.clips.length) ||
+    content.tracks.some(track => track.kind === 'text' && !track.hidden && track.clips.length &&
+      content.metadata?.captionTextTracks?.includes(track.id))))
   const progress = $derived(Math.min(100, Math.max(0, job?.progress ?? 0)))
   const filename = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' && 'filename' in job.result && typeof job.result.filename === 'string' ? job.result.filename : '')
   $effect(() => {
@@ -73,7 +80,25 @@
     try {
       const hasCutout=Object.values(project.compositions).some(node=>node.content.tracks.some(track=>track.kind==='video'&&track.clips.some(clip=>clip.enabled!==false&&clip.concatCutout)))
       const savedProject=hasCutout&&nestedComposition.projectId&&nestedComposition.revision!==null?{projectId:nestedComposition.projectId,expectedRevision:nestedComposition.revision}:undefined
-      const accepted = savedProject?await exportNestedVideo(project, compositionId, startUs, endUs, { ...nestedComposition.renderedOutputs }, token, lifecycle.signal, withAudio ? 'video_audio' : 'video_only',savedProject):await exportNestedVideo(project, compositionId, startUs, endUs, { ...nestedComposition.renderedOutputs }, token, lifecycle.signal, withAudio ? 'video_audio' : 'video_only')
+      const renderedOutputs = { ...nestedComposition.renderedOutputs }
+      const document = burnCaptions || !hasCaptions ? project : { ...project, compositions: Object.fromEntries(
+        Object.entries(project.compositions).map(([id, node]) => {
+          const { content } = node
+          const roles = new SvelteSet(content.metadata?.captionTextTracks)
+          const native = content.captionTracks?.some(track => !track.hidden && track.clips.length)
+          const text = content.tracks.some(track => track.kind === 'text' && !track.hidden && track.clips.length && roles.has(track.id))
+          if (!native && !text) return [id, node]
+          for (const affected of affectedTimelineIds(project, id)) delete renderedOutputs[affected]
+          return [id, { ...node, content: {
+            ...content,
+            ...(native ? { captionTracks: content.captionTracks?.map(track => ({ ...track, hidden: true })) } : {}),
+            ...(text ? { tracks: content.tracks.map(track => track.kind === 'text' && roles.has(track.id)
+              ? { ...track, hidden: true } : track) } : {}),
+          } }]
+        }),
+      ) }
+      const args = [document, compositionId, startUs, endUs, renderedOutputs, token, lifecycle.signal, withAudio ? 'video_audio' : 'video_only'] as const
+      const accepted = savedProject ? await exportNestedVideo(...args, savedProject) : await exportNestedVideo(...args)
       if (lifecycle.signal.aborted) return
       jobId = accepted.jobId
       await observe()
@@ -91,6 +116,10 @@
 <section aria-label="Экспорт вложенной композиции" class="nested-export">
   <span>FFV1 / MKV · {withAudio ? 'звук PCM' : 'без звука'}</span>
   <label><input aria-label="Добавить звук в нативный экспорт" type="checkbox" bind:checked={withAudio} disabled={busy || disabled} /> Добавить звук</label>
+  {#if hasCaptions}
+    <label><input type="checkbox" checked={burnCaptions} onchange={event => burnCaptions = event.currentTarget.checked}
+      disabled={busy || disabled} />Вшить субтитры в видео</label>
+  {/if}
   <label>От, мкс <input aria-label="Начало нативного экспорта" type="number" min="0" max={duration} step="1" bind:value={startUs} disabled={busy || durationBusy || disabled} /></label>
   <label>До, мкс <input aria-label="Конец нативного экспорта" type="number" min="0" max={duration} step="1" bind:value={endUs} disabled={busy || durationBusy || disabled} /></label>
   <button class="btn primary sm" disabled={busy || durationBusy || disabled || nestedHistory.busy || !validRange} onclick={() => void start()}>Экспортировать видео</button>

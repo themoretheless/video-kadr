@@ -108,3 +108,36 @@ it('exports a chosen subtitle track using both boundaries of the video range', a
     revoke.mockRestore()
   }
 })
+
+it('omits caption pixels and invalidates dependent renders without changing the authored project', async () => {
+  const project = nestedComposition.document!
+  const root = project.compositions.root!
+  project.compositions.child = {
+    ...root,
+    content: { ...root.content, captionTracks: [{
+      id: 'file', name: 'File', clips: [{ id: 'cue', text: 'Caption', timelineStartTick: 0, timelineEndTick: 500000 }],
+    }], tracks: [
+      { id: 'captions', kind: 'text', name: 'Imported text', hidden: false, clips: [{ id: 'text-cue' }] },
+      { id: 'ordinary', kind: 'text', name: 'Title', hidden: false, clips: [{ id: 'title' }] },
+    ], metadata: { captionTextTracks: ['captions'] } } as unknown as typeof root.content,
+  }
+  project.compositions.other = { ...root }
+  root.instances = [{ timing: { composition: 'child' } }] as unknown as typeof root.instances
+  nestedComposition.renderedOutputs = { root: 'old-root', child: 'old-child', other: 'keep' }
+  const before = JSON.stringify(project)
+  await ready()
+  const checkbox = [...document.querySelectorAll('label')].find(item =>
+    item.textContent?.trim() === 'Вшить субтитры в видео')!.querySelector('input')!
+  expect(checkbox.checked).toBe(true)
+  checkbox.checked = false
+  checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  button('Экспортировать видео').click()
+  await vi.waitFor(() => expect(exportNestedVideo).toHaveBeenCalledOnce())
+  const [copy, , , , outputs] = vi.mocked(exportNestedVideo).mock.calls[0]!
+  expect(copy.compositions.child!.content.captionTracks?.[0]?.hidden).toBe(true)
+  expect(copy.compositions.child!.content.tracks.map(track => 'hidden' in track && track.hidden)).toEqual([true, false])
+  expect(outputs).toEqual({ other: 'keep' })
+  expect(JSON.stringify(nestedComposition.document)).toBe(before)
+  expect(nestedComposition.renderedOutputs).toEqual({ root: 'old-root', child: 'old-child', other: 'keep' })
+})
