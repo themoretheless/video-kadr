@@ -2,10 +2,28 @@
 use super::{
     filmcraft_project_index::ProjectIndex, filmcraft_project_inspect, filmcraft_source_inspect,
 };
+use filmcraft_color::{ColorInfo, ColorSpace, WorkingSpace};
 use filmcraft_time::{format_time, FrameRate, Tick, TimeDisplay, TICKS_PER_SECOND};
 use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 
-pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value) -> Value {
+pub(crate) fn usage(index: &ProjectIndex<'_>) -> BTreeMap<u64, [u64; 2]> {
+    let mut counts = BTreeMap::<u64, [u64; 2]>::new();
+    for (_, sequence) in index.sequences() {
+        for (channel, tracks) in ["video_tracks", "audio_tracks"].into_iter().enumerate() {
+            for track in sequence[tracks].as_array().into_iter().flatten() {
+                for clip in track["items"].as_array().into_iter().flatten() {
+                    if let Some(id) = clip["item"].as_u64() {
+                        counts.entry(id).or_default()[channel] += 1;
+                    }
+                }
+            }
+        }
+    }
+    counts
+}
+
+pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value, usage: [u64; 2]) -> Value {
     let subclip = item.pointer("/kind/Subclip");
     let parent = subclip.and_then(|value| value["parent"].as_u64());
     let media = item
@@ -78,6 +96,41 @@ pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value) -> Value {
         (Some(rate), Some(channels)) => format!("{rate} Hz - {channels} ch"),
         _ => String::new(),
     };
+    let color_space = if !video.is_null() {
+        media
+            .and_then(|media| {
+                serde_json::from_value::<ColorSpace>(media["interpret"]["color_space"].clone()).ok()
+            })
+            .or_else(|| {
+                serde_json::from_value::<ColorInfo>(video["color"].clone())
+                    .ok()
+                    .map(|color| ColorSpace::from_info(&color))
+            })
+            .map_or("", ColorSpace::label)
+    } else {
+        sequence
+            .map(|sequence| {
+                serde_json::from_value::<WorkingSpace>(
+                    sequence["settings"]["color"]["working"].clone(),
+                )
+                .unwrap_or_default()
+            })
+            .map_or("", WorkingSpace::label)
+    };
+    let metadata: Map<_, _> = item["metadata"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, value)| {
+            value.is_string()
+                && !matches!(
+                    key.as_str(),
+                    "Freeform Position" | "Freeform Stack" | "Poster Frame"
+                )
+                && !key.starts_with("Freeform Arrangement: ")
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
     let mut keys = json!({
         "mediaType":filmcraft_project_inspect::type_label(item).unwrap_or_default(),
         "frameRate":if has_video { rate.as_f64() } else { 0.0 },
@@ -86,7 +139,13 @@ pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value) -> Value {
         "videoCodec":video["codec"].as_str().unwrap_or_default(),
         "audioCodec":audio["codec"].as_str().unwrap_or_default(),
         "status":media.map_or("", |m| if m["offline"] == true { "Offline" } else { "Online" }),
-        "proxy":media.map_or("", |m| if m["proxy"].is_null() { "None" } else { "Attached" })
+        "proxy":media.map_or("", |m| if m["proxy"].is_null() { "None" } else { "Attached" }),
+        "colorSpace":color_space,
+        "videoUsage":usage[0],
+        "audioUsage":usage[1],
+        "filePath":media.and_then(|m| m.pointer("/media/File/path")).and_then(Value::as_str).unwrap_or_default(),
+        "fileSize":info["file_size"].as_u64(),
+        "metadata":metadata
     });
     let fd = frame_numerator / i128::from(rate.num);
     let duration = i128::from(duration);

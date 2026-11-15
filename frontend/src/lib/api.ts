@@ -1686,6 +1686,8 @@ export interface FilmcraftIconSortKeys {
   audioIn?: number; audioOut?: number; audioDuration?: number
   subclipStart?: number; subclipEnd?: number
   videoCodec?: string; audioCodec?: string; status?: string; proxy?: string
+  colorSpace?: string; videoUsage?: number; audioUsage?: number; filePath?: string; fileSize?: number | null
+  metadata?: Record<string, string>
   timecodes?: Partial<Record<string, string>>
 }
 export interface FilmcraftImportResult {

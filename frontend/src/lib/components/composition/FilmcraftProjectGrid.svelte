@@ -36,10 +36,31 @@
     ['audioIn', 'Точка входа аудио'], ['audioOut', 'Точка выхода аудио'], ['audioDuration', 'Длительность аудио'],
     ['subclipStart', 'Начало подклипа'], ['subclipEnd', 'Конец подклипа'],
     ['videoCodec', 'Видеокодек'], ['audioCodec', 'Аудиокодек'], ['status', 'Статус'], ['proxy', 'Прокси'],
+    ['colorSpace', 'Цветовое пространство'], ['videoUsage', 'Использования видео'], ['audioUsage', 'Использования аудио'],
+    ['filePath', 'Путь к файлу'], ['fileSize', 'Размер файла'],
   ] as const satisfies readonly (readonly [keyof Omit<FilmcraftIconSortKeys, 'timecodes'>, string])[]
+  const metadataOptions = [
+    ['Good', 'Удачный дубль'], ['Description', 'Описание'], ['Scene', 'Сцена'], ['Shot', 'Кадр'],
+    ['Log Note', 'Заметка в журнале'], ['Comment', 'Комментарий'], ['Tape Name', 'Имя кассеты'],
+    ['Client', 'Клиент'], ['Camera Angle', 'Ракурс камеры'],
+  ] as const
   type IconListOption = Exclude<(typeof sortOptions)[number], readonly ['user', string]>
-  const listOptions = [...sortOptions.filter((entry): entry is IconListOption => entry[0] !== 'user'), ...listOnlyOptions]
-  type ListColumn = (typeof listOptions)[number][0]
+  const fixedOptions = [...sortOptions.filter((entry): entry is IconListOption => entry[0] !== 'user'), ...listOnlyOptions]
+  type MetadataColumn = `metadata:${string}`
+  type ListColumn = (typeof fixedOptions)[number][0] | MetadataColumn
+  const metadataColumn = (name: string): MetadataColumn => `metadata:${name}`
+  const builtinMetadataOptions = metadataOptions.map(([name, label]) => [metadataColumn(name), label] as const)
+  const builtinNames = new SvelteSet([
+    'Name', 'Label', 'Media Type', 'Frame Rate', 'Media Start', 'Media End', 'Media Duration',
+    'Video In Point', 'Video Out Point', 'Video Duration', 'Audio In Point', 'Audio Out Point', 'Audio Duration',
+    'Subclip Start', 'Subclip End', 'Video Info', 'Video Codec', 'Audio Info', 'Audio Codec', 'Color Space',
+    'Video Usage', 'Audio Usage', 'Status', 'Proxy', 'File Path', 'File Size', 'Date Created',
+    ...metadataOptions.map(([name]) => name),
+  ].map(name => name.toLowerCase()))
+  const isMetadataColumn = (key: unknown): key is MetadataColumn => typeof key === 'string' && key.startsWith('metadata:') && key.length > 9
+  function storedColumn(key: unknown): ListColumn | undefined {
+    return isMetadataColumn(key) ? key : fixedOptions.find(([column]) => column === key)?.[0]
+  }
   type Column = { key: ListColumn; width: number }
   const minColumnWidth = 30
   const maxColumnWidth = 800
@@ -50,9 +71,14 @@
       case 'label':
       case 'status':
       case 'proxy':
+      case 'metadata:Good':
       case 'frameRate': return 80
       case 'videoInfo':
-      case 'audioInfo': return 170
+      case 'audioInfo':
+      case 'filePath':
+      case 'metadata:Description':
+      case 'metadata:Log Note':
+      case 'metadata:Comment': return 170
       default: return 110
     }
   }
@@ -91,15 +117,15 @@
         const unique = new SvelteSet<ListColumn>()
         const restored: Column[] = []
         for (const candidate of saved.columns) {
-          const option = listOptions.find(([key]) => key === candidate?.key)
-          if (!option || unique.has(option[0]) || !Number.isFinite(candidate.width)) continue
-          unique.add(option[0])
-          restored.push({ key: option[0], width: clampColumnWidth(candidate.width) })
+          const key = storedColumn(candidate?.key)
+          if (!key || unique.has(key) || !Number.isFinite(candidate.width)) continue
+          unique.add(key)
+          restored.push({ key, width: clampColumnWidth(candidate.width) })
         }
         if (!unique.has('name')) restored.unshift({ key: 'name', width: defaultWidth('name') })
         columns = restored
       }
-      listSort = listOptions.find(([key]) => key === saved.listSort)?.[0]
+      listSort = storedColumn(saved.listSort)
       listDescending = saved.listDescending === true
       if (typeof saved.iconSize === 'number' && Number.isFinite(saved.iconSize)) {
         iconSize = Math.max(48, Math.min(400, saved.iconSize))
@@ -117,6 +143,21 @@
 
   const bins = $derived(project.projectBins ?? [])
   const items = $derived(project.projectItems ?? [])
+  const listOptions = $derived.by(() => {
+    const custom = new SvelteSet<string>()
+    for (const item of items) {
+      for (const name of Object.keys(item.iconSort?.metadata ?? {})) {
+        if (name && !builtinNames.has(name.toLowerCase())) custom.add(name)
+      }
+    }
+    return [...fixedOptions, ...builtinMetadataOptions, ...[...custom].sort().map(name => [metadataColumn(name), name] as const)]
+  })
+  const availableColumns = $derived(new SvelteSet<ListColumn>(listOptions.map(([key]) => key)))
+  const shownColumns = $derived(columns.filter(column => availableColumns.has(column.key)))
+  const metadataValue = (item: (typeof items)[number], key: MetadataColumn) => {
+    const name = key.slice('metadata:'.length).toLowerCase()
+    return Object.entries(item.iconSort?.metadata ?? {}).find(([field]) => field.toLowerCase() === name)?.[1] ?? ''
+  }
   const activeBin = $derived(bins.find(folder => folder.id === bin) ?? bins.find(folder => folder.parentId === null))
   const arrangements = $derived.by(() => {
     const ids = activeBin?.itemIds && new Set(activeBin.itemIds)
@@ -150,9 +191,12 @@
       ? [...memberIds].flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
       : items
     const matches = available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
-    const column = listView ? listSort : sortColumn
+    const column = listView ? (listSort && availableColumns.has(listSort) ? listSort : undefined) : sortColumn
     if (!freeform && column && column !== 'user') {
-      const key = (item: typeof items[number]) => column === 'name' ? item.name : column === 'label' ? item.label ?? '' : item.iconSort?.[column]
+      const key = (item: typeof items[number]) => column === 'name' ? item.name
+        : column === 'label' ? item.label ?? ''
+        : isMetadataColumn(column) ? metadataValue(item, column)
+        : item.iconSort?.[column]
       const compare = (left: string, right: string) => {
         const a = left.toLowerCase(), b = right.toLowerCase()
         return a < b ? -1 : a > b ? 1 : 0
@@ -359,7 +403,7 @@
     }
   }
 
-  const listTrackWidths = $derived([...(listThumbnails ? ['64px'] : []), ...columns.map(column => `${column.width}px`)].join(' '))
+  const listTrackWidths = $derived([...(listThumbnails ? ['64px'] : []), ...shownColumns.map(column => `${column.width}px`)].join(' '))
   const columnCaption = (key: ListColumn) => listOptions.find(([value]) => value === key)?.[1] ?? key
   function toggleColumn(key: ListColumn, enabled: boolean) {
     if (key === 'name') return
@@ -369,10 +413,10 @@
   }
   function reorderColumn(index: number, delta: number) {
     const moved = [...columns]
-    const next = index + delta
-    if (next < 0 || next >= moved.length) return
-    const [column] = moved.splice(index, 1)
-    if (!column) return
+    const from = moved.findIndex(column => column.key === shownColumns[index]?.key)
+    const next = moved.findIndex(column => column.key === shownColumns[index + delta]?.key)
+    if (from < 0 || next < 0) return
+    const [column] = moved.splice(from, 1)
     moved.splice(next, 0, column)
     columns = moved
     saveView()
@@ -408,6 +452,7 @@
   }
   function columnValue(item: (typeof items)[number], key: Exclude<ListColumn, 'name'>) {
     if (key === 'label') return item.label ?? ''
+    if (isMetadataColumn(key)) return metadataValue(item, key)
     const value = item.iconSort?.[key]
     const timecode = item.iconSort?.timecodes?.[key]
     if (timecode !== undefined) return timecode
@@ -415,6 +460,13 @@
     if (typeof value !== 'number') return value ?? ''
     if (key === 'mediaDuration' || key === 'mediaStart' || key === 'mediaEnd') return `${(value / 254_016_000_000).toFixed(2)} с`
     if (key === 'frameRate') return value > 0 ? value.toFixed(3).replace(/\.?0+$/, '') : ''
+    if (key === 'videoUsage' || key === 'audioUsage') return value || ''
+    if (key === 'fileSize') {
+      if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(2)} GB`
+      if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`
+      if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`
+      return `${value} bytes`
+    }
     if (key === 'dateCreated') {
       const date = new Date(value * 1000)
       return value > 0 && Number.isFinite(date.getTime()) ? date.toLocaleDateString('ru-RU') : ''
@@ -490,7 +542,7 @@
               onchange={event => toggleColumn(key, event.currentTarget.checked)} />{label}</label>
           {/each}
         </div>
-        {#each columns as column, index (column.key)}
+        {#each shownColumns as column, index (column.key)}
           <div class="toolbar">
             <label>Ширина «{columnCaption(column.key)}»
               <input type="number" min={minColumnWidth} max={maxColumnWidth} value={column.width} onchange={event => {
@@ -501,7 +553,7 @@
               }} />
             </label>
             <button type="button" disabled={index === 0} aria-label={`Колонка «${columnCaption(column.key)}» левее`} onclick={() => reorderColumn(index, -1)}>←</button>
-            <button type="button" disabled={index + 1 === columns.length} aria-label={`Колонка «${columnCaption(column.key)}» правее`} onclick={() => reorderColumn(index, 1)}>→</button>
+            <button type="button" disabled={index + 1 === shownColumns.length} aria-label={`Колонка «${columnCaption(column.key)}» правее`} onclick={() => reorderColumn(index, 1)}>→</button>
           </div>
         {/each}
       </details>
@@ -537,7 +589,7 @@
       {#if listView}
         <div class="list-header" aria-label="Сортировка списка">
           {#if listThumbnails}<span></span>{/if}
-          {#each columns as column (column.key)}
+          {#each shownColumns as column (column.key)}
             <div class="list-heading">
               <button class="list-sort" type="button" aria-pressed={listSort === column.key} onclick={() => sortList(column.key)}>
                 {columnCaption(column.key)}{listSort === column.key ? listDescending ? ' ↓' : ' ↑' : ''}
@@ -585,7 +637,7 @@
                 }}>{entry.item.name || entry.item.id}</button>
               {/snippet}
               {#if listView}
-                {#each columns as column (column.key)}
+                {#each shownColumns as column (column.key)}
                   {#if column.key === 'name'}{@render itemButton()}
                   {:else}<span class="list-cell">{columnValue(entry.item, column.key)}</span>{/if}
                 {/each}

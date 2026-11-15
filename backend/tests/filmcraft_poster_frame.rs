@@ -273,10 +273,13 @@ async fn icon_sort_keys_use_source_timecode_and_subclip_offset() {
     let mut document = fixture["cases"][0]["document"].clone();
     let media = &mut document["project"]["items"]["1"]["kind"]["Media"];
     media["info"]["start_timecode"] = json!(30);
+    media["info"]["file_size"] = json!(2048);
     media["info"]["audio"] = json!({"codec":"pcm_s16le","sample_rate":48000,"channels":2});
     let frame = filmcraft_time::TICKS_PER_SECOND / 24;
     media["mark_in"] = json!(4 * frame);
     media["mark_out"] = json!(12 * frame);
+    document["project"]["items"]["1"]["metadata"] =
+        json!({"Scene":"Opening","Review owner":"Alex","Poster Frame":"0","Freeform Stack":"1"});
     let request = serde_json::from_value(json!({"document":document})).unwrap();
     let imported = import(ApiJson(request)).await.unwrap().0;
     let keys = |id: &str| {
@@ -304,4 +307,12 @@ async fn icon_sort_keys_use_source_timecode_and_subclip_offset() {
     assert_eq!(keys("2")["videoCodec"], "Synthetic");
     assert_eq!(keys("1")["status"], "Online");
     assert_eq!(keys("1")["proxy"], "None");
+    assert_eq!(keys("1")["colorSpace"], "sRGB");
+    assert_eq!(keys("1")["videoUsage"], 4);
+    assert_eq!(keys("1")["audioUsage"], 4);
+    assert_eq!(keys("2")["videoUsage"], 0);
+    assert_eq!(keys("2")["audioUsage"], 2);
+    assert_eq!(keys("2")["filePath"], "/original/clock.mkv");
+    assert_eq!(keys("2")["fileSize"], 2048);
+    assert_eq!(keys("1")["metadata"], json!({"Scene":"Opening","Review owner":"Alex"}));
 }
