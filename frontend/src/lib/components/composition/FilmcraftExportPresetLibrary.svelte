@@ -22,6 +22,17 @@
   let rateNum = $state('30000')
   let rateDen = $state('1001')
   let scaling = $state<FilmcraftScaling | ''>('')
+  let aspect = $state('preset')
+  let aspectNum = $state('1')
+  let aspectDen = $state('1')
+  let renderQuality = $state('preset')
+  let intraProfile = $state('')
+  let jpegQuality = $state('')
+  const intraProfiles = [
+    { format: 'prores', field: 'proresProfile', options: [['proxy', '422 Proxy'], ['lt', '422 LT'], ['standard', '422'], ['hq', '422 HQ']] },
+    { format: 'dnxhr', field: 'dnxProfile', options: [['lb', 'LB'], ['sq', 'SQ'], ['hq', 'HQ']] },
+    { format: 'apv', field: 'apvProfile', options: [['422-10', '422-10'], ['422-12', '422-12']] },
+  ] as const
   let audio = $state('preset')
   let audioCodec = $state('')
   let audioRate = $state('')
@@ -55,6 +66,9 @@
     || (h26x && (audioCodec || audioSettings?.codec || 'auto') === 'auto')
   )))
   const canEditAudio = $derived(!silent && (audioOnly || audio !== 'none'))
+  const profileGroup = $derived(intraProfiles.find(group => group.format === picked?.settings.format))
+  const selectedIntraProfile = $derived(profileGroup?.options.some(([value]) => value === intraProfile) ? intraProfile : '')
+  const mjpeg = $derived(picked?.settings.format === 'mjpeg')
   const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
@@ -64,6 +78,11 @@
       && (!keyframes || (positive(keyframes) && Number(keyframes) <= 4294967295))
       && (!adaptiveBitrate || (Number.isFinite(Number(adaptiveBitrate)) && Number(adaptiveBitrate) > 0))
     ))
+    && (audioOnly || aspect !== 'custom' || (
+      positive(aspectNum) && positive(aspectDen)
+      && Number(aspectNum) <= 2147483647 && Number(aspectDen) <= 2147483647
+    ))
+    && (!mjpeg || !jpegQuality || (positive(jpegQuality) && Number(jpegQuality) <= 100))
     && (audioOnly || rateMode !== 'custom' || (
       positive(rateNum) && positive(rateDen) && Number(rateNum) <= 4294967295
       && Number(rateDen) <= 4294967295 && Number(rateNum) >= Number(rateDen)
@@ -72,7 +91,7 @@
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
     return () => { void owner; ++generation; controller?.abort() }
   })
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
@@ -101,6 +120,11 @@
       if (rateMode === 'source') settings.frameRate = null
       if (rateMode === 'custom') settings.frameRate = { num: Number(rateNum), den: Number(rateDen) }
       if (scaling) settings.scaling = scaling
+      if (aspect === 'square') settings.pixelAspect = null
+      if (aspect === 'custom') settings.pixelAspect = [Number(aspectNum), Number(aspectDen)]
+      if (renderQuality !== 'preset') settings.maxRenderQuality = renderQuality === 'maximum'
+      if (selectedIntraProfile && profileGroup) settings[profileGroup.field] = selectedIntraProfile
+      if (mjpeg && jpegQuality) settings.quality = Number(jpegQuality)
     }
     if (!audioOnly && !silent && audio !== 'preset') settings.includeAudio = audio === 'include'
     if (canEditAudio) {
@@ -195,6 +219,28 @@
           <option value="scaleToFill">Заполнить с обрезкой</option>
           <option value="stretchToFill">Растянуть</option>
         </select></label>
+        <label>Пропорции пикселя <select aria-label="Пропорции пикселя пресета Filmcraft" value={aspect} onchange={event => { aspect = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="preset">Как в исходном пресете</option>
+          <option value="square">Квадратный пиксель</option>
+          <option value="custom">Свои пропорции</option>
+        </select></label>
+        {#if aspect === 'custom'}
+          <label>Числитель <input aria-label="Числитель пропорций пикселя пресета Filmcraft" inputmode="numeric" bind:value={aspectNum} disabled={busy || disabled} /></label>
+          <label>Знаменатель <input aria-label="Знаменатель пропорций пикселя пресета Filmcraft" inputmode="numeric" bind:value={aspectDen} disabled={busy || disabled} /></label>
+        {/if}
+        <label>Качество рендера <select aria-label="Качество рендера пресета Filmcraft" value={renderQuality} onchange={event => { renderQuality = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="preset">Как в исходном пресете</option>
+          <option value="normal">Обычное</option><option value="maximum">Максимальное</option>
+        </select></label>
+        {#if profileGroup}
+          <label>Профиль видео <select aria-label="Профиль видеокодека пресета Filmcraft" value={selectedIntraProfile} onchange={event => { intraProfile = event.currentTarget.value }} disabled={busy || disabled}>
+            <option value="">Как в исходном пресете</option>
+            {#each profileGroup.options as [value, label] (value)}<option {value}>{label}</option>{/each}
+          </select></label>
+        {/if}
+        {#if mjpeg}
+          <label>Качество Motion JPEG <input aria-label="Качество Motion JPEG пресета Filmcraft" inputmode="numeric" bind:value={jpegQuality} disabled={busy || disabled} /></label>
+        {/if}
         {#if !silent}
           <label>Звук <select aria-label="Звук пресета Filmcraft" value={audio} onchange={event => { audio = event.currentTarget.value }} disabled={busy || disabled}>
             <option value="preset">Как в исходном пресете</option>

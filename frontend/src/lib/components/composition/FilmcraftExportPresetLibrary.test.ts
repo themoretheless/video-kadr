@@ -166,3 +166,29 @@ it('applies MOV, H.264 profile, rate control and keyframe settings together', as
     maxBitrateKbps: 800, adaptiveBitrate: 0.5, keyframeDistance: 4,
   })
 })
+
+it('applies ProRes profile, pixel aspect and render quality as one draft', async () => {
+  const preset = { ...builtin, settings: { format: 'prores' } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [preset], default: preset.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: apply } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  for (const [label, value] of [
+    ['Пропорции пикселя пресета Filmcraft', 'custom'],
+    ['Качество рендера пресета Filmcraft', 'maximum'],
+    ['Профиль видеокодека пресета Filmcraft', 'lt'],
+  ]) {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!
+    control.value = value
+    control.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  await tick()
+  await input('Числитель пропорций пикселя пресета Filmcraft', '4')
+  await input('Знаменатель пропорций пикселя пресета Filmcraft', '0')
+  expect(button('Применить правки к экспорту').disabled).toBe(true)
+  await input('Знаменатель пропорций пикселя пресета Filmcraft', '3')
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenCalledWith(preset.name, { proresProfile: 'lt', pixelAspect: [4, 3], maxRenderQuality: true })
+})
