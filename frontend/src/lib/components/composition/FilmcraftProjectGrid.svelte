@@ -35,11 +35,24 @@
   type ListColumn = ListOption[0]
   type Column = { key: ListColumn; width: number }
   const listOptions = sortOptions.filter((entry): entry is ListOption => entry[0] !== 'user')
-  const defaultWidth = (key: ListColumn) => key === 'name' ? 220 : 140
+  const minColumnWidth = 30
+  const maxColumnWidth = 800
+  const clampColumnWidth = (width: number) => Math.min(maxColumnWidth, Math.max(minColumnWidth, width))
+  const defaultWidth = (key: ListColumn) => {
+    switch (key) {
+      case 'name': return 220
+      case 'label':
+      case 'frameRate': return 80
+      case 'videoInfo':
+      case 'audioInfo': return 170
+      default: return 110
+    }
+  }
   const defaultColumns: ListColumn[] = ['name', 'mediaType', 'mediaDuration']
   let columns = $state<Column[]>(defaultColumns.map(key => ({ key, width: defaultWidth(key) })))
   let listSort = $state<ListColumn>()
   let listDescending = $state(false)
+  let columnResize: { pointer: number; x: number; width: number } | undefined
   const viewStorageKey = 'video-kadr.filmcraft-project-view.v1'
   let iconSize = $state(110)
   let sortColumn = $state<(typeof sortOptions)[number][0]>('user')
@@ -73,7 +86,7 @@
           const option = listOptions.find(([key]) => key === candidate?.key)
           if (!option || unique.has(option[0]) || !Number.isFinite(candidate.width)) continue
           unique.add(option[0])
-          restored.push({ key: option[0], width: Math.min(800, Math.max(40, candidate.width)) })
+          restored.push({ key: option[0], width: clampColumnWidth(candidate.width) })
         }
         if (!unique.has('name')) restored.unshift({ key: 'name', width: defaultWidth('name') })
         columns = restored
@@ -363,6 +376,28 @@
     hover = undefined
     saveView()
   }
+  function startColumnResize(event: PointerEvent & { currentTarget: HTMLButtonElement }, column: Column) {
+    if (columnResize || event.button !== 0) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    columnResize = { pointer: event.pointerId, x: event.clientX, width: column.width }
+  }
+  function moveColumnResize(event: PointerEvent, column: Column) {
+    if (columnResize?.pointer !== event.pointerId) return
+    column.width = clampColumnWidth(columnResize.width + event.clientX - columnResize.x)
+  }
+  function endColumnResize(event: PointerEvent, column: Column, commit: boolean) {
+    if (columnResize?.pointer !== event.pointerId) return
+    if (commit) moveColumnResize(event, column)
+    else column.width = columnResize.width
+    columnResize = undefined
+    if (commit) saveView()
+  }
+  function resizeColumnWithKey(event: KeyboardEvent, column: Column) {
+    if (columnResize || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return
+    event.preventDefault()
+    column.width = clampColumnWidth(column.width + (event.key === 'ArrowLeft' ? -10 : 10))
+    saveView()
+  }
   function columnValue(item: (typeof items)[number], key: Exclude<ListColumn, 'name'>) {
     if (key === 'label') return item.label ?? ''
     const value = item.iconSort?.[key]
@@ -448,9 +483,9 @@
         {#each columns as column, index (column.key)}
           <div class="toolbar">
             <label>Ширина «{columnCaption(column.key)}»
-              <input type="number" min="40" max="800" value={column.width} onchange={event => {
+              <input type="number" min={minColumnWidth} max={maxColumnWidth} value={column.width} onchange={event => {
                 const width = event.currentTarget.valueAsNumber
-                if (Number.isFinite(width)) column.width = Math.min(800, Math.max(40, width))
+                if (Number.isFinite(width)) column.width = clampColumnWidth(width)
                 event.currentTarget.value = String(column.width)
                 saveView()
               }} />
@@ -493,9 +528,18 @@
         <div class="list-header" aria-label="Сортировка списка">
           {#if listThumbnails}<span></span>{/if}
           {#each columns as column (column.key)}
-            <button type="button" aria-pressed={listSort === column.key} onclick={() => sortList(column.key)}>
-              {columnCaption(column.key)}{listSort === column.key ? listDescending ? ' ↓' : ' ↑' : ''}
-            </button>
+            <div class="list-heading">
+              <button class="list-sort" type="button" aria-pressed={listSort === column.key} onclick={() => sortList(column.key)}>
+                {columnCaption(column.key)}{listSort === column.key ? listDescending ? ' ↓' : ' ↑' : ''}
+              </button>
+              <button class="column-resize" type="button" aria-label={`Изменить ширину «${columnCaption(column.key)}»`}
+                onpointerdown={event => startColumnResize(event, column)}
+                onpointermove={event => moveColumnResize(event, column)}
+                onpointerup={event => endColumnResize(event, column, true)}
+                onpointercancel={event => endColumnResize(event, column, false)}
+                onlostpointercapture={event => endColumnResize(event, column, false)}
+                onkeydown={event => resizeColumnWithKey(event, column)}></button>
+            </div>
           {/each}
         </div>
       {/if}
@@ -558,6 +602,10 @@
   ul :is(button, span) { font-size: inherit; }
   ul.listView { display: block; }
   ul.listView li, .list-header { display: grid; grid-template-columns: var(--list-columns); width: max-content; align-items: center; min-height: 1.85em; gap: 0.5rem; padding-inline: 0.25rem; margin-block: 0.15rem; }
+  .list-heading { position: relative; min-width: 0; }
+  .list-sort { width: 100%; padding-inline-end: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .column-resize { position: absolute; inset: 0 0 0 auto; width: 10px; padding: 0; border: 0; border-inline-end: 1px solid var(--border); background: transparent; cursor: col-resize; touch-action: none; }
+  .column-resize:hover, .column-resize:focus-visible { border-inline-end-color: var(--accent); }
   ul.listView li :global(figure) { width: 64px; }
   ul.listView button.item { width: 100%; text-align: start; }
   .list-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
