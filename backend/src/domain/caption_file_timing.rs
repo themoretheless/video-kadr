@@ -12,22 +12,25 @@ pub fn snap_document_for_sequence(
 }
 
 /// Original document_from_track range semantics; retained cues keep file metadata.
-pub fn document_for_range(document: &Document, offset: Tick) -> Document {
-    Document {
-        cues: document
-            .cues
-            .iter()
-            .filter(|cue| cue.end > offset)
-            .map(|cue| {
-                let mut cue = cue.clone();
-                cue.start = (cue.start - offset).max(Tick::ZERO);
-                cue.end = cue.end - offset;
-                cue
-            })
-            .collect(),
-        blocks: document.blocks.clone(),
-        warnings: Vec::new(),
-    }
+pub fn document_for_range(document: &Document, offset: Tick) -> anyhow::Result<Document> {
+    let rebase = |time: Tick| {
+        time.0
+            .checked_sub(offset.0)
+            .map(Tick)
+            .ok_or_else(|| anyhow::anyhow!("caption export offset exceeds the source clock"))
+    };
+    let cues = document
+        .cues
+        .iter()
+        .filter(|cue| cue.end > offset)
+        .map(|cue| {
+            let mut cue = cue.clone();
+            cue.start = if cue.start <= offset { Tick::ZERO } else { rebase(cue.start)? };
+            cue.end = rebase(cue.end)?;
+            Ok(cue)
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    Ok(Document { cues, blocks: document.blocks.clone(), warnings: Vec::new() })
 }
 
 /// Import preparation keeps exact source time and file metadata. IDs and the
@@ -119,7 +122,7 @@ mod tests {
                 .cues
                 .iter()
                 .any(|c| c.start.0 % 254016 != 0 || c.end.0 % 254016 != 0);
-            let output = document_for_range(&snapped, Tick(case["offset"].as_i64().unwrap()));
+            let output = document_for_range(&snapped, Tick(case["offset"].as_i64().unwrap())).unwrap();
             assert_eq!(output, decode(&case["exported"]));
             assert_eq!(before, decode(&case["input"]));
             assert_eq!(snapped, decode(&case["snapped"]));

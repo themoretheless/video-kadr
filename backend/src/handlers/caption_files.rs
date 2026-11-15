@@ -142,7 +142,7 @@ fn write_file(request: WriteRequest) -> anyhow::Result<WriteResponse> {
     let document = Document::try_from(request.document)?;
     let document = match request.offset_tick {
         Some(offset) => {
-            crate::domain::caption_file_timing::document_for_range(&document, Tick(offset.parse()?))
+            crate::domain::caption_file_timing::document_for_range(&document, Tick(offset.parse()?))?
         }
         None => document,
     };
@@ -299,6 +299,31 @@ mod tests {
         )
         .await;
         assert_eq!(reparsed["document"], parsed["document"]);
+        let mut ranged = parsed["document"].clone();
+        let mut before = ranged["cues"][0].clone();
+        before["id"] = json!("expired");
+        before["startTick"] = json!("0");
+        before["endTick"] = json!(TICKS_PER_SECOND.to_string());
+        ranged["cues"].as_array_mut().unwrap().insert(0, before);
+        let offset = (TICKS_PER_SECOND + TICKS_PER_SECOND / 2).to_string();
+        let (status, written) = send(
+            "/write",
+            json!({"format":"vtt","document":ranged,"offsetTick":offset}),
+        ).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, rebased) = send(
+            "/read",
+            json!({"dataBase64":written["dataBase64"],"format":"vtt"}),
+        ).await;
+        assert_eq!(status, StatusCode::OK);
+        let mut expected = parsed["document"].clone();
+        expected["cues"][0]["startTick"] = json!("0");
+        expected["cues"][0]["endTick"] = json!(offset);
+        assert_eq!(rebased["document"], expected);
+        assert_eq!(
+            send("/write", json!({"format":"vtt","document":ranged,"offsetTick":i64::MIN.to_string()})).await.0,
+            StatusCode::BAD_REQUEST,
+        );
         let mut invalid = parsed["document"].clone();
         invalid["ticksPerSecond"] = json!("1000000");
         assert_eq!(
