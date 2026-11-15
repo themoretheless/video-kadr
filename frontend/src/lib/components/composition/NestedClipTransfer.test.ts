@@ -14,6 +14,47 @@ import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { cuesToTextClips, parseSrt } from '$lib/subtitles/srt'
 vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
 
+it('edits the selected file caption and keeps its submicrosecond clock through Undo', async () => {
+  closeNestedComposition()
+  const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
+  const cue = { id: 'cue', cueId: 'external', timelineStartTick: '254016000001', timelineEndTick: '508032000003',
+    text: '<i>Original</i>', speaker: 'Original voice', settings: 'line:80%' }
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: {
+    instances: [], content: { ...content, captionTracks: [{ id: 'file', name: 'Captions', clips: [cue] }] },
+  } } }
+  const original = JSON.stringify(nestedComposition.document)
+  vi.mocked(api.nestedDurations).mockClear()
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  try {
+    await tick()
+    const select = target.querySelector<HTMLInputElement>('[data-caption-id="cue"]')!
+    select.checked = true
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    const editor = target.querySelector('[aria-label="Редактировать реплику дорожки"]')!
+    const fields = editor.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('textarea,input')
+    for (const [index, value] of ['<b>Edited</b>', 'New voice', 'changed-id', 'line:90% align:start'].entries()) {
+      fields[index]!.value = value
+      fields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    await tick()
+    editor.querySelector('button')!.click()
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
+    expect(api.nestedDurations).toHaveBeenCalledTimes(1)
+    expect(nestedComposition.document?.compositions.root?.content.captionTracks?.[0]?.clips[0]).toEqual({
+      ...cue, text: '<b>Edited</b>', speaker: 'New voice', cueId: 'changed-id', settings: 'line:90% align:start',
+    })
+    undoNestedComposition()
+    expect(JSON.stringify(nestedComposition.document)).toBe(original)
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+  }
+})
+
 it('applies a chosen subtitle appearance to multiple selected replies', async () => {
   closeNestedComposition()
   const cues = cuesToTextClips([

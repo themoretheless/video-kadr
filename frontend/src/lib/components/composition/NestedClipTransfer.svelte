@@ -40,6 +40,7 @@
   import { nativeClipMoveBatch, defaultNativeTargetTrack, nativeClipStart } from '$lib/composition/nativeClipMove'
   import { orderedTimelineIds } from '$lib/composition/timelineOrder'
   import { applyNestedCaptionAppearance } from '$lib/state/nestedComposition.svelte'
+  import NestedFileCaptionEditor from './NestedFileCaptionEditor.svelte'
   let { disabled = false }: { disabled?: boolean } = $props()
   const project = $derived(nestedComposition.document)
   const active = $derived(nestedComposition.activeCompositionId ?? project?.root ?? '')
@@ -310,6 +311,9 @@
         onchange={width => void setNestedCaptionWrapWidth(active, track.id, width)} />
       {#each track.clips as cue (cue.id)}
         <label><input type="checkbox" data-caption-id={cue.id} disabled={track.locked} checked={captionSelected.includes(cue.id)} onchange={event=>{captionSelected=event.currentTarget.checked?[...captionSelected,cue.id]:captionSelected.filter(id=>id!==cue.id)}} /> {track.name} · {cue.text.slice(0,40)} · {captionDisplaySeconds(cue.timelineStartTick).toFixed(3)}–{captionDisplaySeconds(cue.timelineEndTick).toFixed(3)} с</label>
+        {#if captionSelected.length === 1 && captionSelected[0] === cue.id}
+          <NestedFileCaptionEditor compositionId={active} trackId={track.id} {cue} disabled={disabled||track.locked} />
+        {/if}
       {/each}
     {/each}
     <label>В таймлайн<select aria-label="Таймлайн для переноса клипов" value={destination} onchange={(event) => { destination = event.currentTarget.value; targets = {} }}>

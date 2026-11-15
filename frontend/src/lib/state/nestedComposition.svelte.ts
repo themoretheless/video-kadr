@@ -15,6 +15,7 @@ import { mergeNestedCaptions } from '$lib/composition/mergeCaptions'
 import { copyNestedCaptionAppearance, restyleNestedCaptions, type CaptionStylePatch } from '$lib/composition/restyleCaptions'
 import { nestedDurations, type PreparedCaptionFileImport } from '$lib/api'
 import { preparedCaptionTrack } from '$lib/composition/captionFileImport'
+import { editNativeCaptionCue, type CaptionCueDraft } from '$lib/composition/captionTracks'
 import {videoRegionOrdinal} from '$lib/video-region'
 import {reattachNativeConcatAudio} from '$lib/composition/concatDetachedAudio'
 import {cloneGainSourceKeys} from '$lib/composition/concatGainSourceKeys'
@@ -1155,6 +1156,21 @@ export async function setNestedCaptionWrapWidth(compositionId: string, trackId: 
     await nestedDurations(next)
     return next
   }, true, undefined, undefined, 0, undefined, guard)
+}
+
+export async function updateNestedCaptionCue(
+  compositionId: string, trackId: string, cueId: string, draft: CaptionCueDraft, expected: CaptionCueDraft,
+  admission: () => void,
+): Promise<boolean> {
+  const guard = () => { assertHistoryUnlocked(); admission() }
+  let committed = false
+  await editNestedDocument(async project => {
+    guard()
+    const document = editNativeCaptionCue(project, compositionId, trackId, cueId, draft, expected)
+    await nestedDurations(document)
+    return document
+  }, true, undefined, undefined, 0, () => { committed = true }, guard)
+  return committed
 }
 
 registerHistoryProvider('nested',()=>nestedHistory)

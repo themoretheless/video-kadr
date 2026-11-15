@@ -1,4 +1,54 @@
 import {exactCaptionTicks} from './captionTime'
+import type { NativeNestedProject } from '../api'
+import type { CaptionCue } from './types'
+
+export function captionCueDraft(cue: CaptionCue) {
+  return { text: cue.text, speaker: cue.speaker ?? '', cueId: cue.cueId ?? '', settings: cue.settings ?? '' }
+}
+
+export type CaptionCueDraft = ReturnType<typeof captionCueDraft>
+export function sameCaptionCueDraft(left: CaptionCueDraft, right: CaptionCueDraft): boolean {
+  return left.text === right.text && left.speaker === right.speaker && left.cueId === right.cueId && left.settings === right.settings
+}
+
+export function editNativeCaptionCue(
+  project: NativeNestedProject, compositionId: string, trackId: string, cueId: string,
+  draft: CaptionCueDraft, expected: CaptionCueDraft,
+): NativeNestedProject {
+  const node = Object.hasOwn(project.compositions, compositionId) ? project.compositions[compositionId] : undefined
+  const track = node?.content.captionTracks?.find(track => track.id === trackId)
+  const cue = track?.clips.find(cue => cue.id === cueId)
+  if (!node || !track || !cue) throw new Error('Реплика субтитров отсутствует')
+  if (track.locked) throw new Error('Дорожка субтитров заблокирована')
+  const current = captionCueDraft(cue)
+  if (!sameCaptionCueDraft(current, expected)) throw new Error('Реплика изменилась; сбросьте черновик')
+  if (sameCaptionCueDraft(current, draft)) return project
+  if (draft.text !== current.text &&
+      (!draft.text.trim() || draft.text.includes('\0') || new TextEncoder().encode(draft.text).length > 1000000)) {
+    throw new Error('Введите текст реплики без NUL объёмом до 1 МБ')
+  }
+  for (const key of ['cueId', 'speaker', 'settings'] as const) {
+    if (draft[key] !== current[key] && (draft[key].includes('\0') || /[\r\n]/.test(draft[key]))) {
+      throw new Error('Поля VTT должны занимать одну строку')
+    }
+  }
+  if ((draft.cueId !== current.cueId && draft.cueId.includes('-->')) ||
+      (draft.speaker !== current.speaker && /[<>]/.test(draft.speaker))) {
+    throw new Error('Недопустимый идентификатор или голос VTT')
+  }
+  const edited = { ...cue, text: draft.text,
+    ...(draft.speaker !== current.speaker ? { speaker: draft.speaker || null } : {}),
+    ...(draft.cueId !== current.cueId ? { cueId: draft.cueId || null } : {}),
+    ...(draft.settings !== current.settings ? { settings: draft.settings } : {}),
+  }
+  const captionTracks = node.content.captionTracks!.map(item => item.id === trackId
+    ? { ...track, clips: track.clips.map(item => item.id === cueId ? edited : item) }
+    : item)
+  return { ...project, compositions: { ...project.compositions, [compositionId]: {
+    ...node, content: { ...node.content, captionTracks },
+  } } }
+}
+
 /** Validate the persisted native caption contract before saving or rendering. */
 export function validateCaptionTracks(value: unknown, trackIds: Set<string>, clipIds: Set<string>, add: (code: string, path: string, message: string) => void): void {
   if (value === undefined) return
