@@ -136,3 +136,33 @@ it('applies PCM options to an audio-only preset and keeps its codec fixed', asyn
   expect(apply).toHaveBeenCalledWith('Wave', { audio: { sample_rate: null, channels: 6, bits: 24 } })
   expect(editFilmcraftExportPresets).not.toHaveBeenCalled()
 })
+
+it('applies MOV, H.264 profile, rate control and keyframe settings together', async () => {
+  const h264 = { ...builtin, settings: { format: 'h264', multiplexer: 'mp4' } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [h264], default: h264.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: apply } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  expect(document.querySelector('[aria-label="Аудиокодек пресета Filmcraft"]')).toBeNull()
+  for (const [label, value] of [
+    ['Контейнер пресета Filmcraft', 'mov'],
+    ['Профиль H.264 пресета Filmcraft', 'main'],
+    ['Режим битрейта пресета Filmcraft', 'vbr2Pass'],
+  ]) {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!
+    control.value = value
+    control.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  await tick()
+  expect(document.querySelector('[aria-label="Аудиокодек пресета Filmcraft"]')).not.toBeNull()
+  await input('Максимальный битрейт пресета Filmcraft', '800')
+  await input('Адаптивный битрейт пресета Filmcraft', '0.5')
+  await input('Интервал ключевых кадров пресета Filmcraft', '4')
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenCalledWith(h264.name, {
+    multiplexer: 'mov', h264Profile: 'main', bitrateMode: 'vbr2Pass',
+    maxBitrateKbps: 800, adaptiveBitrate: 0.5, keyframeDistance: 4,
+  })
+})

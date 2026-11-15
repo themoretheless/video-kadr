@@ -10,6 +10,12 @@
   let width = $state('')
   let height = $state('')
   let bitrate = $state('')
+  let bitrateMode = $state('')
+  let maxBitrate = $state('')
+  let adaptiveBitrate = $state('')
+  let keyframes = $state('')
+  let profile = $state('')
+  let multiplexer = $state('')
   let matchSource = $state(false)
   let scale = $state('1')
   let rateMode = $state('preset')
@@ -37,8 +43,12 @@
   const audioOnly = $derived(picked?.settings.format === 'wav' || picked?.settings.format === 'aiff')
   const silent = $derived(['gif', 'png', 'tiff', 'bmp'].some(format => picked?.settings.format === format))
   const h26x = $derived(picked?.settings.format === 'h264' || picked?.settings.format === 'hevc')
+  const h264 = $derived(picked?.settings.format === 'h264' || picked?.settings.mxfVideoCodec === 'h264')
+  const videoBitrate = $derived(h26x || h264)
+  const selectedBitrateMode = $derived(!h264 && bitrateMode === 'vbr2Pass' ? '' : bitrateMode)
+  const effectiveBitrateMode = $derived(selectedBitrateMode || picked?.settings.bitrateMode)
   const forcedPcm = $derived(audioOnly || picked?.settings.format === 'mxf-op1a' || picked?.settings.format === 'mxf-opatom')
-  const forcedAac = $derived(h26x && picked?.settings.multiplexer !== 'mov')
+  const forcedAac = $derived(h26x && (multiplexer || picked?.settings.multiplexer) !== 'mov')
   const audioSettings = $derived(picked?.settings.audio as { codec?: string } | undefined)
   const effectiveAac = $derived(forcedAac || (!forcedPcm && (
     (audioCodec || audioSettings?.codec) === 'aac'
@@ -48,7 +58,12 @@
   const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
-  const valid = $derived((matchSource ? Number.isFinite(Number(scale)) && Number(scale) > 0 : ((!width && !height) || (positive(width) && positive(height)))) && (!bitrate || positive(bitrate))
+  const valid = $derived((matchSource ? Number.isFinite(Number(scale)) && Number(scale) > 0 : ((!width && !height) || (positive(width) && positive(height)))) && (!bitrate || (videoBitrate && !!adaptiveBitrate) || positive(bitrate))
+    && (!videoBitrate || (
+      (!maxBitrate || effectiveBitrateMode === 'cbr' || (positive(maxBitrate) && Number(maxBitrate) <= 1000000))
+      && (!keyframes || (positive(keyframes) && Number(keyframes) <= 4294967295))
+      && (!adaptiveBitrate || (Number.isFinite(Number(adaptiveBitrate)) && Number(adaptiveBitrate) > 0))
+    ))
     && (audioOnly || rateMode !== 'custom' || (
       positive(rateNum) && positive(rateDen) && Number(rateNum) <= 4294967295
       && Number(rateDen) <= 4294967295 && Number(rateNum) >= Number(rateDen)
@@ -57,7 +72,7 @@
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
     return () => { void owner; ++generation; controller?.abort() }
   })
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
@@ -97,7 +112,15 @@
       if (!effectiveAac && audioBits) audioPatch.bits = Number(audioBits)
       if (Object.keys(audioPatch).length) settings.audio = audioPatch
     }
-    if (bitrate) { settings.bitrateKbps = Number(bitrate); settings.adaptiveBitrate = null }
+    if (h26x && multiplexer) settings.multiplexer = multiplexer
+    if (h264 && profile) settings.h264Profile = profile
+    if (videoBitrate) {
+      if (selectedBitrateMode) settings.bitrateMode = selectedBitrateMode
+      if (maxBitrate && effectiveBitrateMode !== 'cbr') settings.maxBitrateKbps = Number(maxBitrate)
+      if (keyframes) settings.keyframeDistance = Number(keyframes)
+    }
+    if (videoBitrate && adaptiveBitrate) settings.adaptiveBitrate = Number(adaptiveBitrate)
+    else if (bitrate) { settings.bitrateKbps = Number(bitrate); settings.adaptiveBitrate = null }
     if (captions !== 'preset') settings.burnCaptions = captions === 'burn'
     if (sidecar !== 'preset') settings.captionSidecar = sidecar === 'none' ? null : sidecar
     if (h264Level !== 'preset' && (picked?.settings.format === 'h264' || picked?.settings.mxfVideoCodec === 'h264')) settings.h264Level = h264Level === 'auto' ? null : Number(h264Level)
@@ -180,6 +203,30 @@
           </select></label>
         {/if}
       {/if}
+      {#if h26x}
+        <label>Контейнер <select aria-label="Контейнер пресета Filmcraft" value={multiplexer} onchange={event => { multiplexer = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="">Как в исходном пресете</option>
+          <option value="mp4">MP4</option><option value="mov">MOV</option>
+        </select></label>
+      {/if}
+      {#if h264}
+        <label>Профиль H.264 <select aria-label="Профиль H.264 пресета Filmcraft" value={profile} onchange={event => { profile = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="">Как в исходном пресете</option>
+          <option value="baseline">Baseline</option><option value="main">Main</option><option value="high">High</option>
+        </select></label>
+      {/if}
+      {#if videoBitrate}
+        <label>Режим битрейта <select aria-label="Режим битрейта пресета Filmcraft" value={selectedBitrateMode} onchange={event => { bitrateMode = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="">Как в исходном пресете</option>
+          <option value="cbr">CBR</option><option value="vbr1Pass">VBR · 1 проход</option>
+          {#if h264}<option value="vbr2Pass">VBR · 2 прохода</option>{/if}
+        </select></label>
+        {#if effectiveBitrateMode !== 'cbr'}
+          <label>Максимум, кбит/с <input aria-label="Максимальный битрейт пресета Filmcraft" inputmode="numeric" bind:value={maxBitrate} disabled={busy || disabled} /></label>
+        {/if}
+        <label>Адаптивный битрейт, бит на пиксель <input aria-label="Адаптивный битрейт пресета Filmcraft" inputmode="decimal" bind:value={adaptiveBitrate} disabled={busy || disabled} /></label>
+        <label>Интервал ключевых кадров <input aria-label="Интервал ключевых кадров пресета Filmcraft" inputmode="numeric" bind:value={keyframes} disabled={busy || disabled} /></label>
+      {/if}
       {#if canEditAudio}
         {#if !forcedPcm && !forcedAac}
           <label>Аудиокодек <select aria-label="Аудиокодек пресета Filmcraft" value={audioCodec} onchange={event => { audioCodec = event.currentTarget.value }} disabled={busy || disabled}>
@@ -209,7 +256,7 @@
           </select></label>
         {/if}
       {/if}
-      <label>Битрейт, кбит/с <input aria-label="Битрейт нового пресета Filmcraft" inputmode="numeric" bind:value={bitrate} disabled={busy || disabled} /></label>
+      <label>Битрейт, кбит/с <input aria-label="Битрейт нового пресета Filmcraft" inputmode="numeric" bind:value={bitrate} disabled={busy || disabled || (videoBitrate && !!adaptiveBitrate)} /></label>
       <label>Субтитры <select aria-label="Субтитры нового пресета Filmcraft" value={captions} onchange={(event) => { const value = event.currentTarget.value; if (value === 'preset' || value === 'burn' || value === 'none') captions = value }} disabled={busy || disabled}><option value="preset">Как в исходном пресете</option><option value="burn">Включить в кадр</option><option value="none">Не включать в кадр</option></select></label>
       <label>Отдельный файл субтитров <select aria-label="Файл субтитров нового пресета Filmcraft" value={sidecar} onchange={(event) => { const value = event.currentTarget.value; if (value === 'preset' || value === 'none' || sidecarFormats.includes(value)) sidecar = value }} disabled={busy || disabled}>
         <option value="preset">Как в исходном пресете</option><option value="none">Не создавать</option>
