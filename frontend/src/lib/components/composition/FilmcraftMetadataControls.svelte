@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity'
-  import { editFilmcraftMetadata, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
+  import { editFilmcraftMetadata, getFilmcraftMetadata, type FilmcraftImportResult, type FilmcraftMetadataField, type FilmcraftSourceEditFence } from '$lib/api'
 
   let { document, item, sequenceId, clipId, token, palette, disabled, onedit }: {
     document: string
@@ -21,6 +21,25 @@
   let draft = $state('')
   let error = $state('')
   let busy = $state(false)
+  let inspect = $state(false)
+  let properties = $state<FilmcraftMetadataField[]>([])
+  let inspectError = $state('')
+  let inspecting = $state(false)
+
+  $effect(() => {
+    const target = item?.id
+    properties = []
+    inspectError = ''
+    inspecting = false
+    if (!inspect || !target || !token) return
+    const request = new AbortController()
+    inspecting = true
+    void getFilmcraftMetadata(token, { document, item: target }, request.signal).then(
+      result => { if (!request.signal.aborted) properties = result.filter(field => !field.editable) },
+      failure => { if (!request.signal.aborted) inspectError = failure instanceof Error ? failure.message : String(failure) },
+    ).finally(() => { if (!request.signal.aborted) inspecting = false })
+    return () => request.abort()
+  })
 
   $effect(() => {
     const name = item?.name ?? ''
@@ -81,10 +100,30 @@
       <button type="submit" disabled={disabled || busy || !token}>Сохранить метаданные</button>
     </form>
     {#if error}<p role="alert">{error}</p>{/if}
+    {#if token}
+      <details ontoggle={event => { inspect = event.currentTarget.open }}>
+        <summary>Свойства клипа и файла</summary>
+        {#if inspecting}<p role="status">Загрузка свойств…</p>{/if}
+        {#if inspectError}<p role="alert">{inspectError}</p>{/if}
+        {#each ['Clip', 'File'] as section (section)}
+          {@const rows = properties.filter(field => field.section === section)}
+          {#if rows.length}
+            <h4>{section === 'Clip' ? 'Клип' : 'Файл'}</h4>
+            <dl>
+              {#each rows as row (row.name)}
+                <dt>{row.name}</dt><dd>{row.value || '—'}</dd>
+              {/each}
+            </dl>
+          {/if}
+        {/each}
+      </details>
+    {/if}
   </details>
 {/if}
 
 <style>
   form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
   summary { cursor: pointer; }
+  dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 0.75rem; }
+  dd { margin: 0; overflow-wrap: anywhere; }
 </style>

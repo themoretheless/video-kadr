@@ -23,15 +23,16 @@ pub(crate) fn usage(index: &ProjectIndex<'_>) -> BTreeMap<u64, [u64; 2]> {
     counts
 }
 
-pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value, usage: [u64; 2]) -> Value {
-    let subclip = item.pointer("/kind/Subclip");
-    let parent = subclip.and_then(|value| value["parent"].as_u64());
-    let media = item
-        .pointer("/kind/Media")
-        .or_else(|| index.item(parent?)?.pointer("/kind/Media"));
-    let sequence = item.pointer("/kind/Sequence");
-    let info = media.map_or(&Value::Null, |media| &media["info"]);
-    let rate = if subclip.is_some() {
+pub(super) fn item_media<'a>(index: &ProjectIndex<'a>, item: &'a Value) -> Option<&'a Value> {
+    item.pointer("/kind/Media").or_else(|| {
+        let parent = item.pointer("/kind/Subclip/parent")?.as_u64()?;
+        index.item(parent)?.pointer("/kind/Media")
+    })
+}
+
+pub(super) fn item_rate(index: &ProjectIndex<'_>, id: u64, item: &Value) -> FrameRate {
+    if let Some(subclip) = item.pointer("/kind/Subclip") {
+        let parent = subclip["parent"].as_u64();
         parent
             .and_then(|id| index.item(id).map(|_| id))
             .and_then(|id| {
@@ -45,17 +46,32 @@ pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value, usage: [u64;
     } else {
         filmcraft_source_inspect::frame_rate(index, id).unwrap_or_default()
     }
-    .sane();
+    .sane()
+}
+
+pub(super) fn source_start(info: &Value, rate: FrameRate) -> i128 {
+    let frame_numerator = i128::from(TICKS_PER_SECOND) * i128::from(rate.den);
+    info["start_timecode"]
+        .as_i64()
+        .and_then(|frame| i128::from(frame).checked_mul(frame_numerator))
+        .map(|ticks| ticks.div_euclid(i128::from(rate.num)))
+        .unwrap_or_default()
+}
+
+pub(super) fn timecode(ticks: i128, rate: FrameRate) -> String {
+    let tick = Tick(ticks.clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64);
+    format_time(tick, rate, false, TimeDisplay::Timecode, 48_000)
+}
+
+pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value, usage: [u64; 2]) -> Value {
+    let subclip = item.pointer("/kind/Subclip");
+    let media = item_media(index, item);
+    let sequence = item.pointer("/kind/Sequence");
+    let info = media.map_or(&Value::Null, |media| &media["info"]);
+    let rate = item_rate(index, id, item);
     let frame_numerator = i128::from(TICKS_PER_SECOND) * i128::from(rate.den);
     let duration = filmcraft_project_inspect::duration(item).unwrap_or_default();
-    let start = info["start_timecode"]
-        .as_i64()
-        .and_then(|frame| {
-            i128::from(frame)
-                .checked_mul(frame_numerator)
-                .map(|ticks| ticks.div_euclid(i128::from(rate.num)))
-        })
-        .unwrap_or_default();
+    let start = source_start(info, rate);
     let first = start.saturating_add(i128::from(
         subclip
             .and_then(|clip| clip["range"]["start"].as_i64())
@@ -173,17 +189,7 @@ pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value, usage: [u64;
         ("subclipEnd", subclip.map(|_| first + duration - fd)),
     ] {
         let Some(ticks) = ticks else { continue };
-        let tick = Tick(ticks.clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64);
-        timecodes.insert(
-            column.into(),
-            json!(format_time(
-                tick,
-                rate,
-                false,
-                TimeDisplay::Timecode,
-                48_000
-            )),
-        );
+        timecodes.insert(column.into(), json!(timecode(ticks, rate)));
         keys[column] = json!(ticks as f64);
     }
     keys["timecodes"] = Value::Object(timecodes);

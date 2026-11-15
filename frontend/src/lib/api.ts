@@ -2009,6 +2009,16 @@ export async function editFilmcraftArrangement(token: string, command: Filmcraft
   if (result.freeformEdit !== true) throw new Error('Изменение раскладки не подтверждено')
   return { ...await importFilmcraftCommandSnapshot(result, signal), freeformEdit: true }
 }
+export interface FilmcraftMetadataField {
+  section: 'Clip' | 'File'
+  name: string
+  value: string
+  editable: boolean
+}
+export async function getFilmcraftMetadata(token: string, input: { document: string; item: string }, signal?: AbortSignal): Promise<FilmcraftMetadataField[]> {
+  const response = await runFilmcraftExportCommand<{ result: { fields: FilmcraftMetadataField[] } }>(token, 'metadata.get', input, signal)
+  return response.result.fields
+}
 export async function editFilmcraftMetadata(token: string, input: { document: string; item: string; field: string; value: string }, signal?: AbortSignal): Promise<FilmcraftImportResult | undefined> {
   const result = await runFilmcraftExportCommand<{ metadataEdit?: boolean }>(token, 'metadata.set', input, signal)
   if (result.metadataEdit === false) return undefined

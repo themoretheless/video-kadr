@@ -27,7 +27,19 @@ fn metadata_edits_resolve_timeline_items_and_preserve_source_properties() {
     )
     .unwrap();
     assert_eq!(inspected["result"]["metadata"]["Review owner"], "Alex");
-    assert_eq!(inspected["result"]["fields"]["videoCodec"], "Synthetic");
+    let fields = inspected["result"]["fields"].as_array().unwrap();
+    let field = |section, name| {
+        fields
+            .iter()
+            .find(|field| field["section"] == section && field["name"] == name)
+            .unwrap()
+    };
+    assert_eq!(field("Clip", "Video Codec")["value"], "Synthetic");
+    assert_eq!(field("Clip", "Media Duration")["value"], "00:00:20:00");
+    assert_eq!(field("File", "File Path")["value"], "/original/clock.mkv");
+    assert_eq!(field("File", "Format")["value"], "Synthetic");
+    assert_eq!(field("File", "Status")["editable"], false);
+    assert_eq!(field("Clip", "Review owner")["editable"], true);
     let no_change = run(
         "metadata.set",
         json!({"document":document,"item":"1","field":"Description","value":"Opening"}),
