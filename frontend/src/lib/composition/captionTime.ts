@@ -22,6 +22,24 @@ export function captionDisplaySeconds(time:CaptionTimestamp):number {
  return Number(exactCaptionTicks(time))/Number(CAPTION_SOURCE_TICKS_PER_SECOND)
 }
 
+// Twelve decimal places distinguish adjacent source ticks.
+const CAPTION_DECIMAL_SCALE = 1_000_000_000_000n
+
+export function formatCaptionEditSeconds(time: CaptionTimestamp): string {
+ const ticks = exactCaptionTicks(time)
+ const magnitude = ticks < 0n ? -ticks : ticks
+ const scaled = (magnitude * CAPTION_DECIMAL_SCALE + CAPTION_SOURCE_TICKS_PER_SECOND / 2n) / CAPTION_SOURCE_TICKS_PER_SECOND
+ const fraction = (scaled % CAPTION_DECIMAL_SCALE).toString().padStart(12, '0').replace(/0+$/, '')
+ return `${ticks < 0n ? '-' : ''}${scaled / CAPTION_DECIMAL_SCALE}${fraction ? `.${fraction}` : ''}`
+}
+
+export function parseCaptionEditSeconds(value: string): bigint {
+ const match = /^(\d{1,12})(?:[.,](\d{1,12}))?$/.exec(value.trim())
+ if (!match) throw new Error('Введите время в секундах с точностью до 12 знаков после разделителя')
+ const scaled = BigInt(match[1]!) * CAPTION_DECIMAL_SCALE + BigInt((match[2] ?? '').padEnd(12, '0'))
+ return (scaled * CAPTION_SOURCE_TICKS_PER_SECOND + CAPTION_DECIMAL_SCALE / 2n) / CAPTION_DECIMAL_SCALE
+}
+
 /** Signed edit distances use the same wire units, with negative numeric us allowed. */
 export function exactCaptionDeltaTicks(delta:CaptionTimestamp):bigint {
  if(typeof delta==='number') {

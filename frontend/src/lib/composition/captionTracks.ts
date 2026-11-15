@@ -1,14 +1,16 @@
-import {exactCaptionTicks} from './captionTime'
+import { captionMicrosecondsCeil, captionTimestampFromExact, compareCaptionTimes, exactCaptionTicks, formatCaptionEditSeconds, parseCaptionEditSeconds, CAPTION_SOURCE_TICKS_PER_MICROSECOND } from './captionTime'
 import type { NativeNestedProject } from '../api'
-import type { CaptionCue } from './types'
+import { MAX_COMPOSITION_DURATION_TICKS, type CaptionCue } from './types'
 
 export function captionCueDraft(cue: CaptionCue) {
-  return { text: cue.text, speaker: cue.speaker ?? '', cueId: cue.cueId ?? '', settings: cue.settings ?? '' }
+  return { text: cue.text, speaker: cue.speaker ?? '', cueId: cue.cueId ?? '', settings: cue.settings ?? '',
+    start: formatCaptionEditSeconds(cue.timelineStartTick), end: formatCaptionEditSeconds(cue.timelineEndTick) }
 }
 
 export type CaptionCueDraft = ReturnType<typeof captionCueDraft>
 export function sameCaptionCueDraft(left: CaptionCueDraft, right: CaptionCueDraft): boolean {
-  return left.text === right.text && left.speaker === right.speaker && left.cueId === right.cueId && left.settings === right.settings
+  return left.text === right.text && left.speaker === right.speaker && left.cueId === right.cueId && left.settings === right.settings &&
+    left.start === right.start && left.end === right.end
 }
 
 export function editNativeCaptionCue(
@@ -41,11 +43,29 @@ export function editNativeCaptionCue(
     ...(draft.cueId !== current.cueId ? { cueId: draft.cueId || null } : {}),
     ...(draft.settings !== current.settings ? { settings: draft.settings } : {}),
   }
+  let durationUs = node.durationUs
+  const clips = track.clips.map(item => item.id === cueId ? edited : item)
+  if (draft.start !== current.start || draft.end !== current.end) {
+    const oldStart = exactCaptionTicks(cue.timelineStartTick), oldEnd = exactCaptionTicks(cue.timelineEndTick)
+    const start = draft.start === current.start ? oldStart : parseCaptionEditSeconds(draft.start)
+    const end = draft.end === current.end ? oldEnd : parseCaptionEditSeconds(draft.end)
+    if (end <= start || end > BigInt(MAX_COMPOSITION_DURATION_TICKS) * CAPTION_SOURCE_TICKS_PER_MICROSECOND) {
+      throw new Error('Начало должно предшествовать концу в пределах допустимой длительности')
+    }
+    if (track.clips.some(item => item.id !== cueId &&
+      exactCaptionTicks(item.timelineStartTick) < end && start < exactCaptionTicks(item.timelineEndTick))) {
+      throw new Error('Реплики на одной дорожке не могут перекрываться')
+    }
+    if (start !== oldStart) edited.timelineStartTick = captionTimestampFromExact(start, cue.timelineStartTick)
+    if (end !== oldEnd) edited.timelineEndTick = captionTimestampFromExact(end, cue.timelineEndTick)
+    clips.sort((a, b) => compareCaptionTimes(a.timelineStartTick, b.timelineStartTick))
+    if (durationUs !== undefined) durationUs = Math.max(durationUs, captionMicrosecondsCeil(edited.timelineEndTick))
+  }
   const captionTracks = node.content.captionTracks!.map(item => item.id === trackId
-    ? { ...track, clips: track.clips.map(item => item.id === cueId ? edited : item) }
+    ? { ...track, clips }
     : item)
   return { ...project, compositions: { ...project.compositions, [compositionId]: {
-    ...node, content: { ...node.content, captionTracks },
+    ...node, ...(durationUs !== undefined ? { durationUs } : {}), content: { ...node.content, captionTracks },
   } } }
 }
 

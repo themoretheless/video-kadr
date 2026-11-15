@@ -19,8 +19,9 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
   const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
   const cue = { id: 'cue', cueId: 'external', timelineStartTick: '254016000001', timelineEndTick: '508032000003',
     text: '<i>Original</i>', speaker: 'Original voice', settings: 'line:80%' }
+  const nextCue = { id: 'next', timelineStartTick: 3_000_000, timelineEndTick: 4_000_000, text: 'Next' }
   nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: {
-    instances: [], content: { ...content, captionTracks: [{ id: 'file', name: 'Captions', clips: [cue] }] },
+    instances: [], content: { ...content, captionTracks: [{ id: 'file', name: 'Captions', clips: [cue, nextCue] }] },
   } } }
   const original = JSON.stringify(nestedComposition.document)
   vi.mocked(api.nestedDurations).mockClear()
@@ -46,6 +47,30 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
     expect(nestedComposition.document?.compositions.root?.content.captionTracks?.[0]?.clips[0]).toEqual({
       ...cue, text: '<b>Edited</b>', speaker: 'New voice', cueId: 'changed-id', settings: 'line:90% align:start',
     })
+    await vi.waitFor(() => expect(editor.querySelector<HTMLButtonElement>('button')!.disabled).toBe(true))
+    const setTime = async (index: number, value: string) => {
+      const field = fields[index]!
+      field.value = value
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+      await tick()
+      editor.querySelector('button')!.click()
+    }
+    await setTime(5, '3,1')
+    await vi.waitFor(() => expect(editor.textContent).toContain('не могут перекрываться'))
+    expect(nestedHistory.past).toHaveLength(1)
+    await setTime(5, '2,500000000004')
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(2))
+    expect(nestedComposition.document?.compositions.root?.content.captionTracks?.[0]?.clips[0]).toMatchObject({
+      timelineStartTick: cue.timelineStartTick, timelineEndTick: '635040000001',
+    })
+    await vi.waitFor(() => expect(editor.querySelector<HTMLButtonElement>('button')!.disabled).toBe(true))
+    await setTime(4, '1.250000000004')
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(3))
+    expect(nestedComposition.document?.compositions.root?.content.captionTracks?.[0]?.clips[0]).toMatchObject({
+      timelineStartTick: '317520000001', timelineEndTick: '635040000001',
+    })
+    undoNestedComposition()
+    undoNestedComposition()
     undoNestedComposition()
     expect(JSON.stringify(nestedComposition.document)).toBe(original)
   } finally {

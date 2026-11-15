@@ -8,8 +8,8 @@
     compositionId: string; trackId: string; cue: CaptionCue; disabled?: boolean
   } = $props()
 
-  let draft = $state<CaptionCueDraft>({ text: '', speaker: '', cueId: '', settings: '' })
-  let base = $state<CaptionCueDraft>({ text: '', speaker: '', cueId: '', settings: '' })
+  let draft = $state<CaptionCueDraft>({ text: '', speaker: '', cueId: '', settings: '', start: '', end: '' })
+  let base = $state<CaptionCueDraft>({ text: '', speaker: '', cueId: '', settings: '', start: '', end: '' })
   let error = $state('')
   let disposed = false
   const changed = $derived(!sameCaptionCueDraft(draft, base))
@@ -50,6 +50,8 @@
   <label>Голос<input type="text" bind:value={draft.speaker} /></label>
   <label>Идентификатор VTT<input type="text" bind:value={draft.cueId} /></label>
   <label>Параметры VTT<input type="text" bind:value={draft.settings} /></label>
+  <label>Начало, с<input type="text" inputmode="decimal" bind:value={draft.start} /></label>
+  <label>Конец, с<input type="text" inputmode="decimal" bind:value={draft.end} /></label>
   {#if conflict}<p role="alert">Реплика изменилась. Сбросьте черновик, чтобы загрузить актуальную версию.</p>{/if}
   {#if error}<p role="alert">{error}</p>{/if}
   <button type="button" class="btn ghost sm" disabled={!changed || conflict} onclick={() => void save()}>Сохранить реплику дорожки</button>
