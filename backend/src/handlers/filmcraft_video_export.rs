@@ -832,6 +832,7 @@ impl VideoRequest {
         let video = (!self.preset.audio_only()).then(|| serde_json::json!({
             "codec": self.preset.video_codec(),
             "width": spec.width, "height": spec.height,
+            "scaling": self.scaling.unwrap_or_else(|| self.preset.scaling()),
             "frameRate": spec.frame_rate, "pixelAspect": self.pixel_aspect.unwrap_or((1, 1)),
             "profile": self.preset.h264().then_some(self.h264_profile),
             "level": self.h264_level.filter(|_| self.preset.h264()),

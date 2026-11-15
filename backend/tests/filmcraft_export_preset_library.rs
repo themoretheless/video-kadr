@@ -701,6 +701,7 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     let (mark_status, mark_summary) = call("video-jobs/summary", marked).await;
     assert_eq!(mark_status, StatusCode::OK, "{mark_summary}");
     assert_eq!(mark_summary["sourceRange"], frame_summary["sourceRange"]);
+    assert_eq!(summary["video"]["scaling"], "scaleToFit");
     assert_eq!(summary["video"]["width"], 1920);
     assert_eq!(summary["video"]["height"], 1080);
     assert_eq!(summary["video"]["bitrate"]["targetKbps"], 16000);

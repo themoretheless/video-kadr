@@ -3,11 +3,12 @@
   import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
   import { captionExtensions, captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
   import { summarizeFilmcraftExport, type FilmcraftExportSummary, estimateFilmcraftQuickExport, listFilmcraftExportPresets, type FilmcraftQuickExportRequest, type FilmcraftLibraryPreset } from '$lib/api'
+  import FilmcraftExportPreview from './FilmcraftExportPreview.svelte'
   import FilmcraftExportQueue from './FilmcraftExportQueue.svelte'
   import FilmcraftExportPresetLibrary from './FilmcraftExportPresetLibrary.svelte'
   import { startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, type FilmcraftVideoRequest, type FilmcraftVideoHistoryEntry, type FilmcraftExportPreset, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftTextOverlay, type FilmcraftOverlayPlacement, type FilmcraftImageOverlay, type FilmcraftBitrateSettings } from '$lib/api'
   import type { Job, MediaEntry } from '$lib/types'
-  let { document, sequenceId, sources, token = null, initialFrames = '24', disabled = false, imageSources = [], sequences = [] }: { document: string; sequenceId: string; sources: Record<string, string>; token?: string | null; initialFrames?: string; disabled?: boolean; imageSources?: MediaEntry[]; sequences?: Array<{ id: string; name: string }> } = $props()
+  let { document, sequenceId, sources, token = null, initialFrames = '24', timeFrames = '0', timeTicks, disabled = false, imageSources = [], sequences = [] }: { document: string; sequenceId: string; sources: Record<string, string>; token?: string | null; initialFrames?: string; timeFrames?: string; timeTicks?: string; disabled?: boolean; imageSources?: MediaEntry[]; sequences?: Array<{ id: string; name: string }> } = $props()
   let preset = $state<FilmcraftExportPreset>('lossless')
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
@@ -296,6 +297,7 @@
     return libraryPreset ? { ...common, libraryPreset } : { ...common, ...(!audioOnly && !burnCaptions ? { burnCaptions: false } : {}), ...(captionFormat ? { captionSidecar: captionFormat } : {}), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h264 && h264Level !== null ? { h264Level } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
   }
   let summaryOpen = $state(false)
+  let previewEnabled = $state(false)
   let exportSummary = $state<FilmcraftExportSummary>()
   let summaryError = $state('')
   const summaryNumber = new Intl.NumberFormat('ru', { maximumFractionDigits: 3 })
@@ -697,8 +699,16 @@
   {/if}
   <details ontoggle={event => { summaryOpen = event.currentTarget.open }}>
     <summary>Сводка экспорта</summary>
+    <label><input type="checkbox" bind:checked={previewEnabled} />Предпросмотр экспорта</label>
     {#if exportSummary}
       {@const { video, audio, container, estimatedBytes, outputName: resolvedName, source, sourceRange, preset: resolvedPreset } = exportSummary}
+      {#if summaryOpen && previewEnabled}
+        {#if video}
+          <FilmcraftExportPreview {document} {sequenceId} {sources} {timeFrames} {timeTicks} {token} {video} />
+        {:else}
+          <p>Только аудио</p>
+        {/if}
+      {/if}
       <dl>
         {#if resolvedName}<dt>Файл</dt><dd>{resolvedName}.{container}</dd>{/if}
         <dt>Контейнер</dt><dd>{container.toUpperCase()}</dd>
