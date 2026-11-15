@@ -198,7 +198,7 @@ it('uploads the selected template design and binds its bundled font before conve
   const positionKeys = [{ property: 'offsetY', at: 0, value: 0.25 }, { property: 'offsetY', at: 1, value: 0.5 }]
   const resizedKeys = [{ ...keys[0]!, value: 0.25 }, keys[1]!]
   const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, offsetY: 0.25, keys, text: { content: 'Dialogue', shadow: true } }
-  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, offsetX: 0.125, sourceStart: 0.25, keys: [...resizedKeys, ...positionKeys, ...pivotKeys], text: { ...beforeTitle.text, content: 'Revised dialogue', color: '#ff800080', fontSize: 0.05, fontWeight: 700, strokeWidth: 2 / 1080, maxWidth: 0.625, shadow: false } }
+  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, offsetX: 0.125, sourceStart: 0.25, keys: [...resizedKeys, ...positionKeys, ...pivotKeys], text: { ...beforeTitle.text, content: 'Revised dialogue', opacity: 0.5, color: '#ff800080', fontSize: 0.05, fontWeight: 700, strokeWidth: 2 / 1080, maxWidth: 0.625, shadow: false } }
   const template = {
    ...original,
    video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
@@ -281,7 +281,7 @@ it('uploads the selected template design and binds its bundled font before conve
   const restored = nestedComposition.document?.compositions.imported?.content
   expect(restored?.metadata?.captionTextTracks).toEqual(['lane-text'])
   expect(restored?.tracks[0]?.clips).toEqual([{
-   ...editedCaption, opacity: editedOpacity, textBoxWidth: 1200,
+   ...editedCaption, opacity: editedOpacity, opacityMultiplier: 0.5, textBoxWidth: 1200,
    style: { ...caption.style, fontSize: 54, bold: true, strokeWidth: 2, shadow: { ...caption.style.shadow, alpha: 0 }, color: { red: 1, green: 128 / 255, blue: 0, alpha: 128 / 255 } },
    transform: { ...caption.transform, x: { mode: 'constant', value: 240 }, concatAnimation: {
     ...animation, keys: { ...animation.keys, offsetY: [{ at: 0, value: 0 }, { at: 1, value: 0.25 }] }, rest: { ...animation.rest, y: 0 },

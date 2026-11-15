@@ -228,24 +228,31 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   }
 
   let opacity = clip.opacity
+  let opacityMultiplier = clip.opacityMultiplier
   const previousOpacity = before.opacity ?? 1
   const editedOpacity = after.opacity ?? 1
   const previousTitleOpacity = previousText.opacity ?? 1
   const editedTitleOpacity = editedText.opacity ?? 1
   if (editedOpacity !== previousOpacity || editedTitleOpacity !== previousTitleOpacity) {
-    if (clip.concatTitle || retainKeys || opacity?.mode !== 'constant' ||
-        transform?.concatAnimation?.keys.opacity?.length ||
-        typeof editedOpacity !== 'number' || !(editedOpacity >= 0 && editedOpacity <= 1) ||
+    if (clip.concatTitle || typeof editedOpacity !== 'number' || !(editedOpacity >= 0 && editedOpacity <= 1) ||
         typeof editedTitleOpacity !== 'number' || !(editedTitleOpacity >= 0 && editedTitleOpacity <= 1)) return undefined
-    // Concat multiplies title and clip opacity. Native captions composite the
-    // whole text layer once, including its fill, outline, background and shadow.
-    const value = editedOpacity * editedTitleOpacity
-    opacity = { mode: 'constant', value }
-    if (transform?.concatAnimation) {
-      const animation = transform.concatAnimation
-      transform = { ...transform, concatAnimation: {
-        ...animation, rest: { ...animation.rest, opacity: value },
-      } }
+    const hasOpacityKeys = (keys: unknown) => Array.isArray(keys) && keys.some(key => record(key)?.property === 'opacity')
+    const keyed = clip.opacity?.mode === 'keyframes' || !!transform?.concatAnimation?.keys.opacity?.length || hasOpacityKeys(after.keys)
+    if (keyed || retainKeys) {
+      // The title multiplier is applied after sampling and clamping the ride.
+      if (editedOpacity !== previousOpacity && !retainKeys && !hasOpacityKeys(after.keys)) return undefined
+      opacityMultiplier = editedTitleOpacity
+    } else {
+      if (opacity?.mode !== 'constant') return undefined
+      const value = opacityMultiplier === undefined ? editedOpacity * editedTitleOpacity : editedOpacity
+      if (opacityMultiplier !== undefined) opacityMultiplier = editedTitleOpacity
+      opacity = { mode: 'constant', value }
+      if (transform?.concatAnimation) {
+        const animation = transform.concatAnimation
+        transform = { ...transform, concatAnimation: {
+          ...animation, rest: { ...animation.rest, opacity: value },
+        } }
+      }
     }
     if (editedTitleOpacity !== previousTitleOpacity) retainOriginalField('opacity')
   }
@@ -277,6 +284,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     style,
     transform,
     opacity,
+    ...(opacityMultiplier === undefined ? {} : { opacityMultiplier }),
     ...(textBoxWidth === undefined ? {} : { textBoxWidth }),
     timelineStartTick: start,
     timelineEndTick: start + duration,

@@ -1566,6 +1566,8 @@ pub fn is_supported_composition_font_family(value: &str) -> bool {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextClip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity_multiplier: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_box_width: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_anchor: Option<[f64; 2]>,
@@ -2114,6 +2116,7 @@ impl Composition {
                             || clip.text.trim().is_empty()
                             || clip.text.chars().count() > 512
                             || clip.text.contains('\0')
+                            || clip.opacity_multiplier.is_some_and(|value| clip.concat_title.is_some() || !(0.0..=1.0).contains(&value))
                             || clip.text_box_width.is_some_and(|width| {
                                 clip.concat_title.is_some() || !(1.0..=100_000.0).contains(&width)
                             })
@@ -3715,6 +3718,7 @@ source_out_tick: 99_000,
             hidden: false,
             locked: false,
             clips: vec![TextClip {
+                    opacity_multiplier: None,
                 text_box_width: None,
                 text_anchor: None,
                 effects: vec![],

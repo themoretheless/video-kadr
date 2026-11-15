@@ -326,6 +326,18 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
         "Concat's standard shadow must be rendered after reopening",
     );
 
+    let mut faded = serde_json::to_value(&project).unwrap();
+    let root = faded["root"].as_str().unwrap().to_owned();
+    faded["compositions"][&root]["content"]["tracks"][0]["clips"][0]["opacityMultiplier"] = json!(0.25);
+    let faded: video_kadr_backend::domain::nested_composition::NestedCompositionProject =
+        serde_json::from_value(faded).unwrap();
+    let faded_output = export(&faded).unwrap();
+    let faded_title = faded_output["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert_eq!(faded_title["text"]["opacity"], 0.25);
+    assert_eq!(faded_title["keys"][1]["value"], 1.0);
+    assert_ne!(frame(&faded.compositions[&root].content, 1_500_000), frame(&project.compositions[&root].content, 1_500_000));
+
     let mut scaled = serde_json::to_value(&project).unwrap();
     let root = scaled["root"].as_str().unwrap().to_owned();
     let caption = &mut scaled["compositions"][root]["content"]["tracks"][0]["clips"][0];

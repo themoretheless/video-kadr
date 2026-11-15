@@ -1751,7 +1751,7 @@ fn compile_visual_overlays<'a>(
             media_anchor,
             &mut keyframe_points,
         )?;
-        let opacity = compile_animatable(
+        let mut opacity = compile_animatable(
             clip.opacity(),
             "visual opacity",
             "T",
@@ -1763,6 +1763,14 @@ fn compile_visual_overlays<'a>(
             true,
             &mut keyframe_points,
         )?;
+        if let VisualClip::Text(text) = clip {
+            if let Some(multiplier) = text.opacity_multiplier {
+                opacity.expression = format!("clip(({}),0,1)*{}", opacity.expression, decimal(multiplier));
+                opacity.minimum = opacity.minimum.clamp(0.0, 1.0) * multiplier;
+                opacity.maximum = opacity.maximum.clamp(0.0, 1.0) * multiplier;
+                opacity.constant = opacity.constant.map(|value| value * multiplier);
+            }
+        }
         let masks = match clip {
             VisualClip::Video(video) => compile_video_masks(
                 video,
@@ -5444,6 +5452,7 @@ timeline: None,
                 hidden: false,
                 locked: false,
                 clips: vec![TextClip {
+                    opacity_multiplier: None,
                 text_box_width: None,
                 text_anchor: None,
                 effects: vec![],

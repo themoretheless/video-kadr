@@ -57,6 +57,7 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
         font_size: clip.style.font_size / f64::from(height),
         font_weight: if clip.style.bold { 700.0 } else { 400.0 },
         italic: clip.style.italic,
+        opacity: clip.opacity_multiplier.unwrap_or(1.0),
         color: color(clip.style.color),
         align: clip.style.align.unwrap_or(TextAlignment::Left),
         stroke_width: clip.style.stroke_width.round() / f64::from(height),

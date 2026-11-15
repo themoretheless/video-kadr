@@ -1237,6 +1237,7 @@ function validateClip(
     validateVisualAnimation(clip.animation, `${path}.animation`, runtimeClipDuration(clip), add)
     if (clip.speedRamp !== undefined) add('speed-ramp-kind', `${path}.speedRamp`, 'Speed ramp is available only for video/audio clips')
   } else if (clip.kind === 'text') {
+    if (clip.opacityMultiplier !== undefined) validateOpacity(clip.opacityMultiplier, `${path}.opacityMultiplier`, add)
     if (clip.textBoxWidth !== undefined &&
         (!isFiniteNumber(clip.textBoxWidth) || clip.textBoxWidth < 1 || clip.textBoxWidth > 100_000)) {
       add('text-box-width', `${path}.textBoxWidth`, 'Text box width must be between 1 and 100000 pixels')

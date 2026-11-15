@@ -775,8 +775,9 @@ fn render_media_layers_contextual(
                     continue;
                 }
                 if let Some(frame)=super::legacy_text_surface::render(clip,(canvas.width,canvas.height),time_us,checkpoint)? {
-                    if let Some(output)=working_canvas.as_mut(){output.composite_working(&frame,GroupAffine::IDENTITY,1.,clip.blend_mode.unwrap_or(BlendMode::Normal),checkpoint)?;}
-                    surface.composite_checked(&frame.to_surface(checkpoint)?,GroupAffine::IDENTITY,1.,clip.blend_mode.unwrap_or(BlendMode::Normal),checkpoint)?;
+                    let opacity = clip.opacity_multiplier.unwrap_or(1.0);
+                    if let Some(output)=working_canvas.as_mut(){output.composite_working(&frame,GroupAffine::IDENTITY,opacity as f32,clip.blend_mode.unwrap_or(BlendMode::Normal),checkpoint)?;}
+                    surface.composite_checked(&frame.to_surface(checkpoint)?,GroupAffine::IDENTITY,opacity,clip.blend_mode.unwrap_or(BlendMode::Normal),checkpoint)?;
                 }
             }
         }
