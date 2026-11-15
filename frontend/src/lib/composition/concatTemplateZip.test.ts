@@ -149,6 +149,15 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     clips[1],
   ])
   await expect(readConcatTemplateCaptions(animatedSidecar, fadedFile)).resolves.toEqual([clips[1]])
+  const keyed = { ...first, keys: [{ property: 'opacity', at: 0.5, value: 0.4 }] }
+  const withKeys = { ...source, timelines: [{ id: 'TL1', video, clips: [keyed, second] }] }
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withKeys)], 'template.json')))
+    .resolves.toEqual([['TL1', staticClip, { offsetX: 0, offsetY: 0 }], clips[1]])
+  const keySidecar = new File([JSON.stringify({ manifestSha256, clips: [
+    ['TL1', { ...staticClip, opacity: { mode: 'keyframes' } }, { clip: keyed, video }], captured[1],
+  ] })], 'video-kadr-caption-clips.json')
+  await expect(readConcatTemplateCaptions(keySidecar, new File([manifest + ' '], 'template.json')))
+    .resolves.toEqual([['TL1', { ...staticClip, opacity: { mode: 'keyframes' } }, { offsetX: 0, offsetY: 0 }], clips[1]])
   changed.timelines[0]!.video.width = 640
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
     .resolves.toBeUndefined()

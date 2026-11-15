@@ -77,9 +77,10 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
       after.duration <= 0 || after.duration > 86400) return undefined
   const duration = Math.round(after.duration * 1_000_000)
   const resized = duration !== clip.timelineEndTick - clip.timelineStartTick
-  if (duration < 1 || (resized && !hasStaticCaptionPose(clip))) return undefined
-  const retainKeys = resized && (clip.opacity?.mode === 'keyframes' || !!clip.transform?.concatAnimation ||
-    Array.isArray(after.keys) && after.keys.length > 0)
+  const editedKeys = !sameJson(before.keys ?? [], after.keys ?? [])
+  if (duration < 1 || ((resized || editedKeys) && !hasStaticCaptionPose(clip))) return undefined
+  const retainKeys = editedKeys || (resized && (clip.opacity?.mode === 'keyframes' || !!clip.transform?.concatAnimation ||
+    Array.isArray(after.keys) && after.keys.length > 0))
   if (resized && !retainKeys && clip.opacity?.mode !== 'constant') return undefined
   const centered = centeredCaption(clip)
   if (retainKeys && (!supportedCaptionKeys(before.keys, centered) || !supportedCaptionKeys(after.keys, centered))) return undefined
