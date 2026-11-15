@@ -475,7 +475,7 @@ fn tool_schema(name: &str) -> Value {
         "read_scene_descriptions" => json!({
             "media_id":{"type":"string","minLength":1,"maxLength":128},
             "focus":{"type":"string","enum":["general","shot-type"],"description":"Defaults to the active editor preference."},
-            "language":{"type":"string","enum":["ru","en"],"description":"Defaults to the active editor preference."},
+            "language":{"type":"string","description":"Language tag (ru, en, zh-Hans, zh-Hant, ja, ko, es, fr, de or pt). Regional aliases are accepted. Defaults to the active editor preference."},
             "fps":{"type":"number","exclusiveMinimum":0,"maximum":30,"description":"Defaults to the active editor preference."},
             "startTicks":{"type":"integer","minimum":0},
             "endTicks":{"type":"integer","minimum":1},
@@ -486,7 +486,7 @@ fn tool_schema(name: &str) -> Value {
             "composition_id":{"type":"string","minLength":1,"maxLength":128,"description":"Nested composition scope for clipId; defaults to the root."},
             "sourceSpan":{"type":"object","description":"Optional half-open source range in microseconds; defaults to the clip's visible source range or the entire unplaced video.","properties":{"startTicks":{"type":"integer","minimum":0},"endTicks":{"type":"integer","minimum":1}},"required":["startTicks","endTicks"],"additionalProperties":false},
             "focus":{"type":"string","enum":["general","shot-type"],"description":"Defaults to the active editor preference."},
-            "language":{"type":"string","enum":["ru","en"],"description":"Defaults to the active editor preference."},
+            "language":{"type":"string","description":"Language tag (ru, en, zh-Hans, zh-Hant, ja, ko, es, fr, de or pt). Regional aliases are accepted. Defaults to the active editor preference."},
             "fps":{"type":"number","exclusiveMinimum":0,"maximum":30,"description":"Defaults to the active editor preference."}
         }),
         "compare_frames" => {

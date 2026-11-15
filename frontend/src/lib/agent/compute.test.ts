@@ -37,9 +37,9 @@ describe('MCP shot analysis', () => {
     expect(api.describeLibraryShot).toHaveBeenLastCalledWith('source', {
       span, expectedSourceHash: scan.sourceHash, focus: 'shot-type', language: 'en', fps: 4,
     }, 'owner', undefined, undefined)
-    await executeAgentRequest('agent', 'read_scene_descriptions', { media_id: 'source', language: 'ru' }, access)
+    await executeAgentRequest('agent', 'read_scene_descriptions', { media_id: 'source', language: 'zh-HK' }, access)
     expect(api.getSceneDescriptionCatalog).toHaveBeenLastCalledWith('source', {
-      focus: 'shot-type', language: 'ru', fps: 4,
+      focus: 'shot-type', language: 'zh-hant', fps: 4,
     }, 'owner', undefined, expect.any(AbortSignal))
     await executeAgentRequest('agent', 'read_scene_descriptions', { media_id: 'source' }, access)
     expect(api.getSceneDescriptionCatalog).toHaveBeenLastCalledWith('source', {

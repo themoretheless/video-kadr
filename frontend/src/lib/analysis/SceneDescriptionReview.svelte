@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import { describeLibraryShot, readLibraryShotDescriptions, type SceneDescription } from '../api.js'
   import type { ShotSpan } from './shots.js'
+  import { parseSceneDescriptionLanguage, sceneDescriptionLanguages } from './sceneDescriptionLanguages.js'
   import SceneModelSetup from './SceneModelSetup.svelte'
   import { sceneDescriptionPreferences, setSceneDescriptionPreferences, type SceneDescriptionPreferences } from '../state/sceneDescriptionPreferences.svelte.js'
 
@@ -142,8 +143,10 @@
   <fieldset disabled={disabled || working}>
     <legend>Описание сцен моделью</legend>
     <label>Язык
-      <select value={language} onchange={event => { setSceneDescriptionPreferences({ language: event.currentTarget.value === 'en' ? 'en' : 'ru' }); batchMessage = '' }}>
-        <option value="ru">Русский</option><option value="en">English</option>
+      <select value={language} onchange={event => { setSceneDescriptionPreferences({ language: parseSceneDescriptionLanguage(event.currentTarget.value) ?? language }); batchMessage = '' }}>
+        {#each Object.entries(sceneDescriptionLanguages) as [code, name] (code)}
+          <option value={code} lang={code}>{name}</option>
+        {/each}
       </select>
     </label>
     <label>Акцент

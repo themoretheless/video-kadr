@@ -16,6 +16,8 @@ it('round-trips scene description defaults and recovers from invalid stored sett
     expect(readSceneDescriptionPreferences()).toEqual(defaultSceneDescriptionPreferences)
     setSceneDescriptionPreferences({ focus: 'shot-type', language: 'en', fps: 4 })
     expect(readSceneDescriptionPreferences()).toEqual({ focus: 'shot-type', language: 'en', fps: 4 })
+    entries.set('video-kadr.scene-description', '{"language":"pt-BR"}')
+    expect(readSceneDescriptionPreferences().language).toBe('pt')
     entries.set('video-kadr.scene-description', '{"focus":"shot-type","language":"broken","fps":99}')
     expect(readSceneDescriptionPreferences()).toEqual({ focus: 'shot-type', language: 'ru', fps: 1 })
     entries.set('video-kadr.scene-description', 'malformed')

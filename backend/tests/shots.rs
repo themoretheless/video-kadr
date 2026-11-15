@@ -428,6 +428,8 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
         ("en", Some(0.25)),
         ("en", Some(0.25)),
         ("en", Some(30.0)),
+        ("zh-TW", None),
+        ("zh-Hant", None),
     ] {
         let (status, result, _) = send(&app, request(Some(&user.token), language, hash, fps)).await;
         assert_eq!(status, StatusCode::OK, "{result}");
@@ -480,6 +482,10 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     assert_eq!(rate_page["descriptions"], page["descriptions"]);
     let (_, uncached_rate, _) = send(&offline, catalog("language=en&focus=shot-type&fps=2")).await;
     assert_eq!(uncached_rate["descriptions"], json!([]));
+    let (_, traditional, _) = send(&offline, catalog("language=zh-HK&focus=shot-type")).await;
+    assert_eq!(traditional["descriptions"], page["descriptions"]);
+    let (_, simplified, _) = send(&offline, catalog("language=zh-CN&focus=shot-type")).await;
+    assert_eq!(simplified["descriptions"], json!([]));
     assert_eq!(
         send(&offline, catalog("language=en&focus=general")).await.1["descriptions"],
         json!([])
@@ -547,7 +553,11 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     .await;
     assert_eq!(legacy["descriptions"][0]["description"]["text"], "Legacy");
     let requests = requests.lock().unwrap();
-    assert_eq!(requests.len(), 4);
+    assert_eq!(requests.len(), 5);
+    assert!(requests[4]["messages"][0]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("Traditional Chinese"));
     let sparse = requests[2]["messages"][0]["content"].as_array().unwrap();
     assert_eq!(sparse.len(), 3);
     assert_eq!(sparse[1]["text"], "Frame at 1.000000s:");

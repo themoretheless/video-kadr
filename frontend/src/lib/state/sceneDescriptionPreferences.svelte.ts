@@ -1,8 +1,10 @@
+import { parseSceneDescriptionLanguage, type SceneDescriptionLanguage } from '../analysis/sceneDescriptionLanguages.js'
+
 const KEY = 'video-kadr.scene-description'
 
 export interface SceneDescriptionPreferences {
   focus: 'general' | 'shot-type'
-  language: 'ru' | 'en'
+  language: SceneDescriptionLanguage
   fps: number
 }
 
@@ -19,7 +21,7 @@ export function readSceneDescriptionPreferences(): SceneDescriptionPreferences {
     const fps = value?.fps
     return {
       focus: value?.focus === 'shot-type' ? 'shot-type' : 'general',
-      language: value?.language === 'en' ? 'en' : 'ru',
+      language: parseSceneDescriptionLanguage(value?.language) ?? defaultSceneDescriptionPreferences.language,
       fps: typeof fps === 'number' && Number.isFinite(fps) && fps >= 0.001 && fps <= 30
         ? fps : defaultSceneDescriptionPreferences.fps,
     }

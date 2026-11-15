@@ -1071,7 +1071,7 @@ export interface SceneDescription {
 interface SceneDescriptionOptions {
   expectedSourceHash: string
   focus: 'general' | 'shot-type'
-  language: 'ru' | 'en'
+  language: import('./analysis/sceneDescriptionLanguages.js').SceneDescriptionLanguage
   fps?: number
 }
 

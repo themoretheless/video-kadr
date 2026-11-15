@@ -189,7 +189,7 @@ describe('MediaLibrary', () => {
           span: { startTicks: 0, endTicks: 2_000_000 },
           expectedSourceHash: sourceHash,
           focus: 'shot-type',
-          language: 'ru',
+          language: 'ja',
           fps: 2,
         })
         return Response.json({ text: 'Панорама города', tags: ['общий план', 'улица'] })
@@ -220,6 +220,9 @@ describe('MediaLibrary', () => {
     const fps = target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(3) select')!
     fps.value = '2'
     fps.dispatchEvent(new Event('change', { bubbles: true }))
+    const language = target.querySelector<HTMLSelectElement>('fieldset label:first-of-type select')!
+    language.value = 'ja'
+    language.dispatchEvent(new Event('change', { bubbles: true }))
     await tick()
     await vi.waitFor(() => expect(buttonByText(target, 'Описать сцену').disabled).toBe(false))
     buttonByText(target, 'Описать сцену').click()
@@ -251,6 +254,7 @@ describe('MediaLibrary', () => {
     buttonByText(target, 'Анализировать исходник').click()
     await vi.waitFor(() => expect(target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(2) select')?.value).toBe('shot-type'))
     expect(target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(3) select')?.value).toBe('2')
+    expect(target.querySelector<HTMLSelectElement>('fieldset label:first-of-type select')?.value).toBe('ja')
   })
 
   it('lazy-loads same-origin thumbnails with a fixed-frame skeleton and fallback', async () => {

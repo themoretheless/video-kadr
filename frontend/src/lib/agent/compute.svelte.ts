@@ -1,6 +1,7 @@
 import { scanLibraryShots, measureLibraryShots, compareLibraryFrames, describeLibraryShot, getSceneDescriptionCatalog } from '../api.js'
 import { findClipLocation } from '../composition/commands.js'
 import { cloneComposition, compositionState, commitDocument, makeId, selectCompositionClip } from '../state/composition/core.svelte.js'
+import { parseSceneDescriptionLanguage } from '../analysis/sceneDescriptionLanguages.js'
 import { sceneDescriptionPreferences, type SceneDescriptionPreferences } from '../state/sceneDescriptionPreferences.svelte.js'
 import { nestedComposition } from '../state/nestedComposition.svelte.js'
 import { agentSession, assertHistoryUnlocked } from './session.svelte.js'
@@ -184,10 +185,10 @@ async function readSceneDescriptions(args: Record<string, unknown>, access: Agen
 
 function descriptionView(args: Record<string, unknown>): SceneDescriptionPreferences {
   const focus = args.focus === undefined ? sceneDescriptionPreferences.focus : args.focus
-  const language = args.language === undefined ? sceneDescriptionPreferences.language : args.language
+  const language = args.language === undefined ? sceneDescriptionPreferences.language : parseSceneDescriptionLanguage(args.language)
   const fps = args.fps === undefined ? sceneDescriptionPreferences.fps : args.fps
   if (focus !== 'general' && focus !== 'shot-type') throw new Error('Invalid scene description focus')
-  if (language !== 'ru' && language !== 'en') throw new Error('Invalid scene description language')
+  if (language === undefined) throw new Error('Invalid scene description language')
   if (typeof fps !== 'number' || !Number.isFinite(fps) || fps <= 0 || fps > 30) {
     throw new Error('fps must be greater than 0 and at most 30')
   }
