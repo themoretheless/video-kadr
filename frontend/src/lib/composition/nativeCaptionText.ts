@@ -27,6 +27,9 @@ export type CaptionAppearance = Pick<WireTextStyle,
     readonly flipV: boolean
     readonly x: number
     readonly y: number
+    readonly scaleX: number
+    readonly scaleY: number
+    readonly rotation: number
   }
 
 function rgbHex({ red, green, blue }: WireRgba): string {
@@ -42,12 +45,20 @@ function firstValue(value: WireAnimatableValue): number {
   return value.mode === 'constant' ? value.value : value.track.keyframes[0]?.value ?? 0
 }
 
-function shiftValue(value: WireAnimatableValue, delta: number): WireAnimatableValue {
-  if (delta === 0) return value
-  if (value.mode === 'constant') return { ...value, value: value.value + delta }
+function mapValue(value: WireAnimatableValue, map: (value: number) => number): WireAnimatableValue {
+  if (value.mode === 'constant') return { ...value, value: map(value.value) }
   return { ...value, track: { ...value.track, keyframes: value.track.keyframes.map(key => ({
-    ...key, value: key.value + delta,
+    ...key, value: map(key.value),
   })) } }
+}
+
+function shiftValue(value: WireAnimatableValue, delta: number): WireAnimatableValue {
+  return delta === 0 ? value : mapValue(value, sample => sample + delta)
+}
+
+function rescaleValue(value: WireAnimatableValue, before: number, after: number): WireAnimatableValue {
+  if (before === after) return value
+  return before === 0 ? shiftValue(value, after) : mapValue(value, sample => sample * after / before)
 }
 
 function positionReference({ x, y, position, concatAnimation }: WireTransform): Pick<CaptionAppearance, 'x' | 'y'> {
@@ -86,6 +97,44 @@ function shiftPosition(transform: WireTransform, dx: number, dy: number): WireTr
   return moved
 }
 
+function poseReference(transform: WireTransform): Pick<CaptionAppearance, 'scaleX' | 'scaleY' | 'rotation'> {
+  const animation = transform.concatAnimation
+  if (animation) {
+    const scale = Math.max(0.001, animation.rest.scaleX)
+    return { scaleX: scale * animation.stretch[0], scaleY: scale * animation.stretch[1], rotation: animation.rest.rotationDegrees }
+  }
+  return { scaleX: firstValue(transform.scaleX), scaleY: firstValue(transform.scaleY), rotation: firstValue(transform.rotationDegrees) }
+}
+
+function changePose(transform: WireTransform, before: CaptionAppearance, after: CaptionAppearance): WireTransform {
+  if ((before.scaleX !== after.scaleX && !(Number.isFinite(after.scaleX) && after.scaleX > 0)) ||
+      (before.scaleY !== after.scaleY && !(Number.isFinite(after.scaleY) && after.scaleY > 0)) ||
+      !Number.isFinite(after.rotation)) throw new Error('Укажите положительный масштаб и конечный угол поворота')
+  const turn = after.rotation - before.rotation
+  const pose = {
+    ...transform,
+    scaleX: rescaleValue(transform.scaleX, before.scaleX, after.scaleX),
+    scaleY: rescaleValue(transform.scaleY, before.scaleY, after.scaleY),
+    rotationDegrees: shiftValue(transform.rotationDegrees, turn),
+  }
+  const animation = transform.concatAnimation
+  if (!animation) return pose
+  const scale = Math.max(0.001, animation.rest.scaleX)
+  const stretch = [
+    before.scaleX === after.scaleX ? animation.stretch[0] : after.scaleX / scale,
+    before.scaleY === after.scaleY ? animation.stretch[1] : after.scaleY / scale,
+  ] as const
+  if ((before.scaleX !== after.scaleX && !(stretch[0] >= 0.1 && stretch[0] <= 10)) ||
+      (before.scaleY !== after.scaleY && !(stretch[1] >= 0.1 && stretch[1] <= 10))) {
+    throw new Error('Растяжение анимированной реплики Concat должно быть от 0,1 до 10')
+  }
+  const keys = { ...animation.keys }
+  if (keys.rotation && turn !== 0) keys.rotation = keys.rotation.map(key => ({ ...key, value: key.value + turn }))
+  return { ...pose, concatAnimation: { ...animation, stretch, keys,
+    rest: { ...animation.rest, rotationDegrees: after.rotation },
+  } }
+}
+
 export function captionAppearance(clip: WireTextClip): CaptionAppearance {
   const { style, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode } = clip
   const preparation = clip.transform.concatPreparation
@@ -104,6 +153,7 @@ export function captionAppearance(clip: WireTextClip): CaptionAppearance {
     cropRight: preparation?.crop[2] ?? 0, cropBottom: preparation?.crop[3] ?? 0,
     flipH: preparation?.flipH ?? false, flipV: preparation?.flipV ?? false,
     ...positionReference(clip.transform),
+    ...poseReference(clip.transform),
   }
 }
 
@@ -126,7 +176,8 @@ export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionApp
     left.shadowX === right.shadowX && left.shadowY === right.shadowY && left.concatShadow === right.concatShadow &&
     left.backgroundRadius === right.backgroundRadius && left.backgroundAlpha === right.backgroundAlpha &&
     left.paddingX === right.paddingX && left.paddingY === right.paddingY && sameCaptionFraming(left, right) &&
-    left.x === right.x && left.y === right.y
+    left.x === right.x && left.y === right.y &&
+    left.scaleX === right.scaleX && left.scaleY === right.scaleY && left.rotation === right.rotation
 }
 
 /** Edit a cue without changing its clock, placement, or retained animation. */
@@ -151,7 +202,7 @@ export function setNativeCaptionText(
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
     const { textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, textColor, textAlpha, backgroundColor, backgroundAlpha,
       strokeColor, strokeAlpha, shadowColor, shadowAlpha, paddingX, paddingY,
-      cropLeft, cropTop, cropRight, cropBottom, flipH, flipV, x, y, ...style } = appearance.value
+      cropLeft, cropTop, cropRight, cropBottom, flipH, flipV, x, y, scaleX, scaleY, rotation, ...style } = appearance.value
     if (!(style.fontSize >= 1 && style.fontSize <= 1000)) throw new Error('Размер шрифта должен быть от 1 до 1000 px')
     if (!style.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
     if (blendMode !== undefined && !COMPOSITION_BLEND_MODES.includes(blendMode)) throw new Error('Неизвестный режим наложения')
@@ -168,6 +219,9 @@ export function setNativeCaptionText(
     if (x !== current.x || y !== current.y) {
       if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Укажите позицию реплики по обеим осям')
       transform = shiftPosition(transform, x - current.x, y - current.y)
+    }
+    if (scaleX !== current.scaleX || scaleY !== current.scaleY || rotation !== current.rotation) {
+      transform = changePose(transform, current, appearance.value)
     }
     if (!sameCaptionFraming(current, appearance.value)) {
       const crop = [cropLeft, cropTop, cropRight, cropBottom] as const

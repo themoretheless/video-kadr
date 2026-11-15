@@ -64,7 +64,7 @@ it('shifts an entire Bezier path and keeps its relative handles and clock', () =
   })
 })
 
-it('shifts normalized Concat position keys and preserves their easing', () => {
+it('shifts and resizes Concat motion while preserving its keys and easing', () => {
   const root = project.compositions.root!
   const track = root.content.tracks[0]!
   if (track.kind !== 'text') throw new Error('expected text track')
@@ -72,7 +72,9 @@ it('shifts normalized Concat position keys and preserves their easing', () => {
   const concatAnimation = {
     canvas: [320, 180], durationTicks: 1000000, stretch: [1, 1],
     rest: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1 },
-    keys: { offsetX: [{ at: 0.25, value: 0.5, ease: [0.2, 0.1, 0.8, 0.9] }], opacity: [{ at: 0, value: 0.4 }] },
+    keys: { offsetX: [{ at: 0.25, value: 0.5, ease: [0.2, 0.1, 0.8, 0.9] }],
+      scale: [{ at: 0.5, value: 1.3, ease: 'out' }], rotation: [{ at: 0.8, value: -15, ease: 'in' }],
+      opacity: [{ at: 0, value: 0.4 }] },
   } as const
   const entry = { ...clip, transform: { ...clip.transform, concatAnimation } }
   const document = { ...project, compositions: { ...project.compositions, root: { ...root,
@@ -80,11 +82,13 @@ it('shifts normalized Concat position keys and preserves their easing', () => {
   } } }
   const expected = captionAppearance(entry)
   const changed = setNativeCaptionText(document, 'root', clip.id, clip.text, clip.text, {
-    expected, value: { ...expected, x: 40, y: 0 },
+    expected, value: { ...expected, x: 40, y: 0, scaleX: 2, scaleY: 0.5, rotation: 20 },
   })
   expect(changed.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
-    transform: { concatAnimation: { ...concatAnimation, rest: { ...concatAnimation.rest, x: 0.125 }, keys: {
+    transform: { concatAnimation: { ...concatAnimation, stretch: [2, 0.5],
+      rest: { ...concatAnimation.rest, x: 0.125, rotationDegrees: 20 }, keys: {
       ...concatAnimation.keys, offsetX: [{ ...concatAnimation.keys.offsetX[0], value: 0.625 }],
+      rotation: [{ ...concatAnimation.keys.rotation[0], value: 5 }],
     } } },
   })
 })

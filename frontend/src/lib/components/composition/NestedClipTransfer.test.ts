@@ -110,7 +110,7 @@ it('saves subtitle text, typography and background together and restores them wi
       .find(section => section.querySelector('summary')?.textContent === 'Положение в кадре')!
     position.open = true
     const positionFields = position.querySelectorAll<HTMLInputElement>('input')
-    for (const [index, value] of ['20', '-35'].entries()) {
+    for (const [index, value] of ['20', '-35', '1.5', '0.75', '30'].entries()) {
       positionFields[index]!.value = value
       positionFields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
     }
@@ -121,6 +121,8 @@ it('saves subtitle text, typography and background together and restores them wi
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
       text: 'Edited', textBoxWidth: 200, textBoxHeight: 54, opacityMultiplier: 0.45, blendMode: 'screen', opacity: opacityKeys,
       transform: { x: { mode: 'constant', value: 20 }, y: { mode: 'constant', value: -35 },
+        scaleX: { mode: 'constant', value: 1.5 }, scaleY: { mode: 'constant', value: 0.75 },
+        rotationDegrees: { mode: 'constant', value: 30 },
         concatPreparation: { crop: [0.125, 0.1, 0.2, 0.05], canvas: [320, 180], flipH: true, flipV: true } },
       style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
         italic: true, align: 'right', tracking: -2, lineHeight: 1.6,

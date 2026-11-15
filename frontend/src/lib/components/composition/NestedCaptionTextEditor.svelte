@@ -12,7 +12,7 @@
     strokeColor: '#000000', strokeAlpha: 0, strokeWidth: 0,
     shadowColor: '#000000', shadowAlpha: 0, shadowX: 0, shadowY: 0,
     cropLeft: 0, cropTop: 0, cropRight: 0, cropBottom: 0, flipH: false, flipV: false,
-    x: 0, y: 0,
+    x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0,
   }
   let appearance=$state<{ -readonly [Field in keyof CaptionAppearance]: CaptionAppearance[Field] }>({...defaultAppearance})
   let baseAppearance=$state<CaptionAppearance>({...defaultAppearance})
@@ -151,6 +151,9 @@
       <summary>Положение в кадре</summary>
       <label>Опорная позиция X, px<input type="number" step="any" bind:value={appearance.x} disabled={disabled||nestedHistory.busy} /></label>
       <label>Опорная позиция Y, px<input type="number" step="any" bind:value={appearance.y} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Масштаб по горизонтали, ×<input type="number" min="0" step="any" bind:value={appearance.scaleX} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Масштаб по вертикали, ×<input type="number" min="0" step="any" bind:value={appearance.scaleY} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Поворот, °<input type="number" step="any" bind:value={appearance.rotation} disabled={disabled||nestedHistory.busy} /></label>
       {#if clip.transform.position || clip.transform.concatAnimation || clip.transform.x.mode==='keyframes' || clip.transform.y.mode==='keyframes'}
         <p>Изменение позиции сдвигает всю траекторию движения.</p>
       {/if}
