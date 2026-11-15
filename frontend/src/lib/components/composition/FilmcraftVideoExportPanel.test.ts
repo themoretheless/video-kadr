@@ -947,10 +947,23 @@ it('submits a saved preset by name without stale manual export overrides', async
   await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenCalledWith('owner', { document: '{"original":true}', sequenceId: '18446744073709551615', startFrames: '0', frames: 48, sources: { '9007199254740993': 'source' }, libraryPreset: 'Review 720p' }, expect.any(AbortSignal)))
   const draft = document.querySelector<HTMLInputElement>('[aria-label="Битрейт нового пресета Filmcraft"]')!
   draft.value = '8000'; draft.dispatchEvent(new Event('input', { bubbles: true })); await tick()
+  for (const [label, value] of [
+    ['Частота кадров пресета Filmcraft', 'custom'],
+    ['Масштабирование пресета Filmcraft', 'scaleToFill'],
+    ['Звук пресета Filmcraft', 'none'],
+  ]) {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!
+    control.value = value; control.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  await tick()
+  const denominator = document.querySelector<HTMLInputElement>('[aria-label="Знаменатель частоты кадров пресета Filmcraft"]')!
+  denominator.value = '0'; denominator.dispatchEvent(new Event('input', { bubbles: true })); await tick()
+  expect(button('Применить правки к экспорту').disabled).toBe(true)
+  denominator.value = '1001'; denominator.dispatchEvent(new Event('input', { bubbles: true })); await tick()
   button('Применить правки к экспорту').click(); await tick()
   button('Экспортировать с сохранённым пресетом').click()
   await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenLastCalledWith('owner',
-    expect.objectContaining({ libraryPreset: 'Review 720p', libraryPresetSettings: { bitrateKbps: 8000, adaptiveBitrate: null } }),
+    expect.objectContaining({ libraryPreset: 'Review 720p', libraryPresetSettings: { bitrateKbps: 8000, adaptiveBitrate: null, frameRate: { num: 30000, den: 1001 }, scaling: 'scaleToFill', includeAudio: false } }),
     expect.any(AbortSignal)))
 })
 

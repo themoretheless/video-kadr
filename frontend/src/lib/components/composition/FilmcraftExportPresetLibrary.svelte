@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile } from '$lib/api'
+  import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile, type FilmcraftScaling } from '$lib/api'
   let { token, disabled = false, onapply }: { token: string | null; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void } = $props()
   let opened = $state(false)
   let entries = $state<FilmcraftLibraryPreset[]>([])
@@ -12,6 +12,11 @@
   let bitrate = $state('')
   let matchSource = $state(false)
   let scale = $state('1')
+  let rateMode = $state('preset')
+  let rateNum = $state('30000')
+  let rateDen = $state('1001')
+  let scaling = $state<FilmcraftScaling | ''>('')
+  let audio = $state('preset')
   let captions = $state<'preset' | 'burn' | 'none'>('preset')
   let h264Level = $state('preset')
   let sidecar = $state('preset')
@@ -22,14 +27,21 @@
   let controller: AbortController | null = null
   let generation = 0
   const picked = $derived(entries.find(p => p.name === selected))
+  const audioOnly = $derived(picked?.settings.format === 'wav' || picked?.settings.format === 'aiff')
+  const silent = $derived(['gif', 'png', 'tiff', 'bmp'].some(format => picked?.settings.format === format))
   const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
-  const valid = $derived((matchSource ? Number.isFinite(Number(scale)) && Number(scale) > 0 : ((!width && !height) || (positive(width) && positive(height)))) && (!bitrate || positive(bitrate)))
+  const valid = $derived((matchSource ? Number.isFinite(Number(scale)) && Number(scale) > 0 : ((!width && !height) || (positive(width) && positive(height)))) && (!bitrate || positive(bitrate))
+    && (audioOnly || rateMode !== 'custom' || (
+      positive(rateNum) && positive(rateDen) && Number(rateNum) <= 4294967295
+      && Number(rateDen) <= 4294967295 && Number(rateNum) >= Number(rateDen)
+      && Number(rateNum) / Number(rateDen) <= 60
+    )))
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; matchSource = false; scale = '1'; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; audio = 'preset'; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
     return () => { void owner; ++generation; controller?.abort() }
   })
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
@@ -54,6 +66,12 @@
     const settings: Record<string, unknown> = {}
     if (matchSource) { settings.frameSize = null; settings.scale = Number(scale) }
     else if (width && height) settings.frameSize = [Number(width), Number(height)]
+    if (!audioOnly) {
+      if (rateMode === 'source') settings.frameRate = null
+      if (rateMode === 'custom') settings.frameRate = { num: Number(rateNum), den: Number(rateDen) }
+      if (scaling) settings.scaling = scaling
+    }
+    if (!audioOnly && !silent && audio !== 'preset') settings.includeAudio = audio === 'include'
     if (bitrate) { settings.bitrateKbps = Number(bitrate); settings.adaptiveBitrate = null }
     if (captions !== 'preset') settings.burnCaptions = captions === 'burn'
     if (sidecar !== 'preset') settings.captionSidecar = sidecar === 'none' ? null : sidecar
@@ -112,6 +130,31 @@
       {#if matchSource}<label>Масштаб <input aria-label="Масштаб нового пресета Filmcraft" inputmode="decimal" bind:value={scale} disabled={busy || disabled} /></label>{/if}
       <label>Ширина <input aria-label="Ширина нового пресета Filmcraft" inputmode="numeric" bind:value={width} disabled={matchSource || busy || disabled} /></label>
       <label>Высота <input aria-label="Высота нового пресета Filmcraft" inputmode="numeric" bind:value={height} disabled={matchSource || busy || disabled} /></label>
+      {#if !audioOnly}
+        <label>Частота кадров <select aria-label="Частота кадров пресета Filmcraft" value={rateMode} onchange={event => { rateMode = event.currentTarget.value }} disabled={busy || disabled}>
+          <option value="preset">Как в исходном пресете</option>
+          <option value="source">Как в секвенции</option>
+          <option value="custom">Своя частота</option>
+        </select></label>
+        {#if rateMode === 'custom'}
+          <label>Числитель <input aria-label="Числитель частоты кадров пресета Filmcraft" inputmode="numeric" bind:value={rateNum} disabled={busy || disabled} /></label>
+          <label>Знаменатель <input aria-label="Знаменатель частоты кадров пресета Filmcraft" inputmode="numeric" bind:value={rateDen} disabled={busy || disabled} /></label>
+          <small>От 1 до 60 кадров/с, например 30000 / 1001.</small>
+        {/if}
+        <label>Масштабирование <select aria-label="Масштабирование пресета Filmcraft" value={scaling} onchange={event => { scaling = event.currentTarget.value as FilmcraftScaling | '' }} disabled={busy || disabled}>
+          <option value="">Как в исходном пресете</option>
+          <option value="scaleToFit">Вписать целиком</option>
+          <option value="scaleToFill">Заполнить с обрезкой</option>
+          <option value="stretchToFill">Растянуть</option>
+        </select></label>
+        {#if !silent}
+          <label>Звук <select aria-label="Звук пресета Filmcraft" value={audio} onchange={event => { audio = event.currentTarget.value }} disabled={busy || disabled}>
+            <option value="preset">Как в исходном пресете</option>
+            <option value="include">Включить звук</option>
+            <option value="none">Без звука</option>
+          </select></label>
+        {/if}
+      {/if}
       <label>Битрейт, кбит/с <input aria-label="Битрейт нового пресета Filmcraft" inputmode="numeric" bind:value={bitrate} disabled={busy || disabled} /></label>
       <label>Субтитры <select aria-label="Субтитры нового пресета Filmcraft" value={captions} onchange={(event) => { const value = event.currentTarget.value; if (value === 'preset' || value === 'burn' || value === 'none') captions = value }} disabled={busy || disabled}><option value="preset">Как в исходном пресете</option><option value="burn">Включить в кадр</option><option value="none">Не включать в кадр</option></select></label>
       <label>Отдельный файл субтитров <select aria-label="Файл субтитров нового пресета Filmcraft" value={sidecar} onchange={(event) => { const value = event.currentTarget.value; if (value === 'preset' || value === 'none' || sidecarFormats.includes(value)) sidecar = value }} disabled={busy || disabled}>
