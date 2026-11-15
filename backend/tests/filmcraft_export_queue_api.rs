@@ -259,3 +259,50 @@ async fn owner_queue_admits_atomic_batches_stops_cancels_and_executes_remaining_
             .await
     );
 }
+
+#[tokio::test]
+async fn ordinary_export_queue_resolves_named_ranges_and_allows_batch_overrides() {
+    let (state, _dir) = support::make_state(false, false).await;
+    let owner = state
+        .db
+        .register_auth_user("named-range-owner", "test password")
+        .await
+        .unwrap()
+        .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-source-masks.json")).unwrap();
+    let mut document = fixture["cases"][0]["document"].clone();
+    let sequence = &mut document["project"]["items"]["6"]["kind"]["Sequence"];
+    sequence["work_area"] = json!({"start": FD * 2, "duration": FD * 3});
+    let app = support::router(state);
+    let input = json!({"document":document,"sequenceId":"6","sources":{},"preset":"wav16","range":"workArea"});
+    let result = command(&app, &owner.token, json!({"action":"add","input":input})).await;
+    assert_eq!(
+        result["items"][0]["sourceRange"],
+        json!({"startTicks":(FD * 2).to_string(),"endTicks":(FD * 5).to_string()})
+    );
+    let mut conflicting = input.clone();
+    conflicting["frames"] = json!(3);
+    assert_eq!(
+        request(
+            &app,
+            &owner.token,
+            Some(json!({"action":"add","input":conflicting}))
+        )
+        .await
+        .0,
+        400
+    );
+    let override_result = command(
+        &app,
+        &owner.token,
+        json!({"action":"add","input":input,
+        "ranges":[{"startTicks":"0","endTicks":FD.to_string()}]}),
+    )
+    .await;
+    assert!(override_result["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["sourceRange"] == json!({"startTicks":"0","endTicks":FD.to_string()})));
+}

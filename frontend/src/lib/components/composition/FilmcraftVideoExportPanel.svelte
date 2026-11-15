@@ -8,6 +8,9 @@
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
   let quickPresetName = $state('')
+  let exportRange = $state<'frames' | 'inOut' | 'entire' | 'workArea' | 'custom'>('frames')
+  let exportStart = $state('0')
+  let exportEnd = $state('')
   let quickRange = $state<'inOut' | 'entire' | 'workArea' | 'custom'>('inOut')
   let customStart = $state('0')
   let customEnd = $state('')
@@ -19,11 +22,13 @@
       + (fraction * 254_016_000_000n + 500_000_000_000n) / 1_000_000_000_000n
     return ticks <= 86_400n * 254_016_000_000n ? ticks : undefined
   }
-  const customRange = $derived.by(() => {
-    const start = secondsToTicks(customStart), end = secondsToTicks(customEnd)
+  function exactRange(first: string, last: string) {
+    const start = secondsToTicks(first), end = secondsToTicks(last)
     if (start === undefined || end === undefined || end <= start) return undefined
     return { startTicks: start.toString(), endTicks: end.toString() }
-  })
+  }
+  const customRange = $derived(exactRange(customStart, customEnd))
+  const exactExportRange = $derived(exactRange(exportStart, exportEnd))
   $effect(() => { void token; libraryPreset = ''; quickPresetName = '' })
   const audioOnly = $derived(['wav16', 'wav24', 'aiff16'].includes(preset))
   const imageSequence = $derived(preset.endsWith('_sequence'))
@@ -59,7 +64,10 @@
   const sequenceAudioRate = $derived(Number.isInteger(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate as number : 48000)
   const hasWorkArea = $derived(sequence?.work_area != null)
   const quickRangeValid = $derived(quickRange === 'custom' ? !!customRange : quickRange !== 'workArea' || hasWorkArea)
-  $effect(() => { if (quickRange === 'workArea' && !hasWorkArea) quickRange = 'inOut' })
+  $effect(() => {
+    if (!hasWorkArea && quickRange === 'workArea') quickRange = 'inOut'
+    if (!hasWorkArea && exportRange === 'workArea') exportRange = 'frames'
+  })
   const effectiveMovieRate = $derived(movieAudioRate || sequenceAudioRate)
   const moviePcm = $derived(mxfAudio || (intraMovie ? movieAudioCodec !== 'aac' : multiplexer === 'mov' && movieAudioCodec === 'pcm'))
   let customBitrate = $state(false)
@@ -125,8 +133,11 @@
   const keyframeValid = $derived(!h26x || !customKeyframeDistance || integerWithin(keyframeDistance, 4294967295))
   const bitrateValid = $derived((!hevc || bitrateMode !== 'vbr2Pass') && (!h26x || !customBitrate || ((adaptiveBitrate ? adaptiveBpp !== undefined && Number.isFinite(adaptiveBpp) && adaptiveBpp > 0 : integerWithin(bitrateTarget, 1000000) && Number(bitrateTarget) >= 100) && (bitrateMode === 'cbr' || !customMaxBitrate || integerWithin(bitrateMax, 1000000)))))
   const movieAudioValid = $derived(!withAudio || (!h264Movie && !nativeAudio) || (moviePcm || (aacRates.includes(effectiveMovieRate) && integerWithin(movieAudioKbps, 512) && Number(movieAudioKbps) >= 32)))
-  const manualValid = $derived((preset !== 'mjpeg' || integerWithin(mjpegQuality, 100)) && (!withAudio || silentVisual || !loudnessEnabled || loudnessValid) && (audioOnly || (metadataValid && limiterValid && overlaysValid && imageOverlayValid && frameRateValid && keyframeValid && bitrateValid && movieAudioValid)) && /^-?\d+$/.test(startFrames) && /^\d+$/.test(frames) && Number.isSafeInteger(Number(frames)) && Number(frames) > 0 && Number(frames) <= 360000 && (audioOnly || !customSize || (integerWithin(outputWidth, 3840) && integerWithin(outputHeight, 2160))) && (audioOnly || !customPixelAspect || (integerWithin(pixelNumerator, (preset.startsWith('dnxhr_') || preset.startsWith('prores_') || preset.startsWith('apv')) ? 4294967295 : 2147483647) && integerWithin(pixelDenominator, (preset.startsWith('dnxhr_') || preset.startsWith('prores_') || preset.startsWith('apv')) ? 4294967295 : 2147483647))))
-  const valid = $derived(libraryPreset ? /^-?\d+$/.test(startFrames) && /^\d+$/.test(frames) && Number.isSafeInteger(Number(frames)) && Number(frames) > 0 && Number(frames) <= 360000 : manualValid)
+  const exportRangeValid = $derived(exportRange === 'frames'
+    ? /^-?\d+$/.test(startFrames) && /^\d+$/.test(frames) && Number.isSafeInteger(Number(frames)) && Number(frames) > 0 && Number(frames) <= 360000
+    : exportRange === 'custom' ? !!exactExportRange : exportRange !== 'workArea' || hasWorkArea)
+  const manualValid = $derived((preset !== 'mjpeg' || integerWithin(mjpegQuality, 100)) && (!withAudio || silentVisual || !loudnessEnabled || loudnessValid) && (audioOnly || (metadataValid && limiterValid && overlaysValid && imageOverlayValid && frameRateValid && keyframeValid && bitrateValid && movieAudioValid)) && (audioOnly || !customSize || (integerWithin(outputWidth, 3840) && integerWithin(outputHeight, 2160))) && (audioOnly || !customPixelAspect || (integerWithin(pixelNumerator, (preset.startsWith('dnxhr_') || preset.startsWith('prores_') || preset.startsWith('apv')) ? 4294967295 : 2147483647) && integerWithin(pixelDenominator, (preset.startsWith('dnxhr_') || preset.startsWith('prores_') || preset.startsWith('apv')) ? 4294967295 : 2147483647))))
+  const valid = $derived(exportRangeValid && (!!libraryPreset || manualValid))
   const progress = $derived(Number.isFinite(job?.progress) ? Math.max(0, Math.min(100, job?.progress ?? 0)) : 0)
   const outputId = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' && 'id' in job.result && typeof job.result.id === 'string' ? job.result.id : '')
   const captionSidecar = $derived.by(() => {
@@ -222,7 +233,10 @@
     finally { if (current(session) && session.submit === version) submitting = false }
   }
   function buildRequest(): FilmcraftVideoRequest {
-    return libraryPreset ? { document, sequenceId, startFrames, frames: Number(frames), sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), libraryPreset } : { document, sequenceId, startFrames, frames: Number(frames), sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
+    const bounds = exportRange === 'frames' ? { startFrames, frames: Number(frames) }
+      : exportRange === 'custom' ? { sourceRange: exactExportRange }
+      : { range: exportRange }
+    return libraryPreset ? { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), libraryPreset } : { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
   }
   async function start() {
     const session = active
@@ -516,8 +530,24 @@
     <p>Сохранённый пресет: {libraryPreset}</p>
     <button type="button" disabled={submitting || retrying || disabled} onclick={() => libraryPreset = ''}>Настроить экспорт вручную</button>
   {/if}
+  <label>Диапазон экспорта
+    <select aria-label="Диапазон обычного экспорта Filmcraft" value={exportRange} disabled={submitting || retrying || disabled}
+      onchange={event => { exportRange = event.currentTarget.value as typeof exportRange }}>
+      <option value="frames">Ручной ввод кадров</option>
+      <option value="entire">Вся секвенция</option>
+      <option value="inOut">Точки In/Out</option>
+      <option value="workArea" disabled={!hasWorkArea}>Рабочая область</option>
+      <option value="custom">Свой диапазон</option>
+    </select>
+  </label>
+  {#if exportRange === 'frames'}
   <label>Начало, кадров <input aria-label="Начальный кадр видеоэкспорта Filmcraft" type="text" inputmode="numeric" bind:value={startFrames} disabled={submitting || retrying || disabled} /></label>
   <label>Кадров <input aria-label="Количество кадров видеоэкспорта Filmcraft" type="text" inputmode="numeric" bind:value={frames} disabled={submitting || retrying || disabled} /></label>
+  {:else if exportRange === 'custom'}
+    <label>Начало экспорта, с <input inputmode="decimal" bind:value={exportStart} disabled={submitting || retrying || disabled} /></label>
+    <label>Конец экспорта, с <input inputmode="decimal" bind:value={exportEnd} disabled={submitting || retrying || disabled} /></label>
+    {#if exportEnd.trim() && !exactExportRange}<span>Начало и конец должны быть в пределах суток, конец должен быть позже начала.</span>{/if}
+  {/if}
   <button type="button" disabled={!token || submitting || retrying || disabled || !valid} onclick={start}>{libraryPreset ? 'Экспортировать с сохранённым пресетом' : audioOnly ? 'Экспортировать аудио' : preset === 'gif' ? 'Экспортировать GIF' : imageSequence ? 'Экспортировать последовательность' : withAudio ? 'Экспортировать видео со звуком' : 'Экспортировать видео без звука'}</button>
   {#if submitting}<span role="status">Добавление экспорта в очередь…</span>{/if}
   {#if busy && jobId}<span>Можно добавить следующий экспорт в очередь</span>{/if}

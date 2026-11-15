@@ -74,6 +74,25 @@ pub(super) async fn prepare(state:&AppState, headers:&HeaderMap, owner:&str, mut
         for (key,value) in input {resolved[key]=value.clone();}
         body=resolved;
     }
+    if let Some(mode) = body.as_object_mut().and_then(|object| object.remove("range")) {
+        let mode = mode.as_str().filter(|mode| matches!(*mode, "entire" | "inOut" | "workArea"))
+            .ok_or_else(|| AppError::bad_request("invalid named export range"))?;
+        if ["sourceRange", "startTicks", "startFrames", "frames"].iter().any(|key| body.get(*key).is_some()) {
+            return Err(AppError::bad_request("named range cannot be combined with explicit bounds"));
+        }
+        let source = &body["document"];
+        let bytes = match source.as_str() {
+            Some(text) => text.as_bytes().to_vec(),
+            None => serde_json::to_vec(source).map_err(|error| AppError::bad_request(error.to_string()))?,
+        };
+        let document = crate::domain::filmcraft_project_file::SourceProjectDocument::read(&bytes)
+            .map_err(|error| AppError::bad_request(error.to_string()))?;
+        let sequence = body["sequenceId"].as_str().and_then(|id| id.parse().ok())
+            .ok_or_else(|| AppError::bad_request("invalid sequence ID"))?;
+        let range = crate::domain::filmcraft_quick_export_range::resolve(&document, sequence, Some(mode), None)
+            .map_err(|error| AppError::bad_request(error.to_string()))?;
+        body["sourceRange"] = json!(range);
+    }
     let request:VideoRequest=serde_json::from_value(body).map_err(|error|AppError::bad_request(error.to_string()))?;
     request
         .spec()

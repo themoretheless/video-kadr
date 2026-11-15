@@ -268,6 +268,7 @@ async fn admission(
                     .map_err(bad)?,
                 ),
                 None if body.get("sourceRange").is_none()
+                    && body.get("range").is_none()
                     && body.get("frames").is_none()
                     && body.get("startTicks").is_none()
                     && body.get("startFrames").is_none() =>
@@ -285,7 +286,7 @@ async fn admission(
                 let object = body
                     .as_object_mut()
                     .ok_or_else(|| bad("invalid queue body"))?;
-                for key in ["frames", "startTicks", "startFrames"] {
+                for key in ["frames", "startTicks", "startFrames", "range"] {
                     object.remove(key);
                 }
                 object.insert("sourceRange".into(), json!(range));
