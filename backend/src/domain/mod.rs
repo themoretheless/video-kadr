@@ -797,6 +797,7 @@ pub mod filmcraft_mask_track_batch;
 pub mod filmcraft_clip_rename;
 pub mod filmcraft_poster_frame;
 pub mod filmcraft_freeform;
+pub mod filmcraft_matte_color;
 
 pub mod filmcraft_bin_rename;
 

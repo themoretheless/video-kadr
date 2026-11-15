@@ -2,7 +2,7 @@
   import type { FilmcraftSourceEditFence, FilmcraftLabelGroupSelection, FilmcraftNavigationResult, FilmcraftSourcePlacementResult, FilmcraftSubclipResult } from '$lib/api'
   import { untrack } from 'svelte'
   import { MonitorQueue } from '$lib/filmcraft/monitor-queue'
-  import { navigateFilmcraft, trimFilmcraftToPlayhead, type FilmcraftTrimShift, trimFilmcraftEditPoints, getFilmcraftNearestEditPoints, type FilmcraftNearestEditKind, getFilmcraftTrimMonitor, type FilmcraftTrimMonitor, applyFilmcraftSelectionTransitions, setFilmcraftTransition, applyFilmcraftTransition, getFilmcraftTransitions, type FilmcraftTransitionCatalogEntry, type FilmcraftTransitionParameter, importFilmcraftProject, exportFilmcraftAudio, exportFilmcraftFrame, trimFilmcraftProject, slipFilmcraftProject, stretchFilmcraftProject, rollFilmcraftProject, slideFilmcraftProject, deleteFilmcraftClips, closeFilmcraftGap, razorFilmcraftProject, removeFilmcraftRange, copyFilmcraftClips, pasteFilmcraftClips, type FilmcraftClipboardResult, type FilmcraftImportResult } from '$lib/api'
+  import { editFilmcraftMatteColor, navigateFilmcraft, trimFilmcraftToPlayhead, type FilmcraftTrimShift, trimFilmcraftEditPoints, getFilmcraftNearestEditPoints, type FilmcraftNearestEditKind, getFilmcraftTrimMonitor, type FilmcraftTrimMonitor, applyFilmcraftSelectionTransitions, setFilmcraftTransition, applyFilmcraftTransition, getFilmcraftTransitions, type FilmcraftTransitionCatalogEntry, type FilmcraftTransitionParameter, importFilmcraftProject, exportFilmcraftAudio, exportFilmcraftFrame, trimFilmcraftProject, slipFilmcraftProject, stretchFilmcraftProject, rollFilmcraftProject, slideFilmcraftProject, deleteFilmcraftClips, closeFilmcraftGap, razorFilmcraftProject, removeFilmcraftRange, copyFilmcraftClips, pasteFilmcraftClips, type FilmcraftClipboardResult, type FilmcraftImportResult } from '$lib/api'
   import { parseFilmcraftSession, encodeFilmcraftSession, validTransitionDurationText } from '$lib/filmcraft/session'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
@@ -28,6 +28,13 @@
   let sourcePlayhead = $state('0')
   let sourceOpenSerial = $state(0)
   let cardNavigation: AbortController | undefined
+  let matteDialog = $state<HTMLDialogElement>()
+  let matteTarget = $state<{ id: string; name: string; expected: FilmcraftSourceEditFence }>()
+  let matteDraft = $state('')
+  let matteError = $state('')
+  let matteBusy = $state(false)
+  let matteRequest: AbortController | undefined
+  const validMatte = $derived(/^#?[\da-f]{6}(?:[\da-f]{2})?$/i.test(matteDraft.trim()))
   let stillImageDuration = $state('5')
   let stillImageUnit = $state<'seconds' | 'frames'>('seconds')
   let sequenceId = $state('')
@@ -192,6 +199,13 @@
       return
     }
     if (!token) return
+    if (item.matteColor) {
+      matteTarget = { id, name: item.name || id, expected: { document: project.documentText, sequenceId, clipId, token } }
+      matteDraft = item.matteColor
+      matteError = ''
+      matteDialog?.showModal()
+      return
+    }
     const request = new AbortController()
     cardNavigation = request
     const expected = { document: project.documentText, sequenceId, clipId, token, sourceItem: sourceItem || null, sourcePlayhead,
@@ -213,6 +227,24 @@
     }
   }
 
+  async function applyMatteColor(event: SubmitEvent) {
+    event.preventDefault()
+    const target = matteTarget
+    if (!target || !token || !validMatte || matteBusy || !acceptsFence(target.expected)) return
+    const request = new AbortController()
+    matteRequest = request
+    matteBusy = true
+    matteError = ''
+    try {
+      const edited = await editFilmcraftMatteColor(token, { document: target.expected.document, item: target.id, color: matteDraft.trim() }, request.signal)
+      if (!request.signal.aborted && commitEdit(edited, target.expected)) matteDialog?.close()
+    } catch (failure) {
+      if (!request.signal.aborted) matteError = failure instanceof Error ? failure.message : String(failure)
+    } finally {
+      if (matteRequest === request) { matteRequest = undefined; matteBusy = false }
+    }
+  }
+
   function commitEdit(edited: FilmcraftImportResult, expected?: FilmcraftSourceEditFence) {
     if (!acceptsFence(expected)) return false
     const subclip = 'subclipEdit' in edited ? edited as FilmcraftSubclipResult : null
@@ -224,7 +256,7 @@
     const clipEditSelection = 'clipEditSelection' in edited && Array.isArray(edited.clipEditSelection) ? edited.clipEditSelection as string[] : undefined
     if (clipEditSelection?.some(id => !edited.sequences.find(sequence => sequence.id === sequenceId)?.clips?.some(clip => clip.id === id))) return false
     // Original Duplicate and Clear push an edit frame even for an accepted no-op.
-    if (project && (edited.documentText !== project.documentText || 'duplicatedItemIds' in edited && Array.isArray(edited.duplicatedItemIds) || 'deletedItemIds' in edited && Array.isArray(edited.deletedItemIds) || 'clipEdit' in edited && edited.clipEdit === true || 'modifyEdit' in edited && edited.modifyEdit === true || 'videoOptionsEdit' in edited && edited.videoOptionsEdit === true || 'replacementEdit' in edited && edited.replacementEdit === true || 'attributeEdit' in edited && edited.attributeEdit === true || 'markEdit' in edited && edited.markEdit === true || 'posterEdit' in edited && edited.posterEdit === true || 'freeformEdit' in edited && edited.freeformEdit === true || placement?.sourceEdit === true || !!subclip)) { undo = boundedHistory([...undo, project]); redo = [] }
+    if (project && (edited.documentText !== project.documentText || 'duplicatedItemIds' in edited && Array.isArray(edited.duplicatedItemIds) || 'deletedItemIds' in edited && Array.isArray(edited.deletedItemIds) || 'clipEdit' in edited && edited.clipEdit === true || 'modifyEdit' in edited && edited.modifyEdit === true || 'videoOptionsEdit' in edited && edited.videoOptionsEdit === true || 'replacementEdit' in edited && edited.replacementEdit === true || 'attributeEdit' in edited && edited.attributeEdit === true || 'markEdit' in edited && edited.markEdit === true || 'posterEdit' in edited && edited.posterEdit === true || 'matteEdit' in edited && edited.matteEdit === true || 'freeformEdit' in edited && edited.freeformEdit === true || placement?.sourceEdit === true || !!subclip)) { undo = boundedHistory([...undo, project]); redo = [] }
     if ('duplicateSources' in edited && Array.isArray(edited.duplicateSources)) {
       const inherited = { ...bindings }
       for (const record of edited.duplicateSources) if (edited.media.some(media => media.id === record.id) && inherited[record.sourceId]) inherited[record.id] = inherited[record.sourceId]
@@ -452,7 +484,7 @@
   })
   const files = $derived(library.filter((entry) => entry.kind === 'source' && (entry.mediaType === 'video' || entry.mediaType === 'image' || entry.mediaType === 'audio' || /\.(wav|png|jpe?g|webp|gif|bmp|tiff?|mp4|mov|mkv|webm|avi|mxf|mts|m2ts|mpg|mpeg|flv|ogv)$/i.test(entry.filename))))
   const valid = $derived(sequence && Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start && Math.floor(end * sequence.sampleRate) - Math.floor(start * sequence.sampleRate) <= 4194304)
-  $effect(() => () => { controller?.abort(); transitionController?.abort(); cardNavigation?.abort(); if (download) URL.revokeObjectURL(download); for (const [url, timer] of savedFiles) { clearTimeout(timer); URL.revokeObjectURL(url) } savedFiles.clear() })
+  $effect(() => () => { controller?.abort(); transitionController?.abort(); cardNavigation?.abort(); matteRequest?.abort(); if (download) URL.revokeObjectURL(download); for (const [url, timer] of savedFiles) { clearTimeout(timer); URL.revokeObjectURL(url) } savedFiles.clear() })
   function clearDownload() { if (download) URL.revokeObjectURL(download); download = '' }
   function chooseSequence() { resetTrimShift(); pointTrimCount = null; nearestTargets = []; editPoints = []; batchTransitionCount = null; editingTransitionId = ''; transitionDraft = {}; pastePositionTicks = ''; pastePlayheadTicks = ''; editPositionFrames = '0'; extraSelectedIds = []; rightClipId = ''; clipId = ''; clearDownload(); start = 0; end = Math.min(sequence?.durationSeconds || 1, 4194304 / (sequence?.sampleRate || 48000)) }
   async function openFile(event: Event) {
@@ -696,7 +728,26 @@
   </div>
   {#if error}<p role="alert">{error}</p>{/if}
 </details>
+{#if project}
+<dialog bind:this={matteDialog} aria-label="Цвет Color Matte" onclose={() => { matteRequest?.abort(); matteTarget = undefined }}>
+  <form class="matte-form" onsubmit={applyMatteColor}>
+    <strong>{matteTarget?.name}</strong>
+    <label>Цвет
+      <input type="color" value={/^#[\da-f]{6}/i.test(matteDraft) ? matteDraft.slice(0, 7) : '#000000'}
+        oninput={event => { matteDraft = event.currentTarget.value + (/^#[\da-f]{8}$/i.test(matteDraft) ? matteDraft.slice(7) : '') }} disabled={matteBusy} />
+    </label>
+    <label>HEX <input bind:value={matteDraft} disabled={matteBusy} /></label>
+    {#if matteError}<p role="alert">{matteError}</p>{/if}
+    <div class="matte-actions">
+      <button type="submit" disabled={!validMatte || matteBusy}>Применить цвет</button>
+      <button type="button" onclick={() => matteDialog?.close()}>Отмена</button>
+    </div>
+  </form>
+</dialog>
+{/if}
 <style>
+  .matte-form { display: grid; gap: 0.5rem; }
+  .matte-actions { display: flex; gap: 0.5rem; }
   .filmcraft-panel { font-size: 0.8rem; padding-block: 0.5rem; }
   summary { cursor: pointer; }
   .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; padding-block: 0.5rem; }
