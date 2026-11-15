@@ -158,6 +158,32 @@ pub(super) fn hover_tick(index: &ProjectIndex<'_>, id: u64, fraction: f64) -> Re
     Ok(snap(rate, (duration as f64 * fraction) as i64)?.min(last))
 }
 
+/// Normalized inclusive In/Out interval on a project card.
+pub(crate) fn card_mark_range(index: &ProjectIndex<'_>, id: u64, item: &Value) -> Option<Value> {
+    let owner = item
+        .pointer("/kind/Media")
+        .or_else(|| item.pointer("/kind/Sequence"))?;
+    let (start, end) = (owner["mark_in"].as_i64(), owner["mark_out"].as_i64());
+    if start.is_none() && end.is_none() {
+        return None;
+    }
+    let duration = super::filmcraft_project_inspect::duration(item).ok()?;
+    if duration <= 0 {
+        return None;
+    }
+    let end = match end {
+        Some(tick) => {
+            let rate = filmcraft_source_inspect::frame_rate(index, id).ok()?.sane();
+            let frame = i128::from(filmcraft_time::TICKS_PER_SECOND) * i128::from(rate.den)
+                / i128::from(rate.num);
+            i128::from(tick) + frame
+        }
+        None => i128::from(duration),
+    };
+    let fraction = |tick: i128| tick.clamp(0, i128::from(duration)) as f64 / duration as f64;
+    Some(json!({"start":fraction(i128::from(start.unwrap_or_default())),"end":fraction(end)}))
+}
+
 pub fn edit(command: &str, params: Value) -> Result<Value> {
     let request: Request = serde_json::from_value(params)?;
     let bytes = match request.document {

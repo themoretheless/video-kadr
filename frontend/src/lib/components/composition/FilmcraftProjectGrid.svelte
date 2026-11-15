@@ -147,7 +147,7 @@
           {:else}
             <li class:selected={selected.includes(entry.item.id)} onpointermove={event => scrub(entry.item.id, event)} onpointerleave={() => { hover = undefined }}>
               {#if entry.item.kind === 'Media' || entry.item.kind === 'Sequence'}
-                <FilmcraftPosterPreview card document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} hoverFraction={hoverEnabled && hover?.item === entry.item.id ? hover.fraction : undefined} />
+                <FilmcraftPosterPreview card document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} markRange={entry.item.cardMarkRange} hoverFraction={hoverEnabled && hover?.item === entry.item.id ? hover.fraction : undefined} />
               {/if}
               <button type="button" class="item" aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onclick={event => select(entry.item.id, event)}>{entry.item.name || entry.item.id}</button>
             </li>

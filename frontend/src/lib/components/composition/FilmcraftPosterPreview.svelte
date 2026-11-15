@@ -2,8 +2,8 @@
   import { getFilmcraftPosterPreview, type FilmcraftMonitorFrame as Frame } from '$lib/api'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
 
-  let { document, item, name, sources, token, card = false, hoverFraction }: {
-    document: string; item: string; name: string; sources: Record<string, string>; token: string | null; card?: boolean; hoverFraction?: number
+  let { document, item, name, sources, token, card = false, hoverFraction, markRange }: {
+    document: string; item: string; name: string; sources: Record<string, string>; token: string | null; card?: boolean; hoverFraction?: number; markRange?: { start: number; end: number } | null
   } = $props()
   let frame = $state<Frame>()
   let unavailable = $state(false)
@@ -52,6 +52,9 @@
   {:else}
     <span role="status">Загрузка кадра обложки…</span>
   {/if}
+  {#if card && markRange}
+    <span class="mark-range" role="img" aria-label="Диапазон In/Out" style:left={`${markRange.start * 100}%`} style:width={`${Math.max(0, markRange.end - markRange.start) * 100}%`}></span>
+  {/if}
   {#if hoverFraction !== undefined}
     <span class="hover-position" aria-hidden="true" style:left={`${hoverFraction * 100}%`}></span>
   {/if}
@@ -60,6 +63,7 @@
 <style>
   figure { margin: 0; }
   figure.card { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: var(--panel-2); }
+  .mark-range { position: absolute; bottom: 0; height: 4px; min-width: 2px; background: var(--accent); pointer-events: none; }
   .hover-position { position: absolute; inset-block: 0; width: 1px; background: var(--accent); pointer-events: none; transform: translateX(-1px); }
   figure.card :global(canvas) { width: 100%; height: 100%; object-fit: contain; }
 </style>

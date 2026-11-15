@@ -225,3 +225,42 @@ fn hover_marks_use_source_frame_times_before_thumbnail_quantization() {
     )
     .is_err());
 }
+
+#[tokio::test]
+async fn card_mark_range_includes_out_frame_and_uses_open_end_defaults() {
+    use video_kadr_backend::{error::ApiJson, handlers::filmcraft_project::import};
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let mut document = fixture["cases"][0]["document"].clone();
+    let media = "/project/items/1/kind/Media";
+    let frame = 10_584_000_000_i64;
+    document.pointer_mut(media).unwrap()["info"]["duration"] = json!(10 * frame);
+    for (input, output, range) in [
+        (None, None, Value::Null),
+        (Some(2 * frame), None, json!({"start":0.2,"end":1.0})),
+        (None, Some(5 * frame), json!({"start":0.0,"end":0.6})),
+        (
+            Some(2 * frame),
+            Some(5 * frame),
+            json!({"start":0.2,"end":0.6}),
+        ),
+        (
+            Some(-frame),
+            Some(20 * frame),
+            json!({"start":0.0,"end":1.0}),
+        ),
+    ] {
+        let source = document.pointer_mut(media).unwrap();
+        source["mark_in"] = json!(input);
+        source["mark_out"] = json!(output);
+        let request = serde_json::from_value(json!({"document":document})).unwrap();
+        let manifest = import(ApiJson(request)).await.unwrap().0;
+        let item = manifest["projectItems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "1")
+            .unwrap();
+        assert_eq!(item["cardMarkRange"], range);
+    }
+}
