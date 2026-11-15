@@ -275,6 +275,7 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
 export function textClipToWire(composition: Composition, clip: TextClip): WireTextClip {
   return {
     ...(clip.textAnchor ? { textAnchor: [...clip.textAnchor] as const } : {}),
+    ...(clip.textBoxWidth !== undefined ? { textBoxWidth: clip.textBoxWidth } : {}),
     id: clip.id,
     timelineStartTick: clip.timelineStartTicks,
     timelineEndTick: clip.timelineStartTicks + clip.durationTicks,

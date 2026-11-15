@@ -2545,6 +2545,7 @@ source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retim
                 hidden: false,
                 locked: false,
                 clips: vec![TextClip {
+                text_box_width: None,
                 text_anchor: None,
                 effects: vec![],
                 blend_mode: None,

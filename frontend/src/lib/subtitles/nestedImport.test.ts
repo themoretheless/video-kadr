@@ -21,8 +21,9 @@ it('packs overlapping cues, shares adjacent spans and uses canonical text wire t
  expect(tracks.map(track=>track.clips.length)).toEqual([1,2])
  expect(node.durationUs).toBe(4_000_000)
  const first=tracks[0]!.clips[0]!
- const expected=textClipToWire(base,cuesToTextClips(parseSubtitleDocument(body).slice(0,1),()=>first.id)[0]!)
+ const expected=textClipToWire(base,cuesToTextClips(parseSubtitleDocument(body).slice(0,1),()=>first.id,base.canvas)[0]!)
  expect(first).toEqual(expected)
+ expect(first).toHaveProperty('textBoxWidth', 269)
  expect(node.content.metadata?.captionTextTracks).toEqual(tracks.map(track=>track.id))
  expect(result.document.compositions.unused).toBe(input.compositions.unused)
  expect(JSON.stringify(input)).toBe(before)

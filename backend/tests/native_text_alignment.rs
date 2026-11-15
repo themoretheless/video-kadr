@@ -72,3 +72,23 @@ fn native_text_raster_uses_bold_and_italic_from_the_document() {
  let restored: TextClip = serde_json::from_value(serde_json::to_value(&combined).unwrap()).unwrap();
  assert_eq!(pixels(&restored), pixels(&combined));
 }
+
+#[test]
+fn caption_box_wraps_without_reducing_the_font_size() {
+ let mut base = clip();
+ base.text = "MMMM MMMM MMMM".into();
+ let unwrapped = pixels(&base);
+ let single_line = lines(&unwrapped);
+ assert_eq!(single_line.len(), 1);
+ base.text_box_width = Some(140.);
+ let wrapped = pixels(&base);
+ let wrapped_lines = lines(&wrapped);
+ assert_eq!(wrapped_lines.len(), 3, "{wrapped_lines:?}");
+ for (left, right) in wrapped_lines {
+  assert!(right - left < 140);
+ }
+ let widest_ink_column = |frame: &[u8]| {
+  (0..320).map(|x| (0..180).filter(|&y| frame[(y * 320 + x) * 4 + 3] > 0).count()).max().unwrap()
+ };
+ assert_eq!(widest_ink_column(&wrapped), 3 * widest_ink_column(&unwrapped));
+}

@@ -5444,6 +5444,7 @@ timeline: None,
                 hidden: false,
                 locked: false,
                 clips: vec![TextClip {
+                text_box_width: None,
                 text_anchor: None,
                 effects: vec![],
                 blend_mode: None,

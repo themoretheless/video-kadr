@@ -1566,6 +1566,8 @@ pub fn is_supported_composition_font_family(value: &str) -> bool {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextClip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_box_width: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_anchor: Option<[f64; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<VideoEffect>,
@@ -2112,6 +2114,9 @@ impl Composition {
                             || clip.text.trim().is_empty()
                             || clip.text.chars().count() > 512
                             || clip.text.contains('\0')
+                            || clip.text_box_width.is_some_and(|width| {
+                                clip.concat_title.is_some() || !(1.0..=100_000.0).contains(&width)
+                            })
                             || clip.text_anchor.is_some_and(|anchor| {
                                 clip.concat_title.is_some()
                                     || anchor.into_iter().any(|value| !(0.0..=1.0).contains(&value))
@@ -3707,6 +3712,7 @@ source_out_tick: 99_000,
             hidden: false,
             locked: false,
             clips: vec![TextClip {
+                text_box_width: None,
                 text_anchor: None,
                 effects: vec![],
                 blend_mode: None,

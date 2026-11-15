@@ -404,6 +404,7 @@ export interface TextStyle {
 }
 
 export interface TextClip {
+  readonly textBoxWidth?: number
   readonly textAnchor?: readonly [number, number]
   readonly colorAnimation?: CompositionAnimatableColor
   readonly position?: CompositionPositionAnimation
@@ -933,6 +934,7 @@ export interface WireConcatTitleStyle {
  readonly lineHeight?:number;readonly tracking?:number;readonly maxWidth?:number;readonly maxHeight?:number
 }
 export interface WireTextClip {
+  readonly textBoxWidth?: number
   readonly textAnchor?: readonly [number, number]
   readonly effects?:readonly WireVideoEffect[]
   readonly blendMode?:CompositionBlendMode

@@ -2,6 +2,7 @@ import { COMPOSITION_TIME_BASE, MAX_TEXT_LENGTH, type CompositionKeyframe, type 
 
 export const MAX_SRT_BYTES = 2 * 1024 * 1024
 export const MAX_SRT_CUES = 10_000
+const CAPTION_SAFE_MARGIN = 0.08
 
 export interface SubtitleCue {
   readonly id: string
@@ -89,8 +90,8 @@ export function cuesToTextClips(
     validateCue(cue, index)
     const anchor = cue.anchor ?? (cue.position ? [0.5, 1] as const : undefined)
     const position = cue.position ?? (anchor && canvas ? {
-      x: canvas.width * (0.08 + 0.84 * anchor[0]),
-      y: canvas.height * (0.08 + 0.84 * anchor[1]),
+      x: canvas.width * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[0]),
+      y: canvas.height * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[1]),
     } : undefined)
     const durationTicks = cue.endTicks - cue.startTicks
     const animation = captionFade(cue.fade, durationTicks)
@@ -103,6 +104,7 @@ export function cuesToTextClips(
       x: position && canvas ? position.x - canvas.width / 2 : 0,
       y: position && canvas ? position.y - canvas.height / 2 : 0,
       ...(anchor ? { textAnchor: anchor } : {}),
+      ...(canvas ? { textBoxWidth: Math.max(1, Math.round(canvas.width * (1 - 2 * CAPTION_SAFE_MARGIN))) } : {}),
       ...(animation ? { animation } : {}),
       opacity: 1,
       style: {
