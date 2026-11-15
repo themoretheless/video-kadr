@@ -81,7 +81,7 @@ afterEach(async () => {
 })
 
 describe('MediaLibrary', () => {
-  it('reviews and measures an unplaced library video on demand', async () => {
+  it('reviews and measures scenes and compares frames of an unplaced library video', async () => {
     const sourceHash = 'a'.repeat(64)
     const scan = {
       version: 1, sourceHash, durationTicks: 2_000_000, floor: 0.05,
@@ -94,6 +94,11 @@ describe('MediaLibrary', () => {
         expect(expectedSourceHash).toBe(sourceHash)
         expect(spans).toEqual([{ startTicks: 0, endTicks: 2_000_000 }])
         return Response.json([{ span: spans[0], brightness: 0.25, motion: 0.5, sharpness: 0.125, flags: [] }])
+      }
+      if (path === '/api/library/video-two/compare-frames') {
+        const ticks = JSON.parse(String(init?.body))
+        expect(ticks).toEqual({ leftTick: 123_456, rightTick: 1_999_999 })
+        return Response.json({ ...ticks, similarity: 0.75, motion: 0.25 })
       }
       throw new Error(`Unexpected request: ${path}`)
     })
@@ -115,12 +120,25 @@ describe('MediaLibrary', () => {
     expect(rows()[0]?.textContent).toContain('0.000–2.000 с')
     buttonByText(target, 'Измерить сцены исходника').click()
     await vi.waitFor(() => expect(rows()[0]?.textContent).toContain('Яркость 0.250'))
+
+    const first = inputByLabel('Первый кадр, с')
+    const second = inputByLabel('Второй кадр, с')
+    first.value = '0.123456'
+    first.dispatchEvent(new Event('input', { bubbles: true }))
+    second.value = '1.999999'
+    second.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+    buttonByText(target, 'Сравнить кадры исходника').click()
+    await vi.waitFor(() => expect(target.textContent).toContain('Структурное сходство 0.7500 · движение 0.2500'))
+    expect([...target.querySelectorAll('figcaption')].map(label => label.textContent)).toEqual(['0.123456 с', '1.999999 с'])
+
     toggle.click()
     await tick()
     expect(rows()).toHaveLength(0)
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
       '/api/library/video-two/shots',
       '/api/library/video-two/shots/measure',
+      '/api/library/video-two/compare-frames',
     ])
   })
 
