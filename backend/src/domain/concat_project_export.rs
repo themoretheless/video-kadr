@@ -48,6 +48,13 @@ fn visual(clip:&Value,width:f64,height:f64,media_kind:Option<&str>)->Result<Valu
  Ok(out)
 }
 pub fn export(project:&NestedCompositionProject)->Result<Value>{export_with_paths(project,&BTreeMap::new())}
+fn media_path<'a>(project: &NestedCompositionProject, paths: &'a BTreeMap<String, String>, id: &super::composition::SourceId) -> Result<&'a str> {
+ let path = paths.get(id.as_str()).with_context(|| format!("Media {}: supply an explicit Concat file path", id.as_str()))?;
+ let placeholder = project.project_media.get(id).is_some_and(|entry| entry.placeholder);
+ ensure!((placeholder || !path.is_empty()) && path.len() <= 4096 && !path.contains('\0'), "Invalid source path for {}", id.as_str());
+ Ok(path)
+}
+
 pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<String,String>)->Result<Value>{
  project.dependency_order()?;
  for node in project.compositions.values(){super::concat_lane_groups::groups(&node.content)?;}
@@ -56,14 +63,13 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
  let mut order=project.timeline_order.clone();if order.is_empty(){order.push(project.root.clone());order.extend(project.compositions.keys().filter(|id|*id!=&project.root).cloned());}
  let mut media=BTreeMap::new();let mut bindings=BTreeMap::new();
  for (node_id,node) in &project.compositions{for (source_id,source) in &node.content.sources{let id=source_id.as_str();
-  let path=paths.get(id).with_context(||format!("Media {id}: supply an explicit Concat file path"))?;ensure!(!path.is_empty()&&path.len()<=4096&&!path.contains('\0'),"Invalid source path for {id}");
+  let path=media_path(project,paths,source_id)?;
   if let Some(previous)=bindings.insert(id.to_owned(),source.clone()){ensure!(previous==*source,"Conflicting source metadata for {id}");}
   let source=serde_json::to_value(source)?;media.insert(id.to_owned(),json!({"id":id,"path":path,"name":wire["compositions"][node_id]["content"]["metadata"]["sourceNames"][id].as_str().unwrap_or(id),"kind":source["kind"],"duration":source["durationTicks"].as_u64().unwrap() as f64/1e6,"width":source["width"],"height":source["height"],"hasAudio":source["hasAudio"],"colorSpace":"sdr"}));
  }}
  for (source_id,entry) in &project.project_media {
   let id=source_id.as_str();
-  let path=paths.get(id).with_context(||format!("Media {id}: supply an explicit Concat file path"))?;
-  ensure!(!path.is_empty()&&path.len()<=4096&&!path.contains('\0'),"Invalid source path for {id}");
+  let path=media_path(project,paths,source_id)?;
   if let Some(previous)=bindings.insert(id.to_owned(),entry.source.clone()){ensure!(previous==entry.source,"Project media descriptor differs from live source {id}");}
   let source=serde_json::to_value(&entry.source)?;
   media.insert(id.to_owned(),json!({"id":id,"path":path,"name":entry.name,"placeholder":entry.placeholder,"kind":source["kind"],"duration":source["durationTicks"].as_u64().unwrap() as f64/1e6,"width":source["width"],"height":source["height"],"hasAudio":source["hasAudio"],"colorSpace":"sdr"}));

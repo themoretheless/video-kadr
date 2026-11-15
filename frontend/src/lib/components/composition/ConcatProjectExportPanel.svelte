@@ -4,17 +4,19 @@
  let {disabled=false}:{disabled?:boolean}=$props()
  let mediaPaths=$state<Record<string,string>>({})
  const sourceIds=$derived([...new Set([...Object.keys(nestedComposition.document?.projectMedia??{}),...Object.values(nestedComposition.document?.compositions??{}).flatMap(node=>Object.keys(node.content.sources))])].sort())
+ const slotOnly = $derived(sourceIds.length > 0 && sourceIds.every(id => nestedComposition.document?.projectMedia?.[id]?.placeholder))
  let busy=$state(false),error=$state(''),controller:AbortController|undefined
  $effect(()=>{const project=nestedComposition.document,scope=nestedComposition.activeCompositionId;void project;void scope;mediaPaths={};return()=>controller?.abort()})
- async function download(){
+ async function download(template = false){
   const project=nestedComposition.document,scope=nestedComposition.activeCompositionId??project?.root
-  if(disabled||busy||nestedHistory.busy||!project||!scope)return
+  if(disabled||busy||nestedHistory.busy||!project||!scope||(template&&!slotOnly))return
   const request=new AbortController();controller=request;busy=true;error=''
   try{
-   const result=await exportConcatProject({...project,root:scope},nestedComposition.name,request.signal,Object.fromEntries(sourceIds.map(id=>[id,mediaPaths[id]??''])))
+   const paths = Object.fromEntries(sourceIds.map(id => [id, template ? '' : mediaPaths[id] ?? '']))
+   const result=await exportConcatProject({...project,root:scope},nestedComposition.name,request.signal,paths)
    if(request.signal.aborted||nestedComposition.document!==project)return
    const url=URL.createObjectURL(new Blob([JSON.stringify(result.document)],{type:'application/json'})),link=document.createElement('a')
-   try{link.href=url;link.download='concat.json';link.click()}finally{URL.revokeObjectURL(url)}
+   try{link.href=url;link.download=template?'template.json':'concat.json';link.click()}finally{URL.revokeObjectURL(url)}
   }catch(cause){if(!request.signal.aborted)error=cause instanceof Error?cause.message:'Не удалось экспортировать Concat'}
   finally{if(controller===request){controller=undefined;busy=false}}
  }
@@ -24,6 +26,7 @@
   <p>Экспортирует клипы, звук, титры, фигуры и корректирующие слои в JSON Concat. Для медиа укажите путь к файлу на компьютере, где откроется Concat. Файлы не копируются. Вложенные композиции и встроенные ресурсы пока не поддерживаются. Несовместимые параметры будут указаны в ошибке экспорта.</p>
   {#each sourceIds as id (id)}<label>Путь медиа Concat: {id}<input aria-label={`Путь медиа Concat: ${id}`} value={mediaPaths[id]??''} disabled={busy||disabled} oninput={event=>mediaPaths[id]=event.currentTarget.value} /></label>{/each}
   <button class="btn ghost sm" disabled={disabled||busy||nestedHistory.busy} onclick={()=>void download()}>Скачать проект Concat JSON</button>
+  {#if slotOnly}<button class="btn ghost sm" disabled={disabled||busy||nestedHistory.busy} onclick={()=>void download(true)}>Скачать шаблон Concat</button>{/if}
   {#if busy}<p role="status">Проверяю экспорт Concat…</p>{/if}
   {#if error}<p role="alert">{error}</p>{/if}
  </details>

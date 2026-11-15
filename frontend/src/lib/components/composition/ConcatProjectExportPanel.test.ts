@@ -32,3 +32,28 @@ it('includes retained project media even when no timeline references it',async()
  vi.mocked(exportConcatProject).mockRejectedValue(Error('retry'));const component=mount(ConcatProjectExportPanel,{target:document.body})
  try{await tick();const input=document.querySelector('input')!;expect(input.getAttribute('aria-label')).toBe('Путь медиа Concat: retained');input.value='/creator/retained.png';input.dispatchEvent(new Event('input',{bubbles:true}));await tick();document.querySelector('button')!.click();await vi.waitFor(()=>expect(exportConcatProject).toHaveBeenCalled());expect(vi.mocked(exportConcatProject).mock.calls[0][3]).toEqual({retained:'/creator/retained.png'})}finally{await unmount(component)}
 })
+
+it('downloads a slot-only template without using any creator paths', async () => {
+ setup()
+ nestedComposition.document!.projectMedia = {
+  slot: { name: 'Camera', placeholder: true, source: { id: 'slot', kind: 'video', durationTicks: 1000000, width: 16, height: 16, hasAudio: false } },
+ }
+ vi.mocked(exportConcatProject).mockResolvedValue({ schemaVersion: 1, document: { media: [{ id: 'slot', placeholder: true, path: '' }] } })
+ vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:template')
+ vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+ const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+ const component = mount(ConcatProjectExportPanel, { target: document.body })
+ try {
+  await tick()
+  const input = document.querySelector('input')!
+  input.value = '/creator/private.mov'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  const button = [...document.querySelectorAll('button')].find(item => item.textContent === 'Скачать шаблон Concat')!
+  button.click()
+  await vi.waitFor(() => expect(click).toHaveBeenCalledOnce())
+  expect(vi.mocked(exportConcatProject).mock.calls[0]?.[3]).toEqual({ slot: '' })
+  expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('template.json')
+ } finally {
+  await unmount(component)
+ }
+})

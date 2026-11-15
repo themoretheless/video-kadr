@@ -93,6 +93,20 @@ fn explicit_media_paths_roundtrip_audio_video_and_image_without_opening_paths(){
  let bindings:BTreeMap<String,CompositionSource>=serde_json::from_value(json!({"snd":{"id":"snd","kind":"audio","durationTicks":10000000,"width":0,"height":0,"hasAudio":true,"audioChannels":2},"vid":{"id":"vid","kind":"video","durationTicks":10000000,"width":160,"height":120,"hasAudio":true,"audioChannels":2},"pic":{"id":"pic","kind":"image","durationTicks":0,"width":160,"height":120,"hasAudio":false}})).unwrap();
  let report=import(serde_json::from_value(json!({"schemaVersion":1,"document":document,"mediaBindings":bindings})).unwrap()).unwrap();assert_eq!(report.status,"converted","{:?}",report.diagnostics);let project=report.project.unwrap();let before=serde_json::to_value(&project).unwrap();
  assert!(export(&project).is_err());let paths=BTreeMap::from([("snd".into(),"/unopened/snd.wav".into()),("vid".into(),"/unopened/vid.mov".into()),("pic".into(),"/unopened/pic.png".into())]);let output=export_with_paths(&project,&paths).unwrap();
+ let mut slot_paths = paths.clone();
+ slot_paths.insert("vid".into(), String::new());
+ assert!(export_with_paths(&project, &slot_paths).is_err());
+ let mut slot_document = output.clone();
+ slot_document["media"].as_array_mut().unwrap().iter_mut()
+     .find(|entry| entry["id"] == "vid").unwrap()["placeholder"] = json!(true);
+ let slots = import(serde_json::from_value(json!({
+     "schemaVersion": 1, "document": slot_document, "mediaBindings": bindings,
+     "preserveMediaIds": true,
+ })).unwrap()).unwrap().project.unwrap();
+ let template = export_with_paths(&slots, &slot_paths).unwrap();
+ let slot = template["media"].as_array().unwrap().iter().find(|entry| entry["id"] == "vid").unwrap();
+ assert_eq!(slot["path"], "");
+ assert_eq!(slot["placeholder"], true);
  if let Ok(path)=std::env::var("CONCAT_EXPORTED_MEDIA_OUTPUT"){std::fs::write(path,serde_json::to_vec(&output).unwrap()).unwrap();}
  let restored=import(serde_json::from_value(json!({"schemaVersion":1,"document":output,"mediaBindings":bindings})).unwrap()).unwrap().project.unwrap();
  assert_eq!(project.compositions[&project.root].content.tracks,restored.compositions[&restored.root].content.tracks);
