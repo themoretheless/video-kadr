@@ -21,6 +21,8 @@ fn color<'de,D:serde::Deserializer<'de>>(deserializer:D)->std::result::Result<[u
 #[derive(Debug,Clone,PartialEq,Serialize,Deserialize)]
 #[serde(default,rename_all="camelCase",deny_unknown_fields)]
 pub struct CaptionStyle {
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub wrap_width: Option<f32>,
     pub font:String,pub size:f32,
     #[serde(deserialize_with="color")] pub color:[u8;4],
     pub background:bool,
@@ -29,11 +31,12 @@ pub struct CaptionStyle {
     #[serde(deserialize_with="color")] pub outline_color:[u8;4],
 }
 impl Default for CaptionStyle {
-    fn default()->Self {Self{font:"Inter".into(),size:54.,color:[255;4],background:true,background_color:[0,0,0,191],align:CaptionAlign::Center,anchor:CaptionAnchor::Bottom,margin:0.08,line_spacing:1.25,outline:0.,outline_color:[0,0,0,255]}}
+    fn default()->Self {Self{wrap_width:None,font:"Inter".into(),size:54.,color:[255;4],background:true,background_color:[0,0,0,191],align:CaptionAlign::Center,anchor:CaptionAnchor::Bottom,margin:0.08,line_spacing:1.25,outline:0.,outline_color:[0,0,0,255]}}
 }
 impl CaptionStyle {
     pub fn validate(&self)->Result<()> {
         ensure!(!self.font.trim().is_empty(),"empty caption font");
+        ensure!(self.wrap_width.is_none_or(|width| (0.1..=1.0).contains(&width)), "invalid caption wrap width");
         for (value,min,max) in [(self.size,4.,400.),(self.margin,0.,0.45),(self.line_spacing,0.8,4.),(self.outline,0.,40.)] {ensure!(value.is_finite()&&(min..=max).contains(&value),"invalid caption style range");}
         Ok(())
     }

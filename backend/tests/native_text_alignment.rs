@@ -92,3 +92,17 @@ fn caption_box_wraps_without_reducing_the_font_size() {
  };
  assert_eq!(widest_ink_column(&wrapped), 3 * widest_ink_column(&unwrapped));
 }
+
+#[test]
+fn speech_caption_wraps_an_unbroken_token_within_the_safe_area() {
+ use video_kadr_backend::domain::{caption_graphic::CaptionStyle, caption_render::render_caption};
+ let caption = serde_json::from_value(json!({
+  "id":"cue","timelineStartTick":0,"timelineEndTick":1000000,"text":"M".repeat(76),
+ })).unwrap();
+ let old = render_caption(&caption, &CaptionStyle::default(), 320, 180).unwrap();
+ let speech = CaptionStyle { wrap_width: Some(0.84), background: false, outline: 3.24, ..CaptionStyle::default() };
+ let current = render_caption(&caption, &speech, 320, 180).unwrap();
+ assert!(old.w > 320, "{}", old.w);
+ assert!(current.w < 300 && current.h > old.h, "{}×{}", current.w, current.h);
+ assert!(current.y > 100 && current.y + (current.h as i32) < 180);
+}

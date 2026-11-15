@@ -22,7 +22,7 @@ export function validateCaptionTracks(value: unknown, trackIds: Set<string>, cli
       else {
         const style = track.style
         if (style.font !== undefined && (typeof style.font !== 'string' || !style.font.trim())) fail('Caption font must not be empty')
-        for (const [key,min,max] of [['size',4,400],['margin',0,0.45],['lineSpacing',0.8,4],['outline',0,40]] as const) {
+        for (const [key,min,max] of [['size',4,400],['margin',0,0.45],['lineSpacing',0.8,4],['outline',0,40],['wrapWidth',0.1,1]] as const) {
           const n = style[key]
           if (n !== undefined && (typeof n !== 'number' || !Number.isFinite(n) || n < min || n > max)) fail(`Invalid caption ${key}`)
         }

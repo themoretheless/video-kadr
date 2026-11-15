@@ -627,9 +627,10 @@ export async function addNestedAlignedSpeechCaptions(id:string,clipId:string,sou
   await editNestedDocument(async document=>{
     const {alignSpeechClip,evaluateNestedFrame}=await import('$lib/api')
     const {pasteNativeCaptionTracks}=await import('$lib/composition/nativeCaptionClipboard')
+    const {speechCaptionStyle}=await import('$lib/composition/speechCaptions')
     const track=await alignSpeechClip(document,id,clipId,sourceId,transcript)
     if(!track.clips.length)throw new Error('Распознанная речь не пересекает видимую часть клипа')
-    const changed=pasteNativeCaptionTracks(document,id,[track],0,{},()=>`speech-${crypto.randomUUID()}`)
+    const changed=pasteNativeCaptionTracks(document,id,[{...track,style:{...track.style,...speechCaptionStyle}}],0,{},()=>`speech-${crypto.randomUUID()}`)
     await evaluateNestedFrame(changed,0);affected=affectedTimelineIds(document,id);return changed
   },false,undefined,outputs=>Object.fromEntries(Object.entries(outputs).filter(([key])=>!affected.includes(key))))
 }

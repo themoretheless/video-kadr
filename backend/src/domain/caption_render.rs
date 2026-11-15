@@ -82,6 +82,37 @@ fn wrap(line: &str, px: f32, max_w: f32) -> Vec<String> {
     out
 }
 
+fn wrap_shaped(line: &str, px: f32, max_w: f32) -> Vec<String> {
+    let paragraph = ParagraphStyle { width: Some(max_w), ..Default::default() };
+    let shaped = layout(line, &caption_style(px), &paragraph);
+    let mut lines = Vec::new();
+    for row in &shaped.lines {
+        if row.width <= max_w {
+            lines.push(line[row.range.clone()].trim().to_owned());
+            continue;
+        }
+        // An unbroken word may overflow. Break only at shaped cluster boundaries.
+        let mut boundaries = vec![row.range.start, row.range.end];
+        boundaries.extend(shaped.glyphs[row.glyphs.clone()].iter().map(|glyph| glyph.cluster)
+            .filter(|index| row.range.contains(index) && line.is_char_boundary(*index)));
+        boundaries.sort_unstable();
+        boundaries.dedup();
+        let mut start = 0;
+        while start + 1 < boundaries.len() {
+            let available = &boundaries[start + 1..];
+            let fits = |&end: &usize| measure(line[boundaries[start]..end].trim(), px) <= max_w;
+            let mut limit = 1;
+            while limit < available.len() && fits(&available[limit - 1]) {
+                limit = (limit * 2).min(available.len());
+            }
+            let count = available[..limit].partition_point(fits).max(1);
+            lines.push(line[boundaries[start]..available[count - 1]].trim().to_owned());
+            start += count;
+        }
+    }
+    lines
+}
+
 /// Placement overrides from WebVTT cue settings.
 fn vtt_overrides(settings: &str) -> (Option<f32>, Option<CaptionAlign>) {
     let mut line = None;
@@ -121,12 +152,17 @@ pub(crate) fn render_caption_with_admission<R>(c:&Caption,style:&CaptionStyle,w:
     }
     let scale = h as f32 / 1080.0;
     let px = (style.size * scale).max(4.0);
-    let max_w = w as f32 * 0.9;
+    let max_w = w as f32 * style.wrap_width.unwrap_or(0.9);
     let mut lines: Vec<String> = Vec::new();
     // (speaker names are metadata; like Premiere, they are not burned in)
     for l in plain_text(&c.text).lines() {
         checkpoint()?;
-        lines.extend(wrap(l.trim(), px, max_w));
+        let line = l.trim();
+        if style.wrap_width.is_some() {
+            lines.extend(wrap_shaped(line, px, max_w));
+        } else {
+            lines.extend(wrap(line, px, max_w));
+        }
     }
     lines.retain(|l| !l.is_empty());
     if lines.is_empty() {
@@ -148,7 +184,7 @@ pub(crate) fn render_caption_with_admission<R>(c:&Caption,style:&CaptionStyle,w:
     }
     .max(0.0)
     .round();
-    let side = w as f32 * 0.05;
+    let side = style.wrap_width.map_or(w as f32 * 0.05, |_| (w as f32 - max_w) / 2.0);
     let widths: Vec<f32> = lines.iter().map(|l| measure(l, px)).collect();
     let xs: Vec<f32> = widths
         .iter()

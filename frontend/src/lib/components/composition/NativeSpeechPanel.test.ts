@@ -75,6 +75,8 @@ it('takes the source range from a selected clip and authors the native returned 
     button('Добавить распознанные субтитры').click();await vi.waitFor(()=>expect(nestedHistory.past).toHaveLength(1))
     expect(api.alignSpeechClip).toHaveBeenCalledWith(original,'new-timeline','auto-first','source',spoken)
     expect(nestedComposition.document!.compositions['new-timeline']!.content.captionTracks!.at(-1)!.clips[0]).toMatchObject({timelineStartTick:3250000,timelineEndTick:3750000})
+    expect(nestedComposition.document!.compositions['new-timeline']!.content.captionTracks!.at(-1)!.style)
+      .toMatchObject({wrapWidth:0.84,margin:0.08,anchor:'bottom',background:false})
     undoNestedComposition();expect(nestedComposition.document).toEqual(original)
   }finally{await unmount(component);target.remove();closeNestedComposition();library.library=[]}
 })

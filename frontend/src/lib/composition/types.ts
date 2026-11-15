@@ -559,6 +559,7 @@ export interface CompositionMetadata {
   readonly sequenceStartFrame?:number
 }
 export interface CaptionStyle {
+  readonly wrapWidth?: number
   readonly font: string
   readonly size: number
   readonly color: string | readonly [number, number, number, number]

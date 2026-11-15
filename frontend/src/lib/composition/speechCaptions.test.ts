@@ -3,6 +3,7 @@ import { speechCaptionTrack } from './speechCaptions'
 const transcript={language:'ru',modelHash:'a'.repeat(64),sourceStartUs:2000000,durationUs:3000000,segments:[{startUs:120000,endUs:930001,text:'Пример речи'},{startUs:930001,endUs:1800000,text:'Вторая строка'}]}
 it('keeps source-relative speech times, language and text without a frame-grid roundtrip',()=>{
   const track=speechCaptionTrack(transcript)
+  expect(track.style).toMatchObject({wrapWidth:0.84,margin:0.08,size:54,align:'center',anchor:'bottom',background:false,outline:3.24})
   expect(track.language).toBe('ru');expect(track.clips.map(cue=>[cue.timelineStartTick,cue.timelineEndTick,cue.text])).toEqual([[120000,930001,'Пример речи'],[930001,1800000,'Вторая строка']])
 })
 it('refuses malformed/overlapping speech output rather than authoring invalid captions',()=>{
