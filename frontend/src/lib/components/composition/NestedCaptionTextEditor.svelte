@@ -1,5 +1,5 @@
 <script lang="ts">
-  import {untrack} from 'svelte'
+  import {tick, untrack} from 'svelte'
   import type {WireTextClip} from '$lib/composition/types'
   import {captionAppearance, sameCaptionAppearance, type CaptionAppearance} from '$lib/composition/nativeCaptionText'
   import {nestedComposition,nestedAgentGeneration,nestedHistory,updateNestedCaptionText} from '$lib/state/nestedComposition.svelte'
@@ -12,6 +12,7 @@
     strokeColor: '#000000', strokeAlpha: 0, strokeWidth: 0,
     shadowColor: '#000000', shadowAlpha: 0, shadowX: 0, shadowY: 0,
     cropLeft: 0, cropTop: 0, cropRight: 0, cropBottom: 0, flipH: false, flipV: false,
+    x: 0, y: 0,
   }
   let appearance=$state<{ -readonly [Field in keyof CaptionAppearance]: CaptionAppearance[Field] }>({...defaultAppearance})
   let baseAppearance=$state<CaptionAppearance>({...defaultAppearance})
@@ -59,7 +60,10 @@
     const accepted=await updateNestedCaptionText(compositionId,clip.id,submitted,base,
       clip.concatTitle ? undefined : {value:submittedAppearance,expected:{...baseAppearance}})
     if(scope!==startedScope)return
-    if(accepted){base=submitted;baseAppearance=submittedAppearance;appearance={...submittedAppearance}}
+    if(accepted){
+      await tick()
+      if(scope===startedScope)reset()
+    }
     else error=nestedHistory.error||'Сохранение отменено: проект изменился'
   }
 </script>
@@ -142,6 +146,14 @@
       {/each}
       <label><input type="checkbox" bind:checked={appearance.flipH} disabled={disabled||nestedHistory.busy} /> Отразить по горизонтали</label>
       <label><input type="checkbox" bind:checked={appearance.flipV} disabled={disabled||nestedHistory.busy} /> Отразить по вертикали</label>
+    </details>
+    <details>
+      <summary>Положение в кадре</summary>
+      <label>Опорная позиция X, px<input type="number" step="any" bind:value={appearance.x} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Опорная позиция Y, px<input type="number" step="any" bind:value={appearance.y} disabled={disabled||nestedHistory.busy} /></label>
+      {#if clip.transform.position || clip.transform.concatAnimation || clip.transform.x.mode==='keyframes' || clip.transform.y.mode==='keyframes'}
+        <p>Изменение позиции сдвигает всю траекторию движения.</p>
+      {/if}
     </details>
   {/if}
   {#if conflict}<p role="alert">Реплика изменилась после начала редактирования. Сбросьте черновик, чтобы загрузить актуальную версию.</p>{/if}

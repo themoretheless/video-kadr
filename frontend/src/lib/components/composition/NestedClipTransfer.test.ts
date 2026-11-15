@@ -106,13 +106,22 @@ it('saves subtitle text, typography and background together and restores them wi
       flip.checked = true
       flip.dispatchEvent(new Event('change', { bubbles: true }))
     }
+    const position = [...editor.querySelectorAll('details')]
+      .find(section => section.querySelector('summary')?.textContent === 'Положение в кадре')!
+    position.open = true
+    const positionFields = position.querySelectorAll<HTMLInputElement>('input')
+    for (const [index, value] of ['20', '-35'].entries()) {
+      positionFields[index]!.value = value
+      positionFields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
+    }
     await tick()
     save.click()
     await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
     expect(api.nestedDurations).toHaveBeenCalledTimes(1)
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
       text: 'Edited', textBoxWidth: 200, textBoxHeight: 54, opacityMultiplier: 0.45, blendMode: 'screen', opacity: opacityKeys,
-      transform: { concatPreparation: { crop: [0.125, 0.1, 0.2, 0.05], canvas: [320, 180], flipH: true, flipV: true } },
+      transform: { x: { mode: 'constant', value: 20 }, y: { mode: 'constant', value: -35 },
+        concatPreparation: { crop: [0.125, 0.1, 0.2, 0.05], canvas: [320, 180], flipH: true, flipV: true } },
       style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
         italic: true, align: 'right', tracking: -2, lineHeight: 1.6,
         color: { red: 1, green: 0, blue: 0, alpha: 0.7 },

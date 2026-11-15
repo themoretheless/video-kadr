@@ -1,5 +1,6 @@
 import {beforeEach,expect,it} from 'vitest'
-import {setNativeCaptionText} from './nativeCaptionText'
+import {captionAppearance, setNativeCaptionText} from './nativeCaptionText'
+import type {WireTransform} from './types'
 import {compositionState,resetCompositionForTests,setCompositionStorageForTests} from '../state/composition/core.svelte'
 import {importSrtToComposition} from '../state/composition/timeline.svelte'
 import {buildCompositionWireDocument} from './payload'
@@ -34,4 +35,56 @@ it('counts Unicode code points without truncating surrogate pairs',()=>{
  const id=project.compositions.root!.content.tracks[0]!.clips[0]!.id
  expect(setNativeCaptionText(project,'root',id,'🙂'.repeat(512),'Original').compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({text:'🙂'.repeat(512)})
  expect(()=>setNativeCaptionText(project,'root',id,'🙂'.repeat(513),'Original')).toThrow()
+})
+
+it('shifts an entire Bezier path and keeps its relative handles and clock', () => {
+  const root = project.compositions.root!
+  const track = root.content.tracks[0]!
+  if (track.kind !== 'text') throw new Error('expected text track')
+  const clip = track.clips[0]!
+  const path: NonNullable<WireTransform['position']> = {
+    mode: 'path', progress: { mode: 'constant', value: 0.5 },
+    path: { nodes: [{ id: 'start', point: { x: 10, y: 20 }, inHandle: { x: 0, y: 0 },
+      outHandle: { x: 2, y: 3 }, segment: 'cubic', tangentMode: 'corner' },
+    { id: 'end', point: { x: 30, y: 40 }, inHandle: { x: -2, y: -3 },
+      outHandle: { x: 0, y: 0 }, segment: 'line', tangentMode: 'corner' }] },
+  }
+  const entry = { ...clip, transform: { ...clip.transform, position: path } }
+  const document = { ...project, compositions: { ...project.compositions, root: { ...root,
+    content: { ...root.content, tracks: [{ ...track, clips: [entry] }] },
+  } } }
+  const expected = captionAppearance(entry)
+  const changed = setNativeCaptionText(document, 'root', clip.id, clip.text, clip.text, {
+    expected, value: { ...expected, x: 16, y: 17 },
+  })
+  expect(changed.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
+    transform: { position: { ...path, path: { nodes: path.path.nodes.map(node => ({
+      ...node, point: { x: node.point.x + 6, y: node.point.y - 3 },
+    })) } } },
+  })
+})
+
+it('shifts normalized Concat position keys and preserves their easing', () => {
+  const root = project.compositions.root!
+  const track = root.content.tracks[0]!
+  if (track.kind !== 'text') throw new Error('expected text track')
+  const clip = track.clips[0]!
+  const concatAnimation = {
+    canvas: [320, 180], durationTicks: 1000000, stretch: [1, 1],
+    rest: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1 },
+    keys: { offsetX: [{ at: 0.25, value: 0.5, ease: [0.2, 0.1, 0.8, 0.9] }], opacity: [{ at: 0, value: 0.4 }] },
+  } as const
+  const entry = { ...clip, transform: { ...clip.transform, concatAnimation } }
+  const document = { ...project, compositions: { ...project.compositions, root: { ...root,
+    content: { ...root.content, tracks: [{ ...track, clips: [entry] }] },
+  } } }
+  const expected = captionAppearance(entry)
+  const changed = setNativeCaptionText(document, 'root', clip.id, clip.text, clip.text, {
+    expected, value: { ...expected, x: 40, y: 0 },
+  })
+  expect(changed.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
+    transform: { concatAnimation: { ...concatAnimation, rest: { ...concatAnimation.rest, x: 0.125 }, keys: {
+      ...concatAnimation.keys, offsetX: [{ ...concatAnimation.keys.offsetX[0], value: 0.625 }],
+    } } },
+  })
 })

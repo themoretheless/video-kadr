@@ -1,6 +1,9 @@
 import type {NativeNestedProject} from '../api'
 import {colorToRgba} from './payload'
-import {COMPOSITION_BLEND_MODES, MAX_TEXT_LENGTH, type WireRgba, type WireTextClip, type WireTextStyle} from './types'
+import {
+  COMPOSITION_BLEND_MODES, MAX_TEXT_LENGTH, type WireAnimatableValue, type WireRgba,
+  type WireTextClip, type WireTextStyle, type WireTransform,
+} from './types'
 
 export type CaptionAppearance = Pick<WireTextStyle,
   'fontFamily' | 'fontSize' | 'fontWeight' | 'italic' | 'align' | 'tracking' | 'lineHeight' | 'backgroundRadius' |
@@ -22,6 +25,8 @@ export type CaptionAppearance = Pick<WireTextStyle,
     readonly cropBottom: number
     readonly flipH: boolean
     readonly flipV: boolean
+    readonly x: number
+    readonly y: number
   }
 
 function rgbHex({ red, green, blue }: WireRgba): string {
@@ -31,6 +36,54 @@ function rgbHex({ red, green, blue }: WireRgba): string {
 function editedColor(original: WireRgba, hex: string, alpha: number): WireRgba {
   if (!/^#[0-9a-f]{6}$/i.test(hex) || !(alpha >= 0 && alpha <= 1)) throw new Error('Некорректный цвет или непрозрачность')
   return { ...(rgbHex(original) === hex.toLowerCase() ? original : colorToRgba(hex)), alpha }
+}
+
+function firstValue(value: WireAnimatableValue): number {
+  return value.mode === 'constant' ? value.value : value.track.keyframes[0]?.value ?? 0
+}
+
+function shiftValue(value: WireAnimatableValue, delta: number): WireAnimatableValue {
+  if (delta === 0) return value
+  if (value.mode === 'constant') return { ...value, value: value.value + delta }
+  return { ...value, track: { ...value.track, keyframes: value.track.keyframes.map(key => ({
+    ...key, value: key.value + delta,
+  })) } }
+}
+
+function positionReference({ x, y, position, concatAnimation }: WireTransform): Pick<CaptionAppearance, 'x' | 'y'> {
+  if (concatAnimation) return { x: concatAnimation.rest.x * concatAnimation.canvas[0], y: concatAnimation.rest.y * concatAnimation.canvas[1] }
+  if (position?.mode === 'path' && position.path.nodes[0]) return position.path.nodes[0].point
+  return { x: firstValue(position?.mode === 'xy' ? position.x : x), y: firstValue(position?.mode === 'xy' ? position.y : y) }
+}
+
+function shiftPosition(transform: WireTransform, dx: number, dy: number): WireTransform {
+  const { position, concatAnimation } = transform
+  const moved = { ...transform, x: shiftValue(transform.x, dx), y: shiftValue(transform.y, dy) }
+  if (concatAnimation) {
+    const nx = dx / concatAnimation.canvas[0], ny = dy / concatAnimation.canvas[1]
+    const keys = { ...concatAnimation.keys }
+    for (const [field, delta] of [['offsetX', nx], ['offsetY', ny]] as const) {
+      const run = keys[field]
+      if (!run || delta === 0) continue
+      keys[field] = run.map(key => {
+        const value = key.value + delta
+        if (!key.derived && Math.abs(value) > 3) throw new Error('Смещение выводит ключ позиции за пределы Concat')
+        return { ...key, value }
+      })
+    }
+    return { ...moved, concatAnimation: { ...concatAnimation, keys, rest: {
+      ...concatAnimation.rest, x: concatAnimation.rest.x + nx, y: concatAnimation.rest.y + ny,
+    } } }
+  }
+  if (position?.mode === 'xy') {
+    return { ...moved, position: { ...position, x: shiftValue(position.x, dx), y: shiftValue(position.y, dy) } }
+  }
+  if (position?.mode === 'path') {
+    return { ...moved, position: { ...position, path: { nodes: position.path.nodes.map(node => ({
+      ...node, point: { x: node.point.x + dx, y: node.point.y + dy },
+    })) } } }
+  }
+  return moved
 }
 
 export function captionAppearance(clip: WireTextClip): CaptionAppearance {
@@ -50,6 +103,7 @@ export function captionAppearance(clip: WireTextClip): CaptionAppearance {
     cropLeft: preparation?.crop[0] ?? 0, cropTop: preparation?.crop[1] ?? 0,
     cropRight: preparation?.crop[2] ?? 0, cropBottom: preparation?.crop[3] ?? 0,
     flipH: preparation?.flipH ?? false, flipV: preparation?.flipV ?? false,
+    ...positionReference(clip.transform),
   }
 }
 
@@ -71,7 +125,8 @@ export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionApp
     left.shadowColor === right.shadowColor && left.shadowAlpha === right.shadowAlpha &&
     left.shadowX === right.shadowX && left.shadowY === right.shadowY && left.concatShadow === right.concatShadow &&
     left.backgroundRadius === right.backgroundRadius && left.backgroundAlpha === right.backgroundAlpha &&
-    left.paddingX === right.paddingX && left.paddingY === right.paddingY && sameCaptionFraming(left, right)
+    left.paddingX === right.paddingX && left.paddingY === right.paddingY && sameCaptionFraming(left, right) &&
+    left.x === right.x && left.y === right.y
 }
 
 /** Edit a cue without changing its clock, placement, or retained animation. */
@@ -96,7 +151,7 @@ export function setNativeCaptionText(
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
     const { textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, textColor, textAlpha, backgroundColor, backgroundAlpha,
       strokeColor, strokeAlpha, shadowColor, shadowAlpha, paddingX, paddingY,
-      cropLeft, cropTop, cropRight, cropBottom, flipH, flipV, ...style } = appearance.value
+      cropLeft, cropTop, cropRight, cropBottom, flipH, flipV, x, y, ...style } = appearance.value
     if (!(style.fontSize >= 1 && style.fontSize <= 1000)) throw new Error('Размер шрифта должен быть от 1 до 1000 px')
     if (!style.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
     if (blendMode !== undefined && !COMPOSITION_BLEND_MODES.includes(blendMode)) throw new Error('Неизвестный режим наложения')
@@ -110,6 +165,10 @@ export function setNativeCaptionText(
     const backgroundPadding = paddingX === undefined && paddingY === undefined
       ? undefined : [paddingX ?? 0, paddingY ?? 0] as const
     let transform = clip.transform
+    if (x !== current.x || y !== current.y) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Укажите позицию реплики по обеим осям')
+      transform = shiftPosition(transform, x - current.x, y - current.y)
+    }
     if (!sameCaptionFraming(current, appearance.value)) {
       const crop = [cropLeft, cropTop, cropRight, cropBottom] as const
       if (!crop.every(edge => edge >= 0 && edge <= 0.9) ||
