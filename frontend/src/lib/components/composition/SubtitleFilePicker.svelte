@@ -1,5 +1,7 @@
 <script lang="ts">
  import { authState } from '$lib/state/auth.svelte'
+ import { parseSubtitleDocument } from '$lib/subtitles/import'
+ import { MAX_SRT_BYTES } from '$lib/subtitles/srt'
 
  let { label, disabled = false, onfile, onerror }: {
   label: string
@@ -10,22 +12,33 @@
  let dragging = $state(false)
  let filesInPanel = $state<File[]>([])
  let applying = $state(false)
+ let poolOnly = $state(false)
  const blocked = $derived(disabled || applying)
  $effect(() => {
   void authState.token
   filesInPanel = []
  })
 
- async function apply(file: File) {
+ function remember(file: File) {
+  if (filesInPanel.includes(file)) return
+  filesInPanel = [file, ...filesInPanel.filter(item =>
+   item.name !== file.name || item.size !== file.size || item.lastModified !== file.lastModified,
+  )].slice(0, 8)
+ }
+
+ async function apply(file: File, addOnly = false) {
   if (blocked) return
   applying = true
   const owner = authState.token
   try {
-   if (await onfile(file) && authState.token === owner && !filesInPanel.includes(file)) {
-    filesInPanel = [file, ...filesInPanel.filter(item =>
-     item.name !== file.name || item.size !== file.size || item.lastModified !== file.lastModified,
-    )].slice(0, 8)
+   if (addOnly) {
+    onerror('')
+    if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
+    parseSubtitleDocument(await file.text())
    }
+   if ((addOnly || await onfile(file)) && authState.token === owner) remember(file)
+  } catch (error) {
+   if (authState.token === owner) onerror(error instanceof Error ? error.message : String(error))
   } finally {
    applying = false
   }
@@ -42,7 +55,7 @@
    onerror('Выберите файл SRT, VTT, ASS, SSA или TXT')
    return
   }
-  void apply(file)
+  void apply(file, poolOnly)
  }
 </script>
 
@@ -61,6 +74,7 @@
   dragging = false
   select(event.dataTransfer?.files, true)
  }}>
+ <label class="pool-option"><input type="checkbox" bind:checked={poolOnly} disabled={blocked} />Добавить файл в список без вставки на таймлайн</label>
  <label>Выберите или перетащите файл субтитров
   <input type="file" aria-label={label} accept=".srt,.vtt,.ass,.ssa,.txt,application/x-subrip,text/vtt,text/plain" disabled={blocked}
    onchange={event => {
@@ -73,7 +87,7 @@
    {#each filesInPanel as file (file)}
     <li>
      <button class="btn ghost sm" type="button" disabled={blocked} onclick={() => void apply(file)}>
-      Вставить снова · {file.name}
+      Вставить · {file.name}
      </button>
      <button class="btn ghost sm" type="button" disabled={blocked} aria-label={`Убрать файл ${file.name} из списка`}
       onclick={() => { filesInPanel = filesInPanel.filter(item => item !== file) }}>Убрать</button>
@@ -87,6 +101,7 @@
  .subtitle-picker { border: 1px dashed currentColor; border-radius: 0.375rem; padding: 0.5rem; }
  .subtitle-picker.dragging { outline: 2px solid currentColor; }
  label { display: grid; gap: 0.25rem; }
+ .pool-option { display: flex; align-items: center; margin-bottom: 0.25rem; }
  input { max-width: 100%; }
  ul { list-style: none; padding: 0; margin: 0.5rem 0 0; }
  li { display: flex; flex-wrap: wrap; gap: 0.25rem; }

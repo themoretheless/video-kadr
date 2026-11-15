@@ -31,14 +31,29 @@ it('validates dropped files and imports subtitles at the cursor in one undo step
   drop([new File(['ignored'], 'video.mov')])
   await vi.waitFor(() => expect(target.querySelector('[role="alert"]')?.textContent).toContain('Выберите файл SRT'))
   expect(nestedDurations).not.toHaveBeenCalled()
+  zone.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
+  await tick()
+  const reuse = () => [...target.querySelectorAll('button')].find(item => item.textContent?.includes('Вставить · captions.SRT'))
+  drop([new File(['invalid'], 'broken.srt')])
+  await vi.waitFor(() => {
+   const error = target.querySelector('[role="alert"]')?.textContent
+   expect(error).toBeTruthy()
+   expect(error).not.toContain('Выберите файл SRT')
+  })
+  expect(target.querySelector('[aria-label="Недавние файлы субтитров"]')).toBeNull()
   drop([new File(['1\n00:00:01,000 --> 00:00:02,000\nCaption'], 'captions.SRT')])
+  await vi.waitFor(() => expect(reuse()).toBeDefined())
+  expect(target.querySelector('[role="alert"]')).toBeNull()
+  expect(nestedHistory.past).toHaveLength(0)
+  expect(nestedComposition.document).toEqual(project)
+  expect(nestedDurations).not.toHaveBeenCalled()
+  reuse()!.click()
   await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
   expect(nestedDurations).toHaveBeenCalledOnce()
   expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
    text: 'Caption', timelineStartTick: 3_000_000, timelineEndTick: 4_000_000,
   })
   nestedComposition.timeUs = 5_000_000
-  const reuse = () => [...target.querySelectorAll('button')].find(item => item.textContent?.includes('Вставить снова'))
   await vi.waitFor(() => expect(reuse()).toBeDefined())
   reuse()!.click()
   await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(2))
