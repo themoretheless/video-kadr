@@ -37,6 +37,35 @@ function normalizedVideo(value: unknown): unknown {
   return video ? { colorSpace: 'sdr', ...video } : value
 }
 
+function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unknown): WireTextClip | undefined {
+  if (sameJson(normalizedClip(baseline), normalizedClip(current))) return clip
+  const before = record(baseline)
+  const after = record(current)
+  const previousText = record(before?.text)
+  const editedText = record(after?.text)
+  if (!before || !after || before.kind !== 'text' || !previousText || !editedText ||
+      typeof editedText.content !== 'string' || typeof after.start !== 'number' ||
+      !Number.isFinite(after.start) || after.start < 0 || after.start > 86400) return undefined
+
+  // A whole-clip move keeps the caption's keyframes on their original local clock.
+  // The imported document already carries the updated display name in clipNames.
+  const unchangedFields = {
+    ...after,
+    start: before.start,
+    name: before.name,
+    text: { ...editedText, content: previousText.content },
+  }
+  const comparison = { ...before, name: before.name }
+  if (!sameJson(normalizedClip(comparison), normalizedClip(unchangedFields))) return undefined
+  const start = Math.round(after.start * 1_000_000)
+  return {
+    ...clip,
+    text: editedText.content,
+    timelineStartTick: start,
+    timelineEndTick: start + (clip.timelineEndTick - clip.timelineStartTick),
+  }
+}
+
 export async function readConcatTemplateCaptions(file: File, manifest: File): Promise<Captions | undefined> {
   if (file.size > MAX_CONCAT_CAPTION_BYTES) throw new Error('Дорожки субтитров шаблона превышают 8 МиБ')
   const sidecar: unknown = JSON.parse(await file.text())
@@ -71,10 +100,11 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
     const [timelineId, clip, baselineValue] = entry
     const baseline = record(baselineValue)
     const timeline = timelines.get(timelineId)
-    if (unchanged || (baseline && timeline &&
-      sameJson(normalizedVideo(baseline.video), normalizedVideo(timeline.video)) &&
-      sameJson(normalizedClip(baseline.clip), normalizedClip(timeline.clips.get(clip.id))))) {
+    if (unchanged) {
       eligible.push([timelineId, clip])
+    } else if (baseline && timeline && sameJson(normalizedVideo(baseline.video), normalizedVideo(timeline.video))) {
+      const merged = mergeCaptionEdits(clip, baseline.clip, timeline.clips.get(clip.id))
+      if (merged) eligible.push([timelineId, merged])
     }
   }
   return eligible.length ? eligible : undefined

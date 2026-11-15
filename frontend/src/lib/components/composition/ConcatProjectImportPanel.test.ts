@@ -193,11 +193,13 @@ it('uploads the selected template design and binds its bundled font before conve
  try {
   component = mount(Panel, { target: document.body, props: { token: 'session' } })
   await tick()
+  const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, text: { content: 'Dialogue', shadow: true } }
+  const afterTitle = { ...beforeTitle, start: 1.000001, text: { ...beforeTitle.text, content: 'Revised dialogue' } }
   const template = {
    ...original,
    video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
    timelines: [
-    { ...original.timelines[0], video: { width: 1920, height: 1080, rateNum: 30_000, rateDen: 1_001 } },
+    { ...original.timelines[0], video: { width: 1920, height: 1080, rateNum: 30_000, rateDen: 1_001 }, clips: [...original.timelines[0]!.clips, afterTitle] },
     { ...original.timelines[0], id: 'shelved' },
    ],
    media: [{ ...original.media[0], path: 'assets/design.mov' }],
@@ -206,7 +208,7 @@ it('uploads the selected template design and binds its bundled font before conve
   const cover = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAEsAAQEAAAAAAAAAAAAAAAAAAAAHAQEAAAAAAAAAAAAAAAAAAAAFEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAEAAQAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AlYBIa//Z'
   const subtitles = [{ id: 'quotes', name: 'quotes.srt', text: '1\n00:00:00,000 --> 00:00:01,000\nDialogue' }]
   const manifest = JSON.stringify(template)
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(manifest))
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ ...template, timelines: [{ ...template.timelines[0], clips: [...original.timelines[0]!.clips, beforeTitle] }, template.timelines[1]] })))
   const manifestSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
   const transparent = { red: 0, green: 0, blue: 0, alpha: 0 }
   const caption = {
@@ -218,11 +220,12 @@ it('uploads the selected template design and binds its bundled font before conve
     rotationDegrees: { mode: 'constant', value: 0 }, anchorX: 0.5, anchorY: 0.5 },
    opacity: { mode: 'constant', value: 1 },
   } as const
+  const editedCaption = { ...caption, text: 'Revised dialogue', timelineStartTick: 1000001, timelineEndTick: 2000000 }
   const node = project.compositions.imported!
   const converted: NativeNestedProject = { ...project, compositions: { imported: {
    ...node, content: { ...node.content, tracks: [{
     id: 'lane-text', kind: 'text', name: 'Dialogue', hidden: false, locked: false,
-    clips: [{ ...caption, concatTitle: { shadow: true } }],
+    clips: [{ ...editedCaption, concatTitle: { shadow: true } }],
    }] },
   } } }
   vi.mocked(importConcatProject).mockResolvedValueOnce({
@@ -231,7 +234,7 @@ it('uploads the selected template design and binds its bundled font before conve
   })
   const files = [
    new File([manifest], 'template.json'),
-   new File([JSON.stringify({ manifestSha256, clips: [['TL1', caption]] })], 'video-kadr-caption-clips.json'),
+   new File([JSON.stringify({ manifestSha256, clips: [['TL1', caption, { clip: beforeTitle, video: template.timelines[0]!.video }]] })], 'video-kadr-caption-clips.json'),
    new File([JSON.stringify(subtitles)], 'video-kadr-subtitles.json'),
    new File(['movie'], 'design.mov'),
    new File(['font'], 'title.otf'),
@@ -267,7 +270,7 @@ it('uploads the selected template design and binds its bundled font before conve
   expect(nestedComposition.document?.coverJpeg).toBe(cover)
   const restored = nestedComposition.document?.compositions.imported?.content
   expect(restored?.metadata?.captionTextTracks).toEqual(['lane-text'])
-  expect(restored?.tracks[0]?.clips).toEqual([caption])
+  expect(restored?.tracks[0]?.clips).toEqual([editedCaption])
   expect(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments).toEqual(subtitles)
   undoNestedComposition()
   expect(nestedComposition.document).toBeNull()
