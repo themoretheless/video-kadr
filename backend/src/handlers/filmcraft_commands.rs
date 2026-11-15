@@ -392,6 +392,7 @@ fn catalog(params: Value) -> AppResult<Value> {
         ("file.newBinFromSelection","New Bin From Selection","{document:object|string,items?:[id],item?:id,name?:str,context?:{projectSelection?:[id]}}; first item parent and unique default bin name"),
         ("project.moveToBin","Move to Bin","{document:object|string,items?:[id],bin?:id|null,context?:{projectSelection?:[id]}}; missing bin targets root"),
         ("project.renameBin","Rename Bin","{document:object|string,bin:id,name:str}; trims name, refuses empty names and root bin; explicit snapshot adoption"),
+        ("project.freeform.move","Move Clip Cards","{document:object|string,positions:{id:[x,y]},snap?:bool}"),
         ("clip.setPosterFrame","Set Poster Frame","{document:object|string,item?:id,time?:tick,frame?:int,seconds?:float,timecode?:str,context?:object}"),
         ("clip.clearPosterFrame","Clear Poster Frame","{document:object|string,item?:id,context?:object}"),
         ("clip.rename","Rename","{document:object|string,name:str,item?:id,clip?:id,sequence?:id,context?:{activeSequence?:id,selection?:[id]}}; snapshot adoption required"),
@@ -587,6 +588,10 @@ async fn dispatch(
     }
     if request.command == "project.renameBin" {
         let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_bin_rename::rename(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if request.command == "project.freeform.move" {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_freeform::move_cards(params)).await.map_err(bad)?;
         return Ok(Json(value));
     }
     if crate::domain::filmcraft_poster_frame::COMMANDS.contains(&request.command.as_str()) {

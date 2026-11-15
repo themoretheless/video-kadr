@@ -2,9 +2,11 @@
   import { getFilmcraftPosterPreview, type FilmcraftMonitorFrame as Frame } from '$lib/api'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
 
-  let { document, item, name, sources, token, card = false, hoverFraction, markRange }: {
-    document: string; item: string; name: string; sources: Record<string, string>; token: string | null; card?: boolean; hoverFraction?: number; markRange?: { start: number; end: number } | null
+  let { document, item, name, sources, token, card = false, hoverFraction, markRange, lazy = false }: {
+    document: string; item: string; name: string; sources: Record<string, string>; token: string | null; card?: boolean; hoverFraction?: number; markRange?: { start: number; end: number } | null; lazy?: boolean
   } = $props()
+  let preview = $state<HTMLElement>()
+  let visible = $state(false)
   let frame = $state<Frame>()
   let unavailable = $state(false)
   let hoverFrame = $state<Frame>()
@@ -12,6 +14,18 @@
   const shown = $derived(hoverFraction === undefined ? frame : hoverFrame ?? frame)
 
   $effect(() => {
+    const element = preview
+    if (!lazy || !element || typeof IntersectionObserver === 'undefined') {
+      visible = true
+      return
+    }
+    const observer = new IntersectionObserver(([entry]) => { visible = entry?.isIntersecting ?? false })
+    observer.observe(element)
+    return () => observer.disconnect()
+  })
+
+  $effect(() => {
+    if (lazy && !visible) return
     const posterInput = input
     const owner = token
     const request = new AbortController()
@@ -44,7 +58,7 @@
   })
 </script>
 
-<figure class:card aria-label={`Обложка: ${name || item}`}>
+<figure bind:this={preview} class:card aria-label={`Обложка: ${name || item}`}>
   {#if shown}
     <FilmcraftMonitorFrame frame={shown} label={`Кадр обложки: ${name || item}`} metadata={false} fluid={card} />
   {:else if unavailable}
