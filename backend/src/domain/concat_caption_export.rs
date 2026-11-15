@@ -67,7 +67,7 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
         } else {
             color(clip.style.background)
         },
-        background_radius: 0.0,
+        background_radius: f64::from(clip.style.background_radius.unwrap_or_default()) / f64::from(height),
         background_padding_x: 0.0,
         background_padding_y: 0.0,
         // Concat stores one shadow flag; its renderer owns the color, blur, and offset.

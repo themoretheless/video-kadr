@@ -36,7 +36,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         min_box_height: clip.text_box_height,
         fill:true,fill_color:color,align:match clip.style.align {None|Some(super::composition::TextAlignment::Left)=>0,Some(super::composition::TextAlignment::Center)=>1,Some(super::composition::TextAlignment::Right)=>2},
         stroke:clip.style.stroke_width.round()>0.,stroke_width:clip.style.stroke_width.round()as f32,stroke_color:rgba(clip.style.stroke),stroke_type:0,
-        background:clip.style.background.alpha>0.,background_color:rgba(clip.style.background),background_opacity:100.,background_size:0.,background_radius:0.,
+        background:clip.style.background.alpha>0.,background_color:rgba(clip.style.background),background_opacity:100.,background_size:0.,background_radius:clip.style.background_radius.unwrap_or_default(),
         shadow:clip.style.shadow.alpha>0.,shadow_color:rgba(clip.style.shadow),shadow_opacity:100.,shadow_distance:dx.hypot(dy),shadow_angle:dy.atan2(dx).to_degrees()+90.,shadow_size:0.,shadow_blur:0.,
         position:Some([canvas.0 as f64/2.,canvas.1 as f64/2.]),..Default::default()
     };
@@ -103,6 +103,11 @@ mod tests {
         let glyphs = |frame: &[u8]| frame.chunks_exact(4).map(|pixel| u32::from(pixel[0])).sum::<u32>();
         assert!(glyphs(&original) > 0);
         assert_eq!(glyphs(&expanded), glyphs(&original));
+        caption.style.background_radius = Some(4.);
+        let rounded = pixels(&caption);
+        assert!(expanded.chunks_exact(4).zip(rounded.chunks_exact(4))
+            .any(|(square, rounded)| square[3] > 0 && rounded[3] == 0));
+        assert_eq!(glyphs(&rounded), glyphs(&expanded));
     }
 
     #[test]
