@@ -11,6 +11,7 @@
     textColor: '#ffffff', textAlpha: 1, backgroundColor: '#000000', backgroundAlpha: 0,
     strokeColor: '#000000', strokeAlpha: 0, strokeWidth: 0,
     shadowColor: '#000000', shadowAlpha: 0, shadowX: 0, shadowY: 0,
+    cropLeft: 0, cropTop: 0, cropRight: 0, cropBottom: 0, flipH: false, flipV: false,
   }
   let appearance=$state<{ -readonly [Field in keyof CaptionAppearance]: CaptionAppearance[Field] }>({...defaultAppearance})
   let baseAppearance=$state<CaptionAppearance>({...defaultAppearance})
@@ -24,6 +25,9 @@
   const blendModes = [
     ['normal', 'Обычный'], ['multiply', 'Умножение'], ['screen', 'Экран'],
     ['darken', 'Затемнение'], ['lighten', 'Осветление'], ['addition', 'Сложение'],
+  ] as const
+  const cropFields = [
+    ['cropLeft', 'Слева'], ['cropTop', 'Сверху'], ['cropRight', 'Справа'], ['cropBottom', 'Снизу'],
   ] as const
   function changeShadowMode(mode: string) {
     appearance.concatShadow=mode==='concat' || undefined
@@ -128,6 +132,16 @@
           {/if}
         </select>
       </label>
+    </details>
+    <details>
+      <summary>Кадрирование и отражение</summary>
+      {#each cropFields as [field, label] (field)}
+        <label>{label}, %<input type="number" min="0" max="90" step="any" value={appearance[field] * 100}
+          oninput={event=>{appearance[field]=event.currentTarget.value==='' ? 0 : event.currentTarget.valueAsNumber / 100}}
+          disabled={disabled||nestedHistory.busy} /></label>
+      {/each}
+      <label><input type="checkbox" bind:checked={appearance.flipH} disabled={disabled||nestedHistory.busy} /> Отразить по горизонтали</label>
+      <label><input type="checkbox" bind:checked={appearance.flipV} disabled={disabled||nestedHistory.busy} /> Отразить по вертикали</label>
     </details>
   {/if}
   {#if conflict}<p role="alert">Реплика изменилась после начала редактирования. Сбросьте черновик, чтобы загрузить актуальную версию.</p>{/if}

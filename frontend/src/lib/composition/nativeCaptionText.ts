@@ -16,6 +16,12 @@ export type CaptionAppearance = Pick<WireTextStyle,
     readonly shadowAlpha: number
     readonly paddingX?: number
     readonly paddingY?: number
+    readonly cropLeft: number
+    readonly cropTop: number
+    readonly cropRight: number
+    readonly cropBottom: number
+    readonly flipH: boolean
+    readonly flipV: boolean
   }
 
 function rgbHex({ red, green, blue }: WireRgba): string {
@@ -29,6 +35,7 @@ function editedColor(original: WireRgba, hex: string, alpha: number): WireRgba {
 
 export function captionAppearance(clip: WireTextClip): CaptionAppearance {
   const { style, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode } = clip
+  const preparation = clip.transform.concatPreparation
   return {
     fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
     italic: style.italic, align: style.align, tracking: style.tracking, lineHeight: style.lineHeight,
@@ -40,7 +47,16 @@ export function captionAppearance(clip: WireTextClip): CaptionAppearance {
     shadowColor: rgbHex(style.shadow), shadowAlpha: style.shadow.alpha,
     shadowX: style.shadowX, shadowY: style.shadowY, concatShadow: style.concatShadow,
     paddingX: style.backgroundPadding?.[0], paddingY: style.backgroundPadding?.[1],
+    cropLeft: preparation?.crop[0] ?? 0, cropTop: preparation?.crop[1] ?? 0,
+    cropRight: preparation?.crop[2] ?? 0, cropBottom: preparation?.crop[3] ?? 0,
+    flipH: preparation?.flipH ?? false, flipV: preparation?.flipV ?? false,
   }
+}
+
+function sameCaptionFraming(left: CaptionAppearance, right: CaptionAppearance): boolean {
+  return left.cropLeft === right.cropLeft && left.cropTop === right.cropTop &&
+    left.cropRight === right.cropRight && left.cropBottom === right.cropBottom &&
+    left.flipH === right.flipH && left.flipV === right.flipV
 }
 
 export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionAppearance): boolean {
@@ -55,7 +71,7 @@ export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionApp
     left.shadowColor === right.shadowColor && left.shadowAlpha === right.shadowAlpha &&
     left.shadowX === right.shadowX && left.shadowY === right.shadowY && left.concatShadow === right.concatShadow &&
     left.backgroundRadius === right.backgroundRadius && left.backgroundAlpha === right.backgroundAlpha &&
-    left.paddingX === right.paddingX && left.paddingY === right.paddingY
+    left.paddingX === right.paddingX && left.paddingY === right.paddingY && sameCaptionFraming(left, right)
 }
 
 /** Edit a cue without changing its clock, placement, or retained animation. */
@@ -79,7 +95,8 @@ export function setNativeCaptionText(
   if (appearance && current && !sameCaptionAppearance(current, appearance.value)) {
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
     const { textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, textColor, textAlpha, backgroundColor, backgroundAlpha,
-      strokeColor, strokeAlpha, shadowColor, shadowAlpha, paddingX, paddingY, ...style } = appearance.value
+      strokeColor, strokeAlpha, shadowColor, shadowAlpha, paddingX, paddingY,
+      cropLeft, cropTop, cropRight, cropBottom, flipH, flipV, ...style } = appearance.value
     if (!(style.fontSize >= 1 && style.fontSize <= 1000)) throw new Error('Размер шрифта должен быть от 1 до 1000 px')
     if (!style.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
     if (blendMode !== undefined && !COMPOSITION_BLEND_MODES.includes(blendMode)) throw new Error('Неизвестный режим наложения')
@@ -92,7 +109,18 @@ export function setNativeCaptionText(
     }
     const backgroundPadding = paddingX === undefined && paddingY === undefined
       ? undefined : [paddingX ?? 0, paddingY ?? 0] as const
-    edited = { ...edited, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, style: {
+    let transform = clip.transform
+    if (!sameCaptionFraming(current, appearance.value)) {
+      const crop = [cropLeft, cropTop, cropRight, cropBottom] as const
+      if (!crop.every(edge => edge >= 0 && edge <= 0.9) ||
+          cropLeft + cropRight > 0.9 + Number.EPSILON || cropTop + cropBottom > 0.9 + Number.EPSILON) {
+        throw new Error('Кадрирование по каждой оси должно оставлять не меньше 10% кадра')
+      }
+      const canvas = transform.concatPreparation?.canvas ?? [node.content.canvas.width, node.content.canvas.height] as const
+      transform = { ...transform, concatPreparation: crop.some(edge => edge > 0) || flipH || flipV
+        ? { crop, canvas, flipH, flipV } : undefined }
+    }
+    edited = { ...edited, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, transform, style: {
       ...clip.style, ...style, backgroundPadding,
       color: editedColor(clip.style.color, textColor, textAlpha),
       background: editedColor(clip.style.background, backgroundColor, backgroundAlpha),

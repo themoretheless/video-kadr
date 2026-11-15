@@ -84,14 +84,35 @@ it('saves subtitle text, typography and background together and restores them wi
     const textarea = editor.querySelector('textarea')!
     textarea.value = 'Edited'
     textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    const framing = [...editor.querySelectorAll('details')]
+      .find(section => section.querySelector('summary')?.textContent === 'Кадрирование и отражение')!
+    framing.open = true
+    const edges = framing.querySelectorAll<HTMLInputElement>('input[type="number"]')
+    const setEdge = (index: number, value: string) => {
+      edges[index]!.value = value
+      edges[index]!.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    setEdge(0, '70')
+    setEdge(2, '40')
     await tick()
     const save = [...editor.querySelectorAll('button')].find(button => button.textContent === 'Сохранить реплику')!
     expect(save.disabled).toBe(false)
+    save.click()
+    await vi.waitFor(() => expect(editor.querySelector('[role="alert"]')?.textContent).toContain('10%'))
+    expect(api.nestedDurations).not.toHaveBeenCalled()
+    expect(nestedHistory.past).toHaveLength(0)
+    for (const [index, value] of ['12.5', '10', '20', '5'].entries()) setEdge(index, value)
+    for (const flip of framing.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+      flip.checked = true
+      flip.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    await tick()
     save.click()
     await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
     expect(api.nestedDurations).toHaveBeenCalledTimes(1)
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
       text: 'Edited', textBoxWidth: 200, textBoxHeight: 54, opacityMultiplier: 0.45, blendMode: 'screen', opacity: opacityKeys,
+      transform: { concatPreparation: { crop: [0.125, 0.1, 0.2, 0.05], canvas: [320, 180], flipH: true, flipV: true } },
       style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
         italic: true, align: 'right', tracking: -2, lineHeight: 1.6,
         color: { red: 1, green: 0, blue: 0, alpha: 0.7 },
