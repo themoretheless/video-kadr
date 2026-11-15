@@ -136,67 +136,12 @@ pub fn stack_cards(params: Value, on: bool) -> Result<Value> {
                 .any(|entry| entry["Item"].as_u64() == Some(anchor))
         })
     });
-    let ids = children(bin.map_or("/project/root", |bin| bin.path.as_str()))
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry["Item"].as_u64())
-        .filter(|id| {
-            index.item(*id).is_some_and(|item| {
-                item.pointer("/kind/Graphic").is_none()
-                    || document.project()["source_graphics"]
-                        .get(id.to_string())
-                        .is_some()
-            })
-        });
-    let mut cards = Vec::new();
-    let mut unplaced = Vec::new();
-    let mut bottom = 0.0_f32;
-    for id in ids {
-        let item = index.item(id).unwrap();
-        let stack = stack(item).and_then(|id| id.parse::<u64>().ok());
-        if let Some(position) = position(item) {
-            bottom =
-                bottom.max(position.y + position.size.unwrap_or(CARD_SIZE) * 9.0 / 16.0 + 40.0);
-            cards.push((id, position, stack));
-        } else {
-            unplaced.push((id, stack));
-        }
-    }
-    let columns = ((request.width.unwrap_or(800.0) - 12.0) / STEP)
-        .floor()
-        .max(1.0) as usize;
-    let top = if bottom > 0.0 {
-        ((bottom + 8.0) / GRID).round() * GRID
-    } else {
-        12.0
-    };
-    for (n, (id, stack)) in unplaced.into_iter().enumerate() {
-        cards.push((
-            id,
-            Position {
-                x: 12.0 + (n % columns) as f32 * STEP,
-                y: top + (n / columns) as f32 * 116.0,
-                size: None,
-            },
-            stack,
-        ));
-    }
-    let anchors: BTreeMap<_, _> = cards
-        .iter()
-        .filter(|(id, _, stack)| *stack == Some(*id))
-        .map(|(id, point, _)| (*id, (point.x, point.y)))
-        .collect();
-    let mut depth = BTreeMap::<u64, usize>::new();
-    for (id, point, stack) in &mut cards {
-        if let Some(stack) = stack.filter(|stack| stack != id) {
-            if let Some((x, y)) = anchors.get(&stack) {
-                let depth = depth.entry(stack).or_default();
-                *depth += 1;
-                point.x = x + 6.0 * *depth as f32;
-                point.y = y + 6.0 * *depth as f32;
-            }
-        }
-    }
+    let ids = bin_cards(
+        &document,
+        &index,
+        bin.map_or("/project/root", |bin| bin.path.as_str()),
+    );
+    let cards = layout(&index, &ids, request.width.unwrap_or(800.0));
     let mut affected = items.clone();
     if !on {
         for id in items {
@@ -252,10 +197,178 @@ pub fn stack_cards(params: Value, on: bool) -> Result<Value> {
     Ok(json!({"document":document.envelope,"documentText":text,"freeformEdit":true}))
 }
 
+fn bin_cards(document: &SourceProjectDocument, index: &ProjectIndex<'_>, path: &str) -> Vec<u64> {
+    document
+        .envelope
+        .pointer(path)
+        .and_then(|bin| bin["children"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry["Item"].as_u64())
+        .filter(|id| {
+            index.item(*id).is_some_and(|item| {
+                item.pointer("/kind/Graphic").is_none()
+                    || document.project()["source_graphics"]
+                        .get(id.to_string())
+                        .is_some()
+            })
+        })
+        .collect()
+}
+
+fn layout(index: &ProjectIndex<'_>, ids: &[u64], width: f32) -> Vec<(u64, Position, Option<u64>)> {
+    let mut cards = Vec::new();
+    let mut unplaced = Vec::new();
+    let mut bottom = 0.0_f32;
+    for &id in ids {
+        let item = index.item(id).unwrap();
+        let stack = stack(item).and_then(|id| id.parse::<u64>().ok());
+        if let Some(position) = position(item) {
+            bottom =
+                bottom.max(position.y + position.size.unwrap_or(CARD_SIZE) * 9.0 / 16.0 + 40.0);
+            cards.push((id, position, stack));
+        } else {
+            unplaced.push((id, stack));
+        }
+    }
+    let columns = ((width - 12.0) / STEP).floor().max(1.0) as usize;
+    let top = if bottom > 0.0 {
+        ((bottom + 8.0) / GRID).round() * GRID
+    } else {
+        12.0
+    };
+    for (n, (id, stack)) in unplaced.into_iter().enumerate() {
+        cards.push((
+            id,
+            Position {
+                x: 12.0 + (n % columns) as f32 * STEP,
+                y: top + (n / columns) as f32 * 116.0,
+                size: None,
+            },
+            stack,
+        ));
+    }
+    let anchors: BTreeMap<_, _> = cards
+        .iter()
+        .filter(|(id, _, stack)| *stack == Some(*id))
+        .map(|(id, point, _)| (*id, (point.x, point.y)))
+        .collect();
+    let mut depth = BTreeMap::<u64, usize>::new();
+    for (id, point, stack) in &mut cards {
+        if let Some(stack) = stack.filter(|stack| stack != id) {
+            if let Some((x, y)) = anchors.get(&stack) {
+                let depth = depth.entry(stack).or_default();
+                *depth += 1;
+                point.x = x + 6.0 * *depth as f32;
+                point.y = y + 6.0 * *depth as f32;
+            }
+        }
+    }
+    cards
+}
+
 fn format_position(x: f32, y: f32, size: Option<f32>) -> String {
     let (x, y) = (x.round(), y.round());
     match size {
         Some(size) => format!("{x},{y},{}", size.round()),
         None => format!("{x},{y}"),
     }
+}
+
+const ARRANGEMENT: &str = "Freeform Arrangement: ";
+
+pub(crate) fn arrangement_names(item: &Value) -> Vec<&str> {
+    item["metadata"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(key, _)| key.strip_prefix(ARRANGEMENT))
+        .collect()
+}
+
+pub const ARRANGEMENT_COMMANDS: &[&str] = &[
+    "project.freeform.arrangements",
+    "project.freeform.saveArrangement",
+    "project.freeform.restoreArrangement",
+    "project.freeform.deleteArrangement",
+];
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArrangementRequest {
+    document: Value,
+    name: Option<String>,
+    bin: Option<Value>,
+    width: Option<f32>,
+}
+
+pub fn arrangement(command: &str, params: Value) -> Result<Value> {
+    let request: ArrangementRequest = serde_json::from_value(params)?;
+    let bytes = match request.document {
+        Value::String(text) => text.into_bytes(),
+        value => serde_json::to_vec(&value)?,
+    };
+    let mut document = SourceProjectDocument::read(&bytes)?;
+    let index = ProjectIndex::new(&document)?;
+    let bin = super::filmcraft_project_inspect::id(request.bin)?;
+    let bins = super::filmcraft_bin_rename::locations(&document)?;
+    let path = bins
+        .iter()
+        .find(|entry| Some(entry.id) == bin)
+        .map_or("/project/root", |entry| entry.path.as_str());
+    let ids = bin_cards(&document, &index, path);
+    let names = || {
+        ids.iter()
+            .filter_map(|id| index.item(*id))
+            .flat_map(arrangement_names)
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    if command == ARRANGEMENT_COMMANDS[0] {
+        return Ok(json!({"arrangements":names()}));
+    }
+    let name = request.name.context("arrangement name is required")?;
+    let save = command == ARRANGEMENT_COMMANDS[1];
+    let restore = command == ARRANGEMENT_COMMANDS[2];
+    let name = if save { name.trim() } else { &name };
+    ensure!(!save || !name.is_empty(), "arrangement name is empty");
+    ensure!(!restore || names().contains(name), "arrangement is absent");
+    let key = format!("{ARRANGEMENT}{name}");
+    let positions: BTreeMap<_, _> = if save {
+        layout(&index, &ids, request.width.unwrap_or(800.0))
+            .into_iter()
+            .map(|(id, point, _)| {
+                (
+                    id,
+                    format_position(point.x, point.y, Some(point.size.unwrap_or(CARD_SIZE))),
+                )
+            })
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+    for id in ids {
+        let item = &mut document.envelope["project"]["items"][id.to_string()];
+        if item["metadata"].is_null() {
+            if !save {
+                continue;
+            }
+            item["metadata"] = json!({});
+        }
+        let metadata = item["metadata"]
+            .as_object_mut()
+            .context("invalid item metadata")?;
+        if save {
+            metadata.insert(key.clone(), json!(positions[&id]));
+        } else if restore {
+            if let Some(position) = metadata.get(&key).cloned() {
+                metadata.insert(POSITION.into(), position);
+            } else {
+                metadata.remove(POSITION);
+            }
+        } else {
+            metadata.remove(&key);
+        }
+    }
+    let text = String::from_utf8(document.encode_preserved()?)?;
+    Ok(json!({"document":document.envelope,"documentText":text,"freeformEdit":true}))
 }

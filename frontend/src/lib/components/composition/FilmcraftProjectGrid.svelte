@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { on } from 'svelte/events'
-  import { editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
+  import { editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
   let { project, sources, token, sequenceId, clipId, onedit, selected = $bindable<string[]>([]), disabled = false }: {
@@ -11,6 +11,8 @@
   const pageSize = 12
   let open = $state(false)
   let freeform = $state(false)
+  let arrangementName = $state('')
+  let arrangementChoice = $state('')
   let snapCards = $state(false)
   let canvasWidth = $state(800)
   let moving = $state(false)
@@ -30,6 +32,11 @@
   const bins = $derived(project.projectBins ?? [])
   const items = $derived(project.projectItems ?? [])
   const activeBin = $derived(bins.find(folder => folder.id === bin) ?? bins.find(folder => folder.parentId === null))
+  const arrangements = $derived.by(() => {
+    const ids = activeBin?.itemIds && new Set(activeBin.itemIds)
+    return [...new Set(items.filter(item => !ids || ids.has(item.id)).flatMap(item => item.freeformArrangements ?? []))].sort()
+  })
+  const currentArrangement = $derived(arrangements.includes(arrangementChoice) ? arrangementChoice : arrangements[0] ?? '')
   const parent = $derived(bins.find(folder => folder.id === activeBin?.parentId))
   const search = $derived(query.trim().toLocaleLowerCase())
   const entries = $derived.by(() => {
@@ -150,6 +157,19 @@
     await editFreeform(token, (owner, document, signal) => stackFilmcraftProjectCards(owner, stack, { document, items, width: canvasWidth }, signal))
   }
 
+  function editArrangement(command: FilmcraftArrangementCommand) {
+    if (!token || disabled || moving || marking) return
+    const save = command === 'project.freeform.saveArrangement'
+    const name = save ? arrangementName.trim() : currentArrangement
+    if (!name) return
+    const bin = activeBin?.id
+    const width = canvasWidth
+    if (save) arrangementChoice = name
+    void editFreeform(token, (owner, document, signal) => editFilmcraftArrangement(owner, command, {
+      document, name, ...(bin === undefined ? {} : { bin }), ...(save ? { width } : {}),
+    }, signal))
+  }
+
   async function editFreeform(owner: string, run: (owner: string, document: string, signal: AbortSignal) => Promise<FilmcraftImportResult>) {
     const expected = { document: project.documentText, sequenceId, clipId, token: owner }
     const request = new AbortController()
@@ -170,6 +190,8 @@
 
   function enter(id: string) {
     bin = id
+    arrangementChoice = ''
+    arrangementName = ''
     hover = undefined
     query = ''
     page = 0
@@ -254,6 +276,24 @@
         <button type="button" aria-label="Следующая страница карточек" disabled={currentPage + 1 >= pages} onclick={() => { page = currentPage + 1; hover = undefined }}>›</button>
       {/if}
     </div>
+    {#if freeform}
+      <div class="toolbar">
+        <label>Имя раскладки <input bind:value={arrangementName} /></label>
+        <button type="button" disabled={disabled || !token || moving || marking || !arrangementName.trim()}
+          onclick={() => editArrangement('project.freeform.saveArrangement')}>Сохранить раскладку</button>
+        {#if arrangements.length}
+          <label>Сохранённые раскладки
+            <select value={currentArrangement} onchange={event => { arrangementChoice = event.currentTarget.value }}>
+              {#each arrangements as name (name)}<option value={name}>{name}</option>{/each}
+            </select>
+          </label>
+          <button type="button" disabled={disabled || !token || moving || marking}
+            onclick={() => editArrangement('project.freeform.restoreArrangement')}>Восстановить раскладку</button>
+          <button type="button" disabled={disabled || !token || moving || marking}
+            onclick={() => editArrangement('project.freeform.deleteArrangement')}>Удалить раскладку</button>
+        {/if}
+      </div>
+    {/if}
     {#if markError}<p role="alert">{markError}</p>{/if}
     {#if visible.length}
       {#if freeform}

@@ -71,3 +71,65 @@ fn unstacking_the_lead_releases_and_spreads_all_members_in_one_snapshot() {
     assert_eq!(metadata("2")["Freeform Position"], "164,12");
     assert!(stack_cards(json!({"document":document,"items":["1","999"]}), true).is_err());
 }
+
+#[test]
+fn named_arrangements_preserve_size_and_restore_only_the_requested_bin() {
+    use video_kadr_backend::domain::filmcraft_freeform::arrangement;
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let mut document = fixture["cases"][0]["document"].clone();
+    document["project"]["root"]["children"] =
+        json!([{"Item":1},{"Bin":{"id":99,"name":"Child","children":[{"Item":2}]}},{"Item":6}]);
+    document["project"]["items"]["1"]["metadata"]["Freeform Position"] = json!("15,24,140");
+    let saved = arrangement(
+        "project.freeform.saveArrangement",
+        json!({"document":document,"name":"  Rough cut  ","bin":"0"}),
+    )
+    .unwrap();
+    let mut document = saved["document"].clone();
+    assert_eq!(
+        document["project"]["items"]["1"]["metadata"]["Freeform Arrangement: Rough cut"],
+        "15,24,140"
+    );
+    assert!(
+        document["project"]["items"]["2"]["metadata"]["Freeform Arrangement: Rough cut"].is_null()
+    );
+    document["project"]["items"]["1"]["metadata"]["Freeform Position"] = json!("90,100");
+    document["project"]["items"]["2"]["metadata"]["Freeform Position"] = json!("300,200");
+    let names = arrangement(
+        "project.freeform.arrangements",
+        json!({"document":document,"bin":"0"}),
+    )
+    .unwrap();
+    assert_eq!(names["arrangements"], json!(["Rough cut"]));
+    let restored = arrangement(
+        "project.freeform.restoreArrangement",
+        json!({"document":document,"name":"Rough cut","bin":"0"}),
+    )
+    .unwrap();
+    assert_eq!(
+        restored["document"]["project"]["items"]["1"]["metadata"]["Freeform Position"],
+        "15,24,140"
+    );
+    assert_eq!(
+        restored["document"]["project"]["items"]["2"]["metadata"]["Freeform Position"],
+        "300,200"
+    );
+    let deleted = arrangement(
+        "project.freeform.deleteArrangement",
+        json!({"document":restored["documentText"],"name":"Rough cut","bin":"0"}),
+    )
+    .unwrap();
+    assert!(deleted["document"]["project"]["items"]["1"]["metadata"]
+        ["Freeform Arrangement: Rough cut"]
+        .is_null());
+    assert_eq!(
+        deleted["document"]["project"]["items"]["1"]["metadata"]["Freeform Position"],
+        "15,24,140"
+    );
+    assert!(arrangement(
+        "project.freeform.restoreArrangement",
+        json!({"document":deleted["documentText"],"name":"Rough cut","bin":"0"})
+    )
+    .is_err());
+}
