@@ -27,6 +27,8 @@
     ['mediaDuration', 'Длительность'], ['videoInfo', 'Сведения о видео'], ['audioInfo', 'Сведения о звуке'],
     ['dateCreated', 'Дата создания'],
   ] as const satisfies readonly (readonly [keyof FilmcraftIconSortKeys | 'user' | 'name' | 'label', string])[]
+  const viewStorageKey = 'video-kadr.filmcraft-project-view.v1'
+  let iconSize = $state(110)
   let sortColumn = $state<(typeof sortOptions)[number][0]>('user')
   let descending = $state(false)
   let page = $state(0)
@@ -36,6 +38,30 @@
   let markError = $state('')
   let markRequest: AbortController | undefined
 
+
+  $effect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(viewStorageKey) ?? 'null')
+      if (!saved || typeof saved !== 'object') return
+      const column = sortOptions.find(([column]) => column === saved.column)
+      if (column) sortColumn = column[0]
+      descending = column?.[0] !== 'user' && Boolean(column) && saved.descending === true
+      if (typeof saved.hover === 'boolean') hoverEnabled = saved.hover
+      if (typeof saved.freeform === 'boolean') freeform = saved.freeform
+      if (typeof saved.snap === 'boolean') snapCards = saved.snap
+      if (typeof saved.iconSize === 'number' && Number.isFinite(saved.iconSize)) {
+        iconSize = Math.max(48, Math.min(400, saved.iconSize))
+      }
+    } catch { /* Use defaults when browser storage is unavailable. */ }
+  })
+
+  function saveView() {
+    try {
+      localStorage.setItem(viewStorageKey, JSON.stringify({
+        column: sortColumn, descending, hover: hoverEnabled, freeform, snap: snapCards, iconSize,
+      }))
+    } catch { /* Keep the current view usable without storage. */ }
+  }
 
   const bins = $derived(project.projectBins ?? [])
   const items = $derived(project.projectItems ?? [])
@@ -296,10 +322,10 @@
       {#if parent}<button type="button" disabled={disabled} onclick={() => enter(parent.id)}>На уровень выше</button>{/if}
       {#if activeBin}<span>{activeBin.name}</span>{/if}
       <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { query = event.currentTarget.value; page = 0; hover = undefined }} /></label>
-      <label><input type="checkbox" bind:checked={hoverEnabled} onchange={() => { hover = undefined }} />Просмотр при наведении</label>
-      <label><input type="checkbox" bind:checked={freeform} onchange={() => { hover = undefined; drag = undefined }} />Свободная раскладка</label>
+      <label><input type="checkbox" checked={hoverEnabled} onchange={event => { hoverEnabled = event.currentTarget.checked; hover = undefined; saveView() }} />Просмотр при наведении</label>
+      <label><input type="checkbox" checked={freeform} onchange={event => { freeform = event.currentTarget.checked; hover = undefined; drag = undefined; saveView() }} />Свободная раскладка</label>
       {#if freeform}
-        <label><input type="checkbox" bind:checked={snapCards} />Привязка к сетке</label>
+        <label><input type="checkbox" checked={snapCards} onchange={event => { snapCards = event.currentTarget.checked; saveView() }} />Привязка к сетке</label>
         <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', 1)}>Увеличить карточки</button>
         <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', -1)}>Уменьшить карточки</button>
         <button type="button" disabled={disabled || !token || moving || marking} onclick={() => editLayout('project.freeform.alignToGrid')}>Выровнять по сетке</button>
@@ -308,12 +334,17 @@
         <button type="button" disabled={disabled || !token || moving || marking || !canUnstack} onclick={() => editStack(false)}>Разобрать стек</button>
       {/if}
       {#if !freeform}
+        <label>Размер карточек
+          <input type="range" min="48" max="400" step="1" value={iconSize}
+            oninput={event => { iconSize = event.currentTarget.valueAsNumber }}
+            onchange={saveView} />
+        </label>
         <label>Сортировка карточек
-          <select value={sortColumn} onchange={event => { sortColumn = event.currentTarget.value as typeof sortColumn; descending = false; page = 0; hover = undefined }}>
+          <select value={sortColumn} onchange={event => { sortColumn = event.currentTarget.value as typeof sortColumn; descending = false; page = 0; hover = undefined; saveView() }}>
             {#each sortOptions as [value, label] (value)}<option {value}>{label}</option>{/each}
           </select>
         </label>
-        <label><input type="checkbox" bind:checked={descending} disabled={sortColumn === 'user'} onchange={() => { page = 0; hover = undefined }} />По убыванию</label>
+        <label><input type="checkbox" checked={descending} disabled={sortColumn === 'user'} onchange={event => { descending = event.currentTarget.checked; page = 0; hover = undefined; saveView() }} />По убыванию</label>
       {/if}
       {#if !freeform && pages > 1}
         <button type="button" aria-label="Предыдущая страница карточек" disabled={currentPage === 0} onclick={() => { page = currentPage - 1; hover = undefined }}>‹</button>
@@ -349,7 +380,7 @@
         </div>
       {/if}
       <div class:scroll={freeform} bind:clientWidth={canvasWidth}>
-      <ul class:freeform aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
+      <ul class:freeform style:--icon-size={`${iconSize}px`} aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
         {#each visible as entry (entry.kind === 'bin' ? `bin-${entry.folder.id}` : `item-${entry.item.id}`)}
           {#if entry.kind === 'bin'}
             {#if !freeform}<li><button type="button" class="folder" disabled={disabled} onclick={() => enter(entry.folder.id)}>Папка «{entry.folder.name}»</button></li>{/if}
@@ -392,7 +423,7 @@
   details { flex-basis: 100%; min-width: 0; }
   summary { cursor: pointer; }
   .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-block: 0.5rem; }
-  ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); gap: 0.5rem; padding: 0; list-style: none; }
+  ul { display: grid; grid-template-columns: repeat(auto-fill, min(100%, var(--icon-size))); gap: 0.5rem; padding: 0; list-style: none; }
   li { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 0.3rem; background: var(--panel); }
   .scroll { overflow: auto; max-height: 65vh; }
   ul.freeform { display: block; position: relative; margin: 0; }
