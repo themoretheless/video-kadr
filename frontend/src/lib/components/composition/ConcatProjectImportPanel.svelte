@@ -7,6 +7,7 @@
  import {importConcatProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
  import {concatImportMedia,concatImportFonts,concatImportStillDestinations,concatImportVideoDestinations,savedStillChoices,savedVideoChoices,type SavedStillChoice,type ConcatImportFont,type ConcatImportMedia,type ConcatImportSource} from '$lib/composition/concatProjectImport'
  import {concatTemplateFolders,concatTemplateSlotStats,readConcatTemplateFolder} from '$lib/composition/concatTemplateFolder'
+ import {restoreConcatTemplateCaptions} from '$lib/composition/concatTemplateCaptions'
  import {readConcatTemplateZip} from '$lib/composition/concatTemplateZip'
  import {doUpload} from '$lib/state/store.svelte'
  import {compositionSourceFromMediaInfo} from '$lib/state/composition/media.svelte'
@@ -20,8 +21,8 @@
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
- type TemplateDetails = Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount' | 'poster' | 'subtitleDocuments'>
- let templateFolders = $state<(Omit<TemplateDetails, 'subtitleDocuments'> & { name: string; files: readonly File[] })[]>([])
+ type TemplateDetails = Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount' | 'poster' | 'subtitleDocuments' | 'captionClips'>
+ let templateFolders = $state<(Omit<TemplateDetails, 'subtitleDocuments' | 'captionClips'> & { name: string; files: readonly File[] })[]>([])
  let selectedFolder = $state<number>()
  let templateProjectName = $state('')
  let templateDetails = $state<TemplateDetails>()
@@ -118,7 +119,7 @@
    document=folder.document;media=folder.media;fonts=folder.fonts
    importingTemplate=true
    templateProjectName=importedName(folder.document)
-   templateDetails={format:folder.format,slotCount:folder.slotCount,poster:folder.poster,subtitleDocuments:folder.subtitleDocuments}
+   templateDetails={format:folder.format,slotCount:folder.slotCount,poster:folder.poster,subtitleDocuments:folder.subtitleDocuments,captionClips:folder.captionClips}
    uploadedSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
     await loadFont(font.path,font.file,false)
@@ -257,6 +258,13 @@
    }
    const content = { ...root.content, metadata: { ...root.content.metadata, subtitleDocuments: [...subtitleDocuments] } }
    candidate = { ...candidate, compositions: { ...candidate.compositions, [candidate.root]: { ...root, content } } }
+  }
+  try {
+   candidate = restoreConcatTemplateCaptions(candidate, report?.timelineIds ?? {}, templateDetails?.captionClips)
+  } catch (failure) {
+   busy = false
+   error = failure instanceof Error ? failure.message : String(failure)
+   return
   }
   const accepted = await adoptImportedConcatProject(candidate, chosenName || importedName(document), () => {
    if (serial !== request || identity() !== expectedContext) throw new Error('Контекст импорта изменился')

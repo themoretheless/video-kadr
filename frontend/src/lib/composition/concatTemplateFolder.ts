@@ -1,3 +1,4 @@
+import { CONCAT_CAPTION_CLIPS, readConcatTemplateCaptions } from './concatTemplateCaptions'
 import { CONCAT_SUBTITLE_SIDECAR, MAX_SUBTITLE_SIDECAR_BYTES, validSubtitleDocuments } from '../subtitles/documents'
 import { concatImportFonts, concatImportMedia } from './concatProjectImport'
 
@@ -82,10 +83,12 @@ export async function readConcatTemplateFolder(files: readonly File[]) {
     if (!validSubtitleDocuments(decoded)) throw new Error('Некорректный пул субтитров шаблона')
     subtitleDocuments = decoded
   }
+  const captionFile = index.get(CONCAT_CAPTION_CLIPS)
+  const captionClips = captionFile ? await readConcatTemplateCaptions(captionFile, manifest) : undefined
   const cover = index.get('poster.jpg')
   const poster = cover && cover.size > 0 && cover.size <= 8 * 1024 * 1024 ? cover : undefined
   return {
-    document, media, design, fonts, poster, subtitleDocuments,
+    document, media, design, fonts, poster, subtitleDocuments, captionClips,
     format: outputFormat(document),
     slotCount: media.filter(item => item.placeholder).length,
   }

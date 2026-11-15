@@ -74,7 +74,21 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     assert_eq!(reopened.document.pointer("/compositions/root/content/metadata/subtitleDocuments"), Some(&subtitle_documents));
     let app = support::router(state.clone());
     let mut portable = document.clone();
-    portable["compositions"]["root"]["content"]["tracks"] = json!([]);
+    let caption = json!({
+        "id":"dialogue-caption", "timelineStartTick":1000000, "timelineEndTick":2000000,
+        "text":"Dialogue", "textAnchor":[0.5,1.0], "textBoxWidth":14,
+        "style":{"fontFamily":"Noto Sans","fontSize":1,"align":"center",
+            "color":{"red":1,"green":1,"blue":1,"alpha":1},
+            "background":{"red":0,"green":0,"blue":0,"alpha":0},
+            "stroke":{"red":0,"green":0,"blue":0,"alpha":0},"strokeWidth":0,
+            "shadow":{"red":0.2,"green":0.3,"blue":0.4,"alpha":0.5},"shadowX":2,"shadowY":-1},
+        "transform":video_kadr_backend::domain::composition::TransformSpec::default(),
+        "opacity":{"mode":"constant","value":1}, "enabled":true
+    });
+    portable["compositions"]["root"]["content"]["tracks"] = json!([
+        {"id":"dialogue-lane","kind":"text","name":"Dialogue","clips":[caption]}
+    ]);
+    portable["compositions"]["root"]["content"]["metadata"]["captionTextTracks"] = json!(["dialogue-lane"]);
     use base64::{engine::general_purpose::STANDARD, Engine};
     let mut cover = std::io::Cursor::new(Vec::new());
     image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(16, 8, image::Rgb([25, 50, 75])))
@@ -101,10 +115,21 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     {
         use std::io::Read;
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
-        assert_eq!(zip.len(), 4);
+        assert_eq!(zip.len(), 5);
         let packaged_subtitles: serde_json::Value = serde_json::from_reader(zip.by_name("video-kadr-subtitles.json").unwrap()).unwrap();
         assert_eq!(packaged_subtitles, subtitle_documents);
-        let manifest: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
+        let mut manifest_bytes = Vec::new();
+        zip.by_name("template.json").unwrap().read_to_end(&mut manifest_bytes).unwrap();
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
+        let sidecar: serde_json::Value = serde_json::from_reader(zip.by_name("video-kadr-caption-clips.json").unwrap()).unwrap();
+        use sha2::{Digest, Sha256};
+        assert_eq!(sidecar["manifestSha256"], format!("{:x}", Sha256::digest(&manifest_bytes)));
+        assert_eq!(sidecar["clips"][0][0], "root");
+        let saved_caption = &sidecar["clips"][0][1];
+        assert_eq!(saved_caption["style"]["shadow"], caption["style"]["shadow"]);
+        assert_eq!(saved_caption["style"]["shadowX"].as_f64(), Some(2.0));
+        assert_eq!(saved_caption["style"]["shadowY"].as_f64(), Some(-1.0));
+        assert_eq!(manifest["timelines"][0]["clips"][0]["text"]["shadow"], true);
         assert_eq!(manifest["name"], "Portable Concat");
         assert_eq!(manifest["video"], manifest["timelines"][0]["video"]);
         let media = manifest["media"].as_array().unwrap();

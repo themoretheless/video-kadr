@@ -205,14 +205,39 @@ it('uploads the selected template design and binds its bundled font before conve
   }
   const cover = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAEsAAQEAAAAAAAAAAAAAAAAAAAAHAQEAAAAAAAAAAAAAAAAAAAAFEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAEAAQAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AlYBIa//Z'
   const subtitles = [{ id: 'quotes', name: 'quotes.srt', text: '1\n00:00:00,000 --> 00:00:01,000\nDialogue' }]
+  const manifest = JSON.stringify(template)
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(manifest))
+  const manifestSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  const transparent = { red: 0, green: 0, blue: 0, alpha: 0 }
+  const caption = {
+   id: 'captions', timelineStartTick: 1, timelineEndTick: 1000000, text: 'Dialogue', enabled: true,
+   style: { fontFamily: 'Noto Sans', fontSize: 12, color: { ...transparent, alpha: 1 }, background: transparent,
+    stroke: transparent, strokeWidth: 0, shadow: { ...transparent, red: 0.5, alpha: 0.25 }, shadowX: 4, shadowY: -2 },
+   transform: { x: { mode: 'constant', value: 0 }, y: { mode: 'constant', value: 0 },
+    scaleX: { mode: 'constant', value: 1 }, scaleY: { mode: 'constant', value: 1 },
+    rotationDegrees: { mode: 'constant', value: 0 }, anchorX: 0.5, anchorY: 0.5 },
+   opacity: { mode: 'constant', value: 1 },
+  } as const
+  const node = project.compositions.imported!
+  const converted: NativeNestedProject = { ...project, compositions: { imported: {
+   ...node, content: { ...node.content, tracks: [{
+    id: 'lane-text', kind: 'text', name: 'Dialogue', hidden: false, locked: false,
+    clips: [{ ...caption, concatTitle: { shadow: true } }],
+   }] },
+  } } }
+  vi.mocked(importConcatProject).mockResolvedValueOnce({
+   schemaVersion: 1, status: 'converted', project: converted, diagnostics: [],
+   sourceDocument: template, timelineIds: { TL1: 'imported' },
+  })
   const files = [
-   new File([JSON.stringify(template)], 'template.json'),
+   new File([manifest], 'template.json'),
+   new File([JSON.stringify({ manifestSha256, clips: [['TL1', caption]] })], 'video-kadr-caption-clips.json'),
    new File([JSON.stringify(subtitles)], 'video-kadr-subtitles.json'),
    new File(['movie'], 'design.mov'),
    new File(['font'], 'title.otf'),
    new File([Uint8Array.from(atob(cover), byte => byte.charCodeAt(0))], 'poster.jpg'),
   ]
-  for (const [index, path] of ['template.json', 'video-kadr-subtitles.json', 'assets/design.mov', 'assets/title.otf', 'poster.jpg'].entries()) {
+  for (const [index, path] of ['template.json', 'video-kadr-caption-clips.json', 'video-kadr-subtitles.json', 'assets/design.mov', 'assets/title.otf', 'poster.jpg'].entries()) {
    Object.defineProperty(files[index]!, 'webkitRelativePath', { value: `Design/${path}` })
   }
   const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
@@ -226,7 +251,7 @@ it('uploads the selected template design and binds its bundled font before conve
   expect(document.querySelector('img[alt="Обложка шаблона Concat"]')?.getAttribute('src')).toBe('blob:concat-poster')
   expect(document.body.textContent).toContain('1920 × 1080 · 29,97 кадр/с')
   expect(document.body.textContent).toContain('Слоты: 0')
-  expect(upload).toHaveBeenCalledExactlyOnceWith(files[2], false)
+  expect(upload).toHaveBeenCalledExactlyOnceWith(files[3], false)
   click('Проверить импорт Concat')
   await vi.waitFor(() => expect(importConcatProject).toHaveBeenCalledWith(
    template, { m1: expect.objectContaining({ id: 'bundled' }) }, expect.any(AbortSignal),
@@ -240,6 +265,9 @@ it('uploads the selected template design and binds its bundled font before conve
   click('Открыть импорт как новый проект')
   await vi.waitFor(() => expect(nestedComposition.name).toBe('Client cut'))
   expect(nestedComposition.document?.coverJpeg).toBe(cover)
+  const restored = nestedComposition.document?.compositions.imported?.content
+  expect(restored?.metadata?.captionTextTracks).toEqual(['lane-text'])
+  expect(restored?.tracks[0]?.clips).toEqual([caption])
   expect(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments).toEqual(subtitles)
   undoNestedComposition()
   expect(nestedComposition.document).toBeNull()

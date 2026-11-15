@@ -9,6 +9,7 @@ use crate::{
     template_bundle,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 
 #[derive(serde::Deserialize)]
@@ -197,6 +198,29 @@ pub async fn export(
         if manifest.len() > 4 * 1024 * 1024 {
             return Err(AppError::payload_too_large("Файл Concat превышает 4 МиБ"));
         }
+        let mut authored_captions = Vec::new();
+        for (timeline_id, node) in &native.compositions {
+            let Some(metadata) = &node.content.metadata else { continue };
+            for track in &node.content.tracks {
+                if let crate::domain::composition::CompositionTrack::Text { id, clips, .. } = track {
+                    if metadata.caption_text_tracks.iter().any(|role| role == id.as_str()) {
+                        authored_captions.extend(clips.iter().map(|clip| (timeline_id, clip)));
+                    }
+                }
+            }
+        }
+        let captions_sidecar = if authored_captions.is_empty() {
+            None
+        } else {
+            let bytes = serde_json::to_vec(&serde_json::json!({
+                "manifestSha256": format!("{:x}", Sha256::digest(&manifest)),
+                "clips": authored_captions,
+            })).map_err(|error| AppError::internal("encode template captions", error))?;
+            if bytes.len() > 8 * 1024 * 1024 {
+                return Err(AppError::payload_too_large("Дорожки субтитров шаблона превышают 8 МиБ"));
+            }
+            Some(bytes)
+        };
         let archive = TemporaryFile::new(output);
         (|| -> anyhow::Result<()> {
             let file = std::fs::File::options()
@@ -210,6 +234,10 @@ pub async fn export(
             zip.write_all(&manifest)?;
             if let Some(bytes) = subtitle_sidecar {
                 zip.start_file("video-kadr-subtitles.json", options)?;
+                zip.write_all(&bytes)?;
+            }
+            if let Some(bytes) = captions_sidecar {
+                zip.start_file("video-kadr-caption-clips.json", options)?;
                 zip.write_all(&bytes)?;
             }
             if let Some(bytes) = poster {
