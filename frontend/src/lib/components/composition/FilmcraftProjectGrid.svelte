@@ -31,6 +31,15 @@
     ['mediaDuration', 'Длительность'], ['videoInfo', 'Сведения о видео'], ['audioInfo', 'Сведения о звуке'],
     ['dateCreated', 'Дата создания'],
   ] as const satisfies readonly (readonly [keyof FilmcraftIconSortKeys | 'user' | 'name' | 'label', string])[]
+  type ListOption = Exclude<(typeof sortOptions)[number], readonly ['user', string]>
+  type ListColumn = ListOption[0]
+  type Column = { key: ListColumn; width: number }
+  const listOptions = sortOptions.filter((entry): entry is ListOption => entry[0] !== 'user')
+  const defaultWidth = (key: ListColumn) => key === 'name' ? 220 : 140
+  const defaultColumns: ListColumn[] = ['name', 'mediaType', 'mediaDuration']
+  let columns = $state<Column[]>(defaultColumns.map(key => ({ key, width: defaultWidth(key) })))
+  let listSort = $state<ListColumn>()
+  let listDescending = $state(false)
   const viewStorageKey = 'video-kadr.filmcraft-project-view.v1'
   let iconSize = $state(110)
   let sortColumn = $state<(typeof sortOptions)[number][0]>('user')
@@ -57,6 +66,20 @@
       if (typeof saved.previewArea === 'boolean') previewArea = saved.previewArea
       if (fontSizes.some(([size]) => size === saved.fontSize)) fontSize = saved.fontSize
       if (typeof saved.snap === 'boolean') snapCards = saved.snap
+      if (Array.isArray(saved.columns)) {
+        const unique = new SvelteSet<ListColumn>()
+        const restored: Column[] = []
+        for (const candidate of saved.columns) {
+          const option = listOptions.find(([key]) => key === candidate?.key)
+          if (!option || unique.has(option[0]) || !Number.isFinite(candidate.width)) continue
+          unique.add(option[0])
+          restored.push({ key: option[0], width: Math.min(800, Math.max(40, candidate.width)) })
+        }
+        if (!unique.has('name')) restored.unshift({ key: 'name', width: defaultWidth('name') })
+        columns = restored
+      }
+      listSort = listOptions.find(([key]) => key === saved.listSort)?.[0]
+      listDescending = saved.listDescending === true
       if (typeof saved.iconSize === 'number' && Number.isFinite(saved.iconSize)) {
         iconSize = Math.max(48, Math.min(400, saved.iconSize))
       }
@@ -66,7 +89,7 @@
   function saveView() {
     try {
       localStorage.setItem(viewStorageKey, JSON.stringify({
-        column: sortColumn, descending, hover: hoverEnabled, freeform, snap: snapCards, iconSize, list: listView, listThumbnails, previewArea, fontSize,
+        column: sortColumn, descending, hover: hoverEnabled, freeform, snap: snapCards, iconSize, list: listView, listThumbnails, previewArea, fontSize, columns, listSort, listDescending,
       }))
     } catch { /* Keep the current view usable without storage. */ }
   }
@@ -106,8 +129,8 @@
       ? [...memberIds].flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
       : items
     const matches = available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
-    if (!freeform && sortColumn !== 'user') {
-      const column = sortColumn
+    const column = listView ? listSort : sortColumn
+    if (!freeform && column && column !== 'user') {
       const key = (item: typeof items[number]) => column === 'name' ? item.name : column === 'label' ? item.label ?? '' : item.iconSort?.[column] ?? ''
       const compare = (left: string, right: string) => {
         const a = left.toLowerCase(), b = right.toLowerCase()
@@ -116,7 +139,7 @@
       matches.sort((left, right) => {
         const a = key(left), b = key(right)
         const order = typeof a === 'number' && typeof b === 'number' ? a - b : compare(String(a), String(b))
-        return (order || compare(left.name, right.name)) * (descending ? -1 : 1)
+        return (order || compare(left.name, right.name)) * ((listView ? listDescending : descending) ? -1 : 1)
       })
     }
     return [
@@ -315,6 +338,45 @@
     }
   }
 
+  const listTrackWidths = $derived([...(listThumbnails ? ['64px'] : []), ...columns.map(column => `${column.width}px`)].join(' '))
+  const columnCaption = (key: ListColumn) => listOptions.find(([value]) => value === key)?.[1] ?? key
+  function toggleColumn(key: ListColumn, enabled: boolean) {
+    if (key === 'name') return
+    columns = enabled ? [...columns, { key, width: defaultWidth(key) }] : columns.filter(column => column.key !== key)
+    if (!enabled && listSort === key) listSort = undefined
+    saveView()
+  }
+  function reorderColumn(index: number, delta: number) {
+    const moved = [...columns]
+    const next = index + delta
+    if (next < 0 || next >= moved.length) return
+    const [column] = moved.splice(index, 1)
+    if (!column) return
+    moved.splice(next, 0, column)
+    columns = moved
+    saveView()
+  }
+  function sortList(key: ListColumn) {
+    listDescending = listSort === key && !listDescending
+    listSort = key
+    page = 0
+    hover = undefined
+    saveView()
+  }
+  function columnValue(item: (typeof items)[number], key: Exclude<ListColumn, 'name'>) {
+    if (key === 'label') return item.label ?? ''
+    const value = item.iconSort?.[key]
+    if (key === 'mediaType') return value || item.kind
+    if (typeof value !== 'number') return value ?? ''
+    if (key === 'mediaDuration' || key === 'mediaStart' || key === 'mediaEnd') return `${(value / 254_016_000_000).toFixed(2)} с`
+    if (key === 'frameRate') return value > 0 ? value.toFixed(3).replace(/\.?0+$/, '') : ''
+    if (key === 'dateCreated') {
+      const date = new Date(value * 1000)
+      return value > 0 && Number.isFinite(date.getTime()) ? date.toLocaleDateString('ru-RU') : ''
+    }
+    return value
+  }
+
   function select(id: string, event: MouseEvent) {
     if (event.detail > 0 && suppressClick) { suppressClick = false; return }
     selected = event.metaKey || event.ctrlKey || event.shiftKey
@@ -374,6 +436,31 @@
         <button type="button" aria-label="Следующая страница карточек" disabled={currentPage + 1 >= pages} onclick={() => { page = currentPage + 1; hover = undefined }}>›</button>
       {/if}
     </div>
+    {#if listView}
+      <details>
+        <summary>Колонки списка</summary>
+        <div class="toolbar">
+          {#each listOptions as [key, label] (key)}
+            <label><input type="checkbox" checked={columns.some(column => column.key === key)} disabled={key === 'name'}
+              onchange={event => toggleColumn(key, event.currentTarget.checked)} />{label}</label>
+          {/each}
+        </div>
+        {#each columns as column, index (column.key)}
+          <div class="toolbar">
+            <label>Ширина «{columnCaption(column.key)}»
+              <input type="number" min="40" max="800" value={column.width} onchange={event => {
+                const width = event.currentTarget.valueAsNumber
+                if (Number.isFinite(width)) column.width = Math.min(800, Math.max(40, width))
+                event.currentTarget.value = String(column.width)
+                saveView()
+              }} />
+            </label>
+            <button type="button" disabled={index === 0} aria-label={`Колонка «${columnCaption(column.key)}» левее`} onclick={() => reorderColumn(index, -1)}>←</button>
+            <button type="button" disabled={index + 1 === columns.length} aria-label={`Колонка «${columnCaption(column.key)}» правее`} onclick={() => reorderColumn(index, 1)}>→</button>
+          </div>
+        {/each}
+      </details>
+    {/if}
     {#if freeform}
       <div class="toolbar">
         <label>Имя раскладки <input bind:value={arrangementName} /></label>
@@ -401,7 +488,17 @@
           {/each}
         </div>
       {/if}
-      <div class:scroll={freeform} bind:clientWidth={canvasWidth}>
+      <div class:scroll={freeform || listView} style:--list-columns={listTrackWidths} bind:clientWidth={canvasWidth}>
+      {#if listView}
+        <div class="list-header" aria-label="Сортировка списка">
+          {#if listThumbnails}<span></span>{/if}
+          {#each columns as column (column.key)}
+            <button type="button" aria-pressed={listSort === column.key} onclick={() => sortList(column.key)}>
+              {columnCaption(column.key)}{listSort === column.key ? listDescending ? ' ↓' : ' ↑' : ''}
+            </button>
+          {/each}
+        </div>
+      {/if}
       <ul class:freeform class:listView style:--filmcraft-font-size={`${fontSize}px`} style:--icon-size={`${iconSize}px`} aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
         {#each visible as entry (entry.kind === 'bin' ? `bin-${entry.folder.id}` : `item-${entry.item.id}`)}
           {#if entry.kind === 'bin'}
@@ -419,6 +516,8 @@
               {#if freeform && entry.item.freeformStack === entry.item.id && stackCount(entry.item.id) > 1}
                 <span class="stack-count">×{stackCount(entry.item.id)}</span>
               {/if}
+              {#if listView && listThumbnails && entry.item.kind !== 'Media' && entry.item.kind !== 'Sequence'}<span></span>{/if}
+              {#snippet itemButton()}
               <button type="button" class="item" aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onpointerdown={event => beginMove(entry.item.id, event)} onpointermove={trackMove} onpointerup={finishMove}
                 onpointercancel={() => { drag = undefined }} onlostpointercapture={() => { drag = undefined }}
                 onclick={event => select(entry.item.id, event)}
@@ -430,11 +529,14 @@
                   selected = [entry.item.id]
                   onopen(entry.item.id)
                 }}>{entry.item.name || entry.item.id}</button>
+              {/snippet}
               {#if listView}
-                <span class="media-type">{entry.item.iconSort?.mediaType || entry.item.kind}</span>
-                {#if entry.item.iconSort?.mediaDuration !== undefined}
-                  <span class="duration">{(entry.item.iconSort.mediaDuration / 254_016_000_000).toFixed(2)} с</span>
-                {/if}
+                {#each columns as column (column.key)}
+                  {#if column.key === 'name'}{@render itemButton()}
+                  {:else}<span class="list-cell">{columnValue(entry.item, column.key)}</span>{/if}
+                {/each}
+              {:else}
+                {@render itemButton()}
               {/if}
             </li>
           {/if}
@@ -455,11 +557,10 @@
   ul { font-size: var(--filmcraft-font-size); }
   ul :is(button, span) { font-size: inherit; }
   ul.listView { display: block; }
-  ul.listView li { display: flex; align-items: center; min-height: 1.85em; gap: 0.5rem; padding-inline: 0.25rem; margin-block: 0.15rem; }
-  ul.listView li :global(figure) { width: 64px; flex: 0 0 64px; }
-  ul.listView button.item { width: auto; flex: 1 1 auto; text-align: start; }
-  ul.listView .media-type { flex: 0 1 11em; overflow-wrap: anywhere; }
-  ul.listView .duration { flex: 0 0 6em; text-align: end; }
+  ul.listView li, .list-header { display: grid; grid-template-columns: var(--list-columns); width: max-content; align-items: center; min-height: 1.85em; gap: 0.5rem; padding-inline: 0.25rem; margin-block: 0.15rem; }
+  ul.listView li :global(figure) { width: 64px; }
+  ul.listView button.item { width: 100%; text-align: start; }
+  .list-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   li { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 0.3rem; background: var(--panel); }
   .scroll { overflow: auto; max-height: 65vh; }
   ul.freeform { display: block; position: relative; margin: 0; }
