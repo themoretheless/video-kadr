@@ -193,8 +193,10 @@ it('uploads the selected template design and binds its bundled font before conve
  try {
   component = mount(Panel, { target: document.body, props: { token: 'session' } })
   await tick()
-  const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, text: { content: 'Dialogue', shadow: true } }
-  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, sourceStart: 0.25, text: { ...beforeTitle.text, content: 'Revised dialogue' } }
+  const keys = [{ property: 'opacity', at: 0, value: 0 }, { property: 'opacity', at: 1, value: 1 }]
+  const resizedKeys = [{ ...keys[0]!, value: 0.25 }, keys[1]!]
+  const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, keys, text: { content: 'Dialogue', shadow: true } }
+  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, sourceStart: 0.25, keys: resizedKeys, text: { ...beforeTitle.text, content: 'Revised dialogue' } }
   const template = {
    ...original,
    video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
@@ -218,14 +220,20 @@ it('uploads the selected template design and binds its bundled font before conve
    transform: { x: { mode: 'constant', value: 0 }, y: { mode: 'constant', value: 0 },
     scaleX: { mode: 'constant', value: 1 }, scaleY: { mode: 'constant', value: 1 },
     rotationDegrees: { mode: 'constant', value: 0 }, anchorX: 0.5, anchorY: 0.5 },
-   opacity: { mode: 'constant', value: 1 },
+   opacity: { mode: 'keyframes', track: { timeBase: 1000000, interpolation: 'linear', keyframes: [{ tick: 0, value: 0 }, { tick: 999999, value: 1 }] } },
   } as const
   const editedCaption = { ...caption, text: 'Revised dialogue', timelineStartTick: 1250001, timelineEndTick: 2000000 }
+  const animation = {
+   durationTicks: 749999, keys: { opacity: resizedKeys.map(({ at, value }) => ({ at, value })) },
+   rest: { x: 0, y: 0.4, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1 },
+   stretch: [1, 1], canvas: [1920, 1080],
+  } as const
+  const editedOpacity = { mode: 'constant', value: 1 } as const
   const node = project.compositions.imported!
   const converted: NativeNestedProject = { ...project, compositions: { imported: {
    ...node, content: { ...node.content, tracks: [{
     id: 'lane-text', kind: 'text', name: 'Dialogue', hidden: false, locked: false,
-    clips: [{ ...editedCaption, concatTitle: { shadow: true } }],
+    clips: [{ ...editedCaption, opacity: editedOpacity, transform: { ...caption.transform, concatAnimation: animation }, concatTitle: { shadow: true } }],
    }] },
   } } }
   vi.mocked(importConcatProject).mockResolvedValueOnce({
@@ -270,7 +278,11 @@ it('uploads the selected template design and binds its bundled font before conve
   expect(nestedComposition.document?.coverJpeg).toBe(cover)
   const restored = nestedComposition.document?.compositions.imported?.content
   expect(restored?.metadata?.captionTextTracks).toEqual(['lane-text'])
-  expect(restored?.tracks[0]?.clips).toEqual([editedCaption])
+  expect(restored?.tracks[0]?.clips).toEqual([{
+   ...editedCaption, opacity: editedOpacity, transform: { ...caption.transform, concatAnimation: {
+    ...animation, rest: { ...animation.rest, y: 0 },
+   } },
+  }])
   expect(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments).toEqual(subtitles)
   undoNestedComposition()
   expect(nestedComposition.document).toBeNull()

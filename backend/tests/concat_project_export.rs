@@ -326,6 +326,22 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
         "Concat's standard shadow must be rendered after reopening",
     );
 
+    let mut reexport = serde_json::to_value(&project).unwrap();
+    let root = reexport["root"].as_str().unwrap().to_owned();
+    let caption = &mut reexport["compositions"][root]["content"]["tracks"][0]["clips"][0];
+    caption["opacity"] = json!({"mode":"constant","value":1});
+    caption["transform"]["concatAnimation"] = json!({
+        "durationTicks":1111111,"keys":{"opacity":[{"at":0,"value":0.25},{"at":1,"value":0.9}]},
+        "rest":{"scaleX":1,"scaleY":1,"x":0,"y":0.45,"rotationDegrees":0,"opacity":1},
+        "stretch":[1,1],"canvas":[160,120]
+    });
+    let reexport = export(&serde_json::from_value(reexport).unwrap()).unwrap();
+    let title = reexport["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert!(title["offsetY"].as_f64().unwrap() < 0.45);
+    assert_eq!(title["keys"][0]["value"], 0.25);
+    assert_eq!(title["keys"][1]["value"], 0.9);
+
     let mut unsupported = serde_json::to_value(project).unwrap();
     let root = unsupported["root"].as_str().unwrap().to_owned();
     unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!({"kind":"bezier","p1":[0.2,0.4],"p2":[0.8,0.6]});

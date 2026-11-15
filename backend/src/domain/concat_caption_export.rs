@@ -23,7 +23,13 @@ fn color(value: Rgba) -> String {
 pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
     let transform = &mut clip.transform;
     ensure!(
-        transform.concat_animation.is_none(),
+        transform.concat_animation.as_ref().is_none_or(|animation| {
+            animation.keys.keys().all(|key| key == "opacity")
+                && animation.rest.scale_x == 1.0
+                && animation.rest.scale_y == 1.0
+                && animation.rest.rotation_degrees == 0.0
+                && animation.stretch == [1.0, 1.0]
+        }),
         "Retained caption animation requires a Concat anchor mapping"
     );
     let constant = |value: &AnimatableValue, expected: f64| matches!(value, AnimatableValue::Constant { value } if *value == expected);
@@ -85,6 +91,15 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
             };
             *value += delta;
         }
+    }
+    if let Some(animation) = &mut transform.concat_animation {
+        let (AnimatableValue::Constant { value: x }, AnimatableValue::Constant { value: y }) =
+            (&transform.x, &transform.y)
+        else {
+            anyhow::bail!("Animated caption position requires a Concat mapping");
+        };
+        animation.rest.x = *x / f64::from(width);
+        animation.rest.y = *y / f64::from(height);
     }
     opacity_animation(clip, width, height)?;
     clip.concat_title = Some(style);

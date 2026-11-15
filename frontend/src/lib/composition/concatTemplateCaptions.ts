@@ -3,7 +3,7 @@ import type { WireTextClip } from './types'
 
 export const CONCAT_CAPTION_CLIPS = 'video-kadr-caption-clips.json'
 export const MAX_CONCAT_CAPTION_BYTES = 8 * 1024 * 1024
-type Captions = readonly (readonly [timelineId: string, clip: WireTextClip])[]
+type Captions = readonly (readonly [timelineId: string, clip: WireTextClip, useImportedOpacity?: true])[]
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
@@ -25,7 +25,7 @@ function normalizedClip(value: unknown): unknown {
   const clip = record(value)
   if (!clip) return value
   return {
-    mediaId: '', sourceStart: 0, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
+    mediaId: '', sourceStart: 0, opacity: 1, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
     preservePitch: true, stretchX: 1, stretchY: 1, flipH: false, flipV: false, keys: [], filters: [], videoEffects: [],
     ...clip,
     blend: clip.blend || 'normal',
@@ -37,16 +37,21 @@ function normalizedVideo(value: unknown): unknown {
   return video ? { colorSpace: 'sdr', ...video } : value
 }
 
-function canResizeCaption(clip: WireTextClip): boolean {
+function hasStaticCaptionPose(clip: WireTextClip): boolean {
   const transform = clip.transform
-  return !!transform && !transform.concatAnimation && !transform.position &&
+  return !!transform && !transform.position &&
+    (!transform.concatAnimation || Object.keys(transform.concatAnimation.keys).every(key => key === 'opacity')) &&
     !clip.colorAnimation && !clip.effects?.length &&
-    [clip.opacity, transform.x, transform.y, transform.scaleX, transform.scaleY, transform.rotationDegrees]
+    [transform.x, transform.y, transform.scaleX, transform.scaleY, transform.rotationDegrees]
       .every(value => value?.mode === 'constant')
 }
 
-function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unknown): WireTextClip | undefined {
-  if (sameJson(normalizedClip(baseline), normalizedClip(current))) return clip
+function opacityKeysOnly(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every(key => record(key)?.property === 'opacity')
+}
+
+function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unknown): readonly [WireTextClip, true?] | undefined {
+  if (sameJson(normalizedClip(baseline), normalizedClip(current))) return [clip]
   const before = record(baseline)
   const after = record(current)
   const previousText = record(before?.text)
@@ -58,7 +63,11 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
       after.duration <= 0 || after.duration > 86400) return undefined
   const duration = Math.round(after.duration * 1_000_000)
   const resized = duration !== clip.timelineEndTick - clip.timelineStartTick
-  if (duration < 1 || (resized && !canResizeCaption(clip))) return undefined
+  if (duration < 1 || (resized && !hasStaticCaptionPose(clip))) return undefined
+  const useImportedOpacity = resized && (clip.opacity?.mode === 'keyframes' || !!clip.transform?.concatAnimation)
+  if (resized && !useImportedOpacity && clip.opacity?.mode !== 'constant') return undefined
+  if (useImportedOpacity && (!opacityKeysOnly(before.keys) ||
+      (after.keys !== undefined && !sameJson(after.keys, []) && !opacityKeysOnly(after.keys)))) return undefined
 
   // Text and whole-clip moves retain the original local clock. A static title
   // also accepts Concat's new duration and, for a head trim, its source in-point.
@@ -67,18 +76,20 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     ...after,
     start: before.start,
     name: before.name,
+    ...(useImportedOpacity ? { keys: before.keys, opacity: before.opacity ?? 1 } : {}),
     ...(resized ? { duration: before.duration, sourceStart: before.sourceStart ?? 0 } : {}),
     text: { ...editedText, content: previousText.content },
   }
   const comparison = { ...before, name: before.name }
   if (!sameJson(normalizedClip(comparison), normalizedClip(unchangedFields))) return undefined
   const start = Math.round(after.start * 1_000_000)
-  return {
+  const restored = {
     ...clip,
     text: editedText.content,
     timelineStartTick: start,
     timelineEndTick: start + duration,
   }
+  return useImportedOpacity ? [restored, true] : [restored]
 }
 
 export async function readConcatTemplateCaptions(file: File, manifest: File): Promise<Captions | undefined> {
@@ -106,7 +117,7 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
       timelines.set(timeline.id, { video: timeline.video, clips })
     }
   }
-  const eligible: [string, WireTextClip][] = []
+  const eligible: [string, WireTextClip, true?][] = []
   for (const entry of sidecar.clips) {
     if (!Array.isArray(entry) || (entry.length !== 2 && entry.length !== 3) || typeof entry[0] !== 'string' ||
         !entry[1] || typeof entry[1] !== 'object' || typeof entry[1].id !== 'string') {
@@ -119,7 +130,7 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
       eligible.push([timelineId, clip])
     } else if (baseline && timeline && sameJson(normalizedVideo(baseline.video), normalizedVideo(timeline.video))) {
       const merged = mergeCaptionEdits(clip, baseline.clip, timeline.clips.get(clip.id))
-      if (merged) eligible.push([timelineId, merged])
+      if (merged) eligible.push([timelineId, ...merged])
     }
   }
   return eligible.length ? eligible : undefined
@@ -131,13 +142,13 @@ export function restoreConcatTemplateCaptions(
   captions: Captions | undefined,
 ): NativeNestedProject {
   if (!captions?.length) return project
-  const groups = new Map<string, Map<string, WireTextClip>>()
-  for (const [timeline, clip] of captions) {
+  const groups = new Map<string, Map<string, { clip: WireTextClip; useImportedOpacity?: true }>>()
+  for (const [timeline, clip, useImportedOpacity] of captions) {
     const id = Object.hasOwn(timelineIds, timeline) ? timelineIds[timeline] : undefined
     if (!id || !Object.hasOwn(project.compositions, id)) throw new Error('Таймлайн субтитров отсутствует в шаблоне')
-    const group = groups.get(id) ?? new Map<string, WireTextClip>()
+    const group = groups.get(id) ?? new Map<string, { clip: WireTextClip; useImportedOpacity?: true }>()
     if (group.has(clip.id)) throw new Error('Повторный клип субтитров шаблона')
-    group.set(clip.id, clip)
+    group.set(clip.id, { clip, useImportedOpacity })
     groups.set(id, group)
   }
   const compositions = { ...project.compositions }
@@ -147,15 +158,30 @@ export function restoreConcatTemplateCaptions(
     const tracks = node.content.tracks.map(track => {
       if (track.kind !== 'text') return track
       const clips = track.clips.map(clip => {
-        const restored = group.get(clip.id)
-        if (!restored) return clip
+        const entry = group.get(clip.id)
+        if (!entry) return clip
+        const { clip: restored, useImportedOpacity } = entry
         if (restored.text !== clip.text || restored.timelineStartTick !== clip.timelineStartTick ||
             restored.timelineEndTick !== clip.timelineEndTick) {
           throw new Error('Клип субтитров расходится с манифестом шаблона')
         }
         group.delete(clip.id)
         roles.add(track.id)
-        return restored
+        if (!useImportedOpacity) return restored
+        const animation = clip.transform.concatAnimation
+        const { x, y } = restored.transform
+        if (!animation) {
+          return { ...restored, opacity: clip.opacity, transform: { ...restored.transform, concatAnimation: undefined } }
+        }
+        if (x.mode !== 'constant' || y.mode !== 'constant' ||
+            Object.keys(animation.keys).some(key => key !== 'opacity')) {
+          throw new Error('Некорректная анимация прозрачности субтитров')
+        }
+        return {
+          ...restored, opacity: clip.opacity, transform: { ...restored.transform, concatAnimation: {
+            ...animation, rest: { ...animation.rest, x: x.value / animation.canvas[0], y: y.value / animation.canvas[1] },
+          } },
+        }
       })
       return { ...track, clips }
     })
