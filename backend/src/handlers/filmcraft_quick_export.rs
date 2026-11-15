@@ -24,6 +24,7 @@ pub struct QuickRequest {
     #[serde(default)]
     sources: BTreeMap<String, String>,
     preset: Option<String>,
+    output_name: Option<String>,
     settings: Option<Value>,
     range: Option<String>,
     source_range: Option<SourceRange>,
@@ -106,6 +107,9 @@ async fn resolve(state: &AppState, owner: &str, request: QuickRequest) -> AppRes
         request.source_range.as_ref(),
     )
     .map_err(|error| AppError::bad_request(error.to_string()))?;
+    if let Some(output_name) = request.output_name {
+        body["outputName"] = json!(output_name);
+    }
     body["document"] = request.document;
     body["sequenceId"] = json!(request.sequence_id);
     body["sources"] = json!(request.sources);

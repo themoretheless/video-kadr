@@ -1,5 +1,6 @@
 <script lang="ts">
   import { downloadFilmcraftVideo, getFilmcraftVideoJob, listFilmcraftExportQueue, editFilmcraftExportQueue, type FilmcraftExportQueue, type FilmcraftExportQueueCommand, type FilmcraftExportQueueItem, type FilmcraftVideoRequest } from '$lib/api'
+  import { filmcraftDownloadName } from '$lib/filmcraft/export-filename'
   import { exactExportRange } from '$lib/filmcraft/export-range'
   import { captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
   import { SvelteMap } from 'svelte/reactivity'
@@ -95,7 +96,7 @@
       outputUrls.set(url, setTimeout(() => { URL.revokeObjectURL(url); outputUrls.delete(url) }, 1000))
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `${result.id}.${sidecar?.extension ?? format}`
+      anchor.download = filmcraftDownloadName(result, result.id, sidecar?.extension ?? format)
       document.body.append(anchor)
       try { anchor.click() } finally { anchor.remove() }
     } catch (failure) {

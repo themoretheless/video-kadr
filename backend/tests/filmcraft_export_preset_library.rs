@@ -648,8 +648,20 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     let mut standard = input.clone();
     standard["libraryPreset"] = standard.as_object_mut().unwrap().remove("preset").unwrap();
     standard.as_object_mut().unwrap().remove("range");
+    standard["outputName"] = json!("  Проверка монтажа  ");
     let (status, summary) = call("video-jobs/summary", standard.clone()).await;
     assert_eq!(status, StatusCode::OK, "{summary}");
+    assert_eq!(summary["outputName"], "Проверка монтажа");
+    let mut invalid = standard.clone();
+    invalid["outputName"] = json!("../outside");
+    for endpoint in ["video-jobs/summary", "video-jobs"] {
+        let (status, body) = call(endpoint, invalid.clone()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let mut invalid = input.clone();
+    invalid["outputName"] = json!("/tmp/out");
+    let (status, body) = call("quick-export", invalid).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert_eq!(summary["container"], "mp4");
     assert_eq!(summary["video"]["codec"], "h264");
     assert_eq!(summary["video"]["frameRate"], json!({"numerator":24,"denominator":1}));

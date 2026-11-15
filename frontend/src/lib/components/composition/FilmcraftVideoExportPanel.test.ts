@@ -1016,6 +1016,9 @@ it('offers favorites first and applies subtitle overrides only when requested', 
   const details = [...document.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Настройки быстрого экспорта')!
   details.open = true
   details.dispatchEvent(new Event('toggle'))
+  const name = details.querySelector<HTMLInputElement>('[aria-label="Имя файла быстрого экспорта"]')!
+  name.value = '  Быстрый монтаж  '
+  name.dispatchEvent(new Event('input', { bubbles: true }))
   const select = document.querySelector<HTMLSelectElement>('[aria-label="Пресет быстрого экспорта"]')!
   await vi.waitFor(() => expect([...select.options].map(option => option.value)).toEqual(['', 'Favorite', 'Common']))
   select.value = 'Favorite'; select.dispatchEvent(new Event('change', { bubbles: true })); await tick()
@@ -1028,7 +1031,7 @@ it('offers favorites first and applies subtitle overrides only when requested', 
   button('Быстрый экспорт').click()
   await vi.waitFor(() => expect(startFilmcraftQuickExportJob).toHaveBeenLastCalledWith('owner',
     expect.not.objectContaining({ settings: expect.anything() }), expect.any(AbortSignal)))
-  expect(vi.mocked(startFilmcraftQuickExportJob).mock.lastCall?.[1].preset).toBe('Favorite')
+  expect(vi.mocked(startFilmcraftQuickExportJob).mock.lastCall?.[1]).toMatchObject({ preset: 'Favorite', outputName: 'Быстрый монтаж' })
   const override = details.querySelector<HTMLInputElement>('input[type=checkbox]')!
   override.checked = true
   override.dispatchEvent(new Event('change', { bubbles: true }))
@@ -1098,7 +1101,7 @@ it('blocks stale two-pass settings when changing H264 to HEVC', async () => {
 
 it('shows resolved standard export settings without starting an export', async () => {
   vi.mocked(summarizeFilmcraftExport).mockResolvedValue({
-    preset: 'lossless', container: 'mkv', estimatedBytes: null, audio: null,
+    preset: 'lossless', container: 'mkv', outputName: null, estimatedBytes: null, audio: null,
     source: { name: 'Монтаж', width: 3840, height: 2160, frameRate: { numerator: 24, denominator: 1 }, sampleRate: 48000 },
     sourceRange: { startTicks: '0', endTicks: '508032000000', durationSeconds: 2 },
     video: { codec: 'ffv1', width: 1920, height: 1080, frameRate: { numerator: 30000, denominator: 1001 }, pixelAspect: [1, 1], profile: null, level: null, keyframeDistance: null, mjpegQuality: null, bitrate: null },

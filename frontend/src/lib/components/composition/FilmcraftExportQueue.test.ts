@@ -54,11 +54,11 @@ it('downloads a completed queue output and immediately starts a retry', async ()
   const output = '12345678-1234-1234-1234-123456789abc'
   vi.mocked(listFilmcraftExportQueue).mockResolvedValue(done)
   vi.mocked(editFilmcraftExportQueue).mockResolvedValue(done)
-  vi.mocked(getFilmcraftVideoJob).mockResolvedValue({ id: 'worker', status: 'done', result: { id: output, captionSidecar: { extension: 'srt', bytesBase64: btoa('Review caption') } } })
+  vi.mocked(getFilmcraftVideoJob).mockResolvedValue({ id: 'worker', status: 'done', result: { id: output, outputName: 'Черновой монтаж', captionSidecar: { extension: 'srt', bytesBase64: btoa('Review caption') } } })
   vi.mocked(downloadFilmcraftVideo).mockResolvedValue(new Blob(['wav']))
   const url = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:queued')
   const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-    expect(this.download).toMatch(new RegExp(`^${output}\\.(wav|srt)$`))
+    expect(this.download).toMatch(/^Черновой монтаж\.(wav|srt)$/)
   })
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   try {

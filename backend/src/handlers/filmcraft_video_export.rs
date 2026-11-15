@@ -356,6 +356,8 @@ impl ExportPreset {
 pub struct VideoRequest {
     pub document: Value,
     pub sequence_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_name: Option<String>,
     #[serde(default)]
     pub start_ticks: Option<String>,
     #[serde(default)]
@@ -759,6 +761,10 @@ impl VideoRequest {
             self.max_render_quality,
         )
     }
+    pub(super) fn output_name(&self) -> Option<&str> {
+        self.output_name.as_deref().map(str::trim).filter(|name| !name.is_empty())
+    }
+
     pub(super) fn summary(&self) -> Result<Value> {
         let document = self.document()?;
         let index = ProjectIndex::new(&document)?;
@@ -826,6 +832,7 @@ impl VideoRequest {
         };
         Ok(serde_json::json!({
             "preset": self.preset, "container": self.extension(), "video": video,
+            "outputName": self.output_name(),
             "audio": audio, "estimatedBytes": estimated_bytes,
             "source": {
                 "name": item["name"].as_str(),
@@ -896,6 +903,14 @@ impl VideoRequest {
     }
 
     fn spec_for_sequence(&self, sequence: &Value) -> Result<(RasterVideoSpec, i64)> {
+        if let Some(name) = self.output_name() {
+            ensure!(
+                name.len() <= 200
+                    && !name.ends_with('.')
+                    && !name.chars().any(|ch| ch.is_control() || "/\\:*?\"<>|".contains(ch)),
+                "invalid export filename stem"
+            );
+        }
         let exact_range = self
             .source_range
             .as_ref()
