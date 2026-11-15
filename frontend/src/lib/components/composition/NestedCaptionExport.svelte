@@ -6,7 +6,7 @@
   import { authState } from '$lib/state/auth.svelte'
   let error = $state(''), message = $state(''), importing = $state(false), atPlayhead = $state(false)
   const documents = $derived(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments)
-  async function importFile(file: File, dropTime?: number): Promise<boolean> {
+  async function importFile(file: File, dropTime?: number, saveSource = false): Promise<boolean> {
     if(importing||nestedHistory.busy)return false
     error='';message='';importing=true
     const project=nestedComposition.document,identity=JSON.stringify(project)
@@ -19,7 +19,7 @@
       const body=await file.text()
       if(authState.token!==owner||JSON.stringify(nestedComposition.document)!==identity||(nestedComposition.activeCompositionId??project.root)!==id)throw new Error('Проект или композиция изменились во время чтения файла')
       let simplified = 0
-      if(!await importNestedCaptionFile(id,body,offset,value=>{simplified=value}))throw new Error(nestedHistory.error||'Импорт отменён: проект изменился')
+      if(!await importNestedCaptionFile(id,body,offset,value=>{simplified=value}, saveSource ? { id: crypto.randomUUID(), name: file.name } : undefined))throw new Error(nestedHistory.error||'Импорт отменён: проект изменился')
       message=`Субтитры импортированы${simplified ? `. Неподдерживаемые эффекты ASS пропущены в ${simplified} репл.` : ''}`
       return true
     } catch(cause){error=cause instanceof Error?cause.message:String(cause);return false}

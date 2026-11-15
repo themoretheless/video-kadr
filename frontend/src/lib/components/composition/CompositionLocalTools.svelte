@@ -184,7 +184,7 @@
     }
   }
 
-  async function importSrtFile(file: File, dropTime?: number): Promise<boolean> {
+  async function importSrtFile(file: File, dropTime?: number, saveSource = false): Promise<boolean> {
     if (importingSubtitles) return false
     importingSubtitles = true
     const document = compositionState.document
@@ -198,7 +198,7 @@
         throw new Error('Композиция или дорожка изменилась во время чтения файла')
       }
       let simplified = 0
-      const count = importSrtToComposition(body, trackId || undefined, value => { simplified = value }, offset)
+      const count = importSrtToComposition(body, trackId || undefined, value => { simplified = value }, offset, saveSource ? { id: crypto.randomUUID(), name: file.name } : undefined)
       showSuccess(`Импортировано субтитров: ${count}${simplified ? `. Неподдерживаемые эффекты ASS пропущены в ${simplified} репл.` : ''}`)
       return true
     } catch (error) {

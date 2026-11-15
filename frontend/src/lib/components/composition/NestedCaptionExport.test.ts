@@ -86,6 +86,28 @@ it('validates dropped files and imports subtitles at the cursor in one undo step
   undoNestedComposition()
   undoNestedComposition()
   expect(nestedComposition.document).toEqual(JSON.parse(saved))
+  const quickText = '1\n00:00:00,000 --> 00:00:01,000\nQuick import'
+  const reopenedZone = target.querySelector('[aria-label="Область импорта субтитров"]')!
+  function quickImport() {
+   const event = new Event('drop', { bubbles: true, cancelable: true })
+   Object.defineProperty(event, 'dataTransfer', { value: { files: [new File([quickText], 'quick.srt')] } })
+   reopenedZone.dispatchEvent(event)
+  }
+  vi.mocked(nestedDurations).mockRejectedValueOnce(new Error('Server rejected the edit'))
+  quickImport()
+  await vi.waitFor(() => expect(target.querySelector('[role="alert"]')?.textContent).toContain('Server rejected'))
+  expect(nestedComposition.document).toEqual(JSON.parse(saved))
+  expect(nestedHistory.past).toHaveLength(0)
+  quickImport()
+  await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
+  expect(nestedComposition.document?.compositions.root?.content.metadata?.subtitleDocuments).toHaveLength(2)
+  expect(nestedComposition.document?.compositions.root?.content.metadata?.subtitleDocuments?.[1]).toMatchObject({
+   name: 'quick.srt', text: quickText,
+  })
+  expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({ text: 'Quick import' })
+  undoNestedComposition()
+  expect(nestedComposition.document).toEqual(JSON.parse(saved))
+
  } finally {
   await unmount(component)
   target.remove()

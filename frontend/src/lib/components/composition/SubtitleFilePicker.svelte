@@ -11,41 +11,26 @@
   project: object | null
   documents?: readonly SubtitleDocument[]
   ondocumentschange: (change: SubtitleDocument | string) => void | Promise<void>
-  onfile: (file: File, dropTime?: number) => Promise<boolean>
+  onfile: (file: File, dropTime?: number, saveSource?: boolean) => Promise<boolean>
   onerror: (message: string) => void
  } = $props()
  let dragging = $state(false)
- let filesInPanel = $state<File[]>([])
  let applying = $state(false)
  let stopDrag: (() => void) | undefined
  let poolOnly = $state(false)
- const stored = $derived(documents.map(document => ({
-  id: document.id,
-  file: new File([document.text], document.name),
- })))
- const entries = $derived([...stored, ...filesInPanel.map(file => ({ id: undefined, file }))])
  const blocked = $derived(disabled || applying)
  $effect(() => {
   void authState.token
-  filesInPanel = []
   return () => stopDrag?.()
  })
 
- function remember(file: File) {
-  if (filesInPanel.includes(file)) return
-  filesInPanel = [file, ...filesInPanel.filter(item =>
-   item.name !== file.name || item.size !== file.size || item.lastModified !== file.lastModified,
-  )].slice(0, 8)
- }
-
- async function apply(file: File, addOnly = false, dropTime?: number) {
+ async function apply(file: File, action: 'stage' | 'import' | 'insert', dropTime?: number) {
   if (blocked) return
   applying = true
   const owner = authState.token
   const originalProject = project
-  const isStored = stored.some(entry => entry.file === file)
   try {
-   if (addOnly) {
+   if (action === 'stage') {
     onerror('')
     if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
     const body = await file.text()
@@ -53,8 +38,8 @@
     if (authState.token !== owner) return
     if (project !== originalProject) throw new Error('Проект изменился во время чтения файла')
     await ondocumentschange({ id: crypto.randomUUID(), name: file.name, text: body })
-   } else if (await onfile(file, dropTime) && authState.token === owner && !isStored) {
-    remember(file)
+   } else {
+    await onfile(file, dropTime, action === 'import')
    }
   } catch (error) {
    if (authState.token === owner) onerror(error instanceof Error ? error.message : String(error))
@@ -63,12 +48,8 @@
   }
  }
 
- async function remove(file: File, id?: string) {
+ async function remove(id: string) {
   if (blocked) return
-  if (id === undefined) {
-   filesInPanel = filesInPanel.filter(item => item !== file)
-   return
-  }
   const owner = authState.token
   applying = true
   try {
@@ -78,6 +59,11 @@
   } finally {
    applying = false
   }
+ }
+
+ function insert(id: string, dropTime?: number) {
+  const document = documents.find(item => item.id === id)
+  if (document) void apply(new File([document.text], document.name), 'insert', dropTime)
  }
 
  function select(files: FileList | null | undefined, dropped = false) {
@@ -91,7 +77,7 @@
    onerror('Выберите файл SRT, VTT, ASS, SSA или TXT')
    return
   }
-  void apply(file, poolOnly)
+  void apply(file, poolOnly ? 'stage' : 'import')
  }
 </script>
 
@@ -118,22 +104,23 @@
     event.currentTarget.value = ''
    }} />
  </label>
- {#if entries.length}
+ {#if documents.length}
   <ul aria-label="Недавние файлы субтитров">
-   {#each entries as { id, file } (id ?? file)}
+   {#each documents as { id, name } (id)}
     <li>
      <button class="btn ghost sm" type="button" disabled={blocked} draggable={!blocked}
       ondragstart={event => {
        stopDrag?.()
        if (blocked) { event.preventDefault(); return }
+       const originalProject = project
        stopDrag = startSubtitleDrag(event, time => {
-        if (entries.some(entry => id === undefined ? entry.file === file : entry.id === id)) void apply(file, false, time)
+        if (project === originalProject) insert(id, time)
        })
-      }} ondragend={() => stopDrag?.()} onclick={() => void apply(file)}>
-      Вставить · {file.name}
+      }} ondragend={() => stopDrag?.()} onclick={() => insert(id)}>
+      Вставить · {name}
      </button>
-     <button class="btn ghost sm" type="button" disabled={blocked} aria-label={`Убрать файл ${file.name} из списка`}
-      onclick={() => void remove(file, id)}>Убрать</button>
+     <button class="btn ghost sm" type="button" disabled={blocked} aria-label={`Убрать файл ${name} из списка`}
+      onclick={() => void remove(id)}>Убрать</button>
     </li>
    {/each}
   </ul>

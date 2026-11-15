@@ -1013,21 +1013,26 @@ export async function mergeNestedCaptionClips(compositionId: string, ids: readon
   if (!nestedHistory.error && expected && JSON.stringify(nestedComposition.document) !== expected) nestedHistory.error = 'Проект изменился во время объединения субтитров'
 }
 
+function withNestedSubtitleDocuments(document: NativeNestedProject, change: SubtitleDocument | string): NativeNestedProject {
+  const root = document.compositions[document.root]
+  if (!root) throw new Error('Корневая композиция не найдена')
+  const current = root.content.metadata?.subtitleDocuments ?? []
+  const subtitleDocuments = changeSubtitleDocuments(current, change)
+  if (current === subtitleDocuments || (!current.length && !subtitleDocuments.length)) {
+    return document
+  }
+  const content = { ...root.content, metadata: { ...root.content.metadata, subtitleDocuments } }
+  return { ...document, compositions: { ...document.compositions, [document.root]: { ...root, content } } }
+}
+
 export async function editNestedSubtitleDocuments(change: SubtitleDocument | string): Promise<void> {
   if (!nestedComposition.document || nestedHistory.busy) throw new Error('Вложенный проект занят или закрыт')
   const owner = authState.token
   let accepted = false
   await editNestedDocument(async document => {
-    const root = document.compositions[document.root]
-    if (!root) throw new Error('Корневая композиция не найдена')
-    const current = root.content.metadata?.subtitleDocuments ?? []
-    const subtitleDocuments = changeSubtitleDocuments(current, change)
-    if (current === subtitleDocuments || (!current.length && !subtitleDocuments.length)) {
-      accepted = true
-      return document
-    }
-    const content = { ...root.content, metadata: { ...root.content.metadata, subtitleDocuments } }
-    return { ...document, compositions: { ...document.compositions, [document.root]: { ...root, content } } }
+    const edited = withNestedSubtitleDocuments(document, change)
+    if (edited === document) accepted = true
+    return edited
   }, false, undefined, undefined, 0, () => { accepted = true }, () => {
     assertHistoryUnlocked()
     if (authState.token !== owner) throw new Error('Аккаунт изменился во время сохранения субтитров')
@@ -1035,18 +1040,23 @@ export async function editNestedSubtitleDocuments(change: SubtitleDocument | str
   if (!accepted) throw new Error(nestedHistory.error || 'Проект изменился во время сохранения субтитров')
 }
 
-export async function importNestedCaptionFile(compositionId:string, serialized:string, offsetUs=0, report?: (simplifiedCueCount: number) => void):Promise<boolean> {
+export async function importNestedCaptionFile(compositionId:string, serialized:string, offsetUs=0, report?: (simplifiedCueCount: number) => void, source?: Pick<SubtitleDocument, 'id' | 'name'>):Promise<boolean> {
   if(!nestedComposition.document||nestedHistory.busy)return false
   const startedGeneration=generation
+  const owner = authState.token
   let expected=''
   let simplifiedCueCount=0
   await editNestedDocument(async project=>{
     const result=importNestedSubtitles(project,compositionId,serialized,prefix=>`${prefix}-${crypto.randomUUID()}`,offsetUs)
-    expected=JSON.stringify(result.document)
+    const document = source ? withNestedSubtitleDocuments(result.document, { ...source, text: serialized }) : result.document
+    expected=JSON.stringify(document)
     simplifiedCueCount=result.simplifiedCueCount
-    await nestedDurations(result.document)
-    return result.document
-  },true)
+    await nestedDurations(document)
+    return document
+  }, true, undefined, undefined, 0, undefined, () => {
+    assertHistoryUnlocked()
+    if (owner !== authState.token) throw new Error('Аккаунт изменился во время импорта субтитров')
+  })
   if(generation!==startedGeneration)return false
   if(!nestedHistory.error&&expected&&JSON.stringify(nestedComposition.document)!==expected)nestedHistory.error='Проект изменился во время импорта субтитров'
   const committed = !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected

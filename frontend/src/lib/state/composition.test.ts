@@ -1140,9 +1140,10 @@ describe('composition editor state', () => {
     expect(exported.text).toContain('00:00:02,000 --> 00:00:03,000')
 
     const before = JSON.stringify(compositionState.document)
-    expect(importSrtToComposition(
-      '1\n00:00:00,500 --> 00:00:01,000\nOverlap', textTrack.id,
-    )).toBe(1)
+    const sourceText = '1\n00:00:00,500 --> 00:00:01,000\nOverlap'
+    const source = { id: 'overlap-file', name: 'overlap.srt' }
+    expect(importSrtToComposition(sourceText, textTrack.id, undefined, 0, source)).toBe(1)
+    expect(compositionState.document.metadata?.subtitleDocuments).toEqual([{ ...source, text: sourceText }])
     const lanes = compositionState.document.tracks.filter((track) => track.kind === 'text')
     expect(lanes).toHaveLength(2)
     expect(lanes[1]!.clips[0]).toMatchObject({ text: 'Overlap', timelineStartTicks: 500_000, durationTicks: 500_000 })

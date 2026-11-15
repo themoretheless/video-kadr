@@ -1,3 +1,4 @@
+import { changeSubtitleDocuments, type SubtitleDocument } from '../../subtitles/documents.js'
 import { restyleCaptions, type CaptionStylePatch } from '../../composition/restyleCaptions.js'
 import { mergeCaptions } from '../../composition/mergeCaptions.js'
 import { captionExportCues, formatSubtitleExport, type SubtitleExportFormat } from '../../subtitles/export.js'
@@ -249,7 +250,7 @@ export function addCompositionTrack(kind: TrackKind): string {
 }
 
 
-export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void, offsetTicks = 0): number {
+export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void, offsetTicks = 0, source?: Pick<SubtitleDocument, 'id' | 'name'>): number {
   if (!Number.isSafeInteger(offsetTicks) || offsetTicks < 0) throw new Error('Некорректное смещение субтитров')
   const parsed = parseSubtitleDocumentWithReport(serialized)
   const cues = parsed.cues.map(cue => ({
@@ -301,6 +302,10 @@ export function importSrtToComposition(serialized: string, requestedTrackId?: st
   document = { ...document, metadata: { ...document.metadata,
     captionTextTracks: document.tracks.filter((track) => track.kind === 'text' && roles.has(track.id)).map((track) => track.id),
   } }
+  if (source) {
+    const subtitleDocuments = changeSubtitleDocuments(document.metadata?.subtitleDocuments ?? [], { ...source, text: serialized })
+    document = { ...document, metadata: { ...document.metadata, subtitleDocuments } }
+  }
   commitDocument(document)
   selectCompositionClip(firstTrackId, clips[0]!.id)
   report?.(parsed.simplifiedCueCount)
