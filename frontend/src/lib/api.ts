@@ -1682,6 +1682,11 @@ export interface FilmcraftMarks { in: string | null; out: string | null; split: 
 export interface FilmcraftIconSortKeys {
   mediaType: string; frameRate: number; mediaStart: number; mediaEnd: number; mediaDuration: number
   videoInfo: string; audioInfo: string; dateCreated: number
+  videoIn?: number; videoOut?: number; videoDuration?: number
+  audioIn?: number; audioOut?: number; audioDuration?: number
+  subclipStart?: number; subclipEnd?: number
+  videoCodec?: string; audioCodec?: string; status?: string; proxy?: string
+  timecodes?: Partial<Record<string, string>>
 }
 export interface FilmcraftImportResult {
   projectBins?: Array<{ id: string; name: string; parentId: string | null; depth: number; itemIds?: string[] }>

@@ -271,7 +271,12 @@ async fn icon_sort_keys_use_source_timecode_and_subclip_offset() {
     let fixture: Value =
         serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
     let mut document = fixture["cases"][0]["document"].clone();
-    document["project"]["items"]["1"]["kind"]["Media"]["info"]["start_timecode"] = json!(30);
+    let media = &mut document["project"]["items"]["1"]["kind"]["Media"];
+    media["info"]["start_timecode"] = json!(30);
+    media["info"]["audio"] = json!({"codec":"pcm_s16le","sample_rate":48000,"channels":2});
+    let frame = filmcraft_time::TICKS_PER_SECOND / 24;
+    media["mark_in"] = json!(4 * frame);
+    media["mark_out"] = json!(12 * frame);
     let request = serde_json::from_value(json!({"document":document})).unwrap();
     let imported = import(ApiJson(request)).await.unwrap().0;
     let keys = |id: &str| {
@@ -287,4 +292,16 @@ async fn icon_sort_keys_use_source_timecode_and_subclip_offset() {
     assert_eq!(keys("2")["mediaEnd"], json!(814_968_000_000.0));
     assert_eq!(keys("2")["mediaType"], "Subclip");
     assert_eq!(keys("2")["videoInfo"], "4 x 4 (1.0000)");
+    assert_eq!(keys("1")["videoDuration"], json!((9 * frame) as f64));
+    assert_eq!(keys("1")["timecodes"]["mediaStart"], "00:00:01:06");
+    assert_eq!(keys("1")["timecodes"]["videoIn"], "00:00:01:10");
+    assert_eq!(keys("1")["timecodes"]["audioOut"], "00:00:01:18");
+    assert_eq!(keys("1")["timecodes"]["audioDuration"], "00:00:00:09");
+    assert_eq!(keys("2")["timecodes"]["subclipStart"], "00:00:01:18");
+    assert_eq!(keys("2")["timecodes"]["subclipEnd"], "00:00:03:05");
+    assert!(keys("2")["timecodes"].get("audioOut").is_none());
+    assert_eq!(keys("2")["audioCodec"], "pcm_s16le");
+    assert_eq!(keys("2")["videoCodec"], "Synthetic");
+    assert_eq!(keys("1")["status"], "Online");
+    assert_eq!(keys("1")["proxy"], "None");
 }

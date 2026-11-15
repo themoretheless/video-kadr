@@ -1,9 +1,9 @@
-//! Sort Icons keys from Filmcraft project_panel::cell (MIT, pinned 52318524).
+//! Project panel sort keys and list timecodes from Filmcraft (MIT, pinned 52318524).
 use super::{
     filmcraft_project_index::ProjectIndex, filmcraft_project_inspect, filmcraft_source_inspect,
 };
-use filmcraft_time::{FrameRate, TICKS_PER_SECOND};
-use serde_json::{json, Value};
+use filmcraft_time::{format_time, FrameRate, Tick, TimeDisplay, TICKS_PER_SECOND};
+use serde_json::{json, Map, Value};
 
 pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value) -> Value {
     let subclip = item.pointer("/kind/Subclip");
@@ -66,16 +66,67 @@ pub(crate) fn keys(index: &ProjectIndex<'_>, id: u64, item: &Value) -> Value {
         String::new()
     };
     let audio = &info["audio"];
+    let has_audio = item.pointer("/kind/Media").is_some() && !audio.is_null()
+        || sequence.is_some_and(|sequence| {
+            sequence["audio_tracks"]
+                .as_array()
+                .is_some_and(|tracks| !tracks.is_empty())
+        });
     let audio_info = match (audio["sample_rate"].as_u64(), audio["channels"].as_u64()) {
         (Some(rate), Some(1)) => format!("{rate} Hz - Mono"),
         (Some(rate), Some(2)) => format!("{rate} Hz - Stereo"),
         (Some(rate), Some(channels)) => format!("{rate} Hz - {channels} ch"),
         _ => String::new(),
     };
-    json!({
+    let mut keys = json!({
         "mediaType":filmcraft_project_inspect::type_label(item).unwrap_or_default(),
         "frameRate":if has_video { rate.as_f64() } else { 0.0 },
         "mediaStart":first as f64,"mediaEnd":end as f64,"mediaDuration":duration as f64,
-        "videoInfo":video_info,"audioInfo":audio_info,"dateCreated":item["created"].as_f64().unwrap_or_default()
-    })
+        "videoInfo":video_info,"audioInfo":audio_info,"dateCreated":item["created"].as_f64().unwrap_or_default(),
+        "videoCodec":video["codec"].as_str().unwrap_or_default(),
+        "audioCodec":audio["codec"].as_str().unwrap_or_default(),
+        "status":media.map_or("", |m| if m["offline"] == true { "Offline" } else { "Online" }),
+        "proxy":media.map_or("", |m| if m["proxy"].is_null() { "None" } else { "Attached" })
+    });
+    let fd = frame_numerator / i128::from(rate.num);
+    let duration = i128::from(duration);
+    let marked_item = item
+        .pointer("/kind/Media")
+        .or(sequence)
+        .unwrap_or(&Value::Null);
+    let mark_in = i128::from(marked_item["mark_in"].as_i64().unwrap_or_default());
+    let mark_out = marked_item["mark_out"]
+        .as_i64()
+        .map_or(duration, |tick| i128::from(tick) + fd)
+        .min(duration.max(fd));
+    let mut timecodes = Map::new();
+    for (column, ticks) in [
+        ("mediaStart", Some(first)),
+        ("mediaEnd", Some(end)),
+        ("mediaDuration", Some(duration)),
+        ("videoIn", has_video.then_some(first + mark_in)),
+        ("videoOut", has_video.then_some(first + mark_out - fd)),
+        ("videoDuration", has_video.then_some(mark_out - mark_in)),
+        ("audioIn", has_audio.then_some(first + mark_in)),
+        ("audioOut", has_audio.then_some(first + mark_out - fd)),
+        ("audioDuration", has_audio.then_some(mark_out - mark_in)),
+        ("subclipStart", subclip.map(|_| first)),
+        ("subclipEnd", subclip.map(|_| first + duration - fd)),
+    ] {
+        let Some(ticks) = ticks else { continue };
+        let tick = Tick(ticks.clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64);
+        timecodes.insert(
+            column.into(),
+            json!(format_time(
+                tick,
+                rate,
+                false,
+                TimeDisplay::Timecode,
+                48_000
+            )),
+        );
+        keys[column] = json!(ticks as f64);
+    }
+    keys["timecodes"] = Value::Object(timecodes);
+    keys
 }

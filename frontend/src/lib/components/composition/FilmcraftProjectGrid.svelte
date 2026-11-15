@@ -31,10 +31,16 @@
     ['mediaDuration', 'Длительность'], ['videoInfo', 'Сведения о видео'], ['audioInfo', 'Сведения о звуке'],
     ['dateCreated', 'Дата создания'],
   ] as const satisfies readonly (readonly [keyof FilmcraftIconSortKeys | 'user' | 'name' | 'label', string])[]
-  type ListOption = Exclude<(typeof sortOptions)[number], readonly ['user', string]>
-  type ListColumn = ListOption[0]
+  const listOnlyOptions = [
+    ['videoIn', 'Точка входа видео'], ['videoOut', 'Точка выхода видео'], ['videoDuration', 'Длительность видео'],
+    ['audioIn', 'Точка входа аудио'], ['audioOut', 'Точка выхода аудио'], ['audioDuration', 'Длительность аудио'],
+    ['subclipStart', 'Начало подклипа'], ['subclipEnd', 'Конец подклипа'],
+    ['videoCodec', 'Видеокодек'], ['audioCodec', 'Аудиокодек'], ['status', 'Статус'], ['proxy', 'Прокси'],
+  ] as const satisfies readonly (readonly [keyof Omit<FilmcraftIconSortKeys, 'timecodes'>, string])[]
+  type IconListOption = Exclude<(typeof sortOptions)[number], readonly ['user', string]>
+  const listOptions = [...sortOptions.filter((entry): entry is IconListOption => entry[0] !== 'user'), ...listOnlyOptions]
+  type ListColumn = (typeof listOptions)[number][0]
   type Column = { key: ListColumn; width: number }
-  const listOptions = sortOptions.filter((entry): entry is ListOption => entry[0] !== 'user')
   const minColumnWidth = 30
   const maxColumnWidth = 800
   const clampColumnWidth = (width: number) => Math.min(maxColumnWidth, Math.max(minColumnWidth, width))
@@ -42,6 +48,8 @@
     switch (key) {
       case 'name': return 220
       case 'label':
+      case 'status':
+      case 'proxy':
       case 'frameRate': return 80
       case 'videoInfo':
       case 'audioInfo': return 170
@@ -144,14 +152,14 @@
     const matches = available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
     const column = listView ? listSort : sortColumn
     if (!freeform && column && column !== 'user') {
-      const key = (item: typeof items[number]) => column === 'name' ? item.name : column === 'label' ? item.label ?? '' : item.iconSort?.[column] ?? ''
+      const key = (item: typeof items[number]) => column === 'name' ? item.name : column === 'label' ? item.label ?? '' : item.iconSort?.[column]
       const compare = (left: string, right: string) => {
         const a = left.toLowerCase(), b = right.toLowerCase()
         return a < b ? -1 : a > b ? 1 : 0
       }
       matches.sort((left, right) => {
         const a = key(left), b = key(right)
-        const order = typeof a === 'number' && typeof b === 'number' ? a - b : compare(String(a), String(b))
+        const order = typeof a === 'number' && typeof b === 'number' ? a - b : compare(String(a ?? ''), String(b ?? ''))
         return (order || compare(left.name, right.name)) * ((listView ? listDescending : descending) ? -1 : 1)
       })
     }
@@ -401,6 +409,8 @@
   function columnValue(item: (typeof items)[number], key: Exclude<ListColumn, 'name'>) {
     if (key === 'label') return item.label ?? ''
     const value = item.iconSort?.[key]
+    const timecode = item.iconSort?.timecodes?.[key]
+    if (timecode !== undefined) return timecode
     if (key === 'mediaType') return value || item.kind
     if (typeof value !== 'number') return value ?? ''
     if (key === 'mediaDuration' || key === 'mediaStart' || key === 'mediaEnd') return `${(value / 254_016_000_000).toFixed(2)} с`
