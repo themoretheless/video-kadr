@@ -1,4 +1,4 @@
-import { editFilmcraftClips } from '$lib/api'
+import { editFilmcraftClips, editFilmcraftPosterFrame, getFilmcraftPosterPreview } from '$lib/api'
 import { modifyFilmcraftMedia } from '$lib/api'
 import { editFilmcraftVideoOptions } from '$lib/api'
 import { replaceFilmcraftClips } from '$lib/api'
@@ -17,7 +17,7 @@ vi.mock('svelte', async importOriginal => {
   const client = await import('../../../../node_modules/svelte/src/index-client.js')
   return { ...actual, untrack: client.untrack }
 })
-vi.mock('$lib/api', () => ({ editFilmcraftClips: vi.fn(), modifyFilmcraftMedia: vi.fn(), editFilmcraftVideoOptions: vi.fn(), replaceFilmcraftClips: vi.fn(), editFilmcraftAttributes: vi.fn(), editFilmcraftSubclip: vi.fn(), getFilmcraftSubclipDefaults: vi.fn(), editFilmcraftSource: vi.fn(), navigateFilmcraft: vi.fn(), editFilmcraftMarks: vi.fn(), deleteFilmcraftProjectItems: vi.fn(), duplicateFilmcraftProjectItems: vi.fn(), selectFilmcraftSelection: vi.fn(), selectFilmcraftLabelGroup: vi.fn(), editFilmcraftLabels: vi.fn(), FILMCRAFT_LABELS: ['Violet', 'Iris', 'Caribbean', 'Lavender', 'Cerulean', 'Forest', 'Rose', 'Mango', 'Purple', 'Blue', 'Teal', 'Magenta', 'Tan', 'Green', 'Brown', 'Yellow'], editFilmcraftBins: vi.fn(), renameFilmcraftBin: vi.fn(), renameFilmcraftClip: vi.fn(), startFilmcraftMaskTrackingJob: vi.fn(), readFilmcraftTrackingJob: vi.fn(), cancelFilmcraftTrackingJob: vi.fn(), importFilmcraftTrackingSnapshot: vi.fn(), editFilmcraftAnimation: vi.fn(), setFilmcraftEffectParameter: vi.fn(), applyFilmcraftEffect: vi.fn(), listFilmcraftEffects: vi.fn(), editFilmcraftEffectRack: vi.fn(), editFilmcraftMaskMonitor: vi.fn(), trackFilmcraftMask: vi.fn(), editFilmcraftMask: vi.fn(), getFilmcraftParameters: vi.fn(), editFilmcraftParameter: vi.fn(), getFilmcraftPreviewFrame: vi.fn(), createFilmcraftTrimSession: vi.fn(), commandFilmcraftTrimSession: vi.fn(), readFilmcraftTrimSession: vi.fn(), closeFilmcraftTrimSession: vi.fn(), trimFilmcraftToPlayhead: vi.fn(), trimFilmcraftEditPoints: vi.fn(), getFilmcraftNearestEditPoints: vi.fn(), getFilmcraftTrimMonitor: vi.fn(), applyFilmcraftSelectionTransitions: vi.fn(), setFilmcraftTransition: vi.fn(), getFilmcraftTransitions: vi.fn(), applyFilmcraftTransition: vi.fn(), importFilmcraftProject: vi.fn(), exportFilmcraftAudio: vi.fn(), exportFilmcraftFrame: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), trimFilmcraftProject: vi.fn(), slipFilmcraftProject: vi.fn(), stretchFilmcraftProject: vi.fn(), rollFilmcraftProject: vi.fn(), slideFilmcraftProject: vi.fn(), deleteFilmcraftClips: vi.fn(), closeFilmcraftGap: vi.fn(), razorFilmcraftProject: vi.fn(), removeFilmcraftRange: vi.fn(), copyFilmcraftClips: vi.fn(), pasteFilmcraftClips: vi.fn() }))
+vi.mock('$lib/api', () => ({ editFilmcraftClips: vi.fn(), editFilmcraftPosterFrame: vi.fn(), getFilmcraftPosterPreview: vi.fn(), modifyFilmcraftMedia: vi.fn(), editFilmcraftVideoOptions: vi.fn(), replaceFilmcraftClips: vi.fn(), editFilmcraftAttributes: vi.fn(), editFilmcraftSubclip: vi.fn(), getFilmcraftSubclipDefaults: vi.fn(), editFilmcraftSource: vi.fn(), navigateFilmcraft: vi.fn(), editFilmcraftMarks: vi.fn(), deleteFilmcraftProjectItems: vi.fn(), duplicateFilmcraftProjectItems: vi.fn(), selectFilmcraftSelection: vi.fn(), selectFilmcraftLabelGroup: vi.fn(), editFilmcraftLabels: vi.fn(), FILMCRAFT_LABELS: ['Violet', 'Iris', 'Caribbean', 'Lavender', 'Cerulean', 'Forest', 'Rose', 'Mango', 'Purple', 'Blue', 'Teal', 'Magenta', 'Tan', 'Green', 'Brown', 'Yellow'], editFilmcraftBins: vi.fn(), renameFilmcraftBin: vi.fn(), renameFilmcraftClip: vi.fn(), startFilmcraftMaskTrackingJob: vi.fn(), readFilmcraftTrackingJob: vi.fn(), cancelFilmcraftTrackingJob: vi.fn(), importFilmcraftTrackingSnapshot: vi.fn(), editFilmcraftAnimation: vi.fn(), setFilmcraftEffectParameter: vi.fn(), applyFilmcraftEffect: vi.fn(), listFilmcraftEffects: vi.fn(), editFilmcraftEffectRack: vi.fn(), editFilmcraftMaskMonitor: vi.fn(), trackFilmcraftMask: vi.fn(), editFilmcraftMask: vi.fn(), getFilmcraftParameters: vi.fn(), editFilmcraftParameter: vi.fn(), getFilmcraftPreviewFrame: vi.fn(), createFilmcraftTrimSession: vi.fn(), commandFilmcraftTrimSession: vi.fn(), readFilmcraftTrimSession: vi.fn(), closeFilmcraftTrimSession: vi.fn(), trimFilmcraftToPlayhead: vi.fn(), trimFilmcraftEditPoints: vi.fn(), getFilmcraftNearestEditPoints: vi.fn(), getFilmcraftTrimMonitor: vi.fn(), applyFilmcraftSelectionTransitions: vi.fn(), setFilmcraftTransition: vi.fn(), getFilmcraftTransitions: vi.fn(), applyFilmcraftTransition: vi.fn(), importFilmcraftProject: vi.fn(), exportFilmcraftAudio: vi.fn(), exportFilmcraftFrame: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), trimFilmcraftProject: vi.fn(), slipFilmcraftProject: vi.fn(), stretchFilmcraftProject: vi.fn(), rollFilmcraftProject: vi.fn(), slideFilmcraftProject: vi.fn(), deleteFilmcraftClips: vi.fn(), closeFilmcraftGap: vi.fn(), razorFilmcraftProject: vi.fn(), removeFilmcraftRange: vi.fn(), copyFilmcraftClips: vi.fn(), pasteFilmcraftClips: vi.fn() }))
 beforeEach(() => { vi.mocked(listFilmcraftExportQueue).mockResolvedValue({ running: false, items: [] }) })
 let component: ReturnType<typeof mount> | undefined
 const sourceText = '{"id":18446744073709551615}'
@@ -1794,4 +1794,43 @@ it('discards a pending match after timeline selection changes without replay or 
   const clip = document.querySelector<HTMLSelectElement>('[aria-label="Клип Filmcraft"]')!; clip.value = '9007199254740995'; clip.dispatchEvent(new Event('change', { bubbles: true })); await tick()
   resolve({ context: { activeSequence: '18446744073709551615', sourceItem: '9007199254740993', sourcePlayhead: '19', playhead: '0', playheadFrames: '0', selection: [], projectSelection: [] }, events: [{ type: 'openSource', item: '9007199254740993' }] }); await tick(); await tick()
   expect(navigateFilmcraft).toHaveBeenCalledTimes(1); expect(document.querySelector<HTMLSelectElement>('[aria-label="Монитор точек Filmcraft"]')!.value).toBe('program'); expect(clip.value).toBe('9007199254740995'); expect(button('Отменить правку').disabled).toBe(true)
+})
+
+it('renders the selected item poster, clears it and restores it with Undo', async () => {
+  const paint = vi.fn()
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    createImageData: () => ({ data: new Uint8ClampedArray(4) }), putImageData: paint,
+  } as unknown as CanvasRenderingContext2D)
+  const item = sharedSelectionItems[0]!
+  vi.mocked(getFilmcraftPosterPreview).mockImplementation(async input => ({
+    kind: 'video', width: 1, height: 1, ptsTicks: '0',
+    rgbaHex: input.document === 'authored poster' ? '00ff00ff' : 'ff0000ff',
+  }))
+  await open(sourceText, false, false, undefined, sharedSelectionItems)
+  const loaded = await vi.mocked(importFilmcraftProject).mock.results[0]!.value
+  vi.mocked(editFilmcraftPosterFrame)
+    .mockResolvedValueOnce({ ...loaded, documentText: 'authored poster', projectItems: [{ ...item, posterFrame: '317520000000' }], posterEdit: true })
+    .mockResolvedValueOnce({ ...loaded, documentText: 'automatic poster', posterEdit: true })
+  const panel = document.querySelector<HTMLDetailsElement>('.filmcraft-panel')!
+  panel.open = true
+  panel.dispatchEvent(new Event('toggle'))
+  await selectProjectItemsFor('Элементы для меток Filmcraft', [item.id])
+  const expectPixel = async (pixel: number[]) => {
+    await vi.waitFor(() => expect(paint.mock.lastCall?.[0].data).toEqual(new Uint8ClampedArray(pixel)))
+    expect(document.querySelector('canvas[aria-label="Кадр обложки: One"]')).not.toBeNull()
+  }
+  const button = (label: string) => [...document.querySelectorAll('button')].find(node => node.textContent === label)!
+  await expectPixel([255, 0, 0, 255])
+  button('Установить кадр обложки').click()
+  await expectPixel([0, 255, 0, 255])
+  button('Сбросить кадр обложки').click()
+  await expectPixel([255, 0, 0, 255])
+  button('Отменить правку').click()
+  await expectPixel([0, 255, 0, 255])
+  const signal = vi.mocked(getFilmcraftPosterPreview).mock.lastCall?.[1]
+  panel.open = false
+  panel.dispatchEvent(new Event('toggle'))
+  await tick()
+  expect(signal?.aborted).toBe(true)
+  expect(document.querySelector('canvas[aria-label="Кадр обложки: One"]')).toBeNull()
 })

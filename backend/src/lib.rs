@@ -637,6 +637,11 @@ pub fn build_router_with_mcp(
                 .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
         .route(
+            "/compositions/filmcraft/poster-preview",
+            post(handlers::filmcraft_project::poster_preview)
+                .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .route(
             "/compositions/filmcraft/trim-monitor",
             post(handlers::filmcraft_project::trim_monitor)
                 .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),

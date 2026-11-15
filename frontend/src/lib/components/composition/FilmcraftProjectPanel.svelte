@@ -5,6 +5,7 @@
   import { trimFilmcraftToPlayhead, type FilmcraftTrimShift, trimFilmcraftEditPoints, getFilmcraftNearestEditPoints, type FilmcraftNearestEditKind, getFilmcraftTrimMonitor, type FilmcraftTrimMonitor, applyFilmcraftSelectionTransitions, setFilmcraftTransition, applyFilmcraftTransition, getFilmcraftTransitions, type FilmcraftTransitionCatalogEntry, type FilmcraftTransitionParameter, importFilmcraftProject, exportFilmcraftAudio, exportFilmcraftFrame, trimFilmcraftProject, slipFilmcraftProject, stretchFilmcraftProject, rollFilmcraftProject, slideFilmcraftProject, deleteFilmcraftClips, closeFilmcraftGap, razorFilmcraftProject, removeFilmcraftRange, copyFilmcraftClips, pasteFilmcraftClips, type FilmcraftClipboardResult, type FilmcraftImportResult } from '$lib/api'
   import { parseFilmcraftSession, encodeFilmcraftSession, validTransitionDurationText } from '$lib/filmcraft/session'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
+  import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
   import FilmcraftLabelControls from './FilmcraftLabelControls.svelte'
   import FilmcraftClipEditControls from './FilmcraftClipEditControls.svelte'
   import FilmcraftMediaModifyControls from './FilmcraftMediaModifyControls.svelte'
@@ -384,6 +385,8 @@
   }
   // Retain inactive choices for document Redo, but never send absent source IDs.
   let bindings = $state<Record<string, string>>({})
+  let projectPanelOpen = $state(false)
+  const selectedPosterItem = $derived(project?.projectItems?.find(item => item.id === projectSelection[0]))
   const activeBindings = $derived(Object.fromEntries(Object.entries(bindings).filter(([id]) => project?.media.some(media => media.id === id))))
   let start = $state(0)
   let end = $state(1)
@@ -481,7 +484,7 @@
     finally { busy = false }
   }
 </script>
-<details class="filmcraft-panel">
+<details class="filmcraft-panel" ontoggle={event => { projectPanelOpen = event.currentTarget.open }}>
   <summary>Проект Filmcraft</summary>
   <div class="controls">
     <label>Открыть проект <input aria-label="Открыть проект Filmcraft" type="file" accept=".json,.filmcraft" disabled={busy} onchange={openFile} /></label>
@@ -501,6 +504,9 @@
       <button type="button" disabled={busy || !valid} onclick={saveSession}>Сохранить рабочую сессию</button>
         <label>Позиция правки, кадров <input aria-label="Позиция правки, кадров" type="text" inputmode="numeric" value={editPositionFrames} oninput={(event) => { editPositionFrames = event.currentTarget.value; pastePositionTicks = '' }} disabled={busy} /></label>
       <FilmcraftLabelControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} palette={project.labelPalette ?? []} bind:selected={projectSelection} clipSelection={timelineSelection} onselection={adoptLabelSelection} clipLabel={sequence?.clips?.find(clip => clip.id === clipId)?.label} disabled={busy} onedit={commitEdit} />
+      {#if projectPanelOpen && selectedPosterItem && (selectedPosterItem.kind === 'Media' || selectedPosterItem.kind === 'Sequence')}
+        <FilmcraftPosterPreview document={project.documentText} item={selectedPosterItem.id} name={selectedPosterItem.name} sources={activeBindings} {token} />
+      {/if}
       <FilmcraftClipEditControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} {linked} tracks={sequence?.tracks ?? []} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
       <FilmcraftMediaModifyControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} selected={projectSelection} items={project.projectItems ?? []} sourceBindings={activeBindings} disabled={busy} onedit={commitEdit} />
       <FilmcraftVideoOptionsControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />

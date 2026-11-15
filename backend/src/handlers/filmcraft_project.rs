@@ -666,6 +666,85 @@ fn preview_enabled()->bool{true}
 pub async fn preview_frame(State(state):State<AppState>,headers:HeaderMap,ApiJson(request):ApiJson<PreviewFrameRequest>)->AppResult<Json<Value>>{
  execute_preview(state,headers,request,None).await
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PosterPreviewRequest {
+    document: Value,
+    item: String,
+    #[serde(default)]
+    sources: BTreeMap<String, String>,
+}
+
+pub async fn poster_preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ApiJson(request): ApiJson<PosterPreviewRequest>,
+) -> AppResult<Json<Value>> {
+    use crate::domain::{filmcraft_poster_frame::{preview_clock, PreviewKind}, group_surface::GroupSurface};
+    use crate::services::filmcraft_video_preview::{frame_cached, SourceVideoRevision};
+    let id = request.item.parse::<u64>().map_err(|_| AppError::bad_request("invalid poster item ID"))?;
+    let document = decode(&request.document)?;
+    let (kind, ticks) = preview_clock(&document, id).map_err(|error| AppError::bad_request(error.to_string()))?;
+    if matches!(kind, PreviewKind::Sequence) {
+        return execute_preview(state, headers, PreviewFrameRequest {
+            document: request.document, sequence_id: request.item, sources: request.sources,
+            time_ticks: Some(ticks.to_string()), time_frames: None, effects: true, captions: true,
+        }, None).await;
+    }
+    let (kind, surface) = match kind {
+        PreviewKind::Generator => {
+            let frame = state.cpu_pool.execute(CancellationToken::new(), move |cancel| {
+                crate::domain::filmcraft_generator_video::source_frame(&document, id, ticks, 0.125, || cancel.is_cancelled())
+            }).await.map_err(preview_cpu_error)?;
+            ("generator", std::sync::Arc::new(frame.surface))
+        }
+        PreviewKind::File => {
+            let source = request.sources.get(&request.item).ok_or_else(|| AppError::bad_request("poster media is not bound to the library"))?;
+            preview_access(&state, source, &headers, &None).await?;
+            let entry = state.library.get(source).await.filter(|entry| entry.kind == "source")
+                .ok_or_else(|| AppError::not_found("poster source not found"))?;
+            let path = state.library.resolve_media_path(&entry).await.map_err(|_| AppError::not_found("poster source not found"))?;
+            let revision = SourceVideoRevision::read(&path).await.map_err(|error| AppError::bad_request(error.to_string()))?;
+            let rendered = match entry.media_type.as_deref() {
+                Some("video") => {
+                    let _permit = tokio::time::timeout(std::time::Duration::from_secs(2), state.acquire_render_slot()).await
+                        .map_err(|_| AppError::service_unavailable("poster preview queue is busy"))?
+                        .map_err(|_| AppError::service_unavailable("poster preview queue is unavailable"))?;
+                    let frame = frame_cached(&state.filmcraft_video_previews, &state.process_runtime, &path, ticks).await
+                        .map_err(|error| AppError::bad_request(error.to_string()))?
+                        .ok_or_else(|| AppError::not_found("no frame at the poster time"))?;
+                    ("video", frame.surface.clone())
+                }
+                Some("image") => {
+                    let image_path = path.clone();
+                    let surface = state.cpu_pool.execute(CancellationToken::new(), move |_| {
+                        anyhow::ensure!(std::fs::metadata(&image_path)?.len() <= 64 * 1024 * 1024, "poster image exceeds byte limit");
+                        let image = crate::domain::group_media::decode_image_surface(&image_path)?;
+                        let scale = (480. / image.width as f64).min(270. / image.height as f64).min(1.);
+                        let width = ((image.width as f64 * scale).round() as u32).max(1);
+                        let height = ((image.height as f64 * scale).round() as u32).max(1);
+                        let raw = image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.rgba)
+                            .ok_or_else(|| anyhow::anyhow!("invalid poster image"))?;
+                        let resized = image::imageops::resize(&raw, width, height, image::imageops::FilterType::Triangle);
+                        Ok(GroupSurface { width: width as usize, height: height as usize, rgba: resized.into_raw() })
+                    }).await.map_err(preview_cpu_error)?;
+                    ("image", std::sync::Arc::new(surface))
+                }
+                _ => return Err(AppError::bad_request("poster binding is not image or video media")),
+            };
+            preview_access(&state, source, &headers, &None).await?;
+            if SourceVideoRevision::read(&path).await.map_err(|error| AppError::bad_request(error.to_string()))? != revision {
+                return Err(AppError::conflict("poster source changed during preview"));
+            }
+            rendered
+        }
+        PreviewKind::Sequence => unreachable!(),
+    };
+    let rgba_hex: String = surface.rgba.iter().map(|byte| format!("{byte:02x}")).collect();
+    Ok(Json(json!({"kind":kind,"sampleTicks":ticks.to_string(),"ptsTicks":ticks.to_string(),
+        "width":surface.width,"height":surface.height,"rgbaHex":rgba_hex})))
+}
+
 #[derive(Clone)]
 pub(super) struct BackgroundPreview{pub owner:String,pub principal:[u8;32],pub cancel:CancellationToken,pub job_id:String}
 pub(super) fn preview_principal(headers:&HeaderMap)->[u8;32]{use sha2::Digest;let mut hash=sha2::Sha256::new();for name in ["authorization","cookie"]{let value=headers.get(name).map(|v|v.as_bytes()).unwrap_or_default();hash.update(&(value.len()as u64).to_le_bytes());hash.update(value);}hash.finalize().into()}

@@ -59,6 +59,62 @@ fn tick(value: Option<Value>) -> Result<i64> {
         .map(|value| value.unwrap_or_default())
 }
 
+fn snap(rate: FrameRate, time: i64) -> Result<i64> {
+    let rate = rate.sane();
+    ensure!(
+        (Tick::MIN.0..=Tick::MAX.0).contains(&time),
+        "poster time exceeds tick bounds"
+    );
+    let numerator = i128::from(filmcraft_time::TICKS_PER_SECOND) * i128::from(rate.den);
+    let frame = (i128::from(time) * i128::from(rate.num)).div_euclid(numerator);
+    let snapped = frame
+        .checked_mul(numerator)
+        .context("poster frame overflow")?
+        .div_euclid(i128::from(rate.num));
+    i64::try_from(snapped).context("poster tick overflow")
+}
+
+pub(crate) enum PreviewKind {
+    Sequence,
+    Generator,
+    File,
+}
+
+/// Selected-item preview uses the original one-third default and quarter-second thumbnail grid.
+pub(crate) fn preview_clock(
+    document: &SourceProjectDocument,
+    id: u64,
+) -> Result<(PreviewKind, i64)> {
+    let index = ProjectIndex::new(document)?;
+    let item = index.item(id).context("poster item is gone")?;
+    let kind = if item.pointer("/kind/Sequence").is_some() {
+        PreviewKind::Sequence
+    } else {
+        let media = item
+            .pointer("/kind/Media")
+            .context("item has no thumbnail")?;
+        ensure!(
+            media["offline"] != true && !media["info"]["video"].is_null(),
+            "item has no available video"
+        );
+        if media.pointer("/media/File").is_some() {
+            PreviewKind::File
+        } else if media.pointer("/media/Generator").is_some() {
+            PreviewKind::Generator
+        } else {
+            anyhow::bail!("item media does not support thumbnail preview")
+        }
+    };
+    let time = if let Some(tick) = stored_tick(item) {
+        tick.parse()?
+    } else {
+        super::filmcraft_project_inspect::duration(item)? / 3
+    };
+    let quarter = filmcraft_time::TICKS_PER_SECOND / 4;
+    let rate = filmcraft_source_inspect::frame_rate(&index, id)?;
+    Ok((kind, snap(rate, time / quarter * quarter)?))
+}
+
 pub fn edit(command: &str, params: Value) -> Result<Value> {
     let request: Request = serde_json::from_value(params)?;
     let bytes = match request.document {
@@ -108,19 +164,8 @@ pub fn edit(command: &str, params: Value) -> Result<Value> {
             FrameRate::default()
         } else {
             filmcraft_source_inspect::frame_rate(&index, item)?
-        }
-        .sane();
-        ensure!(
-            (Tick::MIN.0..=Tick::MAX.0).contains(&time),
-            "poster time exceeds tick bounds"
-        );
-        let numerator = i128::from(filmcraft_time::TICKS_PER_SECOND) * i128::from(rate.den);
-        let frame = (i128::from(time) * i128::from(rate.num)).div_euclid(numerator);
-        let snapped = frame
-            .checked_mul(numerator)
-            .context("poster frame overflow")?
-            .div_euclid(i128::from(rate.num));
-        Some(i64::try_from(snapped).context("poster tick overflow")?)
+        };
+        Some(snap(rate, time)?)
     };
     let target = document
         .envelope

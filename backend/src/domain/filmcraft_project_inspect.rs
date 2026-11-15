@@ -31,7 +31,7 @@ pub(super) fn id(value: Option<Value>) -> Result<Option<u64>> {
         })
         .transpose()
 }
-fn duration(item: &Value) -> Result<i64> {
+pub(super) fn duration(item: &Value) -> Result<i64> {
     let kind = item["kind"].as_object().context("invalid item kind")?;
     let (name, value) = kind.iter().next().context("missing item kind")?;
     Ok(match name.as_str() {
