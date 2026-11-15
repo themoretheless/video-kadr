@@ -11,7 +11,6 @@ export async function readConcatTemplateZip(archive: File, signal: AbortSignal):
   const reader = new ZipReader(new BlobReader(archive))
   try {
     const entries = new Map<string, FileEntry>()
-    let total = 0
     let count = 0
     for await (const entry of reader.getEntriesGenerator()) {
       signal.throwIfAborted()
@@ -22,19 +21,32 @@ export async function readConcatTemplateZip(archive: File, signal: AbortSignal):
           path.split('/').some(part => !part || part === '.' || part === '..')) {
         throw new Error('Некорректный путь в ZIP-шаблоне Concat')
       }
+      if (entries.has(path)) throw new Error('Повторный путь в ZIP-шаблоне Concat')
+      entries.set(path, entry)
+    }
+    const manifests = [...entries.keys()].filter(path =>
+      /^(?:[^/]+\/)?template\.json$/.test(path) &&
+      !(entries.has('template.json') && path === 'assets/template.json'),
+    )
+    if (manifests.length !== 1) throw new Error('ZIP должен содержать один шаблон Concat')
+    const root = manifests[0]!.slice(0, -'template.json'.length)
+    let total = 0
+    const bundle: [string, FileEntry][] = []
+    for (const [fullPath, entry] of entries) {
+      if (!fullPath.startsWith(root)) continue
+      const path = fullPath.slice(root.length)
       if (path !== 'template.json' && path !== 'poster.jpg' && !path.startsWith('assets/')) continue
-      if (entry.encrypted || entries.has(path)) throw new Error('Повторный или зашифрованный ресурс шаблона')
+      if (entry.encrypted) throw new Error('Зашифрованный ресурс шаблона')
       const limit = path === 'template.json' ? 4 * MiB : path === 'poster.jpg' ? 8 * MiB : MAX_CONTENT
       const size = entry.uncompressedSize
       total += size
       if (!Number.isSafeInteger(size) || size < 0 || size > limit || total > MAX_CONTENT) {
         throw new Error('Некорректный размер записи ZIP-шаблона Concat')
       }
-      entries.set(path, entry)
+      bundle.push([path, entry])
     }
-    if (!entries.has('template.json')) throw new Error('В корне ZIP-шаблона отсутствует template.json')
     const files: File[] = []
-    for (const [path, entry] of entries) {
+    for (const [path, entry] of bundle) {
       signal.throwIfAborted()
       const chunks: BlobPart[] = []
       let written = 0
