@@ -126,7 +126,7 @@ async fn saved_poster_and_clear_select_different_real_video_pixels() {
         serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
     let mut document = fixture["cases"][0]["document"].clone();
     document["project"]["items"]["1"]["kind"]["Media"]["info"]["duration"] =
-        json!(508_032_000_000_i64);
+        json!(609_638_400_000_i64);
     let set = edit(
         "clip.setPosterFrame",
         json!({
@@ -139,22 +139,26 @@ async fn saved_poster_and_clear_select_different_real_video_pixels() {
         json!({"document":set["documentText"],"item":"1"}),
     )
     .unwrap();
-    let request = |input: &Value, token: &str| {
+    let request = |input: &Value, token: &str, view: &str| {
         axum::http::Request::post("/api/compositions/filmcraft/poster-preview")
             .header("content-type", "application/json")
             .header("authorization", format!("Bearer {token}"))
             .body(axum::body::Body::from(
-                json!({"document":input,"item":"1","sources":{"1":"poster-video"}}).to_string(),
+                json!({"document":input,"item":"1","view":view,"sources":{"1":"poster-video"}})
+                    .to_string(),
             ))
             .unwrap()
     };
-    let (status, _, _) = support::send(&app, request(&set["documentText"], &outsider.token)).await;
+    let (status, _, _) =
+        support::send(&app, request(&set["documentText"], &outsider.token, "card")).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    for (snapshot, ticks, green) in [
-        (&set["documentText"], "317520000000", true),
-        (&clear["documentText"], "127008000000", false),
+    for (snapshot, view, ticks, green) in [
+        (&set["documentText"], "selected", "317520000000", true),
+        (&set["documentText"], "card", "317520000000", true),
+        (&clear["documentText"], "selected", "190512000000", false),
+        (&clear["documentText"], "card", "127008000000", false),
     ] {
-        let (status, body, _) = support::send(&app, request(snapshot, &owner.token)).await;
+        let (status, body, _) = support::send(&app, request(snapshot, &owner.token, view)).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["sampleTicks"], ticks);
         let pixel = body["rgbaHex"].as_str().unwrap();

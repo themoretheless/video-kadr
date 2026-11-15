@@ -1834,3 +1834,39 @@ it('renders the selected item poster, clears it and restores it with Undo', asyn
   expect(signal?.aborted).toBe(true)
   expect(document.querySelector('canvas[aria-label="Кадр обложки: One"]')).toBeNull()
 })
+
+it('browses Filmcraft cards by folder, searches descendants and shares ordered selection', async () => {
+  const [one, two, three] = [sharedSelectionItems[0]!, sharedSelectionItems[1]!, sharedSelectionItems[2]!]
+  const bins = [
+    { id: 'root', name: 'Корень', parentId: null, depth: 0, itemIds: [one.id] },
+    { id: 'child', name: 'Монтаж', parentId: 'root', depth: 1, itemIds: [two.id, three.id] },
+  ]
+  vi.mocked(getFilmcraftPosterPreview).mockRejectedValue(new Error('fixture has no video'))
+  await open(sourceText, false, false, undefined, sharedSelectionItems, bins)
+  const openDetails = (details: HTMLDetailsElement) => { details.open = true; details.dispatchEvent(new Event('toggle')) }
+  openDetails(document.querySelector<HTMLDetailsElement>('.filmcraft-panel')!)
+  await tick()
+  const grid = [...document.querySelectorAll('summary')].find(node => node.textContent === 'Сетка проекта Filmcraft')!.parentElement as HTMLDetailsElement
+  openDetails(grid)
+  await tick()
+  const button = (label: string) => [...grid.querySelectorAll('button')].find(node => node.textContent === label)
+  expect(button(two.name)).toBeUndefined()
+  expect(getFilmcraftPosterPreview).toHaveBeenCalledWith(expect.objectContaining({ view: 'card', item: one.id }), expect.any(AbortSignal), 'owner')
+  button('Папка «Монтаж»')!.click()
+  await tick()
+  expect(button(one.name)).toBeUndefined()
+  button(two.name)!.click()
+  await tick()
+  button(three.name)!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))
+  await tick()
+  expect(selectedProjectOptions('Элементы для меток Filmcraft')).toEqual([two.id, three.id])
+  button('На уровень выше')!.click()
+  await tick()
+  const input = grid.querySelector<HTMLInputElement>('input[type=search]')!
+  input.value = 'three'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await tick()
+  expect(button(three.name)?.getAttribute('aria-pressed')).toBe('true')
+  expect(button(one.name)).toBeUndefined()
+  expect(button('Папка «Монтаж»')).toBeUndefined()
+})

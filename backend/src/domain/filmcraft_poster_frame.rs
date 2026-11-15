@@ -80,10 +80,19 @@ pub(crate) enum PreviewKind {
     File,
 }
 
-/// Selected-item preview uses the original one-third default and quarter-second thumbnail grid.
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PreviewView {
+    #[default]
+    Selected,
+    Card,
+}
+
+/// Match the original preview area and icon-card defaults on the thumbnail clock.
 pub(crate) fn preview_clock(
     document: &SourceProjectDocument,
     id: u64,
+    view: PreviewView,
 ) -> Result<(PreviewKind, i64)> {
     let index = ProjectIndex::new(document)?;
     let item = index.item(id).context("poster item is gone")?;
@@ -108,7 +117,11 @@ pub(crate) fn preview_clock(
     let time = if let Some(tick) = stored_tick(item) {
         tick.parse()?
     } else {
-        super::filmcraft_project_inspect::duration(item)? / 3
+        let duration = super::filmcraft_project_inspect::duration(item)?;
+        match view {
+            PreviewView::Selected => duration / 3,
+            PreviewView::Card => (i128::from(duration) * 3 / 10) as i64,
+        }
     };
     let quarter = filmcraft_time::TICKS_PER_SECOND / 4;
     let rate = filmcraft_source_inspect::frame_rate(&index, id)?;
