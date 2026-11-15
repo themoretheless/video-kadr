@@ -1,11 +1,11 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, listNestedExports, nestedDurations, writeCaptionFile, type NativeNestedProject } from '$lib/api'
+import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, listNestedExports, nestedDurations, retryFilmcraftVideoJob, writeCaptionFile, type NativeNestedProject } from '$lib/api'
 import { loadLibrary } from '$lib/state/store.svelte'
 import { closeNestedComposition, nestedComposition } from '$lib/state/nestedComposition.svelte'
 import NestedExportPanel from './NestedExportPanel.svelte'
-vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), listNestedExports: vi.fn(), nestedDurations: vi.fn(), writeCaptionFile: vi.fn() }))
+vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), listNestedExports: vi.fn(), nestedDurations: vi.fn(), retryFilmcraftVideoJob: vi.fn(), writeCaptionFile: vi.fn() }))
 vi.mock('$lib/state/store.svelte', () => ({ loadLibrary: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 beforeEach(() => {
@@ -210,4 +210,31 @@ it('reopens a job and downloads the persisted caption artifact without the origi
     create.mockRestore()
     revoke.mockRestore()
   }
+})
+
+it('retries a failed export by its existing job ID without submitting the edited range', async () => {
+  const id = '12345678-1234-1234-1234-123456789abc'
+  vi.mocked(getJob)
+    .mockResolvedValueOnce({ id, status: 'error', errorKind: 'timeout', error: 'Timed out' })
+    .mockResolvedValueOnce({ id, status: 'done', result: {
+      id, filename: `${id}.mkv`, captionSidecar: { extension: 'vtt', bytesBase64: btoa('WEBVTT\n') },
+    } })
+  vi.mocked(retryFilmcraftVideoJob).mockRejectedValueOnce(new Error('Retry unavailable'))
+    .mockResolvedValueOnce({ jobId: id, status: 'pending' })
+  await ready()
+  const field = [...document.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Идентификатор задачи')!.querySelector('input')!
+  field.value = id
+  field.dispatchEvent(new Event('input', { bubbles: true }))
+  await tick()
+  button('Открыть задачу').click()
+  await vi.waitFor(() => expect(button('Повторить экспорт')).toBeDefined())
+  button('Повторить экспорт').click()
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Retry unavailable'))
+  expect(button('Повторить экспорт').disabled).toBe(false)
+  button('Повторить экспорт').click()
+  await vi.waitFor(() => expect(button('Скачать субтитры VTT')).toBeDefined())
+  expect(retryFilmcraftVideoJob).toHaveBeenCalledTimes(2)
+  expect(retryFilmcraftVideoJob).toHaveBeenLastCalledWith('owner-token', id, expect.any(AbortSignal))
+  expect(getJob).toHaveBeenLastCalledWith(id, expect.any(AbortSignal), 'owner-token')
+  expect(exportNestedVideo).not.toHaveBeenCalled()
 })

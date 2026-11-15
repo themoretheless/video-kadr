@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, listNestedExports, nestedDurations, type CaptionFileFormat, type NestedExportHistoryEntry } from '$lib/api'
+  import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, listNestedExports, nestedDurations, retryFilmcraftVideoJob, type CaptionFileFormat, type NestedExportHistoryEntry } from '$lib/api'
   import { nestedComposition, nestedHistory } from '$lib/state/nestedComposition.svelte'
   import { loadLibrary } from '$lib/state/store.svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -18,6 +18,7 @@
   let busy = $state(false)
   let monitoring = $state(false)
   let cancelling = $state(false)
+  let retrying = $state(false)
   let error = $state('')
   let job = $state<Job | null>(null)
   let jobId = $state('')
@@ -63,6 +64,8 @@
       content.metadata?.captionTextTracks?.includes(track.id))))
   const progress = $derived(Math.min(100, Math.max(0, job?.progress ?? 0)))
   const filename = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' && 'filename' in job.result && typeof job.result.filename === 'string' ? job.result.filename : '')
+  const canRetry = $derived(job && (job.status === 'error' || job.status === 'interrupted') &&
+    ['timeout', 'tool_unavailable', 'process_exit', 'storage', 'interrupted'].includes(job.errorKind ?? ''))
   const outputId = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' &&
     'id' in job.result && typeof job.result.id === 'string' ? job.result.id : '')
   $effect(() => {
@@ -172,6 +175,23 @@
     jobId = id
     void observe()
   }
+  async function retry() {
+    if (!jobId || disabled || busy || !canRetry) return
+    const id = jobId
+    busy = true; retrying = true; error = ''
+    try {
+      const accepted = await retryFilmcraftVideoJob(token, id, lifecycle.signal)
+      if (lifecycle.signal.aborted) return
+      job = null; jobId = accepted.jobId
+      retrying = false
+      if (historyLoaded) void refreshHistory()
+      await observe()
+    } catch (failure) {
+      if (lifecycle.signal.aborted) return
+      busy = false
+      error = failure instanceof Error ? failure.message : String(failure)
+    } finally { retrying = false }
+  }
   function closeObservation() {
     job = null; jobId = ''; busy = false; cancelling = false; submittedCaptions = undefined; error = ''
   }
@@ -221,7 +241,9 @@
   <label>От, мкс <input aria-label="Начало нативного экспорта" type="number" min="0" max={duration} step="1" bind:value={startUs} disabled={busy || durationBusy || disabled} /></label>
   <label>До, мкс <input aria-label="Конец нативного экспорта" type="number" min="0" max={duration} step="1" bind:value={endUs} disabled={busy || durationBusy || disabled} /></label>
   <button class="btn primary sm" disabled={busy || durationBusy || disabled || nestedHistory.busy || !validRange} onclick={() => void start()}>Экспортировать видео</button>
-  {#if busy && jobId}
+  {#if retrying}
+    <span role="status">Повторный запуск экспорта…</span>
+  {:else if busy && jobId}
     <progress aria-label="Прогресс нативного экспорта" max="100" value={progress}></progress>
     <span>{Math.round(progress)}% {cancelling ? '· отмена запрошена' : ''}</span>
     <button class="btn ghost sm" disabled={cancelling} onclick={() => void cancel()}>Отменить экспорт</button>
@@ -264,6 +286,9 @@
       <CaptionFileExport composition={{ canvas: submittedCaptions.canvas, captionTracks: [submittedCaptions.track] }}
         range={submittedCaptions.range} basename={filename.replace(/\.mkv$/i, '')} {disabled} />
     </details>
+  {/if}
+  {#if canRetry}
+    <button class="btn ghost sm" disabled={busy || disabled} onclick={() => void retry()}>Повторить экспорт</button>
   {/if}
   {#if job?.status === 'cancelled'}<span role="status">Экспорт отменён</span>{/if}
   {#if captionContent && captionTrack}
