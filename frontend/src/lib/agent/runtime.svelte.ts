@@ -239,7 +239,7 @@ async function dispatchAgentRequest(actor: string, tool: string, args: Record<st
     return executeFilmcraftCommand(actor, tool, args, access)
   }
   const unplacedAnalysis = tool === 'analyze_clip' && args.media_id !== undefined && args.clipId === undefined
-  if (!unplacedAnalysis && (nestedComposition.document||tool==='redo'&&nestedHistory.future.length>0) && !['export_captions','set_history_lock','describe_clip','read_scene_descriptions'].includes(tool)) {
+  if (!unplacedAnalysis && (nestedComposition.document||tool==='redo'&&nestedHistory.future.length>0) && !['export_captions','set_history_lock','describe_clip','read_scene_descriptions','read_media_image'].includes(tool)) {
     const id=makeId('agent-op')
     logAgentOperation(id,actor,tool,'started')
     try {
@@ -253,7 +253,7 @@ async function dispatchAgentRequest(actor: string, tool: string, args: Record<st
     }
   }
 
-  if (['analyze_clip', 'measure_shots', 'compare_frames', 'describe_clip', 'read_scene_descriptions', 'auto_split_by_shot', 'mark_shots', 'apply_shot_cuts'].includes(tool)) {
+  if (['analyze_clip', 'measure_shots', 'compare_frames', 'describe_clip', 'read_scene_descriptions', 'read_media_image', 'auto_split_by_shot', 'mark_shots', 'apply_shot_cuts'].includes(tool)) {
     const { executeAgentCompute } = await import('./compute.svelte.js')
     return executeAgentCompute(actor, tool, args, access)
   }

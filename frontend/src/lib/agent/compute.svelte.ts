@@ -1,4 +1,4 @@
-import { scanLibraryShots, measureLibraryShots, compareLibraryFrames, describeLibraryShot, getSceneDescriptionCatalog } from '../api.js'
+import { scanLibraryShots, measureLibraryShots, compareLibraryFrames, describeLibraryShot, getSceneDescriptionCatalog, getLibraryAnalysisFrame, getLibraryThumbnail } from '../api.js'
 import { findClipLocation } from '../composition/commands.js'
 import { cloneComposition, compositionState, commitDocument, makeId, selectCompositionClip } from '../state/composition/core.svelte.js'
 import { parseSceneDescriptionLanguage } from '../analysis/sceneDescriptionLanguages.js'
@@ -23,6 +23,7 @@ export async function executeAgentCompute(actor: string, tool: string, args: Rec
   }
 }
 async function compute(actor: string, tool: string, args: Record<string, unknown>, access: AgentAccess): Promise<unknown> {
+  if (tool === 'read_media_image') return readMediaImage(args, access)
   if (tool === 'read_scene_descriptions') return readSceneDescriptions(args, access)
   const editing = ['auto_split_by_shot', 'mark_shots', 'apply_shot_cuts'].includes(tool)
   const clipId = args.clipId, mediaId = args.media_id
@@ -204,4 +205,32 @@ function descriptionView(args: Record<string, unknown>): SceneDescriptionPrefere
     throw new Error('fps must be greater than 0 and at most 30')
   }
   return { focus, language, fps: Math.max(1, Math.round(fps * 1000)) / 1000 }
+}
+
+async function readMediaImage(args: Record<string, unknown>, access: AgentAccess) {
+  const { media_id: sourceId, time_us: tick } = args
+  if (typeof sourceId !== 'string' || !/^[A-Za-z0-9._-]{1,128}$/.test(sourceId) ||
+      sourceId === '.' || sourceId === '..' ||
+      Object.keys(args).some(key => key !== 'media_id' && key !== 'time_us')) {
+    throw new Error('Invalid library media id')
+  }
+  if (tick !== undefined && (typeof tick !== 'number' || !Number.isSafeInteger(tick) || tick < 0)) {
+    throw new Error('Invalid source frame time')
+  }
+  const remaining = access.expiresAt === undefined ? 120_000 : access.expiresAt - Date.now()
+  if (remaining <= 0 || access.isActive?.() === false) throw new Error('Image request expired or editor disconnected')
+  const signal = AbortSignal.timeout(Math.min(remaining, 120_000))
+  const image = tick === undefined
+    ? await getLibraryThumbnail(sourceId, access.token, access.spaceId, signal)
+    : await getLibraryAnalysisFrame(sourceId, tick, access.token, access.spaceId, signal)
+  if (image.type !== 'image/png' || image.size === 0 || image.size > 2 * 1024 * 1024) {
+    throw new Error('Expected a bounded PNG from the media library')
+  }
+  const bytes = new Uint8Array(await image.arrayBuffer())
+  if (signal.aborted || access.isActive?.() === false) throw new Error('Image request expired or editor disconnected')
+  const chunks: string[] = []
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 8192)))
+  }
+  return { mimeType: 'image/png', data: btoa(chunks.join('')) }
 }

@@ -66,12 +66,42 @@ qualification: try {
   const sessionId = initialized.headers.get('mcp-session-id')
   assert.ok(sessionId)
   let callId = 0
-  async function tool(name, args = {}) {
-    const response = await fetch(`${backendUrl}/mcp`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Mcp-Session-Id': sessionId }, body: JSON.stringify({ jsonrpc: '2.0', id: ++callId, method: 'tools/call', params: { name, arguments: args } }) })
+  async function call(method, params) {
+    const response = await fetch(`${backendUrl}/mcp`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Mcp-Session-Id': sessionId }, body: JSON.stringify({ jsonrpc: '2.0', id: ++callId, method, params }) })
     assert.equal(response.status, 200)
     const rpc = await response.json()
     assert.equal(rpc.id, callId)
-    return { failed: rpc.result.isError, data: JSON.parse(rpc.result.content[0].text) }
+    return rpc.result
+  }
+  async function tool(name, args = {}) {
+    const result = await call('tools/call', { name, arguments: args })
+    return { failed: result.isError, data: JSON.parse(result.content[0].text) }
+  }
+  {
+    const thumbnailUri = 'media://scene-e2e/thumbnail'
+    const frameUri = 'media://scene-e2e/frame/500000'
+    const [thumbnail] = (await call('resources/read', { uri: thumbnailUri })).contents
+    const [frame] = (await call('resources/read', { uri: frameUri })).contents
+    const image = await call('tools/call', { name: 'read_media_image', arguments: { media_id: 'scene-e2e', time_us: 1500000 } })
+    assert.equal(image.isError, false)
+    assert.equal(image.content[0].type, 'image')
+    assert.equal(image.content[0].mimeType, 'image/png')
+    for (const [resource, uri] of [[thumbnail, thumbnailUri], [frame, frameUri]]) {
+      assert.equal(resource.uri, uri)
+      assert.equal(resource.mimeType, 'image/png')
+      assert.equal(resource.text, undefined)
+      assert.equal(Buffer.from(resource.blob, 'base64').subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
+    }
+    const intensity = await page.evaluate(async (blobs) => Promise.all(blobs.map(async (blob) => {
+      const pixels = Uint8Array.from(atob(blob), (byte) => byte.charCodeAt(0))
+      const bitmap = await createImageBitmap(new Blob([pixels], { type: 'image/png' }))
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+      const context = canvas.getContext('2d')
+      context.drawImage(bitmap, 0, 0)
+      return context.getImageData(bitmap.width >> 1, bitmap.height >> 1, 1, 1).data[0]
+    })), [frame.blob, image.content[0].data])
+    assert.ok(intensity[0] <= 5 && intensity[1] >= 250, `Unexpected frame intensities: ${intensity}`)
+    console.log('Real MCP PNG thumbnail and source frames passed.')
   }
   const project = await tool('get_project')
   assert.equal(project.failed, false)

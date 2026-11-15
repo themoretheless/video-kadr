@@ -27,6 +27,37 @@ beforeEach(() => {
 })
 
 describe('MCP shot analysis', () => {
+  it('reads authenticated source images as PNG in a nested project without scanning scenes', async () => {
+    const data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg=='
+    const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0))
+    const fetchImage = vi.fn(async (path: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers)
+      expect(headers.get('Authorization')).toBe('Bearer owner')
+      expect(headers.get('X-Space-Id')).toBe('space')
+      expect(init?.signal).toBeInstanceOf(AbortSignal)
+      return new Response(bytes, { headers: { 'content-type': path.endsWith('/bad/thumbnail') ? 'text/html' : 'image/png' } })
+    })
+    vi.stubGlobal('fetch', fetchImage)
+    nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: {} }
+    const access = { token: 'owner', spaceId: 'space' }
+    try {
+      const expected = { mimeType: 'image/png', data }
+      await expect(executeAgentRequest('agent', 'read_media_image', { media_id: 'source' }, access)).resolves.toEqual(expected)
+      await expect(executeAgentRequest('agent', 'read_media_image', { media_id: 'source', time_us: 123456 }, access)).resolves.toEqual(expected)
+      await expect(executeAgentRequest('agent', 'read_media_image', { media_id: '..' }, access)).rejects.toThrow('media id')
+      await expect(executeAgentRequest('agent', 'read_media_image', { media_id: 'source', time_us: -1 }, access)).rejects.toThrow('frame time')
+      await expect(executeAgentRequest('agent', 'read_media_image', { media_id: 'bad' }, access)).rejects.toThrow('bounded PNG')
+      expect(fetchImage.mock.calls.map(([path]) => path)).toEqual([
+        '/api/library/source/thumbnail',
+        '/api/library/source/analysis-frame?tick=123456',
+        '/api/library/bad/thumbnail',
+      ])
+      expect(api.scanLibraryShots).not.toHaveBeenCalled()
+    } finally {
+      closeNestedComposition()
+      vi.unstubAllGlobals()
+    }
+  })
   it('reads the unplaced analysis view while a nested project is open and forwards its deadline', async () => {
     nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: {} }
     const access = { token: 'owner', spaceId: 'space', expiresAt: Date.now() + 30_000 }

@@ -160,6 +160,12 @@ export function libraryThumbnailUrl(id: string): string {
   return '/api/library/' + encodeURIComponent(id) + '/thumbnail'
 }
 
+export async function getLibraryThumbnail(id: string, token?: string | null, spaceId?: string | null, signal?: AbortSignal): Promise<Blob> {
+  const response = await safeFetch(libraryThumbnailUrl(id), { headers: libraryAccessHeaders(token, spaceId), signal })
+  if (!response.ok) throw await responseError(response, 'Обложка недоступна')
+  return response.blob()
+}
+
 /** Same-origin stable URL for the bounded eight-cell video filmstrip. */
 export function libraryFilmstripUrl(id: string): string {
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) {

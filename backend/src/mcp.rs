@@ -7,6 +7,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, VecDeque},
@@ -37,6 +38,7 @@ const TOOL_NAMES: &[&str] = &[
     "compare_frames",
     "describe_clip",
     "read_scene_descriptions",
+    "read_media_image",
     "auto_split_by_shot",
     "mark_shots",
     "apply_shot_cuts",
@@ -230,6 +232,14 @@ async fn rpc(
             "uriTemplate":"media://{id}/analysis",
             "name":"Whole-source scene analysis and measurements",
             "mimeType":"application/json"
+        },{
+            "uriTemplate":"media://{id}/thumbnail",
+            "name":"Library media thumbnail",
+            "mimeType":"image/png"
+        },{
+            "uriTemplate":"media://{id}/frame/{t_us}",
+            "name":"Video frame at source time in microseconds",
+            "mimeType":"image/png"
         }]}})).into_response());
     }
     let uri = if method == "resources/read" {
@@ -243,6 +253,8 @@ async fn rpc(
             _ => {
                 if let Some(id) = media_resource_id(&uri, "/analysis") {
                     ("analyze_clip", json!({"media_id":id,"stats":true,"threshold":0.4,"minShotTicks":500000}))
+                } else if let Some(arguments) = media_image_resource(&uri) {
+                    ("read_media_image", arguments)
                 } else if let Some(arguments) = cached_scene_resource(&uri) {
                     ("read_scene_descriptions", arguments)
                 } else {
@@ -265,6 +277,11 @@ async fn rpc(
                 .and_then(|text| serde_json::from_str::<Value>(text).ok())
                 .and_then(|value| value["error"].as_str().map(str::to_owned));
             body = error(body["id"].clone(), -32000, message.as_deref().unwrap_or("Visible editor unavailable"));
+        } else if body["result"]["content"][0]["type"] == "image" {
+            let image = &body["result"]["content"][0];
+            body["result"] = json!({"contents":[{
+                "uri":uri,"mimeType":image["mimeType"],"blob":image["data"]
+            }]});
         } else if let Some(text) = body["result"]["content"][0]["text"].as_str() {
             let text = if media_resource_id(&uri, "/analysis").is_some() {
                 let mut report: serde_json::Map<String, Value> = serde_json::from_str(text)
@@ -298,9 +315,22 @@ async fn rpc(
 
 fn media_resource_id<'a>(path: &'a str, suffix: &str) -> Option<&'a str> {
     let id = path.strip_prefix("media://")?.strip_suffix(suffix)?;
-    (!id.is_empty() && id.len() <= 128
+    (!id.is_empty() && id.len() <= 128 && !matches!(id, "." | "..")
         && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')))
         .then_some(id)
+}
+
+fn media_image_resource(uri: &str) -> Option<Value> {
+    if let Some(id) = media_resource_id(uri, "/thumbnail") {
+        return Some(json!({"media_id":id}));
+    }
+    let (path, tick) = uri.rsplit_once("/frame/")?;
+    let id = media_resource_id(path, "")?;
+    if tick.is_empty() || tick.len() > 16 || !tick.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let tick = tick.parse::<u64>().ok()?;
+    (tick <= 9_007_199_254_740_991).then(|| json!({"media_id":id,"time_us":tick}))
 }
 
 fn cached_scene_resource(uri: &str) -> Option<Value> {
@@ -436,6 +466,8 @@ async fn dispatch_rpc(
                 inbox.queue.push_back(ticket.clone());
             }
             match tokio::time::timeout(command_timeout_for_tool(name), rx).await {
+                Ok(Ok(response)) if name == "read_media_image" && response.get("error").is_none() =>
+                    image_tool_result(&response["result"]),
                 Ok(Ok(response)) => tool_result(
                     response
                         .get("result")
@@ -462,6 +494,19 @@ async fn dispatch_rpc(
 }
 fn tool_result(result: Value, failed: bool) -> Value {
     json!({"content":[{"type":"text","text":result.to_string()}],"isError":failed})
+}
+fn image_tool_result(result: &Value) -> Value {
+    const MAX_BYTES: usize = 2 * 1024 * 1024;
+    if let Some(data) = result["data"].as_str() {
+        if result["mimeType"] == "image/png" && data.len() <= MAX_BYTES.div_ceil(3) * 4
+            && STANDARD.decode(data).is_ok_and(|bytes| {
+                bytes.len() <= MAX_BYTES && bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+            })
+        {
+            return json!({"content":[{"type":"image","data":data,"mimeType":"image/png"}],"isError":false});
+        }
+    }
+    tool_result(json!({"error":"Editor returned an invalid image"}), true)
 }
 fn tool_schema(name: &str) -> Value {
     if name == "command_batch" {
@@ -570,6 +615,14 @@ fn tool_schema(name: &str) -> Value {
     if name == "freeze_frame" { return json!({"name":name,"description":"Insert a captured one-second FreezeFrame into an authenticated saved native project. Requires current get_project.projectHash and an unchanged saved revision/document. Optional composition_id defaults root; time_us is absolute composition time. Publishes a fresh still, splits/ripples the video lane and creates one local Undo entry. This is a server-persisted mutation, not a dry-run/batch operation. Unsupported native effects/playback profiles refuse. If the server commits after the editor context changes, local state is retained and the caller must reload before another save.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_keyframes" { return json!({"name":name,"description":"Read scalar animation before editing: ordinary revision or native projectHash (optional native composition_id defaults root), constant value or keyframes with native tick/timeBase, layer-local t_local_us, timeline t_us, effective tangents and outgoing segment. Exact preset_id is omitted for hand-tuned segments and the last key. envelope defaults to visual; mask requires maskId. Native effect channels require effectIndex plus effectKind and use authored animation parameters. Read-only.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_color_track" { return json!({"name":name,"description":"Read text or color-layer animation (native nested scope defaults to root and returns projectHash; packed native timing retains fractional microseconds and nativeTrack): constant RGBA bytes or keyframes with authored tick/timeBase, layer-local t_local_us, timeline t_us, resolved temporal tangents and outgoing segment. Read-only. set_color_key uses composition playhead ticks; delete_color_key uses exact authored key ticks, including negative retained keys after trimming.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
+    if name == "read_media_image" {
+        return json!({"name":name,"description":"Read a PNG thumbnail or a video frame from the authorized media library. time_us is an absolute timestamp in source microseconds. Omit it for the thumbnail.","annotations":{"readOnlyHint":true},"inputSchema":{
+            "type":"object","properties":{
+                "media_id":{"type":"string","minLength":1,"maxLength":128},
+                "time_us":{"type":"integer","minimum":0,"maximum":9007199254740991u64}
+            },"required":["media_id"],"additionalProperties":false
+        }});
+    }
     if name == "read_scene_descriptions" {
         return json!({"name":name,"description":"Read saved descriptions for an authorized library video without running scene analysis or the model. Returns paginated source ranges; use nextCursor as cursor. Supply both startTicks and endTicks for exact lookup, including legacy entries.","annotations":{"readOnlyHint":true},"inputSchema":{"type":"object","properties":properties,"required":["media_id"],"additionalProperties":false}});
     }
@@ -746,7 +799,7 @@ fn cleanup(inbox: &mut Inbox) {
     inbox.queue.retain(|id| inbox.pending.contains_key(id));
 }
 fn command_timeout_for_tool(name: &str) -> Duration {
-    if name == "read_scene_descriptions" { return Duration::from_secs(120); }
+    if matches!(name, "read_scene_descriptions" | "read_media_image") { return Duration::from_secs(120); }
     if name == "describe_clip" {
         return Duration::from_secs(420);
     }
@@ -1096,7 +1149,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn media_resources_route_cache_reads_and_whole_source_analysis() {
+    async fn media_resources_route_json_and_png_to_the_editor() {
         let app = app();
         let list = json_body(app.clone().oneshot(request("/mcp", json!({
             "jsonrpc":"2.0","id":1,"method":"resources/templates/list"
@@ -1104,9 +1157,16 @@ mod tests {
         assert_eq!(list["result"]["resourceTemplates"][0]["uriTemplate"],
             "media://{id}/description{?focus,language,fps,startTicks,endTicks,cursor}");
         assert_eq!(list["result"]["resourceTemplates"][1]["uriTemplate"], "media://{id}/analysis");
+        assert_eq!(list["result"]["resourceTemplates"][2]["uriTemplate"], "media://{id}/thumbnail");
+        assert_eq!(list["result"]["resourceTemplates"][3]["uriTemplate"], "media://{id}/frame/{t_us}");
         assert!(cached_scene_resource("media://clip/description?language=en&language=ru").is_none());
         assert!(cached_scene_resource("media://clip/description?unexpected=1").is_none());
         assert!(media_resource_id("media://clip/analysis?stats=false", "/analysis").is_none());
+        assert!(media_image_resource("media://clip/frame/-1").is_none());
+        assert!(media_image_resource("media://../thumbnail").is_none());
+        assert!(media_image_resource("media://clip/frame/9007199254740992").is_none());
+        assert_eq!(image_tool_result(&json!({"mimeType":"image/png","data":"AAAA"}))["isError"], true);
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==";
         app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"resource-reader"}))).await.unwrap();
         for (uri, tool, args, report, expected) in [
             ("media://Clip-1/description?language=en&fps=0.5&startTicks=1&endTicks=2",
@@ -1116,6 +1176,10 @@ mod tests {
                 json!({"media_id":"Clip-1","stats":true,"threshold":0.4,"minShotTicks":500000}),
                 json!({"sourceId":"Clip-1","revision":42,"measurements":[]}),
                 json!({"sourceId":"Clip-1","measurements":[]})),
+            ("media://Clip-1/thumbnail", "read_media_image", json!({"media_id":"Clip-1"}),
+                json!({"mimeType":"image/png","data":png}), json!({"blob":png})),
+            ("media://Clip-1/frame/123456", "read_media_image", json!({"media_id":"Clip-1","time_us":123456}),
+                json!({"mimeType":"image/png","data":png}), json!({"blob":png})),
         ] {
             let rpc = app.clone();
             let read = tokio::spawn(async move {
@@ -1141,7 +1205,13 @@ mod tests {
             let reply = json_body(read.await.unwrap()).await;
             let content = &reply["result"]["contents"][0];
             assert_eq!(content["uri"], uri);
-            assert_eq!(serde_json::from_str::<Value>(content["text"].as_str().unwrap()).unwrap(), expected);
+            if let Some(blob) = expected.get("blob") {
+                assert_eq!(content["blob"], *blob);
+                assert_eq!(content["mimeType"], "image/png");
+                assert!(content.get("text").is_none());
+            } else {
+                assert_eq!(serde_json::from_str::<Value>(content["text"].as_str().unwrap()).unwrap(), expected);
+            }
         }
     }
 
