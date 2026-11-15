@@ -393,6 +393,8 @@ fn catalog(params: Value) -> AppResult<Value> {
         ("project.moveToBin","Move to Bin","{document:object|string,items?:[id],bin?:id|null,context?:{projectSelection?:[id]}}; missing bin targets root"),
         ("project.renameBin","Rename Bin","{document:object|string,bin:id,name:str}; trims name, refuses empty names and root bin; explicit snapshot adoption"),
         ("project.matteColor","Color Matte Color","{document:object|string,item?:id,color:str,context?:{projectSelection:[id]}}"),
+        ("metadata.get","Get Item Metadata","{document:object|string,item?:id,clip?:id,context?:object}"),
+        ("metadata.set","Edit Item Metadata","{document:object|string,item?:id,clip?:id,field?:str,value?:any,fields?:object,context?:object}"),
         ("project.freeform.resize","Clip Size","{document:object|string,items:[id],size?:number,step?:number,width?:number}"),
         ("project.freeform.alignToGrid","Align to Grid","{document:object|string,bin?:id,grid?:number,width?:number}"),
         ("project.freeform.reset","Reset to Grid","{document:object|string,bin?:id}"),
@@ -598,6 +600,10 @@ async fn dispatch(
     }
     if request.command == "project.renameBin" {
         let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_bin_rename::rename(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if matches!(request.command.as_str(), "metadata.get" | "metadata.set") {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_metadata::run(&request.command, params)).await.map_err(bad)?;
         return Ok(Json(value));
     }
     if request.command == "project.matteColor" {

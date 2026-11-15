@@ -26,7 +26,7 @@ fn manifest(document:&SourceProjectDocument)->AppResult<Value> {
             .filter_map(|clip|Some(clip["start"].as_i64()? as i128+clip["duration"].as_i64()? as i128)).max().unwrap_or(0).max(0);
         let clips:Vec<_>=["video_tracks","audio_tracks"].into_iter().flat_map(|kind|sequence[kind].as_array().into_iter().flatten().map(move |track|(kind,track)))
             .flat_map(|(kind,track)|track["items"].as_array().into_iter().flatten().map(move |clip|json!({
-                "id":clip["id"].as_u64().map(|v|v.to_string()),"name":clip["name"],"label":clip["label"],
+                "id":clip["id"].as_u64().map(|v|v.to_string()),"sourceItemId":clip["item"].as_u64().map(|v|v.to_string()),"name":clip["name"],"label":clip["label"],
                 "trackId":track["id"].as_u64().map(|v|v.to_string()),"trackKind":kind,
                 "locked":track["locked"].as_bool().unwrap_or(false),
                 "linkId":clip["link"].as_u64().map(|v|v.to_string()),

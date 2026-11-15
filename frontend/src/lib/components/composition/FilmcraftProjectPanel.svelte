@@ -6,6 +6,7 @@
   import { parseFilmcraftSession, encodeFilmcraftSession, validTransitionDurationText } from '$lib/filmcraft/session'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
+  import FilmcraftMetadataControls from './FilmcraftMetadataControls.svelte'
   import FilmcraftProjectGrid from './FilmcraftProjectGrid.svelte'
   import FilmcraftLabelControls from './FilmcraftLabelControls.svelte'
   import FilmcraftClipEditControls from './FilmcraftClipEditControls.svelte'
@@ -582,6 +583,9 @@
         <FilmcraftPosterPreview document={project.documentText} item={selectedPosterItem.id} name={selectedPosterItem.name} sources={activeBindings} {token} />
       {/if}
       <FilmcraftClipEditControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} {linked} tracks={sequence?.tracks ?? []} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
+      <FilmcraftMetadataControls document={project.documentText}
+        item={project.projectItems?.find(item => item.id === (projectSelection[0] ?? sequence?.clips?.find(clip => clip.id === clipId)?.sourceItemId))}
+        {sequenceId} {clipId} {token} palette={project.labelPalette ?? []} disabled={busy} onedit={commitEdit} />
       <FilmcraftMediaModifyControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} selected={projectSelection} items={project.projectItems ?? []} sourceBindings={activeBindings} disabled={busy} onedit={commitEdit} />
       <FilmcraftVideoOptionsControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
       <FilmcraftReplaceControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} {projectSelection} {sourceItem} {sourcePlayhead} {linked} items={project.projectItems ?? []} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
