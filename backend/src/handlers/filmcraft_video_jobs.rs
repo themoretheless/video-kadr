@@ -77,6 +77,66 @@ pub async fn summary(
         .map_err(|error| AppError::bad_request(error.to_string()))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeliveryPreviewRequest {
+    input: Value,
+    time_ticks: Option<String>,
+    time_frames: Option<String>,
+}
+
+pub async fn preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ApiJson(body): ApiJson<DeliveryPreviewRequest>,
+) -> AppResult<axum::response::Response> {
+    use axum::{http::header, response::IntoResponse};
+    use image::ImageEncoder;
+    use super::filmcraft_video_export::DeliveryFrame;
+
+    let bad = |error: anyhow::Error| AppError::bad_request(error.to_string());
+    let owner = super::publish::authenticated_actor(&state, &headers).await?;
+    let request = resolve_request(&state, &owner, body.input).await?;
+    if request.preset.audio_only() {
+        return Err(AppError::bad_request("audio exports have no video preview"));
+    }
+    let (spec, _) = request.spec().map_err(bad)?;
+    let geometry = request.geometry(spec).map_err(bad)?;
+    let sequence = request.sequence_id.parse().map_err(|_| AppError::bad_request("invalid preview sequence"))?;
+    let time = super::filmcraft_project::edit_delta(
+        &request.document().map_err(bad)?, sequence, body.time_ticks, body.time_frames,
+    )?;
+    for source in request.sources.values() {
+        super::library::authorize_source_access(&state, source, &headers).await?;
+    }
+    if request.image_overlay.enabled {
+        super::library::authorize_source_access(&state, &request.image_overlay.source_id, &headers).await?;
+    }
+    let cancel = CancellationToken::new();
+    let _guard = cancel.clone().drop_guard();
+    let overlay = request.load_delivery_overlay(&state, &headers, None, &cancel).await.map_err(bad)?;
+    let frame = request.render_delivery_frame(DeliveryFrame {
+        state: state.clone(), headers, geometry, background: None, image_overlay: overlay,
+        cancel: cancel.child_token(),
+    }, time).await.map_err(bad)?;
+    let bytes = state.cpu_pool.execute(cancel, move |_| {
+        let frame = image::RgbaImage::from_raw(frame.width as u32, frame.height as u32, frame.rgba)
+            .ok_or_else(|| anyhow::anyhow!("invalid preview image"))?;
+        let scale = (480.0 / f64::from(frame.width())).min(270.0 / f64::from(frame.height()));
+        let frame = if scale < 1.0 {
+            image::imageops::resize(&frame, (f64::from(frame.width()) * scale).round().max(1.0) as u32,
+                (f64::from(frame.height()) * scale).round().max(1.0) as u32, image::imageops::FilterType::Triangle)
+        } else {
+            frame
+        };
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut bytes)
+            .write_image(&frame, frame.width(), frame.height(), image::ExtendedColorType::Rgba8)?;
+        Ok(bytes)
+    }).await.map_err(|error| AppError::internal("encode export preview", error))?;
+    Ok(([(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "no-store")], bytes).into_response())
+}
+
 async fn resolve_request(state: &AppState, owner: &str, mut body: Value) -> AppResult<VideoRequest> {
     if let Some(name)=body.as_object_mut().and_then(|object|object.remove("libraryPreset")) {
         let name=name.as_str().ok_or_else(||AppError::bad_request("libraryPreset must be a name"))?;

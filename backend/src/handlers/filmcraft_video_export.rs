@@ -1353,6 +1353,67 @@ async fn image_overlay_path(
     );
     Ok(path)
 }
+pub(super) struct DeliveryFrame {
+    pub state: AppState,
+    pub headers: HeaderMap,
+    pub geometry: crate::domain::filmcraft_export_geometry::Geometry,
+    pub background: Option<super::filmcraft_project::BackgroundPreview>,
+    pub image_overlay: Option<crate::domain::filmcraft_export_image::ResolvedImage>,
+    pub cancel: CancellationToken,
+}
+
+impl VideoRequest {
+    pub(super) async fn load_delivery_overlay(
+        &self, state: &AppState, headers: &HeaderMap, owner: Option<&str>, cancel: &CancellationToken,
+    ) -> Result<Option<crate::domain::filmcraft_export_image::ResolvedImage>> {
+        if !self.image_overlay.enabled || self.preset.audio_only() {
+            return Ok(None);
+        }
+        let path = image_overlay_path(state, headers, self, owner).await?;
+        let surface = state.cpu_pool.execute(cancel.child_token(), move |_| {
+            crate::domain::group_media::decode_image_surface(&path)
+        }).await.map_err(|e| anyhow::anyhow!("image overlay decode: {e:?}"))?;
+        Ok(Some(std::sync::Arc::new((self.image_overlay.clone(), surface))))
+    }
+
+    pub(super) async fn render_delivery_frame(
+        &self, delivery: DeliveryFrame, time: i64,
+    ) -> Result<crate::domain::group_surface::GroupSurface> {
+        let DeliveryFrame { state, headers, geometry, background, image_overlay, cancel } = delivery;
+        let pool = state.cpu_pool.clone();
+        let labels = self.export_labels(time)?;
+        let frame: PreviewFrameRequest = serde_json::from_value(serde_json::json!({
+            "document": self.document, "sequenceId": self.sequence_id, "sources": self.sources,
+            "timeTicks": time.to_string(), "captions": self.burn_captions.unwrap_or(true),
+        }))?;
+        let result = if !matches!(self.preset, ExportPreset::Lossless)
+            || self.frame_size.is_some() || self.scale.is_some() || self.pixel_aspect.is_some()
+            || self.max_render_quality || !labels.is_empty() || image_overlay.is_some()
+        {
+            super::filmcraft_project::render_video_frame(
+                state, headers, frame, background, (geometry, !self.preset.preserve_alpha()), labels, image_overlay,
+            ).await
+        } else if let Some(background) = background {
+            super::filmcraft_project::render_export_frame_owned(state, frame, background).await
+        } else {
+            render_export_frame(state, headers, frame).await
+        };
+        let mut surface = result.map_err(|e| anyhow::anyhow!("export frame: {e:?}"))?;
+        if !self.video_limiter.enabled {
+            return Ok(surface);
+        }
+        let _guard = cancel.clone().drop_guard();
+        let limiter = self.video_limiter;
+        pool.execute(cancel.clone(), move |_| {
+            limiter.apply(&mut surface, || {
+                ensure!(!cancel.is_cancelled(), "video limiter cancelled");
+                Ok(())
+            })?;
+            Ok(surface)
+        }).await.map_err(|e| anyhow::anyhow!("export video limiter: {e:?}"))
+    }
+}
+
 /// Encodes the selected video preset and optional native stereo audio. Preserves output on refusal, checks
 /// all source identities across the complete render, and publishes without overwrite.
 pub(super) async fn encode_video_inner(
@@ -1379,20 +1440,7 @@ pub(super) async fn encode_video_inner(
     ensure!(!output.try_exists()?, "export output already exists");
     let owner = background.as_ref().map(|b| b.owner.as_str());
     let before = snapshot(state, headers, request, owner).await?;
-    let image_overlay = if request.image_overlay.enabled && !request.preset.audio_only() {
-        let path = image_overlay_path(state, headers, request, owner).await?;
-        let settings = request.image_overlay.clone();
-        let surface = state
-            .cpu_pool
-            .execute(cancel.child_token(), move |_| {
-                crate::domain::group_media::decode_image_surface(&path)
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("image overlay decode: {e:?}"))?;
-        Some(std::sync::Arc::new((settings, surface)))
-    } else {
-        None
-    };
+    let image_overlay = request.load_delivery_overlay(state, headers, owner, cancel).await?;
     let parent = output.parent().context("export output parent missing")?;
     let staging = parent.join(format!(
         ".filmcraft-video-{}.{}",
@@ -1543,21 +1591,13 @@ pub(super) async fn encode_video_inner(
         request.encoding(spec)?
     };
     encode_frames_with_source_range(&state.process_runtime,Path::new("ffmpeg"),&staging,spec,deadline.checked_duration_since(tokio::time::Instant::now()).context("export timed out")?,cancel,&phase.sender,mixed.as_ref().map(|audio|RasterAudio{path:&audio.path,frames:audio.frames}),encoding,request.pixel_aspect,&metadata,Some(state.cpu_pool.clone()),if request.preset.native_intra()&&request.has_audio(){Some(request.resolved_audio()?)}else{None},if request.preset.h264(){request.h264_level}else{None},request.source_range.clone(),|index,_|{
-        let state=state.clone();let headers=headers.clone();let request=request.clone();let background=background.clone();let effect_pool=state.cpu_pool.clone();let effect_cancel=cancel.child_token();let image_overlay=image_overlay.clone();
-        async move {
-            let time=request.render_tick(spec,start,index)?;
-            let labels=request.export_labels(time)?;
-            let frame:PreviewFrameRequest=serde_json::from_value(serde_json::json!({"document":request.document,"sequenceId":request.sequence_id,"sources":request.sources,"timeTicks":time.to_string(),"captions":request.burn_captions.unwrap_or(true)}))?;
-            let result=if !matches!(request.preset,ExportPreset::Lossless)||request.frame_size.is_some()||request.scale.is_some()||request.pixel_aspect.is_some()||request.max_render_quality||!labels.is_empty()||image_overlay.is_some(){super::filmcraft_project::render_video_frame(state,headers,frame,background,(geometry,!request.preset.preserve_alpha()),labels,image_overlay).await}else if let Some(background)=background {super::filmcraft_project::render_export_frame_owned(state,frame,background).await}else{render_export_frame(state,headers,frame).await};
-            let mut surface=result.map_err(|e|anyhow::anyhow!("export frame: {e:?}"))?;
-            if request.video_limiter.enabled {
-                let _guard=effect_cancel.clone().drop_guard();let limiter=request.video_limiter;
-                effect_pool.execute(effect_cancel.clone(),move |_|{
-                    limiter.apply(&mut surface,||{ensure!(!effect_cancel.is_cancelled(),"video limiter cancelled");Ok(())})?;
-                    Ok(surface)
-                }).await.map_err(|e|anyhow::anyhow!("export video limiter: {e:?}"))
-            }else{Ok(surface)}
-        }
+        let time = request.render_tick(spec, start, index);
+        let frame = DeliveryFrame {
+            state: state.clone(), headers: headers.clone(), geometry,
+            background: background.clone(), image_overlay: image_overlay.clone(),
+            cancel: cancel.child_token(),
+        };
+        async move { request.render_delivery_frame(frame, time?).await }
     }).await?;
     ensure!(
         !cancel.is_cancelled(),

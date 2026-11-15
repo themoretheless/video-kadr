@@ -148,7 +148,7 @@ fn frame_position(document:&SourceProjectDocument,sequence:u64,ticks:i64)->AppRe
  let (num,den)=edit_frame_rate(document,sequence)?;
  Ok(((ticks as i128*num as i128).div_euclid(254_016_000_000i128*den as i128)).to_string())
 }
-fn edit_delta(document:&SourceProjectDocument,sequence:u64,ticks:Option<String>,frames:Option<String>)->AppResult<i64>{
+pub(super) fn edit_delta(document:&SourceProjectDocument,sequence:u64,ticks:Option<String>,frames:Option<String>)->AppResult<i64>{
     let delta=match (ticks,frames) {
         (Some(ticks),None)=>ticks.parse::<i64>().map_err(|_|AppError::bad_request("invalid trim ticks"))?,
         (None,Some(frames))=>{

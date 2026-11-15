@@ -605,6 +605,11 @@ pub fn build_router_with_mcp(
             post(handlers::filmcraft_video_jobs::submit).get(handlers::filmcraft_video_jobs::list).layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
         .route(
+            "/compositions/filmcraft/video-jobs/preview",
+            post(handlers::filmcraft_video_jobs::preview)
+                .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .route(
             "/compositions/filmcraft/video-jobs/summary",
             post(handlers::filmcraft_video_jobs::summary)
                 .layer(DefaultBodyLimit::max(32 * 1024 * 1024)),

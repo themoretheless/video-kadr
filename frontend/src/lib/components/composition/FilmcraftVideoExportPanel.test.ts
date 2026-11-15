@@ -1,9 +1,9 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { getFilmcraftPreviewFrame, summarizeFilmcraftExport, estimateFilmcraftQuickExport, listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets } from '$lib/api'
+import { previewFilmcraftExport, summarizeFilmcraftExport, estimateFilmcraftQuickExport, listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets } from '$lib/api'
 import FilmcraftVideoExportPanel from './FilmcraftVideoExportPanel.svelte'
-vi.mock('$lib/api', () => ({ getFilmcraftPreviewFrame: vi.fn(), summarizeFilmcraftExport: vi.fn(), estimateFilmcraftQuickExport: vi.fn(), startFilmcraftQuickExportJob: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), listFilmcraftExportPresets: vi.fn(), editFilmcraftExportPresets: vi.fn() }))
+vi.mock('$lib/api', () => ({ previewFilmcraftExport: vi.fn(), summarizeFilmcraftExport: vi.fn(), estimateFilmcraftQuickExport: vi.fn(), startFilmcraftQuickExportJob: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), listFilmcraftExportPresets: vi.fn(), editFilmcraftExportPresets: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 const id = '12345678-1234-1234-1234-123456789abc'
 function button(text: string) { return [...document.querySelectorAll('button')].find(button => button.textContent === text)! }
@@ -1106,13 +1106,9 @@ it('shows resolved standard export settings without starting an export', async (
     sourceRange: { startTicks: '0', endTicks: '508032000000', durationSeconds: 2 },
     video: { codec: 'ffv1', scaling: 'scaleToFit', burnCaptions: false, width: 1920, height: 1080, frameRate: { numerator: 30000, denominator: 1001 }, pixelAspect: [1, 1], profile: null, level: null, keyframeDistance: null, mjpegQuality: null, bitrate: null },
   })
-  vi.mocked(getFilmcraftPreviewFrame).mockResolvedValue({
-    kind: 'sequence', sequenceId: '18446744073709551615', scale: 1, effects: true, captions: true,
-    width: 1, height: 1, ptsTicks: '0', rgbaHex: 'ff0000ff',
-  })
-  const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-    createImageData: () => ({ data: new Uint8ClampedArray(4) }), putImageData: vi.fn(),
-  } as unknown as CanvasRenderingContext2D)
+  vi.mocked(previewFilmcraftExport).mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   await open()
   const details = [...document.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Сводка экспорта')!
   details.open = true
@@ -1123,12 +1119,13 @@ it('shows resolved standard export settings without starting an export', async (
   expect(details.textContent).toContain('Ручной ввод кадров · 2 с')
   expect(details.textContent).toContain('Без аудио')
   expect(details.textContent).not.toContain('Примерный размер')
-  expect(getFilmcraftPreviewFrame).not.toHaveBeenCalled()
+  expect(previewFilmcraftExport).not.toHaveBeenCalled()
   details.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()
-  await vi.waitFor(() => expect(details.querySelector('canvas')?.width).toBe(1))
-  expect(getFilmcraftPreviewFrame).toHaveBeenCalledWith(expect.objectContaining({
-    timeFrames: '0', effects: true, captions: false,
-  }), expect.any(AbortSignal), 'owner')
-  expect(context).toHaveBeenCalled()
+  await vi.waitFor(() => expect(details.querySelector('img')?.src).toBe('blob:preview'))
+  expect(previewFilmcraftExport).toHaveBeenCalledWith('owner', expect.objectContaining({
+    sequenceId: '18446744073709551615',
+  }), { timeFrames: '0' }, expect.any(AbortSignal))
+  details.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()
+  await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:preview'))
   expect(startFilmcraftVideoJob).not.toHaveBeenCalled()
 })

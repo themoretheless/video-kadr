@@ -704,7 +704,7 @@
       {@const { video, audio, container, estimatedBytes, outputName: resolvedName, source, sourceRange, preset: resolvedPreset } = exportSummary}
       {#if summaryOpen && previewEnabled}
         {#if video}
-          <FilmcraftExportPreview {document} {sequenceId} {sources} {timeFrames} {timeTicks} {token} {video} />
+          <FilmcraftExportPreview input={buildRequest()} {timeFrames} {timeTicks} {token} {video} />
         {:else}
           <p>Только аудио</p>
         {/if}

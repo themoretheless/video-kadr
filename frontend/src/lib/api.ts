@@ -1934,6 +1934,14 @@ export type FilmcraftExportSummary = {
   audio: null | { codec: string; sampleRate: number; channels: number; bitrateKbps: number | null; bits: number | null }
   estimatedBytes: number | null
 }
+export async function previewFilmcraftExport(token: string, input: FilmcraftVideoRequest, time: { timeFrames?: string; timeTicks?: string }, signal?: AbortSignal): Promise<Blob> {
+  const response = await safeFetch('/api/compositions/filmcraft/video-jobs/preview', {
+    method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input, ...time }), signal,
+  })
+  await requireOk(response, 'Не удалось подготовить кадр экспорта')
+  return response.blob()
+}
 export function summarizeFilmcraftExport(token: string, input: FilmcraftVideoRequest, signal?: AbortSignal): Promise<FilmcraftExportSummary> {
   return requestJson('/api/compositions/filmcraft/video-jobs/summary', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
 }

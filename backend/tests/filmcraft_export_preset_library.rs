@@ -708,6 +708,35 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     assert_eq!(summary["video"]["height"], 1080);
     assert_eq!(summary["video"]["bitrate"]["targetKbps"], 16000);
     assert_eq!(summary["estimatedBytes"], 2000000);
+    let preview_body = json!({
+        "input": {
+            "document": input["document"], "sequenceId": "6", "startFrames": "0", "frames": 1,
+            "frameSize": [96, 96], "burnCaptions": false,
+        },
+        "timeFrames": "0",
+    });
+    let preview = |body: &Value, token: Option<&str>| {
+        let mut builder = Request::post("/api/compositions/filmcraft/video-jobs/preview")
+            .header("content-type", "application/json");
+        if let Some(token) = token {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        app.clone().oneshot(builder.body(Body::from(body.to_string())).unwrap())
+    };
+    assert_eq!(preview(&preview_body, None).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    let response = preview(&preview_body, Some(&owner.token)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["content-type"], "image/png");
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let frame = image::load_from_memory(&bytes).unwrap().into_rgba8();
+    assert_eq!(frame.dimensions(), (96, 96));
+    let mut cropped = preview_body;
+    cropped["input"]["scaling"] = json!("scaleToFill");
+    let response = preview(&cropped, Some(&owner.token)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let cropped = image::load_from_memory(&bytes).unwrap().into_rgba8();
+    assert_ne!(frame, cropped);
     input["sourceRange"]["endTicks"] = json!("508032000000");
     let (status, estimate) = call("quick-export/estimate", input.clone()).await;
     assert_eq!(status, StatusCode::OK, "{estimate}");
