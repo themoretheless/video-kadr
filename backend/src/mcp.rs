@@ -26,6 +26,7 @@ const TOOL_NAMES: &[&str] = &[
     "end_agent_session",
     "export_captions",
     "apply_subtitles",
+    "import_subtitle_document",
     "merge_captions",
     "restyle_captions",
     "get_keyframes",
@@ -419,6 +420,7 @@ fn tool_schema(name: &str) -> Value {
         "begin_agent_session" => json!({"reason":{"type":"string","minLength":1,"maxLength":512}}),
         "end_agent_session" => json!({"force":{"type":"boolean"}}),
         "restyle_captions" => json!({"expectedRevision":{"type":"integer","minimum":0},"layer_ids":{"type":["array","null"],"minItems":1,"maxItems":512,"items":{"type":"string","minLength":1}},"font_family":{"type":["string","null"],"enum":["Noto Sans","Arial Unicode MS","DejaVu Sans","Arial",null]},"font_size_px":{"type":["number","null"],"minimum":1,"maximum":512},"color":{"type":["object","null"],"properties":{"r":{"type":"integer","minimum":0,"maximum":255},"g":{"type":"integer","minimum":0,"maximum":255},"b":{"type":"integer","minimum":0,"maximum":255},"a":{"type":"integer","minimum":0,"maximum":255}},"required":["r","g","b","a"],"additionalProperties":false},"outline_width":{"type":["number","null"],"minimum":0,"maximum":100}}),
+        "import_subtitle_document" => json!({"expectedRevision":{"type":"integer","minimum":0},"name":{"type":"string","minLength":1,"maxLength":1024},"body":{"type":"string","minLength":1,"maxLength":2097152}}),
         "apply_subtitles" => json!({"expectedRevision":{"type":"integer","minimum":0},"media_id":{"type":"string","minLength":1,"maxLength":128},"t_start_us":{"type":"integer","minimum":0},"composition_id":{"type":"string","minLength":1,"maxLength":128}}),
         "merge_captions" => json!({"expectedRevision":{"type":"integer","minimum":0},"layer_ids":{"type":"array","minItems":2,"maxItems":512,"items":{"type":"string","minLength":1}}}),
         "export_captions" => json!({"format":{"type":"string","enum":["srt","vtt"]},"track_id":{"type":["string","null"],"minLength":1,"maxLength":128},"composition_id":{"type":["string","null"],"minLength":1,"maxLength":128}}),
@@ -442,7 +444,7 @@ fn tool_schema(name: &str) -> Value {
         }
         _ => json!({}),
     };
-    if matches!(name,"merge_captions"|"restyle_captions"|"apply_subtitles") {
+    if matches!(name,"merge_captions"|"restyle_captions"|"apply_subtitles"|"import_subtitle_document") {
         properties["expectedProjectHash"]=json!({"type":"string","pattern":"^[0-9a-f]{64}$","description":"Open nested project's get_project.projectHash. Ordinary compositions use expectedRevision instead."});
         if name=="merge_captions" { properties["composition_id"]=json!({"type":["string","null"],"minLength":1,"maxLength":128,"description":"Optional nested composition scope for ambiguous clip IDs."}); }
     }
@@ -456,6 +458,7 @@ fn tool_schema(name: &str) -> Value {
         "merge_captions" => vec!["layer_ids"],
         "export_captions" => vec!["format"],
         "apply_subtitles" => vec!["media_id"],
+        "import_subtitle_document" => vec!["name","body"],
         "get_color_track" => vec!["clipId"],
         "get_keyframes" => vec!["clipId","property"],
         "freeze_frame" => vec!["expectedProjectHash","clipId","time_us"],
@@ -477,6 +480,7 @@ fn tool_schema(name: &str) -> Value {
     if name == "restyle_captions" { return json!({"name":name,"description":"Restyle caption-role Text lanes of the ordinary composition or every authored composition of an open nested project, or explicit layer_ids. One Undo, no timing/text edits, normal titles excluded. Omitted/null style fields stay unchanged; send at least one style field. Zero outline removes it; positive outline retains existing color or uses black. Requires expectedRevision for ordinary compositions or expectedProjectHash from get_project for nested projects.","inputSchema":{"type":"object","properties":properties,"required":required,"oneOf":[{"required":["expectedRevision"]},{"required":["expectedProjectHash"]}],"additionalProperties":false}}); }
     if name == "jump_history" {return json!({"name":name,"description":"Jump before/after a retained get_history entry ID using real Undo/Redo. IDs survive Undo/Redo; pruned or discarded branch IDs refuse. Creates no new entry. Requires current ordinary expectedRevision or native expectedProjectHash, respects history locks; native base jump may close a project opened through history.","inputSchema":{"type":"object","properties":properties,"required":required,"oneOf":[{"required":["expectedRevision"]},{"required":["expectedProjectHash"]}],"additionalProperties":false}});}
     if name == "merge_captions" { return json!({"name":name,"description":"Merge captions from one caption-role lane into the earliest cue. Union span, newline-joined text in timeline order, earliest style retained. Refuses locked targets, other lanes, ordinary titles and collisions with unselected cues. One Undo. Requires expectedRevision for ordinary compositions or expectedProjectHash from nested get_project.","inputSchema":{"type":"object","properties":properties,"required":required,"oneOf":[{"required":["expectedRevision"]},{"required":["expectedProjectHash"]}],"additionalProperties":false}}); }
+    if name == "import_subtitle_document" { return json!({"name":name,"description":"Add a subtitle document from a filename and UTF-8 text to the project pool. Returns media_id for apply_subtitles. Leaves the timeline unchanged. Reimporting the same name and text returns the existing ID. One Undo for a new file. Requires expectedRevision for ordinary compositions or expectedProjectHash for nested projects.","inputSchema":{"type":"object","properties":properties,"required":required,"oneOf":[{"required":["expectedRevision"]},{"required":["expectedProjectHash"]}],"additionalProperties":false}}); }
     if name == "apply_subtitles" { return json!({"name":name,"description":"Copy all cues from a saved subtitle document by ID. Find media_id in get_project document metadata.subtitleDocuments (root content metadata for nested projects). t_start_us shifts all cues, default zero. composition_id selects a nested timeline, default root. Copies can be edited independently. One Undo. Requires expectedRevision for ordinary compositions or expectedProjectHash for nested projects.","inputSchema":{"type":"object","properties":properties,"required":required,"oneOf":[{"required":["expectedRevision"]},{"required":["expectedProjectHash"]}],"additionalProperties":false}}); }
     if name == "export_captions" { return json!({"name":name,"description":"Export caption-role Text lanes in stable chronological order as SRT or WebVTT. Optional composition_id selects a nested composition (default root); track_id selects a caption lane in that composition. Ordinary title tracks and mismatched scopes refuse. Returns format, cues and body. Read-only; includes hidden and locked lanes and preserves overlapping cue times.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "freeze_frame" { return json!({"name":name,"description":"Insert a captured one-second FreezeFrame into an authenticated saved native project. Requires current get_project.projectHash and an unchanged saved revision/document. Optional composition_id defaults root; time_us is absolute composition time. Publishes a fresh still, splits/ripples the video lane and creates one local Undo entry. This is a server-persisted mutation, not a dry-run/batch operation. Unsupported native effects/playback profiles refuse. If the server commits after the editor context changes, local state is retained and the caller must reload before another save.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }

@@ -778,3 +778,25 @@ it('copies saved subtitle cues by media ID as one ordinary edit', () => {
  undoComposition()
  expect(JSON.stringify(compositionState.document)).toBe(before)
 })
+
+
+it('imports a subtitle document without changing ordinary tracks and deduplicates retries', () => {
+ const original = JSON.stringify(compositionState.document)
+ const tracks = JSON.stringify(compositionState.document.tracks)
+ const revision = agentSession.revision
+ const request = { expectedRevision: revision, name: 'dialogue.srt', body: '1\n00:00:00,000 --> 00:00:01,000\nPrivate dialogue' }
+ const upload = (args: Record<string, unknown>) => executeAgentTool('agent-a', 'import_subtitle_document', args)
+ expect(() => upload({ ...request, name: '../dialogue.srt' })).toThrow('Invalid subtitle document')
+ expect(() => upload({ ...request, body: 'Invalid SRT' })).toThrow()
+ expect(JSON.stringify(compositionState.document)).toBe(original)
+ const result = upload(request) as { media_id: string; revision: number }
+ expect(result).toMatchObject({ added: true, name: request.name })
+ expect(agentActivity.activities.at(-1)?.args).toContain(request.name)
+ expect(agentActivity.activities.at(-1)?.args).not.toContain('Private dialogue')
+ expect(JSON.stringify(compositionState.document.tracks)).toBe(tracks)
+ expect(compositionState.document.metadata?.subtitleDocuments).toEqual([{ id: result.media_id, name: request.name, text: request.body }])
+ expect(() => upload(request)).toThrow('Project changed')
+ expect(upload({ ...request, expectedRevision: result.revision })).toMatchObject({ added: false, media_id: result.media_id, revision: result.revision })
+ undoComposition()
+ expect(JSON.stringify(compositionState.document)).toBe(original)
+})

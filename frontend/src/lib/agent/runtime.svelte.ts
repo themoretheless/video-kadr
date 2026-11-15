@@ -1,3 +1,4 @@
+import { planSubtitleDocumentImport } from './subtitleImport'
 import { subtitleApplication } from './subtitleApplication'
 import { importSrtToComposition } from '../state/composition/timeline.svelte'
 import { keyframeLocalTime } from '../composition/keyframeClock'
@@ -62,6 +63,18 @@ function run(actor: string, tool: string, args: Record<string, unknown>, activit
       const result = mergeCaptions(compositionState.document, args.layer_ids as string[])
       commitDocument(result.document, undefined, undefined, 'validated-batch',activity)
       return { ...result.record, revision: agentSession.revision }
+    }
+
+    case 'import_subtitle_document': {
+      if (nestedComposition.document || args.expectedProjectHash !== undefined) throw new Error('Nested subtitle documents require the nested editor')
+      if (args.expectedRevision !== agentSession.revision) throw new Error('Project changed; read get_project and retry with its revision')
+      assertHistoryUnlocked(actor)
+      const document = compositionState.document
+      const { source, documents, added } = planSubtitleDocumentImport(document.metadata?.subtitleDocuments, args)
+      if (added) {
+        commitDocument({ ...document, metadata: { ...document.metadata, subtitleDocuments: documents } }, undefined, undefined, 'content', activity)
+      }
+      return { media_id: source.id, name: source.name, added, revision: agentSession.revision }
     }
 
     case 'apply_subtitles': {

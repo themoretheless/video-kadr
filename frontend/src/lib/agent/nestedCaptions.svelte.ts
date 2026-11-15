@@ -1,3 +1,4 @@
+import { planSubtitleDocumentImport } from './subtitleImport'
 import { subtitleApplication } from './subtitleApplication'
 import { importNestedSubtitles } from '../subtitles/nestedImport'
 import {describeHistoryStacks} from './historyNavigation'
@@ -78,7 +79,7 @@ export async function executeNestedCaptionRequest(actor:string,tool:string,args:
   if(tool==='undo')undoNestedComposition();else redoNestedComposition()
   return nestedComposition.document ? {kind:'nested',projectHash:await hash(capture())} : {kind:'nested',closed:true,projectHash:null}
  }
- if(tool!=='freeze_frame'&&tool!=='merge_captions'&&tool!=='apply_subtitles'&&tool!=='restyle_captions'&&tool!=='restore_checkpoint'&&tool!=='apply_batch'&&tool!=='dry_run')throw new Error('Tool is not available for an open nested project')
+ if(tool!=='freeze_frame'&&tool!=='merge_captions'&&tool!=='apply_subtitles'&&tool!=='import_subtitle_document'&&tool!=='restyle_captions'&&tool!=='restore_checkpoint'&&tool!=='apply_batch'&&tool!=='dry_run')throw new Error('Tool is not available for an open nested project')
  if(args.expectedRevision!==undefined)throw new Error('Use expectedProjectHash for nested projects')
  if(typeof args.expectedProjectHash!=='string'||!/^[0-9a-f]{64}$/.test(args.expectedProjectHash)||await hash(snapshot)!==args.expectedProjectHash)throw new Error('Project changed; read get_project and use its projectHash as expectedProjectHash')
  const admission=()=>{
@@ -120,6 +121,14 @@ export async function executeNestedCaptionRequest(actor:string,tool:string,args:
   const activeId=nestedComposition.activeCompositionId??document.root
   const found=Object.hasOwn(document.compositions,activeId)
   selection={id:found?activeId:document.root,timeUs:found?nestedComposition.timeUs:0}
+ }else if(tool==='import_subtitle_document'){
+  const root = snapshot.document.compositions[snapshot.document.root]
+  if (!root) throw new Error('Root composition not found')
+  const { source, documents, added } = planSubtitleDocumentImport(root.content.metadata?.subtitleDocuments, args)
+  result = { media_id: source.id, name: source.name, added }
+  if (!added) return { ...result, kind: 'nested', projectHash: await hash(snapshot) }
+  const content = { ...root.content, metadata: { ...root.content.metadata, subtitleDocuments: documents } }
+  document = { ...snapshot.document, compositions: { ...snapshot.document.compositions, [snapshot.document.root]: { ...root, content } } }
  }else if(tool==='apply_subtitles'){
   const root = snapshot.document.compositions[snapshot.document.root]
   const { source, offset } = subtitleApplication(root?.content.metadata?.subtitleDocuments, args)
