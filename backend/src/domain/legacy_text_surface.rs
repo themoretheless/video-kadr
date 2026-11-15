@@ -34,6 +34,10 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         tracking: clip.style.tracking.unwrap_or_default() * 1000. / clip.style.font_size as f32,
         box_width: clip.text_box_width.unwrap_or_default(),
         min_box_height: clip.text_box_height,
+        block_padding: clip.style.background_padding.filter(|_| clip.style.background.alpha > 0.).map(|[x, y]| [
+            if clip.text_box_width.is_none() { x } else { 0. },
+            if clip.text_box_height.is_none() { y } else { 0. },
+        ]),
         fill:true,fill_color:color,align:match clip.style.align {None|Some(super::composition::TextAlignment::Left)=>0,Some(super::composition::TextAlignment::Center)=>1,Some(super::composition::TextAlignment::Right)=>2},
         stroke:clip.style.stroke_width.round()>0.,stroke_width:clip.style.stroke_width.round()as f32,stroke_color:rgba(clip.style.stroke),stroke_type:0,
         background:clip.style.background.alpha>0.,background_color:rgba(clip.style.background),background_opacity:100.,background_size:0.,background_radius:clip.style.background_radius.unwrap_or_default(),
@@ -108,6 +112,33 @@ mod tests {
         assert!(expanded.chunks_exact(4).zip(rounded.chunks_exact(4))
             .any(|(square, rounded)| square[3] > 0 && rounded[3] == 0));
         assert_eq!(glyphs(&rounded), glyphs(&expanded));
+    }
+
+    #[test]
+    fn caption_background_padding_applies_only_to_auto_sized_axes() {
+        let mut caption = clip();
+        caption.text = "H".into();
+        caption.style.background = Rgba { red: 0., green: 1., blue: 0., alpha: 1. };
+        let bounds = |clip: &TextClip| {
+            let frame = render(clip, (64, 64), 1500000, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
+            let mut bounds = [64, 64, 0, 0];
+            for (index, pixel) in frame.rgba.chunks_exact(4).enumerate() {
+                if pixel[3] > 0 {
+                    let (x, y) = (index % 64, index / 64);
+                    bounds = [bounds[0].min(x), bounds[1].min(y), bounds[2].max(x), bounds[3].max(y)];
+                }
+            }
+            [bounds[2] - bounds[0] + 1, bounds[3] - bounds[1] + 1]
+        };
+        let [width, height] = bounds(&caption);
+        caption.style.background_padding = Some([4., 6.]);
+        assert_eq!(bounds(&caption), [width + 8, height + 12]);
+        caption.text_box_width = Some(32.);
+        caption.text_box_height = Some(36.);
+        let fixed = bounds(&caption);
+        caption.style.background_padding = None;
+        assert_eq!(bounds(&caption), fixed);
     }
 
     #[test]

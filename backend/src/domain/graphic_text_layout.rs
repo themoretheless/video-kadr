@@ -37,6 +37,7 @@ pub struct GraphicText {
     pub box_width: f32,
     pub box_height: f32,
     pub min_box_height: f32,
+    pub block_padding: [f32; 2],
     pub vertical: bool,
     pub runs: Vec<(Range<usize>, GraphicCharStyle)>,
 }
@@ -60,6 +61,7 @@ impl Default for GraphicText {
             box_width: 0.,
             box_height: 0.,
             min_box_height: 0.,
+            block_padding: [0.; 2],
             vertical: false,
             runs: Vec::new(),
         }
@@ -67,9 +69,12 @@ impl Default for GraphicText {
 }
 impl GraphicText {
     pub fn block_bounds(&self, mut bounds: [f32; 4]) -> [f32; 4] {
-        let padding = (self.min_box_height - (bounds[3] - bounds[1])).max(0.) * 0.5;
-        bounds[1] -= padding;
-        bounds[3] += padding;
+        let [x, y] = self.block_padding;
+        let y = y + (self.min_box_height - (bounds[3] - bounds[1])).max(0.) * 0.5;
+        bounds[0] -= x;
+        bounds[1] -= y;
+        bounds[2] += x;
+        bounds[3] += y;
         bounds
     }
     /// Validate transport data before shaping. Ranges use UTF-8 byte offsets.
@@ -94,6 +99,8 @@ impl GraphicText {
             "non-finite graphic text geometry"
         );
         ensure!(self.size > 0., "graphic text size must be positive");
+        ensure!(self.block_padding.iter().all(|value| (0.0..=100_000.0).contains(value)),
+            "invalid graphic text block padding");
         ensure!(
             self.runs.len() <= u16::MAX as usize,
             "too many graphic text runs"

@@ -59,6 +59,8 @@ pub struct GraphicTextParameters {
     pub box_height: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_box_height: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_padding: Option<[f32; 2]>,
     pub vertical: bool,
     pub runs: Vec<CharacterStyleRun>,
 }
@@ -113,6 +115,7 @@ impl Default for GraphicTextParameters {
             box_width: 0.,
             box_height: 0.,
             min_box_height: None,
+            block_padding: None,
             vertical: false,
             runs: vec![],
         }
@@ -191,6 +194,7 @@ impl GraphicTextParameters {
             box_width: self.box_width.clone(),
             box_height: self.box_height.clone(),
             min_box_height: self.min_box_height.unwrap_or_default(),
+            block_padding: self.block_padding.unwrap_or_default(),
             vertical: self.vertical.clone(),
             runs: byte_runs(&self.text, &self.runs),
         }

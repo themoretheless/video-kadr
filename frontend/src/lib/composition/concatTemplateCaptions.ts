@@ -119,7 +119,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   const height = record(video)?.height
   for (const [key, fallback] of [
     ['fontFamily', undefined], ['fontSize', 0.09], ['fontWeight', 700], ['italic', false],
-    ['strokeWidth', 0], ['tracking', 0], ['lineHeight', 1.2], ['backgroundRadius', 0.0135], ['align', 'center'],
+    ['strokeWidth', 0], ['tracking', 0], ['lineHeight', 1.2], ['backgroundRadius', 0.0135],
+    ['backgroundPaddingX', 0.0315], ['backgroundPaddingY', 0.018], ['align', 'center'],
   ] as const) {
     if (editedText[key] === previousText[key]) continue
     const value = editedText[key] === undefined ? fallback : editedText[key]
@@ -157,6 +158,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
       case 'fontSize':
       case 'tracking':
       case 'backgroundRadius':
+      case 'backgroundPaddingX':
+      case 'backgroundPaddingY':
       case 'strokeWidth': {
         if (typeof value !== 'number' || typeof height !== 'number') return undefined
         const pixels = value * height
@@ -168,6 +171,11 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
         } else if (key === 'backgroundRadius') {
           if (!(pixels >= 0 && pixels <= 1000)) return undefined
           style = { ...style, backgroundRadius: Math.fround(pixels) }
+        } else if (key === 'backgroundPaddingX' || key === 'backgroundPaddingY') {
+          if (!(pixels >= 0 && pixels <= 100000)) return undefined
+          const [x, y] = style.backgroundPadding ?? [0, 0]
+          const padding = Math.fround(pixels)
+          style = { ...style, backgroundPadding: key === 'backgroundPaddingX' ? [padding, y] : [x, padding] }
         } else {
           const width = Math.round(pixels)
           if (!(width >= 0 && width <= 100 && Math.abs(width - pixels) < 1e-9)) return undefined

@@ -1520,6 +1520,8 @@ pub enum TextAlignment { Left, Center, Right }
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextStyle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_padding: Option<[f32; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_radius: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_height: Option<f32>,
@@ -1545,6 +1547,9 @@ pub struct TextStyle {
 impl TextStyle {
     fn validate(&self) -> Result<(), CompositionError> {
         if !is_supported_composition_font_family(&self.font_family)
+            || self.background_padding.is_some_and(|padding| {
+                padding.iter().any(|value| !(0.0..=100_000.0).contains(value))
+            })
             || self.background_radius.is_some_and(|radius| !(0.0..=1000.0).contains(&radius))
             || self.line_height.is_some_and(|ratio| {
                 ratio < 0.5 || !(ratio * self.font_size as f32 <= 5000.0)
@@ -3749,6 +3754,7 @@ source_out_tick: 99_000,
                 timeline_end_tick: 1_000_000,
                 text: "safe textfile content".into(),
                 style: TextStyle {
+                    background_padding: None,
                     background_radius: None,
                     line_height: None,
                     tracking: None,

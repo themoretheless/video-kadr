@@ -68,8 +68,8 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
             color(clip.style.background)
         },
         background_radius: f64::from(clip.style.background_radius.unwrap_or_default()) / f64::from(height),
-        background_padding_x: 0.0,
-        background_padding_y: 0.0,
+        background_padding_x: f64::from(clip.style.background_padding.unwrap_or_default()[0]) / f64::from(height),
+        background_padding_y: f64::from(clip.style.background_padding.unwrap_or_default()[1]) / f64::from(height),
         // Concat stores one shadow flag; its renderer owns the color, blur, and offset.
         shadow: clip.style.shadow.alpha > 0.0,
         tracking: f64::from(clip.style.tracking.unwrap_or_default()) / f64::from(height),
