@@ -11,6 +11,8 @@
     inferMediaType,
     setEditorMode,
   } from '$lib/state/composition.svelte.js'
+  import { authState } from '$lib/state/auth.svelte.js'
+  import { spacesState } from '$lib/state/spaces.svelte.js'
   import type { MediaEntry } from '$lib/types.js'
   import { libraryFilmstripUrl, libraryThumbnailUrl } from '$lib/api.js'
   import { proxyController } from '$lib/proxy/state.svelte.js'
@@ -26,6 +28,7 @@
   let query = $state('')
   let favoritesOnly = $state(false)
   let editingId = $state<string | null>(null)
+  let reviewId = $state<string | null>(null)
   let proxyId = $state<string | null>(null)
   let editTitle = $state('')
   let editTags = $state('')
@@ -291,7 +294,7 @@
         {#each filteredLibrary as entry (entry.id)}
         {@const previewUrl = thumbnailUrl(entry.id)}
         {@const filmstripPreviewUrl = filmstripUrl(entry)}
-        <li class:has-editor={editingId === entry.id || proxyId === entry.id} class="lib-item" data-library-id={entry.id}>
+        <li class:has-editor={editingId === entry.id || proxyId === entry.id || reviewId === entry.id} class="lib-item" data-library-id={entry.id}>
           <button
             class:active={entry.favorite === true}
             class="favorite-button"
@@ -348,6 +351,8 @@
               <button class="btn ghost sm" onclick={() => add(entry)}>Добавить</button>
               {#if inferMediaType(entry) === 'video'}
                 <button class="btn ghost sm" onclick={() => openLegacy(entry)}>Открыть</button>
+                <button class="btn ghost sm" type="button" aria-expanded={reviewId === entry.id}
+                  aria-label={`Сцены · ${label(entry)}`} onclick={() => reviewId = reviewId === entry.id ? null : entry.id}>Сцены</button>
                 <button
                   class="btn ghost sm"
                   type="button"
@@ -396,6 +401,19 @@
                 <button class="btn ghost sm" type="button" disabled={busyId === entry.id} onclick={cancelEdit}>Отмена</button>
               </div>
             </form>
+          {/if}
+          {#if reviewId === entry.id && entry.kind === 'source' && inferMediaType(entry) === 'video'}
+            <div class="shot-review">
+              {#key [entry.id, authState.token, spacesState.selectedId].join('|')}
+                {#await import('$lib/analysis/SourceShotReview.svelte')}
+                  <p role="status">Открываю обзор сцен…</p>
+                {:then panel}
+                  <panel.default sourceId={entry.id} token={authState.token} spaceId={spacesState.selectedId} />
+                {:catch}
+                  <p role="alert">Обзор сцен недоступен</p>
+                {/await}
+              {/key}
+            </div>
           {/if}
           {#if proxyId === entry.id && entry.kind === 'source' && inferMediaType(entry) === 'video' && ProxyControlsComponent}
             <div id={`proxy-${entry.id}`} class="proxy-editor">
@@ -612,6 +630,7 @@
   }
 
   .metadata-actions { display: flex; gap: 6px; }
+  .shot-review { flex: 1 0 100%; min-width: 0; }
   .proxy-editor { display: contents; }
   .library-error { margin: 0 0 12px; color: var(--danger); font-size: 13px; }
   .library-empty { margin: 4px 0 0; color: var(--muted); font-size: 13px; }

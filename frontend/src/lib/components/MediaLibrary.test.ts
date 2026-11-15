@@ -81,6 +81,49 @@ afterEach(async () => {
 })
 
 describe('MediaLibrary', () => {
+  it('reviews and measures an unplaced library video on demand', async () => {
+    const sourceHash = 'a'.repeat(64)
+    const scan = {
+      version: 1, sourceHash, durationTicks: 2_000_000, floor: 0.05,
+      cuts: [{ tick: 1_000_000, score: 0.8 }],
+    }
+    const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/library/video-two/shots') return Response.json(scan)
+      if (path === '/api/library/video-two/shots/measure') {
+        const { spans, expectedSourceHash } = JSON.parse(String(init?.body))
+        expect(expectedSourceHash).toBe(sourceHash)
+        expect(spans).toEqual([{ startTicks: 0, endTicks: 2_000_000 }])
+        return Response.json([{ span: spans[0], brightness: 0.25, motion: 0.5, sharpness: 0.125, flags: [] }])
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    component = mount(MediaLibrary, { target })
+    await settle()
+
+    expect(target.querySelector('[aria-label="Сцены · Client interview"]')).toBeNull()
+    const toggle = target.querySelector<HTMLButtonElement>('[aria-label="Сцены · City B-roll"]')!
+    toggle.click()
+    await vi.waitFor(() => buttonByText(target, 'Анализировать исходник'))
+    expect(fetchMock).not.toHaveBeenCalled()
+    buttonByText(target, 'Анализировать исходник').click()
+    const rows = () => target.querySelectorAll('[aria-label="Сцены исходника"] li')
+    await vi.waitFor(() => expect(rows()).toHaveLength(2))
+    target.querySelector<HTMLInputElement>('.cuts input[type="checkbox"]')!.click()
+    await tick()
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]?.textContent).toContain('0.000–2.000 с')
+    buttonByText(target, 'Измерить сцены исходника').click()
+    await vi.waitFor(() => expect(rows()[0]?.textContent).toContain('Яркость 0.250'))
+    toggle.click()
+    await tick()
+    expect(rows()).toHaveLength(0)
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/library/video-two/shots',
+      '/api/library/video-two/shots/measure',
+    ])
+  })
+
   it('lazy-loads same-origin thumbnails with a fixed-frame skeleton and fallback', async () => {
     component = mount(MediaLibrary, { target })
     await settle()

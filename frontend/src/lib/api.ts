@@ -1054,14 +1054,14 @@ export function pollJob(jobId: string, onTick?: (job: Job) => void): Promise<Job
   });
 }
 
-export async function scanLibraryShots(id: string, token?: string | null, spaceId?: string | null): Promise<import('./analysis/shots.js').ShotScan> {
-  const result = await requestJson<unknown>(`/api/library/${encodeURIComponent(id)}/shots`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true) })
+export async function scanLibraryShots(id: string, token?: string | null, spaceId?: string | null, signal?: AbortSignal): Promise<import('./analysis/shots.js').ShotScan> {
+  const result = await requestJson<unknown>(`/api/library/${encodeURIComponent(id)}/shots`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), signal })
   const validateShotScan: typeof import('./analysis/shots.js').validateShotScan = (await import('./analysis/shots.js')).validateShotScan
   validateShotScan(result)
   return result
 }
-export async function measureLibraryShots(id: string, spans: readonly import('./analysis/shots.js').ShotSpan[], token?: string | null, spaceId?: string | null, expectedSourceHash?: string): Promise<import('./analysis/shots.js').ShotMeasurement[]> {
-  return requestJson(`/api/library/${encodeURIComponent(id)}/shots/measure`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ spans, expectedSourceHash }) })
+export async function measureLibraryShots(id: string, spans: readonly import('./analysis/shots.js').ShotSpan[], token?: string | null, spaceId?: string | null, expectedSourceHash?: string, signal?: AbortSignal): Promise<import('./analysis/shots.js').ShotMeasurement[]> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/shots/measure`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ spans, expectedSourceHash }), signal })
 }
 export async function compareLibraryFrames(id: string, leftTick: number, rightTick: number, token?: string | null, spaceId?: string | null): Promise<{ leftTick: number; rightTick: number; similarity: number; motion: number }> {
   return requestJson(`/api/library/${encodeURIComponent(id)}/compare-frames`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ leftTick, rightTick }) })

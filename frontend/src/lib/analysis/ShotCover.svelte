@@ -7,7 +7,7 @@
     token?: string | null
     spaceId?: string | null
     label: string
-    onseek: () => void
+    onseek?: () => void
   } = $props()
 
   let figure = $state<HTMLDivElement>()
@@ -49,9 +49,13 @@
 
 <div class="shot-cover" bind:this={figure}>
   {#if url}
-    <button type="button" aria-label={`Перейти к кадру · ${label}`} onclick={onseek}>
-      <img src={url} alt="" />
-    </button>
+    {#if onseek}
+      <button type="button" aria-label={`Перейти к кадру · ${label}`} onclick={onseek}>
+        <img src={url} alt="" />
+      </button>
+    {:else}
+      <img src={url} alt={label} />
+    {/if}
   {:else if visible && failed}
     <small>Кадр недоступен</small>
   {/if}
