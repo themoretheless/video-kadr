@@ -686,6 +686,7 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     let (frame_status, frame_summary) = call("video-jobs/summary", framed.clone()).await;
     assert_eq!(frame_status, StatusCode::OK, "{frame_summary}");
     assert_eq!(frame_summary["video"]["frameRate"]["numerator"], 60);
+    assert_eq!(frame_summary["outputName"], "Sequence");
     assert_eq!(frame_summary["sourceRange"], json!({
         "startTicks":"31752000000", "endTicks":"158760000000", "durationSeconds":0.5
     }));

@@ -82,8 +82,14 @@ async fn owner_queue_admits_atomic_batches_stops_cancels_and_executes_remaining_
     ] {
         sequence[tracks] = json!([]);
     }
+    document["project"]["items"]["6"]["name"] = json!("Монтаж: утро");
+    let mut second = document["project"]["items"]["6"].clone();
+    second["id"] = json!(7);
+    second["name"] = json!("Монтаж / вечер");
+    document["project"]["items"]["7"] = second;
+    document["project"]["next_id"] = json!(8);
     let app = support::router(state.clone());
-    let add = json!({"action":"add","wait":true,"input":{"document":document,"sequenceId":"6","sources":{},"preset":"wav16"},"sequences":["6","6"],"ranges":[{"startTicks":"0","endTicks":(2*FD).to_string()},{"startTicks":(3*FD).to_string(),"endTicks":(4*FD).to_string()}]});
+    let add = json!({"action":"add","wait":true,"input":{"document":document,"sequenceId":"6","sources":{},"preset":"wav16"},"sequences":["6","7"],"ranges":[{"startTicks":"0","endTicks":(2*FD).to_string()},{"startTicks":(3*FD).to_string(),"endTicks":(4*FD).to_string()}]});
     let mut invalid = add.clone();
     invalid["sequences"] = json!(["6", "missing"]);
     assert_eq!(request(&app, &alice.token, Some(invalid)).await.0, 400);
@@ -207,11 +213,13 @@ async fn owner_queue_admits_atomic_batches_stops_cancels_and_executes_remaining_
         .iter()
         .all(|item| item["etaSeconds"].is_null() && item["etaText"].is_null()));
     let mut jobs = Vec::new();
-    for (item, samples) in done["items"].as_array().unwrap().iter().zip([2000, 4000]) {
+    for (item, (samples, output_name)) in done["items"].as_array().unwrap().iter()
+        .zip([(2000, "Монтаж_ утро"), (4000, "Монтаж _ вечер")]) {
         let id = item["jobId"].as_str().unwrap();
         jobs.push(id);
         let job = state.get_job(id).await.unwrap().unwrap();
         let result = job.result.unwrap();
+        assert_eq!(result["outputName"], output_name);
         let file = state
             .outputs_dir()
             .join(result["filename"].as_str().unwrap());

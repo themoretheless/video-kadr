@@ -110,9 +110,9 @@ async fn resolve_request(state: &AppState, owner: &str, mut body: Value) -> AppR
 }
 
 pub(super) async fn prepare(state:&AppState, headers:&HeaderMap, owner:&str, body:Value)->AppResult<PreparedExport> {
-    let request = resolve_request(state, owner, body).await?;
+    let mut request = resolve_request(state, owner, body).await?;
     request
-        .spec()
+        .validate_and_name()
         .map_err(|e| AppError::bad_request(e.to_string()))?;
     if matches!(request.preset,super::filmcraft_video_export::ExportPreset::Hevc) && !crate::tools::native_hevc_capability::available(&state.cpu_pool).await {
         return Err(AppError::bad_request("native HEVC hardware encoder is unavailable"));

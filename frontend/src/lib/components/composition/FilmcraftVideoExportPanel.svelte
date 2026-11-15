@@ -406,7 +406,7 @@
   <details ontoggle={event => { quickOptionsOpen = event.currentTarget.open }}>
     <summary>Настройки быстрого экспорта</summary>
     <label>Имя файла без расширения
-      <input type="text" aria-label="Имя файла быстрого экспорта" bind:value={quickOutputName} maxlength="200" disabled={submitting || retrying || disabled} />
+      <input type="text" aria-label="Имя файла быстрого экспорта" bind:value={quickOutputName} placeholder="Имя секвенции" maxlength="200" disabled={submitting || retrying || disabled} />
     </label>
     <label>Пресет быстрого экспорта
       <select aria-label="Пресет быстрого экспорта" value={quickSelection} disabled={!token || submitting || retrying || disabled}
@@ -445,7 +445,7 @@
   <button type="button" disabled={!token || submitting || retrying || disabled || !quickRangeValid} onclick={quickExport}>Быстрый экспорт</button>
   {#if quickPresetName}<span>Последний быстрый экспорт: {quickPresetName}</span>{/if}
   <label>Имя файла без расширения
-    <input type="text" aria-label="Имя файла экспорта Filmcraft" bind:value={outputName} maxlength="200" disabled={submitting || retrying || disabled} />
+    <input type="text" aria-label="Имя файла экспорта Filmcraft" bind:value={outputName} placeholder="Имя секвенции" maxlength="200" disabled={submitting || retrying || disabled} />
   </label>
   {#if !libraryPreset}
   <label>Пресет <select aria-label="Пресет видеоэкспорта Filmcraft" value={preset} onchange={(event) => { preset = event.currentTarget.value as FilmcraftExportPreset; customSize = false; scaling = preset === 'social_vertical' ? 'scaleToFill' : 'scaleToFit' }} disabled={submitting || retrying || disabled}>

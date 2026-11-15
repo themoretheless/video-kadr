@@ -420,6 +420,12 @@ pub struct VideoRequest {
 fn default_mjpeg_quality() -> u8 {
     90
 }
+const MAX_OUTPUT_NAME_BYTES: usize = 200;
+
+fn invalid_filename_char(ch: char) -> bool {
+    ch.is_control() || "/\\:*?\"<>|".contains(ch)
+}
+
 impl VideoRequest {
     pub(super) fn document(&self) -> Result<SourceProjectDocument> {
         let bytes = match &self.document {
@@ -765,6 +771,22 @@ impl VideoRequest {
         self.output_name.as_deref().map(str::trim).filter(|name| !name.is_empty())
     }
 
+    fn output_name_for(&self, item: &Value) -> String {
+        if let Some(name) = self.output_name() {
+            return name.to_owned();
+        }
+        let mut stem = String::new();
+        for ch in item["name"].as_str().unwrap_or("").trim().chars() {
+            let ch = if invalid_filename_char(ch) { '_' } else { ch };
+            if stem.len() + ch.len_utf8() > MAX_OUTPUT_NAME_BYTES {
+                break;
+            }
+            stem.push(ch);
+        }
+        let stem = stem.trim_end_matches(|ch: char| ch == '.' || ch.is_whitespace());
+        if stem.is_empty() { "Export".into() } else { stem.to_owned() }
+    }
+
     pub(super) fn summary(&self) -> Result<Value> {
         let document = self.document()?;
         let index = ProjectIndex::new(&document)?;
@@ -832,7 +854,7 @@ impl VideoRequest {
         };
         Ok(serde_json::json!({
             "preset": self.preset, "container": self.extension(), "video": video,
-            "outputName": self.output_name(),
+            "outputName": self.output_name_for(item),
             "audio": audio, "estimatedBytes": estimated_bytes,
             "source": {
                 "name": item["name"].as_str(),
@@ -902,12 +924,22 @@ impl VideoRequest {
         self.spec_for_sequence(sequence)
     }
 
+    pub(super) fn validate_and_name(&mut self) -> Result<()> {
+        let document = self.document()?;
+        let index = ProjectIndex::new(&document)?;
+        let item = index.item(self.sequence_id.parse()?).context("export sequence missing")?;
+        let sequence = item.pointer("/kind/Sequence").context("export sequence missing")?;
+        self.spec_for_sequence(sequence)?;
+        self.output_name = Some(self.output_name_for(item));
+        Ok(())
+    }
+
     fn spec_for_sequence(&self, sequence: &Value) -> Result<(RasterVideoSpec, i64)> {
         if let Some(name) = self.output_name() {
             ensure!(
-                name.len() <= 200
+                name.len() <= MAX_OUTPUT_NAME_BYTES
                     && !name.ends_with('.')
-                    && !name.chars().any(|ch| ch.is_control() || "/\\:*?\"<>|".contains(ch)),
+                    && !name.chars().any(invalid_filename_char),
                 "invalid export filename stem"
             );
         }
