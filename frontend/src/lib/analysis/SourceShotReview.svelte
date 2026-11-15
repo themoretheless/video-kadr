@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { compareLibraryFrames, describeLibraryShot, measureLibraryShots, scanLibraryShots, type SceneDescription } from '../api.js'
-  import { reviewUnplacedShots, type ShotScan, type ShotSpan } from './shots.js'
+  import { compareLibraryFrames, measureLibraryShots, scanLibraryShots } from '../api.js'
+  import { reviewUnplacedShots, type ShotScan } from './shots.js'
   import { measurementKey, shotAnalysisState } from './shotState.svelte.js'
   import ShotCover from './ShotCover.svelte'
+  import SceneDescriptionReview from './SceneDescriptionReview.svelte'
 
   let { sourceId, token, spaceId }: { sourceId: string; token?: string | null; spaceId?: string | null } = $props()
   let scan = $state<ShotScan>()
@@ -14,9 +15,6 @@
   let firstSecond = $state<number | undefined>(0)
   let secondSecond = $state<number | undefined>(0)
   let comparison = $state<Awaited<ReturnType<typeof compareLibraryFrames>>>()
-  let focus = $state<'general' | 'shot-type'>('general')
-  let language = $state<'ru' | 'en'>('ru')
-  let descriptions = $state<Record<string, SceneDescription>>({})
   const lifecycle = new AbortController()
   $effect(() => () => lifecycle.abort())
 
@@ -42,25 +40,8 @@
         firstSecond = 0
         secondSecond = Math.floor(result.durationTicks / 2) / 1_000_000
         comparison = undefined
-        descriptions = {}
       }
       scan = result
-    } catch (cause) {
-      if (!lifecycle.signal.aborted) error = cause instanceof Error ? cause.message : String(cause)
-    } finally { busy = false }
-  }
-
-  async function describe(span: ShotSpan) {
-    if (busy || !scan || !token) return
-    const key = `${span.startTicks}:${span.endTicks}:${focus}:${language}`
-    busy = true
-    error = ''
-    try {
-      const description = await describeLibraryShot(sourceId, {
-        span: { startTicks: span.startTicks, endTicks: span.endTicks },
-        expectedSourceHash: scan.sourceHash, focus, language,
-      }, token, spaceId, lifecycle.signal)
-      if (!lifecycle.signal.aborted) descriptions[key] = description
     } catch (cause) {
       if (!lifecycle.signal.aborted) error = cause instanceof Error ? cause.message : String(cause)
     } finally { busy = false }
@@ -106,6 +87,7 @@
 <section aria-label="Сцены исходного видео" aria-busy={busy}>
   <button class="btn ghost sm" type="button" disabled={busy} onclick={() => void analyze()}>Анализировать исходник</button>
   {#if scan}
+    {@const activeScan = scan}
     <label>Порог изменения кадра <input type="range" min={scan.floor} max="1" step="0.01" bind:value={threshold} disabled={busy} /> {threshold.toFixed(2)}</label>
     <label>Минимальная длина сцены, мс <input type="number" min="1" max="60000" bind:value={minimumMs} disabled={busy} /></label>
     <div class="cuts">
@@ -117,44 +99,24 @@
       {/each}
     </div>
     <button class="btn ghost sm" type="button" disabled={busy || !pending.length} onclick={() => void measure()}>Измерить сцены исходника</button>
-    {#if token}
-      <fieldset disabled={busy}>
-        <legend>Описание сцен моделью</legend>
-        <label>Язык
-          <select value={language} onchange={event => language = event.currentTarget.value === 'en' ? 'en' : 'ru'}>
-            <option value="ru">Русский</option><option value="en">English</option>
-          </select>
-        </label>
-        <label>Акцент
-          <select value={focus} onchange={event => focus = event.currentTarget.value === 'shot-type' ? 'shot-type' : 'general'}>
-            <option value="general">Содержание сцены</option><option value="shot-type">Камера и план</option>
-          </select>
-        </label>
-        <small>По кнопке «Описать сцену» кадры передаются настроенной на сервере модели.</small>
-      </fieldset>
-    {/if}
-    <ol aria-label="Сцены исходника">
-      {#each review.rows as row, index (row.id)}
-        {@const stats = shotAnalysisState.measurements[measurementKey(scan, row.startTicks, row.endTicks)]}
-        {@const description = descriptions[`${row.startTicks}:${row.endTicks}:${focus}:${language}`]}
-        <li>
-          {#key scan.sourceHash}
-            <ShotCover {sourceId} {token} {spaceId} sourceTick={row.startTicks + Math.floor((row.endTicks - row.startTicks) / 2)}
-              label={`Кадр сцены ${index + 1}`} />
-          {/key}
-          <span>{(row.startTicks / 1_000_000).toFixed(3)}–{(row.endTicks / 1_000_000).toFixed(3)} с</span>
-          {#if stats}<small>Яркость {stats.brightness.toFixed(3)} · движение {stats.motion.toFixed(3)} · резкость {stats.sharpness.toFixed(4)} {stats.flags.join(', ')}</small>{/if}
-          {#if token}
-            {#if description}
-              <p>{description.text}</p>
-              {#if description.tags.length}<small>{description.tags.join(' · ')}</small>{/if}
-            {:else}
-              <button class="btn ghost sm" type="button" disabled={busy} onclick={() => void describe(row)}>Описать сцену</button>
-            {/if}
-          {/if}
-        </li>
-      {/each}
-    </ol>
+    {#key scan.sourceHash}
+      <SceneDescriptionReview {sourceId} sourceHash={scan.sourceHash} {token} {spaceId} disabled={busy}>
+        {#snippet children(describe)}
+          <ol aria-label="Сцены исходника">
+            {#each review.rows as row, index (row.id)}
+              {@const stats = shotAnalysisState.measurements[measurementKey(activeScan, row.startTicks, row.endTicks)]}
+              <li>
+                <ShotCover {sourceId} {token} {spaceId} sourceTick={row.startTicks + Math.floor((row.endTicks - row.startTicks) / 2)}
+                  label={`Кадр сцены ${index + 1}`} />
+                <span>{(row.startTicks / 1_000_000).toFixed(3)}–{(row.endTicks / 1_000_000).toFixed(3)} с</span>
+                {#if stats}<small>Яркость {stats.brightness.toFixed(3)} · движение {stats.motion.toFixed(3)} · резкость {stats.sharpness.toFixed(4)} {stats.flags.join(', ')}</small>{/if}
+                {@render describe(row, 'Описать сцену')}
+              </li>
+            {/each}
+          </ol>
+        {/snippet}
+      </SceneDescriptionReview>
+    {/key}
     <form onsubmit={event => { event.preventDefault(); void compare() }}>
       <label>Первый кадр, с
         <input type="number" min="0" max={(scan.durationTicks - 1) / 1_000_000}

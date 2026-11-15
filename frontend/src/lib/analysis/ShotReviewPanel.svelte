@@ -6,6 +6,7 @@
   import { spacesState } from '../state/spaces.svelte.js'
   import { agentSession } from '../agent/session.svelte.js'
   import ShotCover from './ShotCover.svelte'
+  import SceneDescriptionReview from './SceneDescriptionReview.svelte'
   import { reviewShotRows, shotCoverPosition, type ShotReviewAction, type ShotRow } from './shots.js'
   import { shotAnalysisState, applyCompositionShotReview, measurementKey, setShotReviewSettings } from './shotState.svelte.js'
 
@@ -28,6 +29,13 @@
     catch (cause) { return { rows: [] as ShotRow[], error: cause instanceof Error ? cause.message : String(cause) } }
   })
   const rows = $derived(review.rows)
+  const clipSpan = $derived.by(() => {
+    if (!clip || !scan) return undefined
+    const freeze = clip.playbackMode?.mode === 'freeze' ? clip.playbackMode.sourceTick : undefined
+    const startTicks = freeze ?? clip.sourceInTicks
+    const endTicks = freeze === undefined ? clip.sourceOutTicks : freeze + 1
+    return endTicks <= scan.durationTicks ? { startTicks, endTicks } : undefined
+  })
   const candidates = $derived(clip && scan ? scan.cuts.filter((cut) => cut.tick > clip.sourceInTicks && cut.tick < clip.sourceOutTicks && cut.score > threshold) : [])
   const missingStats = $derived(scan ? rows.filter((row) => !shotAnalysisState.measurements[measurementKey(scan, row.startTicks, row.endTicks)]) : [])
 
@@ -132,24 +140,35 @@
         {/each}
       </div>
       <button class="btn ghost sm" type="button" disabled={busy || !missingStats.length} onclick={() => void measure()}>Измерить сцены</button>
-      <ol aria-label="Сцены выбранного клипа">
-        {#each rows as row, index (row.id)}
-          {@const cover = shotCoverPosition(clip, row)}
-          {@const stats = shotAnalysisState.measurements[measurementKey(scan, row.startTicks, row.endTicks)]}
-          <li>
-            {#key `${clip.sourceId}/${scan.sourceHash}`}
-              <ShotCover sourceId={clip.sourceId}
-                sourceTick={cover.sourceTick}
-                onseek={() => { compositionState.transport.playing = false; setCompositionPlayhead(cover.timelineTick) }}
-                token={authState.token} spaceId={spacesState.selectedId} label={`Кадр сцены ${index + 1}`} />
-            {/key}
-            <label><input type="checkbox" checked={!discardedIds.includes(row.id)} disabled={busy} onchange={(event) => { discardedIds = event.currentTarget.checked ? discardedIds.filter((id) => id !== row.id) : [...discardedIds, row.id] }} /> Оставить сцену {index + 1}</label>
-            <button class="btn ghost sm" type="button" onclick={() => setCompositionPlayhead(row.timelineStartTicks)}>{(row.timelineStartTicks / 1_000_000).toFixed(3)}–{(row.timelineEndTicks / 1_000_000).toFixed(3)} с</button>
-            {#if row.score !== undefined}<span>Переход: {row.score.toFixed(3)}</span><button class="btn ghost sm" type="button" disabled={busy} onclick={() => void compare(row)}>Сравнить кадры</button>{/if}
-            {#if stats}<small>Яркость {stats.brightness.toFixed(3)} · движение {stats.motion.toFixed(3)} · резкость {stats.sharpness.toFixed(4)} · {stats.flags.join(', ')}</small>{:else}<small>Показатели ещё не измерены</small>{/if}
-          </li>
-        {/each}
-      </ol>
+      {#key JSON.stringify([clip.id, clip.sourceId, clipSpan, scan.sourceHash, authState.token, spacesState.selectedId])}
+        <SceneDescriptionReview sourceId={clip.sourceId} sourceHash={scan.sourceHash}
+          token={authState.token} spaceId={spacesState.selectedId} disabled={busy}>
+          {#snippet children(describe)}
+            {#if clipSpan && rows.length > 1}
+              {@render describe(clipSpan, 'Описать весь клип')}
+            {/if}
+            <ol aria-label="Сцены выбранного клипа">
+              {#each rows as row, index (row.id)}
+                {@const cover = shotCoverPosition(clip, row)}
+                {@const stats = shotAnalysisState.measurements[measurementKey(scan, row.startTicks, row.endTicks)]}
+                <li>
+                  <ShotCover sourceId={clip.sourceId}
+                    sourceTick={cover.sourceTick}
+                    onseek={() => { compositionState.transport.playing = false; setCompositionPlayhead(cover.timelineTick) }}
+                    token={authState.token} spaceId={spacesState.selectedId} label={`Кадр сцены ${index + 1}`} />
+                  <label><input type="checkbox" checked={!discardedIds.includes(row.id)} disabled={busy} onchange={(event) => { discardedIds = event.currentTarget.checked ? discardedIds.filter((id) => id !== row.id) : [...discardedIds, row.id] }} /> Оставить сцену {index + 1}</label>
+                  <button class="btn ghost sm" type="button" onclick={() => setCompositionPlayhead(row.timelineStartTicks)}>{(row.timelineStartTicks / 1_000_000).toFixed(3)}–{(row.timelineEndTicks / 1_000_000).toFixed(3)} с</button>
+                  {#if row.score !== undefined}<span>Переход: {row.score.toFixed(3)}</span><button class="btn ghost sm" type="button" disabled={busy} onclick={() => void compare(row)}>Сравнить кадры</button>{/if}
+                  {#if stats}<small>Яркость {stats.brightness.toFixed(3)} · движение {stats.motion.toFixed(3)} · резкость {stats.sharpness.toFixed(4)} · {stats.flags.join(', ')}</small>{:else}<small>Показатели ещё не измерены</small>{/if}
+                  {#if clipSpan}
+                    {@render describe(clip.playbackMode?.mode === 'freeze' ? clipSpan : row, rows.length > 1 ? 'Описать сцену' : 'Описать клип')}
+                  {/if}
+                </li>
+              {/each}
+            </ol>
+          {/snippet}
+        </SceneDescriptionReview>
+      {/key}
       <div>
         <button class="btn ghost sm" type="button" disabled={busy || rows.length < 2} onclick={() => void apply('split')}>Разделить по границам</button>
         <button class="btn ghost sm" type="button" disabled={busy || rows.length < 2} onclick={() => void apply('mark')}>Поставить маркеры</button>
