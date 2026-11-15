@@ -159,3 +159,48 @@ it('omits caption pixels and invalidates dependent renders without changing the 
   expect(JSON.stringify(nestedComposition.document)).toBe(before)
   expect(nestedComposition.renderedOutputs).toEqual({ root: 'old-root', child: 'old-child', other: 'keep' })
 })
+
+it('reopens a job and downloads the persisted caption artifact without the original panel state', async () => {
+  const node = nestedComposition.document!.compositions.root!
+  node.content = { ...node.content, canvas: { ...node.content.canvas, fpsMilli: 24000 }, captionTracks: [
+    { id: 'file', name: 'Dialogue', clips: [{ id: 'cue', text: 'Dialogue', timelineStartTick: 0, timelineEndTick: 1_000_000 }] },
+  ] }
+  const id = '12345678-1234-1234-1234-123456789abc'
+  vi.mocked(exportNestedVideo).mockResolvedValue({ jobId: id, mode: 'video_only', container: 'mkv' })
+  vi.mocked(getJob).mockResolvedValue({
+    id, status: 'done', result: { id, filename: `${id}.mkv`, captionSidecar: { extension: 'vtt', bytesBase64: btoa('WEBVTT\n') } },
+  })
+  const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:stored-caption')
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  try {
+    await ready()
+    const format = document.querySelector<HTMLSelectElement>('[aria-label="Файл субтитров в задаче"]')!
+    format.value = 'vtt'
+    format.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    button('Экспортировать видео').click()
+    await vi.waitFor(() => expect(button('Скачать субтитры VTT')).toBeDefined())
+    expect(vi.mocked(exportNestedVideo).mock.calls[0]?.[9]).toEqual({ trackId: 'file', format: 'vtt', dropFrame: true })
+    await unmount(component!)
+    component = undefined
+    node.content = { ...node.content, captionTracks: [] }
+    await ready()
+    const input = [...document.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Идентификатор задачи')!.querySelector('input')!
+    input.value = id
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+    button('Открыть задачу').click()
+    await vi.waitFor(() => expect(button('Скачать субтитры VTT')).toBeDefined())
+    button('Скачать субтитры VTT').click()
+    expect(click.mock.instances[0]).toMatchObject({ download: `${id}.vtt` })
+    expect(await (create.mock.calls[0]?.[0] as Blob).text()).toBe('WEBVTT\n')
+    expect(writeCaptionFile).not.toHaveBeenCalled()
+    expect(getJob).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:stored-caption'))
+  } finally {
+    click.mockRestore()
+    create.mockRestore()
+    revoke.mockRestore()
+  }
+})

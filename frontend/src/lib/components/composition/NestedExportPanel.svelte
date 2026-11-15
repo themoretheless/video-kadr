@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, nestedDurations } from '$lib/api'
+  import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, nestedDurations, type CaptionFileFormat } from '$lib/api'
   import { nestedComposition, nestedHistory } from '$lib/state/nestedComposition.svelte'
   import { loadLibrary } from '$lib/state/store.svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -36,6 +36,19 @@
   const captionTracks = $derived(captionContent?.captionTracks ?? [])
   let captionTrackId = $state('')
   const captionTrack = $derived(captionTracks.find(track => track.id === captionTrackId) ?? captionTracks[0])
+  const sidecarFormats = ['srt', 'vtt', 'scc', 'mcc', 'stl', 'ttml', 'dfxp'] as const
+  let sidecarFormat = $state<CaptionFileFormat | ''>('')
+  let sidecarDropFrame = $state(true)
+  let reopenId = $state('')
+  const validReopenId = $derived(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(reopenId.trim()))
+  const storedSidecar = $derived.by(() => {
+    const result = job?.status === 'done' ? job.result : null
+    if (!result || typeof result !== 'object' || !('captionSidecar' in result)) return
+    const sidecar = result.captionSidecar
+    if (!sidecar || typeof sidecar !== 'object' || !('extension' in sidecar) || !('bytesBase64' in sidecar)) return
+    if (!sidecarFormats.some(extension => extension === sidecar.extension) || typeof sidecar.bytesBase64 !== 'string') return
+    return sidecar as { extension: CaptionFileFormat; bytesBase64: string }
+  })
   const hasCaptions = $derived(Object.values(nestedComposition.document?.compositions ?? {}).some(({ content }) =>
     content.captionTracks?.some(track => !track.hidden && track.clips.length) ||
     content.tracks.some(track => track.kind === 'text' && !track.hidden && track.clips.length &&
@@ -116,13 +129,43 @@
         }),
       ) }
       const args = [document, compositionId, startUs, endUs, renderedOutputs, token, lifecycle.signal, withAudio ? 'video_audio' : 'video_only'] as const
-      const accepted = savedProject ? await exportNestedVideo(...args, savedProject) : await exportNestedVideo(...args)
+      const sidecar = sidecarFormat && captionTrack
+        ? { trackId: captionTrack.id, format: sidecarFormat, dropFrame: sidecarDropFrame }
+        : undefined
+      const accepted = sidecar ? await exportNestedVideo(...args, savedProject, sidecar)
+        : savedProject ? await exportNestedVideo(...args, savedProject) : await exportNestedVideo(...args)
       if (lifecycle.signal.aborted) return
       submittedCaptions = captionSnapshot
       jobId = accepted.jobId
       await observe()
     } catch (failure) {
       if (!lifecycle.signal.aborted) { busy = false; error = failure instanceof Error ? failure.message : String(failure) }
+    }
+  }
+  function reopen() {
+    if (!validReopenId || busy) return
+    job = null; submittedCaptions = undefined; busy = true
+    jobId = reopenId.trim()
+    void observe()
+  }
+  function closeObservation() {
+    job = null; jobId = ''; busy = false; cancelling = false; submittedCaptions = undefined; error = ''
+  }
+  function saveFile(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url; link.download = filename
+    document.body.append(link); link.click(); link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+  function downloadStoredCaptions() {
+    if (!outputId || !storedSidecar) return
+    error = ''
+    try {
+      const bytes = Uint8Array.from(atob(storedSidecar.bytesBase64), char => char.charCodeAt(0))
+      saveFile(new Blob([bytes], { type: 'application/octet-stream' }), `${outputId}.${storedSidecar.extension}`)
+    } catch (failure) {
+      error = failure instanceof Error ? failure.message : String(failure)
     }
   }
   async function downloadVideo() {
@@ -132,11 +175,7 @@
     try {
       const blob = await downloadFilmcraftVideo(token, id, lifecycle.signal)
       if (lifecycle.signal.aborted || outputId !== id) return
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url; link.download = `${id}.mkv`
-      document.body.append(link); link.click(); link.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 0)
+      saveFile(blob, `${id}.mkv`)
     } catch (failure) {
       if (!lifecycle.signal.aborted && outputId === id) error = failure instanceof Error ? failure.message : String(failure)
     } finally { downloading = false }
@@ -162,14 +201,25 @@
     <progress aria-label="Прогресс нативного экспорта" max="100" value={progress}></progress>
     <span>{Math.round(progress)}% {cancelling ? '· отмена запрошена' : ''}</span>
     <button class="btn ghost sm" disabled={cancelling} onclick={() => void cancel()}>Отменить экспорт</button>
-    {#if !monitoring}<button class="btn ghost sm" onclick={() => void observe()}>Проверить задачу</button>{/if}
+    {#if !monitoring}
+      <button class="btn ghost sm" onclick={() => void observe()}>Проверить задачу</button>
+      <button class="btn ghost sm" onclick={closeObservation}>Закрыть задачу</button>
+    {/if}
   {/if}
   {#if jobId}<span class="job-id">Задача: {jobId}</span>{/if}
   {#if filename}<span role="status">Готово в медиатеке: {filename}</span>{/if}
   {#if outputId}
     <button class="btn ghost sm" disabled={downloading} onclick={() => void downloadVideo()}>Скачать готовое видео</button>
   {/if}
-  {#if filename && submittedCaptions}
+  {#if outputId && storedSidecar}
+    <button class="btn ghost sm" onclick={downloadStoredCaptions}>Скачать субтитры {storedSidecar.extension.toUpperCase()}</button>
+  {/if}
+  <details>
+    <summary>Открыть задачу экспорта</summary>
+    <label>Идентификатор задачи<input type="text" bind:value={reopenId} disabled={busy} /></label>
+    <button class="btn ghost sm" disabled={busy || !validReopenId} onclick={reopen}>Открыть задачу</button>
+  </details>
+  {#if filename && submittedCaptions && !storedSidecar}
     <details aria-label="Субтитры к готовому видео">
       <summary>Субтитры к готовому видео · {submittedCaptions.track.name}</summary>
       <CaptionFileExport composition={{ canvas: submittedCaptions.canvas, captionTracks: [submittedCaptions.track] }}
@@ -186,6 +236,17 @@
           {#each captionTracks as track (track.id)}<option value={track.id}>{track.name}</option>{/each}
         </select>
       </label>
+      <label>Файл субтитров в задаче
+        <select aria-label="Файл субтитров в задаче" value={sidecarFormat} disabled={disabled || busy}
+          onchange={event => sidecarFormat = event.currentTarget.value as CaptionFileFormat | ''}>
+          <option value="">Без отдельного файла</option>
+          {#each sidecarFormats as format (format)}<option value={format}>{format.toUpperCase()}</option>{/each}
+        </select>
+      </label>
+      {#if sidecarFormat === 'scc' || sidecarFormat === 'mcc'}
+        <label><input type="checkbox" checked={sidecarDropFrame} disabled={busy || disabled}
+          onchange={event => sidecarDropFrame = event.currentTarget.checked} />Drop-frame файла субтитров</label>
+      {/if}
       {#if validRange && !durationBusy}
         {#key `${compositionId}/${captionTrack.id}`}
           <CaptionFileExport composition={{ canvas: {

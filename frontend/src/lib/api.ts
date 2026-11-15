@@ -1290,10 +1290,11 @@ export function exportNestedVideo(
   project: NativeNestedProject, compositionId: string, startUs: number, endUs: number,
   renderedOutputs: Readonly<Record<string, string>>, token: string, signal?: AbortSignal, mode: 'video_only' | 'video_audio' = 'video_only',
   savedProject?: {projectId:string;expectedRevision:number},
+  captionSidecar?: {trackId:string;format:CaptionFileFormat;dropFrame:boolean},
 ): Promise<{ jobId: string; mode: 'video_only' | 'video_audio'; container: 'mkv' | 'mp4' }> {
   return requestJson('/api/compositions/nested-export', {
     method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ schemaVersion: 1, mode, project, compositionId, startUs, endUs, renderedOutputs, savedProject }), signal,
+    body: JSON.stringify({ schemaVersion: 1, mode, project, compositionId, startUs, endUs, renderedOutputs, savedProject, captionSidecar }), signal,
   })
 }
 

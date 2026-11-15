@@ -4,7 +4,7 @@ use crate::{
     artifacts::fingerprint_file,
     config::resource_classes::ResourceClass,
     domain::{
-        artifact_graph::Fingerprint, composition::SourceId,
+        artifact_graph::Fingerprint, composition::{SourceId, TrackId},
         nested_composition::NestedCompositionProject,
     },
     error::{ApiJson, AppError, AppResult},
@@ -44,6 +44,8 @@ pub enum NativeExportMode {
 pub struct NestedExportRequest {
     #[serde(default)]
     saved_project: Option<super::concat_video_bound::SavedProject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    caption_sidecar: Option<NestedCaptionSidecar>,
     schema_version: u32,
     mode: NativeExportMode,
     project: NestedCompositionProject,
@@ -53,6 +55,14 @@ pub struct NestedExportRequest {
     #[serde(default)]
     rendered_outputs: BTreeMap<String, String>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NestedCaptionSidecar {
+    track_id: TrackId,
+    format: String,
+    drop_frame: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct BindingsIdentity {
@@ -77,12 +87,50 @@ pub(crate) struct NestedExportWork {
     identity: BindingsIdentity,
 }
 impl NestedExportRequest {
+    fn caption_source(&self) -> anyhow::Result<Option<(&crate::domain::caption_timeline::CaptionTrack, filmcraft_captions::Format)>> {
+        let Some(sidecar) = &self.caption_sidecar else { return Ok(None) };
+        let track = self.project.compositions.get(&self.composition_id)
+            .and_then(|node| node.content.caption_tracks.iter().find(|track| track.id == sidecar.track_id))
+            .ok_or_else(|| anyhow::anyhow!("caption sidecar track not found"))?;
+        let format = filmcraft_captions::Format::from_name(&sidecar.format)
+            .ok_or_else(|| anyhow::anyhow!("unsupported caption sidecar format"))?;
+        Ok(Some((track, format)))
+    }
+
+    fn encode_caption_sidecar(&self, rate: filmcraft_time::FrameRate)
+        -> anyhow::Result<Option<crate::domain::filmcraft_export_caption_sidecar::Sidecar>>
+    {
+        use crate::domain::{caption_file_timing::document_for_range, caption_time::CaptionTime};
+        use filmcraft_captions::{Cue, Document, WriteOptions};
+        let Some((track, format)) = self.caption_source()? else { return Ok(None) };
+        let source_tick = |time: CaptionTime| time.source_tick().map_err(anyhow::Error::msg);
+        let cues = track.clips.iter().map(|cue| Ok(Cue {
+            start: source_tick(cue.timeline_start_tick)?,
+            end: source_tick(cue.timeline_end_tick)?,
+            text: cue.text.clone(), speaker: cue.speaker.clone(), id: cue.cue_id.clone(), settings: cue.settings.clone(),
+        })).collect::<anyhow::Result<Vec<_>>>()?;
+        let document = Document { cues, blocks: track.vtt_blocks.clone(), warnings: Vec::new() };
+        let start = source_tick(CaptionTime::Microseconds(self.start_us))?;
+        let end = source_tick(CaptionTime::Microseconds(self.end_us))?;
+        let document = document_for_range(&document, start, Some(end))?;
+        let bytes = filmcraft_captions::write(&document, format, WriteOptions {
+            drop_frame: self.caption_sidecar.as_ref().is_some_and(|sidecar| sidecar.drop_frame),
+            rate: Some(rate),
+        });
+        anyhow::ensure!(bytes.len() <= 4 * 1024 * 1024, "caption sidecar exceeds 4 MiB");
+        Ok(Some(crate::domain::filmcraft_export_caption_sidecar::Sidecar {
+            extension: format.extension().into(),
+            bytes_base64: crate::domain::graphic_template_fonts::base64_encode(&bytes),
+        }))
+    }
+
     fn validate(&self) -> anyhow::Result<RasterVideoSpec> {
         anyhow::ensure!(
             self.schema_version == 1,
             "invalid native export schema version"
         );
         let durations = self.project.durations_us()?;
+        self.caption_source()?;
         let duration = *durations
             .get(&self.composition_id)
             .ok_or_else(|| anyhow::anyhow!("invalid native export focus"))?;
@@ -357,6 +405,10 @@ pub(super) fn spawn_nested_export_job(
                     anyhow::ensure!(bound.identity == work.identity, "invalid native export source or mask fingerprint changed");
                     let deadline = std::time::Instant::now().checked_add(st.job_timeout()).ok_or_else(|| anyhow::anyhow!("native export deadline overflow"))?;
                     let remaining = || deadline.checked_duration_since(std::time::Instant::now()).ok_or_else(|| anyhow::anyhow!("native export timeout"));
+                    let caption_sidecar = work.request.encode_caption_sidecar(filmcraft_time::FrameRate {
+                        num: i64::from(spec.frame_rate.numerator), den: i64::from(spec.frame_rate.denominator),
+                    })?;
+                    anyhow::ensure!(!ctx.cancel.is_cancelled(), "native export cancelled");
                     let with_audio = work.request.mode == NativeExportMode::VideoAudio;
                     let mixed = if with_audio {
                         let plan = crate::domain::nested_audio::plan_audio_tracks(&work.request.project, &work.request.composition_id, work.request.start_us..work.request.end_us)?;
@@ -400,7 +452,7 @@ pub(super) fn spawn_nested_export_job(
                         "fps": spec.frame_rate.numerator as f64 / spec.frame_rate.denominator as f64,
                         "fpsRate": spec.frame_rate,
                         "duration": spec.frames as f64 * spec.frame_rate.denominator as f64 / spec.frame_rate.numerator as f64,
-                        "sizeBytes": bytes,
+                        "sizeBytes": bytes, "captionSidecar": caption_sidecar,
                     })))
                 }.await;
                 if ctx.cancel.is_cancelled() { Ok(None) } else { outcome }
@@ -411,4 +463,50 @@ pub(super) fn spawn_nested_export_job(
             let _ = st.db.revoke_output_access(&cleanup_output_id).await;
         }
     });
+}
+
+#[cfg(test)]
+mod caption_sidecar_tests {
+    use super::*;
+
+    #[test]
+    fn nested_caption_sidecar_uses_selected_track_and_video_bounds() {
+        let mut request: NestedExportRequest = serde_json::from_value(json!({
+            "schemaVersion": 1, "mode": "video_only", "compositionId": "root",
+            "startUs": 500_000, "endUs": 1_500_000,
+            "captionSidecar": {"trackId":"selected","format":"vtt","dropFrame":false},
+            "project": {
+                "schemaVersion": 1, "root": "root", "compositions": {"root": {
+                    "instances": [], "content": {
+                        "schemaVersion": 1, "timeBase": 1000000, "sources": {}, "tracks": [],
+                        "canvas":{"width":320,"height":180,"fpsMilli":24000,"background":{"red":0,"green":0,"blue":0,"alpha":1}},
+                        "captionTracks": [
+                            {"id":"first","name":"Other","clips":[]},
+                            {"id":"selected","name":"Selected","hidden":true,"vttBlocks":["NOTE keep"],
+                             "clips":[{"id":"cue","cueId":"file-id","timelineStartTick":"1","timelineEndTick":"508032000001",
+                                       "text":"Dialogue","speaker":"Voice","settings":"align:start"}]}
+                        ]
+                    }
+                }}
+            }
+        })).unwrap();
+        let spec = request.validate().unwrap();
+        let rate = filmcraft_time::FrameRate {
+            num: i64::from(spec.frame_rate.numerator),
+            den: i64::from(spec.frame_rate.denominator),
+        };
+        let sidecar = request.encode_caption_sidecar(rate).unwrap().unwrap();
+        let bytes = crate::domain::graphic_template_fonts::base64_decode(&sidecar.bytes_base64).unwrap();
+        let document = filmcraft_captions::parse(&bytes, filmcraft_captions::Format::WebVtt).unwrap();
+        assert_eq!(sidecar.extension, "vtt");
+        assert_eq!(document.blocks, ["NOTE keep"]);
+        assert_eq!(document.cues.len(), 1);
+        let cue = &document.cues[0];
+        assert_eq!((cue.start.0, cue.end.0), (0, filmcraft_time::TICKS_PER_SECOND));
+        assert_eq!(cue.id.as_deref(), Some("file-id"));
+        assert_eq!(cue.speaker.as_deref(), Some("Voice"));
+        assert_eq!(cue.settings, "align:start");
+        request.caption_sidecar.as_mut().unwrap().track_id = TrackId::parse("missing").unwrap();
+        assert!(request.validate().is_err());
+    }
 }
