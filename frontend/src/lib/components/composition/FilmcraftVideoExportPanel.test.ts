@@ -997,6 +997,36 @@ it('quick export uses the explicitly selected library preset', async () => {
   await vi.waitFor(() => expect(startFilmcraftQuickExportJob).toHaveBeenCalledWith('owner', expect.objectContaining({ preset: 'Review' }), expect.any(AbortSignal)))
 })
 
+it('offers favorites first and applies subtitle overrides only when requested', async () => {
+  const common = { name: 'Common', category: 'Match Source', description: '', settings: {}, builtin: true, favorite: false }
+  const favorite = { ...common, name: 'Favorite', category: 'User', builtin: false, favorite: true }
+  const other = { ...common, name: 'Other', category: 'Archive' }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [common, other, favorite], default: 'Common' })
+  vi.mocked(startFilmcraftQuickExportJob).mockResolvedValue({ jobId: 'quick-job', mode: 'video_only', container: 'mp4', presetName: 'Favorite' })
+  await open()
+  const details = [...document.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Настройки быстрого экспорта')!
+  details.open = true
+  details.dispatchEvent(new Event('toggle'))
+  const select = document.querySelector<HTMLSelectElement>('[aria-label="Пресет быстрого экспорта"]')!
+  await vi.waitFor(() => expect([...select.options].map(option => option.value)).toEqual(['', 'Favorite', 'Common']))
+  select.value = 'Favorite'; select.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  button('Быстрый экспорт').click()
+  await vi.waitFor(() => expect(startFilmcraftQuickExportJob).toHaveBeenLastCalledWith('owner',
+    expect.not.objectContaining({ settings: expect.anything() }), expect.any(AbortSignal)))
+  expect(vi.mocked(startFilmcraftQuickExportJob).mock.lastCall?.[1].preset).toBe('Favorite')
+  const override = details.querySelector<HTMLInputElement>('input[type=checkbox]')!
+  override.checked = true
+  override.dispatchEvent(new Event('change', { bubbles: true }))
+  const burn = [...document.querySelectorAll('label')].find(label => label.textContent?.includes('Впечатывать субтитры'))!
+  const burnInput = burn.querySelector('input')!
+  burnInput.checked = false
+  burnInput.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  button('Быстрый экспорт').click()
+  await vi.waitFor(() => expect(startFilmcraftQuickExportJob).toHaveBeenLastCalledWith('owner',
+    expect.objectContaining({ preset: 'Favorite', settings: { burnCaptions: false, captionSidecar: null } }), expect.any(AbortSignal)))
+})
+
 it('submits native Motion JPEG quality and MOV audio, refusing invalid quality first', async () => {
   await open()
   const preset = document.querySelector<HTMLSelectElement>('[aria-label="Пресет видеоэкспорта Filmcraft"]')!

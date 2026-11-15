@@ -1,6 +1,7 @@
 <script lang="ts">
   import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
   import { captionExtensions, captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
+  import { listFilmcraftExportPresets, type FilmcraftLibraryPreset } from '$lib/api'
   import FilmcraftExportQueue from './FilmcraftExportQueue.svelte'
   import FilmcraftExportPresetLibrary from './FilmcraftExportPresetLibrary.svelte'
   import { startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, type FilmcraftVideoRequest, type FilmcraftVideoHistoryEntry, type FilmcraftExportPreset, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftTextOverlay, type FilmcraftOverlayPlacement, type FilmcraftImageOverlay, type FilmcraftBitrateSettings } from '$lib/api'
@@ -10,6 +11,12 @@
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
   let quickPresetName = $state('')
+  let quickOptionsOpen = $state(false)
+  let quickPresets = $state<FilmcraftLibraryPreset[]>([])
+  let quickSelection = $state('')
+  let quickPresetLoading = $state(false)
+  let quickPresetError = $state('')
+  let quickCaptionOverride = $state(false)
   let burnCaptions = $state(true)
   let captionFormat = $state('')
   let exportRange = $state<'frames' | 'inOut' | 'entire' | 'workArea' | 'custom'>('frames')
@@ -20,7 +27,30 @@
   let customEnd = $state('')
   const customRange = $derived(rangeFromSeconds(customStart, customEnd))
   const exactExportRange = $derived(rangeFromSeconds(exportStart, exportEnd))
-  $effect(() => { void token; libraryPreset = ''; quickPresetName = '' })
+  $effect(() => {
+    void token
+    libraryPreset = ''; quickPresetName = ''; quickSelection = ''; quickPresets = []; quickCaptionOverride = false
+  })
+  $effect(() => {
+    const owner = token
+    if (!owner || !quickOptionsOpen) return
+    const controller = new AbortController()
+    quickPresetLoading = true
+    quickPresetError = ''
+    void listFilmcraftExportPresets(owner, {}, controller.signal).then(result => {
+      if (controller.signal.aborted) return
+      const favorites = result.presets.filter(entry => entry.favorite)
+      const common = result.presets.filter(entry => !entry.favorite && entry.builtin
+        && (entry.category === 'Match Source' || entry.category === 'Web & Social'))
+      quickPresets = [...favorites, ...common]
+      if (quickSelection && !result.presets.some(entry => entry.name === quickSelection)) quickSelection = ''
+    }).catch(failure => {
+      if (!controller.signal.aborted) quickPresetError = failure instanceof Error ? failure.message : String(failure)
+    }).finally(() => {
+      if (!controller.signal.aborted) quickPresetLoading = false
+    })
+    return () => controller.abort()
+  })
   const audioOnly = $derived(['wav16', 'wav24', 'aiff16'].includes(preset))
   const imageSequence = $derived(preset.endsWith('_sequence'))
   const silentVisual = $derived(imageSequence || preset === 'gif')
@@ -204,9 +234,11 @@
     const version = ++session.submit
     submitting = true; submitError = ''
     try {
+      const chosenPreset = quickSelection || libraryPreset
       const accepted = await startFilmcraftQuickExportJob(session.token, {
         document, sequenceId, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)),
-        ...(libraryPreset ? { preset: libraryPreset } : {}),
+        ...(chosenPreset ? { preset: chosenPreset } : {}),
+        ...(quickCaptionOverride ? { settings: { burnCaptions, captionSidecar: captionFormat || null } } : {}),
         ...(quickRange !== 'inOut' ? { range: quickRange } : {}),
         ...(quickRange === 'custom' ? { sourceRange: customRange } : {}),
       }, session.controller.signal)
@@ -291,6 +323,25 @@
 </script>
 <section aria-label="Видеоэкспорт Filmcraft" class="video-export">
   <FilmcraftExportPresetLibrary {token} disabled={submitting || retrying || disabled} onapply={(name) => libraryPreset = name} />
+  <details ontoggle={event => { quickOptionsOpen = event.currentTarget.open }}>
+    <summary>Настройки быстрого экспорта</summary>
+    <label>Пресет быстрого экспорта
+      <select aria-label="Пресет быстрого экспорта" value={quickSelection} disabled={!token || submitting || retrying || disabled}
+        onchange={event => { quickSelection = event.currentTarget.value }}>
+        <option value="">{libraryPreset || 'Последний использованный пресет'}</option>
+        {#if quickSelection && !quickPresets.some(entry => entry.name === quickSelection)}
+          <option value={quickSelection}>{quickSelection}</option>
+        {/if}
+        {#each quickPresets as entry (entry.name)}
+          <option value={entry.name}>{entry.favorite ? '★ ' : ''}{entry.name}</option>
+        {/each}
+      </select>
+    </label>
+    {#if quickPresetLoading}<span role="status">Загрузка пресетов…</span>{/if}
+    {#if quickPresetError}<span role="alert">{quickPresetError}</span>{/if}
+    <label><input type="checkbox" checked={quickCaptionOverride} disabled={submitting || retrying || disabled}
+      onchange={event => { quickCaptionOverride = event.currentTarget.checked }} />Применить настройки субтитров из этой панели</label>
+  </details>
   <label>Диапазон быстрого экспорта
     <select aria-label="Диапазон быстрого экспорта" value={quickRange} disabled={submitting || retrying || disabled}
       onchange={event => { quickRange = event.currentTarget.value as typeof quickRange }}>
@@ -514,9 +565,10 @@
     <p>Сохранённый пресет: {libraryPreset}</p>
     <button type="button" disabled={submitting || retrying || disabled} onclick={() => libraryPreset = ''}>Настроить экспорт вручную</button>
   {/if}
-  {#if !libraryPreset}
-    {#if !audioOnly}
-      <label><input type="checkbox" bind:checked={burnCaptions} disabled={submitting || retrying || disabled} />Впечатывать субтитры в видео</label>
+  {#if !libraryPreset || quickCaptionOverride}
+    {#if !audioOnly || quickCaptionOverride}
+      <label><input type="checkbox" checked={burnCaptions} disabled={submitting || retrying || disabled}
+        onchange={event => { burnCaptions = event.currentTarget.checked }} />Впечатывать субтитры в видео</label>
     {/if}
     <label>Отдельный файл субтитров
       <select aria-label="Отдельный файл субтитров Filmcraft" value={captionFormat} disabled={submitting || retrying || disabled}
