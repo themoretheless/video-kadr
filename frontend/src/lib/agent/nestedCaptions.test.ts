@@ -63,3 +63,25 @@ it('refuses a disconnected no-op even though the document would remain identical
  await expect(pending).rejects.toThrow('disconnected')
  expect(nestedHistory.past).toHaveLength(0)
 })
+
+it('applies a project subtitle document to the requested nested timeline by ID', async () => {
+ const project = nestedComposition.document!
+ const root = project.compositions.root!
+ const source = { id: 'dialogue', name: 'dialogue.srt', text: '1\n00:00:01,000 --> 00:00:02,000\nFrom pool' }
+ nestedComposition.document = { ...project, compositions: { ...project.compositions, root: {
+  ...root, content: { ...root.content, metadata: { ...root.content.metadata, subtitleDocuments: [source] } },
+ } } }
+ const before = await read()
+ const args = { expectedProjectHash: before.projectHash, composition_id: 'unused', t_start_us: 5_000_000 }
+ await expect(tool('apply_subtitles', { ...args, media_id: 'missing' })).rejects.toThrow('not found')
+ expect(nestedHistory.past).toHaveLength(0)
+ const result = await tool('apply_subtitles', { ...args, media_id: source.id }) as { caption_track_id: string }
+ expect(result).toMatchObject({ kind: 'nested', cues: 1, simplified: 0 })
+ const after = (await read()).document
+ expect(after.compositions.root).toEqual(before.document.compositions.root)
+ expect(after.compositions.unused!.content.tracks.find(track => track.id === result.caption_track_id)?.clips.at(-1))
+  .toMatchObject({ text: 'From pool', timelineStartTick: 6_000_000, timelineEndTick: 7_000_000 })
+ expect(nestedHistory.past).toHaveLength(1)
+ await tool('undo')
+ expect(nestedComposition.document).toEqual(before.document)
+})

@@ -1,3 +1,4 @@
+import type { ActivityToken } from '$lib/agent/activity.svelte'
 import { changeSubtitleDocuments, type SubtitleDocument } from '../../subtitles/documents.js'
 import { restyleCaptions, type CaptionStylePatch } from '../../composition/restyleCaptions.js'
 import { mergeCaptions } from '../../composition/mergeCaptions.js'
@@ -250,7 +251,7 @@ export function addCompositionTrack(kind: TrackKind): string {
 }
 
 
-export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void, offsetTicks = 0, source?: Pick<SubtitleDocument, 'id' | 'name'>): number {
+export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void, offsetTicks = 0, source?: Pick<SubtitleDocument, 'id' | 'name'>, activity?: ActivityToken): number {
   if (!Number.isSafeInteger(offsetTicks) || offsetTicks < 0) throw new Error('Некорректное смещение субтитров')
   const parsed = parseSubtitleDocumentWithReport(serialized)
   const cues = parsed.cues.map(cue => ({
@@ -306,7 +307,7 @@ export function importSrtToComposition(serialized: string, requestedTrackId?: st
     const subtitleDocuments = changeSubtitleDocuments(document.metadata?.subtitleDocuments ?? [], { ...source, text: serialized })
     document = { ...document, metadata: { ...document.metadata, subtitleDocuments } }
   }
-  commitDocument(document)
+  commitDocument(document, undefined, undefined, 'content', activity)
   selectCompositionClip(firstTrackId, clips[0]!.id)
   report?.(parsed.simplifiedCueCount)
   return clips.length

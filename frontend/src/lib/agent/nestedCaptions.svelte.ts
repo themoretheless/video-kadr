@@ -1,3 +1,5 @@
+import { subtitleApplication } from './subtitleApplication'
+import { importNestedSubtitles } from '../subtitles/nestedImport'
 import {describeHistoryStacks} from './historyNavigation'
 import {jumpNestedHistory} from '../state/nestedComposition.svelte'
 import {readNativeColorTrack} from './nativeColor'
@@ -76,7 +78,7 @@ export async function executeNestedCaptionRequest(actor:string,tool:string,args:
   if(tool==='undo')undoNestedComposition();else redoNestedComposition()
   return nestedComposition.document ? {kind:'nested',projectHash:await hash(capture())} : {kind:'nested',closed:true,projectHash:null}
  }
- if(tool!=='freeze_frame'&&tool!=='merge_captions'&&tool!=='restyle_captions'&&tool!=='restore_checkpoint'&&tool!=='apply_batch'&&tool!=='dry_run')throw new Error('Tool is not available for an open nested project')
+ if(tool!=='freeze_frame'&&tool!=='merge_captions'&&tool!=='apply_subtitles'&&tool!=='restyle_captions'&&tool!=='restore_checkpoint'&&tool!=='apply_batch'&&tool!=='dry_run')throw new Error('Tool is not available for an open nested project')
  if(args.expectedRevision!==undefined)throw new Error('Use expectedProjectHash for nested projects')
  if(typeof args.expectedProjectHash!=='string'||!/^[0-9a-f]{64}$/.test(args.expectedProjectHash)||await hash(snapshot)!==args.expectedProjectHash)throw new Error('Project changed; read get_project and use its projectHash as expectedProjectHash')
  const admission=()=>{
@@ -118,6 +120,13 @@ export async function executeNestedCaptionRequest(actor:string,tool:string,args:
   const activeId=nestedComposition.activeCompositionId??document.root
   const found=Object.hasOwn(document.compositions,activeId)
   selection={id:found?activeId:document.root,timeUs:found?nestedComposition.timeUs:0}
+ }else if(tool==='apply_subtitles'){
+  const root = snapshot.document.compositions[snapshot.document.root]
+  const { source, offset } = subtitleApplication(root?.content.metadata?.subtitleDocuments, args)
+  const scope = args.composition_id === undefined ? snapshot.document.root : text(args.composition_id, 'composition_id')
+  const change = importNestedSubtitles(snapshot.document, scope, source.text, prefix => `${prefix}-${crypto.randomUUID()}`, offset)
+  document = change.document
+  result = { caption_track_id: change.firstTrackId, cues: change.count, simplified: change.simplifiedCueCount }
  }else if(tool==='restyle_captions'){
   const {expectedProjectHash,expectedRevision,layer_ids,...patch}=args
   void expectedProjectHash;void expectedRevision

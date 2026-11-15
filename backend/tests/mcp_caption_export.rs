@@ -30,6 +30,10 @@ async fn caption_export_is_advertised_with_source_format_and_lane_arguments() {
     assert_eq!(merge["inputSchema"]["properties"]["layer_ids"]["minItems"], 2);
     assert_eq!(merge["inputSchema"]["oneOf"],json!([{"required":["expectedRevision"]},{"required":["expectedProjectHash"]}]));
     assert_eq!(restyle["inputSchema"]["oneOf"],merge["inputSchema"]["oneOf"]);
+    let apply = body["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "apply_subtitles").unwrap();
+    assert_eq!(apply["inputSchema"]["required"], json!(["media_id"]));
+    assert_eq!(apply["inputSchema"]["properties"]["t_start_us"]["minimum"], 0);
+    assert_eq!(apply["inputSchema"]["oneOf"], merge["inputSchema"]["oneOf"]);
     let tool = body["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "export_captions").unwrap();
     assert_eq!(tool["inputSchema"]["required"], json!(["format"]));
     assert_eq!(tool["inputSchema"]["properties"]["format"]["enum"], json!(["srt", "vtt"]));

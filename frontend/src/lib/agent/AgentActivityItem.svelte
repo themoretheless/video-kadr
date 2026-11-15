@@ -9,7 +9,7 @@
  const isOpen=$derived(open??localOpen)
  const navigation=$derived(activityNavigationTarget(item.affected??[],workspaceId))
  const entityNames={Layer:'Клип',Track:'Дорожка',Marker:'Маркер',Media:'Медиа',Transition:'Переход',Composition:'Композиция'}
- const labels:Record<string,string>={get_project:'Чтение проекта',get_history:'Чтение истории',list_checkpoints:'Список контрольных точек',create_checkpoint:'Создание контрольной точки',restore_checkpoint:'Восстановление контрольной точки',delete_checkpoint:'Удаление контрольной точки',merge_captions:'Объединение субтитров',restyle_captions:'Оформление субтитров',begin_agent_session:'Начало работы',end_agent_session:'Завершение работы',apply_batch:'Изменение проекта',dry_run:'Проверка изменений'}
+ const labels:Record<string,string>={get_project:'Чтение проекта',get_history:'Чтение истории',list_checkpoints:'Список контрольных точек',create_checkpoint:'Создание контрольной точки',restore_checkpoint:'Восстановление контрольной точки',delete_checkpoint:'Удаление контрольной точки',apply_subtitles:'Вставка субтитров',merge_captions:'Объединение субтитров',restyle_captions:'Оформление субтитров',begin_agent_session:'Начало работы',end_agent_session:'Завершение работы',apply_batch:'Изменение проекта',dry_run:'Проверка изменений'}
 </script>
 <li data-agent-anchor={`call:${item.id}`} data-agent-activity={item.id} data-agent-checkpoint={item.checkpointId} data-activity-state={item.state}>
  <span>{labels[item.tool]??item.tool} · {item.state==='running'?'Выполняется':item.state==='error'?'Ошибка':'Завершено'}{item.durationMs===null?'':` · ${item.durationMs} мс`}</span>

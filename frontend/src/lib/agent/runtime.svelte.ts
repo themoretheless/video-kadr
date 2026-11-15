@@ -1,3 +1,5 @@
+import { subtitleApplication } from './subtitleApplication'
+import { importSrtToComposition } from '../state/composition/timeline.svelte'
 import { keyframeLocalTime } from '../composition/keyframeClock'
 import {describeHistoryStacks} from './historyNavigation'
 import {startAgentActivity,finishAgentActivity,linkActivityCheckpoint,type ActivityToken} from './activity.svelte'
@@ -60,6 +62,18 @@ function run(actor: string, tool: string, args: Record<string, unknown>, activit
       const result = mergeCaptions(compositionState.document, args.layer_ids as string[])
       commitDocument(result.document, undefined, undefined, 'validated-batch',activity)
       return { ...result.record, revision: agentSession.revision }
+    }
+
+    case 'apply_subtitles': {
+      if (nestedComposition.document || args.expectedProjectHash !== undefined || args.composition_id !== undefined) {
+        throw new Error('Nested caption guards require the nested editor')
+      }
+      if (args.expectedRevision !== agentSession.revision) throw new Error('Project changed; read get_project and retry with its revision')
+      assertHistoryUnlocked(actor)
+      const { source, offset } = subtitleApplication(compositionState.document.metadata?.subtitleDocuments, args)
+      let simplified = 0
+      const cues = importSrtToComposition(source.text, undefined, count => { simplified = count }, offset, undefined, activity)
+      return { caption_track_id: compositionState.ui.selectedTrackId, cues, simplified, revision: agentSession.revision }
     }
 
     case 'export_captions': {

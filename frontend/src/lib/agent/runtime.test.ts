@@ -1,3 +1,4 @@
+import { importSrtToComposition } from '../state/composition/timeline.svelte'
 import {agentActivity,resetAgentActivity} from './activity.svelte'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { executeAgentTool } from './runtime.svelte.js'
@@ -758,4 +759,22 @@ it('jumps ordinary retained history through actual Undo/Redo and rejects discard
  executeAgentTool('agent-a','jump_history',{expectedRevision:agentSession.revision,entryId:first,side:'before'})
  executeAgentTool('agent-a','apply_batch',{expectedRevision:agentSession.revision,operations:[{op:'update_layer',clipId:'title',patch:{text:'Branch'}}]})
  expect(()=>executeAgentTool('agent-a','jump_history',{expectedRevision:agentSession.revision,entryId:last})).toThrow('no longer')
+})
+
+it('copies saved subtitle cues by media ID as one ordinary edit', () => {
+ const source = { id: 'pool-entry', name: 'pool.srt', text: '1\n00:00:01,000 --> 00:00:02,000\nFrom pool' }
+ importSrtToComposition(source.text, undefined, undefined, 0, source)
+ const before = JSON.stringify(compositionState.document)
+ const revision = agentSession.revision
+ const args = { media_id: source.id, expectedRevision: revision, t_start_us: 4_000_000 }
+ expect(() => executeAgentTool('agent-a', 'apply_subtitles', { ...args, t_start_us: -1 })).toThrow('Invalid t_start_us')
+ expect(JSON.stringify(compositionState.document)).toBe(before)
+ const result = executeAgentTool('agent-a', 'apply_subtitles', args) as { caption_track_id: string }
+ expect(result).toMatchObject({ cues: 1, simplified: 0 })
+ expect(compositionState.document.metadata?.subtitleDocuments).toEqual([source])
+ expect(compositionState.document.tracks.find(track => track.id === result.caption_track_id)?.clips.at(-1))
+  .toMatchObject({ text: 'From pool', timelineStartTicks: 5_000_000, durationTicks: 1_000_000 })
+ expect(() => executeAgentTool('agent-a', 'apply_subtitles', args)).toThrow('Project changed')
+ undoComposition()
+ expect(JSON.stringify(compositionState.document)).toBe(before)
 })
