@@ -12,7 +12,7 @@ import {agentSession,assertHistoryUnlocked,clearAgentWorkContext} from '$lib/age
 import {setNativeCaptionText} from '$lib/composition/nativeCaptionText'
 import {importNestedSubtitles} from '$lib/subtitles/nestedImport'
 import { mergeNestedCaptions } from '$lib/composition/mergeCaptions'
-import { restyleNestedCaptions, type CaptionStylePatch } from '$lib/composition/restyleCaptions'
+import { copyNestedCaptionAppearance, restyleNestedCaptions, type CaptionStylePatch } from '$lib/composition/restyleCaptions'
 import { nestedDurations } from '$lib/api'
 import {videoRegionOrdinal} from '$lib/video-region'
 import {reattachNativeConcatAudio} from '$lib/composition/concatDetachedAudio'
@@ -997,6 +997,16 @@ export async function restyleNestedProjectCaptions(patch: CaptionStylePatch, ids
   },true)
   if (nestedHistory.error) throw new Error(nestedHistory.error)
   if (!expected || JSON.stringify(nestedComposition.document) !== expected) throw new Error('Проект изменился во время проверки оформления')
+}
+
+export async function applyNestedCaptionAppearance(compositionId: string, sourceId: string, targetIds: readonly string[]): Promise<void> {
+  const guard = () => assertHistoryUnlocked()
+  await editNestedDocument(async project => {
+    guard()
+    const document = copyNestedCaptionAppearance(project, compositionId, sourceId, targetIds)
+    await nestedDurations(document)
+    return document
+  }, true, undefined, undefined, 0, undefined, guard)
 }
 
 export async function mergeNestedCaptionClips(compositionId: string, ids: readonly string[]): Promise<void> {

@@ -1,6 +1,6 @@
 import {beforeEach,afterEach,expect,it,vi} from 'vitest'
 import * as api from '../api'
-import {nestedComposition,nestedHistory,closeNestedComposition,resetNestedHistory,mergeNestedCaptionClips,undoNestedComposition} from './nestedComposition.svelte'
+import {applyNestedCaptionAppearance,nestedComposition,nestedHistory,closeNestedComposition,resetNestedHistory,mergeNestedCaptionClips,undoNestedComposition} from './nestedComposition.svelte'
 import {compositionState,resetCompositionForTests,setCompositionStorageForTests} from './composition/core.svelte'
 import {importSrtToComposition} from './composition/timeline.svelte'
 import {buildCompositionWireDocument} from '../composition/payload'
@@ -13,6 +13,30 @@ beforeEach(()=>{
 })
 afterEach(()=>{vi.restoreAllMocks();closeNestedComposition()})
 const ids=()=>nestedComposition.document!.compositions.root!.content.tracks[0]!.clips.map(clip=>clip.id)
+
+it('applies a source appearance with one Undo while preserving target timing and animation', async () => {
+  const track = nestedComposition.document!.compositions.root!.content.tracks[0]!
+  if (track.kind !== 'text') throw new Error('expected text track')
+  const [source, target] = track.clips
+  Object.assign(source!, { style: { ...source!.style, fontWeight: 550, tracking: 2 }, blendMode: 'screen' })
+  Object.assign(target!, { opacity: { mode: 'keyframes', track: { timeBase: 1000000, interpolation: 'linear',
+    keyframes: [{ tick: 0, value: 0 }, { tick: 500000, value: 1 }],
+  } } })
+  const before = JSON.stringify(nestedComposition.document)
+  const originalTarget = JSON.parse(JSON.stringify(target))
+  const validate = vi.spyOn(api, 'nestedDurations').mockResolvedValue({ root: 4000000 })
+  await applyNestedCaptionAppearance('root', source!.id, [target!.id, 'missing'])
+  expect(validate).not.toHaveBeenCalled()
+  expect(JSON.stringify(nestedComposition.document)).toBe(before)
+  await applyNestedCaptionAppearance('root', source!.id, [target!.id])
+  expect(validate).toHaveBeenCalledTimes(1)
+  expect(nestedHistory.past).toHaveLength(1)
+  expect(nestedComposition.document!.compositions.root!.content.tracks[0]!.clips[1]).toMatchObject({
+    ...originalTarget, style: source!.style, blendMode: 'screen',
+  })
+  undoNestedComposition()
+  expect(JSON.stringify(nestedComposition.document)).toBe(before)
+})
 it('validates once and commits one nested Undo with render cache restoration',async()=>{
  const before=JSON.stringify(nestedComposition.document)
  const validate=vi.spyOn(api,'nestedDurations').mockResolvedValue({root:4_000_000})

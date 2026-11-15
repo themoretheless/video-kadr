@@ -14,6 +14,49 @@ import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { cuesToTextClips, parseSrt } from '$lib/subtitles/srt'
 vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
 
+it('applies a chosen subtitle appearance to multiple selected replies', async () => {
+  closeNestedComposition()
+  const cues = cuesToTextClips([
+    { id: 'cue-0', startTicks: 0, endTicks: 500000, text: 'First' },
+    { id: 'cue-1', startTicks: 500000, endTicks: 1000000, text: 'Reference' },
+    { id: 'cue-2', startTicks: 1000000, endTicks: 1500000, text: 'Third' },
+  ], cue => cue.id).map((cue, index) => ({ ...cue, style: { ...cue.style, fontSizePx: 24 + index * 8 } }))
+  const base = createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' })
+  const draft = addTrack(base, { id: 'captions', kind: 'text', name: 'Subtitles', hidden: false, locked: false, clips: cues })
+  const content = buildCompositionWireDocument({ ...draft, metadata: { captionTextTracks: ['captions'] } })
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { content, instances: [] } } }
+  nestedComposition.activeCompositionId = 'root'
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  try {
+    await tick()
+    for (const checkbox of target.querySelectorAll<HTMLInputElement>('[data-clip-id]')) {
+      checkbox.checked = true
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    await tick()
+    const picker = [...target.querySelectorAll('select')].find(select => select.options[0]?.textContent === 'Выберите реплику')!
+    picker.value = 'cue-1'
+    picker.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    const apply = [...target.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Применить оформление к другим выбранным')!
+    expect(apply.disabled).toBe(false)
+    apply.click()
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
+    const track = nestedComposition.document?.compositions.root?.content.tracks[0]
+    expect(track?.clips).toMatchObject([
+      { text: 'First', timelineStartTick: 0, style: { fontSize: 32 } },
+      { text: 'Reference', timelineStartTick: 500000, style: { fontSize: 32 } },
+      { text: 'Third', timelineStartTick: 1000000, style: { fontSize: 32 } },
+    ])
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+  }
+})
+
 it('saves subtitle text, typography and background together and restores them with one Undo', async () => {
   closeNestedComposition()
   const [cue] = cuesToTextClips(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nOriginal'), () => 'cue')

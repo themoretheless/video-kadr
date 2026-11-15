@@ -39,6 +39,7 @@
   import { expandNativeClipLinks, linkNativeClips, unlinkNativeClips } from '$lib/composition/nativeClipLinks'
   import { nativeClipMoveBatch, defaultNativeTargetTrack, nativeClipStart } from '$lib/composition/nativeClipMove'
   import { orderedTimelineIds } from '$lib/composition/timelineOrder'
+  import { applyNestedCaptionAppearance } from '$lib/state/nestedComposition.svelte'
   let { disabled = false }: { disabled?: boolean } = $props()
   const project = $derived(nestedComposition.document)
   const active = $derived(nestedComposition.activeCompositionId ?? project?.root ?? '')
@@ -48,6 +49,14 @@
   const rippleGap=$derived(rippleLane?nativeGapAt(rippleLane,nestedComposition.timeUs):null)
   const rippleBlocked=$derived(disabled||nestedHistory.busy||Boolean(agentSession.lock))
   let selected = $state<string[]>([]), destination = $state(''), seconds = $state(0), trimDelta = $state(0), leftDelta = $state(0), targets = $state<Record<string, string>>({})
+  let styleSource = $state('')
+  const styleChoices = $derived.by(() => {
+    const roles = new Set(project?.compositions[active]?.content.metadata?.captionTextTracks)
+    return tracks.flatMap(track => track.kind === 'text' && !track.locked && roles.has(track.id)
+      ? track.clips.filter(clip => selected.includes(clip.id) && !clip.concatTitle)
+      : [])
+  })
+  const styleSourceSelected = $derived(styleChoices.some(clip => clip.id === styleSource))
   const sourceKeyMarks=$derived(project?concatSelectionKeyMarks(project,active,selected):[])
   const sourceKeyGroups=$derived(concatKeyMarkerGroups(sourceKeyMarks))
   const sourceKeyRange=$derived(sourceKeyMarks.reduce((range,key)=>[Math.min(range[0]!,key.startUs),Math.max(range[1]!,key.endUs)],[Infinity,-Infinity]))
@@ -343,6 +352,20 @@
     {/if}
     <button class="btn ghost sm" type="button" disabled={crossCopyReason !== null} title={crossCopyReason ?? undefined} onclick={() => void copyNestedClips(active, destination, selected, Math.round(seconds*1000000), targets)}>Копировать в выбранный таймлайн</button>
     <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || selected.length < 2} onclick={() => void keepKeyboardFocus(()=>mergeNestedCaptionClips(active,selected))}>Объединить субтитры вложенной композиции</button>
+    {#if styleChoices.length >= 2 && styleChoices.length === selected.length}
+      <label>Оформление из реплики
+        <select value={styleSourceSelected ? styleSource : ''} onchange={event=>{styleSource=event.currentTarget.value}}>
+          <option value="">Выберите реплику</option>
+          {#each styleChoices as clip (clip.id)}
+            <option value={clip.id}>{(clip.timelineStartTick / 1000000).toFixed(3)} с · {clip.text.slice(0, 60)}</option>
+          {/each}
+        </select>
+      </label>
+      <button class="btn ghost sm" type="button" disabled={rippleBlocked || !styleSourceSelected}
+        onclick={()=>void keepKeyboardFocus(()=>applyNestedCaptionAppearance(active,styleSource,selected.filter(id=>id!==styleSource)))}>
+        Применить оформление к другим выбранным
+      </button>
+    {/if}
     <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || (!selected.length && !captionSelected.length)} onclick={() => void keepKeyboardFocus(()=>removeNestedClips(active, [...selected,...captionSelected]))}>Удалить выбранные клипы</button>
     <button class="btn ghost sm" type="button" disabled={linkReason !== null} title={linkReason ?? undefined} onclick={() => void editNestedClipLinks(active, selected)}>Связать выбранные клипы</button>
     <button class="btn ghost sm" type="button" disabled={rippleBlocked||!selected.length} onclick={()=>void keepKeyboardFocus(()=>rippleNestedComposition(active,{clipIds:selected}))}>Удалить выбранные со сдвигом</button>

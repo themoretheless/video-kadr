@@ -83,3 +83,33 @@ export function restyleNestedCaptions(project: NativeNestedProject, patch: Capti
   if (selected && [...selected].some(id=>!found.has(id))) throw new Error('Слой не является субтитром')
   return {document:{...project,compositions},captions,restyled}
 }
+
+export function copyNestedCaptionAppearance(
+  project: NativeNestedProject, compositionId: string, sourceId: string, targetIds: readonly string[],
+): NativeNestedProject {
+  const composition = Object.hasOwn(project.compositions, compositionId) ? project.compositions[compositionId] : undefined
+  const targets = new Set(targetIds)
+  if (!composition || !targets.size || targets.size !== targetIds.length || targets.has(sourceId)) {
+    throw new Error('Выберите исходную реплику и другие субтитры для оформления')
+  }
+  const roles = new Set(composition.content.metadata?.captionTextTracks)
+  const source = composition.content.tracks.flatMap(track =>
+    track.kind === 'text' && roles.has(track.id) ? track.clips : [],
+  ).find(clip => clip.id === sourceId && !clip.concatTitle)
+  if (!source) throw new Error('Исходная реплика не найдена')
+  const { style, textAnchor, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode } = source
+  const tracks = composition.content.tracks.map(track => {
+    if (track.kind !== 'text' || !roles.has(track.id)) return track
+    const clips = track.clips.map(clip => {
+      if (!targets.has(clip.id)) return clip
+      if (track.locked || clip.concatTitle) throw new Error('Выбранная реплика недоступна для изменения оформления')
+      targets.delete(clip.id)
+      return { ...clip, style, textAnchor, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode }
+    })
+    return { ...track, clips }
+  })
+  if (targets.size) throw new Error('Некоторые выбранные клипы не являются репликами')
+  return { ...project, compositions: { ...project.compositions,
+    [compositionId]: { ...composition, content: { ...composition.content, tracks } },
+  } }
+}
