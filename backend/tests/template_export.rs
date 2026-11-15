@@ -97,6 +97,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     reflected_caption["style"]["shadow"]["alpha"] = json!(0.0);
     reflected_caption["style"]["concatShadow"] = json!(true);
     reflected_caption["style"]["fontWeight"] = json!(550.5);
+    reflected_caption["style"]["fontFamily"] = json!("JetBrains Mono");
     reflected_caption["textBoxHeight"] = json!(4.0);
     reflected_caption["transform"]["concatPreparation"] = json!({
         "crop": [0.0, 0.0, 0.0, 0.0], "canvas": [16, 8], "flipH": true, "flipV": true
@@ -160,6 +161,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         assert_eq!(reflected["text"]["backgroundPaddingY"], 0.125);
         assert_eq!(reflected["text"]["shadow"], true);
         assert_eq!(reflected["text"]["fontWeight"], 550.5);
+        assert_eq!(reflected["text"]["fontFamily"], "JetBrains Mono");
         assert_eq!(reflected["text"]["maxHeight"], 0.5);
         assert_eq!(reflected["crop"], json!({"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0}));
         assert_eq!(sidecar["clips"][1][1]["transform"]["concatPreparation"], reflected_caption["transform"]["concatPreparation"]);

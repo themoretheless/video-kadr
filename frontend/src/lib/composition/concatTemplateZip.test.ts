@@ -54,7 +54,7 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   await expect(readConcatTemplateCaptions(sidecar, new File([manifest + ' '], 'template.json'))).resolves.toEqual(clips)
   const retimed = { ...source, video, timelines: [{ id: 'TL1', video: { rateNum: 30_000, rateDen: 1_001 }, clips: [first, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(retimed)], 'template.json'))).resolves.toEqual(clips)
-  const changed = { ...source, timelines: [{
+  const changed = { ...source, fonts: [{ family: 'Cabinet Grotesk', path: 'assets/face.ttf' }], timelines: [{
     id: 'TL1', video: { width: 320, height: 180, rateNum: 24, rateDen: 1 }, clips: [
       { ...first, text: { ...first.text, fontFamily: '"Cabinet Grotesk"' } },
       { ...second, sourceStart: 0, mediaId: '', fadeIn: 0, filters: [] },
@@ -62,6 +62,11 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
     .resolves.toEqual([clips[1]])
+  const changedFamily = { ...source, timelines: [{ id: 'TL1', video, clips: [
+    { ...first, text: { ...first.text, fontFamily: '"JetBrains Mono"' } }, second,
+  ] }] }
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changedFamily)], 'template.json')))
+    .resolves.toEqual([['TL1', { ...staticClip, style: { ...staticClip.style, fontFamily: 'JetBrains Mono' } }], clips[1]])
   const moved = { ...first, start: 5.000001, name: 'New name', text: { ...first.text, content: 'Edited' } }
   const movedTimeline = { id: 'TL2', video, clips: [moved] }
   const remainingTimeline = { id: 'TL1', video, clips: [second] }

@@ -142,6 +142,10 @@ mod tests {
         assert_eq!(pixels(&caption), medium);
         caption.style.font_weight = Some(580.);
         assert_ne!(pixels(&caption), medium);
+        caption.style.font_family = "JetBrains Mono".into();
+        let mono = pixels(&caption);
+        assert!(mono.chunks_exact(4).any(|pixel| pixel[3] > 0));
+        assert_ne!(mono, medium);
     }
 
     #[test]

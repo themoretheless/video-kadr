@@ -1549,8 +1549,15 @@ pub struct TextStyle {
 }
 
 impl TextStyle {
-    fn validate(&self) -> Result<(), CompositionError> {
-        if !is_supported_composition_font_family(&self.font_family)
+    fn validate(&self, native: bool) -> Result<(), CompositionError> {
+        let family_ok = if native {
+            !self.font_family.trim().is_empty()
+                && self.font_family.len() <= 256
+                && !self.font_family.chars().any(|ch| ch.is_control() || matches!(ch, '/' | '\\' | ':' | ',' | '\'' | '"'))
+        } else {
+            is_supported_composition_font_family(&self.font_family)
+        };
+        if !family_ok
             || self.font_weight.is_some_and(|weight| !(100.0..=900.0).contains(&weight))
             || self.background_padding.is_some_and(|padding| {
                 padding.iter().any(|value| !(0.0..=100_000.0).contains(value))
@@ -2155,7 +2162,7 @@ impl Composition {
                         {
                             return Err(CompositionError::InvalidText);
                         }
-                        clip.style.validate()?;
+                        clip.style.validate(native)?;
                         if (!clip.effects.is_empty()&&clip.concat_title.is_none()) || clip.effects.iter().filter(|effect|matches!(effect,VideoEffect::Style{..})).count()>MAX_STYLE_EFFECTS_PER_CLIP {return Err(CompositionError::InvalidEffect);}
                         for effect in &clip.effects {effect.validate()?;}
                         if let Some(title)=&clip.concat_title {title.validate().map_err(|_|CompositionError::InvalidText)?;if clip.blend_mode.is_some_and(|mode|!matches!(mode,BlendMode::Normal|BlendMode::Multiply|BlendMode::Screen|BlendMode::Addition|BlendMode::Lighten|BlendMode::Darken)){return Err(CompositionError::InvalidText);}}
@@ -3788,6 +3795,10 @@ source_out_tick: 99_000,
         let CompositionTrack::Text { clips, .. } = &mut composition.tracks[0] else {
             unreachable!();
         };
+        assert_eq!(clips[0].style.validate(true), Err(CompositionError::InvalidText));
+        clips[0].style.font_family = "JetBrains Mono".into();
+        assert!(clips[0].style.validate(true).is_ok());
+        assert_eq!(clips[0].style.validate(false), Err(CompositionError::InvalidText));
         clips[0].style.font_family = "Noto Sans".into();
         let static_wire = serde_json::to_value(&clips[0]).unwrap();
         assert!(static_wire.get("colorAnimation").is_none());
