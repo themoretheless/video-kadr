@@ -63,7 +63,7 @@ fn integer(value: Option<&Value>) -> Result<Option<i64>> {
         .transpose()
 }
 
-fn ticks(rate: FrameRate, frame: i64) -> Result<i64> {
+pub(super) fn ticks(rate: FrameRate, frame: i64) -> Result<i64> {
     let tick = i128::from(frame)
         .checked_mul(i128::from(TICKS_PER_SECOND))
         .and_then(|ticks| ticks.checked_mul(i128::from(rate.den)))

@@ -111,3 +111,56 @@ async fn exact_tick_transport_and_split_omission_preserve_source_fields() {
         json!({"videoIn":i64::MIN.to_string(),"videoOut":null,"audioIn":null,"audioOut":null})
     );
 }
+
+#[test]
+fn mark_clip_respects_track_targeting_and_selection_spans_the_outer_edges() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-source-masks.json")).unwrap();
+    let document = &fixture["cases"][0]["document"];
+    let run = |command, frame, context: Value| {
+        edit(
+            command,
+            json!({"document":document,"frame":frame,"context":context}),
+        )
+    };
+    let frame = filmcraft_time::TICKS_PER_SECOND / 24;
+    let marks = |result: Value| {
+        let q = &result["document"]["project"]["items"]["6"]["kind"]["Sequence"];
+        (
+            q["mark_in"].as_i64().unwrap(),
+            q["mark_out"].as_i64().unwrap(),
+        )
+    };
+    assert_eq!(
+        marks(run("markers.markClip", "1", json!({"activeSequence":"6"})).unwrap()),
+        (0, frame * 239)
+    );
+    assert_eq!(
+        marks(
+            run(
+                "markers.markClip",
+                "1",
+                json!({"activeSequence":"6","targetedTrackIds":["4"]})
+            )
+            .unwrap()
+        ),
+        (0, frame * 53)
+    );
+    assert!(run(
+        "markers.markClip",
+        "54",
+        json!({"activeSequence":"6","targetedTrackIds":["4"]})
+    )
+    .is_err());
+    assert_eq!(
+        marks(
+            run(
+                "markers.markSelection",
+                "0",
+                json!({"activeSequence":"6","selection":["1002","1031"]})
+            )
+            .unwrap()
+        ),
+        (frame * 60, frame * 119)
+    );
+}

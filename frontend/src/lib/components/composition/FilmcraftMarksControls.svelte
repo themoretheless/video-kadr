@@ -16,6 +16,8 @@
   let follows = $state(false)
   let position = $state('0')
   let useMonitorPosition = $state(false)
+  let markTrack = $state('')
+  const targetedMarkTrack = $derived(tracks.find(track => track.id === markTrack)?.id)
   let unit = $state<'ticks' | 'frames' | 'seconds' | 'timecode'>('ticks')
   let seekPosition = $state('0')
   let seekUnit = $state<'ticks' | 'frames' | 'seconds'>('ticks')
@@ -55,6 +57,31 @@
     try {
       const result = await editFilmcraftMarks(owner, target === 'source' && clear ? 'project.setMarks' : command, { document, ...params, context: { activeSequence: sequenceId || null, sourceItem: target === 'source' ? item : null, ...(oncontext ? { sourcePlayhead } : {}) } }, current.signal)
       if (!alive || current.signal.aborted || captured !== context()) return
+      status = onedit(result, expected) === false ? 'Результат не применён: контекст изменился' : 'Точки In/Out обновлены'
+    } catch (failure) { if (alive && !current.signal.aborted && captured === context()) error = failure instanceof Error ? failure.message : String(failure) }
+    finally { if (controller === current) { controller = undefined; busy = false } }
+  }
+  async function markTimeline(command: 'markers.markClip' | 'markers.markSelection') {
+    if (!token || disabled || busy || !sequenceId) return
+    if (command === 'markers.markSelection' ? !selection.length : !validTick(timeTicks || timeFrames)) return
+    const owner = token
+    const captured = context()
+    const track = targetedMarkTrack
+    const current = new AbortController()
+    const expected: FilmcraftSourceEditFence = {
+      document, sequenceId, clipId, token: owner, timeFrames, timeTicks: timeTicks || null,
+      timelineSelection: [...selection],
+    }
+    controller = current; busy = true; busyLabel = 'Обновляются точки…'; error = ''; status = ''
+    try {
+      const result = await editFilmcraftMarks(owner, command, { document,
+        ...(command === 'markers.markClip' ? timeTicks ? { time: timeTicks } : { frame: timeFrames } : {}),
+        context: {
+          activeSequence: sequenceId,
+          ...(command === 'markers.markSelection' ? { selection: [...selection] } : track ? { targetedTrackIds: [track] } : {}),
+        },
+      }, current.signal)
+      if (!alive || current.signal.aborted || captured !== context() || track !== targetedMarkTrack) return
       status = onedit(result, expected) === false ? 'Результат не применён: контекст изменился' : 'Точки In/Out обновлены'
     } catch (failure) { if (alive && !current.signal.aborted && captured === context()) error = failure instanceof Error ? failure.message : String(failure) }
     finally { if (controller === current) { controller = undefined; busy = false } }
@@ -110,6 +137,19 @@
 </script>
 <details bind:open={panelOpen}>
   <summary>Точки In/Out</summary>
+  {#if target === 'program'}
+    {#if tracks.length}
+      <label>Дорожка для In/Out клипа
+        <select aria-label="Дорожка для In/Out клипа" value={targetedMarkTrack ?? ''} disabled={disabled || busy}
+          onchange={event => { markTrack = event.currentTarget.value }}>
+          <option value="">Все дорожки</option>
+          {#each tracks as track (track.id)}<option value={track.id}>{track.name || track.id}</option>{/each}
+        </select>
+      </label>
+    {/if}
+    <button type="button" disabled={!ready || !validTick(timeTicks || timeFrames)} onclick={() => markTimeline('markers.markClip')}>In/Out клипа под курсором</button>
+    <button type="button" disabled={!ready || !selection.length} onclick={() => markTimeline('markers.markSelection')}>In/Out выделенных клипов</button>
+  {/if}
   <label>Монитор <select aria-label="Монитор точек Filmcraft" value={target} disabled={disabled || busy} onchange={event => { target = event.currentTarget.value as typeof target }}><option value="program">Таймлайн</option><option value="source">Исходник</option></select></label>
   {#if target === 'source'}<label>Элемент <select aria-label="Исходник точек Filmcraft" value={item} disabled={disabled || busy} onchange={event => { item = event.currentTarget.value }}><option value="">Выберите элемент</option>{#if item && !items.some(source => source.id === item)}<option value={item}>Недоступный исходник ({item})</option>{/if}{#each items as source (source.id)}<option value={source.id}>{source.name || source.id}</option>{/each}</select></label>{/if}
   {#if shown}<dl aria-label="Текущие точки Filmcraft"><dt>In</dt><dd>{shown.in ?? '—'}</dd><dt>Out</dt><dd>{shown.out ?? '—'}</dd><dt>Видео In / Out</dt><dd>{shown.split.videoIn ?? '—'} / {shown.split.videoOut ?? '—'}</dd><dt>Аудио In / Out</dt><dd>{shown.split.audioIn ?? '—'} / {shown.split.audioOut ?? '—'}</dd></dl>{/if}

@@ -15,6 +15,8 @@ struct SessionContext {
     source_item: Option<Value>,
     playhead: Option<Value>,
     source_playhead: Option<Value>,
+    selection: Vec<Value>,
+    targeted_track_ids: Option<Vec<Value>>,
 }
 fn integer(value: &Value) -> Option<i64> {
     value.as_i64().or_else(|| value.as_str()?.parse().ok())
@@ -61,6 +63,50 @@ fn range(value: &Value) -> Result<i64> {
         "timeline outside supported time bounds"
     );
     Ok(end)
+}
+
+fn clip_mark_range(
+    command: &str,
+    sequence: &Value,
+    at: i64,
+    selection: Vec<Value>,
+    targeted: Option<Vec<Value>>,
+) -> Result<(i64, i64)> {
+    let tracks = ["video_tracks", "audio_tracks"]
+        .into_iter()
+        .flat_map(|kind| sequence[kind].as_array().into_iter().flatten());
+    if command == "markers.markClip" {
+        let targeted = targeted
+            .map(super::filmcraft_labels::context_ids)
+            .transpose()?;
+        for track in tracks {
+            if targeted
+                .as_ref()
+                .is_some_and(|ids| !track["id"].as_u64().is_some_and(|id| ids.contains(&id)))
+            {
+                continue;
+            }
+            for clip in track["items"].as_array().into_iter().flatten() {
+                let end = range(clip)?;
+                let start = clip["start"].as_i64().unwrap();
+                if start <= at && at < end {
+                    return Ok((start, end));
+                }
+            }
+        }
+        anyhow::bail!("no targeted clip at the playhead")
+    }
+    let selected = super::filmcraft_labels::context_ids(selection)?;
+    ensure!(!selected.is_empty(), "select clips to mark");
+    let mut bounds: Option<(i64, i64)> = None;
+    for clip in tracks.flat_map(|track| track["items"].as_array().into_iter().flatten()) {
+        if clip["id"].as_u64().is_some_and(|id| selected.contains(&id)) {
+            let end = range(clip)?;
+            let start = clip["start"].as_i64().unwrap();
+            bounds = Some(bounds.map_or((start, end), |(a, b)| (a.min(start), b.max(end))));
+        }
+    }
+    bounds.context("selected clips are missing from the sequence")
 }
 // Session.edit_sequence validates the entire target, including unchanged structural errors.
 pub(super) fn check_sequence(q: &Value) -> Result<()> {
@@ -159,6 +205,7 @@ pub fn edit(command: &str, mut params: Value) -> Result<Value> {
     let active = id(context.active_sequence)?;
     let source_target = params["target"] == "source";
     let direct = command == "project.setMarks";
+    let range_mark = matches!(command, "markers.markClip" | "markers.markSelection");
     if let Some(hover) = params.get("hoverMark") {
         #[derive(Deserialize)]
         #[serde(rename_all = "lowercase")]
@@ -233,10 +280,17 @@ pub fn edit(command: &str, mut params: Value) -> Result<Value> {
         let time = if program {
             let q = doc.envelope.pointer(&path).context("no sequence is open")?;
             let rate: FrameRate = serde_json::from_value(q["settings"]["frame_rate"].clone())?;
+            if range_mark {
+                check_sequence(q)?;
+            }
             if let Some(t) = integer(&params["time"]) {
                 t
             } else if let Some(f) = integer(&params["frame"]) {
-                rate.tick_of(f).0
+                if range_mark {
+                    super::filmcraft_sequence_markers::ticks(rate, f)?
+                } else {
+                    rate.tick_of(f).0
+                }
             } else if let Some(sec) = params["seconds"].as_f64() {
                 Tick::from_seconds_f64(sec).0
             } else if let Some(tc) = params["timecode"].as_str() {
@@ -259,6 +313,23 @@ pub fn edit(command: &str, mut params: Value) -> Result<Value> {
             .pointer_mut(&path)
             .context("missing marks target")?;
         match command {
+            "markers.markClip" | "markers.markSelection" => {
+                ensure!(program, "marking clips requires the timeline");
+                let rate: FrameRate =
+                    serde_json::from_value(target["settings"]["frame_rate"].clone())?;
+                let (start, end) = clip_mark_range(
+                    command,
+                    target,
+                    time,
+                    context.selection,
+                    context.targeted_track_ids,
+                )?;
+                let out = end
+                    .checked_sub(rate.frame_duration().0)
+                    .context("clip Out exceeds time bounds")?;
+                target["mark_in"] = json!(start);
+                target["mark_out"] = json!(out);
+            }
             "markers.markIn" | "markers.markOut" => {
                 let input = command == "markers.markIn";
                 let mark = if input { "mark_in" } else { "mark_out" };
