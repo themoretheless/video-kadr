@@ -12,7 +12,7 @@ import { closeNestedComposition, nestedComposition, nestedHistory, undoNestedCom
 import { addClip, addTrack, createComposition, registerSource } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { cuesToTextClips, parseSrt } from '$lib/subtitles/srt'
-vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
+vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), editCompositionCaptions: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
 
 it('edits the selected file caption and keeps its submicrosecond clock through Undo', async () => {
   closeNestedComposition()
@@ -77,6 +77,63 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
     await unmount(component)
     target.remove()
     closeNestedComposition()
+  }
+})
+
+it('splits, joins and ripple-deletes imported captions through native edits and shared Undo', async () => {
+  closeNestedComposition()
+  const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
+  const first = { id: 'cue', cueId: 'external', timelineStartTick: '254016000001', timelineEndTick: '508032000003', text: 'First' }
+  const next = { id: 'next', timelineStartTick: '762048000005', timelineEndTick: '1016064000007', text: 'Next' }
+  const track = { id: 'file', name: 'Imported captions', clips: [first, next] }
+  const original = { ...content, captionTracks: [track] }
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { instances: [], content: original } } }
+  nestedComposition.timeUs = 1_500_000
+  const left = { ...first, timelineEndTick: 1_500_000 }
+  const right = { ...first, id: 'right', cueId: null, timelineStartTick: 1_500_000 }
+  const joined = { ...first, text: 'First\nFirst' }
+  const shifted = { ...next, timelineStartTick: '508032000003', timelineEndTick: '762048000005' }
+  const mock = vi.mocked(api.editCompositionCaptions)
+  mock.mockReset()
+  for (const clips of [[left, right, next], [joined, next], [shifted]]) {
+    mock.mockResolvedValueOnce({ composition: { ...original, captionTracks: [{ ...track, name: 'Server track', clips }] }, appliedDelta: null, deleted: 0 })
+  }
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  const select = async (id: string) => {
+    const input = target.querySelector<HTMLInputElement>(`[data-caption-id="${id}"]`)!
+    input.checked = true
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+  }
+  const click = (name: string) => [...target.querySelectorAll('button')].find(button => button.textContent?.trim() === name)!.click()
+  const currentTrack = () => nestedComposition.document?.compositions.root?.content.captionTracks?.[0]
+  try {
+    await tick()
+    await select('cue')
+    click('Разрезать реплику на курсоре')
+    await vi.waitFor(() => expect(currentTrack()).toEqual({ ...track, clips: [left, right, next] }))
+    expect(mock.mock.calls[0]?.[1]).toEqual({ kind: 'split', id: 'cue', timeTick: 1_500_000 })
+    await select('right')
+    click('Объединить реплики дорожки')
+    await vi.waitFor(() => expect(currentTrack()?.clips).toEqual([joined, next]))
+    expect(mock.mock.calls[1]?.[1]).toEqual({ kind: 'merge', ids: ['cue', 'right'] })
+    await tick()
+    click('Удалить реплики со сдвигом')
+    await vi.waitFor(() => expect(currentTrack()?.clips).toEqual([shifted]))
+    expect(mock.mock.calls[2]?.[1]).toEqual({ kind: 'delete', ids: ['cue'], ripple: true })
+    expect(nestedHistory.past).toHaveLength(3)
+    undoNestedComposition()
+    expect(currentTrack()?.clips).toEqual([joined, next])
+    undoNestedComposition()
+    undoNestedComposition()
+    expect(currentTrack()).toEqual(track)
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+    mock.mockReset()
   }
 })
 

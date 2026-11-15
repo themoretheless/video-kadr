@@ -13,7 +13,7 @@ import {setNativeCaptionText} from '$lib/composition/nativeCaptionText'
 import {importNestedSubtitles} from '$lib/subtitles/nestedImport'
 import { mergeNestedCaptions } from '$lib/composition/mergeCaptions'
 import { copyNestedCaptionAppearance, restyleNestedCaptions, type CaptionStylePatch } from '$lib/composition/restyleCaptions'
-import { nestedDurations, type PreparedCaptionFileImport } from '$lib/api'
+import { nestedDurations, type CaptionEditOperation, type PreparedCaptionFileImport } from '$lib/api'
 import { preparedCaptionTrack } from '$lib/composition/captionFileImport'
 import { editNativeCaptionCue, type CaptionCueDraft } from '$lib/composition/captionTracks'
 import {videoRegionOrdinal} from '$lib/video-region'
@@ -1171,6 +1171,27 @@ export async function updateNestedCaptionCue(
     return document
   }, true, undefined, undefined, 0, () => { committed = true }, guard)
   return committed
+}
+
+export async function editNestedFileCaptions(
+  id: string, operation: Extract<CaptionEditOperation, {kind: 'split' | 'merge' | 'delete'}>, admission: () => void,
+): Promise<void> {
+  const guard = () => { assertHistoryUnlocked(); admission() }
+  await editNestedDocument(async document => {
+    guard()
+    const node = Object.hasOwn(document.compositions, id) ? document.compositions[id] : undefined
+    if (!node) throw new Error('Таймлайн не найден')
+    const { editCompositionCaptions } = await import('$lib/api')
+    const { composition } = await editCompositionCaptions(node.content, operation)
+    const original = node.content.captionTracks ?? [], updated = composition.captionTracks ?? []
+    if (original.length !== updated.length || original.some((track, index) => track.id !== updated[index]?.id)) {
+      throw new Error('Изменился список дорожек субтитров')
+    }
+    const captionTracks = original.map((track, index) => ({ ...track, clips: updated[index]!.clips }))
+    return { ...document, compositions: { ...document.compositions, [id]: {
+      ...node, content: { ...node.content, captionTracks },
+    } } }
+  }, true, undefined, undefined, 0, undefined, guard)
 }
 
 registerHistoryProvider('nested',()=>nestedHistory)

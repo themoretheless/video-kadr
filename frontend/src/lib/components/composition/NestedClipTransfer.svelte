@@ -8,7 +8,7 @@
   import {activityReveal} from '$lib/agent/activityReveal.svelte'
   import NestedCaptionTextEditor from './NestedCaptionTextEditor.svelte'
   import CaptionWrapWidth from './CaptionWrapWidth.svelte'
-  import { setNestedCaptionWrapWidth } from '$lib/state/nestedComposition.svelte'
+  import { editNestedFileCaptions, setNestedCaptionWrapWidth } from '$lib/state/nestedComposition.svelte'
   import { untrack,tick } from 'svelte'
   import {SvelteSet} from 'svelte/reactivity'
   import VideoEnhancementPanel from './VideoEnhancementPanel.svelte'
@@ -86,6 +86,18 @@
   let copyStartSeconds = $state(0)
   let captionSelected = $state<string[]>([])
   const captionTracks = $derived(project?.compositions[active]?.content.captionTracks ?? [])
+  function editFileCaptions(kind: 'split' | 'merge' | 'delete') {
+    const scope = active
+    const ids = [...captionSelected]
+    if (!ids.length || (kind === 'split' && ids.length !== 1) || (kind === 'merge' && ids.length < 2)) return
+    const operation = kind === 'split' ? { kind, id: ids[0]!, timeTick: nestedComposition.timeUs } as const
+      : kind === 'merge' ? { kind, ids } as const : { kind, ids, ripple: true } as const
+    void keepKeyboardFocus(() => editNestedFileCaptions(scope, operation, () => {
+      if (!alive || disabled || active !== scope || ids.length !== captionSelected.length || ids.some(id => !captionSelected.includes(id))) {
+        throw new Error('Выбор реплик изменился')
+      }
+    }))
+  }
   const clipboardCaptionTracks = $derived(nestedClipboard.value?.compositions[nestedClipboard.value.root]?.content.captionTracks ?? [])
   let clipboardTargets = $state<Record<string,string>>({})
   const clipboardTracks = $derived(nestedClipboard.value?.compositions[nestedClipboard.value.root]?.content.tracks.filter(track=>track.clips.length) ?? [])
@@ -316,6 +328,14 @@
         {/if}
       {/each}
     {/each}
+    {#if captionSelected.length}
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || captionSelected.length !== 1}
+        onclick={() => editFileCaptions('split')}>Разрезать реплику на курсоре</button>
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || captionSelected.length < 2}
+        onclick={() => editFileCaptions('merge')}>Объединить реплики дорожки</button>
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy}
+        onclick={() => editFileCaptions('delete')}>Удалить реплики со сдвигом</button>
+    {/if}
     <label>В таймлайн<select aria-label="Таймлайн для переноса клипов" value={destination} onchange={(event) => { destination = event.currentTarget.value; targets = {} }}>
       {#each orderedTimelineIds(project) as id (id)}<option value={id}>{project.compositions[id]?.content.metadata?.sequenceName || id}</option>{/each}
     </select></label>
