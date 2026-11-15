@@ -1,4 +1,4 @@
-import { COMPOSITION_TIME_BASE, MAX_TEXT_LENGTH, type TextClip, type TextStyle } from '../composition/types'
+import { COMPOSITION_TIME_BASE, MAX_TEXT_LENGTH, type CompositionKeyframe, type CompositionVisualAnimation, type TextClip, type TextStyle } from '../composition/types'
 
 export const MAX_SRT_BYTES = 2 * 1024 * 1024
 export const MAX_SRT_CUES = 10_000
@@ -11,6 +11,7 @@ export interface SubtitleCue {
   readonly style?: Partial<TextStyle>
   readonly position?: { x: number; y: number }
   readonly anchor?: readonly [number, number]
+  readonly fade?: { inTicks: number; outTicks: number }
 }
 
 export class SubtitleFormatError extends Error {
@@ -88,15 +89,18 @@ export function cuesToTextClips(
       x: canvas.width * (0.08 + 0.84 * anchor[0]),
       y: canvas.height * (0.08 + 0.84 * anchor[1]),
     } : undefined)
+    const durationTicks = cue.endTicks - cue.startTicks
+    const animation = captionFade(cue.fade, durationTicks)
     return {
       id: idForCue(cue, index),
       kind: 'text',
       timelineStartTicks: cue.startTicks,
-      durationTicks: cue.endTicks - cue.startTicks,
+      durationTicks,
       text: cue.text,
       x: position && canvas ? position.x - canvas.width / 2 : 0,
       y: position && canvas ? position.y - canvas.height / 2 : 0,
       ...(anchor ? { textAnchor: anchor } : {}),
+      ...(animation ? { animation } : {}),
       opacity: 1,
       style: {
         fontSizePx: 48,
@@ -107,6 +111,30 @@ export function cuesToTextClips(
       },
     }
   })
+}
+
+function captionFade(fade: SubtitleCue['fade'], duration: number): CompositionVisualAnimation | undefined {
+  const { inTicks = 0, outTicks = 0 } = fade ?? {}
+  if (!inTicks && !outTicks) return undefined
+  const keyframes: CompositionKeyframe[] = []
+  const fadeOutStart = duration - outTicks
+  if (inTicks >= duration) {
+    keyframes.push({ tick: 0, value: 0 }, { tick: duration, value: duration / inTicks })
+  } else {
+    keyframes.push({ tick: 0, value: inTicks ? 0 : outTicks ? Math.min(1, duration / outTicks) : 1 })
+    if (inTicks && inTicks > fadeOutStart) {
+      // Fade-in wins until its last tick. At the boundary the fade-out is already in progress.
+      if (inTicks > 1) keyframes.push({ tick: inTicks - 1, value: (inTicks - 1) / inTicks })
+      keyframes.push({ tick: inTicks, value: (duration - inTicks) / outTicks })
+    } else if (inTicks) {
+      keyframes.push({ tick: inTicks, value: 1 })
+    }
+    if (outTicks) {
+      if (fadeOutStart > inTicks) keyframes.push({ tick: fadeOutStart, value: 1 })
+      keyframes.push({ tick: duration, value: 0 })
+    }
+  }
+  return { opacity: { mode: 'keyframes', track: { timeBase: COMPOSITION_TIME_BASE, interpolation: 'linear', keyframes } } }
 }
 
 export function textClipsToCues(clips: readonly TextClip[]): SubtitleCue[] {

@@ -111,3 +111,30 @@ Dialogue: 0:00:01.00,0:00:02.00,Top,{\an3\pos(270,150)}Bottom right
   transform: { x: { value: 110 }, y: { value: 60 } },
  })
 })
+
+it('preserves ASS fade timing as clip-local opacity after importing at the cursor', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:01.00,0:00:03.00,{\fad(250, 500)}Fade
+Dialogue: 0:00:03.00,0:00:04.00,{\fad(600, 800)}Overlap
+Dialogue: 0:00:04.00,0:00:05.00,{\fad(1200, 0)}Fade spans cue
+`, allocator(), 2_000_000)
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(result.simplifiedCueCount).toBe(0)
+ expect(clips[0]).toMatchObject({
+  timelineStartTick: 3_000_000,
+  opacity: { mode: 'keyframes', track: {
+   interpolation: 'linear', keyframes: [
+    { tick: 0, value: 0 }, { tick: 250_000, value: 1 },
+    { tick: 1_500_000, value: 1 }, { tick: 2_000_000, value: 0 },
+   ],
+  } },
+ })
+ expect(clips[1]).toMatchObject({ opacity: { track: { keyframes: [
+  { tick: 0, value: 0 }, { tick: 599_999, value: 599_999 / 600_000 },
+  { tick: 600_000, value: 0.5 }, { tick: 1_000_000, value: 0 },
+ ] } } })
+ expect(clips[2]).toMatchObject({ opacity: { track: { keyframes: [
+  { tick: 0, value: 0 }, { tick: 1_000_000, value: 5 / 6 },
+ ] } } })
+})

@@ -76,13 +76,16 @@ function parseAss(body: string) {
       const style = { ...namedStyle?.style }
       let anchor = namedStyle?.anchor
       let position: SubtitleCue['position']
+      let fade: SubtitleCue['fade']
       let simplified = false
       const text = values.slice(fields.length - 1).join(',').replace(/\{([^}]*)\}/g, (_whole, block: string) => {
         for (const rawTag of assTags(block)) {
           const tag = rawTag.trim()
           if (!tag) continue
           const coordinates = assPosition(tag)
+          const envelope = assFade(tag)
           if (coordinates) position = coordinates
+          else if (envelope) fade ??= envelope
           else if (!applyAssOverride(style, tag)) simplified = true
           anchor = assAnchor(/^an([1-9])$/i.exec(tag)?.[1]) ?? anchor
         }
@@ -96,12 +99,24 @@ function parseAss(body: string) {
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
         ...(anchor ? { anchor } : {}),
+        ...(fade ? { fade } : {}),
       })
       if (simplified) simplifiedCueCount++
       if (cues.length > MAX_SRT_CUES) throw new SubtitleFormatError('Subtitle cue count exceeds limit')
     }
   }
   return { cues, simplifiedCueCount }
+}
+
+function assFade(tag: string): SubtitleCue['fade'] {
+  const match = /^fad\(\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(tag)
+  if (!match) return undefined
+  const fadeIn = assNumber(match[1], 0, 2_147_483_647)
+  const fadeOut = assNumber(match[2], 0, 2_147_483_647)
+  return fadeIn === undefined || fadeOut === undefined ? undefined : {
+    inTicks: fadeIn * 1000,
+    outTicks: fadeOut * 1000,
+  }
 }
 
 function assTags(block: string): string[] {

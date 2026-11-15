@@ -1184,7 +1184,7 @@ describe('composition editor state', () => {
 
   it.each([
     ['VTT', 'WEBVTT\n\n00:01.125 --> 00:02.500\nHello'],
-    ['ASS', '[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.12,0:00:02.50,{\\pos(100,50)\\k50}Hello'],
+    ['ASS', '[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.12,0:00:02.50,{\\pos(100,50)\\fad(100,0)\\k50}Hello'],
   ])('imports %s through the same atomic edit and Undo', (_format, body) => {
     const before = JSON.stringify(compositionState.document)
     const report = vi.fn()
@@ -1196,6 +1196,9 @@ describe('composition editor state', () => {
         ...(_format === 'ASS' ? {
           x: 100 - compositionState.document.canvas.width / 2,
           y: 50 - compositionState.document.canvas.height / 2,
+          animation: { opacity: { mode: 'keyframes', track: { keyframes: [
+            { tick: 0, value: 0 }, { tick: 100_000, value: 1 },
+          ] } } },
         } : {}),
       })
     undoComposition()
