@@ -70,6 +70,43 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
     expect(nestedComposition.document?.compositions.root?.content.captionTracks?.[0]?.clips[0]).toMatchObject({
       timelineStartTick: '317520000001', timelineEndTick: '635040000001',
     })
+    await vi.waitFor(() => expect(editor.querySelector<HTMLButtonElement>('button')!.disabled).toBe(true))
+    const mock = vi.mocked(api.editCompositionCaptions)
+    const setAuthored = async (unit: string, end: string, endTick: string) => {
+      const select = editor.querySelector('select')!
+      select.value = unit
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+      await tick()
+      const inputs = editor.querySelectorAll<HTMLInputElement>('input[placeholder="Без изменений"]')
+      if (unit === 'timecode') {
+        const drop = editor.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+        drop.checked = true
+        drop.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      const modified = nestedComposition.document!.compositions.root!.content
+      const current = modified.captionTracks![0]!
+      mock.mockResolvedValueOnce({ composition: { ...modified, captionTracks: [{
+        ...current, clips: [{ ...current.clips[0]!, timelineEndTick: endTick }, nextCue],
+      }] }, appliedDelta: null, deleted: 0 })
+      inputs[1]!.value = end
+      inputs[1]!.dispatchEvent(new Event('input', { bubbles: true }))
+      await tick()
+      editor.querySelector('button')!.click()
+    }
+    mock.mockClear()
+    await setAuthored('frames', '66', '698544000000')
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(4))
+    expect(mock.mock.calls[0]?.slice(1)).toEqual([{ kind: 'times', id: 'cue', endInput: { unit: 'frames', value: 66 } }, undefined, undefined])
+    await vi.waitFor(() => expect(editor.querySelector<HTMLButtonElement>('button')!.disabled).toBe(true))
+    nestedComposition.timeUs = 2_000_000
+    await setAuthored('timecode', '+12', '635040000000')
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(5))
+    expect(mock.mock.calls[1]?.slice(1)).toEqual([{ kind: 'times', id: 'cue', endInput: { unit: 'timecode', value: '+12' } }, undefined, { playheadTick: 2_000_000, dropFrame: true }])
+    expect(nestedComposition.document?.compositions.root?.content.captionTracks?.[0]?.clips[0]).toMatchObject({
+      timelineStartTick: '317520000001', timelineEndTick: '635040000000',
+    })
+    undoNestedComposition()
+    undoNestedComposition()
     undoNestedComposition()
     undoNestedComposition()
     undoNestedComposition()
@@ -330,7 +367,7 @@ it('edits imported captions through native commands and shared Undo', async () =
     await vi.waitFor(() => expect(currentTrack()?.clips).toEqual([moved]))
     expect(mock.mock.calls[3]?.[1]).toEqual({ kind: 'move', ids: ['next'], deltaTicks: '381023999999' })
     expect(nestedComposition.document?.compositions.root?.durationUs).toBe(4_500_001)
-    const unit = [...target.querySelectorAll('select')].find(select => select.options[0]?.value === 'seconds')!
+    const unit = [...target.querySelectorAll('label')].find(label => label.textContent?.startsWith('Единицы сдвига реплик'))!.querySelector('select')!
     unit.value = 'frames'
     unit.dispatchEvent(new Event('change', { bubbles: true }))
     delta.value = '-1'

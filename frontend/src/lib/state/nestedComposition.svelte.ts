@@ -1,4 +1,4 @@
-import { captionMicrosecondsCeil } from '$lib/composition/captionTime'
+import { captionMicrosecondsCeil, formatCaptionEditSeconds } from '$lib/composition/captionTime'
 import { MAX_COMPOSITION_DURATION_TICKS, type CaptionStyle, type CaptionTrack } from '$lib/composition/types'
 import { changeSubtitleDocuments, type SubtitleDocument } from '$lib/subtitles/documents'
 import {takeSourceRunCutTransaction} from '$lib/composition/sourceRunCutTransaction'
@@ -15,7 +15,7 @@ import {setNativeCaptionText} from '$lib/composition/nativeCaptionText'
 import {importNestedSubtitles} from '$lib/subtitles/nestedImport'
 import { mergeNestedCaptions } from '$lib/composition/mergeCaptions'
 import { copyNestedCaptionAppearance, restyleNestedCaptions, type CaptionStylePatch } from '$lib/composition/restyleCaptions'
-import { nestedDurations, type CaptionEditOperation, type PreparedCaptionFileImport } from '$lib/api'
+import { nestedDurations, type CaptionEditContext, type CaptionEditOperation, type PreparedCaptionFileImport } from '$lib/api'
 import { preparedCaptionTrack } from '$lib/composition/captionFileImport'
 import { editNativeCaptionCue, type CaptionCueDraft } from '$lib/composition/captionTracks'
 import {videoRegionOrdinal} from '$lib/video-region'
@@ -1175,15 +1175,35 @@ export async function setNestedCaptionTrackStyle(
   }, true, undefined, undefined, 0, undefined, guard)
 }
 
+export type NestedCaptionTiming = Pick<Extract<CaptionEditOperation, { kind: 'times' }>, 'startInput' | 'endInput'> & {
+  context?: CaptionEditContext
+}
+
 export async function updateNestedCaptionCue(
   compositionId: string, trackId: string, cueId: string, draft: CaptionCueDraft, expected: CaptionCueDraft,
-  admission: () => void,
+  admission: () => void, timing?: NestedCaptionTiming,
 ): Promise<boolean> {
   const guard = () => { assertHistoryUnlocked(); admission() }
   let committed = false
   await editNestedDocument(async project => {
     guard()
-    const document = editNativeCaptionCue(project, compositionId, trackId, cueId, draft, expected)
+    let resolved = draft
+    if (timing) {
+      const node = Object.hasOwn(project.compositions, compositionId) ? project.compositions[compositionId] : undefined
+      const track = node?.content.captionTracks?.find(track => track.id === trackId)
+      if (!node || !track?.clips.some(cue => cue.id === cueId)) throw new Error('Реплика субтитров отсутствует')
+      const { editCompositionCaptions } = await import('$lib/api')
+      const { context, ...inputs } = timing
+      const { composition } = await editCompositionCaptions(node.content, { kind: 'times', id: cueId, ...inputs }, undefined, context)
+      const cue = composition.captionTracks?.find(track => track.id === trackId)?.clips.find(cue => cue.id === cueId)
+      if (!cue) throw new Error('Реплика субтитров отсутствует')
+      resolved = {
+        ...draft,
+        start: inputs.startInput ? formatCaptionEditSeconds(cue.timelineStartTick) : expected.start,
+        end: inputs.endInput ? formatCaptionEditSeconds(cue.timelineEndTick) : expected.end,
+      }
+    }
+    const document = editNativeCaptionCue(project, compositionId, trackId, cueId, resolved, expected)
     await nestedDurations(document)
     return document
   }, true, undefined, undefined, 0, () => { committed = true }, guard)
