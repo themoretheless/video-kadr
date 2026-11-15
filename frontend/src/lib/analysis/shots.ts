@@ -1,6 +1,7 @@
 import { findClipLocation, splitClip, deleteClip } from '../composition/commands.js'
 import { clipEndTicks, type Composition, type VideoClip } from '../composition/types.js'
 import { assertValidComposition } from '../composition/validation.js'
+import { videoSourceTickAtTimelineTick } from '../composition/playback.js'
 import { speedRampTimelineTickAtSourceProgress } from '../composition/speedRamp.js'
 import { upsertCompositionMarker } from '../composition/markers.js'
 
@@ -50,6 +51,17 @@ export function sourceBoundaryToTimeline(clip: VideoClip, sourceTick: number): n
   const progress = clip.playbackMode?.mode === 'reverse' ? clip.sourceOutTicks - sourceTick : sourceTick - clip.sourceInTicks
   const local = clip.speedRamp ? speedRampTimelineTickAtSourceProgress(clip.sourceOutTicks - clip.sourceInTicks, clip.speed ?? 1, clip.speedRamp, progress) : Math.round(progress / (clip.speed ?? 1))
   return clip.timelineStartTicks + local
+}
+
+export function shotCoverPosition(clip: VideoClip, row: ShotRow): { sourceTick: number; timelineTick: number } {
+  if (clip.playbackMode?.mode === 'freeze') {
+    return { sourceTick: clip.playbackMode.sourceTick, timelineTick: row.timelineStartTicks }
+  }
+  const middle = row.startTicks + Math.floor((row.endTicks - row.startTicks) / 2)
+  const boundary = clip.playbackMode?.mode === 'reverse' ? middle + 1 : middle
+  const mapped = sourceBoundaryToTimeline(clip, boundary)
+  const timelineTick = Math.max(row.timelineStartTicks, Math.min(row.timelineEndTicks - 1, mapped))
+  return { sourceTick: videoSourceTickAtTimelineTick(clip, timelineTick), timelineTick }
 }
 
 /** All three review verbs consume the same frame-snapped boundary list. */

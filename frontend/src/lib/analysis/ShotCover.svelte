@@ -1,12 +1,13 @@
 <script lang="ts">
   import { getLibraryAnalysisFrame } from '../api.js'
 
-  let { sourceId, sourceTick, token, spaceId, label }: {
+  let { sourceId, sourceTick, token, spaceId, label, onseek }: {
     sourceId: string
     sourceTick: number
     token?: string | null
     spaceId?: string | null
     label: string
+    onseek: () => void
   } = $props()
 
   let figure = $state<HTMLDivElement>()
@@ -48,7 +49,9 @@
 
 <div class="shot-cover" bind:this={figure}>
   {#if url}
-    <img src={url} alt={label} />
+    <button type="button" aria-label={`Перейти к кадру · ${label}`} onclick={onseek}>
+      <img src={url} alt="" />
+    </button>
   {:else if visible && failed}
     <small>Кадр недоступен</small>
   {/if}
@@ -56,5 +59,6 @@
 
 <style>
   .shot-cover { aspect-ratio: 16 / 9; width: min(100%, 10rem); background: var(--panel-2); }
+  button { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
   img { display: block; width: 100%; height: 100%; object-fit: contain; }
 </style>

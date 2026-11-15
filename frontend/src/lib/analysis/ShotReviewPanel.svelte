@@ -6,7 +6,7 @@
   import { spacesState } from '../state/spaces.svelte.js'
   import { agentSession } from '../agent/session.svelte.js'
   import ShotCover from './ShotCover.svelte'
-  import { reviewShotRows, type ShotRow } from './shots.js'
+  import { reviewShotRows, shotCoverPosition, type ShotRow } from './shots.js'
   import { shotAnalysisState, applyCompositionShotReview, measurementKey, setShotReviewSettings } from './shotState.svelte.js'
 
   let threshold = $state(compositionState.document.shotReview?.threshold ?? 0.3)
@@ -134,11 +134,13 @@
       <button class="btn ghost sm" type="button" disabled={busy || !missingStats.length} onclick={() => void measure()}>Измерить сцены</button>
       <ol aria-label="Сцены выбранного клипа">
         {#each rows as row, index (row.id)}
+          {@const cover = shotCoverPosition(clip, row)}
           {@const stats = shotAnalysisState.measurements[measurementKey(scan, row.startTicks, row.endTicks)]}
           <li>
             {#key `${clip.sourceId}/${scan.sourceHash}`}
               <ShotCover sourceId={clip.sourceId}
-                sourceTick={clip.playbackMode?.mode === 'freeze' ? clip.playbackMode.sourceTick : row.startTicks + Math.floor((row.endTicks - row.startTicks) / 2)}
+                sourceTick={cover.sourceTick}
+                onseek={() => { compositionState.transport.playing = false; setCompositionPlayhead(cover.timelineTick) }}
                 token={authState.token} spaceId={spacesState.selectedId} label={`Кадр сцены ${index + 1}`} />
             {/key}
             <label><input type="checkbox" checked={!discardedIds.includes(row.id)} disabled={busy} onchange={(event) => { discardedIds = event.currentTarget.checked ? discardedIds.filter((id) => id !== row.id) : [...discardedIds, row.id] }} /> Оставить сцену {index + 1}</label>

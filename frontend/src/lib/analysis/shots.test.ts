@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { addClip, addTrack, createComposition, registerSource } from '../composition/commands.js'
 import { clipEndTicks, type VideoClip } from '../composition/types.js'
-import { applyShotReview, reviewShotRows, validateShotScan, type ShotScan } from './shots.js'
+import { applyShotReview, reviewShotRows, shotCoverPosition, validateShotScan, type ShotScan } from './shots.js'
 import { compositionMarkers } from '../composition/markers.js'
 
 const scan: ShotScan = { version: 1, sourceHash: 'a'.repeat(64), durationTicks: 4_000_000, floor: 0.05, cuts: [{ tick: 1_000_000, score: 0.7 }, { tick: 2_000_000, score: 0.2 }, { tick: 3_000_000, score: 0.8 }] }
@@ -31,6 +31,22 @@ describe('source scan review', () => {
     expect(rampRows[1]?.timelineStartTicks).toBe(6_000_000)
     expect(rampRows[2]?.timelineStartTicks).toBe(7_500_000)
     expect(rampRows.at(-1)?.timelineEndTicks).toBe(8_000_000)
+  })
+  it('seeks to the displayed source frame through reverse, ramped and frozen placement', () => {
+    const reverse = fixture({ playbackMode: { mode: 'reverse' }, speed: 2 })
+    const reversed = reverse.tracks[0]!.clips[0] as VideoClip
+    expect(shotCoverPosition(reversed, reviewShotRows(reverse, 'clip', scan)[0]!))
+      .toEqual({ sourceTick: 3_499_999, timelineTick: 5_250_000 })
+    const ramped = fixture({ speedRamp: { interpolation: 'hold', audioPolicy: 'preserve_pitch', points: [
+      { sourceProgressTick: 0, speed: 1 }, { sourceProgressTick: 2_000_000, speed: 2 }, { sourceProgressTick: 4_000_000, speed: 2 },
+    ] } })
+    const rampClip = ramped.tracks[0]!.clips[0] as VideoClip
+    expect(shotCoverPosition(rampClip, reviewShotRows(ramped, 'clip', scan)[2]!))
+      .toEqual({ sourceTick: 3_500_000, timelineTick: 7_750_000 })
+    const frozen = fixture({ playbackMode: { mode: 'freeze', sourceTick: 2_500_000 }, sourceAudioEnabled: false })
+    const still = frozen.tracks[0]!.clips[0] as VideoClip
+    expect(shotCoverPosition(still, reviewShotRows(frozen, 'clip', scan)[0]!))
+      .toEqual({ sourceTick: 2_500_000, timelineTick: 5_000_000 })
   })
   it('split, markers and discard use the same frame-snapped boundaries', () => {
     const document = fixture()

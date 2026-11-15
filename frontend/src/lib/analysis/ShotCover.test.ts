@@ -22,15 +22,18 @@ it('loads a cover on visibility and cancels and releases it when it leaves view'
   let late!: (blob: Blob) => void
   const fetchFrame = vi.mocked(getLibraryAnalysisFrame)
   fetchFrame.mockResolvedValueOnce(image).mockImplementationOnce(() => new Promise(resolve => { late = resolve }))
+  const onseek = vi.fn()
   const target = document.createElement('div')
   const component = mount(ShotCover, { target, props: {
-    sourceId: 'source', sourceTick: 123456, token: 'owner', spaceId: 'space', label: 'Кадр сцены 2',
+    sourceId: 'source', sourceTick: 123456, token: 'owner', spaceId: 'space', label: 'Кадр сцены 2', onseek,
   } })
   try {
     await tick()
     expect(fetchFrame).not.toHaveBeenCalled()
     visibility(true)
-    await vi.waitFor(() => expect(target.querySelector('img')?.alt).toBe('Кадр сцены 2'))
+    await vi.waitFor(() => expect(target.querySelector('button')?.getAttribute('aria-label')).toBe('Перейти к кадру · Кадр сцены 2'))
+    target.querySelector('button')!.click()
+    expect(onseek).toHaveBeenCalledOnce()
     expect(fetchFrame).toHaveBeenCalledWith('source', 123456, 'owner', 'space', expect.any(AbortSignal))
     visibility(false)
     await tick()
