@@ -24,7 +24,10 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
     let transform = &mut clip.transform;
     ensure!(
         transform.concat_animation.as_ref().is_none_or(|animation| {
-            animation.keys.keys().all(|key| key == "opacity")
+            animation
+                .keys
+                .keys()
+                .all(|key| matches!(key.as_str(), "opacity" | "offsetX" | "offsetY"))
                 && animation.rest.scale_x == 1.0
                 && animation.rest.scale_y == 1.0
                 && animation.rest.rotation_degrees == 0.0
@@ -71,6 +74,7 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
         TextAlignment::Center => 0.5,
         TextAlignment::Right => 1.0,
     };
+    let mut anchor_delta = [0.0, 0.0];
     if anchor_x != align_anchor || anchor_y != 0.5 {
         let fonts = super::concat_project_fonts::current();
         let (block_width, block_height) = concat_text::measure_block(
@@ -79,13 +83,14 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
             width,
             height,
         )?;
-        for (value, delta) in [
-            (
-                &mut transform.x,
-                (align_anchor - anchor_x) * f64::from(block_width),
-            ),
-            (&mut transform.y, (0.5 - anchor_y) * f64::from(block_height)),
-        ] {
+        anchor_delta = [
+            (align_anchor - anchor_x) * f64::from(block_width),
+            (0.5 - anchor_y) * f64::from(block_height),
+        ];
+        for (value, delta) in [&mut transform.x, &mut transform.y]
+            .into_iter()
+            .zip(anchor_delta)
+        {
             let AnimatableValue::Constant { value } = value else {
                 anyhow::bail!("Animated caption position requires a Concat anchor mapping");
             };
@@ -93,13 +98,21 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
         }
     }
     if let Some(animation) = &mut transform.concat_animation {
-        let (AnimatableValue::Constant { value: x }, AnimatableValue::Constant { value: y }) =
-            (&transform.x, &transform.y)
-        else {
-            anyhow::bail!("Animated caption position requires a Concat mapping");
-        };
-        animation.rest.x = *x / f64::from(width);
-        animation.rest.y = *y / f64::from(height);
+        let dx = anchor_delta[0] / f64::from(width);
+        let dy = anchor_delta[1] / f64::from(height);
+        animation.rest.x += dx;
+        animation.rest.y += dy;
+        for (property, delta) in [("offsetX", dx), ("offsetY", dy)] {
+            if let Some(keys) = animation.keys.get_mut(property) {
+                for key in keys {
+                    key.value += delta;
+                    ensure!(
+                        key.derived || (-3.0..=3.0).contains(&key.value),
+                        "Caption position exceeds Concat key range"
+                    );
+                }
+            }
+        }
     }
     opacity_animation(clip, width, height)?;
     clip.concat_title = Some(style);

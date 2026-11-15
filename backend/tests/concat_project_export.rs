@@ -331,7 +331,7 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     let caption = &mut reexport["compositions"][root]["content"]["tracks"][0]["clips"][0];
     caption["opacity"] = json!({"mode":"constant","value":1});
     caption["transform"]["concatAnimation"] = json!({
-        "durationTicks":1111111,"keys":{"opacity":[{"at":0,"value":0.25},{"at":1,"value":0.9}]},
+        "durationTicks":1111111,"keys":{"opacity":[{"at":0,"value":0.25},{"at":1,"value":0.9}],"offsetY":[{"at":0,"value":0.45},{"at":1,"value":0.55}]},
         "rest":{"scaleX":1,"scaleY":1,"x":0,"y":0.45,"rotationDegrees":0,"opacity":1},
         "stretch":[1,1],"canvas":[160,120]
     });
@@ -339,8 +339,13 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     let title = reexport["timelines"][0]["clips"].as_array().unwrap().iter()
         .find(|clip| clip["id"] == "words").unwrap();
     assert!(title["offsetY"].as_f64().unwrap() < 0.45);
-    assert_eq!(title["keys"][0]["value"], 0.25);
-    assert_eq!(title["keys"][1]["value"], 0.9);
+    let keys = title["keys"].as_array().unwrap();
+    let position = keys.iter().filter(|key| key["property"] == "offsetY").collect::<Vec<_>>();
+    assert_eq!(position[0]["value"], title["offsetY"]);
+    assert!((position[1]["value"].as_f64().unwrap() - position[0]["value"].as_f64().unwrap() - 0.1).abs() < 1e-10);
+    let opacity = keys.iter().filter(|key| key["property"] == "opacity").collect::<Vec<_>>();
+    assert_eq!(opacity[0]["value"], 0.25);
+    assert_eq!(opacity[1]["value"], 0.9);
 
     let mut unsupported = serde_json::to_value(project).unwrap();
     let root = unsupported["root"].as_str().unwrap().to_owned();

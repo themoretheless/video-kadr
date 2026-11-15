@@ -194,9 +194,10 @@ it('uploads the selected template design and binds its bundled font before conve
   component = mount(Panel, { target: document.body, props: { token: 'session' } })
   await tick()
   const keys = [{ property: 'opacity', at: 0, value: 0 }, { property: 'opacity', at: 1, value: 1 }]
+  const positionKeys = [{ property: 'offsetY', at: 0, value: 0.25 }, { property: 'offsetY', at: 1, value: 0.5 }]
   const resizedKeys = [{ ...keys[0]!, value: 0.25 }, keys[1]!]
-  const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, keys, text: { content: 'Dialogue', shadow: true } }
-  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, sourceStart: 0.25, keys: resizedKeys, text: { ...beforeTitle.text, content: 'Revised dialogue' } }
+  const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, offsetY: 0.25, keys, text: { content: 'Dialogue', shadow: true } }
+  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, sourceStart: 0.25, keys: [...resizedKeys, ...positionKeys], text: { ...beforeTitle.text, content: 'Revised dialogue' } }
   const template = {
    ...original,
    video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
@@ -224,8 +225,8 @@ it('uploads the selected template design and binds its bundled font before conve
   } as const
   const editedCaption = { ...caption, text: 'Revised dialogue', timelineStartTick: 1250001, timelineEndTick: 2000000 }
   const animation = {
-   durationTicks: 749999, keys: { opacity: resizedKeys.map(({ at, value }) => ({ at, value })) },
-   rest: { x: 0, y: 0.4, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1 },
+   durationTicks: 749999, keys: { opacity: resizedKeys.map(({ at, value }) => ({ at, value })), offsetY: positionKeys.map(({ at, value }) => ({ at, value })) },
+   rest: { x: 0, y: 0.25, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1 },
    stretch: [1, 1], canvas: [1920, 1080],
   } as const
   const editedOpacity = { mode: 'constant', value: 1 } as const
@@ -280,7 +281,7 @@ it('uploads the selected template design and binds its bundled font before conve
   expect(restored?.metadata?.captionTextTracks).toEqual(['lane-text'])
   expect(restored?.tracks[0]?.clips).toEqual([{
    ...editedCaption, opacity: editedOpacity, transform: { ...caption.transform, concatAnimation: {
-    ...animation, rest: { ...animation.rest, y: 0 },
+    ...animation, keys: { ...animation.keys, offsetY: [{ at: 0, value: 0 }, { at: 1, value: 0.25 }] }, rest: { ...animation.rest, y: 0 },
    } },
   }])
   expect(nestedComposition.document?.compositions[nestedComposition.document.root]?.content.metadata?.subtitleDocuments).toEqual(subtitles)
