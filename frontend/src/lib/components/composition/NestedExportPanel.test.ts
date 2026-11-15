@@ -1,11 +1,11 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cancelJob, exportNestedVideo, getJob, nestedDurations, writeCaptionFile, type NativeNestedProject } from '$lib/api'
+import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, nestedDurations, writeCaptionFile, type NativeNestedProject } from '$lib/api'
 import { loadLibrary } from '$lib/state/store.svelte'
 import { closeNestedComposition, nestedComposition } from '$lib/state/nestedComposition.svelte'
 import NestedExportPanel from './NestedExportPanel.svelte'
-vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), nestedDurations: vi.fn(), writeCaptionFile: vi.fn() }))
+vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), nestedDurations: vi.fn(), writeCaptionFile: vi.fn() }))
 vi.mock('$lib/state/store.svelte', () => ({ loadLibrary: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 beforeEach(() => {
@@ -76,6 +76,10 @@ it('exports a chosen subtitle track using both boundaries of the video range', a
   ] }
   const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:matched-caption')
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const outputId = '12345678-1234-1234-1234-123456789abc'
+  vi.mocked(getJob).mockResolvedValue({ id: 'job-1', status: 'done', result: { id: outputId, filename: `${outputId}.mkv` } })
+  vi.mocked(downloadFilmcraftVideo).mockResolvedValue(new Blob(['video']))
+  const linkClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
   vi.mocked(writeCaptionFile).mockResolvedValue({ extension: 'srt', dataBase64: btoa('subtitle') })
   const change = (field: HTMLInputElement | HTMLSelectElement, value: string, event: string) => {
     field.value = value
@@ -103,7 +107,21 @@ it('exports a chosen subtitle track using both boundaries of the video range', a
     await tick()
     expect(document.querySelector('a[download]')).toBeNull()
     expect(revoke).toHaveBeenCalledWith('blob:matched-caption')
+    const nextNode = nestedComposition.document!.compositions.root!
+    nextNode.content = { ...nextNode.content, captionTracks: [] }
+    await tick()
+    const result = document.querySelector('[aria-label="Субтитры к готовому видео"]')!
+    result.querySelector('button')!.click()
+    await vi.waitFor(() => expect(result.querySelector('a[download]')).not.toBeNull())
+    expect(writeCaptionFile).toHaveBeenLastCalledWith(expect.objectContaining({
+      blocks: ['NOTE keep'], cues: [expect.objectContaining({ text: 'Dialogue' })],
+    }), 'srt', { dropFrame: true, rate: { num: 24000, den: 1000 }, offsetTick: '63504254016', endTick: '190512254016' })
+    expect(result.querySelector<HTMLAnchorElement>('a[download]')?.download).toBe(`${outputId}.srt`)
+    button('Скачать готовое видео').click()
+    await vi.waitFor(() => expect(linkClick).toHaveBeenCalledOnce())
+    expect(downloadFilmcraftVideo).toHaveBeenCalledWith('owner-token', outputId, expect.any(AbortSignal))
   } finally {
+    linkClick.mockRestore()
     create.mockRestore()
     revoke.mockRestore()
   }

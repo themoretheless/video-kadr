@@ -5,12 +5,13 @@
  import {captionFileDocument} from '$lib/composition/captionFileExport'
  import {exactCaptionTicks,parseCaptionEditSeconds} from '$lib/composition/captionTime'
  import {canvasTimeGrid} from '$lib/composition/timeGrid'
- let {composition,activeId='',playheadTicks,range,disabled=false}:{
+ let {composition,activeId='',playheadTicks,range,disabled=false,basename}:{
   composition:{readonly canvas:Pick<CompositionCanvas,'fps'|'fpsRate'>;readonly captionTracks?:readonly CaptionTrack[]}
   activeId?:string
   playheadTicks?:number
   range?:{startUs:number;endUs:number}
   disabled?:boolean
+  basename?:string
  }=$props()
  let format=$state<CaptionFileFormat>('srt'),dropFrame=$state(true),busy=$state(false),error=$state(''),url=$state(''),filename=$state('')
  let fromPlayhead=$state(false),endSeconds=$state('')
@@ -32,7 +33,7 @@
   const startUs=range?.startUs,endUs=range?.endUs
   busy=true;error='';clear()
   try{
-   const rate=canvasTimeGrid(composition.canvas),name=track.name
+   const rate=canvasTimeGrid(composition.canvas),name=basename ?? track.name
    const offset=startUs !== undefined ? exactCaptionTicks(startUs)
      : fromPlayhead && playheadTicks !== undefined ? exactCaptionTicks(playheadTicks) : undefined
    const end=endUs !== undefined ? exactCaptionTicks(endUs) : endSeconds.trim() ? parseCaptionEditSeconds(endSeconds) : undefined

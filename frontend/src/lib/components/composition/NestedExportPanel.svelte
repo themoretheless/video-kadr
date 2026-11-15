@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { cancelJob, exportNestedVideo, getJob, nestedDurations } from '$lib/api'
+  import { cancelJob, downloadFilmcraftVideo, exportNestedVideo, getJob, nestedDurations } from '$lib/api'
   import { nestedComposition, nestedHistory } from '$lib/state/nestedComposition.svelte'
   import { loadLibrary } from '$lib/state/store.svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import { affectedTimelineIds } from '$lib/composition/timelineOrder'
   import CaptionFileExport from './CaptionFileExport.svelte'
+  import type { CaptionTrack, CompositionCanvas } from '$lib/composition/types'
   import type { Job } from '$lib/types'
   let { token, disabled = false }: { token: string; disabled?: boolean } = $props()
   let withAudio = $state(false)
@@ -20,6 +21,13 @@
   let error = $state('')
   let job = $state<Job | null>(null)
   let jobId = $state('')
+  type SubmittedCaptions = {
+    track: CaptionTrack
+    canvas: Pick<CompositionCanvas, 'fps' | 'fpsRate'>
+    range: { startUs: number; endUs: number }
+  }
+  let submittedCaptions = $state.raw<SubmittedCaptions>()
+  let downloading = $state(false)
   const lifecycle = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const compositionId = $derived(nestedComposition.activeCompositionId ?? nestedComposition.document?.root ?? '')
@@ -34,6 +42,8 @@
       content.metadata?.captionTextTracks?.includes(track.id))))
   const progress = $derived(Math.min(100, Math.max(0, job?.progress ?? 0)))
   const filename = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' && 'filename' in job.result && typeof job.result.filename === 'string' ? job.result.filename : '')
+  const outputId = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' &&
+    'id' in job.result && typeof job.result.id === 'string' ? job.result.id : '')
   $effect(() => {
     const project = nestedComposition.document
     const id = compositionId
@@ -76,8 +86,16 @@
   async function start(): Promise<void> {
     const project = nestedComposition.document
     if (!project || busy || !validRange || disabled || nestedHistory.busy || durationBusy) return
-    busy = true; job = null; jobId = ''; error = ''; cancelling = false
+    busy = true; job = null; jobId = ''; error = ''; cancelling = false; submittedCaptions = undefined
     try {
+      const captionSnapshot = captionTrack && captionContent ? {
+        track: JSON.parse(JSON.stringify(captionTrack)) as CaptionTrack,
+        canvas: {
+          fps: captionContent.canvas.fpsMilli / 1000,
+          fpsRate: { ...(captionContent.canvas.fpsRate ?? { numerator: captionContent.canvas.fpsMilli, denominator: 1000 }) },
+        },
+        range: { startUs, endUs },
+      } : undefined
       const hasCutout=Object.values(project.compositions).some(node=>node.content.tracks.some(track=>track.kind==='video'&&track.clips.some(clip=>clip.enabled!==false&&clip.concatCutout)))
       const savedProject=hasCutout&&nestedComposition.projectId&&nestedComposition.revision!==null?{projectId:nestedComposition.projectId,expectedRevision:nestedComposition.revision}:undefined
       const renderedOutputs = { ...nestedComposition.renderedOutputs }
@@ -100,11 +118,28 @@
       const args = [document, compositionId, startUs, endUs, renderedOutputs, token, lifecycle.signal, withAudio ? 'video_audio' : 'video_only'] as const
       const accepted = savedProject ? await exportNestedVideo(...args, savedProject) : await exportNestedVideo(...args)
       if (lifecycle.signal.aborted) return
+      submittedCaptions = captionSnapshot
       jobId = accepted.jobId
       await observe()
     } catch (failure) {
       if (!lifecycle.signal.aborted) { busy = false; error = failure instanceof Error ? failure.message : String(failure) }
     }
+  }
+  async function downloadVideo() {
+    if (!outputId || downloading) return
+    const id = outputId
+    downloading = true; error = ''
+    try {
+      const blob = await downloadFilmcraftVideo(token, id, lifecycle.signal)
+      if (lifecycle.signal.aborted || outputId !== id) return
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url; link.download = `${id}.mkv`
+      document.body.append(link); link.click(); link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch (failure) {
+      if (!lifecycle.signal.aborted && outputId === id) error = failure instanceof Error ? failure.message : String(failure)
+    } finally { downloading = false }
   }
   async function cancel(): Promise<void> {
     if (!jobId || cancelling) return
@@ -131,6 +166,16 @@
   {/if}
   {#if jobId}<span class="job-id">Задача: {jobId}</span>{/if}
   {#if filename}<span role="status">Готово в медиатеке: {filename}</span>{/if}
+  {#if outputId}
+    <button class="btn ghost sm" disabled={downloading} onclick={() => void downloadVideo()}>Скачать готовое видео</button>
+  {/if}
+  {#if filename && submittedCaptions}
+    <details aria-label="Субтитры к готовому видео">
+      <summary>Субтитры к готовому видео · {submittedCaptions.track.name}</summary>
+      <CaptionFileExport composition={{ canvas: submittedCaptions.canvas, captionTracks: [submittedCaptions.track] }}
+        range={submittedCaptions.range} basename={filename.replace(/\.mkv$/i, '')} {disabled} />
+    </details>
+  {/if}
   {#if job?.status === 'cancelled'}<span role="status">Экспорт отменён</span>{/if}
   {#if captionContent && captionTrack}
     <details>
