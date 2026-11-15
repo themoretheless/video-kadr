@@ -37,6 +37,19 @@ it('validates dropped files and imports subtitles at the cursor in one undo step
   expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
    text: 'Caption', timelineStartTick: 3_000_000, timelineEndTick: 4_000_000,
   })
+  nestedComposition.timeUs = 5_000_000
+  const reuse = () => [...target.querySelectorAll('button')].find(item => item.textContent?.includes('Вставить снова'))
+  await vi.waitFor(() => expect(reuse()).toBeDefined())
+  reuse()!.click()
+  await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(2))
+  expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[1]).toMatchObject({
+   text: 'Caption', timelineStartTick: 6_000_000, timelineEndTick: 7_000_000,
+  })
+  target.querySelector<HTMLButtonElement>('[aria-label="Убрать файл captions.SRT из списка"]')!.click()
+  await tick()
+  expect(reuse()).toBeUndefined()
+  expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips).toHaveLength(2)
+  undoNestedComposition()
   undoNestedComposition()
   expect(nestedComposition.document).toEqual(project)
  } finally {

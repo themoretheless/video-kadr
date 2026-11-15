@@ -249,9 +249,16 @@ export function addCompositionTrack(kind: TrackKind): string {
 }
 
 
-export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void): number {
-  const { cues, simplifiedCueCount } = parseSubtitleDocumentWithReport(serialized)
+export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void, offsetTicks = 0): number {
+  if (!Number.isSafeInteger(offsetTicks) || offsetTicks < 0) throw new Error('Некорректное смещение субтитров')
+  const parsed = parseSubtitleDocumentWithReport(serialized)
+  const cues = parsed.cues.map(cue => ({
+    ...cue, startTicks: cue.startTicks + offsetTicks, endTicks: cue.endTicks + offsetTicks,
+  }))
   if (!cues.length) throw new Error('Файл не содержит субтитров')
+  if (cues.some(cue => cue.endTicks > MAX_COMPOSITION_DURATION_TICKS)) {
+    throw new Error('Субтитры выходят за пределы композиции')
+  }
   let document = compositionState.document
   const candidateTrack = requestedTrackId
     ? document.tracks.find((track) => track.id === requestedTrackId)
@@ -296,7 +303,7 @@ export function importSrtToComposition(serialized: string, requestedTrackId?: st
   } }
   commitDocument(document)
   selectCompositionClip(firstTrackId, clips[0]!.id)
-  report?.(simplifiedCueCount)
+  report?.(parsed.simplifiedCueCount)
   return clips.length
 }
 

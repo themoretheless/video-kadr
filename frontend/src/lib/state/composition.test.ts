@@ -1230,6 +1230,16 @@ describe('composition editor state', () => {
       ])
   })
 
+  it('inserts subtitle copies at a supplied timeline offset in one undo step', () => {
+    const before = JSON.stringify(compositionState.document)
+    const body = '1\n00:00:01,000 --> 00:00:02,000\nCopy'
+    expect(importSrtToComposition(body, undefined, undefined, 3_000_000)).toBe(1)
+    const caption = compositionState.document.tracks.find(track => track.kind === 'text')?.clips[0]
+    expect(caption).toMatchObject({ text: 'Copy', timelineStartTicks: 4_000_000, durationTicks: 1_000_000 })
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+  })
+
   it('commits speed ramp authoring once with undo, redo, autosave and capability gating', () => {
     const values = new Map<string, string>()
     setCompositionStorageForTests({

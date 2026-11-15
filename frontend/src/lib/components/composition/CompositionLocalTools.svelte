@@ -49,6 +49,7 @@
   import StockCatalogPanel from './StockCatalogPanel.svelte'
 
   let importingSubtitles = $state(false)
+  let subtitlesAtPlayhead = $state(false)
   let templatePicker = $state<HTMLInputElement>()
   let targetTextTrackId = $state('')
   let templateName = $state('')
@@ -172,22 +173,26 @@
     localError = error instanceof Error ? error.message : String(error)
   }
 
-  async function importSrtFile(file: File): Promise<void> {
-    if (importingSubtitles) return
+  async function importSrtFile(file: File): Promise<boolean> {
+    if (importingSubtitles) return false
     importingSubtitles = true
     const document = compositionState.document
     const trackId = targetTextTrackId
+    const owner = authState.token
+    const offset = subtitlesAtPlayhead ? compositionState.transport.playheadTicks : 0
     try {
       if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
       const body = await file.text()
-      if (compositionState.document !== document || targetTextTrackId !== trackId) {
+      if (authState.token !== owner || compositionState.document !== document || targetTextTrackId !== trackId) {
         throw new Error('Композиция или дорожка изменилась во время чтения файла')
       }
       let simplified = 0
-      const count = importSrtToComposition(body, trackId || undefined, value => { simplified = value })
+      const count = importSrtToComposition(body, trackId || undefined, value => { simplified = value }, offset)
       showSuccess(`Импортировано субтитров: ${count}${simplified ? `. Неподдерживаемые эффекты ASS пропущены в ${simplified} репл.` : ''}`)
+      return true
     } catch (error) {
       showError(error)
+      return false
     } finally {
       importingSubtitles = false
     }
@@ -347,8 +352,8 @@
           {/each}
         </select>
       </label>
-      <SubtitleFilePicker label="Импорт субтитров" disabled={importingSubtitles}
-        onfile={file => void importSrtFile(file)} onerror={showError} />
+      <label><input type="checkbox" bind:checked={subtitlesAtPlayhead} disabled={importingSubtitles} />Начать субтитры в позиции курсора</label>
+      <SubtitleFilePicker label="Импорт субтитров" disabled={importingSubtitles} onfile={importSrtFile} onerror={showError} />
       <div class="composition-tool-actions">
         <button class="btn ghost sm" type="button" disabled={compositionState.ui.selectedClipIds.length < 2} onclick={mergeCaptionSelection}>Объединить выбранные субтитры</button>
         <button class="btn ghost sm" type="button" onclick={exportSrt}>Экспорт выбранной text-дорожки</button>

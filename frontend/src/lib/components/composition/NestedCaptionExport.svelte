@@ -3,22 +3,25 @@
   import { nestedCaptionExportCues, formatSubtitleExport, type SubtitleExportFormat } from '$lib/subtitles/export'
   import { MAX_SRT_BYTES } from '$lib/subtitles/srt'
   import SubtitleFilePicker from './SubtitleFilePicker.svelte'
+  import { authState } from '$lib/state/auth.svelte'
   let error = $state(''), message = $state(''), importing = $state(false), atPlayhead = $state(false)
-  async function importFile(file:File) {
-    if(importing||nestedHistory.busy)return
+  async function importFile(file:File): Promise<boolean> {
+    if(importing||nestedHistory.busy)return false
     error='';message='';importing=true
     const project=nestedComposition.document,identity=JSON.stringify(project)
     const id=nestedComposition.activeCompositionId??project?.root
     const offset=atPlayhead?nestedComposition.timeUs:0
+    const owner=authState.token
     try {
       if(!id||!project)throw new Error('Сначала откройте вложенный проект')
       if(file.size>MAX_SRT_BYTES)throw new Error('Файл субтитров превышает лимит 2 МиБ')
       const body=await file.text()
-      if(JSON.stringify(nestedComposition.document)!==identity||(nestedComposition.activeCompositionId??project.root)!==id)throw new Error('Проект или композиция изменились во время чтения файла')
+      if(authState.token!==owner||JSON.stringify(nestedComposition.document)!==identity||(nestedComposition.activeCompositionId??project.root)!==id)throw new Error('Проект или композиция изменились во время чтения файла')
       let simplified = 0
       if(!await importNestedCaptionFile(id,body,offset,value=>{simplified=value}))throw new Error(nestedHistory.error||'Импорт отменён: проект изменился')
       message=`Субтитры импортированы${simplified ? `. Неподдерживаемые эффекты ASS пропущены в ${simplified} репл.` : ''}`
-    } catch(cause){error=cause instanceof Error?cause.message:String(cause)}
+      return true
+    } catch(cause){error=cause instanceof Error?cause.message:String(cause);return false}
     finally{importing=false}
   }
   function download(format: SubtitleExportFormat) {
@@ -42,7 +45,7 @@
 <section aria-label="Файлы субтитров вложенной композиции">
   <label><input type="checkbox" bind:checked={atPlayhead} disabled={importing||nestedHistory.busy} />Начать субтитры в позиции курсора</label>
   <SubtitleFilePicker label="Импорт субтитров вложенной композиции" disabled={importing||nestedHistory.busy}
-    onfile={file=>void importFile(file)} onerror={notice=>{message='';error=notice}} />
+    onfile={importFile} onerror={notice=>{message='';error=notice}} />
   {#if message}<p role="status">{message}</p>{/if}
   <button class="btn ghost sm" type="button" onclick={() => download('srt')}>Субтитры активной композиции · SRT</button>
   <button class="btn ghost sm" type="button" onclick={() => download('vtt')}>Субтитры активной композиции · VTT</button>
