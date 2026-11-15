@@ -6,6 +6,7 @@ use super::{
     concat_clip_animation::{Pose, SourceAnimation},
     concat_effect_upgrade::ParamKey,
     concat_title::{self, TitleStyle},
+    elastic::Elastic,
     keyframes::{
         bounce_out, segment_interpolation, Extrapolation, Interpolation, ProceduralInterpolation,
     },
@@ -163,6 +164,61 @@ fn bounce_segments(interpolation: Interpolation, mut endpoint: impl FnMut(f64, f
     }
 }
 
+const ELASTIC_OPACITY_ERROR: f64 = 0.0001;
+const CONCAT_KEY_LIMIT: usize = 4096;
+
+fn elastic_keys(
+    curve: Elastic,
+    left: f64,
+    right: f64,
+    ticks: i64,
+    mut emit: impl FnMut(f64, f64) -> Result<()>,
+) -> Result<()> {
+    if ticks <= 1 || left == right {
+        return Ok(());
+    }
+    let first = 1.0 / ticks as f64;
+    let last = 1.0 - first;
+    let delta = right - left;
+    let raw = |position| left + delta * curve.sample(position);
+    let mut emit_value = |position, value: f64| emit(position, value.clamp(0.0, 1.0));
+    emit_value(first, raw(first))?;
+    let mut intervals = vec![(first, last, 0)];
+    if first < 0.5 && last > 0.5 {
+        intervals = vec![(0.5, last, 0), (first, 0.5, 0)];
+    }
+    while let Some((start, end, depth)) = intervals.pop() {
+        if start == end {
+            continue;
+        }
+        let span = end - start;
+        // Linear interpolation error is bounded by max |f''| times span² / 8.
+        let error = delta.abs() * curve.curvature_bound(start, end) * span * span / 8.0;
+        if error > ELASTIC_OPACITY_ERROR {
+            ensure!(
+                depth < 24 && error.is_finite(),
+                "Elastic caption curve exceeds the Concat key budget"
+            );
+            let middle = start + span / 2.0;
+            intervals.push((middle, end, depth + 1));
+            intervals.push((start, middle, depth + 1));
+            continue;
+        }
+        let a = raw(start);
+        let b = raw(end);
+        ensure!(a.is_finite() && b.is_finite(), "Invalid Elastic opacity");
+        // Preserve the clipped chord exactly by placing a key at each crossing.
+        let limits = if b < a { [1.0, 0.0] } else { [0.0, 1.0] };
+        for limit in limits {
+            if a.min(b) < limit && limit < a.max(b) {
+                emit_value(start + span * (limit - a) / (b - a), limit)?;
+            }
+        }
+        emit_value(end, b)?;
+    }
+    Ok(())
+}
+
 fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
     let AnimatableValue::Keyframes { track } = &clip.opacity else {
         return Ok(());
@@ -242,7 +298,34 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
                     });
                     continue;
                 }
-                _ => anyhow::bail!("Caption opacity key requires a Concat mapping"),
+                Interpolation::Procedural(ProceduralInterpolation::Elastic {
+                    dir,
+                    amplitude,
+                    period,
+                }) => {
+                    let curve = Elastic::new(dir, amplitude, period)
+                        .ok_or_else(|| anyhow::anyhow!("Invalid Elastic opacity"))?;
+                    let span = key.tick - previous.tick;
+                    elastic_keys(
+                        curve,
+                        previous.value,
+                        key.value,
+                        span,
+                        |progress, opacity| {
+                            ensure!(
+                                keys.len() < CONCAT_KEY_LIMIT - 1,
+                                "Elastic caption curve exceeds the Concat key budget"
+                            );
+                            keys.push(key_at(
+                                previous.tick as f64 + span as f64 * progress,
+                                opacity,
+                                LINEAR,
+                            ));
+                            Ok(())
+                        },
+                    )?;
+                    LINEAR
+                }
             }
         };
         keys.push(key_at(key.tick as f64, key.value, ease));

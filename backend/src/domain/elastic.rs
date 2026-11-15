@@ -55,6 +55,20 @@ impl Elastic {
         }
     }
 
+    /// Maximum absolute curvature on one branch of the curve.
+    pub(super) fn curvature_bound(self, start: f64, end: f64) -> f64 {
+        let decay = 10.0 * std::f64::consts::LN_2;
+        let omega = std::f64::consts::TAU / self.period;
+        let bound = self.amplitude * (decay * decay + omega * omega);
+        match self.direction {
+            ElasticDirection::In => bound * (decay * (end - 1.0)).exp(),
+            ElasticDirection::Out => bound * (-decay * start).exp(),
+            ElasticDirection::InOut if end <= 0.5 => 2.0 * bound * (decay * (2.0 * end - 1.0)).exp(),
+            ElasticDirection::InOut if start >= 0.5 => 2.0 * bound * (-decay * (2.0 * start - 1.0)).exp(),
+            ElasticDirection::InOut => 2.0 * bound,
+        }
+    }
+
     /// Bounds of the closed segment interval, including exact endpoint keys
     /// and one-sided Penner residues. Cost is independent of oscillation count.
     pub fn bounds(self, start: f64, end: f64) -> Option<(f64, f64)> {

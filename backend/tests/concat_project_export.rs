@@ -392,9 +392,32 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
         assert!((actual - expected).abs() < 2e-6, "Bezier opacity at {tick}: {actual} vs {expected}");
     }
 
+    for direction in ["in", "out", "in_out"] {
+        let mut elastic = serde_json::to_value(&project).unwrap();
+        let root = elastic["root"].as_str().unwrap().to_owned();
+        let track = &mut elastic["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"];
+        track["interpolation"] = json!({"kind":"elastic","dir":direction,"amplitude":1.4,"period":0.3});
+        track["keyframes"] = json!([{"tick":0,"value":0.1},{"tick":1111111,"value":0.95}]);
+        let native: video_kadr_backend::domain::keyframes::KeyframeTrack<f64> =
+            serde_json::from_value(track.clone()).unwrap();
+        let restored = convert(export(&serde_json::from_value(elastic).unwrap()).unwrap());
+        let animation = restored.compositions[&restored.root].content.tracks.iter().find_map(|track| match track {
+            video_kadr_backend::domain::composition::CompositionTrack::Text { clips, .. } =>
+                clips.iter().find(|clip| clip.id.as_str() == "words")
+                    .and_then(|clip| clip.transform.concat_animation.as_ref()),
+            _ => None,
+        }).unwrap();
+        for tick in (0..=1_111_111).step_by(277).chain([1, 555555, 555556, 1111110, 1111111]) {
+            let expected = native.sample_tick(tick).clamp(0.0, 1.0);
+            let actual = animation.sample(tick as u64).unwrap().opacity;
+            assert!((actual - expected).abs() <= 0.000100001,
+                "Elastic {direction} opacity at {tick}: {actual} vs {expected}");
+        }
+    }
+
     let mut unsupported = serde_json::to_value(project).unwrap();
     let root = unsupported["root"].as_str().unwrap().to_owned();
-    unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!({"kind":"elastic","dir":"out","amplitude":1,"period":0.3});
+    unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!({"kind":"elastic","dir":"out","amplitude":1,"period":0.000001});
     let error = export(&serde_json::from_value(unsupported).unwrap()).unwrap_err();
-    assert!(format!("{error:#}").contains("Caption opacity key requires a Concat mapping"));
+    assert!(format!("{error:#}").contains("Elastic caption curve exceeds the Concat key budget"));
 }
