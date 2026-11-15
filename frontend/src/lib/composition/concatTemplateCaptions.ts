@@ -64,7 +64,7 @@ function supportedCaptionKeys(value: unknown, centered: boolean): boolean {
   return value === undefined || Array.isArray(value) && value.every(key => captionKey(record(key)?.property, centered))
 }
 
-function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unknown): readonly [WireTextClip, ImportedAnimation?] | undefined {
+function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unknown, video: unknown): readonly [WireTextClip, ImportedAnimation?] | undefined {
   if (sameJson(normalizedClip(baseline), normalizedClip(current))) return [clip]
   const before = record(baseline)
   const after = record(current)
@@ -90,6 +90,10 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
 
   let style = clip.style
   const comparisonText: Record<string, unknown> = { ...editedText, content: previousText.content }
+  const retainOriginalField = (key: string) => {
+    if (Object.hasOwn(previousText, key)) comparisonText[key] = previousText[key]
+    else delete comparisonText[key]
+  }
   for (const [source, target] of [['color', 'color'], ['strokeColor', 'stroke'], ['background', 'background']] as const) {
     const color = editedText[source]
     if (color === previousText[source]) continue
@@ -97,8 +101,42 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
         typeof color !== 'string' || !(/^#(?:[a-f0-9]{6}|[a-f0-9]{8})$/i.test(color) ||
           (target === 'background' && color === ''))) return undefined
     style = { ...style, [target]: colorToRgba(color || '#00000000') }
-    if (Object.hasOwn(previousText, source)) comparisonText[source] = previousText[source]
-    else delete comparisonText[source]
+    retainOriginalField(source)
+  }
+  const height = record(video)?.height
+  for (const key of ['fontFamily', 'fontSize', 'fontWeight', 'italic', 'strokeWidth'] as const) {
+    const value = editedText[key]
+    if (value === previousText[key]) continue
+    if (!style || clip.concatTitle) return undefined
+    switch (key) {
+      case 'fontFamily':
+        if (typeof value !== 'string' || !['Noto Sans', 'Arial Unicode MS', 'DejaVu Sans', 'Arial'].includes(value)) return undefined
+        style = { ...style, fontFamily: value }
+        break
+      case 'fontWeight':
+        if (value !== 400 && value !== 700) return undefined
+        style = { ...style, bold: value === 700 }
+        break
+      case 'italic':
+        if (typeof value !== 'boolean') return undefined
+        style = { ...style, italic: value }
+        break
+      case 'fontSize':
+      case 'strokeWidth': {
+        if (typeof value !== 'number' || typeof height !== 'number') return undefined
+        const pixels = value * height
+        if (key === 'fontSize') {
+          if (!(pixels >= 1 && pixels <= 1000)) return undefined
+          style = { ...style, fontSize: pixels }
+        } else {
+          const width = Math.round(pixels)
+          if (!(width >= 0 && width <= 100 && Math.abs(width - pixels) < 1e-9)) return undefined
+          style = { ...style, strokeWidth: width }
+        }
+        break
+      }
+    }
+    retainOriginalField(key)
   }
 
   // Text and whole-clip moves retain the original local clock. A static title
@@ -162,7 +200,7 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
     if (unchanged) {
       eligible.push([timelineId, clip])
     } else if (baseline && timeline && sameJson(normalizedVideo(baseline.video), normalizedVideo(timeline.video))) {
-      const merged = mergeCaptionEdits(clip, baseline.clip, timeline.clips.get(clip.id))
+      const merged = mergeCaptionEdits(clip, baseline.clip, timeline.clips.get(clip.id), timeline.video)
       if (merged) eligible.push([timelineId, ...merged])
     }
   }
