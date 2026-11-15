@@ -127,6 +127,29 @@ mod tests {
     }
 
     #[test]
+    fn caption_uses_the_current_projects_embedded_font_without_leaking() {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use filmcraft_text::fonts::{INTER_BOLD, INTER_REGULAR};
+        use super::super::concat_project_fonts::{FontResource, Scope};
+        let mut caption = clip();
+        caption.style.font_family = "Inter".into();
+        let pixels = || render(&caption, (64, 64), 1500000, &mut || Ok(()))
+            .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap().rgba;
+        let regular = pixels();
+        let resource = |data: &[u8]| FontResource { family: "Inter".into(), data: STANDARD.encode(data) };
+        let bold_project = Scope::enter(&[resource(INTER_BOLD)]).unwrap();
+        let bold = pixels();
+        assert_ne!(bold, regular);
+        {
+            let _regular_project = Scope::enter(&[resource(INTER_REGULAR)]).unwrap();
+            assert_eq!(pixels(), regular);
+        }
+        assert_eq!(pixels(), bold);
+        drop(bold_project);
+        assert_eq!(pixels(), regular);
+    }
+
+    #[test]
     fn caption_numeric_font_weight_selects_the_nearest_face() {
         let mut caption = clip();
         caption.style.font_family = "Inter".into();

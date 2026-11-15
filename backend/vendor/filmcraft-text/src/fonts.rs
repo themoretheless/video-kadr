@@ -303,6 +303,54 @@ pub fn add_font_data(data: Vec<u8>) -> Vec<FaceId> {
     names.into_iter().map(|n| push(&mut d, info_from(n, FaceData::Shared(data.clone()), "user"))).collect()
 }
 
+/// Font faces owned by a document. Scoped IDs never overlap the global catalogue.
+#[derive(Default)]
+pub struct ProjectFaces(Vec<Arc<Face>>);
+
+impl ProjectFaces {
+    pub fn add_data(&mut self, data: Vec<u8>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(usize::MAX);
+        let data = Arc::new(data);
+        self.0.extend(read_faces_bytes(&data).into_iter().map(|name| {
+            Arc::new(Face {
+                id: NEXT.fetch_sub(1, Ordering::Relaxed),
+                info: info_from(name, FaceData::Shared(data.clone()), "project"),
+                bytes: OnceLock::new(),
+                shaper: OnceLock::new(),
+            })
+        }));
+    }
+}
+
+thread_local! {
+    static PROJECT_FACES: std::cell::RefCell<Option<Arc<ProjectFaces>>> = const { std::cell::RefCell::new(None) };
+}
+
+pub struct ProjectFontScope {
+    previous: Option<Arc<ProjectFaces>>,
+    _thread: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+impl ProjectFontScope {
+    pub fn enter(faces: Option<Arc<ProjectFaces>>) -> Self {
+        Self {
+            previous: PROJECT_FACES.with(|current| current.replace(faces)),
+            _thread: std::marker::PhantomData,
+        }
+    }
+}
+
+impl Drop for ProjectFontScope {
+    fn drop(&mut self) {
+        PROJECT_FACES.with(|current| current.replace(self.previous.take()));
+    }
+}
+
+pub(crate) fn project_layout_identity() -> Option<FaceId> {
+    PROJECT_FACES.with(|current| current.borrow().as_ref()?.0.first().map(|face| face.id))
+}
+
 /// Scan the system font folders once (native only; a no-op on wasm). Returns the number of faces
 /// added by this call.
 pub fn scan_system() -> usize {
@@ -327,6 +375,11 @@ pub fn system_scanned() -> bool {
 // created, so `faces` is never empty.
 #[allow(clippy::expect_used)]
 pub fn face(id: FaceId) -> Arc<Face> {
+    if let Some(face) = PROJECT_FACES.with(|current| {
+        current.borrow().as_ref()?.0.iter().find(|face| face.id == id).cloned()
+    }) {
+        return face;
+    }
     let d = db().read().unwrap_or_else(|e| e.into_inner());
     d.faces.get(id).or_else(|| d.faces.first()).cloned().expect("bundled fonts present")
 }
@@ -398,6 +451,13 @@ fn style_wants(style: &str) -> (u16, bool) {
 /// Resolve a family + style name. Family matching is case-insensitive; a style that the family
 /// lacks picks the nearest weight and synthesises bold (≥ 600 requested, ≤ 500 found) or italic.
 pub fn resolve(family: &str, style: &str) -> Resolved {
+    let project_face = PROJECT_FACES.with(|current| {
+        let current = current.borrow();
+        resolve_faces(&current.as_ref()?.0, family, style)
+    });
+    if let Some(face) = project_face {
+        return face;
+    }
     if let Some(r) = resolve_in(family, style) {
         return r;
     }
@@ -414,6 +474,10 @@ pub fn resolve(family: &str, style: &str) -> Resolved {
 
 fn resolve_in(family: &str, style: &str) -> Option<Resolved> {
     let faces = all_faces();
+    resolve_faces(&faces, family, style)
+}
+
+fn resolve_faces(faces: &[Arc<Face>], family: &str, style: &str) -> Option<Resolved> {
     let fam: Vec<&Arc<Face>> = faces.iter().filter(|f| f.info.family.eq_ignore_ascii_case(family)).collect();
     if fam.is_empty() {
         return None;

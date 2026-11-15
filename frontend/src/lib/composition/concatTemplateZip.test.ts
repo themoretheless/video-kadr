@@ -61,7 +61,7 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     ],
   }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
-    .resolves.toEqual([clips[1]])
+    .resolves.toEqual([['TL1', { ...staticClip, style: { ...staticClip.style, fontFamily: 'Cabinet Grotesk' } }], clips[1]])
   const changedFamily = { ...source, timelines: [{ id: 'TL1', video, clips: [
     { ...first, text: { ...first.text, fontFamily: '"JetBrains Mono"' } }, second,
   ] }] }

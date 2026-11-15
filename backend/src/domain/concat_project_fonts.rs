@@ -22,6 +22,15 @@ pub fn family_name(family: &str) -> &str {
     family.trim().trim_matches(['\'', '"'])
 }
 pub fn bank(resources: &[FontResource]) -> Result<Option<Arc<concat_text::Fonts>>> {
+    Ok(project_bank(resources)?.map(|bank| bank.concat.clone()))
+}
+
+struct ProjectBank {
+    concat: Arc<concat_text::Fonts>,
+    native: Arc<filmcraft_text::fonts::ProjectFaces>,
+}
+
+fn project_bank(resources: &[FontResource]) -> Result<Option<Arc<ProjectBank>>> {
     if resources.is_empty() {
         return Ok(None);
     }
@@ -41,7 +50,7 @@ pub fn bank(resources: &[FontResource]) -> Result<Option<Arc<concat_text::Fonts>
         "Invalid project font family"
     );
     let key = format!("{:x}", Sha256::digest(serde_json::to_vec(resources)?));
-    static CACHE: OnceLock<Mutex<VecDeque<(String, Arc<concat_text::Fonts>)>>> = OnceLock::new();
+    static CACHE: OnceLock<Mutex<VecDeque<(String, Arc<ProjectBank>)>>> = OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
     {
         let mut cache = cache
@@ -78,10 +87,12 @@ pub fn bank(resources: &[FontResource]) -> Result<Option<Arc<concat_text::Fonts>
         decoded.push(data);
     }
     let mut fonts = concat_text::Fonts::new();
+    let mut native = filmcraft_text::fonts::ProjectFaces::default();
     for data in decoded {
+        native.add_data(data.clone());
         ensure!(fonts.add_data(data), "Project font could not be loaded");
     }
-    let fonts = Arc::new(fonts);
+    let fonts = Arc::new(ProjectBank { concat: Arc::new(fonts), native: Arc::new(native) });
     let mut cache = cache
         .lock()
         .map_err(|_| anyhow::anyhow!("Font cache poisoned"))?;
@@ -101,14 +112,16 @@ pub fn current() -> Option<Arc<concat_text::Fonts>> {
 /// A guard cannot cross an await or move to another render thread.
 pub struct Scope {
     previous: Option<Arc<concat_text::Fonts>>,
+    _native: filmcraft_text::fonts::ProjectFontScope,
     _thread: PhantomData<Rc<()>>,
 }
 impl Scope {
     pub fn enter(resources: &[FontResource]) -> Result<Self> {
-        let next = bank(resources)?;
-        let previous = CURRENT.with(|slot| slot.replace(next));
+        let next = project_bank(resources)?;
+        let previous = CURRENT.with(|slot| slot.replace(next.as_ref().map(|bank| bank.concat.clone())));
         Ok(Self {
             previous,
+            _native: filmcraft_text::fonts::ProjectFontScope::enter(next.map(|bank| bank.native.clone())),
             _thread: PhantomData,
         })
     }
