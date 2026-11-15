@@ -127,6 +127,26 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         let restored = imported.project.unwrap();
         assert_eq!(serde_json::to_value(restored.fonts).unwrap(), portable["fonts"]);
     }
+    let saved_cover_zip = app.clone().oneshot(
+        Request::get(format!("{concat_uri}?useSavedCover=true"))
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(saved_cover_zip.status(), StatusCode::OK);
+    let bytes = to_bytes(saved_cover_zip.into_body(), 1024 * 1024).await.unwrap();
+    {
+        use std::io::Read;
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut jpeg = Vec::new();
+        zip.by_name("poster.jpg").unwrap().read_to_end(&mut jpeg).unwrap();
+        assert_eq!(STANDARD.encode(jpeg), portable["coverJpeg"].as_str().unwrap());
+    }
+    let conflicting = app.clone().oneshot(
+        Request::get(format!("{concat_uri}?useSavedCover=true&posterTimeUs=0"))
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(conflicting.status(), StatusCode::BAD_REQUEST);
     let poster_zip = app.clone().oneshot(
         Request::get(format!("{concat_uri}?posterTimeUs=0&posterCompositionId=root"))
             .header(header::COOKIE, format!("video_kadr_session={}", owner.token))

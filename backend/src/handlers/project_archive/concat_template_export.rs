@@ -14,6 +14,8 @@ use std::io::{Read, Write};
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Options {
+    #[serde(default)]
+    use_saved_cover: bool,
     poster_time_us: Option<u64>,
     poster_composition_id: Option<String>,
 }
@@ -38,7 +40,29 @@ pub async fn export(
         .map_err(|_| AppError::bad_request("Шаблоны требуют нативный проект с таймлайнами"))?;
     let plan =
         template_bundle::plan(&native).map_err(|error| AppError::bad_request(error.to_string()))?;
-    let poster = if let Some(time) = options.poster_time_us {
+    let poster = if options.use_saved_cover {
+        if options.poster_time_us.is_some() || options.poster_composition_id.is_some() {
+            return Err(AppError::bad_request("Выберите один источник обложки"));
+        }
+        let data = native
+            .cover_jpeg
+            .as_deref()
+            .ok_or_else(|| AppError::bad_request("У сохранённого проекта нет обложки"))?;
+        let bytes = STANDARD
+            .decode(data)
+            .map_err(|_| AppError::bad_request("Некорректная обложка проекта"))?;
+        if !bytes.ends_with(&[0xff, 0xd9])
+            || image::ImageReader::with_format(
+                std::io::Cursor::new(&bytes),
+                image::ImageFormat::Jpeg,
+            )
+            .into_dimensions()
+            .is_err()
+        {
+            return Err(AppError::bad_request("Некорректная обложка проекта"));
+        }
+        Some(bytes)
+    } else if let Some(time) = options.poster_time_us {
         let composition = options
             .poster_composition_id
             .unwrap_or_else(|| native.root.clone());

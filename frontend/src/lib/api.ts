@@ -906,9 +906,10 @@ export function compositionProjectArchiveUrl(id: string): string {
   return `/api/composition-projects/${encodeURIComponent(id)}/archive`
 }
 
-export function compositionProjectConcatTemplateUrl(id: string, poster?: { timeUs: number; compositionId?: string }): string {
+export function compositionProjectConcatTemplateUrl(id: string, poster?: 'saved' | { timeUs: number; compositionId?: string }): string {
   const path = `/api/composition-projects/${encodeURIComponent(id)}/concat-template`
   if (!poster) return path
+  if (poster === 'saved') return `${path}?useSavedCover=true`
   const query = new URLSearchParams({ posterTimeUs: String(poster.timeUs) })
   if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
   return `${path}?${query}`

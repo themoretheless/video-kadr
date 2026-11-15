@@ -275,7 +275,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   let pendingVoiceover = $state.raw<File | null>(null)
   let archivePicker = $state<HTMLInputElement>()
   let archiveBusy = $state(false)
-  let includeConcatPoster = $state(false)
+  let concatPosterSource = $state<'' | 'saved' | 'frame'>('')
   let templateLibraryRevision = $state(0)
   let archiveMessage = $state('')
   let archiveError = $state('')
@@ -389,6 +389,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   }
 
   let activeSavedProjectId=$derived(nestedComposition.document?nestedComposition.projectId:compositionState.projectId)
+  $effect(() => { void activeSavedProjectId; concatPosterSource = '' })
   function downloadProjectArchive(): void {
     const projectId = activeSavedProjectId
     if (!projectId || !authState.token || archiveBusy) return
@@ -558,12 +559,21 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   <ConcatProjectImportPanel token={authState.token} context={compositionState.document} disabled={compositionState.save.busy} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
   <ConcatProjectExportPanel disabled={compositionState.save.busy} />
   {#if nestedComposition.document && activeSavedProjectId && authState.token}
-    <label><input type="checkbox" bind:checked={includeConcatPoster} /> Обложка для ZIP-шаблона Concat</label>
+    <label>Обложка для ZIP-шаблона Concat
+      <select value={concatPosterSource} onchange={event => {
+        const value = event.currentTarget.value
+        concatPosterSource = value === 'saved' || value === 'frame' ? value : ''
+      }}>
+        <option value="">Без обложки</option>
+        {#if nestedComposition.document.coverJpeg}<option value="saved">Обложка проекта</option>{/if}
+        <option value="frame">Кадр сохранённого проекта</option>
+      </select>
+    </label>
     <button class="btn ghost sm" disabled={archiveBusy || compositionState.save.busy}
-      onclick={() => downloadUrl(compositionProjectConcatTemplateUrl(activeSavedProjectId!, includeConcatPoster ? {
+      onclick={() => downloadUrl(compositionProjectConcatTemplateUrl(activeSavedProjectId!, concatPosterSource === 'frame' ? {
         timeUs: nestedComposition.timeUs,
         compositionId: nestedComposition.activeCompositionId ?? undefined,
-      } : undefined))}>
+      } : concatPosterSource === 'saved' && nestedComposition.document?.coverJpeg ? 'saved' : undefined))}>
       Скачать архив шаблона Concat из сохранённой версии
     </button>
   {/if}

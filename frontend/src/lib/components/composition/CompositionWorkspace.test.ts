@@ -612,10 +612,13 @@ it('opens the native workspace with unavailable catalogs and downloads its saved
   expect(target.textContent).toContain('Загрузка шаблона сохранённой версии началась')
   button('Скачать архив шаблона Concat из сохранённой версии').click();await settle()
   expect(downloads[1]).toBe('/api/composition-projects/saved%2Fnative/concat-template')
-  const poster = [...target.querySelectorAll('label')].find(item => item.textContent?.includes('Обложка для ZIP-шаблона Concat'))!.querySelector('input')!
-  poster.click();await settle()
+  const poster = [...target.querySelectorAll('label')].find(item => item.textContent?.includes('Обложка для ZIP-шаблона Concat'))!.querySelector('select')!
+  poster.value='frame';poster.dispatchEvent(new Event('change',{bubbles:true}));await settle()
   button('Скачать архив шаблона Concat из сохранённой версии').click();await settle()
   expect(downloads[2]).toBe('/api/composition-projects/saved%2Fnative/concat-template?posterTimeUs=0&posterCompositionId=root')
+  poster.value='saved';poster.dispatchEvent(new Event('change',{bubbles:true}));await settle()
+  button('Скачать архив шаблона Concat из сохранённой версии').click();await settle()
+  expect(downloads[3]).toBe('/api/composition-projects/saved%2Fnative/concat-template?useSavedCover=true')
   expect(JSON.stringify(nestedComposition.document)).toBe(before)
   expect(durationCalls).toBeGreaterThan(0);expect(previewCalls).toBeGreaterThan(0);expect(durations).toHaveBeenCalledTimes(durationCalls);expect(previews).toHaveBeenCalledTimes(previewCalls)
  }finally{await unmount(component)}
