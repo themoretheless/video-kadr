@@ -139,15 +139,6 @@ pub async fn export(
         let mut document = export_with_paths(&native, &paths)
             .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
         document["name"] = Value::String(title);
-        let active = document["timelines"]
-            .as_array()
-            .and_then(|timelines| {
-                timelines
-                    .iter()
-                    .find(|timeline| timeline["id"] == document["activeTimelineId"])
-            })
-            .ok_or_else(|| AppError::bad_request("В шаблоне нет активного таймлайна"))?;
-        document["video"] = active["video"].clone();
         let mut font_files = Vec::new();
         let mut font_links = Vec::new();
         for (index, font) in fonts.into_iter().enumerate() {

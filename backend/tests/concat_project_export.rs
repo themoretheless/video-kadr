@@ -4,6 +4,36 @@ fn convert(document:Value)->video_kadr_backend::domain::nested_composition::Nest
 fn frame(composition:&Composition,time:u64)->Vec<u8>{flat_surface::render_generated(composition,time,&mut||Ok(())).unwrap().unwrap().rgba}
 fn source()->Value{json!({"version":1,"media":[],"activeTimelineId":"TL","timelines":[{"id":"TL","name":"Interchange","video":{"width":160,"height":120,"rateNum":30000,"rateDen":1001},"tracks":[{"id":"bottom","name":"Ground"},{"id":"look","name":"Treatment"},{"id":"top","name":"Words"}],"clips":[{"id":"ground","trackId":"bottom","kind":"shape","start":0,"duration":4,"shape":{"kind":"arrow","size":0.8,"fill":"#804020","strokeWidth":0},"flipH":true,"crop":{"left":0.05},"keys":[{"property":"rotation","at":0,"value":0},{"property":"rotation","at":1,"value":90}]},{"id":"look","trackId":"look","kind":"layer","start":1,"duration":2,"opacity":0.5,"fadeIn":0.5,"fadeOut":0.5,"videoEffects":[{"id":"concat.exposure","params":{"stops":1},"keys":{"stops":[{"at":0,"value":0},{"at":1,"value":2}]}}]},{"id":"words","trackId":"top","kind":"text","start":0,"duration":4,"text":{"content":"Round trip","fontSize":0.2},"offsetY":0.2,"rotation":12}]}]})}
 #[test]
+fn template_export_preserves_an_empty_active_timeline_and_unused_slot() {
+    use std::collections::BTreeMap;
+    use video_kadr_backend::domain::concat_project_export::export_with_paths;
+    let mut document = source();
+    document["activeTimelineId"] = json!("empty");
+    document["timelines"].as_array_mut().unwrap().push(json!({
+        "id":"empty", "name":"Empty", "tracks":[], "clips":[],
+        "video":{"width":120,"height":160,"rateNum":24000,"rateDen":1001}
+    }));
+    document["media"] = json!([{"id":"slot","kind":"video","path":"","placeholder":true}]);
+    let imported = import(serde_json::from_value(json!({
+        "schemaVersion":1, "document":document,
+        "mediaBindings":{"slot":{"id":"slot","kind":"video","durationTicks":1000000,"width":16,"height":16,"hasAudio":false}},
+    })).unwrap()).unwrap();
+    assert_eq!(imported.status, "converted", "{:?}", imported.diagnostics);
+    let project = imported.project.unwrap();
+    let output = export_with_paths(&project, &BTreeMap::from([("slot".into(), String::new())])).unwrap();
+    assert_eq!(output["activeTimelineId"], project.root);
+    assert_eq!(output["video"], output["timelines"][1]["video"]);
+    assert_eq!(output["video"]["rateDen"], 1001);
+    assert_eq!(output["timelines"][1]["tracks"].as_array().unwrap().len(), 1);
+    assert_eq!(output["timelines"][1]["clips"], json!([]));
+    assert_eq!(output["media"][0]["placeholder"], true);
+    assert_eq!(output["media"][0]["path"], "");
+    if let Ok(path) = std::env::var("CONCAT_EXPORTED_TEMPLATE_OUTPUT") {
+        std::fs::write(path, serde_json::to_vec(&output).unwrap()).unwrap();
+    }
+}
+
+#[test]
 fn retained_three_kind_project_exports_actual_source_json_and_reimports_exact_frames(){
  let project=convert(source());let before=serde_json::to_value(&project).unwrap();let document=export(&project).unwrap();if let Ok(path)=std::env::var("CONCAT_EXPORTED_PROJECT_OUTPUT"){std::fs::write(path,serde_json::to_vec(&document).unwrap()).unwrap();}let restored=convert(document.clone());
  assert_eq!(document["activeTimelineId"],project.root);assert_eq!(document["timelines"][0]["video"]["rateNum"],30000);

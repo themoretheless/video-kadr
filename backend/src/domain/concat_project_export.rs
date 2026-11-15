@@ -108,6 +108,10 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
    tracks.push(json!({"id":track["id"],"name":track["name"],"visible":track["hidden"]!=true,"muted":track["muted"]==true}));
   }
   ensure!(node["durationUs"].as_u64().map_or(true,|duration|duration==end),"Empty timeline tail needs a source duration representation");
+  // The Concat reader drops timelines with no tracks, including the active one.
+  if tracks.is_empty() {
+   tracks.push(json!({"id":"empty-track","name":"Track 1","visible":true,"muted":false}));
+  }
   let rate=&canvas["fpsRate"];let (num,den)=if rate.is_object(){(rate["numerator"].clone(),rate["denominator"].clone())}else{(canvas["fpsMilli"].clone(),json!(1000))};
   timelines.push(json!({"id":id,"name":metadata["sequenceName"].as_str().unwrap_or(&id),"video":{"width":width as u32,"height":height as u32,"rateNum":num,"rateDen":den,"colorSpace":"sdr"},"tracks":tracks,"clips":clips}));
  }
@@ -163,6 +167,11 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
    }
   }
  }
+ let active = document["timelines"].as_array().unwrap().iter()
+     .find(|timeline| timeline["id"] == document["activeTimelineId"])
+     .context("Active Concat timeline missing")?;
+ document["video"] = active["video"].clone();
+ ensure!(serde_json::to_vec(&document)?.len() <= 4 * 1024 * 1024, "Concat JSON exceeds the import budget");
  Ok(document)
 }
 
