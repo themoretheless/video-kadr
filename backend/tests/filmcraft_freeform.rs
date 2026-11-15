@@ -133,3 +133,43 @@ fn named_arrangements_preserve_size_and_restore_only_the_requested_bin() {
     )
     .is_err());
 }
+
+#[test]
+fn card_size_align_and_reset_share_the_bin_layout() {
+    use video_kadr_backend::domain::filmcraft_freeform::edit_layout;
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let mut document = fixture["cases"][0]["document"].clone();
+    let metadata = &mut document["project"]["items"]["1"]["metadata"];
+    metadata["Freeform Position"] = json!("17,32,140");
+    metadata["Freeform Stack"] = json!("1");
+    metadata["Freeform Arrangement: Saved"] = json!("1,2,128");
+    let resized = edit_layout(
+        "project.freeform.resize",
+        json!({"document":document,"items":["1"],"step":1}),
+    )
+    .unwrap();
+    let key = "/project/items/1/metadata";
+    assert_eq!(
+        resized["document"].pointer(key).unwrap()["Freeform Position"],
+        "17,32,175"
+    );
+    let aligned = edit_layout(
+        "project.freeform.alignToGrid",
+        json!({"document":resized["documentText"],"grid":20}),
+    )
+    .unwrap();
+    assert_eq!(
+        aligned["document"].pointer(key).unwrap()["Freeform Position"],
+        "20,40,175"
+    );
+    let reset = edit_layout(
+        "project.freeform.reset",
+        json!({"document":aligned["documentText"]}),
+    )
+    .unwrap();
+    let metadata = reset["document"].pointer(key).unwrap();
+    assert!(metadata["Freeform Position"].is_null());
+    assert!(metadata["Freeform Stack"].is_null());
+    assert_eq!(metadata["Freeform Arrangement: Saved"], "1,2,128");
+}

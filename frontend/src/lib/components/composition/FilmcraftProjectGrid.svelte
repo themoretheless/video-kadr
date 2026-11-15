@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { on } from 'svelte/events'
-  import { editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
+  import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
   let { project, sources, token, sequenceId, clipId, onedit, selected = $bindable<string[]>([]), disabled = false }: {
@@ -157,6 +157,18 @@
     await editFreeform(token, (owner, document, signal) => stackFilmcraftProjectCards(owner, stack, { document, items, width: canvasWidth }, signal))
   }
 
+  function editLayout(command: FilmcraftLayoutCommand, step?: number) {
+    if (!token || disabled || moving || marking) return
+    const resize = command === 'project.freeform.resize'
+    const targets = [...stackSelection]
+    if (resize && !targets.length) return
+    const bin = activeBin?.id
+    const width = canvasWidth
+    void editFreeform(token, (owner, document, signal) => editFilmcraftLayout(owner, command, {
+      document, width, ...(resize ? { items: targets, step } : bin === undefined ? {} : { bin }),
+    }, signal))
+  }
+
   function editArrangement(command: FilmcraftArrangementCommand) {
     if (!token || disabled || moving || marking) return
     const save = command === 'project.freeform.saveArrangement'
@@ -267,6 +279,10 @@
       <label><input type="checkbox" bind:checked={freeform} onchange={() => { hover = undefined; drag = undefined }} />Свободная раскладка</label>
       {#if freeform}
         <label><input type="checkbox" bind:checked={snapCards} />Привязка к сетке</label>
+        <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', 1)}>Увеличить карточки</button>
+        <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', -1)}>Уменьшить карточки</button>
+        <button type="button" disabled={disabled || !token || moving || marking} onclick={() => editLayout('project.freeform.alignToGrid')}>Выровнять по сетке</button>
+        <button type="button" disabled={disabled || !token || moving || marking} onclick={() => editLayout('project.freeform.reset')}>Сбросить позиции и стеки</button>
         <button type="button" disabled={disabled || !token || moving || marking || stackSelection.length < 2} onclick={() => editStack(true)}>Сложить в стек</button>
         <button type="button" disabled={disabled || !token || moving || marking || !canUnstack} onclick={() => editStack(false)}>Разобрать стек</button>
       {/if}

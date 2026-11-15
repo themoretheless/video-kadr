@@ -372,3 +372,132 @@ pub fn arrangement(command: &str, params: Value) -> Result<Value> {
     let text = String::from_utf8(document.encode_preserved()?)?;
     Ok(json!({"document":document.envelope,"documentText":text,"freeformEdit":true}))
 }
+
+pub const LAYOUT_COMMANDS: &[&str] = &[
+    "project.freeform.resize",
+    "project.freeform.alignToGrid",
+    "project.freeform.reset",
+];
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LayoutRequest {
+    document: Value,
+    bin: Option<Value>,
+    #[serde(default)]
+    items: Vec<Value>,
+    width: Option<f32>,
+    grid: Option<f32>,
+    size: Option<f32>,
+    step: Option<f32>,
+}
+
+pub fn edit_layout(command: &str, params: Value) -> Result<Value> {
+    let request: LayoutRequest = serde_json::from_value(params)?;
+    let bytes = match request.document {
+        Value::String(text) => text.into_bytes(),
+        value => serde_json::to_vec(&value)?,
+    };
+    let mut document = SourceProjectDocument::read(&bytes)?;
+    let index = ProjectIndex::new(&document)?;
+    let resize = command == LAYOUT_COMMANDS[0];
+    let reset = command == LAYOUT_COMMANDS[2];
+    let items = request
+        .items
+        .into_iter()
+        .map(|id| super::filmcraft_project_inspect::id(Some(id))?.context("missing card ID"))
+        .collect::<Result<Vec<_>>>()?;
+    ensure!(
+        !resize || (!items.is_empty() && (request.size.is_some() || request.step.is_some())),
+        "select cards and provide size or step"
+    );
+    ensure!(
+        items.iter().all(|id| index.item(*id).is_some()),
+        "card item is gone"
+    );
+    let bin = super::filmcraft_project_inspect::id(request.bin)?;
+    let bins = super::filmcraft_bin_rename::locations(&document)?;
+    let selected = bins.iter().find(|entry| {
+        if resize {
+            document
+                .envelope
+                .pointer(&entry.path)
+                .and_then(|bin| bin["children"].as_array())
+                .is_some_and(|children| {
+                    children
+                        .iter()
+                        .any(|child| child["Item"].as_u64() == items.first().copied())
+                })
+        } else {
+            Some(entry.id) == bin
+        }
+    });
+    let ids = bin_cards(
+        &document,
+        &index,
+        selected.map_or("/project/root", |entry| entry.path.as_str()),
+    );
+    let grid = request.grid.unwrap_or(GRID).max(1.0);
+    let mut positions = BTreeMap::new();
+    if !reset {
+        let cards = layout(&index, &ids, request.width.unwrap_or(800.0));
+        if resize {
+            let points: BTreeMap<_, _> = cards
+                .into_iter()
+                .map(|(id, point, _)| (id, point))
+                .collect();
+            for id in items {
+                let point = points.get(&id);
+                let (x, y, current) = point.map_or((12.0, 12.0, CARD_SIZE), |p| {
+                    (p.x, p.y, p.size.unwrap_or(CARD_SIZE))
+                });
+                let size = request
+                    .size
+                    .unwrap_or_else(|| {
+                        current
+                            * if request.step.unwrap_or_default() > 0.0 {
+                                1.25
+                            } else {
+                                0.8
+                            }
+                    })
+                    .clamp(48.0, 480.0);
+                positions.insert(id, format_position(x, y, Some(size)));
+            }
+        } else {
+            for (id, point, _) in cards {
+                let snap = |value: f32| ((value / grid).round() * grid).max(0.0);
+                positions.insert(
+                    id,
+                    format_position(
+                        snap(point.x),
+                        snap(point.y),
+                        point.size.filter(|size| *size != CARD_SIZE),
+                    ),
+                );
+            }
+        }
+    }
+    if reset {
+        for id in ids {
+            if let Some(metadata) =
+                document.envelope["project"]["items"][id.to_string()]["metadata"].as_object_mut()
+            {
+                metadata.remove(POSITION);
+                metadata.remove(STACK);
+            }
+        }
+    }
+    for (id, position) in positions {
+        let item = &mut document.envelope["project"]["items"][id.to_string()];
+        if item["metadata"].is_null() {
+            item["metadata"] = json!({});
+        }
+        item["metadata"]
+            .as_object_mut()
+            .context("invalid item metadata")?
+            .insert(POSITION.into(), json!(position));
+    }
+    let text = String::from_utf8(document.encode_preserved()?)?;
+    Ok(json!({"document":document.envelope,"documentText":text,"freeformEdit":true}))
+}

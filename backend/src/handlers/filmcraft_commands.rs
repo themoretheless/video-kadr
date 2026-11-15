@@ -392,6 +392,9 @@ fn catalog(params: Value) -> AppResult<Value> {
         ("file.newBinFromSelection","New Bin From Selection","{document:object|string,items?:[id],item?:id,name?:str,context?:{projectSelection?:[id]}}; first item parent and unique default bin name"),
         ("project.moveToBin","Move to Bin","{document:object|string,items?:[id],bin?:id|null,context?:{projectSelection?:[id]}}; missing bin targets root"),
         ("project.renameBin","Rename Bin","{document:object|string,bin:id,name:str}; trims name, refuses empty names and root bin; explicit snapshot adoption"),
+        ("project.freeform.resize","Clip Size","{document:object|string,items:[id],size?:number,step?:number,width?:number}"),
+        ("project.freeform.alignToGrid","Align to Grid","{document:object|string,bin?:id,grid?:number,width?:number}"),
+        ("project.freeform.reset","Reset to Grid","{document:object|string,bin?:id}"),
         ("project.freeform.arrangements","List Arrangements","{document:object|string,bin?:id}"),
         ("project.freeform.saveArrangement","Save Arrangement","{document:object|string,name:str,bin?:id,width?:number}"),
         ("project.freeform.restoreArrangement","Restore Arrangement","{document:object|string,name:str,bin?:id}"),
@@ -594,6 +597,10 @@ async fn dispatch(
     }
     if request.command == "project.renameBin" {
         let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_bin_rename::rename(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if crate::domain::filmcraft_freeform::LAYOUT_COMMANDS.contains(&request.command.as_str()) {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_freeform::edit_layout(&request.command, params)).await.map_err(bad)?;
         return Ok(Json(value));
     }
     if crate::domain::filmcraft_freeform::ARRANGEMENT_COMMANDS.contains(&request.command.as_str()) {
