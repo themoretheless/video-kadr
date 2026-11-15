@@ -1,14 +1,16 @@
 <script lang="ts">
+  import type { manualExportPreset } from '$lib/filmcraft/manual-export-preset'
   import type { MediaEntry } from '$lib/types'
   import { exportOverlayPlacements } from '$lib/filmcraft/export-overlay'
   import { exportMetadataFields, validExportMetadata } from '$lib/filmcraft/export-metadata'
   import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftOverlayPlacement } from '$lib/api'
-  let { token, imageSources = [], disabled = false, onapply, onlibrarychange }: { token: string | null; imageSources?: MediaEntry[]; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void; onlibrarychange?: (change: { saved?: string; deleted?: string }) => void } = $props()
+  let { token, imageSources = [], disabled = false, onapply, onlibrarychange, manualSnapshot }: { token: string | null; imageSources?: MediaEntry[]; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void; onlibrarychange?: (change: { saved?: string; deleted?: string }) => void; manualSnapshot?: () => ReturnType<typeof manualExportPreset> } = $props()
   let opened = $state(false)
   let entries = $state<FilmcraftLibraryPreset[]>([])
   let selected = $state('')
   let query = $state('')
   let favorites = $state(false)
+  let manualName = $state('')
   let name = $state('')
   let format = $state('')
   let mxfCodec = $state('')
@@ -181,6 +183,7 @@
   })
   function resetDraft() {
     name = ''
+    manualName = ''
     format = ''
     mxfCodec = ''
     width = ''
@@ -331,6 +334,24 @@
       }
     })
   }
+  function saveManual() {
+    const snapshot = manualSnapshot?.()
+    if (!snapshot || !manualName.trim()) return
+    const name = manualName
+    void run(async (owner, signal) => {
+      const result = await editFilmcraftExportPresets<{ name: string }>(owner, {
+        action: 'save', name, ...snapshot, overwrite: false,
+      }, signal)
+      if (signal.aborted) return
+      onlibrarychange?.({})
+      await refresh(owner, signal)
+      if (signal.aborted) return
+      query = ''
+      favorites = false
+      selected = result.name
+      resetDraft()
+    })
+  }
   function favorite() {
     if (!picked) return
     const name = picked.name
@@ -377,6 +398,10 @@
 <section aria-label="Библиотека пресетов Filmcraft">
   <button type="button" onclick={open} disabled={!token || busy || disabled}>Библиотека пресетов</button>
   {#if opened}
+    {#if manualSnapshot}
+      <label>Имя пресета для текущих настроек <input aria-label="Имя пресета текущих настроек Filmcraft" bind:value={manualName} disabled={busy || disabled} /></label>
+      <button type="button" disabled={busy || disabled || !manualName.trim()} onclick={saveManual}>Сохранить текущие настройки</button>
+    {/if}
     <label>Поиск <input aria-label="Поиск пресетов Filmcraft" bind:value={query} /></label>
     <label><input type="checkbox" bind:checked={favorites} /> Только избранные</label>
     <label>Сохранённый пресет <select aria-label="Сохранённый пресет Filmcraft" bind:value={selected} disabled={busy || disabled}>

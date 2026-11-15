@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { manualExportPreset } from '$lib/filmcraft/manual-export-preset'
   import { exportOverlayPlacements as placements } from '$lib/filmcraft/export-overlay'
   import { exportMetadataFields as metadataFields, validExportMetadata } from '$lib/filmcraft/export-metadata'
   import { filmcraftDownloadName } from '$lib/filmcraft/export-filename'
@@ -423,7 +424,8 @@
   }
 </script>
 <section aria-label="Видеоэкспорт Filmcraft" class="video-export">
-  <FilmcraftExportPresetLibrary {token} {imageSources} disabled={submitting || retrying || disabled} onlibrarychange={libraryChanged} onapply={(name, settings) => { libraryPreset = name; libraryPresetSettings = settings }} />
+  <FilmcraftExportPresetLibrary {token} {imageSources} disabled={submitting || retrying || disabled} manualSnapshot={!libraryPreset && preset !== 'lossless' && manualValid ? () => manualExportPreset(buildRequest()) : undefined}
+    onlibrarychange={libraryChanged} onapply={(name, settings) => { libraryPreset = name; libraryPresetSettings = settings }} />
   <details ontoggle={event => { quickOptionsOpen = event.currentTarget.open }}>
     <summary>Настройки быстрого экспорта</summary>
     <label>Имя файла без расширения

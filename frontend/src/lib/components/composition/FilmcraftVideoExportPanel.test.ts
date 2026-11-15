@@ -1162,3 +1162,24 @@ it('shows resolved standard export settings without starting an export', async (
   await vi.waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:preview'))
   expect(startFilmcraftVideoJob).not.toHaveBeenCalled()
 })
+
+it('saves the current manual export settings as a portable preset without project state', async () => {
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [], default: 'Default' })
+  vi.mocked(editFilmcraftExportPresets).mockResolvedValue({ name: 'Manual review' })
+  await open()
+  const preset = document.querySelector<HTMLSelectElement>('[aria-label="Пресет видеоэкспорта Filmcraft"]')!
+  preset.value = 'adaptive_high'; preset.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  button('Библиотека пресетов').click()
+  const field = () => document.querySelector<HTMLInputElement>('[aria-label="Имя пресета текущих настроек Filmcraft"]')!
+  await vi.waitFor(() => expect(field()?.disabled).toBe(false))
+  field().value = 'Manual review'; field().dispatchEvent(new Event('input', { bubbles: true })); await tick()
+  button('Сохранить текущие настройки').click()
+  await vi.waitFor(() => expect(editFilmcraftExportPresets).toHaveBeenCalledWith('owner', {
+    action: 'save', name: 'Manual review', from: 'Match Source – Adaptive High Bitrate', overwrite: false,
+    settings: expect.objectContaining({ includeAudio: false, burnCaptions: true, captionSidecar: null }),
+  }, expect.any(AbortSignal)))
+  const command = vi.mocked(editFilmcraftExportPresets).mock.lastCall?.[1]
+  expect(command).not.toHaveProperty('settings.document')
+  expect(command).not.toHaveProperty('settings.sources')
+  expect(command).not.toHaveProperty('settings.range')
+})
