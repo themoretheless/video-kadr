@@ -965,6 +965,30 @@ it('quick export delegates its range to the backend instead of stale manual fiel
   expect(document.body.textContent).toContain('Последний быстрый экспорт: Match Source – Adaptive High Bitrate')
 })
 
+it('quick export offers the imported work area and submits exact custom ticks', async () => {
+  vi.mocked(startFilmcraftQuickExportJob).mockResolvedValue({ jobId: 'quick-job', mode: 'video_only', container: 'mp4', presetName: 'Review' })
+  const documentText = '{"project":{"items":{"18446744073709551615":{"kind":{"Sequence":{"work_area":{"start":1,"duration":2}}}}}}}'
+  await open('owner', documentText)
+  const range = document.querySelector<HTMLSelectElement>('[aria-label="Диапазон быстрого экспорта"]')!
+  expect(range.querySelector<HTMLOptionElement>('option[value="workArea"]')!.disabled).toBe(false)
+  range.value = 'workArea'; range.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  button('Быстрый экспорт').click()
+  await vi.waitFor(() => expect(startFilmcraftQuickExportJob).toHaveBeenCalledWith('owner', expect.objectContaining({ range: 'workArea' }), expect.any(AbortSignal)))
+  range.value = 'custom'; range.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  expect(button('Быстрый экспорт').disabled).toBe(true)
+  const fields = [...document.querySelectorAll('label')].filter(label => label.textContent?.includes('диапазона, с'))
+  for (const [index, text] of ['0,125', '0.375'].entries()) {
+    const input = fields[index].querySelector('input')!
+    input.value = text
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  await tick()
+  button('Быстрый экспорт').click()
+  await vi.waitFor(() => expect(startFilmcraftQuickExportJob).toHaveBeenLastCalledWith('owner', expect.objectContaining({
+    range: 'custom', sourceRange: { startTicks: '31752000000', endTicks: '95256000000' },
+  }), expect.any(AbortSignal)))
+})
+
 it('quick export uses the explicitly selected library preset', async () => {
   vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [{ name: 'Review', category: 'User', description: '', settings: {}, builtin: false, favorite: false }], default: 'Review' })
   vi.mocked(startFilmcraftQuickExportJob).mockResolvedValue({ jobId: 'quick-job', mode: 'video_only', container: 'mp4', presetName: 'Review' })

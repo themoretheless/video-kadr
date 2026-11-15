@@ -8,6 +8,22 @@
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
   let quickPresetName = $state('')
+  let quickRange = $state<'inOut' | 'entire' | 'workArea' | 'custom'>('inOut')
+  let customStart = $state('0')
+  let customEnd = $state('')
+  function secondsToTicks(value: string) {
+    const parts = /^(\d{1,5})(?:[.,](\d{1,12}))?$/.exec(value.trim())
+    if (!parts) return undefined
+    const fraction = BigInt((parts[2] ?? '').padEnd(12, '0'))
+    const ticks = BigInt(parts[1]) * 254_016_000_000n
+      + (fraction * 254_016_000_000n + 500_000_000_000n) / 1_000_000_000_000n
+    return ticks <= 86_400n * 254_016_000_000n ? ticks : undefined
+  }
+  const customRange = $derived.by(() => {
+    const start = secondsToTicks(customStart), end = secondsToTicks(customEnd)
+    if (start === undefined || end === undefined || end <= start) return undefined
+    return { startTicks: start.toString(), endTicks: end.toString() }
+  })
   $effect(() => { void token; libraryPreset = ''; quickPresetName = '' })
   const audioOnly = $derived(['wav16', 'wav24', 'aiff16'].includes(preset))
   const imageSequence = $derived(preset.endsWith('_sequence'))
@@ -34,12 +50,16 @@
   const effectivePcmBits = $derived(pcmAudioBits ?? (preset === 'wav24' ? 24 : 16))
   const aacRates = [8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200, 96000]
   let movieAudioRate = $state(48000)
-  const sequenceAudioRate = $derived.by(() => {
+  const sequence = $derived.by(() => {
     try {
-      const rate = JSON.parse(document)?.project?.items?.[sequenceId]?.kind?.Sequence?.settings?.sample_rate
-      return Number.isInteger(rate) && rate >= 8000 && rate <= 192000 ? rate as number : 48000
-    } catch { return 48000 }
+      return JSON.parse(document)?.project?.items?.[sequenceId]?.kind?.Sequence
+    } catch { return undefined }
   })
+  const sampleRate = $derived(sequence?.settings?.sample_rate)
+  const sequenceAudioRate = $derived(Number.isInteger(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate as number : 48000)
+  const hasWorkArea = $derived(sequence?.work_area != null)
+  const quickRangeValid = $derived(quickRange === 'custom' ? !!customRange : quickRange !== 'workArea' || hasWorkArea)
+  $effect(() => { if (quickRange === 'workArea' && !hasWorkArea) quickRange = 'inOut' })
   const effectiveMovieRate = $derived(movieAudioRate || sequenceAudioRate)
   const moviePcm = $derived(mxfAudio || (intraMovie ? movieAudioCodec !== 'aac' : multiplexer === 'mov' && movieAudioCodec === 'pcm'))
   let customBitrate = $state(false)
@@ -182,11 +202,16 @@
   }
   async function quickExport() {
     const session = active
-    if (!session?.token || !current(session) || submitting || retrying || disabled) return
+    if (!session?.token || !current(session) || submitting || retrying || disabled || !quickRangeValid) return
     const version = ++session.submit
     submitting = true; submitError = ''
     try {
-      const accepted = await startFilmcraftQuickExportJob(session.token, { document, sequenceId, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), ...(libraryPreset ? { preset: libraryPreset } : {}) }, session.controller.signal)
+      const accepted = await startFilmcraftQuickExportJob(session.token, {
+        document, sequenceId, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)),
+        ...(libraryPreset ? { preset: libraryPreset } : {}),
+        ...(quickRange !== 'inOut' ? { range: quickRange } : {}),
+        ...(quickRange === 'custom' ? { sourceRange: customRange } : {}),
+      }, session.controller.signal)
       if (!current(session) || session.submit !== version) return
       quickPresetName = accepted.presetName
       clearTimeout(session.timer); ++session.poll
@@ -268,8 +293,21 @@
 </script>
 <section aria-label="Видеоэкспорт Filmcraft" class="video-export">
   <FilmcraftExportPresetLibrary {token} disabled={submitting || retrying || disabled} onapply={(name) => libraryPreset = name} />
-  <button type="button" disabled={!token || submitting || retrying || disabled} onclick={quickExport}>Быстрый экспорт</button>
-  <span>In/Out секвенции или вся секвенция · выбранный сохранённый пресет или последний пресет быстрого экспорта</span>
+  <label>Диапазон быстрого экспорта
+    <select aria-label="Диапазон быстрого экспорта" value={quickRange} disabled={submitting || retrying || disabled}
+      onchange={event => { quickRange = event.currentTarget.value as typeof quickRange }}>
+      <option value="inOut">Точки In/Out</option>
+      <option value="entire">Вся секвенция</option>
+      <option value="workArea" disabled={!hasWorkArea}>Рабочая область</option>
+      <option value="custom">Свой диапазон</option>
+    </select>
+  </label>
+  {#if quickRange === 'custom'}
+    <label>Начало диапазона, с <input inputmode="decimal" bind:value={customStart} disabled={submitting || retrying || disabled} /></label>
+    <label>Конец диапазона, с <input inputmode="decimal" bind:value={customEnd} disabled={submitting || retrying || disabled} /></label>
+    {#if customEnd.trim() && !customRange}<span>Начало и конец должны быть в пределах суток, конец должен быть позже начала.</span>{/if}
+  {/if}
+  <button type="button" disabled={!token || submitting || retrying || disabled || !quickRangeValid} onclick={quickExport}>Быстрый экспорт</button>
   {#if quickPresetName}<span>Последний быстрый экспорт: {quickPresetName}</span>{/if}
   {#if !libraryPreset}
   <label>Пресет <select aria-label="Пресет видеоэкспорта Filmcraft" value={preset} onchange={(event) => { preset = event.currentTarget.value as FilmcraftExportPreset; customSize = false; scaling = preset === 'social_vertical' ? 'scaleToFill' : 'scaleToFit' }} disabled={submitting || retrying || disabled}>
