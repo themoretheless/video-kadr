@@ -759,24 +759,72 @@ impl VideoRequest {
             self.max_render_quality,
         )
     }
+    pub(super) fn summary(&self) -> Result<Value> {
+        let (spec, start) = self.spec()?;
+        let encoding = self.encoding(spec)?;
+        let (bitrate, keyframes) = match encoding {
+            RasterEncoding::NativeH264 { target_kbps, max_kbps, mode, keyint, .. } =>
+                (Some((target_kbps, max_kbps, mode)), Some(keyint)),
+            RasterEncoding::NativeHevc { target_kbps, max_kbps, cbr, keyint, .. } => {
+                use crate::domain::filmcraft_export_h264::BitrateMode::{Cbr, Vbr1Pass};
+                (Some((target_kbps, max_kbps, if cbr { Cbr } else { Vbr1Pass })), Some(keyint))
+            }
+            RasterEncoding::MxfH264 { bitrate, keyint, .. } => {
+                use crate::domain::filmcraft_export_h264::BitrateSettings;
+                let bitrate = match bitrate {
+                    Some(bitrate) => bitrate,
+                    None => BitrateSettings { adaptive_bpp: Some(0.3), ..Default::default() }
+                        .resolve(spec.width, spec.height, spec.frame_rate)?,
+                };
+                let fps = f64::from(spec.frame_rate.numerator) / f64::from(spec.frame_rate.denominator);
+                (Some((bitrate.target_kbps, bitrate.max_kbps, bitrate.mode)),
+                    Some(keyint.unwrap_or_else(|| (2.0 * fps).round().max(1.0) as u32)))
+            }
+            _ => (None, None),
+        };
+        let estimated_bytes = self.estimate_bytes(spec, start, bitrate.map(|b| b.0))?;
+        let video = (!self.preset.audio_only()).then(|| serde_json::json!({
+            "codec": self.preset.video_codec(),
+            "width": spec.width, "height": spec.height,
+            "frameRate": spec.frame_rate, "pixelAspect": self.pixel_aspect.unwrap_or((1, 1)),
+            "profile": self.preset.h264().then_some(self.h264_profile),
+            "level": self.h264_level.filter(|_| self.preset.h264()),
+            "keyframeDistance": keyframes,
+            "mjpegQuality": matches!(self.preset, ExportPreset::Mjpeg).then_some(self.mjpeg_quality.clamp(1, 100)),
+            "bitrate": bitrate.map(|(target, max, mode)| serde_json::json!({
+                "targetKbps": target, "maxKbps": max, "mode": mode
+            })),
+        }));
+        let audio = if self.has_audio() {
+            let codec = self.audio_codec();
+            Some(serde_json::json!({
+                "codec": codec, "sampleRate": self.audio_sample_rate()?,
+                "channels": self.audio_channels()?,
+                "bitrateKbps": if codec == "aac" { Some(self.resolved_audio()?.aac_bps() / 1000) } else { None },
+                "bits": codec.starts_with("pcm").then(|| if codec == "pcm_f32le" { 32 } else { self.audio_bits() }),
+            }))
+        } else {
+            None
+        };
+        Ok(serde_json::json!({
+            "preset": self.preset, "container": self.extension(), "video": video,
+            "audio": audio, "estimatedBytes": estimated_bytes,
+        }))
+    }
+
     /// Filmcraft's nominal codec rates applied to the actual native export plan.
-    pub(super) fn estimate_bytes(&self) -> Result<u64> {
+    fn estimate_bytes(&self, spec: RasterVideoSpec, start: i64, target_kbps: Option<u32>) -> Result<Option<u64>> {
         use filmcraft_prores::Profile;
         use ExportPreset::*;
 
-        let (spec, start) = self.spec()?;
         let fps = f64::from(spec.frame_rate.numerator) / f64::from(spec.frame_rate.denominator);
         let pixels = (spec.width * spec.height) as f64;
         let nominal_bytes = |mbps| mbps * 1e6 * pixels / (1920.0 * 1080.0) / 29.97 / 8.0;
         let prores_bytes = |profile: Profile| nominal_bytes(profile.nominal_mbps_1080p30());
         let video_bytes_per_frame = match self.preset {
             preset if preset.h264() || matches!(preset, Hevc) => {
-                let bitrate = self.bitrate.unwrap_or_default().resolve(
-                    spec.width,
-                    spec.height,
-                    spec.frame_rate,
-                )?;
-                f64::from(bitrate.target_kbps) * 1000.0 / 8.0 / fps
+                let Some(target) = target_kbps else { return Ok(None) };
+                f64::from(target) * 1000.0 / 8.0 / fps
             }
             ProresProxy => prores_bytes(Profile::Proxy),
             ProresLt => prores_bytes(Profile::Lt),
@@ -787,13 +835,13 @@ impl VideoRequest {
             DnxhrHq | MxfDnxhrHq | MxfAtomDnxhrHq => nominal_bytes(220.0),
             Apv42210 => pixels * 3.0 / 8.0,
             Apv42212 => pixels * 3.6 / 8.0,
-            Mjpeg => pixels * (0.4 + f64::from(self.mjpeg_quality) / 50.0) / 8.0,
+            Mjpeg => pixels * (0.4 + f64::from(self.mjpeg_quality.clamp(1, 100)) / 50.0) / 8.0,
             PngSequence => pixels * 4.0 * 0.45,
             TiffSequence => pixels * 4.0,
             BmpSequence => pixels * 3.0,
             Gif => pixels * 0.6,
             Wav16 | Wav24 | Aiff16 => 0.0,
-            _ => anyhow::bail!("no size estimate for this codec"),
+            _ => return Ok(None),
         };
         let audio_bytes = if self.has_audio() {
             let audio = self.resolved_audio()?;
@@ -806,7 +854,7 @@ impl VideoRequest {
         } else {
             0.0
         };
-        Ok((video_bytes_per_frame * spec.frames as f64 + audio_bytes).round() as u64)
+        Ok(Some((video_bytes_per_frame * spec.frames as f64 + audio_bytes).round() as u64))
     }
 
     pub(super) fn spec(&self) -> Result<(RasterVideoSpec, i64)> {

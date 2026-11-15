@@ -1919,11 +1919,26 @@ export type FilmcraftImageOverlay = Omit<FilmcraftTextOverlay, 'text'> & { sourc
 export type FilmcraftBitrateSettings = { mode: 'cbr' | 'vbr1Pass' | 'vbr2Pass'; targetKbps: number; maxKbps?: number; adaptiveBpp?: number }
 export type FilmcraftH264AudioSettings = { codec?: 'auto' | 'aac' | 'pcm'; bitrateKbps?: number; bits?: number; sampleRate?: number; channels?: number }
 export type FilmcraftVideoRequest = { mjpegQuality?: number; captionSidecar?: string; h264Level?: number; burnCaptions?: boolean; scale?: number; libraryPreset?: string; document: string; sequenceId: string; startFrames?: string; frames?: number; range?: 'entire' | 'inOut' | 'workArea'; sourceRange?: FilmcraftSourceRange; sources: Record<string, string>; withAudio?: boolean; preset?: FilmcraftExportPreset; frameSize?: [number, number]; frameRate?: { numerator: number; denominator: number }; keyframeDistance?: number; h264Profile?: 'baseline' | 'main' | 'high'; multiplexer?: 'mp4' | 'mov'; h264Audio?: FilmcraftH264AudioSettings; audio?: FilmcraftH264AudioSettings; bitrate?: FilmcraftBitrateSettings; scaling?: FilmcraftScaling; pixelAspect?: [number, number]; maxRenderQuality?: boolean; metadata?: FilmcraftExportMetadata; videoLimiter?: FilmcraftVideoLimiter; loudness?: { enabled: boolean; targetLufs?: number; truePeakDbtp?: number }; nameOverlay?: FilmcraftTextOverlay; timecodeOverlay?: FilmcraftTextOverlay; imageOverlay?: FilmcraftImageOverlay }
+export type FilmcraftExportSummary = {
+  preset: FilmcraftExportPreset
+  container: string
+  video: null | {
+    codec: string; width: number; height: number
+    frameRate: { numerator: number; denominator: number }; pixelAspect: [number, number]
+    profile: string | null; level: number | null; keyframeDistance: number | null; mjpegQuality: number | null
+    bitrate: null | { targetKbps: number; maxKbps: number; mode: string }
+  }
+  audio: null | { codec: string; sampleRate: number; channels: number; bitrateKbps: number | null; bits: number | null }
+  estimatedBytes: number | null
+}
+export function summarizeFilmcraftExport(token: string, input: FilmcraftVideoRequest, signal?: AbortSignal): Promise<FilmcraftExportSummary> {
+  return requestJson('/api/compositions/filmcraft/video-jobs/summary', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
+}
 export function startFilmcraftVideoJob(token: string, input: FilmcraftVideoRequest, signal?: AbortSignal): Promise<{ jobId: string; mode: 'video_only' | 'video_audio' | 'audio_only'; container: 'mkv' | 'mp4' | 'mov' | 'mxf' | 'zip' | 'gif' | 'wav' | 'aiff' }> {
   return requestJson('/api/compositions/filmcraft/video-jobs', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
 }
 export type FilmcraftQuickExportRequest = { wait?: boolean; document: string; sequenceId: string; sources: Record<string, string>; preset?: string; settings?: Record<string, unknown>; range?: 'entire' | 'inOut' | 'workArea' | 'custom'; sourceRange?: { startTicks: string; endTicks: string } }
-export function estimateFilmcraftQuickExport(token: string, input: FilmcraftQuickExportRequest, signal?: AbortSignal): Promise<{ presetName: string; estimatedBytes: number }> {
+export function estimateFilmcraftQuickExport(token: string, input: FilmcraftQuickExportRequest, signal?: AbortSignal): Promise<{ presetName: string; estimatedBytes: number | null }> {
   return requestJson('/api/compositions/filmcraft/quick-export/estimate', { method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal })
 }
 export type FilmcraftQuickExportJob = Awaited<ReturnType<typeof startFilmcraftVideoJob>> & { presetName: string; status?: Job['status']; result?: Job['result'] | null; error?: string | null }

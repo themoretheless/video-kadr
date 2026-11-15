@@ -1,9 +1,9 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { estimateFilmcraftQuickExport, listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets } from '$lib/api'
+import { summarizeFilmcraftExport, estimateFilmcraftQuickExport, listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets } from '$lib/api'
 import FilmcraftVideoExportPanel from './FilmcraftVideoExportPanel.svelte'
-vi.mock('$lib/api', () => ({ estimateFilmcraftQuickExport: vi.fn(), startFilmcraftQuickExportJob: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), listFilmcraftExportPresets: vi.fn(), editFilmcraftExportPresets: vi.fn() }))
+vi.mock('$lib/api', () => ({ summarizeFilmcraftExport: vi.fn(), estimateFilmcraftQuickExport: vi.fn(), startFilmcraftQuickExportJob: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), listFilmcraftExportPresets: vi.fn(), editFilmcraftExportPresets: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 const id = '12345678-1234-1234-1234-123456789abc'
 function button(text: string) { return [...document.querySelectorAll('button')].find(button => button.textContent === text)! }
@@ -1084,5 +1084,22 @@ it('blocks stale two-pass settings when changing H264 to HEVC', async () => {
   mode.value = 'vbr2Pass'; mode.dispatchEvent(new Event('change', { bubbles: true })); await tick()
   preset.value = 'hevc'; preset.dispatchEvent(new Event('change', { bubbles: true })); await tick()
   expect(button('Экспортировать видео без звука').disabled).toBe(true)
+  expect(startFilmcraftVideoJob).not.toHaveBeenCalled()
+})
+
+
+it('shows resolved standard export settings without starting an export', async () => {
+  vi.mocked(summarizeFilmcraftExport).mockResolvedValue({
+    preset: 'lossless', container: 'mkv', estimatedBytes: null, audio: null,
+    video: { codec: 'ffv1', width: 1920, height: 1080, frameRate: { numerator: 30000, denominator: 1001 }, pixelAspect: [1, 1], profile: null, level: null, keyframeDistance: null, mjpegQuality: null, bitrate: null },
+  })
+  await open()
+  const details = [...document.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Сводка экспорта')!
+  details.open = true
+  details.dispatchEvent(new Event('toggle'))
+  await vi.waitFor(() => expect(details.textContent).toContain('1920×1080'))
+  expect(details.textContent).toContain('29,97')
+  expect(details.textContent).toContain('Без аудио')
+  expect(details.textContent).not.toContain('Примерный размер')
   expect(startFilmcraftVideoJob).not.toHaveBeenCalled()
 })

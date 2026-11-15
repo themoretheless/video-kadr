@@ -64,10 +64,23 @@ pub async fn submit(
     let accepted=enqueue_prepared(&state,&owner,prepared).await?;
     Ok((StatusCode::ACCEPTED,Json(json!(accepted))))
 }
-pub(super) async fn prepare(state:&AppState, headers:&HeaderMap, owner:&str, mut body:Value)->AppResult<PreparedExport> {
+pub async fn summary(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ApiJson(body): ApiJson<Value>,
+) -> AppResult<Json<Value>> {
+    let owner = super::publish::authenticated_actor(&state, &headers).await?;
+    resolve_request(&state, &owner, body)
+        .await?
+        .summary()
+        .map(Json)
+        .map_err(|error| AppError::bad_request(error.to_string()))
+}
+
+async fn resolve_request(state: &AppState, owner: &str, mut body: Value) -> AppResult<VideoRequest> {
     if let Some(name)=body.as_object_mut().and_then(|object|object.remove("libraryPreset")) {
         let name=name.as_str().ok_or_else(||AppError::bad_request("libraryPreset must be a name"))?;
-        let library=state.db.filmcraft_export_presets(&owner).await.map_err(|error|AppError::internal("read export presets",error))?;
+        let library=state.db.filmcraft_export_presets(owner).await.map_err(|error|AppError::internal("read export presets",error))?;
         let preset=library.find(name).ok_or_else(||AppError::bad_request("unknown export preset"))?;
         let mut resolved=crate::domain::filmcraft_export_preset_resolve::request_patch(&preset.settings).map_err(|error|AppError::bad_request(error.to_string()))?;
         let input=body.as_object().ok_or_else(||AppError::bad_request("export request must be an object"))?;
@@ -93,7 +106,11 @@ pub(super) async fn prepare(state:&AppState, headers:&HeaderMap, owner:&str, mut
             .map_err(|error| AppError::bad_request(error.to_string()))?;
         body["sourceRange"] = json!(range);
     }
-    let request:VideoRequest=serde_json::from_value(body).map_err(|error|AppError::bad_request(error.to_string()))?;
+    serde_json::from_value(body).map_err(|error| AppError::bad_request(error.to_string()))
+}
+
+pub(super) async fn prepare(state:&AppState, headers:&HeaderMap, owner:&str, body:Value)->AppResult<PreparedExport> {
+    let request = resolve_request(state, owner, body).await?;
     request
         .spec()
         .map_err(|e| AppError::bad_request(e.to_string()))?;

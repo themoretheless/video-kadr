@@ -51,10 +51,10 @@ pub async fn estimate(
     let (name, body) = resolve(&state, &owner, request).await?;
     let export: super::filmcraft_video_export::VideoRequest =
         serde_json::from_value(body).map_err(|error| AppError::bad_request(error.to_string()))?;
-    let bytes = export
-        .estimate_bytes()
+    let summary = export
+        .summary()
         .map_err(|error| AppError::bad_request(error.to_string()))?;
-    Ok(Json(json!({"presetName": name, "estimatedBytes": bytes})))
+    Ok(Json(json!({"presetName": name, "estimatedBytes": summary["estimatedBytes"]})))
 }
 
 async fn resolve(state: &AppState, owner: &str, request: QuickRequest) -> AppResult<(String, Value)> {

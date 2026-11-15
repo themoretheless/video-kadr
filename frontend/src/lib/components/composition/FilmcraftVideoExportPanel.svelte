@@ -1,7 +1,7 @@
 <script lang="ts">
   import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
   import { captionExtensions, captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
-  import { estimateFilmcraftQuickExport, listFilmcraftExportPresets, type FilmcraftQuickExportRequest, type FilmcraftLibraryPreset } from '$lib/api'
+  import { summarizeFilmcraftExport, type FilmcraftExportSummary, estimateFilmcraftQuickExport, listFilmcraftExportPresets, type FilmcraftQuickExportRequest, type FilmcraftLibraryPreset } from '$lib/api'
   import FilmcraftExportQueue from './FilmcraftExportQueue.svelte'
   import FilmcraftExportPresetLibrary from './FilmcraftExportPresetLibrary.svelte'
   import { startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, type FilmcraftVideoRequest, type FilmcraftVideoHistoryEntry, type FilmcraftExportPreset, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftTextOverlay, type FilmcraftOverlayPlacement, type FilmcraftImageOverlay, type FilmcraftBitrateSettings } from '$lib/api'
@@ -228,7 +228,7 @@
       }
     }
   }
-  let quickEstimate = $state<{ presetName: string; estimatedBytes: number }>()
+  let quickEstimate = $state<{ presetName: string; estimatedBytes: number | null }>()
   $effect(() => {
     quickEstimate = undefined
     if (!token || !quickOptionsOpen || disabled || !quickRangeValid) return
@@ -278,6 +278,39 @@
       : { range: exportRange }
     return libraryPreset ? { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), libraryPreset } : { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), ...(!audioOnly && !burnCaptions ? { burnCaptions: false } : {}), ...(captionFormat ? { captionSidecar: captionFormat } : {}), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
   }
+  let summaryOpen = $state(false)
+  let exportSummary = $state<FilmcraftExportSummary>()
+  let summaryError = $state('')
+  const summaryNumber = new Intl.NumberFormat('ru', { maximumFractionDigits: 3 })
+  const codecNames: Record<string, string> = { h264: 'H.264', hevc: 'HEVC Main', dnxhd: 'DNxHR', prores: 'ProRes', apv: 'APV', mjpeg: 'Motion JPEG' }
+  const videoNames: Partial<Record<FilmcraftExportPreset, string>> = {
+    prores_proxy: 'ProRes 422 Proxy', prores_lt: 'ProRes 422 LT', prores_standard: 'ProRes 422',
+    prores_hq: 'ProRes 422 HQ', mxf_prores_hq: 'ProRes 422 HQ', apv42210: 'APV 422-10', apv42212: 'APV 422-12',
+    dnxhr_lb: 'DNxHR LB', dnxhr_sq: 'DNxHR SQ', dnxhr_hq: 'DNxHR HQ', mxf_dnxhr_hq: 'DNxHR HQ', mxf_atom_dnxhr_hq: 'DNxHR HQ',
+  }
+  function sizeLabel(bytes: number) {
+    const unit = bytes >= 1e9 ? [1e9, 'ГБ'] as const : bytes >= 1e6 ? [1e6, 'МБ'] as const : [1e3, 'КБ'] as const
+    return `${summaryNumber.format(bytes / unit[0])} ${unit[1]}`
+  }
+  $effect(() => {
+    exportSummary = undefined
+    summaryError = ''
+    if (!summaryOpen || !token || disabled || !valid) return
+    const owner = token
+    const input = buildRequest()
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      void summarizeFilmcraftExport(owner, input, controller.signal).then(summary => {
+        if (!controller.signal.aborted) exportSummary = summary
+      }).catch(error => {
+        if (!controller.signal.aborted) summaryError = error instanceof Error ? error.message : String(error)
+      })
+    }, 150)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  })
   async function start() {
     const session = active
     if (!session?.token || !current(session) || submitting || retrying || disabled || !valid) return
@@ -362,7 +395,7 @@
     {#if quickPresetError}<span role="alert">{quickPresetError}</span>{/if}
     <label><input type="checkbox" checked={quickCaptionOverride} disabled={submitting || retrying || disabled}
       onchange={event => { quickCaptionOverride = event.currentTarget.checked }} />Применить настройки субтитров из этой панели</label>
-    {#if quickEstimate}
+    {#if quickEstimate && quickEstimate.estimatedBytes !== null}
       <output>Примерный размер ({quickEstimate.presetName}) {new Intl.NumberFormat('ru', { maximumFractionDigits: 2 }).format(quickEstimate.estimatedBytes / 1e6)} МБ</output>
     {/if}
   </details>
@@ -622,6 +655,32 @@
     <label>Конец экспорта, с <input inputmode="decimal" bind:value={exportEnd} disabled={submitting || retrying || disabled} /></label>
     {#if exportEnd.trim() && !exactExportRange}<span>Начало и конец должны быть в пределах суток, конец должен быть позже начала.</span>{/if}
   {/if}
+  <details ontoggle={event => { summaryOpen = event.currentTarget.open }}>
+    <summary>Сводка экспорта</summary>
+    {#if exportSummary}
+      {@const { video, audio, container, estimatedBytes, preset: resolvedPreset } = exportSummary}
+      <dl>
+        <dt>Контейнер</dt><dd>{container.toUpperCase()}</dd>
+        <dt>Видео</dt>
+        <dd>{#if video}
+          {videoNames[resolvedPreset] ?? codecNames[video.codec] ?? video.codec.toUpperCase()} · {video.width}×{video.height} · {summaryNumber.format(video.frameRate.numerator / video.frameRate.denominator)} кадр/с · прогрессивная развёртка · пиксель {video.pixelAspect.join(':')}
+          {#if video.profile} · {video.profile}{video.level ? ` L${video.level / 10}` : ' · автоуровень'}{/if}
+          {#if video.bitrate}
+            · {video.bitrate.mode === 'cbr' ? 'CBR' : video.bitrate.mode === 'vbr2Pass' ? 'VBR, 2 прохода' : 'VBR, 1 проход'} · {summaryNumber.format(video.bitrate.targetKbps / 1000)} Мбит/с
+            {#if video.bitrate.mode !== 'cbr'} · до {summaryNumber.format(video.bitrate.maxKbps / 1000)} Мбит/с{/if}
+          {/if}
+          {#if video.keyframeDistance} · ключевой кадр каждые {video.keyframeDistance} кадр.{/if}
+          {#if video.mjpegQuality !== null} · качество {video.mjpegQuality}{/if}
+        {:else}Без видео{/if}</dd>
+        <dt>Аудио</dt>
+        <dd>{#if audio}
+          {audio.bits ? `PCM ${audio.bits} бит${audio.codec === 'pcm_f32le' ? ' float' : ''}` : audio.codec.toUpperCase()} · {summaryNumber.format(audio.sampleRate)} Гц · {audio.channels === 1 ? 'Моно' : audio.channels === 6 ? '5.1' : 'Стерео'}
+          {#if audio.bitrateKbps} · {audio.bitrateKbps} кбит/с{/if}
+        {:else}Без аудио{/if}</dd>
+        {#if estimatedBytes !== null}<dt>Примерный размер</dt><dd>{sizeLabel(estimatedBytes)}</dd>{/if}
+      </dl>
+    {:else if summaryError}<span role="alert">{summaryError}</span>{/if}
+  </details>
   <button type="button" disabled={!token || submitting || retrying || disabled || !valid} onclick={start}>{libraryPreset ? 'Экспортировать с сохранённым пресетом' : audioOnly ? 'Экспортировать аудио' : preset === 'gif' ? 'Экспортировать GIF' : imageSequence ? 'Экспортировать последовательность' : withAudio ? 'Экспортировать видео со звуком' : 'Экспортировать видео без звука'}</button>
   {#if submitting}<span role="status">Добавление экспорта в очередь…</span>{/if}
   {#if busy && jobId}<span>Можно добавить следующий экспорт в очередь</span>{/if}
