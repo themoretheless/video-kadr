@@ -30,6 +30,9 @@
   const cropFields = [
     ['cropLeft', 'Слева'], ['cropTop', 'Сверху'], ['cropRight', 'Справа'], ['cropBottom', 'Снизу'],
   ] as const
+  const anchorFields = [
+    ['anchorX', 'Привязка по горизонтали'], ['anchorY', 'Привязка по вертикали'],
+  ] as const
   function changeShadowMode(mode: string) {
     appearance.concatShadow=mode==='concat' || undefined
     if(mode==='off')appearance.shadowAlpha=0
@@ -154,6 +157,13 @@
       <label>Масштаб по горизонтали, ×<input type="number" min="0" step="any" bind:value={appearance.scaleX} disabled={disabled||nestedHistory.busy} /></label>
       <label>Масштаб по вертикали, ×<input type="number" min="0" step="any" bind:value={appearance.scaleY} disabled={disabled||nestedHistory.busy} /></label>
       <label>Поворот, °<input type="number" step="any" bind:value={appearance.rotation} disabled={disabled||nestedHistory.busy} /></label>
+      {#each anchorFields as [field, label] (field)}
+        <label>{label}, %<input type="number" min="0" max="100" step="any"
+          value={appearance[field] === undefined ? '' : appearance[field] * 100}
+          placeholder={String(clip.transform[field] * 100)}
+          oninput={event=>{appearance[field]=event.currentTarget.value==='' ? undefined : event.currentTarget.valueAsNumber / 100}}
+          disabled={disabled||nestedHistory.busy} /></label>
+      {/each}
       {#if clip.transform.position || clip.transform.concatAnimation || clip.transform.x.mode==='keyframes' || clip.transform.y.mode==='keyframes'}
         <p>Изменение позиции сдвигает всю траекторию движения.</p>
       {/if}

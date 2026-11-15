@@ -30,6 +30,8 @@ export type CaptionAppearance = Pick<WireTextStyle,
     readonly scaleX: number
     readonly scaleY: number
     readonly rotation: number
+    readonly anchorX?: number
+    readonly anchorY?: number
   }
 
 function rgbHex({ red, green, blue }: WireRgba): string {
@@ -154,6 +156,7 @@ export function captionAppearance(clip: WireTextClip): CaptionAppearance {
     flipH: preparation?.flipH ?? false, flipV: preparation?.flipV ?? false,
     ...positionReference(clip.transform),
     ...poseReference(clip.transform),
+    anchorX: clip.textAnchor?.[0], anchorY: clip.textAnchor?.[1],
   }
 }
 
@@ -177,7 +180,8 @@ export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionApp
     left.backgroundRadius === right.backgroundRadius && left.backgroundAlpha === right.backgroundAlpha &&
     left.paddingX === right.paddingX && left.paddingY === right.paddingY && sameCaptionFraming(left, right) &&
     left.x === right.x && left.y === right.y &&
-    left.scaleX === right.scaleX && left.scaleY === right.scaleY && left.rotation === right.rotation
+    left.scaleX === right.scaleX && left.scaleY === right.scaleY && left.rotation === right.rotation &&
+    left.anchorX === right.anchorX && left.anchorY === right.anchorY
 }
 
 /** Edit a cue without changing its clock, placement, or retained animation. */
@@ -202,7 +206,8 @@ export function setNativeCaptionText(
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
     const { textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, textColor, textAlpha, backgroundColor, backgroundAlpha,
       strokeColor, strokeAlpha, shadowColor, shadowAlpha, paddingX, paddingY,
-      cropLeft, cropTop, cropRight, cropBottom, flipH, flipV, x, y, scaleX, scaleY, rotation, ...style } = appearance.value
+      cropLeft, cropTop, cropRight, cropBottom, flipH, flipV, x, y, scaleX, scaleY, rotation,
+      anchorX, anchorY, ...style } = appearance.value
     if (!(style.fontSize >= 1 && style.fontSize <= 1000)) throw new Error('Размер шрифта должен быть от 1 до 1000 px')
     if (!style.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
     if (blendMode !== undefined && !COMPOSITION_BLEND_MODES.includes(blendMode)) throw new Error('Неизвестный режим наложения')
@@ -233,7 +238,10 @@ export function setNativeCaptionText(
       transform = { ...transform, concatPreparation: crop.some(edge => edge > 0) || flipH || flipV
         ? { crop, canvas, flipH, flipV } : undefined }
     }
-    edited = { ...edited, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, transform, style: {
+    const textAnchor = anchorX === undefined && anchorY === undefined
+      ? undefined : [anchorX ?? transform.anchorX, anchorY ?? transform.anchorY] as const
+    if (textAnchor?.some(axis => !(axis >= 0 && axis <= 1))) throw new Error('Точка привязки должна быть внутри блока текста')
+    edited = { ...edited, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, textAnchor, transform, style: {
       ...clip.style, ...style, backgroundPadding,
       color: editedColor(clip.style.color, textColor, textAlpha),
       background: editedColor(clip.style.background, backgroundColor, backgroundAlpha),

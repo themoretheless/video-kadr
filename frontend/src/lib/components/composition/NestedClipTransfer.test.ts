@@ -110,7 +110,7 @@ it('saves subtitle text, typography and background together and restores them wi
       .find(section => section.querySelector('summary')?.textContent === 'Положение в кадре')!
     position.open = true
     const positionFields = position.querySelectorAll<HTMLInputElement>('input')
-    for (const [index, value] of ['20', '-35', '1.5', '0.75', '30'].entries()) {
+    for (const [index, value] of ['20', '-35', '1.5', '0.75', '30', '25', '75'].entries()) {
       positionFields[index]!.value = value
       positionFields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
     }
@@ -119,7 +119,8 @@ it('saves subtitle text, typography and background together and restores them wi
     await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
     expect(api.nestedDurations).toHaveBeenCalledTimes(1)
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
-      text: 'Edited', textBoxWidth: 200, textBoxHeight: 54, opacityMultiplier: 0.45, blendMode: 'screen', opacity: opacityKeys,
+      text: 'Edited', textBoxWidth: 200, textBoxHeight: 54, opacityMultiplier: 0.45, blendMode: 'screen',
+      opacity: opacityKeys, textAnchor: [0.25, 0.75],
       transform: { x: { mode: 'constant', value: 20 }, y: { mode: 'constant', value: -35 },
         scaleX: { mode: 'constant', value: 1.5 }, scaleY: { mode: 'constant', value: 0.75 },
         rotationDegrees: { mode: 'constant', value: 30 },
@@ -149,6 +150,17 @@ it('saves subtitle text, typography and background together and restores them wi
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
       style: { concatShadow: undefined, shadow: { alpha: 0 } },
     })
+    for (const field of [positionFields[5]!, positionFields[6]!]) {
+      field.value = ''
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    await tick()
+    save.click()
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(4))
+    expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
+      textAnchor: undefined, transform: { anchorX: 0.5, anchorY: 0.5 },
+    })
+    undoNestedComposition()
     undoNestedComposition()
     undoNestedComposition()
     undoNestedComposition()
