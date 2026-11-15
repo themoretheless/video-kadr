@@ -120,6 +120,18 @@ it('exports a selected native caption track from the active timeline with its ex
    }],
   }, 'vtt', { dropFrame: true, rate: { num: 30000, den: 1001 } })
   expect(target.querySelector<HTMLAnchorElement>('a[download]')?.download).toBe('Dialogue.vtt')
+  nestedComposition.timeUs = 1_500_001
+  const offset = [...target.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Экспортировать от курсора')!.querySelector('input')!
+  offset.checked = true
+  offset.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  exportButton.click()
+  await vi.waitFor(() => expect(writeCaptionFile).toHaveBeenCalledTimes(2))
+  expect(vi.mocked(writeCaptionFile).mock.calls[1]?.[0]).toEqual(vi.mocked(writeCaptionFile).mock.calls[0]?.[0])
+  expect(vi.mocked(writeCaptionFile).mock.calls[1]?.[2]).toEqual({
+   offsetTick: '381024254016', dropFrame: true, rate: { num: 30000, den: 1001 },
+  })
+  await vi.waitFor(() => expect(target.querySelector('a[download]')).not.toBeNull())
   nestedComposition.activeCompositionId = 'root'
   await tick()
   expect(revoke).toHaveBeenCalledWith('blob:caption')

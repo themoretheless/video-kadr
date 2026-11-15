@@ -139,7 +139,7 @@
     {#key `${activeId}/${selectedTrack.id}`}
       <CaptionFileExport composition={{ canvas: { fps: content.canvas.fpsMilli / 1000,
         fpsRate: content.canvas.fpsRate ?? { numerator: content.canvas.fpsMilli, denominator: 1000 } },
-        captionTracks: fileTracks }} activeId={selectedTrack.id} />
+        captionTracks: fileTracks }} activeId={selectedTrack.id} playheadTicks={nestedComposition.timeUs} />
     {/key}
   {/if}
   {#if error}<p role="alert">{error}</p>{/if}

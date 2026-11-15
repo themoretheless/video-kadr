@@ -2,12 +2,15 @@
  import {writeCaptionFile,type CaptionFileFormat} from '$lib/api'
  import type {CaptionTrack, CompositionCanvas} from '$lib/composition/types'
  import {captionFileDocument} from '$lib/composition/captionFileExport'
+ import {exactCaptionTicks} from '$lib/composition/captionTime'
  import {canvasTimeGrid} from '$lib/composition/timeGrid'
- let {composition,activeId=''}:{
+ let {composition,activeId='',playheadTicks}:{
   composition:{readonly canvas:Pick<CompositionCanvas,'fps'|'fpsRate'>;readonly captionTracks?:readonly CaptionTrack[]}
   activeId?:string
+  playheadTicks?:number
  }=$props()
  let format=$state<CaptionFileFormat>('srt'),dropFrame=$state(true),busy=$state(false),error=$state(''),url=$state(''),filename=$state('')
+ let fromPlayhead=$state(false)
  const track=$derived(composition.captionTracks?.find(track=>track.id===activeId)??composition.captionTracks?.[0])
  const formats=['srt','vtt','scc','mcc','stl','ttml','dfxp'] as const
  function clear(){if(url)URL.revokeObjectURL(url);url='';filename=''}
@@ -18,7 +21,10 @@
   busy=true;error='';clear()
   try{
    const rate=canvasTimeGrid(composition.canvas),name=track.name
-   const result=await writeCaptionFile(captionFileDocument(track),format,{dropFrame,rate:{num:rate.numerator,den:rate.denominator}})
+   const offset=fromPlayhead && playheadTicks !== undefined ? exactCaptionTicks(playheadTicks).toString() : undefined
+   const result=await writeCaptionFile(captionFileDocument(track),format,{
+    dropFrame,rate:{num:rate.numerator,den:rate.denominator},...(offset === undefined ? {} : {offsetTick:offset}),
+   })
    if(disposed)return
    const binary=atob(result.dataBase64),bytes=Uint8Array.from(binary,char=>char.charCodeAt(0))
    url=URL.createObjectURL(new Blob([bytes],{type:'application/octet-stream'}))
@@ -29,6 +35,9 @@
 <div class="export">
  <label>Формат экспорта<select aria-label="Формат экспорта субтитров" value={format} disabled={busy} onchange={event=>format=event.currentTarget.value as CaptionFileFormat}>{#each formats as item (item)}<option value={item}>{item.toUpperCase()}</option>{/each}</select></label>
  <label class="check"><input type="checkbox" aria-label="Drop-frame субтитров" checked={dropFrame} disabled={busy} onchange={event=>dropFrame=event.currentTarget.checked}/>Drop-frame</label>
+ {#if playheadTicks !== undefined}
+  <label class="check"><input type="checkbox" disabled={busy} checked={fromPlayhead} onchange={event=>fromPlayhead=event.currentTarget.checked} />Экспортировать от курсора</label>
+ {/if}
  <button type="button" class="btn ghost sm" disabled={busy||!track} onclick={()=>void exportFile()}>Экспортировать дорожку субтитров</button>
  {#if url}<a href={url} download={filename}>Скачать {filename}</a>{/if}
  {#if busy}<span role="status">Экспорт субтитров…</span>{/if}

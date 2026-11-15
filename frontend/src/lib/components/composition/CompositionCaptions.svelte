@@ -74,7 +74,7 @@
   </fieldset>
  {/each}
  <CaptionFileImport {composition} {onchange} onactive={id=>activeTrackId=id} />
- <CaptionFileExport {composition} activeId={activeTrackId} />
+ <CaptionFileExport {composition} activeId={activeTrackId} {playheadTicks} />
  <CaptionEditControls {composition} {selected} {playheadTicks} {onchange} onselection={ids=>selected=ids} />
  <button type="button" class="btn ghost sm" disabled={busy||!selected.length} onclick={()=>void upgrade()}>Преобразовать в графику</button>
  {#if busy}<p role="status">{busyLabel}</p>{/if}
