@@ -413,6 +413,7 @@ mod tests {
             blend_mode: super::super::composition::BlendMode::Normal,
         };
         NestedCompositionProject {
+            cover_jpeg: None,
             project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![],

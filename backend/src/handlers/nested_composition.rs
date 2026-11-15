@@ -44,6 +44,7 @@ mod tests {
     #[tokio::test]
     async fn handler_returns_native_frame_wire_and_refuses_missing_root() {
         let project = NestedCompositionProject {
+            cover_jpeg: None,
             project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![],

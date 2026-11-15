@@ -1145,6 +1145,7 @@ export interface NativeProjectLut {readonly id:string;readonly name:string;reado
 export interface NativeProjectFont {readonly family:string;readonly data:string}
 export interface NativeProjectMediaItem { librarySourceId?:string; source: import('./composition/types').CompositionSource; name: string; placeholder?: boolean; concatMetadata?:Readonly<Record<string,unknown>> }
 export interface NativeNestedProject {
+  coverJpeg?: string
   projectMedia?: Readonly<Record<string,NativeProjectMediaItem>>
   fonts?:readonly NativeProjectFont[]
   timelineOrder?: readonly string[]

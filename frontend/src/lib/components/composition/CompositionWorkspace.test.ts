@@ -593,7 +593,7 @@ describe('CompositionWorkspace local integrations', () => {
 it('opens the native workspace with unavailable catalogs and downloads its saved template without restarting playback effects',async()=>{
  vi.mocked(fetch).mockImplementation(()=>Promise.resolve(new Response(JSON.stringify({error:'offline fixture'}),{status:503})))
  const content=buildCompositionWireDocument(createComposition({width:16,height:16,fps:24,backgroundColor:'#000000'}))
- nestedComposition.document={schemaVersion:1,root:'root',compositions:{root:{content,instances:[]}}}
+ nestedComposition.document={schemaVersion:1,root:'root',coverJpeg:'/9j/2Q==',compositions:{root:{content,instances:[]}}}
  nestedComposition.activeCompositionId='root';nestedComposition.projectId='saved/native';nestedComposition.name='Unsaved title'
  const before=JSON.stringify(nestedComposition.document),downloads:string[]=[]
  const durations=vi.spyOn(api,'nestedDurations').mockResolvedValue({root:1000000})
@@ -604,6 +604,7 @@ it('opens the native workspace with unavailable catalogs and downloads its saved
  const component=mount(CompositionWorkspace,{target})
  try{
   await vi.waitFor(()=>expect(put).toHaveBeenCalled())
+  expect(target.querySelector('img[alt="Обложка проекта"]')?.getAttribute('src')).toBe('data:image/jpeg;base64,/9j/2Q==')
   expect(put.mock.calls[0]![0].data).toEqual(new Uint8ClampedArray([1,2,3,255]))
   await settle();const durationCalls=durations.mock.calls.length,previewCalls=previews.mock.calls.length
   button('Скачать шаблон сохранённой версии').click();await settle()

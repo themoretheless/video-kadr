@@ -35,6 +35,8 @@ pub struct NestedCompositionDocument {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NestedCompositionProject {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_jpeg: Option<String>,
     #[serde(default, skip_serializing_if="BTreeMap::is_empty")]
     pub project_media: BTreeMap<super::composition::SourceId, super::project_media::ProjectMediaItem>,
     #[serde(default,skip_serializing_if="Vec::is_empty")]
@@ -611,6 +613,9 @@ impl NestedCompositionProject {
     }
 
     pub fn dependency_order(&self) -> Result<Vec<String>> {
+        if let Some(cover) = &self.cover_jpeg {
+            ensure!(cover.len() <= 512 * 1024 && cover.starts_with("/9j/"), "Invalid project cover JPEG");
+        }
         super::project_media::validate(&self.project_media)?;
         for (id,item) in &self.project_media {
             if item.library_source_id.is_some() {
@@ -720,6 +725,7 @@ mod tests {
             blend_mode: BlendMode::Normal,
         });
         NestedCompositionProject {
+            cover_jpeg: None,
             project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![],

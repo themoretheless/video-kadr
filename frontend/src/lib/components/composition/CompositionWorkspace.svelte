@@ -453,6 +453,10 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
     <SpacePanel onselectionchange={() => void loadLibrary()} />
   {/if}
   <section class="composition-projectbar card" aria-label="Проект композиции">
+    {#if nestedComposition.document?.coverJpeg}
+      <img class="project-cover" src={`data:image/jpeg;base64,${nestedComposition.document.coverJpeg}`}
+        width="96" height="54" alt="Обложка проекта" />
+    {/if}
     <button class="btn ghost sm" type="button" onclick={()=>{agentSession.view=agentSession.view==='editor'?'agent':'editor'}}>{agentSession.view==='editor'?'Вид агента':'Полный редактор'}</button>
     {#if agentSession.work}<span role="status">Агент: {agentSession.work.reason}</span>{/if}
     <input
@@ -648,6 +652,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
 </main>
 
 <style>
+  .project-cover { object-fit: contain; }
   .agent-view > :global(:not(.composition-projectbar):not(.composition-workspace-grid):not(.native-agent-preview):not(.agent-panel):not([role="alert"]):not([role="status"])) { display:none; }
   .agent-view > .composition-workspace-grid { grid-template-columns:1fr; }
   .agent-view > .composition-workspace-grid > :global(.composition-inspector) { display:none; }

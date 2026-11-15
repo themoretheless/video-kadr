@@ -64,6 +64,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
         let codecs = crate::services::local_enhance_video::resolve_tools().await?;
         let luts = serde_json::from_value(saved.document.get("luts").cloned().unwrap_or_else(|| serde_json::json!([])))?;
         let project_document = crate::domain::nested_composition::NestedCompositionProject {
+            cover_jpeg: None,
             project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![], schema_version: 1, root: "solo".into(), luts,

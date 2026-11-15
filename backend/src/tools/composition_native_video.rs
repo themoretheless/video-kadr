@@ -50,6 +50,7 @@ pub async fn prepare_native_video(
         path: staging.join(format!("{}.native-video.mkv", uuid::Uuid::new_v4())),
     };
     let project = NestedCompositionProject {
+        cover_jpeg: None,
         project_media: Default::default(),
         fonts:vec![],
         timeline_order: vec![],

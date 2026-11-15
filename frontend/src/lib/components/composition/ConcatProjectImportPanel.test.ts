@@ -203,11 +203,12 @@ it('uploads the selected template design and binds its bundled font before conve
    media: [{ ...original.media[0], path: 'assets/design.mov' }],
    fonts: [{ family: 'Title', path: 'assets/title.otf' }],
   }
+  const cover = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAEsAAQEAAAAAAAAAAAAAAAAAAAAHAQEAAAAAAAAAAAAAAAAAAAAFEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAEAAQAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AlYBIa//Z'
   const files = [
    new File([JSON.stringify(template)], 'template.json'),
    new File(['movie'], 'design.mov'),
    new File(['font'], 'title.otf'),
-   new File(['jpeg'], 'poster.jpg'),
+   new File([Uint8Array.from(atob(cover), byte => byte.charCodeAt(0))], 'poster.jpg'),
   ]
   for (const [index, path] of ['template.json', 'assets/design.mov', 'assets/title.otf', 'poster.jpg'].entries()) {
    Object.defineProperty(files[index]!, 'webkitRelativePath', { value: `Design/${path}` })
@@ -236,6 +237,11 @@ it('uploads the selected template design and binds its bundled font before conve
   await vi.waitFor(() => expect(document.body.textContent).toContain('Таймлайнов: 1'))
   click('Открыть импорт как новый проект')
   await vi.waitFor(() => expect(nestedComposition.name).toBe('Client cut'))
+  expect(nestedComposition.document?.coverJpeg).toBe(cover)
+  undoNestedComposition()
+  expect(nestedComposition.document).toBeNull()
+  redoNestedComposition()
+  expect(nestedComposition.document?.coverJpeg).toBe(cover)
   expect(nestedComposition.projectId).toBeNull()
   expect(importConcatProject).toHaveBeenCalledTimes(1)
   await unmount(component!)

@@ -565,6 +565,7 @@ fn convert(
         .cloned()
         .unwrap_or_else(|| order[0].clone());
     let project = NestedCompositionProject {
+        cover_jpeg: None,
         project_media,
         fonts,
         schema_version: 1,

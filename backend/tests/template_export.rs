@@ -72,12 +72,18 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     let mut portable = document.clone();
     portable["compositions"]["root"]["content"]["tracks"] = json!([]);
     use base64::{engine::general_purpose::STANDARD, Engine};
+    let mut cover = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(16, 8, image::Rgb([25, 50, 75])))
+        .write_to(&mut cover, image::ImageFormat::Jpeg).unwrap();
+    portable["coverJpeg"] = json!(STANDARD.encode(cover.into_inner()));
     let font = include_bytes!("../vendor/concat-text/fonts/Inter-Regular.ttf");
     portable["fonts"] = json!([{"family": "Inter", "data": STANDARD.encode(font)}]);
     let concat = state.db.create_owned_composition_project(
         "Portable Concat", &portable, &["design-file".into(), "missing-original".into()],
         &owner.user.username,
     ).await.unwrap();
+    let reloaded = state.db.get_composition_project_for(&concat.id, &owner.user.username).await.unwrap().unwrap();
+    assert_eq!(reloaded.document["coverJpeg"], portable["coverJpeg"]);
     let concat_uri = format!("/api/composition-projects/{}/concat-template", concat.id);
     let concat_request = |token: &str| Request::get(&concat_uri)
         .header(header::AUTHORIZATION, format!("Bearer {token}"))

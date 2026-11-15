@@ -239,13 +239,36 @@
   }
   const chosenName = importingTemplate ? templateProjectName.trim() : ''
   busy = true
-  const accepted = await adoptImportedConcatProject(project, chosenName || importedName(document), () => {
+  const cover = await projectCover(templateDetails?.poster)
+  if (serial !== request) return
+  if (identity() !== expectedContext) {
+   busy = false
+   error = 'Текущий проект изменился; повторите проверку импорта'
+   return
+  }
+  const candidate = cover ? { ...project, coverJpeg: cover } : project
+  const accepted = await adoptImportedConcatProject(candidate, chosenName || importedName(document), () => {
    if (serial !== request || identity() !== expectedContext) throw new Error('Контекст импорта изменился')
   })
   if (serial !== request) return
   busy = false
   if (accepted) applied = true
   else error = nestedHistory.error || 'Импорт не применён'
+ }
+ async function projectCover(file: File | undefined) {
+  if (!file || file.size > 384 * 1024) return undefined
+  try {
+   const bytes = new Uint8Array(await file.arrayBuffer())
+   if (bytes[0] !== 255 || bytes[1] !== 216 || bytes[2] !== 255 ||
+       bytes.at(-2) !== 255 || bytes.at(-1) !== 217) return undefined
+   let data = ''
+   for (let offset = 0; offset < bytes.length; offset += 32768) {
+    data += String.fromCharCode(...bytes.subarray(offset, offset + 32768))
+   }
+   return btoa(data)
+  } catch {
+   return undefined
+  }
  }
  function download(){if(!report)return;const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const link=globalThis.document.createElement('a');link.href=url;link.download='concat-import-report.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),0)}
 </script>

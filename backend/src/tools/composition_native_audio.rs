@@ -46,6 +46,7 @@ pub async fn prepare_native_audio(
     use crate::domain::nested_composition::{NestedCompositionDocument, NestedCompositionProject};
     use std::collections::BTreeMap;
     let project = NestedCompositionProject {
+        cover_jpeg: None,
         project_media: Default::default(),
         fonts:vec![],
         timeline_order: vec![],

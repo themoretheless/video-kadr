@@ -653,6 +653,7 @@ mod tests {
             blend_mode: BlendMode::Normal,
         });
         let project = NestedCompositionProject {
+            cover_jpeg: None,
             project_media: Default::default(),
             fonts:vec![],
             timeline_order: vec![],
