@@ -207,8 +207,13 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     retainOriginalField(source)
   }
   if (editedText.shadow !== previousText.shadow) {
-    if (clip.concatTitle || editedText.shadow !== false || !style?.shadow) return undefined
-    style = { ...style, shadow: { ...style.shadow, alpha: 0 } }
+    const shadow = editedText.shadow === undefined ? true : editedText.shadow
+    if (clip.concatTitle || typeof shadow !== 'boolean' || !style?.shadow) return undefined
+    if (shadow !== (previousText.shadow ?? true)) {
+      style = shadow ? { ...style, concatShadow: true } : {
+        ...style, ...(style.concatShadow ? { concatShadow: false } : {}), shadow: { ...style.shadow, alpha: 0 },
+      }
+    }
     retainOriginalField('shadow')
   }
 

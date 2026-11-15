@@ -1377,6 +1377,7 @@ source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retim
                 timeline_end_tick: 1_000_000,
                 text: "Привет\n字幕".to_owned(),
                 style: TextStyle {
+                    concat_shadow: false,
                     background_padding: None,
                     background_radius: None,
                     line_height: None,

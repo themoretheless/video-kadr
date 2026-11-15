@@ -137,6 +137,12 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   await expect(readConcatTemplateCaptions(pivotSidecar, new File([JSON.stringify(withPivot)], 'template.json')))
     .resolves.toEqual([clips[1]])
   const narrowed = { ...first, text: { ...first.text, maxWidth: 0.625, maxHeight: 0.5, backgroundPaddingX: 4 / 180, backgroundPaddingY: 6 / 180, shadow: false } }
+  const noShadow = { ...staticClip, style: { ...staticClip.style, shadow: { ...staticClip.style.shadow, alpha: 0 } } }
+  const noShadowSidecar = new File([JSON.stringify({ manifestSha256, clips: [
+    ['TL1', noShadow, { clip: { ...first, text: { ...first.text, shadow: false } }, video }], captured[1],
+  ] })], 'video-kadr-caption-clips.json')
+  await expect(readConcatTemplateCaptions(noShadowSidecar, new File([manifest + ' '], 'template.json')))
+    .resolves.toEqual([['TL1', { ...noShadow, style: { ...noShadow.style, concatShadow: true } }], clips[1]])
   const withWidth = { ...source, timelines: [{ id: 'TL1', video, clips: [narrowed, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withWidth)], 'template.json')))
     .resolves.toEqual([

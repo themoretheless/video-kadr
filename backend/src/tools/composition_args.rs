@@ -5465,6 +5465,7 @@ timeline: None,
                     timeline_end_tick: 1_500_000,
                     text: "Привет, мир!\n字幕".into(),
                     style: TextStyle {
+                        concat_shadow: false,
                         background_padding: None,
                         background_radius: None,
                         line_height: None,

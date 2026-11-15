@@ -1519,6 +1519,8 @@ pub enum TextAlignment { Left, Center, Right }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextStyle {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub concat_shadow: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_padding: Option<[f32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3754,6 +3756,7 @@ source_out_tick: 99_000,
                 timeline_end_tick: 1_000_000,
                 text: "safe textfile content".into(),
                 style: TextStyle {
+                    concat_shadow: false,
                     background_padding: None,
                     background_radius: None,
                     line_height: None,

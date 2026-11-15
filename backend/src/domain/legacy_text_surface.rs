@@ -14,7 +14,6 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         let sampled=super::animated_color::PreparedColorTrack::new(super::animated_color::ColorSampleRequest{track:track.clone(),default,times_us:vec![]}).map_err(anyhow::Error::msg)?.sample(local as f64).map_err(anyhow::Error::msg)?;
         [sampled.r as f32/255.,sampled.g as f32/255.,sampled.b as f32/255.,sampled.a as f32/255.]
     }else{rgba(clip.style.color)};
-    let dx=clip.style.shadow_x.round()as f32;let dy=clip.style.shadow_y.round()as f32;
     let font_style = match (clip.style.bold, clip.style.italic) {
         (false, false) => "Regular",
         (true, false) => "Bold",
@@ -22,6 +21,15 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         (true, true) => "Bold Italic",
     };
     let size = clip.style.font_size as f32;
+    let (dx, dy, shadow_color, shadow_blur) = if clip.style.concat_shadow {
+        // Match the source offset and opacity, using the native mask blur.
+        let radius = (size * 0.04).round().max(1.);
+        // Convert the variance of two source box passes to the native blur parameter (3σ).
+        let blur = (6. * radius * (radius + 1.)).sqrt();
+        (size * 0.05, size * 0.07, [0., 0., 0., 150. / 255.], blur)
+    } else {
+        (clip.style.shadow_x.round() as f32, clip.style.shadow_y.round() as f32, rgba(clip.style.shadow), 0.)
+    };
     let leading = clip.style.line_height.map_or(0., |ratio| {
         use filmcraft_text::fonts::{face, resolve};
         let metrics = face(resolve(&clip.style.font_family, font_style).face).metrics(size);
@@ -41,7 +49,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         fill:true,fill_color:color,align:match clip.style.align {None|Some(super::composition::TextAlignment::Left)=>0,Some(super::composition::TextAlignment::Center)=>1,Some(super::composition::TextAlignment::Right)=>2},
         stroke:clip.style.stroke_width.round()>0.,stroke_width:clip.style.stroke_width.round()as f32,stroke_color:rgba(clip.style.stroke),stroke_type:0,
         background:clip.style.background.alpha>0.,background_color:rgba(clip.style.background),background_opacity:100.,background_size:0.,background_radius:clip.style.background_radius.unwrap_or_default(),
-        shadow:clip.style.shadow.alpha>0.,shadow_color:rgba(clip.style.shadow),shadow_opacity:100.,shadow_distance:dx.hypot(dy),shadow_angle:dy.atan2(dx).to_degrees()+90.,shadow_size:0.,shadow_blur:0.,
+        shadow:shadow_color[3]>0.,shadow_color,shadow_opacity:100.,shadow_distance:dx.hypot(dy),shadow_angle:dy.atan2(dx).to_degrees()+90.,shadow_size:0.,shadow_blur,
         position:Some([canvas.0 as f64/2.,canvas.1 as f64/2.]),..Default::default()
     };
     // Anchor against the complete multiline layout before the full-canvas clip transform.
@@ -112,6 +120,22 @@ mod tests {
         assert!(expanded.chunks_exact(4).zip(rounded.chunks_exact(4))
             .any(|(square, rounded)| square[3] > 0 && rounded[3] == 0));
         assert_eq!(glyphs(&rounded), glyphs(&expanded));
+    }
+
+    #[test]
+    fn caption_can_enable_concat_shadow_without_an_authored_shadow() {
+        let mut caption = clip();
+        let pixels = |clip: &TextClip| {
+            render(clip, (64, 64), 1500000, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap().rgba
+        };
+        let original = pixels(&caption);
+        caption.style.concat_shadow = true;
+        let shaded = pixels(&caption);
+        assert!(original.chunks_exact(4).zip(shaded.chunks_exact(4))
+            .any(|(base, shadow)| base[3] == 0 && shadow[..3] == [0; 3] && shadow[3] > 0));
+        caption.style.concat_shadow = false;
+        assert_eq!(pixels(&caption), original);
     }
 
     #[test]
