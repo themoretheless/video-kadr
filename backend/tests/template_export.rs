@@ -56,6 +56,8 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     content["canvas"]["width"] = json!(16);
     content["canvas"]["height"] = json!(8);
     content["tracks"] = json!([{"id":"pictures","kind":"image","name":"Pictures","clips":[{"id":"stand-in","sourceId":"slot","timelineStartTick":0,"durationTicks":2000000,"transform":video_kadr_backend::domain::composition::TransformSpec::default(),"opacity":{"mode":"constant","value":1},"blendMode":"normal"}]}]);
+    let subtitle_documents = json!([{"id":"dialogue","name":"dialogue.srt","text":"1\n00:00:00,000 --> 00:00:01,000\nDialogue"}]);
+    content["metadata"] = json!({"subtitleDocuments":subtitle_documents});
     content["sources"] = json!({"slot":source("slot"),"design":source("design")});
     let document = json!({"schemaVersion":1,"root":"root","compositions":{"root":{"content":content,"instances":[]}},"projectMedia":{"slot":{"source":source("slot"),"librarySourceId":"missing-original","name":"Replace","placeholder":true},"design":{"source":source("design"),"librarySourceId":"design-file","name":"Design"}}});
     let saved = state
@@ -68,8 +70,11 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         )
         .await
         .unwrap();
+    let reopened = state.db.get_composition_project_for(&saved.id, &owner.user.username).await.unwrap().unwrap();
+    assert_eq!(reopened.document.pointer("/compositions/root/content/metadata/subtitleDocuments"), Some(&subtitle_documents));
     let app = support::router(state.clone());
     let mut portable = document.clone();
+    portable["compositions"]["root"]["content"]["metadata"] = json!({});
     portable["compositions"]["root"]["content"]["tracks"] = json!([]);
     use base64::{engine::general_purpose::STANDARD, Engine};
     let mut cover = std::io::Cursor::new(Vec::new());
@@ -210,6 +215,8 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     let parsed =
         video_kadr_backend::template_bundle::read(std::io::Cursor::new(bytes), &stage).unwrap();
     assert_eq!(parsed.assets.len(), 1);
+    let project = serde_json::to_value(&parsed.manifest.project).unwrap();
+    assert_eq!(project["compositions"]["root"]["content"]["metadata"]["subtitleDocuments"], subtitle_documents);
     assert_eq!(
         std::fs::read(parsed.assets[0].path()).unwrap(),
         std::fs::read(&path).unwrap()

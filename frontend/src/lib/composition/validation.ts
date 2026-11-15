@@ -1,3 +1,4 @@
+import { validSubtitleDocuments } from '../subtitles/documents'
 import { validSampleClock } from './keyframeClock'
 import {validateVideoRegion,videoRegionOrdinal} from '../video-region'
 import {validConcatClipAnimation} from './concatClipAnimation'
@@ -288,6 +289,10 @@ export function validateComposition(value: unknown): CompositionValidationIssue[
       ids.some((id) => !isStableId(id)) || new Set(ids).size !== ids.length) {
       add('caption-text-tracks', 'metadata.captionTextTracks', 'Subtitle lane roles must be unique stable track ids')
     }
+  }
+
+  if (isRecord(value.metadata) && value.metadata.subtitleDocuments !== undefined && !validSubtitleDocuments(value.metadata.subtitleDocuments)) {
+    add('subtitle-documents', 'metadata.subtitleDocuments', 'Invalid project subtitle documents')
   }
 
   if (isRecord(value.metadata) && value.metadata.clipLinks !== undefined) {

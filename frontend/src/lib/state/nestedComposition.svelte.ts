@@ -1,3 +1,4 @@
+import { changeSubtitleDocuments, type SubtitleDocument } from '$lib/subtitles/documents'
 import {takeSourceRunCutTransaction} from '$lib/composition/sourceRunCutTransaction'
 import {authState} from './auth.svelte'
 import {captureNativeScalarHistoryViews,restoreNativeScalarHistoryViews,type NativeScalarHistoryViews} from '$lib/composition/nativeScalarHistoryView'
@@ -1010,6 +1011,28 @@ export async function mergeNestedCaptionClips(compositionId: string, ids: readon
   },true)
   if (generation !== startedGeneration) return
   if (!nestedHistory.error && expected && JSON.stringify(nestedComposition.document) !== expected) nestedHistory.error = 'Проект изменился во время объединения субтитров'
+}
+
+export async function editNestedSubtitleDocuments(change: SubtitleDocument | string): Promise<void> {
+  if (!nestedComposition.document || nestedHistory.busy) throw new Error('Вложенный проект занят или закрыт')
+  const owner = authState.token
+  let accepted = false
+  await editNestedDocument(async document => {
+    const root = document.compositions[document.root]
+    if (!root) throw new Error('Корневая композиция не найдена')
+    const current = root.content.metadata?.subtitleDocuments ?? []
+    const subtitleDocuments = changeSubtitleDocuments(current, change)
+    if (current === subtitleDocuments || (!current.length && !subtitleDocuments.length)) {
+      accepted = true
+      return document
+    }
+    const content = { ...root.content, metadata: { ...root.content.metadata, subtitleDocuments } }
+    return { ...document, compositions: { ...document.compositions, [document.root]: { ...root, content } } }
+  }, false, undefined, undefined, 0, () => { accepted = true }, () => {
+    assertHistoryUnlocked()
+    if (authState.token !== owner) throw new Error('Аккаунт изменился во время сохранения субтитров')
+  })
+  if (!accepted) throw new Error(nestedHistory.error || 'Проект изменился во время сохранения субтитров')
 }
 
 export async function importNestedCaptionFile(compositionId:string, serialized:string, offsetUs=0, report?: (simplifiedCueCount: number) => void):Promise<boolean> {

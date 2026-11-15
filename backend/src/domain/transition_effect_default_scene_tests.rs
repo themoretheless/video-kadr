@@ -26,6 +26,7 @@
    composition.metadata=Some(super::super::metadata_burnin::CompositionMetadata{
  concat_lane_groups: Default::default(),
  caption_text_tracks: Default::default(),
+ subtitle_documents: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),sequence_name:"s".into(),clip_names:[("a","matte"),("b","matte")].into_iter().map(|(id,name)|(super::super::composition::CompositionClipId::parse(id).unwrap(),name.into())).collect(),source_names:[("red","matte"),("blue","matte")].into_iter().map(|(id,name)|(super::super::composition::SourceId::parse(id).unwrap(),name.into())).collect(),drop_frame:false,sequence_start_frame:0});

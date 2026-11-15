@@ -484,12 +484,20 @@ impl NestedCompositionProject {
             .ok_or_else(|| anyhow::anyhow!("parent composition is missing"))?;
         let duration = self.document_duration_us(parent)?;
         ensure!(duration > 0, "cannot group an empty composition");
-        let child_document = content.clone();
+        let mut child_document = content.clone();
         let mut grouped = NestedCompositionDocument {
             duration_us: None,
             content: Composition::new(content.content.canvas),
             instances: vec![],
         };
+        if let Some(metadata) = &mut child_document.content.metadata {
+            if !metadata.subtitle_documents.is_empty() {
+                grouped.content.metadata = Some(super::metadata_burnin::CompositionMetadata {
+                    subtitle_documents: std::mem::take(&mut metadata.subtitle_documents),
+                    ..Default::default()
+                });
+            }
+        }
         grouped.instances.push(CompositionInstance {
             id: instance_id.into(),
             timing: CompositionReferenceTiming {

@@ -548,6 +548,7 @@ export interface CompositionMetadata {
   readonly markers?:readonly import('./markers').CompositionMarker[]
   /** Text tracks reserved for imported subtitle lanes. */
   readonly captionTextTracks?: readonly string[]
+  readonly subtitleDocuments?: readonly import('../subtitles/documents').SubtitleDocument[]
   readonly clipLinks?: Readonly<Record<string, readonly string[]>>
   /** Typed siblings representing one original Concat lane. */
   readonly concatLaneGroups?: Readonly<Record<string, readonly string[]>>

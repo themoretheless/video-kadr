@@ -72,6 +72,7 @@ fn all_72_ordinary_motion_frames_match_original() {
         composition.validate().unwrap();
         composition.metadata = Some(super::super::metadata_burnin::CompositionMetadata {
  caption_text_tracks: Default::default(),
+ subtitle_documents: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),

@@ -14,10 +14,12 @@
     getSpaceTemplates,
     type SpaceTemplateDto,
   } from '$lib/api.js'
+  import { changeSubtitleDocuments, type SubtitleDocument } from '$lib/subtitles/documents'
   import { MAX_SRT_BYTES } from '$lib/subtitles/srt.js'
   import {
     compositionSourceFromLibraryEntry,
     compositionState,
+    commitDocument,
     applyCompositionTrackedAnimation,
     exportSelectedTextTrackSrt,
     exportCompositionCaptions,
@@ -171,6 +173,15 @@
   function showError(error: unknown): void {
     localMessage = ''
     localError = error instanceof Error ? error.message : String(error)
+  }
+
+  function editSubtitleDocuments(change: SubtitleDocument | string): void {
+    const document = compositionState.document
+    const current = document.metadata?.subtitleDocuments ?? []
+    const subtitleDocuments = changeSubtitleDocuments(current, change)
+    if (subtitleDocuments !== current) {
+      commitDocument({ ...document, metadata: { ...document.metadata, subtitleDocuments } })
+    }
   }
 
   async function importSrtFile(file: File, dropTime?: number): Promise<boolean> {
@@ -353,7 +364,7 @@
         </select>
       </label>
       <label><input type="checkbox" bind:checked={subtitlesAtPlayhead} disabled={importingSubtitles} />Начать субтитры в позиции курсора</label>
-      <SubtitleFilePicker label="Импорт субтитров" disabled={importingSubtitles} onfile={importSrtFile} onerror={showError} />
+      <SubtitleFilePicker label="Импорт субтитров" disabled={importingSubtitles} project={compositionState.document} documents={compositionState.document.metadata?.subtitleDocuments} ondocumentschange={editSubtitleDocuments} onfile={importSrtFile} onerror={showError} />
       <div class="composition-tool-actions">
         <button class="btn ghost sm" type="button" disabled={compositionState.ui.selectedClipIds.length < 2} onclick={mergeCaptionSelection}>Объединить выбранные субтитры</button>
         <button class="btn ghost sm" type="button" onclick={exportSrt}>Экспорт выбранной text-дорожки</button>

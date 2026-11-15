@@ -2148,6 +2148,9 @@ impl Composition {
             }
         }
         if let Some(metadata)=&self.metadata {
+            if !super::metadata_burnin::validate_subtitle_documents(&metadata.subtitle_documents) {
+                return Err(CompositionError::InvalidEffect);
+            }
             super::metadata_burnin::validate_markers(&metadata.markers).map_err(|_|CompositionError::InvalidEffect)?;
             for (clip_id,pair) in &metadata.media_versions {
                 if let Some(video)=&pair.video_cutout {

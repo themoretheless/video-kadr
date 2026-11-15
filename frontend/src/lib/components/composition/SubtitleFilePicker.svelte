@@ -1,12 +1,16 @@
 <script lang="ts">
  import { startSubtitleDrag } from '$lib/subtitles/timelineDrop'
  import { authState } from '$lib/state/auth.svelte'
+ import type { SubtitleDocument } from '$lib/subtitles/documents'
  import { parseSubtitleDocument } from '$lib/subtitles/import'
  import { MAX_SRT_BYTES } from '$lib/subtitles/srt'
 
- let { label, disabled = false, onfile, onerror }: {
+ let { label, disabled = false, documents = [], project, ondocumentschange, onfile, onerror }: {
   label: string
   disabled?: boolean
+  project: object | null
+  documents?: readonly SubtitleDocument[]
+  ondocumentschange: (change: SubtitleDocument | string) => void | Promise<void>
   onfile: (file: File, dropTime?: number) => Promise<boolean>
   onerror: (message: string) => void
  } = $props()
@@ -15,6 +19,11 @@
  let applying = $state(false)
  let stopDrag: (() => void) | undefined
  let poolOnly = $state(false)
+ const stored = $derived(documents.map(document => ({
+  id: document.id,
+  file: new File([document.text], document.name),
+ })))
+ const entries = $derived([...stored, ...filesInPanel.map(file => ({ id: undefined, file }))])
  const blocked = $derived(disabled || applying)
  $effect(() => {
   void authState.token
@@ -33,13 +42,37 @@
   if (blocked) return
   applying = true
   const owner = authState.token
+  const originalProject = project
+  const isStored = stored.some(entry => entry.file === file)
   try {
    if (addOnly) {
     onerror('')
     if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
-    parseSubtitleDocument(await file.text())
+    const body = await file.text()
+    if (!parseSubtitleDocument(body).length) throw new Error('Файл не содержит субтитров')
+    if (authState.token !== owner) return
+    if (project !== originalProject) throw new Error('Проект изменился во время чтения файла')
+    await ondocumentschange({ id: crypto.randomUUID(), name: file.name, text: body })
+   } else if (await onfile(file, dropTime) && authState.token === owner && !isStored) {
+    remember(file)
    }
-   if ((addOnly || await onfile(file, dropTime)) && authState.token === owner) remember(file)
+  } catch (error) {
+   if (authState.token === owner) onerror(error instanceof Error ? error.message : String(error))
+  } finally {
+   applying = false
+  }
+ }
+
+ async function remove(file: File, id?: string) {
+  if (blocked) return
+  if (id === undefined) {
+   filesInPanel = filesInPanel.filter(item => item !== file)
+   return
+  }
+  const owner = authState.token
+  applying = true
+  try {
+   await ondocumentschange(id)
   } catch (error) {
    if (authState.token === owner) onerror(error instanceof Error ? error.message : String(error))
   } finally {
@@ -85,22 +118,22 @@
     event.currentTarget.value = ''
    }} />
  </label>
- {#if filesInPanel.length}
+ {#if entries.length}
   <ul aria-label="Недавние файлы субтитров">
-   {#each filesInPanel as file (file)}
+   {#each entries as { id, file } (id ?? file)}
     <li>
      <button class="btn ghost sm" type="button" disabled={blocked} draggable={!blocked}
       ondragstart={event => {
        stopDrag?.()
        if (blocked) { event.preventDefault(); return }
        stopDrag = startSubtitleDrag(event, time => {
-        if (filesInPanel.includes(file)) void apply(file, false, time)
+        if (entries.some(entry => id === undefined ? entry.file === file : entry.id === id)) void apply(file, false, time)
        })
       }} ondragend={() => stopDrag?.()} onclick={() => void apply(file)}>
       Вставить · {file.name}
      </button>
      <button class="btn ghost sm" type="button" disabled={blocked} aria-label={`Убрать файл ${file.name} из списка`}
-      onclick={() => { filesInPanel = filesInPanel.filter(item => item !== file) }}>Убрать</button>
+      onclick={() => void remove(file, id)}>Убрать</button>
     </li>
    {/each}
   </ul>

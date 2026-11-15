@@ -68,10 +68,11 @@ export function buildCompositionRenderRequest(
 
   let wire = buildCompositionWireDocument(composition)
   // Markers remain authored project data; the render contract carries no editor markers.
-  if (wire.metadata?.markers !== undefined) {
+  if (wire.metadata?.markers !== undefined || wire.metadata?.subtitleDocuments !== undefined) {
     const { metadata, ...fields } = wire
     const renderMetadata = { ...metadata }
     delete renderMetadata.markers
+    delete renderMetadata.subtitleDocuments
     wire = Object.keys(renderMetadata).length ? { ...fields, metadata: renderMetadata } : fields
   }
   return {

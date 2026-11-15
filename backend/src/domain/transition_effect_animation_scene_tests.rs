@@ -62,6 +62,7 @@ fn all_119_animated_effects_match_original_4284_scene_frames() {
             )?;
             composition.metadata = Some(crate::domain::metadata_burnin::CompositionMetadata {
  caption_text_tracks: Default::default(),
+ subtitle_documents: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),

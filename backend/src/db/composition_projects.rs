@@ -8,6 +8,9 @@ use sqlx::{Row, Sqlite, Transaction};
 use uuid::Uuid;
 
 use super::Db;
+use crate::domain::metadata_burnin::{
+    validate_subtitle_documents, SubtitleDocument, MAX_SUBTITLE_DOCUMENT_JSON_BYTES,
+};
 use crate::library::now_secs;
 
 pub const COMPOSITION_PROJECT_SCHEMA_VERSION: u32 = 2;
@@ -17,8 +20,8 @@ pub const MAX_LUT_PROJECT_DOCUMENT_BYTES: usize = 96 * 1024 * 1024;
 /// Authored video strokes/portable tracks have a bounded independent allowance.
 pub const MAX_VIDEO_CUTOUT_SETTINGS_BYTES:usize=16*1024*1024;
 pub const MAX_SPHERICAL_SETTINGS_BYTES:usize=16*1024*1024;
-pub const MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES:usize=MAX_LUT_PROJECT_DOCUMENT_BYTES+MAX_VIDEO_CUTOUT_SETTINGS_BYTES+MAX_SPHERICAL_SETTINGS_BYTES;
-/// Ordinary project metadata retains 2MiB; only validated LUT/font/cutout/spherical tracks add allowance.
+pub const MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES:usize=MAX_LUT_PROJECT_DOCUMENT_BYTES+MAX_VIDEO_CUTOUT_SETTINGS_BYTES+MAX_SPHERICAL_SETTINGS_BYTES+MAX_SUBTITLE_DOCUMENT_JSON_BYTES;
+/// Validated resources have independent allowances beyond the base project budget.
 pub fn composition_document_byte_limit(document: &Value) -> Result<usize> {
     let mut limit=MAX_COMPOSITION_PROJECT_DOCUMENT_BYTES;
     if document.get("compositions").is_some() {
@@ -36,6 +39,20 @@ pub fn composition_document_byte_limit(document: &Value) -> Result<usize> {
     let contents:Vec<&Value>=if let Some(nodes)=document.get("compositions").and_then(Value::as_object){nodes.values().filter_map(|node|node.get("content")).collect()}else{vec![document]};
     let mut cutout_bytes=0usize;
     let mut spherical_bytes=0usize;
+    let subtitle_documents = if let Some(nodes) = document.get("compositions") {
+        document.get("root").and_then(Value::as_str)
+            .and_then(|root| nodes.get(root))
+            .and_then(|node| node.pointer("/content/metadata/subtitleDocuments"))
+    } else {
+        document.pointer("/metadata/subtitleDocuments")
+    };
+    if let Some(value) = subtitle_documents {
+        let documents: Vec<SubtitleDocument> = serde_json::from_value(value.clone())?;
+        ensure!(validate_subtitle_documents(&documents), "invalid subtitle documents");
+        let bytes = serde_json::to_vec(value)?.len();
+        ensure!(bytes <= MAX_SUBTITLE_DOCUMENT_JSON_BYTES, "subtitle documents exceed saved document budget");
+        limit += bytes;
+    }
     for content in contents{
         if let Some(tracks)=content.get("tracks").and_then(Value::as_array){for track in tracks{
             if track.get("kind").and_then(Value::as_str)!=Some("video"){continue}

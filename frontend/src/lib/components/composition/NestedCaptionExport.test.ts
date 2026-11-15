@@ -18,7 +18,7 @@ it('validates dropped files and imports subtitles at the cursor in one undo step
  nestedComposition.timeUs = 2_000_000
  const target = document.createElement('div')
  document.body.append(target)
- const component = mount(NestedCaptionExport, { target })
+ let component = mount(NestedCaptionExport, { target })
  try {
   await tick()
   target.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
@@ -45,8 +45,19 @@ it('validates dropped files and imports subtitles at the cursor in one undo step
   drop([new File(['1\n00:00:01,000 --> 00:00:02,000\nCaption'], 'captions.SRT')])
   await vi.waitFor(() => expect(reuse()).toBeDefined())
   expect(target.querySelector('[role="alert"]')).toBeNull()
-  expect(nestedHistory.past).toHaveLength(0)
-  expect(nestedComposition.document).toEqual(project)
+  expect(nestedHistory.past).toHaveLength(1)
+  const saved = JSON.stringify(nestedComposition.document)
+  expect(nestedComposition.document?.compositions.root?.content.metadata?.subtitleDocuments).toMatchObject([
+   { name: 'captions.SRT', text: expect.stringContaining('Caption') },
+  ])
+  await unmount(component)
+  closeNestedComposition()
+  nestedComposition.document = JSON.parse(saved)
+  nestedComposition.timeUs = 2_000_000
+  component = mount(NestedCaptionExport, { target })
+  await tick()
+  target.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
+  await vi.waitFor(() => expect(reuse()).toBeDefined())
   expect(nestedDurations).not.toHaveBeenCalled()
   reuse()!.click()
   await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
@@ -69,12 +80,12 @@ it('validates dropped files and imports subtitles at the cursor in one undo step
    text: 'Caption', timelineStartTick: 6_000_000, timelineEndTick: 7_000_000,
   })
   target.querySelector<HTMLButtonElement>('[aria-label="Убрать файл captions.SRT из списка"]')!.click()
-  await tick()
-  expect(reuse()).toBeUndefined()
+  await vi.waitFor(() => expect(reuse()).toBeUndefined())
   expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips).toHaveLength(2)
   undoNestedComposition()
   undoNestedComposition()
-  expect(nestedComposition.document).toEqual(project)
+  undoNestedComposition()
+  expect(nestedComposition.document).toEqual(JSON.parse(saved))
  } finally {
   await unmount(component)
   target.remove()

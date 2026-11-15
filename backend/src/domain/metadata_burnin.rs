@@ -360,6 +360,8 @@ pub struct CompositionMetadata {
     pub markers: Vec<CompositionMarker>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caption_text_tracks: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub subtitle_documents: Vec<SubtitleDocument>,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub clip_links: std::collections::BTreeMap<String, Vec<super::composition::CompositionClipId>>,
     /// Typed native tracks representing one original Concat lane.
@@ -372,6 +374,41 @@ pub struct CompositionMetadata {
     pub source_names: std::collections::BTreeMap<super::composition::SourceId, String>,
     pub drop_frame: bool,
     pub sequence_start_frame: i64,
+}
+
+pub const MAX_SUBTITLE_DOCUMENTS: usize = 8;
+pub const MAX_SUBTITLE_DOCUMENT_TEXT_BYTES: usize = 2 * 1024 * 1024;
+// JSON may escape each UTF-8 byte as up to six ASCII bytes.
+pub const MAX_SUBTITLE_DOCUMENT_JSON_BYTES: usize = 6 * MAX_SUBTITLE_DOCUMENT_TEXT_BYTES + 32 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SubtitleDocument {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+}
+
+pub fn validate_subtitle_documents(documents: &[SubtitleDocument]) -> bool {
+    if documents.len() > MAX_SUBTITLE_DOCUMENTS {
+        return false;
+    }
+    let mut ids = std::collections::BTreeSet::new();
+    let mut total = 0;
+    for document in documents {
+        total += document.text.len();
+        if total > MAX_SUBTITLE_DOCUMENT_TEXT_BYTES
+            || super::composition::CompositionClipId::parse(document.id.clone()).is_err()
+            || !ids.insert(&document.id)
+            || document.name.trim().is_empty()
+            || document.name.len() > 1024
+            || document.name.chars().any(|character| character.is_control() || matches!(character, '/' | '\\'))
+            || document.text.trim().is_empty()
+        {
+            return false;
+        }
+    }
+    true
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -507,6 +544,7 @@ mod composition_metadata_tests {
         let source = SourceId::parse("source").unwrap();
         c.metadata = Some(CompositionMetadata {
  caption_text_tracks: Default::default(),
+ subtitle_documents: Default::default(),
             markers: Default::default(),
             media_versions: Default::default(),
             clip_links: Default::default(),
