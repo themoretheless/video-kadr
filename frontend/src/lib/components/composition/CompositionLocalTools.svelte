@@ -1,5 +1,6 @@
 <script lang="ts">
   import CaptionStylePanel from './CaptionStylePanel.svelte'
+  import SubtitleFilePicker from './SubtitleFilePicker.svelte'
   import {
     MAX_COMPOSITION_TEMPLATE_BYTES,
     type CompositionTemplate,
@@ -47,7 +48,7 @@
   import BrandKitPanel from '$lib/components/collaboration/BrandKitPanel.svelte'
   import StockCatalogPanel from './StockCatalogPanel.svelte'
 
-  let srtPicker = $state<HTMLInputElement>()
+  let importingSubtitles = $state(false)
   let templatePicker = $state<HTMLInputElement>()
   let targetTextTrackId = $state('')
   let templateName = $state('')
@@ -171,18 +172,24 @@
     localError = error instanceof Error ? error.message : String(error)
   }
 
-  async function importSrtFile(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement
-    const file = input.files?.[0]
-    input.value = ''
-    if (!file) return
+  async function importSrtFile(file: File): Promise<void> {
+    if (importingSubtitles) return
+    importingSubtitles = true
+    const document = compositionState.document
+    const trackId = targetTextTrackId
     try {
       if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
+      const body = await file.text()
+      if (compositionState.document !== document || targetTextTrackId !== trackId) {
+        throw new Error('Композиция или дорожка изменилась во время чтения файла')
+      }
       let simplified = 0
-      const count = importSrtToComposition(await file.text(), targetTextTrackId || undefined, value => { simplified = value })
+      const count = importSrtToComposition(body, trackId || undefined, value => { simplified = value })
       showSuccess(`Импортировано субтитров: ${count}${simplified ? `. Неподдерживаемые эффекты ASS пропущены в ${simplified} репл.` : ''}`)
     } catch (error) {
       showError(error)
+    } finally {
+      importingSubtitles = false
     }
   }
 
@@ -340,9 +347,9 @@
           {/each}
         </select>
       </label>
+      <SubtitleFilePicker label="Импорт субтитров" disabled={importingSubtitles}
+        onfile={file => void importSrtFile(file)} onerror={showError} />
       <div class="composition-tool-actions">
-        <button class="btn ghost sm" type="button" onclick={() => srtPicker?.click()}>Импорт субтитров</button>
-        <input bind:this={srtPicker} class="hidden-file" type="file" accept=".srt,.vtt,.ass,.ssa,.txt,application/x-subrip,text/vtt,text/plain" onchange={(event) => void importSrtFile(event)} />
         <button class="btn ghost sm" type="button" disabled={compositionState.ui.selectedClipIds.length < 2} onclick={mergeCaptionSelection}>Объединить выбранные субтитры</button>
         <button class="btn ghost sm" type="button" onclick={exportSrt}>Экспорт выбранной text-дорожки</button>
         <button class="btn ghost sm" type="button" onclick={() => exportAllCaptions('srt')}>Все субтитры · SRT</button>

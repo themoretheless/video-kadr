@@ -2,11 +2,10 @@
   import { nestedComposition, nestedHistory, importNestedCaptionFile } from '$lib/state/nestedComposition.svelte'
   import { nestedCaptionExportCues, formatSubtitleExport, type SubtitleExportFormat } from '$lib/subtitles/export'
   import { MAX_SRT_BYTES } from '$lib/subtitles/srt'
+  import SubtitleFilePicker from './SubtitleFilePicker.svelte'
   let error = $state(''), message = $state(''), importing = $state(false), atPlayhead = $state(false)
-  async function importFile(event:Event) {
-    const input=event.currentTarget as HTMLInputElement,file=input.files?.[0]
-    input.value=''
-    if(!file)return
+  async function importFile(file:File) {
+    if(importing||nestedHistory.busy)return
     error='';message='';importing=true
     const project=nestedComposition.document,identity=JSON.stringify(project)
     const id=nestedComposition.activeCompositionId??project?.root
@@ -42,7 +41,8 @@
 </script>
 <section aria-label="Файлы субтитров вложенной композиции">
   <label><input type="checkbox" bind:checked={atPlayhead} disabled={importing||nestedHistory.busy} />Начать субтитры в позиции курсора</label>
-  <label>Импорт SRT / VTT / ASS / TXT<input type="file" aria-label="Импорт субтитров вложенной композиции" accept=".srt,.vtt,.ass,.ssa,.txt" disabled={importing||nestedHistory.busy} onchange={event=>void importFile(event)} /></label>
+  <SubtitleFilePicker label="Импорт субтитров вложенной композиции" disabled={importing||nestedHistory.busy}
+    onfile={file=>void importFile(file)} onerror={notice=>{message='';error=notice}} />
   {#if message}<p role="status">{message}</p>{/if}
   <button class="btn ghost sm" type="button" onclick={() => download('srt')}>Субтитры активной композиции · SRT</button>
   <button class="btn ghost sm" type="button" onclick={() => download('vtt')}>Субтитры активной композиции · VTT</button>
