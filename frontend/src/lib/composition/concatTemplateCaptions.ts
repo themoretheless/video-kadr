@@ -26,11 +26,15 @@ function sameJson(left: unknown, right: unknown): boolean {
 function normalizedClip(value: unknown): unknown {
   const clip = record(value)
   if (!clip) return value
+  const crop = record(clip.crop)
+  const emptyCrop = crop && Object.entries(crop).every(([edge, value]) =>
+    ['left', 'top', 'right', 'bottom'].includes(edge) && value === 0)
   return {
     mediaId: '', sourceStart: 0, scale: 1, rotation: 0, offsetX: 0, offsetY: 0, opacity: 1, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
     preservePitch: true, stretchX: 1, stretchY: 1, flipH: false, flipV: false, keys: [], filters: [], videoEffects: [],
     ...clip,
     blend: clip.blend || 'normal',
+    crop: emptyCrop ? null : clip.crop ?? null,
   }
 }
 
@@ -251,7 +255,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
         transform.concatPreparation?.crop.some(edge => edge !== 0)) return undefined
     transform = {
       ...transform,
-      concatPreparation: { crop: [0, 0, 0, 0], canvas: [width, height], flipH, flipV },
+      concatPreparation: flipH || flipV ? { crop: [0, 0, 0, 0], canvas: [width, height], flipH, flipV } : undefined,
     }
   }
 

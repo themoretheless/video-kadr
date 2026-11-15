@@ -170,6 +170,20 @@ it('opens an archived template directory without mixing in sibling assets', asyn
       } }],
       clips[1],
     ])
+  const reflectedSidecar = new File([JSON.stringify({ manifestSha256, clips: [
+    ['TL1', { ...staticClip, transform: { ...staticClip.transform,
+      concatPreparation: { crop: [0, 0, 0, 0], canvas: [320, 180], flipH: true, flipV: true },
+    } }, { clip: { ...first, flipH: true, flipV: true, crop: { left: 0, top: 0, right: 0, bottom: 0 } }, video }],
+    captured[1],
+  ] })], 'video-kadr-caption-clips.json')
+  const unreflected = { ...source, timelines: [{ id: 'TL1', video, clips: [
+    { ...first, text: { ...first.text, content: 'Unreflected' } }, second,
+  ] }] }
+  await expect(readConcatTemplateCaptions(reflectedSidecar, new File([JSON.stringify(unreflected)], 'template.json')))
+    .resolves.toEqual([['TL1', { ...staticClip, text: 'Unreflected' }], clips[1]])
+  const cropped = { ...source, timelines: [{ id: 'TL1', video, clips: [{ ...first, crop: { left: 0.25 } }, second] }] }
+  await expect(readConcatTemplateCaptions(reflectedSidecar, new File([JSON.stringify(cropped)], 'template.json')))
+    .resolves.toEqual([clips[1]])
   const faded = { ...first, opacity: 0.5, text: { ...first.text, opacity: 0.25 } }
   const withOpacity = { ...source, timelines: [{ id: 'TL1', video, clips: [faded, second] }] }
   const fadedFile = new File([JSON.stringify(withOpacity)], 'template.json')
