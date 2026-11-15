@@ -1,9 +1,9 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, expect, it, vi } from 'vitest'
-import { editFilmcraftSource, type FilmcraftSourcePlacementResult, navigateFilmcraft, type FilmcraftNavigationResult, editFilmcraftMarks, type FilmcraftMarkEditResult } from '$lib/api'
+import { editFilmcraftPosterFrame, editFilmcraftSource, type FilmcraftSourcePlacementResult, navigateFilmcraft, type FilmcraftNavigationResult, editFilmcraftMarks, type FilmcraftMarkEditResult } from '$lib/api'
 import Controls from './FilmcraftMarksControls.svelte'
-vi.mock('$lib/api', () => ({ editFilmcraftSource: vi.fn(), navigateFilmcraft: vi.fn(), editFilmcraftMarks: vi.fn() }))
+vi.mock('$lib/api', () => ({ editFilmcraftPosterFrame: vi.fn(), editFilmcraftSource: vi.fn(), navigateFilmcraft: vi.fn(), editFilmcraftMarks: vi.fn() }))
 const props = { document: 'exact', sequenceId: '18446744073709551615', clipId: '9007199254740995', token: 'owner', items: [{ id: '9007199254740993', name: 'Source', kind: 'Media' as const }], timeFrames: '9', timeTicks: '9007199254740997' }
 const result: FilmcraftMarkEditResult = { documentText: 'changed', originalSchema: 12, sequences: [], media: [], markEdit: true }
 let component: ReturnType<typeof mount> | undefined
@@ -130,4 +130,24 @@ it.each([['Найти кадр в исходнике', 'sequence.matchFrame', 'o
   expect(navigateFilmcraft).toHaveBeenCalledWith('owner', command, expect.objectContaining({ document: props.document, context: expect.objectContaining({ selection: [], projectSelection: [], playhead: props.timeTicks }) }), expect.any(AbortSignal))
   expect(oncontext).toHaveBeenCalledExactlyOnceWith(result, expect.objectContaining({ sourceItem: null, sourcePlayhead: '0', timelineSelection: [], projectSelection: [] })); expect(onedit).not.toHaveBeenCalled()
   if (type === 'openSource') expect(document.querySelector<HTMLSelectElement>('[aria-label="Монитор точек Filmcraft"]')!.value).toBe('source')
+})
+
+it.each([['Установить кадр обложки', 'clip.setPosterFrame'], ['Сбросить кадр обложки', 'clip.clearPosterFrame']] as const)('applies %s with the source clock and undo snapshot', async (label, command) => {
+  const posterEdit = { ...result, posterEdit: true as const }
+  vi.mocked(editFilmcraftPosterFrame).mockResolvedValue(posterEdit)
+  const onedit = vi.fn()
+  const item = props.items[0].id
+  component = mount(Controls, { target: document.body, props: {
+    ...props, items: [{ ...props.items[0], posterFrame: '9007199254740991' }],
+    item, sourcePlayhead: '9007199254740992', projectSelection: [item], oncontext: vi.fn(), onedit,
+  } })
+  await tick()
+  button(label).click()
+  await vi.waitFor(() => expect(onedit).toHaveBeenCalledTimes(1))
+  expect(editFilmcraftPosterFrame).toHaveBeenCalledWith('owner', command, {
+    document: props.document,
+    ...(command === 'clip.setPosterFrame' ? { time: props.timeTicks } : {}),
+    context: { activeSequence: props.sequenceId, sourceItem: item, sourcePlayhead: '9007199254740992', projectSelection: [item] },
+  }, expect.any(AbortSignal))
+  expect(onedit).toHaveBeenCalledWith(posterEdit, expect.objectContaining({ sourceItem: item, sourcePlayhead: '9007199254740992', projectSelection: [item] }))
 })

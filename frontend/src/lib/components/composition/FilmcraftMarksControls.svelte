@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { editFilmcraftSource, type FilmcraftSourcePlacementCommand, navigateFilmcraft, type FilmcraftNavigationCommand, type FilmcraftNavigationResult, editFilmcraftMarks, type FilmcraftImportResult, type FilmcraftMarks, type FilmcraftMarksCommand, type FilmcraftSourceEditFence } from '$lib/api'
+  import { editFilmcraftPosterFrame, editFilmcraftSource, type FilmcraftSourcePlacementCommand, navigateFilmcraft, type FilmcraftNavigationCommand, type FilmcraftNavigationResult, editFilmcraftMarks, type FilmcraftImportResult, type FilmcraftMarks, type FilmcraftMarksCommand, type FilmcraftSourceEditFence } from '$lib/api'
   let { document, sequenceId, clipId, token, items, marks, timeFrames, timeTicks, stillDuration = $bindable('5'), stillUnit = $bindable<'seconds' | 'frames'>('seconds'), tracks = [], rippleMarkers = $bindable(false), item = $bindable(''), sourcePlayhead = '0', selection = [], projectSelection = [], linkedSelection = true, disabled = false, onedit, oncontext }: {
     document: string; sequenceId: string; clipId: string; token: string | null; items: NonNullable<FilmcraftImportResult['projectItems']>
     stillDuration?: string; stillUnit?: 'seconds' | 'frames'
@@ -71,6 +71,24 @@
     finally { if (controller === current) { controller = undefined; busy = false } }
   }
 
+  const posterTarget = $derived(items.find(source => source.id === (projectSelection[0] || item)))
+  async function poster(clear: boolean) {
+    if (!token || disabled || busy || !posterTarget || posterTarget.kind === 'AdjustmentLayer') return
+    const captured = context()
+    const current = new AbortController()
+    const expected = { document, sequenceId, clipId, token, timeFrames, timeTicks: timeTicks || null, sourceItem: item || null, sourcePlayhead, projectSelection: [...projectSelection] }
+    controller = current; busy = true; busyLabel = 'Обновляется кадр обложки…'; error = ''; status = ''
+    try {
+      const position = clear ? {} : timeTicks ? { time: timeTicks } : { frame: timeFrames }
+      const result = await editFilmcraftPosterFrame(token, clear ? 'clip.clearPosterFrame' : 'clip.setPosterFrame', {
+        document, ...position, context: { activeSequence: sequenceId || null, sourceItem: item || null, sourcePlayhead, projectSelection: [...projectSelection] },
+      }, current.signal)
+      if (!alive || current.signal.aborted || captured !== context()) return
+      status = onedit(result, expected) === false ? 'Результат не применён: контекст изменился' : clear ? 'Кадр обложки сброшен' : 'Кадр обложки установлен'
+    } catch (failure) { if (alive && !current.signal.aborted && captured === context()) error = failure instanceof Error ? failure.message : String(failure) }
+    finally { if (controller === current) { controller = undefined; busy = false } }
+  }
+
   async function place(command: FilmcraftSourcePlacementCommand) {
     if (!token || disabled || busy || !sequenceId || !item || !items.some(source => source.id === item) || !validStill) return
     const captured = context(); const current = new AbortController()
@@ -106,6 +124,11 @@
     <button type="button" disabled={disabled || busy || !token || !sequenceId} onclick={() => navigate('sequence.matchFrame')}>Найти кадр в исходнике</button>
     <button type="button" disabled={disabled || busy || !token || !sequenceId} onclick={() => navigate('clip.revealInProject')}>Показать исходник клипа в проекте</button>
     <button type="button" disabled={disabled || busy || !token || !sequenceId} onclick={() => navigate('sequence.revealInProject')}>Показать секвенцию в проекте</button>
+    {#if posterTarget && posterTarget.kind !== 'AdjustmentLayer'}
+      <span>Обложка «{posterTarget.name || posterTarget.id}»: {posterTarget.posterFrame ?? 'автоматически'}</span>
+      <button type="button" disabled={disabled || busy || !token} onclick={() => poster(false)}>Установить кадр обложки</button>
+      <button type="button" disabled={disabled || busy || !token} onclick={() => poster(true)}>Сбросить кадр обложки</button>
+    {/if}
     <span aria-label="Позиция исходника Filmcraft">Исходник: {sourcePlayhead} тиков</span>
     {#if target === 'source'}
       <button type="button" disabled={disabled || busy || !token || !item && !projectSelection.length || !validStill} onclick={() => navigate('source.open')}>Открыть исходник</button>

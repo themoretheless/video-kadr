@@ -392,6 +392,8 @@ fn catalog(params: Value) -> AppResult<Value> {
         ("file.newBinFromSelection","New Bin From Selection","{document:object|string,items?:[id],item?:id,name?:str,context?:{projectSelection?:[id]}}; first item parent and unique default bin name"),
         ("project.moveToBin","Move to Bin","{document:object|string,items?:[id],bin?:id|null,context?:{projectSelection?:[id]}}; missing bin targets root"),
         ("project.renameBin","Rename Bin","{document:object|string,bin:id,name:str}; trims name, refuses empty names and root bin; explicit snapshot adoption"),
+        ("clip.setPosterFrame","Set Poster Frame","{document:object|string,item?:id,time?:tick,frame?:int,seconds?:float,timecode?:str,context?:object}"),
+        ("clip.clearPosterFrame","Clear Poster Frame","{document:object|string,item?:id,context?:object}"),
         ("clip.rename","Rename","{document:object|string,name:str,item?:id,clip?:id,sequence?:id,context?:{activeSequence?:id,selection?:[id]}}; snapshot adoption required"),
         ("effects.list","List Effects","{kind?:Video|Audio|VideoTransition|AudioTransition,folder?:str,detail?:bool}; pinned source catalog, not render admission"),
         ("source.inspect","Inspect Source Monitor","{document:object|string,item?:id,context?:{sourceItem?:id,sourcePlayhead?:ticks,stillImageDuration?:number,stillImageUnit?:seconds|frames}}; exact large IDs/ticks use decimal strings"),
@@ -585,6 +587,10 @@ async fn dispatch(
     }
     if request.command == "project.renameBin" {
         let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_bin_rename::rename(params)).await.map_err(bad)?;
+        return Ok(Json(value));
+    }
+    if crate::domain::filmcraft_poster_frame::COMMANDS.contains(&request.command.as_str()) {
+        let value = state.cpu_pool.execute(tokio_util::sync::CancellationToken::new(), move |_| crate::domain::filmcraft_poster_frame::edit(&request.command, params)).await.map_err(bad)?;
         return Ok(Json(value));
     }
     if request.command == "clip.rename" {

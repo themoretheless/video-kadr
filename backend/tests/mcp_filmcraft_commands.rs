@@ -218,7 +218,10 @@ async fn source_discovery_and_run_cross_the_claimed_bridge_to_owner_native_servi
         .all(|item| item["enabled"] == true && item["partial"] == true));
     let all = native(&native_app, Some(&owner.token), "command.list", json!({})).await;
     assert_eq!(all.0, 200);
-    assert_eq!(all.1.as_array().unwrap().len(), 125);
+    assert_eq!(all.1.as_array().unwrap().len(), 127);
+    for command in video_kadr_backend::domain::filmcraft_poster_frame::COMMANDS {
+        assert!(all.1.as_array().unwrap().iter().any(|row| row["id"] == *command));
+    }
     assert!(all.1.as_array().unwrap().iter().any(|row| row["id"] == "clip.rename"));
     assert_eq!(
         native(
@@ -263,6 +266,17 @@ async fn source_discovery_and_run_cross_the_claimed_bridge_to_owner_native_servi
         assert_eq!(reply["result"]["isError"],false,"{reply}");
         let returned:Value=serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(returned["videoOptionsEdit"],true);
     }
+    let poster_document = json!({"format":"filmcraft.project","schema_version":12,"project":video_options_oracle["projects"][0]});
+    let set = forward(&bridge, &native_app, Some(&owner.token), "command_run",
+        json!({"id":"clip.setPosterFrame","params":{"document":poster_document,"item":"5","time":"0"}})).await;
+    assert_eq!(set["result"]["isError"], false, "{set}");
+    let set: Value = serde_json::from_str(set["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(set["result"], json!({"item":5,"posterFrame":0}));
+    let clear = forward(&bridge, &native_app, Some(&owner.token), "command_run",
+        json!({"id":"clip.clearPosterFrame","params":{"document":set["documentText"],"item":"5"}})).await;
+    assert_eq!(clear["result"]["isError"], false, "{clear}");
+    let clear: Value = serde_json::from_str(clear["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(clear["result"], json!({"item":5,"posterFrame":null}));
     let replacement_oracle:Value=serde_json::from_str(include_str!("fixtures/filmcraft-replace-oracle.json")).unwrap();
     for command in ["clip.replaceFromSource","clip.replaceFromSourceMatchFrame","clip.replaceFromBin"] {
         let case=replacement_oracle["cases"].as_array().unwrap().iter().find(|case|case["command"]==command && case["ok"]==true).unwrap();
