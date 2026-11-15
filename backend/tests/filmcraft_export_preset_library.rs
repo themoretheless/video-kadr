@@ -670,6 +670,20 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     assert_eq!(summary["video"]["bitrate"]["targetKbps"], 5000);
     assert_eq!(summary["estimatedBytes"], estimate["estimatedBytes"]);
     assert!(summary["audio"].is_null());
+    let mut draft = standard.clone();
+    draft.as_object_mut().unwrap().remove("burnCaptions");
+    draft["libraryPresetSettings"] = json!({
+        "frameSize":[96,96], "bitrateKbps":7000, "adaptiveBitrate":null, "burnCaptions":false,
+    });
+    let (status, summary) = call("video-jobs/summary", draft).await;
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert_eq!(summary["video"]["width"], 96);
+    assert_eq!(summary["video"]["burnCaptions"], false);
+    assert_eq!(summary["video"]["bitrate"]["targetKbps"], 7000);
+    assert_eq!(summary["estimatedBytes"], 875000);
+    let (status, original) = call("video-jobs/summary", standard.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{original}");
+    assert_eq!(original["video"]["bitrate"]["targetKbps"], 5000);
     standard.as_object_mut().unwrap().remove("libraryPreset");
     standard["preset"] = json!("youtube1080");
     let (status, summary) = call("video-jobs/summary", standard).await;

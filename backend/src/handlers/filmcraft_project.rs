@@ -804,7 +804,8 @@ async fn execute_frame(state:AppState,headers:HeaderMap,request:PreviewFrameRequ
  let binding_hash=sha2::Sha256::digest(&serde_json::to_vec(&request.sources).map_err(|e|AppError::internal("preview bindings",e))?);
  // Each CPU closure retains the admission permit even if the HTTP future is dropped.
  let access_sources:Vec<_>=request.sources.values().cloned().collect();
- let work=async{
+ // Keep the compositor future off the encoder's worker stack.
+ let work=Box::pin(async{
   let mut revisions=Vec::new();for(id,(path,video))in &paths{let revision=crate::services::filmcraft_video_preview::SourceVideoRevision::read(path).await.map_err(|e|AppError::bad_request(e.to_string()))?;revisions.push((*id,path.clone(),*video,revision));}
   let preparation_permit=permit.clone();
   let mut prepared=state.cpu_pool.execute(cancel.clone(),move |_|{
@@ -913,7 +914,7 @@ async fn execute_frame(state:AppState,headers:HeaderMap,request:PreviewFrameRequ
    }else{None};decoded};
    crate::domain::filmcraft_analysis_cache::admit_frame(&analysis,Arc::make_mut(&mut frames),key,decoded,prepared.6,64*1024*1024,128).map_err(|e|AppError::bad_request(e.to_string()))?;
   }
- };
+ });
  let deadline=if background.is_some()||full_size{state.job_timeout()}else{std::time::Duration::from_secs(15)};
  tokio::select!{_ = cancel.cancelled()=>Err(AppError::service_unavailable("preview analysis cancelled")),result=tokio::time::timeout(deadline,work)=>result.map_err(|_|AppError::service_unavailable("preview deadline exceeded"))?}
 }

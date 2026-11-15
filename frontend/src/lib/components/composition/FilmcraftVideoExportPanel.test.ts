@@ -945,6 +945,13 @@ it('submits a saved preset by name without stale manual export overrides', async
   expect(document.querySelector('[aria-label="Пресет видеоэкспорта Filmcraft"]')).toBeNull()
   button('Экспортировать с сохранённым пресетом').click()
   await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenCalledWith('owner', { document: '{"original":true}', sequenceId: '18446744073709551615', startFrames: '0', frames: 48, sources: { '9007199254740993': 'source' }, libraryPreset: 'Review 720p' }, expect.any(AbortSignal)))
+  const draft = document.querySelector<HTMLInputElement>('[aria-label="Битрейт нового пресета Filmcraft"]')!
+  draft.value = '8000'; draft.dispatchEvent(new Event('input', { bubbles: true })); await tick()
+  button('Применить правки к экспорту').click(); await tick()
+  button('Экспортировать с сохранённым пресетом').click()
+  await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenLastCalledWith('owner',
+    expect.objectContaining({ libraryPreset: 'Review 720p', libraryPresetSettings: { bitrateKbps: 8000, adaptiveBitrate: null } }),
+    expect.any(AbortSignal)))
 })
 
 it('downloads binary caption bytes from the authorized completed job result', async () => {

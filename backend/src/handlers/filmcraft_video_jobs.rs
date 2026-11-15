@@ -137,15 +137,34 @@ pub async fn preview(
     Ok(([(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "no-store")], bytes).into_response())
 }
 
+pub(super) async fn resolve_library_preset(
+    state: &AppState,
+    owner: &str,
+    body: &mut Value,
+) -> AppResult<Option<(String, Value)>> {
+    let Some(object) = body.as_object_mut() else { return Ok(None) };
+    let overrides = object.remove("libraryPresetSettings");
+    let Some(name) = object.remove("libraryPreset") else {
+        if overrides.is_some() {
+            return Err(AppError::bad_request("libraryPresetSettings requires libraryPreset"));
+        }
+        return Ok(None);
+    };
+    let name = name.as_str().ok_or_else(|| AppError::bad_request("libraryPreset must be a name"))?;
+    let library = state.db.filmcraft_export_presets(owner).await
+        .map_err(|error| AppError::internal("read export presets", error))?;
+    let preset = library.find(name).ok_or_else(|| AppError::bad_request("unknown export preset"))?;
+    let patch = super::filmcraft_export_presets::export_request_patch(preset.settings, overrides)?;
+    Ok(Some((preset.name, patch)))
+}
+
 async fn resolve_request(state: &AppState, owner: &str, mut body: Value) -> AppResult<VideoRequest> {
-    if let Some(name)=body.as_object_mut().and_then(|object|object.remove("libraryPreset")) {
-        let name=name.as_str().ok_or_else(||AppError::bad_request("libraryPreset must be a name"))?;
-        let library=state.db.filmcraft_export_presets(owner).await.map_err(|error|AppError::internal("read export presets",error))?;
-        let preset=library.find(name).ok_or_else(||AppError::bad_request("unknown export preset"))?;
-        let mut resolved=crate::domain::filmcraft_export_preset_resolve::request_patch(&preset.settings).map_err(|error|AppError::bad_request(error.to_string()))?;
-        let input=body.as_object().ok_or_else(||AppError::bad_request("export request must be an object"))?;
-        for (key,value) in input {resolved[key]=value.clone();}
-        body=resolved;
+    if let Some((_, patch)) = resolve_library_preset(state, owner, &mut body).await? {
+        let mut resolved = patch;
+        for (key, value) in body.as_object().ok_or_else(|| AppError::bad_request("export request must be an object"))? {
+            resolved[key] = value.clone();
+        }
+        body = resolved;
     }
     if let Some(mode) = body.as_object_mut().and_then(|object| object.remove("range")) {
         let mode = mode.as_str().filter(|mode| matches!(*mode, "entire" | "inOut" | "workArea"))

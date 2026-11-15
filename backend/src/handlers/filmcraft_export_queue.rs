@@ -206,24 +206,11 @@ async fn admission(
         return Err(bad("no sequences"));
     }
     let mut preset_name = input["preset"].as_str().unwrap_or("").to_owned();
-    let mut base = if let Some(name) = input
-        .as_object_mut()
-        .and_then(|input| input.remove("libraryPreset"))
+    let mut base = if let Some((name, patch)) =
+        super::filmcraft_video_jobs::resolve_library_preset(state, owner, &mut input).await?
     {
-        let name = name
-            .as_str()
-            .ok_or_else(|| bad("libraryPreset must be a name"))?;
-        let library = state
-            .db
-            .filmcraft_export_presets(owner)
-            .await
-            .map_err(|error| AppError::internal("read queued presets", error))?;
-        let preset = library
-            .find(name)
-            .ok_or_else(|| bad("unknown export preset"))?;
-        preset_name = preset.name;
-        crate::domain::filmcraft_export_preset_resolve::request_patch(&preset.settings)
-            .map_err(bad)?
+        preset_name = name;
+        patch
     } else if input.get("preset").is_none() {
         let settings = serde_json::to_value(
             crate::domain::filmcraft_export_preset_settings::ExportSettings::default(),

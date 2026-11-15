@@ -12,6 +12,7 @@
   let preset = $state<FilmcraftExportPreset>('lossless')
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
+  let libraryPresetSettings = $state<Record<string, unknown>>()
   let quickPresetName = $state('')
   let outputName = $state('')
   let quickOutputName = $state('')
@@ -37,7 +38,7 @@
   const exactExportRange = $derived(rangeFromSeconds(exportStart, exportEnd))
   $effect(() => {
     void token
-    outputName = ''; quickOutputName = ''; libraryPreset = ''; quickPresetName = ''; quickSelection = ''; quickPresets = []; quickCaptionOverride = false
+    outputName = ''; quickOutputName = ''; libraryPreset = ''; libraryPresetSettings = undefined; quickPresetName = ''; quickSelection = ''; quickPresets = []; quickCaptionOverride = false
   })
   $effect(() => {
     const owner = token
@@ -261,11 +262,15 @@
   })
   function quickInput(): FilmcraftQuickExportRequest {
     const chosenPreset = quickSelection || libraryPreset
+    const settings = {
+      ...(!quickSelection ? libraryPresetSettings : undefined),
+      ...(quickCaptionOverride ? { burnCaptions, captionSidecar: captionFormat || null } : {}),
+    }
     return {
       document, sequenceId, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)),
       ...(chosenPreset ? { preset: chosenPreset } : {}),
       ...(quickOutputName.trim() ? { outputName: quickOutputName.trim() } : {}),
-      ...(quickCaptionOverride ? { settings: { burnCaptions, captionSidecar: captionFormat || null } } : {}),
+      ...(Object.keys(settings).length ? { settings } : {}),
       ...(quickRange !== 'inOut' ? { range: quickRange } : {}),
       ...(quickRange === 'custom' ? { sourceRange: customRange } : {}),
     }
@@ -294,7 +299,7 @@
       document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)),
       ...(outputName.trim() ? { outputName: outputName.trim() } : {}),
     }
-    return libraryPreset ? { ...common, libraryPreset } : { ...common, ...(!audioOnly && !burnCaptions ? { burnCaptions: false } : {}), ...(captionFormat ? { captionSidecar: captionFormat } : {}), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h264 && h264Level !== null ? { h264Level } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
+    return libraryPreset ? { ...common, libraryPreset, ...(libraryPresetSettings ? { libraryPresetSettings } : {}) } : { ...common, ...(!audioOnly && !burnCaptions ? { burnCaptions: false } : {}), ...(captionFormat ? { captionSidecar: captionFormat } : {}), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h264 && h264Level !== null ? { h264Level } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
   }
   let summaryOpen = $state(false)
   let previewEnabled = $state(false)
@@ -404,7 +409,7 @@
   }
 </script>
 <section aria-label="Видеоэкспорт Filmcraft" class="video-export">
-  <FilmcraftExportPresetLibrary {token} disabled={submitting || retrying || disabled} onapply={(name) => libraryPreset = name} />
+  <FilmcraftExportPresetLibrary {token} disabled={submitting || retrying || disabled} onapply={(name, settings) => { libraryPreset = name; libraryPresetSettings = settings }} />
   <details ontoggle={event => { quickOptionsOpen = event.currentTarget.open }}>
     <summary>Настройки быстрого экспорта</summary>
     <label>Имя файла без расширения
@@ -661,8 +666,8 @@
     {/if}
   {/if}
   {:else}
-    <p>Сохранённый пресет: {libraryPreset}</p>
-    <button type="button" disabled={submitting || retrying || disabled} onclick={() => libraryPreset = ''}>Настроить экспорт вручную</button>
+    <p>Сохранённый пресет: {libraryPreset}{#if libraryPresetSettings} · с правками{/if}</p>
+    <button type="button" disabled={submitting || retrying || disabled} onclick={() => { libraryPreset = ''; libraryPresetSettings = undefined }}>Настроить экспорт вручную</button>
   {/if}
   {#if !libraryPreset || quickCaptionOverride}
     {#if !audioOnly || quickCaptionOverride}

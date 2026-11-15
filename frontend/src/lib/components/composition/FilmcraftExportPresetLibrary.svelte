@@ -1,6 +1,6 @@
 <script lang="ts">
   import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile } from '$lib/api'
-  let { token, disabled = false, onapply }: { token: string | null; disabled?: boolean; onapply: (name: string) => void } = $props()
+  let { token, disabled = false, onapply }: { token: string | null; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void } = $props()
   let opened = $state(false)
   let entries = $state<FilmcraftLibraryPreset[]>([])
   let selected = $state('')
@@ -25,7 +25,7 @@
   const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
-  const valid = $derived(name.trim().length > 0 && (matchSource ? Number.isFinite(Number(scale)) && Number(scale) > 0 : ((!width && !height) || (positive(width) && positive(height)))) && (!bitrate || positive(bitrate)))
+  const valid = $derived((matchSource ? Number.isFinite(Number(scale)) && Number(scale) > 0 : ((!width && !height) || (positive(width) && positive(height)))) && (!bitrate || positive(bitrate)))
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
@@ -50,15 +50,19 @@
     if (!entries.some(p => p.name === selected)) selected = entries[0]?.name ?? ''
   }
   function open() { opened = true; void run(refresh) }
-  function save() {
-    if (!valid || !picked) return
+  function draftSettings() {
     const settings: Record<string, unknown> = {}
     if (matchSource) { settings.frameSize = null; settings.scale = Number(scale) }
     else if (width && height) settings.frameSize = [Number(width), Number(height)]
     if (bitrate) { settings.bitrateKbps = Number(bitrate); settings.adaptiveBitrate = null }
     if (captions !== 'preset') settings.burnCaptions = captions === 'burn'
     if (sidecar !== 'preset') settings.captionSidecar = sidecar === 'none' ? null : sidecar
-    if (h264Level !== 'preset' && (picked.settings.format === 'h264' || picked.settings.mxfVideoCodec === 'h264')) settings.h264Level = h264Level === 'auto' ? null : Number(h264Level)
+    if (h264Level !== 'preset' && (picked?.settings.format === 'h264' || picked?.settings.mxfVideoCodec === 'h264')) settings.h264Level = h264Level === 'auto' ? null : Number(h264Level)
+    return settings
+  }
+  function save() {
+    if (!valid || !name.trim() || !picked) return
+    const settings = draftSettings()
     void run(async (owner, signal) => {
       const result = await editFilmcraftExportPresets<{ name: string }>(owner, { action: 'save', name, from: selected, settings, overwrite: false }, signal)
       if (signal.aborted) return
@@ -124,7 +128,9 @@
         </select></label>
         <p>Если выбранный уровень слишком низкий для видео, энкодер повысит его автоматически.</p>
       {/if}
-      <button type="button" disabled={busy || disabled || !valid} onclick={save}>Сохранить копию пресета</button>
+      <button type="button" disabled={busy || disabled || !valid || !Object.keys(draftSettings()).length}
+        onclick={() => onapply(selected, draftSettings())}>Применить правки к экспорту</button>
+      <button type="button" disabled={busy || disabled || !valid || !name.trim()} onclick={save}>Сохранить копию пресета</button>
     {/if}
     <label>Импорт пресетов <input aria-label="Импорт пресетов Filmcraft" type="file" accept="application/json,.json" disabled={busy || disabled} onchange={(event) => { importFile(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} /></label>
     {#if busy}<span role="status">Загрузка пресетов…</span>{/if}

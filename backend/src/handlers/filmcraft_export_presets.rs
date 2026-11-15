@@ -124,6 +124,19 @@ pub(super) fn merge(base: &mut Value, patch: Value) {
     }
 }
 
+pub(super) fn export_request_patch(mut settings: Value, overrides: Option<Value>) -> AppResult<Value> {
+    if let Some(patch) = overrides {
+        if !patch.is_object() {
+            return Err(AppError::bad_request("settings must be an object"));
+        }
+        merge(&mut settings, patch);
+        settings = crate::domain::filmcraft_export_preset_settings::normalize(settings, true)
+            .map_err(|error| AppError::bad_request(error.to_string()))?;
+    }
+    crate::domain::filmcraft_export_preset_resolve::request_patch(&settings)
+        .map_err(|error| AppError::bad_request(error.to_string()))
+}
+
 fn default_settings() -> Value {
     serde_json::to_value(crate::domain::filmcraft_export_preset_settings::ExportSettings::default())
         .expect("source default settings serialize")
