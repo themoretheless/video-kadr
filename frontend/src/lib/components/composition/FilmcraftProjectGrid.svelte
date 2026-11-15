@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { on } from 'svelte/events'
-  import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
+  import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftIconSortKeys, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
   let { project, sources, token, sequenceId, clipId, onedit, onopen, selected = $bindable<string[]>([]), disabled = false }: {
@@ -21,6 +21,14 @@
   let drag = $state<{ pointer: number; startX: number; startY: number; x: number; y: number; items: string[]; document: string }>()
   let bin = $state('')
   let query = $state('')
+  const sortOptions = [
+    ['user', 'Порядок в проекте'], ['name', 'Имя'], ['label', 'Метка'], ['mediaType', 'Тип медиа'],
+    ['frameRate', 'Частота кадров'], ['mediaStart', 'Начало медиа'], ['mediaEnd', 'Конец медиа'],
+    ['mediaDuration', 'Длительность'], ['videoInfo', 'Сведения о видео'], ['audioInfo', 'Сведения о звуке'],
+    ['dateCreated', 'Дата создания'],
+  ] as const satisfies readonly (readonly [keyof FilmcraftIconSortKeys | 'user' | 'name' | 'label', string])[]
+  let sortColumn = $state<(typeof sortOptions)[number][0]>('user')
+  let descending = $state(false)
   let page = $state(0)
   let hoverEnabled = $state(true)
   let hover = $state<{ item: string; fraction: number }>()
@@ -63,10 +71,23 @@
     const available = activeBin && (search || activeBin.itemIds !== undefined)
       ? [...memberIds].flatMap(id => { const item = byId.get(id); return item ? [item] : [] })
       : items
+    const matches = available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
+    if (!freeform && sortColumn !== 'user') {
+      const column = sortColumn
+      const key = (item: typeof items[number]) => column === 'name' ? item.name : column === 'label' ? item.label ?? '' : item.iconSort?.[column] ?? ''
+      const compare = (left: string, right: string) => {
+        const a = left.toLowerCase(), b = right.toLowerCase()
+        return a < b ? -1 : a > b ? 1 : 0
+      }
+      matches.sort((left, right) => {
+        const a = key(left), b = key(right)
+        const order = typeof a === 'number' && typeof b === 'number' ? a - b : compare(String(a), String(b))
+        return (order || compare(left.name, right.name)) * (descending ? -1 : 1)
+      })
+    }
     return [
       ...folders.map(folder => ({ kind: 'bin' as const, folder })),
-      ...available.filter(item => !search || (item.name || item.id).toLocaleLowerCase().includes(search))
-        .map(item => ({ kind: 'item' as const, item })),
+      ...matches.map(item => ({ kind: 'item' as const, item })),
     ]
   })
   const pages = $derived(Math.max(1, Math.ceil(entries.length / pageSize)))
@@ -285,6 +306,14 @@
         <button type="button" disabled={disabled || !token || moving || marking} onclick={() => editLayout('project.freeform.reset')}>Сбросить позиции и стеки</button>
         <button type="button" disabled={disabled || !token || moving || marking || stackSelection.length < 2} onclick={() => editStack(true)}>Сложить в стек</button>
         <button type="button" disabled={disabled || !token || moving || marking || !canUnstack} onclick={() => editStack(false)}>Разобрать стек</button>
+      {/if}
+      {#if !freeform}
+        <label>Сортировка карточек
+          <select value={sortColumn} onchange={event => { sortColumn = event.currentTarget.value as typeof sortColumn; descending = false; page = 0; hover = undefined }}>
+            {#each sortOptions as [value, label] (value)}<option {value}>{label}</option>{/each}
+          </select>
+        </label>
+        <label><input type="checkbox" bind:checked={descending} disabled={sortColumn === 'user'} onchange={() => { page = 0; hover = undefined }} />По убыванию</label>
       {/if}
       {#if !freeform && pages > 1}
         <button type="button" aria-label="Предыдущая страница карточек" disabled={currentPage === 0} onclick={() => { page = currentPage - 1; hover = undefined }}>‹</button>

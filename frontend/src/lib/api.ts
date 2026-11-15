@@ -1679,10 +1679,14 @@ export type FilmcraftLabelCommand = 'edit.label' | `edit.label.${Lowercase<Filmc
 export type FilmcraftProjectItemKind = 'Media' | 'Sequence' | 'Subclip' | 'Graphic' | 'AdjustmentLayer'
 export interface FilmcraftSubclipInfo { parentId: string; startTicks: string; endTicks: string; restrictTrims: boolean }
 export interface FilmcraftMarks { in: string | null; out: string | null; split: { videoIn: string | null; videoOut: string | null; audioIn: string | null; audioOut: string | null } }
+export interface FilmcraftIconSortKeys {
+  mediaType: string; frameRate: number; mediaStart: number; mediaEnd: number; mediaDuration: number
+  videoInfo: string; audioInfo: string; dateCreated: number
+}
 export interface FilmcraftImportResult {
   projectBins?: Array<{ id: string; name: string; parentId: string | null; depth: number; itemIds?: string[] }>
   labelPalette?: Array<{ name: FilmcraftLabel; rgb: number[] }>
-  projectItems?: Array<{ id: string; name: string; kind: FilmcraftProjectItemKind; mediaInterpretation?: FilmcraftMediaInterpretation | null; subclip?: FilmcraftSubclipInfo | null; sourceMarks?: FilmcraftMarks; posterFrame?: string | null; matteColor?: string | null; freeformArrangements?: string[]; freeformStack?: string | null; freeformPosition?: { x: number; y: number; size: number | null } | null; cardMarkRange?: { start: number; end: number } | null; label?: FilmcraftLabel }>
+  projectItems?: Array<{ id: string; name: string; kind: FilmcraftProjectItemKind; mediaInterpretation?: FilmcraftMediaInterpretation | null; subclip?: FilmcraftSubclipInfo | null; sourceMarks?: FilmcraftMarks; posterFrame?: string | null; matteColor?: string | null; iconSort?: FilmcraftIconSortKeys; freeformArrangements?: string[]; freeformStack?: string | null; freeformPosition?: { x: number; y: number; size: number | null } | null; cardMarkRange?: { start: number; end: number } | null; label?: FilmcraftLabel }>
   documentText: string
   originalSchema: number
   sequences: Array<{ tracks?: Array<{ id: string; name: string; kind: 'video_tracks' | 'audio_tracks'; locked: boolean }>; marks?: FilmcraftMarks; id: string; name: string; settings: unknown; sampleRate: number; durationSeconds: number; durationFrames?: string; transitions?: FilmcraftAppliedTransition[]; clips?: Array<{ id: string; name: string; label?: FilmcraftLabel; trackId: string; trackKind: string; locked: boolean; linkId?: string | null; startTicks: string; durationTicks: string }> }>

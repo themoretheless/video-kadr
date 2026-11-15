@@ -71,7 +71,7 @@ pub(super) fn duration(item: &Value) -> Result<i64> {
         _ => anyhow::bail!("unsupported project item kind"),
     })
 }
-fn type_label(item: &Value) -> Result<&'static str> {
+pub(super) fn type_label(item: &Value) -> Result<&'static str> {
     let kind = item["kind"].as_object().context("missing item kind")?;
     let (name, value) = kind.iter().next().context("empty item kind")?;
     Ok(match name.as_str() {

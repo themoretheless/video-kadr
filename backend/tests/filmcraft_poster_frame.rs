@@ -264,3 +264,27 @@ async fn card_mark_range_includes_out_frame_and_uses_open_end_defaults() {
         assert_eq!(item["cardMarkRange"], range);
     }
 }
+
+#[tokio::test]
+async fn icon_sort_keys_use_source_timecode_and_subclip_offset() {
+    use video_kadr_backend::{error::ApiJson, handlers::filmcraft_project::import};
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let mut document = fixture["cases"][0]["document"].clone();
+    document["project"]["items"]["1"]["kind"]["Media"]["info"]["start_timecode"] = json!(30);
+    let request = serde_json::from_value(json!({"document":document})).unwrap();
+    let imported = import(ApiJson(request)).await.unwrap().0;
+    let keys = |id: &str| {
+        &imported["projectItems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == id)
+            .unwrap()["iconSort"]
+    };
+    assert_eq!(keys("1")["mediaStart"], json!(317_520_000_000.0));
+    assert_eq!(keys("2")["mediaStart"], json!(444_528_000_000.0));
+    assert_eq!(keys("2")["mediaEnd"], json!(814_968_000_000.0));
+    assert_eq!(keys("2")["mediaType"], "Subclip");
+    assert_eq!(keys("2")["videoInfo"], "4 x 4 (1.0000)");
+}
