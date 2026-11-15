@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { nestedComposition, nestedHistory, importNestedCaptionFile, editNestedSubtitleDocuments } from '$lib/state/nestedComposition.svelte'
+  import { nestedComposition, nestedHistory, importNestedCaptionFile, importPreparedNestedCaptionFile, editNestedSubtitleDocuments } from '$lib/state/nestedComposition.svelte'
+  import { prepareCaptionFileImport } from '$lib/api'
+  import { readCaptionFileBase64 } from '$lib/composition/captionFileImport'
   import { nestedCaptionExportCues, formatSubtitleExport, type SubtitleExportFormat } from '$lib/subtitles/export'
   import { MAX_SRT_BYTES } from '$lib/subtitles/srt'
   import SubtitleFilePicker from './SubtitleFilePicker.svelte'
@@ -11,7 +13,39 @@
   const content = $derived(activeId ? nestedComposition.document?.compositions[activeId]?.content : undefined)
   const fileTracks = $derived(content?.captionTracks ?? [])
   let trackId = $state('')
+  let disposed = false
+  $effect(() => () => { disposed = true })
   const selectedTrack = $derived(fileTracks.find(track => track.id === trackId) ?? fileTracks[0])
+  async function importTrack(input: HTMLInputElement) {
+    const file = input.files?.[0], project = nestedComposition.document, id = activeId
+    if (!file || !project || !id || !content || importing || nestedHistory.busy) return
+    const snapshot = JSON.stringify(project), owner = authState.token
+    const offset = atPlayhead ? nestedComposition.timeUs : 0
+    const { fpsMilli, fpsRate } = content.canvas
+    const check = () => {
+      if (disposed || authState.token !== owner || JSON.stringify(nestedComposition.document) !== snapshot || activeId !== id) {
+        throw new Error('Проект или композиция изменились во время импорта')
+      }
+    }
+    importing = true
+    error = ''; message = ''
+    try {
+      const rate = fpsRate ?? { numerator: fpsMilli, denominator: 1000 }
+      const encoded = await readCaptionFileBase64(file)
+      check()
+      const prepared = await prepareCaptionFileImport(encoded, file.name, { num: rate.numerator, den: rate.denominator })
+      check()
+      if (!await importPreparedNestedCaptionFile(id, prepared, offset, check)) {
+        throw new Error(nestedHistory.error || 'Импорт дорожки отменён')
+      }
+      message = ['Дорожка субтитров импортирована', ...(prepared.document.warnings ?? [])].join('. ')
+    } catch (cause) {
+      if (!disposed) error = cause instanceof Error ? cause.message : String(cause)
+    } finally {
+      importing = false
+      input.value = ''
+    }
+  }
   async function importFile(file: File, dropTime?: number, saveSource = false): Promise<boolean> {
     if(importing||nestedHistory.busy)return false
     error='';message='';importing=true
@@ -53,6 +87,10 @@
   <label><input type="checkbox" bind:checked={atPlayhead} disabled={importing||nestedHistory.busy} />Начать субтитры в позиции курсора</label>
   <SubtitleFilePicker label="Импорт субтитров вложенной композиции" disabled={importing||nestedHistory.busy}
     project={nestedComposition.document} {documents} ondocumentschange={editNestedSubtitleDocuments} onfile={importFile} onerror={notice=>{message='';error=notice}} />
+  <label>Импорт на дорожку субтитров
+    <input type="file" aria-label="Импорт на дорожку субтитров" accept=".srt,.vtt,.scc,.mcc,.stl,.ttml,.dfxp"
+      disabled={!content||importing||nestedHistory.busy} onchange={event=>void importTrack(event.currentTarget)} />
+  </label>
   {#if message}<p role="status">{message}</p>{/if}
   <button class="btn ghost sm" type="button" onclick={() => download('srt')}>Субтитры активной композиции · SRT</button>
   <button class="btn ghost sm" type="button" onclick={() => download('vtt')}>Субтитры активной композиции · VTT</button>
@@ -63,7 +101,8 @@
       </select>
     </label>
     {#key `${activeId}/${selectedTrack.id}`}
-      <CaptionFileExport composition={{ canvas: { fps: content.canvas.fpsMilli / 1000, fpsRate: content.canvas.fpsRate },
+      <CaptionFileExport composition={{ canvas: { fps: content.canvas.fpsMilli / 1000,
+        fpsRate: content.canvas.fpsRate ?? { numerator: content.canvas.fpsMilli, denominator: 1000 } },
         captionTracks: fileTracks }} activeId={selectedTrack.id} />
     {/key}
   {/if}

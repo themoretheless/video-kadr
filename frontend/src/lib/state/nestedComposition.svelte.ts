@@ -13,7 +13,8 @@ import {setNativeCaptionText} from '$lib/composition/nativeCaptionText'
 import {importNestedSubtitles} from '$lib/subtitles/nestedImport'
 import { mergeNestedCaptions } from '$lib/composition/mergeCaptions'
 import { copyNestedCaptionAppearance, restyleNestedCaptions, type CaptionStylePatch } from '$lib/composition/restyleCaptions'
-import { nestedDurations } from '$lib/api'
+import { nestedDurations, type PreparedCaptionFileImport } from '$lib/api'
+import { preparedCaptionTrack } from '$lib/composition/captionFileImport'
 import {videoRegionOrdinal} from '$lib/video-region'
 import {reattachNativeConcatAudio} from '$lib/composition/concatDetachedAudio'
 import {cloneGainSourceKeys} from '$lib/composition/concatGainSourceKeys'
@@ -1071,6 +1072,23 @@ export async function importNestedCaptionFile(compositionId:string, serialized:s
   if(!nestedHistory.error&&expected&&JSON.stringify(nestedComposition.document)!==expected)nestedHistory.error='Проект изменился во время импорта субтитров'
   const committed = !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected
   if (committed) report?.(simplifiedCueCount)
+  return committed
+}
+
+export async function importPreparedNestedCaptionFile(
+  compositionId: string, prepared: PreparedCaptionFileImport, offsetUs: number, admission: () => void,
+): Promise<boolean> {
+  const guard = () => { assertHistoryUnlocked(); admission() }
+  let committed = false
+  await editNestedDocument(async project => {
+    guard()
+    const { pasteNativeCaptionTracks } = await import('$lib/composition/nativeCaptionClipboard')
+    let serial = 0
+    const track = preparedCaptionTrack(prepared, () => String(++serial))
+    const document = pasteNativeCaptionTracks(project, compositionId, [track], offsetUs, {}, () => `caption-${crypto.randomUUID()}`)
+    await nestedDurations(document)
+    return document
+  }, true, undefined, undefined, 0, () => { committed = true }, guard)
   return committed
 }
 

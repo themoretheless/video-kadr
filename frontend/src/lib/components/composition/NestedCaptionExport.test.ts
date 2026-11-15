@@ -1,7 +1,7 @@
 // @ts-expect-error The mounted component needs Svelte's client runtime.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { expect, it, vi } from 'vitest'
-import { nestedDurations, writeCaptionFile } from '$lib/api'
+import { nestedDurations, prepareCaptionFileImport, writeCaptionFile } from '$lib/api'
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { closeNestedComposition, nestedComposition, nestedHistory, undoNestedComposition } from '$lib/state/nestedComposition.svelte'
@@ -11,7 +11,55 @@ import NestedCaptionExport from './NestedCaptionExport.svelte'
 vi.mock('$lib/api', () => ({
  nestedDurations: vi.fn(async () => ({ root: 4_000_000 })),
  writeCaptionFile: vi.fn(),
+ prepareCaptionFileImport: vi.fn(),
 }))
+
+it('imports an exact-clock caption track at the cursor with one Undo', async () => {
+ closeNestedComposition()
+ vi.mocked(nestedDurations).mockClear()
+ const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
+ nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { content, instances: [] } } }
+ nestedComposition.timeUs = 1000000
+ vi.mocked(prepareCaptionFileImport).mockResolvedValue({
+  name: 'Broadcast', format: 'CEA-708', language: 'fr', enabled: true, locked: false, syncLock: true,
+  backgroundColor: [0, 0, 0, 191],
+  document: { ticksPerSecond: '254016000000', blocks: ['NOTE retained'], warnings: ['Source warning'],
+   cues: [{ startTick: '1', endTick: '254016000003', text: 'Dialogue', speaker: 'Voice', id: 'external', settings: 'line:80%' }],
+  },
+ })
+ const target = document.createElement('div')
+ document.body.append(target)
+ const component = mount(NestedCaptionExport, { target })
+ try {
+  await tick()
+  const atPlayhead = target.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+  atPlayhead.checked = true
+  atPlayhead.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  nestedComposition.timeUs = 1000000
+  const input = target.querySelector<HTMLInputElement>('[aria-label="Импорт на дорожку субтитров"]')!
+  Object.defineProperty(input, 'files', { value: [new File(['mock MCC'], 'broadcast.mcc')] })
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() => expect(target.textContent).toContain('Source warning'))
+  expect(prepareCaptionFileImport).toHaveBeenCalledExactlyOnceWith(btoa('mock MCC'), 'broadcast.mcc', { num: 24000, den: 1000 })
+  expect(nestedDurations).toHaveBeenCalledOnce()
+  expect(nestedHistory.past).toHaveLength(1)
+  expect(nestedComposition.document?.compositions.root?.content.captionTracks).toMatchObject([{
+   name: 'Broadcast', format: 'CEA-708', language: 'fr', syncLock: true,
+   vttBlocks: ['NOTE retained'], style: { backgroundColor: '#000000bf' },
+   clips: [{ timelineStartTick: '254016000001', timelineEndTick: '508032000003',
+    text: 'Dialogue', speaker: 'Voice', cueId: 'external', settings: 'line:80%' }],
+  }])
+  undoNestedComposition()
+  expect(nestedComposition.document?.compositions.root?.content.captionTracks).toBeUndefined()
+ } finally {
+  await unmount(component)
+  target.remove()
+  vi.mocked(prepareCaptionFileImport).mockReset()
+  vi.mocked(nestedDurations).mockClear()
+  closeNestedComposition()
+ }
+})
 
 it('exports a selected native caption track from the active timeline with its exact clock and metadata', async () => {
  closeNestedComposition()
