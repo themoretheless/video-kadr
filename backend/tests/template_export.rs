@@ -92,6 +92,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     reflected_caption["textAnchor"] = json!([0.5, 0.5]);
     reflected_caption["style"]["tracking"] = json!(2.0);
     reflected_caption["style"]["lineHeight"] = json!(1.75);
+    reflected_caption["textBoxHeight"] = json!(4.0);
     reflected_caption["transform"]["concatPreparation"] = json!({
         "crop": [0.0, 0.0, 0.0, 0.0], "canvas": [16, 8], "flipH": true, "flipV": true
     });
@@ -149,6 +150,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         assert_eq!(reflected["flipV"], true);
         assert_eq!(reflected["text"]["tracking"], 0.25);
         assert_eq!(reflected["text"]["lineHeight"], 1.75);
+        assert_eq!(reflected["text"]["maxHeight"], 0.5);
         assert_eq!(reflected["crop"], json!({"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0}));
         assert_eq!(sidecar["clips"][1][1]["transform"]["concatPreparation"], reflected_caption["transform"]["concatPreparation"]);
         assert_eq!(manifest["name"], "Portable Concat");

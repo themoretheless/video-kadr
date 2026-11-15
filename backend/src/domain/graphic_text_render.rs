@@ -86,7 +86,7 @@ pub fn raster_layer(spec: &TextLayer, m: &Xform, cw: usize, ch: usize) -> Option
     if layout.glyphs.is_empty() && layout.underlines.is_empty() && ap.background.is_none() {
         return None;
     }
-    let lb = layout.bounds;
+    let lb = spec.text.block_bounds(layout.bounds);
     let text = Some(layout);
     let stroke_out = ap
         .strokes

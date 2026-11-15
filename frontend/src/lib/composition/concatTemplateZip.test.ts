@@ -56,7 +56,7 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(retimed)], 'template.json'))).resolves.toEqual(clips)
   const changed = { ...source, timelines: [{
     id: 'TL1', video: { width: 320, height: 180, rateNum: 24, rateDen: 1 }, clips: [
-      { ...first, text: { ...first.text, maxHeight: 0.5 } },
+      { ...first, text: { ...first.text, backgroundPaddingX: 0.25 } },
       { ...second, sourceStart: 0, mediaId: '', fadeIn: 0, filters: [] },
     ],
   }] }
@@ -136,14 +136,15 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   ] }] }
   await expect(readConcatTemplateCaptions(pivotSidecar, new File([JSON.stringify(withPivot)], 'template.json')))
     .resolves.toEqual([clips[1]])
-  const narrowed = { ...first, text: { ...first.text, maxWidth: 0.625, shadow: false } }
+  const narrowed = { ...first, text: { ...first.text, maxWidth: 0.625, maxHeight: 0.5, shadow: false } }
   const withWidth = { ...source, timelines: [{ id: 'TL1', video, clips: [narrowed, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withWidth)], 'template.json')))
     .resolves.toEqual([
-      ['TL1', { ...staticClip, textBoxWidth: 200, style: { ...staticClip.style, shadow: { ...staticClip.style.shadow, alpha: 0 } } }],
+      ['TL1', { ...staticClip, textBoxWidth: 200, textBoxHeight: 90, style: { ...staticClip.style, shadow: { ...staticClip.style.shadow, alpha: 0 } } }],
       clips[1],
     ])
   narrowed.text.maxWidth = 0
+  narrowed.text.maxHeight = 0
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withWidth)], 'template.json')))
     .resolves.toEqual([
       ['TL1', { ...staticClip, style: { ...staticClip.style, shadow: { ...staticClip.style.shadow, alpha: 0 } } }],

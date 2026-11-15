@@ -33,6 +33,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         leading,
         tracking: clip.style.tracking.unwrap_or_default() * 1000. / clip.style.font_size as f32,
         box_width: clip.text_box_width.unwrap_or_default(),
+        min_box_height: clip.text_box_height,
         fill:true,fill_color:color,align:match clip.style.align {None|Some(super::composition::TextAlignment::Left)=>0,Some(super::composition::TextAlignment::Center)=>1,Some(super::composition::TextAlignment::Right)=>2},
         stroke:clip.style.stroke_width.round()>0.,stroke_width:clip.style.stroke_width.round()as f32,stroke_color:rgba(clip.style.stroke),stroke_type:0,
         background:clip.style.background.alpha>0.,background_color:rgba(clip.style.background),background_opacity:100.,background_size:0.,background_radius:0.,
@@ -41,7 +42,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
     };
     // Anchor against the complete multiline layout before the full-canvas clip transform.
     let (layer,_)=parameters.evaluate(true,canvas)?;
-    let bounds=super::graphic_text_layout::text_layout(&layer.text).bounds;
+    let bounds=layer.text.block_bounds(super::graphic_text_layout::text_layout(&layer.text).bounds);
     let [anchor_x, anchor_y] = clip.text_anchor.unwrap_or([clip.transform.anchor_x, clip.transform.anchor_y]);
     parameters.anchor=[bounds[0]as f64+anchor_x*(bounds[2]-bounds[0])as f64,bounds[1]as f64+anchor_y*(bounds[3]-bounds[1])as f64];
     let graphic=GraphicTimelineClip{concat_shape:None,concat_treatment:None,concat_shape_blend:None,id:clip.id.clone(),timeline_start_tick:clip.timeline_start_tick,timeline_end_tick:clip.timeline_end_tick,animation_offset_us:0,template:None,roll:None,responsive_time:None,width:canvas.0,height:canvas.1,
@@ -79,6 +80,29 @@ mod tests {
         let mut disabled=base;disabled.enabled=false;
         assert!(render(&disabled,(64,48),1500000,&mut||Ok(())).unwrap().is_none());
         assert!(render(&clip(),(64,48),1500000,&mut||anyhow::bail!("cancel")).is_err());
+    }
+
+    #[test]
+    fn caption_box_height_expands_the_background_without_clipping_lines() {
+        let mut caption = clip();
+        caption.text = "H\nH".into();
+        caption.style.background = Rgba { red: 0., green: 1., blue: 0., alpha: 1. };
+        let pixels = |clip: &TextClip| {
+            render(clip, (64, 64), 1500000, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap().rgba
+        };
+        let original = pixels(&caption);
+        caption.text_box_height = Some(1.);
+        assert_eq!(pixels(&caption), original);
+        caption.text_box_height = Some(48.);
+        let expanded = pixels(&caption);
+        let rows = expanded.chunks_exact(64 * 4)
+            .filter(|row| row.chunks_exact(4).any(|pixel| pixel[3] > 0 && pixel[1] > pixel[0]))
+            .count();
+        assert!((48..=49).contains(&rows), "visible background rows: {rows}");
+        let glyphs = |frame: &[u8]| frame.chunks_exact(4).map(|pixel| u32::from(pixel[0])).sum::<u32>();
+        assert!(glyphs(&original) > 0);
+        assert_eq!(glyphs(&expanded), glyphs(&original));
     }
 
     #[test]

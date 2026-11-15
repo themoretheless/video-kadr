@@ -181,15 +181,18 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   if (style?.lineHeight !== undefined &&
       !(Math.fround(style.lineHeight * Math.fround(style.fontSize)) <= 5000)) return undefined
 
-  let textBoxWidth = clip.textBoxWidth
-  if (editedText.maxWidth !== previousText.maxWidth) {
-    const width = record(video)?.width
-    const maxWidth = editedText.maxWidth === undefined ? 0 : editedText.maxWidth
-    if (clip.concatTitle || typeof width !== 'number' || typeof maxWidth !== 'number') return undefined
-    const pixels = Math.fround(maxWidth * width)
-    if (maxWidth !== 0 && !(pixels >= 1 && pixels <= 100000)) return undefined
-    textBoxWidth = maxWidth === 0 ? undefined : pixels
-    retainOriginalField('maxWidth')
+  const textBox = { textBoxWidth: clip.textBoxWidth, textBoxHeight: clip.textBoxHeight }
+  for (const [source, target, axis] of [
+    ['maxWidth', 'textBoxWidth', 'width'], ['maxHeight', 'textBoxHeight', 'height'],
+  ] as const) {
+    if (editedText[source] === previousText[source]) continue
+    const dimension = record(video)?.[axis]
+    const limit = editedText[source] === undefined ? 0 : editedText[source]
+    if (clip.concatTitle || typeof dimension !== 'number' || typeof limit !== 'number') return undefined
+    const pixels = Math.fround(limit * dimension)
+    if (limit !== 0 && !(pixels >= 1 && pixels <= 100000)) return undefined
+    textBox[target] = limit === 0 ? undefined : pixels
+    retainOriginalField(source)
   }
   if (editedText.shadow !== previousText.shadow) {
     if (clip.concatTitle || editedText.shadow !== false || !style?.shadow) return undefined
@@ -371,7 +374,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     opacity,
     ...(blendMode === undefined ? {} : { blendMode }),
     ...(opacityMultiplier === undefined ? {} : { opacityMultiplier }),
-    textBoxWidth,
+    ...textBox,
     timelineStartTick: start,
     timelineEndTick: start + duration,
   }

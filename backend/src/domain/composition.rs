@@ -1580,6 +1580,8 @@ pub struct TextClip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_box_width: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_box_height: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_anchor: Option<[f64; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<VideoEffect>,
@@ -2129,6 +2131,9 @@ impl Composition {
                             || clip.opacity_multiplier.is_some_and(|value| clip.concat_title.is_some() || !(0.0..=1.0).contains(&value))
                             || clip.text_box_width.is_some_and(|width| {
                                 clip.concat_title.is_some() || !(1.0..=100_000.0).contains(&width)
+                            })
+                            || clip.text_box_height.is_some_and(|height| {
+                                clip.concat_title.is_some() || !(1.0..=100_000.0).contains(&height)
                             })
                             || clip.text_anchor.is_some_and(|anchor| {
                                 clip.concat_title.is_some()
@@ -3730,6 +3735,7 @@ source_out_tick: 99_000,
             clips: vec![TextClip {
                     opacity_multiplier: None,
                 text_box_width: None,
+                text_box_height: None,
                 text_anchor: None,
                 effects: vec![],
                 blend_mode: None,

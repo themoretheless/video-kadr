@@ -4093,6 +4093,7 @@ source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retim
             clips: vec![TextClip {
                     opacity_multiplier: None,
                 text_box_width: None,
+                text_box_height: None,
                 text_anchor: None,
                 effects: vec![],
                 blend_mode: None,

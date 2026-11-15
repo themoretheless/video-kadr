@@ -57,6 +57,8 @@ pub struct GraphicTextParameters {
     pub underline: bool,
     pub box_width: f32,
     pub box_height: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_box_height: Option<f32>,
     pub vertical: bool,
     pub runs: Vec<CharacterStyleRun>,
 }
@@ -110,6 +112,7 @@ impl Default for GraphicTextParameters {
             underline: false,
             box_width: 0.,
             box_height: 0.,
+            min_box_height: None,
             vertical: false,
             runs: vec![],
         }
@@ -160,6 +163,7 @@ impl GraphicTextParameters {
             (self.baseline_shift, -5000., 5000.),
             (self.box_width, 0., 100000.),
             (self.box_height, 0., 100000.),
+            (self.min_box_height.unwrap_or_default(), 0., 100000.),
         ] {
             ensure!(
                 v.is_finite() && (lo..=hi).contains(&v),
@@ -186,6 +190,7 @@ impl GraphicTextParameters {
             underline: self.underline.clone(),
             box_width: self.box_width.clone(),
             box_height: self.box_height.clone(),
+            min_box_height: self.min_box_height.unwrap_or_default(),
             vertical: self.vertical.clone(),
             runs: byte_runs(&self.text, &self.runs),
         }

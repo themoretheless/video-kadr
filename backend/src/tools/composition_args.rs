@@ -5454,6 +5454,7 @@ timeline: None,
                 clips: vec![TextClip {
                     opacity_multiplier: None,
                 text_box_width: None,
+                text_box_height: None,
                 text_anchor: None,
                 effects: vec![],
                 blend_mode: None,

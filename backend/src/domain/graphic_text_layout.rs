@@ -36,6 +36,7 @@ pub struct GraphicText {
     pub underline: bool,
     pub box_width: f32,
     pub box_height: f32,
+    pub min_box_height: f32,
     pub vertical: bool,
     pub runs: Vec<(Range<usize>, GraphicCharStyle)>,
 }
@@ -58,12 +59,19 @@ impl Default for GraphicText {
             underline: false,
             box_width: 0.,
             box_height: 0.,
+            min_box_height: 0.,
             vertical: false,
             runs: Vec::new(),
         }
     }
 }
 impl GraphicText {
+    pub fn block_bounds(&self, mut bounds: [f32; 4]) -> [f32; 4] {
+        let padding = (self.min_box_height - (bounds[3] - bounds[1])).max(0.) * 0.5;
+        bounds[1] -= padding;
+        bounds[3] += padding;
+        bounds
+    }
     /// Validate transport data before shaping. Ranges use UTF-8 byte offsets.
     pub fn validate(&self) -> anyhow::Result<()> {
         use anyhow::ensure;
@@ -78,7 +86,8 @@ impl GraphicText {
                 self.leading,
                 self.baseline_shift,
                 self.box_width,
-                self.box_height
+                self.box_height,
+                self.min_box_height,
             ]
             .iter()
             .all(|v| v.is_finite()),

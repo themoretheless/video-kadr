@@ -940,6 +940,7 @@ export interface WireConcatTitleStyle {
  readonly lineHeight?:number;readonly tracking?:number;readonly maxWidth?:number;readonly maxHeight?:number
 }
 export interface WireTextClip {
+  readonly textBoxHeight?: number
   readonly opacityMultiplier?: number
   readonly textBoxWidth?: number
   readonly textAnchor?: readonly [number, number]
