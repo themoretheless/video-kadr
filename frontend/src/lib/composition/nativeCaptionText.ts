@@ -1,20 +1,38 @@
 import type {NativeNestedProject} from '../api'
-import {MAX_TEXT_LENGTH, type WireTextClip, type WireTextStyle} from './types'
+import {colorToRgba} from './payload'
+import {MAX_TEXT_LENGTH, type WireRgba, type WireTextClip, type WireTextStyle} from './types'
 
 export type CaptionAppearance = Pick<WireTextStyle,
-  'fontFamily' | 'fontSize' | 'fontWeight' | 'italic' | 'align' | 'tracking' | 'lineHeight' | 'backgroundRadius'> &
+  'fontFamily' | 'fontSize' | 'fontWeight' | 'italic' | 'align' | 'tracking' | 'lineHeight' | 'backgroundRadius' | 'strokeWidth'> &
   Pick<WireTextClip, 'textBoxWidth' | 'textBoxHeight'> & {
+    readonly textColor: string
+    readonly textAlpha: number
+    readonly backgroundColor: string
     readonly backgroundAlpha: number
+    readonly strokeColor: string
+    readonly strokeAlpha: number
     readonly paddingX?: number
     readonly paddingY?: number
   }
+
+function rgbHex({ red, green, blue }: WireRgba): string {
+  return '#' + [red, green, blue].map(value => Math.round(value * 255).toString(16).padStart(2, '0')).join('')
+}
+
+function editedColor(original: WireRgba, hex: string, alpha: number): WireRgba {
+  if (!/^#[0-9a-f]{6}$/i.test(hex) || !(alpha >= 0 && alpha <= 1)) throw new Error('Некорректный цвет или непрозрачность')
+  return { ...(rgbHex(original) === hex.toLowerCase() ? original : colorToRgba(hex)), alpha }
+}
 
 export function captionAppearance(clip: WireTextClip): CaptionAppearance {
   const { style, textBoxWidth, textBoxHeight } = clip
   return {
     fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
     italic: style.italic, align: style.align, tracking: style.tracking, lineHeight: style.lineHeight,
-    textBoxWidth, textBoxHeight, backgroundRadius: style.backgroundRadius, backgroundAlpha: style.background.alpha,
+    textBoxWidth, textBoxHeight, backgroundRadius: style.backgroundRadius,
+    textColor: rgbHex(style.color), textAlpha: style.color.alpha,
+    backgroundColor: rgbHex(style.background), backgroundAlpha: style.background.alpha,
+    strokeColor: rgbHex(style.stroke), strokeAlpha: style.stroke.alpha, strokeWidth: style.strokeWidth,
     paddingX: style.backgroundPadding?.[0], paddingY: style.backgroundPadding?.[1],
   }
 }
@@ -24,6 +42,9 @@ export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionApp
     left.fontWeight === right.fontWeight && left.italic === right.italic && left.align === right.align &&
     left.tracking === right.tracking && left.lineHeight === right.lineHeight &&
     left.textBoxWidth === right.textBoxWidth && left.textBoxHeight === right.textBoxHeight &&
+    left.textColor === right.textColor && left.textAlpha === right.textAlpha &&
+    left.backgroundColor === right.backgroundColor && left.strokeColor === right.strokeColor &&
+    left.strokeAlpha === right.strokeAlpha && left.strokeWidth === right.strokeWidth &&
     left.backgroundRadius === right.backgroundRadius && left.backgroundAlpha === right.backgroundAlpha &&
     left.paddingX === right.paddingX && left.paddingY === right.paddingY
 }
@@ -48,14 +69,18 @@ export function setNativeCaptionText(
   let edited = { ...clip, text }
   if (appearance && current && !sameCaptionAppearance(current, appearance.value)) {
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
-    const { textBoxWidth, textBoxHeight, backgroundAlpha, paddingX, paddingY, ...style } = appearance.value
+    const { textBoxWidth, textBoxHeight, textColor, textAlpha, backgroundColor, backgroundAlpha,
+      strokeColor, strokeAlpha, paddingX, paddingY, ...style } = appearance.value
     if (!(style.fontSize >= 1 && style.fontSize <= 1000)) throw new Error('Размер шрифта должен быть от 1 до 1000 px')
     if (!style.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
-    if (!(backgroundAlpha >= 0 && backgroundAlpha <= 1)) throw new Error('Непрозрачность фона должна быть от 0 до 1')
+    if (!(style.strokeWidth >= 0 && style.strokeWidth <= 100)) throw new Error('Толщина обводки должна быть от 0 до 100 px')
     const backgroundPadding = paddingX === undefined && paddingY === undefined
       ? undefined : [paddingX ?? 0, paddingY ?? 0] as const
     edited = { ...edited, textBoxWidth, textBoxHeight, style: {
-      ...clip.style, ...style, background: { ...clip.style.background, alpha: backgroundAlpha }, backgroundPadding,
+      ...clip.style, ...style, backgroundPadding,
+      color: editedColor(clip.style.color, textColor, textAlpha),
+      background: editedColor(clip.style.background, backgroundColor, backgroundAlpha),
+      stroke: editedColor(clip.style.stroke, strokeColor, strokeAlpha),
     } }
   } else if (text === clip.text) {
     return project

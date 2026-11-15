@@ -6,7 +6,11 @@
   const fontsId = $props.id()
   let {compositionId,clip,disabled=false}:{compositionId:string;clip:WireTextClip;disabled?:boolean}=$props()
   let draft=$state(''),base=$state(''),scope=$state(''),error=$state('')
-  const defaultAppearance = { fontFamily: 'Noto Sans', fontSize: 24, backgroundAlpha: 0 }
+  const defaultAppearance = {
+    fontFamily: 'Noto Sans', fontSize: 24,
+    textColor: '#ffffff', textAlpha: 1, backgroundColor: '#000000', backgroundAlpha: 0,
+    strokeColor: '#000000', strokeAlpha: 0, strokeWidth: 0,
+  }
   let appearance=$state<{ -readonly [Field in keyof CaptionAppearance]: CaptionAppearance[Field] }>({...defaultAppearance})
   let baseAppearance=$state<CaptionAppearance>({...defaultAppearance})
   const families = $derived([...new Set([
@@ -69,10 +73,20 @@
       <summary>Размер блока и фон</summary>
       <label>Ширина блока, px<input type="number" min="1" max="100000" step="any" placeholder="Авто" bind:value={appearance.textBoxWidth} disabled={disabled||nestedHistory.busy} /></label>
       <label>Высота блока, px<input type="number" min="1" max="100000" step="any" placeholder="Авто" bind:value={appearance.textBoxHeight} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Цвет фона<input type="color" bind:value={appearance.backgroundColor} disabled={disabled||nestedHistory.busy} /></label>
       <label>Непрозрачность фона<input type="number" min="0" max="1" step="0.01" bind:value={appearance.backgroundAlpha} disabled={disabled||nestedHistory.busy} /></label>
       <label>Скругление фона, px<input type="number" min="0" max="1000" step="any" placeholder="0" bind:value={appearance.backgroundRadius} disabled={disabled||nestedHistory.busy} /></label>
       <label>Отступ фона по горизонтали, px<input type="number" min="0" max="100000" step="any" placeholder="0" bind:value={appearance.paddingX} disabled={disabled||nestedHistory.busy} /></label>
       <label>Отступ фона по вертикали, px<input type="number" min="0" max="100000" step="any" placeholder="0" bind:value={appearance.paddingY} disabled={disabled||nestedHistory.busy} /></label>
+    </details>
+    <details>
+      <summary>Цвет текста и обводка</summary>
+      {#if clip.colorAnimation}<p>В кадрах с анимацией цвет текста задают ключи.</p>{/if}
+      <label>Цвет текста<input type="color" bind:value={appearance.textColor} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Непрозрачность текста<input type="number" min="0" max="1" step="any" bind:value={appearance.textAlpha} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Цвет обводки<input type="color" bind:value={appearance.strokeColor} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Непрозрачность обводки<input type="number" min="0" max="1" step="any" bind:value={appearance.strokeAlpha} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Толщина обводки, px<input type="number" min="0" max="100" step="1" bind:value={appearance.strokeWidth} disabled={disabled||nestedHistory.busy} /></label>
     </details>
   {/if}
   {#if conflict}<p role="alert">Реплика изменилась после начала редактирования. Сбросьте черновик, чтобы загрузить актуальную версию.</p>{/if}

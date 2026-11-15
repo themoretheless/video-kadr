@@ -44,9 +44,14 @@ it('saves subtitle text, typography and background together and restores them wi
     alignment.value = 'right'
     alignment.dispatchEvent(new Event('change', { bubbles: true }))
     const fields = editor.querySelectorAll<HTMLInputElement>('input[type="number"]')
-    for (const [index, value] of ['28', '550.5', '-2', '1.6', '200', '54', '0.6', '4', '8', '6'].entries()) {
+    for (const [index, value] of ['28', '550.5', '-2', '1.6', '200', '54', '0.6', '4', '8', '6', '0.7', '0.8', '2'].entries()) {
       fields[index]!.value = value
       fields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    const colors = editor.querySelectorAll<HTMLInputElement>('input[type="color"]')
+    for (const [index, value] of ['#0000ff', '#ff0000', '#00ff00'].entries()) {
+      colors[index]!.value = value
+      colors[index]!.dispatchEvent(new Event('input', { bubbles: true }))
     }
     const textarea = editor.querySelector('textarea')!
     textarea.value = 'Edited'
@@ -61,7 +66,9 @@ it('saves subtitle text, typography and background together and restores them wi
       text: 'Edited', textBoxWidth: 200, textBoxHeight: 54,
       style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
         italic: true, align: 'right', tracking: -2, lineHeight: 1.6,
-        background: { alpha: 0.6 }, backgroundRadius: 4, backgroundPadding: [8, 6] },
+        color: { red: 1, green: 0, blue: 0, alpha: 0.7 },
+        background: { red: 0, green: 0, blue: 1, alpha: 0.6 }, backgroundRadius: 4, backgroundPadding: [8, 6],
+        stroke: { red: 0, green: 1, blue: 0, alpha: 0.8 }, strokeWidth: 2 },
     })
     undoNestedComposition()
     expect(JSON.stringify(nestedComposition.document)).toBe(before)
