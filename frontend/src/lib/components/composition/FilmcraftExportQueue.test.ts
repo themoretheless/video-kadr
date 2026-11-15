@@ -6,13 +6,15 @@ import FilmcraftExportQueue from './FilmcraftExportQueue.svelte'
 vi.mock('$lib/api', () => ({ listFilmcraftExportQueue: vi.fn(), editFilmcraftExportQueue: vi.fn(), getFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 afterEach(async () => { if (component) await unmount(component); component = undefined; vi.resetAllMocks(); document.body.innerHTML = '' })
-const initial: Queue = { running: true, items: [{ id: '9', sequenceId: '6', sequenceName: 'Scene', preset: 'Wave', container: 'wav', status: 'encoding', jobId: 'worker', error: null, progress: 0.25, statusText: 'Encoding', etaSeconds: 61.2, etaText: '1:02', sourceRange: null }] }
+const initial: Queue = { running: true, items: [{ id: '9', sequenceId: '6', sequenceName: 'Scene', outputName: 'Монтаж', preset: 'Wave', container: 'wav', status: 'encoding', jobId: 'worker', error: null, progress: 0.25, statusText: 'Encoding', etaSeconds: 61.2, etaText: '1:02', sourceRange: null }] }
 it('keeps the active item while stopping and aborts observation on unmount', async () => {
   vi.mocked(listFilmcraftExportQueue).mockResolvedValue(initial)
   vi.mocked(editFilmcraftExportQueue).mockResolvedValue({ ...initial, running: false })
   component = mount(FilmcraftExportQueue, { target: document.body, props: { token: 'owner', input: () => ({ document: '{}', sequenceId: '6', sources: {}, startFrames: '0', frames: 2, preset: 'lossless' }) } })
   await vi.waitFor(() => expect(document.querySelector('article')).not.toBeNull())
   const button = (label: string) => [...document.querySelectorAll('button')].find(item => item.textContent === label)!
+  expect(document.querySelector('h4')?.textContent).toBe('Очередь экспорта (1)')
+  expect(document.querySelector('article')?.textContent).toContain('Scene → Монтаж.wav')
   expect(button('Убрать').disabled).toBe(true)
   expect(document.querySelector('progress')?.value).toBe(0.25)
   expect(document.body.textContent).toContain('Осталось: 1:02')

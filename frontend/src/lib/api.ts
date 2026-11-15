@@ -2483,7 +2483,7 @@ export function listFilmcraftExportFormats(token: string, signal?: AbortSignal):
 }
 export type FilmcraftSourceRange = { startTicks: string; endTicks: string }
 export interface FilmcraftExportQueueItem {
-  id: string; sequenceId: string; sequenceName: string; preset: string; container: string
+  id: string; sequenceId: string; sequenceName: string; preset: string; container: string; outputName?: string | null
   status: 'ready' | 'encoding' | 'done' | 'failed' | 'cancelled'
   jobId: string | null; error: string | null; progress: number | null
   statusText: string | null; etaSeconds: number | null; etaText?: string | null; sourceRange: FilmcraftSourceRange | null; captionSidecarExtension?: string | null

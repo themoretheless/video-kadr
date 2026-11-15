@@ -100,6 +100,9 @@ async fn owner_queue_admits_atomic_batches_stops_cancels_and_executes_remaining_
     let added = command(&app, &alice.token, add).await;
     let items = added["items"].as_array().unwrap();
     assert_eq!(items.len(), 4);
+    assert_eq!(items[0]["outputName"], "Монтаж_ утро");
+    assert_eq!(items[2]["outputName"], "Монтаж _ вечер");
+    assert_eq!(items[2]["container"], "wav");
     assert!(items
         .iter()
         .all(|item| item["status"] == "ready" && item["jobId"].is_null()));

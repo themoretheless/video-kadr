@@ -109,7 +109,7 @@
 </script>
 
 <section aria-label="Очередь экспорта Filmcraft">
-  <h4>Очередь экспорта</h4>
+  <h4>Очередь экспорта ({queue.items.length})</h4>
   <button type="button" disabled={!token || busy || disabled} onclick={() => command({ action: 'add', input: input() })}>Добавить в очередь</button>
   {#if sequences.length}
     <details>
@@ -155,7 +155,8 @@
   {#if downloadError}<p role="alert">{downloadError}</p>{/if}
   {#each queue.items as item, index (item.id)}
     <article aria-label={`Экспорт ${item.id}`}>
-      <p>{item.sequenceName} · {item.preset} · {labels[item.status]}</p>
+      {#if item.outputName}<p class="output-name">{item.sequenceName} → {item.outputName}.{item.container}</p>{/if}
+      <p>{item.outputName ? '' : `${item.sequenceName} · `}{item.preset} · {labels[item.status]}</p>
       {#if item.sourceRange}
         <p title={`${item.sourceRange.startTicks}–${item.sourceRange.endTicks} тиков`}>
           {formatSeconds.format(Number(item.sourceRange.startTicks) / 254_016_000_000)}–{formatSeconds.format(Number(item.sourceRange.endTicks) / 254_016_000_000)} с
@@ -189,6 +190,7 @@
 </section>
 
 <style>
+  .output-name { overflow-wrap: anywhere; }
   fieldset { margin-block: 0.4rem; }
   fieldset label { display: inline-flex; gap: 0.3rem; align-items: center; margin-inline-end: 0.6rem; }
   .range-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-block: 0.4rem; }
