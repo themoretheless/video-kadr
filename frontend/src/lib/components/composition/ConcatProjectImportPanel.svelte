@@ -7,6 +7,7 @@
  import {importConcatProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
  import {concatImportMedia,concatImportFonts,concatImportStillDestinations,concatImportVideoDestinations,savedStillChoices,savedVideoChoices,type SavedStillChoice,type ConcatImportFont,type ConcatImportMedia,type ConcatImportSource} from '$lib/composition/concatProjectImport'
  import {concatTemplateFolders,concatTemplateSlotStats,readConcatTemplateFolder} from '$lib/composition/concatTemplateFolder'
+ import {readConcatTemplateZip} from '$lib/composition/concatTemplateZip'
  import {doUpload} from '$lib/state/store.svelte'
  import {compositionSourceFromMediaInfo} from '$lib/state/composition/media.svelte'
  import {adoptImportedConcatProject,nestedComposition,nestedHistory} from '$lib/state/nestedComposition.svelte'
@@ -88,14 +89,17 @@
   selectedFolder = index
   await loadFolder(folder.files)
  }
- async function loadFolder(files: readonly File[]){
+ async function loadFolder(files: readonly File[] | File){
   await load(undefined)
-  if(!token||!files.length)return
+  if(!token||(!(files instanceof File)&&!files.length))return
   const serial=request,owner=token
   const current=()=>serial===request&&owner===token
   busy=true
   try{
-   const folder=await readConcatTemplateFolder(files)
+   controller = new AbortController()
+   const selected = files instanceof File ? await readConcatTemplateZip(files, controller.signal) : files
+   if(!current())return
+   const folder=await readConcatTemplateFolder(selected)
    if(!current())return
    const uploaded=new SvelteMap<File,ConcatImportSource>()
    const mapped:Record<string,string>=Object.create(null)
@@ -188,7 +192,7 @@
   const previous = { document, bindings: { ...bindings }, sourceOverrides: { ...sourceOverrides } }
   let nextBindings = { ...bindings }
   let nextOverrides = { ...sourceOverrides }
-  let stagedDocument = document
+  let stagedDocument: unknown = document
   let stagedMedia = media
   controller = new AbortController()
   try {
@@ -252,6 +256,14 @@
     const files=Array.from(event.currentTarget.files??[])
     event.currentTarget.value=''
     void chooseDirectory(files)
+  }} /></label>
+  <label>ZIP-шаблон Concat <input type="file" accept=".zip,application/zip" onchange={event=>{
+    const file=event.currentTarget.files?.[0]
+    event.currentTarget.value=''
+    if (!file) return
+    templateFolders=[]
+    selectedFolder=undefined
+    void loadFolder(file)
   }} /></label>
   {#if templateFolders.length}
    <div class="template-gallery" role="group" aria-label="Шаблоны Concat">

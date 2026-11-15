@@ -30,6 +30,7 @@
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",
     "@tanstack/query-core": "^5.102.8",
+    "@zip.js/zip.js": "2.25.0",
     "svelte": "5.56.8"
   },
   "devDependencies": {

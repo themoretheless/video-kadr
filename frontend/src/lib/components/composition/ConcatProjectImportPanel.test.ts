@@ -304,6 +304,40 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
  }
 })
 
+it('opens a Concat ZIP with a bundled design, font and unfilled slot', async () => {
+ const { ZipWriter, Uint8ArrayWriter, TextReader } = await import('@zip.js/zip.js')
+ const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
+ const manifest = {
+  ...original,
+  media: [{ ...original.media[0], path: 'assets/design.mov' }, { id: 'slot', kind: 'video', path: '', placeholder: true }],
+  fonts: [{ family: 'Title', path: 'assets/title.otf' }],
+ }
+ await writer.add('template.json', new TextReader(JSON.stringify(manifest)), { level: 0 })
+ await writer.add('assets/design.mov', new TextReader('video'), { level: 0 })
+ await writer.add('assets/title.otf', new TextReader('font'))
+ const archive = new File([new Uint8Array(await writer.close())], 'template.zip')
+ const store = await import('$lib/state/store.svelte')
+ const upload = vi.spyOn(store, 'doUpload').mockResolvedValue({
+  id: 'design', filename: 'design.mov', url: '/files/sources/design.mov',
+  mediaType: 'video', duration: 1, width: 16, height: 16,
+ })
+ try {
+  component = mount(Panel, { target: document.body, props: { token: 'session' } })
+  await tick()
+  const picker = document.querySelector<HTMLInputElement>('input[accept^=".zip"]')!
+  Object.defineProperty(picker, 'files', { value: [archive] })
+  picker.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() => expect(document.querySelector('[aria-label="Заполнение слота Concat slot"]')).not.toBeNull())
+  expect(upload).toHaveBeenCalledOnce()
+  const uploaded = upload.mock.calls[0]![0]
+  expect(uploaded.name).toBe('design.mov')
+  expect(await uploaded.text()).toBe('video')
+  expect(document.body.textContent).toContain('title.otf')
+ } finally {
+  upload.mockRestore()
+ }
+})
+
 it('commits a batch of slot replacements together and undoes it in one step', async () => {
  const template = {
   ...original,
