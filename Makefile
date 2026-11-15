@@ -1,7 +1,10 @@
-.PHONY: dev backend frontend build check test lint fmt bench-persistence perf-baseline perf-profile
+.PHONY: dev dev-scene-model backend frontend build check test lint fmt bench-persistence perf-baseline perf-profile
 
 dev:
 	bash scripts/dev.sh
+
+dev-scene-model:
+	bash scripts/with-scene-model.sh bash scripts/dev.sh
 
 backend:
 	cd backend && cargo run

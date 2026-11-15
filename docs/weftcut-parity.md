@@ -2630,4 +2630,19 @@ SCENE_DESCRIPTION_INSTALLER=operator docker compose \
 
 Compose запускает Ollama рядом с сервером приложения. API Ollama доступен через loopback сервера, а веса хранятся в томе `scene-model-data` и остаются после перезапуска. Загрузка Qwen2.5-VL по-прежнему начинается из кнопки «Установить модель». Этот вариант запускает вывод на CPU.
 
-Для запуска Video Kadr напрямую на хосте Ollama пока устанавливается и запускается отдельно.
+На macOS и Linux с установленными `ollama` и `curl` запустите Video Kadr и Ollama одной командой из корня репозитория.
+
+```sh
+SCENE_DESCRIPTION_INSTALLER=operator make dev-scene-model
+```
+
+Команда запускает отдельный экземпляр Ollama на `127.0.0.1:11534`. Если порт занят, укажите `SCENE_DESCRIPTION_OLLAMA_PORT`. По умолчанию модели хранятся в `backend/storage/models/scene-description`. Для другого расположения задайте `SCENE_DESCRIPTION_MODEL_DIR`. При завершении приложения этот экземпляр Ollama останавливается, а модели сохраняются.
+
+Для заранее собранного сервера используйте тот же запуск с путём к исполняемому файлу сервера.
+
+```sh
+SCENE_DESCRIPTION_INSTALLER=operator STORAGE_DIR="$PWD/backend/storage" \
+  bash scripts/with-scene-model.sh ./backend/target/release/video-kadr-backend
+```
+
+Сам Ollama на хосте пока устанавливается отдельно.
