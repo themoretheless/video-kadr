@@ -11,6 +11,18 @@
     ['markers.add', 'Обычный'], ['markers.addRange', 'Диапазон'], ['markers.addRangeInOut', 'Диапазон In/Out'],
     ['markers.addChapter', 'Глава'], ['markers.addFlashCue', 'Flash Cue'],
   ] as const
+  const markerColors: Array<{ name: string; swatch: string; labels: FilmcraftLabel[] }> = [
+    { name: 'Зелёные', swatch: '#758542', labels: ['Green', 'Forest'] },
+    { name: 'Красные', swatch: '#c13c3d', labels: ['Rose', 'Magenta'] },
+    { name: 'Фиолетовые', swatch: '#a98caf', labels: ['Purple', 'Violet', 'Lavender'] },
+    { name: 'Оранжевые', swatch: '#da7639', labels: ['Mango', 'Brown', 'Tan'] },
+    { name: 'Жёлтые', swatch: '#c9a344', labels: ['Yellow'] },
+    { name: 'Синие', swatch: '#568bf4', labels: ['Blue', 'Iris', 'Cerulean'] },
+    { name: 'Бирюзовые', swatch: '#72f0d7', labels: ['Teal', 'Caribbean'] },
+  ]
+  let hiddenColors = $state<string[]>([])
+  const markerColor = (label: FilmcraftLabel) => markerColors.find(group => group.labels.includes(label)) ?? markerColors[0]
+  const visibleMarkers = $derived(markers.filter(item => !hiddenColors.includes(markerColor(item.color).name)))
   let mode = $state<FilmcraftSequenceMarkerEditCommand>('markers.add')
   let selected = $state('')
   let name = $state('')
@@ -30,6 +42,16 @@
     color = marker?.color ?? 'Green'
     duration = marker?.durationFrames ?? ''
   })
+
+  function toggleColor(group: string) {
+    hiddenColors = hiddenColors.includes(group)
+      ? hiddenColors.filter(name => name !== group)
+      : [...hiddenColors, group]
+  }
+
+  function seekMarker(item: FilmcraftSequenceMarker) {
+    onseek({ sequence: sequenceId, time: item.start, timeFrames: item.frame, timecode: item.timecode })
+  }
 
   async function run(command: FilmcraftSequenceMarkerEditCommand | 'markers.goNext' | 'markers.goPrev') {
     if (!token || !ready) return
@@ -64,6 +86,28 @@
 
 <details>
   <summary>Маркеры таймлайна Filmcraft</summary>
+  <div class="row" role="group" aria-label="Фильтр цветов маркеров">
+    {#each markerColors as group (group.name)}
+      <button type="button" class="color-chip" style:--marker-color={group.swatch}
+        aria-label={`${group.name} маркеры`} title={`${group.name} маркеры`}
+        aria-pressed={!hiddenColors.includes(group.name)} onclick={() => toggleColor(group.name)}></button>
+    {/each}
+    <button type="button" disabled={!hiddenColors.length} onclick={() => { hiddenColors = [] }}>Показать все цвета</button>
+  </div>
+  {#if visibleMarkers.length}
+    <ul class="marker-list" aria-label="Видимые маркеры таймлайна">
+      {#each visibleMarkers as item (item.id)}
+        <li>
+          <button type="button" style:--marker-color={markerColor(item.color).swatch} disabled={disabled || busy}
+            onclick={() => { selected = item.id; seekMarker(item) }}>
+            {item.timecode} · {item.name || item.kind}
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {:else if markers.length}
+    <p role="status">Все маркеры скрыты фильтром по цвету.</p>
+  {/if}
   <div class="row">
     <label>Маркер
       <select aria-label="Маркер таймлайна" bind:value={selected} disabled={busy}>
@@ -74,7 +118,7 @@
       </select>
     </label>
     <button type="button" disabled={!marker} onclick={() => {
-      if (marker) onseek({ sequence: sequenceId, time: marker.start, timeFrames: marker.frame, timecode: marker.timecode })
+      if (marker) seekMarker(marker)
     }}>К выбранному маркеру</button>
     <button type="button" disabled={!ready || !markers.length} onclick={() => run('markers.goPrev')}>Предыдущий маркер</button>
     <button type="button" disabled={!ready || !markers.length} onclick={() => run('markers.goNext')}>Следующий маркер</button>
@@ -110,5 +154,9 @@
 
 <style>
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-block: 0.5rem; }
+  .color-chip { inline-size: 1.5rem; block-size: 1.5rem; padding: 0; border: 2px solid var(--marker-color); background: transparent; }
+  .color-chip[aria-pressed="true"] { background: var(--marker-color); }
+  .marker-list { display: grid; gap: 0.25rem; max-block-size: 12rem; overflow: auto; padding: 0.2rem; list-style: none; }
+  .marker-list button { border-inline-start: 0.3rem solid var(--marker-color); text-align: start; }
   summary { cursor: pointer; }
 </style>
