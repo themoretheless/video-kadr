@@ -8,6 +8,7 @@
   let opened = $state(false)
   let entries = $state<FilmcraftLibraryPreset[]>([])
   let selected = $state('')
+  let exportNames = $state<string[]>([])
   let query = $state('')
   let favorites = $state(false)
   let manualName = $state('')
@@ -174,6 +175,7 @@
     opened = false
     entries = []
     selected = ''
+    exportNames = []
     busy = false
     error = ''
     query = ''
@@ -243,6 +245,7 @@
     const result = await listFilmcraftExportPresets(owner, {}, signal)
     if (signal.aborted) return
     entries = result.presets
+    exportNames = exportNames.filter(name => result.presets.some(preset => preset.name === name))
     if (!entries.some(p => p.name === selected)) selected = entries[0]?.name ?? ''
   }
   function open() { opened = true; void run(refresh) }
@@ -383,14 +386,20 @@
       await refresh(owner, signal)
     })
   }
-  function exportFile() {
-    if (!picked) return
+  function exportFile(names?: string[]) {
     void run(async (owner, signal) => {
-      const file = await editFilmcraftExportPresets<FilmcraftPresetFile>(owner, { action: 'export', names: [selected] }, signal)
+      const file = await editFilmcraftExportPresets<FilmcraftPresetFile>(owner, {
+        action: 'export', ...(names ? { names } : {}),
+      }, signal)
       if (signal.aborted) return
       const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }))
-      const anchor = window.document.createElement('a'); anchor.href = url; anchor.download = 'filmcraft-export-presets.json'
-      window.document.body.append(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url)
+      const anchor = window.document.createElement('a')
+      anchor.href = url
+      anchor.download = 'filmcraft-export-presets.json'
+      window.document.body.append(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
     })
   }
 </script>
@@ -412,7 +421,7 @@
       <button type="button" disabled={busy || disabled} onclick={() => onapply(selected)}>Применить пресет</button>
       <button type="button" disabled={busy || disabled} onclick={favorite}>{picked.favorite ? 'Убрать из избранного' : 'В избранное'}</button>
       <button type="button" disabled={busy || disabled || picked.builtin} onclick={remove}>Удалить пресет</button>
-      <button type="button" disabled={busy || disabled} onclick={exportFile}>Скачать пресет</button>
+      <button type="button" disabled={busy || disabled} onclick={() => exportFile([picked.name])}>Скачать пресет</button>
       <label>Формат <select aria-label="Формат пресета Filmcraft" value={format} onchange={event => { format = event.currentTarget.value }} disabled={busy || disabled}>
         <option value="">Как в исходном пресете</option>
         {#each formats as [value, label] (value)}<option {value}>{label}</option>{/each}
@@ -674,6 +683,20 @@
           onclick={() => save(true)}>Сохранить изменения пресета</button>
       {/if}
     {/if}
+    <details>
+      <summary>Экспорт набора пресетов</summary>
+      <button type="button" disabled={busy || disabled || !entries.some(item => !item.builtin)}
+        onclick={() => exportFile()}>Скачать все пользовательские пресеты</button>
+      {#each filtered as item (item.name)}
+        <label><input type="checkbox" checked={exportNames.includes(item.name)} disabled={busy || disabled}
+          onchange={event => {
+            exportNames = event.currentTarget.checked
+              ? [...exportNames, item.name] : exportNames.filter(name => name !== item.name)
+          }} />{item.name}</label>
+      {/each}
+      <button type="button" disabled={busy || disabled || !exportNames.length}
+        onclick={() => exportFile([...exportNames])}>Скачать выбранные пресеты ({exportNames.length})</button>
+    </details>
     <label>Импорт пресетов <input aria-label="Импорт пресетов Filmcraft" type="file" accept="application/json,.json" disabled={busy || disabled} onchange={(event) => { importFile(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} /></label>
     {#if busy}<span role="status">Загрузка пресетов…</span>{/if}
     {#if error}<p role="alert">{error}</p>{/if}
