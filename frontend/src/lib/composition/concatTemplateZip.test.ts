@@ -26,8 +26,13 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   await writer.add('Design/template.json', new TextReader(manifest))
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(manifest))
   const manifestSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  const constant = { mode: 'constant', value: 1 }
+  const staticClip = {
+    id: 'cue', text: 'Text', timelineStartTick: 1000000, timelineEndTick: 2000000, style: { shadowX: 4 },
+    opacity: constant, transform: { x: constant, y: constant, scaleX: constant, scaleY: constant, rotationDegrees: constant },
+  }
   const clips = [
-    ['TL1', { id: 'cue', text: 'Text', timelineStartTick: 1000000, timelineEndTick: 2000000, style: { shadowX: 4 } }],
+    ['TL1', staticClip],
     ['TL1', { id: 'cue2', text: 'Other', timelineStartTick: 2000000, timelineEndTick: 3000000 }],
   ]
   const captured = clips.map((entry, index) => [...entry, { clip: source.timelines[0]!.clips[index], video }])
@@ -59,12 +64,22 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   const withEdit = { ...source, timelines: [{ id: 'TL1', video, clips: [moved, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withEdit)], 'template.json')))
     .resolves.toEqual([
-      ['TL1', { ...clips[0]![1] as object, text: 'Edited', timelineStartTick: 5000001, timelineEndTick: 6000001 }],
+      ['TL1', { ...staticClip, text: 'Edited', timelineStartTick: 5000001, timelineEndTick: 6000001 }],
       clips[1],
     ])
-  withEdit.timelines[0]!.clips[0] = { ...moved, duration: 0.5 }
-  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withEdit)], 'template.json')))
-    .resolves.toEqual([clips[1]])
+  withEdit.timelines[0]!.clips[0] = { ...moved, start: 5.500001, duration: 0.5 }
+  const trimmedTitle = { ...withEdit.timelines[0]!.clips[0], sourceStart: 0.5 }
+  const trimmed = { ...withEdit, timelines: [{ id: 'TL1', video, clips: [trimmedTitle, second] }] }
+  const trimmedFile = new File([JSON.stringify(trimmed)], 'template.json')
+  await expect(readConcatTemplateCaptions(sidecar, trimmedFile)).resolves.toEqual([
+    ['TL1', { ...staticClip, text: 'Edited', timelineStartTick: 5500001, timelineEndTick: 6000001 }],
+    clips[1],
+  ])
+  const animated = { ...staticClip, opacity: { mode: 'keyframes' } }
+  const animatedSidecar = new File([JSON.stringify({ manifestSha256, clips: [
+    ['TL1', animated, { clip: first, video }], captured[1],
+  ] })], 'video-kadr-caption-clips.json')
+  await expect(readConcatTemplateCaptions(animatedSidecar, trimmedFile)).resolves.toEqual([clips[1]])
   changed.timelines[0]!.video.width = 640
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
     .resolves.toBeUndefined()

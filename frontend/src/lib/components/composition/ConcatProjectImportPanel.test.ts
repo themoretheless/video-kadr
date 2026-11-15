@@ -194,7 +194,7 @@ it('uploads the selected template design and binds its bundled font before conve
   component = mount(Panel, { target: document.body, props: { token: 'session' } })
   await tick()
   const beforeTitle = { id: 'captions', kind: 'text', start: 0.000001, duration: 0.999999, text: { content: 'Dialogue', shadow: true } }
-  const afterTitle = { ...beforeTitle, start: 1.000001, text: { ...beforeTitle.text, content: 'Revised dialogue' } }
+  const afterTitle = { ...beforeTitle, start: 1.250001, duration: 0.749999, sourceStart: 0.25, text: { ...beforeTitle.text, content: 'Revised dialogue' } }
   const template = {
    ...original,
    video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
@@ -220,7 +220,7 @@ it('uploads the selected template design and binds its bundled font before conve
     rotationDegrees: { mode: 'constant', value: 0 }, anchorX: 0.5, anchorY: 0.5 },
    opacity: { mode: 'constant', value: 1 },
   } as const
-  const editedCaption = { ...caption, text: 'Revised dialogue', timelineStartTick: 1000001, timelineEndTick: 2000000 }
+  const editedCaption = { ...caption, text: 'Revised dialogue', timelineStartTick: 1250001, timelineEndTick: 2000000 }
   const node = project.compositions.imported!
   const converted: NativeNestedProject = { ...project, compositions: { imported: {
    ...node, content: { ...node.content, tracks: [{

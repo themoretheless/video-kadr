@@ -37,6 +37,14 @@ function normalizedVideo(value: unknown): unknown {
   return video ? { colorSpace: 'sdr', ...video } : value
 }
 
+function canResizeCaption(clip: WireTextClip): boolean {
+  const transform = clip.transform
+  return !!transform && !transform.concatAnimation && !transform.position &&
+    !clip.colorAnimation && !clip.effects?.length &&
+    [clip.opacity, transform.x, transform.y, transform.scaleX, transform.scaleY, transform.rotationDegrees]
+      .every(value => value?.mode === 'constant')
+}
+
 function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unknown): WireTextClip | undefined {
   if (sameJson(normalizedClip(baseline), normalizedClip(current))) return clip
   const before = record(baseline)
@@ -45,14 +53,21 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   const editedText = record(after?.text)
   if (!before || !after || before.kind !== 'text' || !previousText || !editedText ||
       typeof editedText.content !== 'string' || typeof after.start !== 'number' ||
-      !Number.isFinite(after.start) || after.start < 0 || after.start > 86400) return undefined
+      !Number.isFinite(after.start) || after.start < 0 || after.start > 86400 ||
+      typeof after.duration !== 'number' || !Number.isFinite(after.duration) ||
+      after.duration <= 0 || after.duration > 86400) return undefined
+  const duration = Math.round(after.duration * 1_000_000)
+  const resized = duration !== clip.timelineEndTick - clip.timelineStartTick
+  if (duration < 1 || (resized && !canResizeCaption(clip))) return undefined
 
-  // A whole-clip move keeps the caption's keyframes on their original local clock.
+  // Text and whole-clip moves retain the original local clock. A static title
+  // also accepts Concat's new duration and, for a head trim, its source in-point.
   // The imported document already carries the updated display name in clipNames.
   const unchangedFields = {
     ...after,
     start: before.start,
     name: before.name,
+    ...(resized ? { duration: before.duration, sourceStart: before.sourceStart ?? 0 } : {}),
     text: { ...editedText, content: previousText.content },
   }
   const comparison = { ...before, name: before.name }
@@ -62,7 +77,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     ...clip,
     text: editedText.content,
     timelineStartTick: start,
-    timelineEndTick: start + (clip.timelineEndTick - clip.timelineStartTick),
+    timelineEndTick: start + duration,
   }
 }
 
