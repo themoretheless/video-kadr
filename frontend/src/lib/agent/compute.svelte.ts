@@ -1,9 +1,10 @@
-import { scanLibraryShots, measureLibraryShots, compareLibraryFrames } from '../api.js'
+import { scanLibraryShots, measureLibraryShots, compareLibraryFrames, describeLibraryShot } from '../api.js'
 import { findClipLocation } from '../composition/commands.js'
 import { cloneComposition, compositionState, commitDocument, makeId, selectCompositionClip } from '../state/composition/core.svelte.js'
+import { nestedComposition } from '../state/nestedComposition.svelte.js'
 import { agentSession, assertHistoryUnlocked } from './session.svelte.js'
 import { logAgentOperation, type AgentAccess } from './runtime.svelte.js'
-import { applyShotReview, reviewShotRows, reviewUnplacedShots } from '../analysis/shots.js'
+import { applyShotReview, clipDescriptionSpan, reviewShotRows, reviewUnplacedShots, type ShotSpan } from '../analysis/shots.js'
 import { measurementKey, shotAnalysisState } from '../analysis/shotState.svelte.js'
 
 export async function executeAgentCompute(actor: string, tool: string, args: Record<string, unknown>, access: AgentAccess): Promise<unknown> {
@@ -34,12 +35,45 @@ async function compute(actor: string, tool: string, args: Record<string, unknown
   if (args.ripple === true && (!Array.isArray(args.discardedRowIds) || !args.discardedRowIds.length)) {
     throw new Error('ripple requires at least one discarded scene')
   }
+  if (tool === 'describe_clip') {
+    if (Object.keys(args).some(key => !['clipId', 'media_id', 'composition_id', 'sourceSpan', 'focus', 'language'].includes(key)) ||
+        (typeof clipId === 'string' && clipId.length > 128)) {
+      throw new Error('Invalid describe_clip arguments')
+    }
+    const scope = args.composition_id
+    const project = nestedComposition.document
+    if (scope !== undefined && (!project || typeof clipId !== 'string' ||
+        typeof scope !== 'string' || !scope || scope.length > 128)) {
+      throw new Error('composition_id requires a nested timeline clip')
+    }
+    if (project && typeof clipId === 'string') {
+      const compositionId = typeof scope === 'string' ? scope : project.root
+      const document = project.compositions[compositionId]?.content
+      if (!document) throw new Error('Nested composition not found')
+      const clip = document.tracks.flatMap(track => track.kind === 'video' ? track.clips : [])
+        .find(candidate => candidate.id === clipId)
+      if (!clip) throw new Error('Scene description requires a video clip in the requested composition')
+      const item = project.projectMedia?.[clip.sourceId]
+      const sourceId = item ? item.librarySourceId : clip.sourceId
+      if (!sourceId || item?.placeholder) throw new Error('Video clip has no bound library source')
+      const revision = nestedComposition.revision
+      const span = clipDescriptionSpan({
+        sourceInTicks: clip.placement.sourceInTick,
+        sourceOutTicks: clip.placement.sourceOutTick,
+        playbackMode: clip.playbackMode,
+      })
+      return { revision, compositionId, ...await describeSource(sourceId, span, args, access) }
+    }
+  }
   const baseline = cloneComposition(compositionState.document)
   const revision = agentSession.revision
   const location = typeof clipId === 'string' ? findClipLocation(baseline, clipId) : undefined
   if (location && location.clip.kind !== 'video') throw new Error('Shot analysis requires a video clip')
   const clip = location?.clip.kind === 'video' ? location.clip : undefined
   const sourceId = clip?.sourceId ?? mediaId as string
+  if (tool === 'describe_clip') {
+    return { revision, ...await describeSource(sourceId, clip && clipDescriptionSpan(clip), args, access) }
+  }
   if (tool === 'compare_frames') {
     const left = args.leftTick
     const right = args.rightTick
@@ -82,4 +116,42 @@ async function compute(actor: string, tool: string, args: Record<string, unknown
     return { revision: agentSession.revision, selectedClipId: result.selectedClipId, rows }
   }
   return { revision, sourceId, scan, rows, measurements }
+}
+
+async function describeSource(sourceId: string, clipSpan: ShotSpan | undefined, args: Record<string, unknown>, access: AgentAccess) {
+  if (!access.token) throw new Error('Scene description requires an authenticated editor')
+  const focus = args.focus === undefined ? 'general' : args.focus
+  const language = args.language === undefined ? 'ru' : args.language
+  if (focus !== 'general' && focus !== 'shot-type') throw new Error('Invalid scene description focus')
+  if (language !== 'ru' && language !== 'en') throw new Error('Invalid scene description language')
+
+  const supplied = args.sourceSpan
+  let requestedSpan: ShotSpan | undefined
+  if (supplied !== undefined) {
+    if (typeof supplied !== 'object' || supplied === null || Array.isArray(supplied)) throw new Error('Invalid sourceSpan')
+    const { startTicks, endTicks } = supplied as Partial<ShotSpan>
+    if (Object.keys(supplied).length !== 2 || typeof startTicks !== 'number' || typeof endTicks !== 'number' ||
+        !Number.isSafeInteger(startTicks) || !Number.isSafeInteger(endTicks) || startTicks < 0 || endTicks <= startTicks) {
+      throw new Error('Invalid sourceSpan')
+    }
+    if (clipSpan && (startTicks < clipSpan.startTicks || endTicks > clipSpan.endTicks)) {
+      throw new Error('Description span must be inside the clip source range')
+    }
+    requestedSpan = { startTicks, endTicks }
+  }
+
+  const remaining = access.expiresAt === undefined ? undefined : access.expiresAt - Date.now()
+  if ((remaining !== undefined && remaining <= 0) || access.isActive?.() === false) {
+    throw new Error('Description command expired or editor disconnected')
+  }
+  const signal = remaining === undefined ? undefined : AbortSignal.timeout(Math.min(remaining, 420_000))
+  const scan = await scanLibraryShots(sourceId, access.token, access.spaceId, signal)
+  const span = requestedSpan ?? clipSpan ?? { startTicks: 0, endTicks: scan.durationTicks }
+  if (span.endTicks > scan.durationTicks) throw new Error('Description span must be inside the source duration')
+  if (signal?.aborted || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
+  const description = await describeLibraryShot(sourceId, {
+    span, expectedSourceHash: scan.sourceHash, focus, language,
+  }, access.token, access.spaceId, signal)
+  if (signal?.aborted || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
+  return { sourceId, span, focus, language, ...description }
 }

@@ -7,7 +7,7 @@
   import { agentSession } from '../agent/session.svelte.js'
   import ShotCover from './ShotCover.svelte'
   import SceneDescriptionReview from './SceneDescriptionReview.svelte'
-  import { reviewShotRows, shotCoverPosition, type ShotReviewAction, type ShotRow } from './shots.js'
+  import { clipDescriptionSpan, reviewShotRows, shotCoverPosition, type ShotReviewAction, type ShotRow } from './shots.js'
   import { shotAnalysisState, applyCompositionShotReview, measurementKey, setShotReviewSettings } from './shotState.svelte.js'
 
   let threshold = $state(compositionState.document.shotReview?.threshold ?? 0.3)
@@ -31,10 +31,8 @@
   const rows = $derived(review.rows)
   const clipSpan = $derived.by(() => {
     if (!clip || !scan) return undefined
-    const freeze = clip.playbackMode?.mode === 'freeze' ? clip.playbackMode.sourceTick : undefined
-    const startTicks = freeze ?? clip.sourceInTicks
-    const endTicks = freeze === undefined ? clip.sourceOutTicks : freeze + 1
-    return endTicks <= scan.durationTicks ? { startTicks, endTicks } : undefined
+    const span = clipDescriptionSpan(clip)
+    return span.endTicks <= scan.durationTicks ? span : undefined
   })
   const candidates = $derived(clip && scan ? scan.cuts.filter((cut) => cut.tick > clip.sourceInTicks && cut.tick < clip.sourceOutTicks && cut.score > threshold) : [])
   const missingStats = $derived(scan ? rows.filter((row) => !shotAnalysisState.measurements[measurementKey(scan, row.startTicks, row.endTicks)]) : [])

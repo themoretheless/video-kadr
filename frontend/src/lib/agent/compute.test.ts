@@ -9,8 +9,10 @@ import { compositionState, resetCompositionForTests, setCompositionStorageForTes
 import { undoComposition } from '../state/composition/transport.svelte.js'
 import { clipEndTicks } from '../composition/types.js'
 import type { ShotScan } from '../analysis/shots.js'
+import { buildCompositionWireDocument } from '../composition/payload.js'
+import { closeNestedComposition, nestedComposition } from '../state/nestedComposition.svelte.js'
 
-vi.mock('../api.js', async (original) => ({ ...await original<typeof api>(), scanLibraryShots: vi.fn(), measureLibraryShots: vi.fn(), compareLibraryFrames: vi.fn() }))
+vi.mock('../api.js', async (original) => ({ ...await original<typeof api>(), scanLibraryShots: vi.fn(), measureLibraryShots: vi.fn(), compareLibraryFrames: vi.fn(), describeLibraryShot: vi.fn() }))
 const scan: ShotScan = { version: 1, sourceHash: 'a'.repeat(64), floor: 0.05, durationTicks: 4_000_000, cuts: [{ tick: 1_000_000, score: 0.8 }, { tick: 3_000_000, score: 0.7 }] }
 let clipId: string
 beforeEach(() => {
@@ -54,6 +56,66 @@ describe('MCP shot analysis', () => {
     await expect(executeAgentRequest('agent', 'analyze_clip', { clipId, media_id: 'unplaced' }, access)).rejects.toThrow('exactly one')
     await expect(executeAgentRequest('agent', 'auto_split_by_shot', { media_id: 'unplaced' }, access)).rejects.toThrow('requires clipId')
     expect(JSON.stringify(compositionState.document)).toBe(before)
+  })
+  it('describes a clip or a library span without making a project edit', async () => {
+    const before = JSON.stringify(compositionState.document)
+    const history = compositionState.history.past.length
+    const result = { text: 'Wide shot', tags: ['city'] }
+    vi.mocked(api.describeLibraryShot).mockResolvedValue(result)
+    const access = { token: 'owner', spaceId: 'space', expiresAt: Date.now() + 30_000 }
+    await expect(executeAgentRequest('agent', 'describe_clip', { clipId }, access)).resolves.toMatchObject({
+      sourceId: 'source', span: { startTicks: 0, endTicks: 4_000_000 }, ...result,
+    })
+    const span = { startTicks: 1_000_000, endTicks: 2_000_000 }
+    await expect(executeAgentRequest('agent', 'describe_clip', {
+      media_id: 'unplaced', sourceSpan: span, focus: 'shot-type', language: 'en',
+    }, access)).resolves.toMatchObject({ sourceId: 'unplaced', span, ...result })
+    expect(api.describeLibraryShot).toHaveBeenLastCalledWith('unplaced', {
+      span, expectedSourceHash: scan.sourceHash, focus: 'shot-type', language: 'en',
+    }, 'owner', 'space', expect.any(AbortSignal))
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+    expect(compositionState.history.past).toHaveLength(history)
+  })
+
+  it('rejects invalid ranges and expired or disconnected descriptions before inference', async () => {
+    const access = { token: 'owner' }
+    await expect(executeAgentRequest('agent', 'describe_clip', { clipId })).rejects.toThrow('authenticated')
+    await expect(executeAgentRequest('agent', 'describe_clip', { clipId, media_id: 'unplaced' }, access)).rejects.toThrow('exactly one')
+    await expect(executeAgentRequest('agent', 'describe_clip', {
+      clipId, sourceSpan: { startTicks: 0, endTicks: 4_000_001 },
+    }, access)).rejects.toThrow('clip source range')
+    await expect(executeAgentRequest('agent', 'describe_clip', { clipId }, {
+      ...access, expiresAt: Date.now() - 1,
+    })).rejects.toThrow('expired')
+    let connected = true
+    vi.mocked(api.scanLibraryShots).mockImplementationOnce(async () => { connected = false; return scan })
+    await expect(executeAgentRequest('agent', 'describe_clip', { media_id: 'unplaced' }, {
+      ...access, isActive: () => connected,
+    })).rejects.toThrow('disconnected')
+    expect(api.describeLibraryShot).not.toHaveBeenCalled()
+  })
+
+  it('resolves nested clip scopes and binds the logical clip to the library video', async () => {
+    const content = buildCompositionWireDocument(compositionState.document)
+    const node = { content, instances: [] }
+    const source = content.sources.source!
+    nestedComposition.document = {
+      schemaVersion: 1, root: 'root', compositions: { root: node, child: node },
+      projectMedia: { source: { source, name: 'Source', librarySourceId: 'physical' } },
+    }
+    nestedComposition.revision = 7
+    vi.mocked(api.describeLibraryShot).mockResolvedValue({ text: 'Nested shot', tags: [] })
+    const access = { token: 'owner' }
+    try {
+      await expect(executeAgentRequest('agent', 'describe_clip', {
+        clipId, composition_id: 'child',
+      }, access)).resolves.toMatchObject({ revision: 7, compositionId: 'child', sourceId: 'physical', text: 'Nested shot' })
+      expect(api.scanLibraryShots).toHaveBeenCalledWith('physical', 'owner', undefined, undefined)
+      await expect(executeAgentRequest('agent', 'describe_clip', {
+        clipId, composition_id: 'missing',
+      }, access)).rejects.toThrow('composition not found')
+      expect(api.describeLibraryShot).toHaveBeenCalledTimes(1)
+    } finally { closeNestedComposition() }
   })
   it('closes gaps when applying discarded shots with ripple and undoes the edit once', async () => {
     const before = JSON.stringify(compositionState.document)

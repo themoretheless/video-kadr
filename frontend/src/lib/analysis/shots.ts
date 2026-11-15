@@ -10,6 +10,14 @@ import { upsertCompositionMarker } from '../composition/markers.js'
 export interface ShotCut { tick: number; score: number }
 export interface ShotScan { version: 1; sourceHash: string; durationTicks: number; floor: number; cuts: ShotCut[] }
 export interface ShotSpan { startTicks: number; endTicks: number }
+export function clipDescriptionSpan(clip: Pick<VideoClip, 'sourceInTicks' | 'sourceOutTicks' | 'playbackMode'>): ShotSpan {
+  if (clip.playbackMode?.mode === 'freeze') {
+    const startTicks = clip.playbackMode.sourceTick
+    return { startTicks, endTicks: startTicks + 1 }
+  }
+  return { startTicks: clip.sourceInTicks, endTicks: clip.sourceOutTicks }
+}
+
 export interface ShotMeasurement { span: ShotSpan; brightness: number; motion: number; sharpness: number; flags: string[] }
 export interface ShotRow extends ShotSpan { id: string; timelineStartTicks: number; timelineEndTicks: number; openingCutTick?: number; score?: number }
 

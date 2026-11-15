@@ -35,6 +35,7 @@ const TOOL_NAMES: &[&str] = &[
     "analyze_clip",
     "measure_shots",
     "compare_frames",
+    "describe_clip",
     "auto_split_by_shot",
     "mark_shots",
     "apply_shot_cuts",
@@ -431,6 +432,13 @@ fn tool_schema(name: &str) -> Value {
         | "apply_shot_cuts" => {
             json!({"clipId":{"type":"string"},"expectedRevision":{"type":"integer"},"threshold":{"type":"number","minimum":0.05,"maximum":1},"minShotTicks":{"type":"integer","minimum":1,"maximum":60000000},"disabledCuts":{"type":"array","items":{"type":"integer"}},"discardedRowIds":{"type":"array","items":{"type":"string"}},"stats":{"type":"boolean"}})
         }
+        "describe_clip" => json!({
+            "clipId":{"type":"string","minLength":1,"maxLength":128},
+            "composition_id":{"type":"string","minLength":1,"maxLength":128,"description":"Nested composition scope for clipId; defaults to the root."},
+            "sourceSpan":{"type":"object","description":"Optional half-open source range in microseconds; defaults to the clip's visible source range or the entire unplaced video.","properties":{"startTicks":{"type":"integer","minimum":0},"endTicks":{"type":"integer","minimum":1}},"required":["startTicks","endTicks"],"additionalProperties":false},
+            "focus":{"type":"string","enum":["general","shot-type"],"default":"general"},
+            "language":{"type":"string","enum":["ru","en"],"default":"ru"}
+        }),
         "compare_frames" => {
             json!({"clipId":{"type":"string"},"leftTick":{"type":"integer","minimum":0},"rightTick":{"type":"integer","minimum":0}})
         }
@@ -454,7 +462,7 @@ fn tool_schema(name: &str) -> Value {
     if name == "apply_shot_cuts" {
         properties["ripple"] = json!({"type":"boolean","default":false,"description":"Close the gaps left by discardedRowIds and shift later clips and synchronized captions. Requires at least one discarded scene."});
     }
-    let source_analysis = matches!(name, "analyze_clip" | "measure_shots" | "compare_frames");
+    let source_analysis = matches!(name, "analyze_clip" | "measure_shots" | "compare_frames" | "describe_clip");
     if source_analysis {
         properties["media_id"] = json!({"type":"string","minLength":1,"maxLength":128,"description":"Library source ID for unplaced media; mutually exclusive with clipId."});
     }
@@ -493,6 +501,9 @@ fn tool_schema(name: &str) -> Value {
     if name == "freeze_frame" { return json!({"name":name,"description":"Insert a captured one-second FreezeFrame into an authenticated saved native project. Requires current get_project.projectHash and an unchanged saved revision/document. Optional composition_id defaults root; time_us is absolute composition time. Publishes a fresh still, splits/ripples the video lane and creates one local Undo entry. This is a server-persisted mutation, not a dry-run/batch operation. Unsupported native effects/playback profiles refuse. If the server commits after the editor context changes, local state is retained and the caller must reload before another save.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_keyframes" { return json!({"name":name,"description":"Read scalar animation before editing: ordinary revision or native projectHash (optional native composition_id defaults root), constant value or keyframes with native tick/timeBase, layer-local t_local_us, timeline t_us, effective tangents and outgoing segment. Exact preset_id is omitted for hand-tuned segments and the last key. envelope defaults to visual; mask requires maskId. Native effect channels require effectIndex plus effectKind and use authored animation parameters. Read-only.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_color_track" { return json!({"name":name,"description":"Read text or color-layer animation (native nested scope defaults to root and returns projectHash; packed native timing retains fractional microseconds and nativeTrack): constant RGBA bytes or keyframes with authored tick/timeBase, layer-local t_local_us, timeline t_us, resolved temporal tangents and outgoing segment. Read-only. set_color_key uses composition playhead ticks; delete_color_key uses exact authored key ticks, including negative retained keys after trimming.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
+    if name == "describe_clip" {
+        return json!({"name":name,"description":"Describe a video clip in an ordinary or nested timeline, or an authorized library video. Sampled frames are sent to the server-configured vision model. Returns text and tags without editing the project. Requires an authenticated editor.","annotations":{"readOnlyHint":true,"openWorldHint":true},"inputSchema":{"type":"object","properties":properties,"oneOf":[{"required":["clipId"]},{"required":["media_id"]}],"additionalProperties":false}});
+    }
     if source_analysis {
         return json!({"name":name,"description":"Analyze a placed video clip by clipId or an unplaced library video by media_id. Times are absolute source microseconds. Only placed clips have composition-clock rows.","inputSchema":{"type":"object","properties":properties,"required":required,"oneOf":[{"required":["clipId"]},{"required":["media_id"]}],"additionalProperties":false}});
     }
@@ -663,6 +674,9 @@ fn cleanup(inbox: &mut Inbox) {
     inbox.queue.retain(|id| inbox.pending.contains_key(id));
 }
 fn command_timeout_for_tool(name: &str) -> Duration {
+    if name == "describe_clip" {
+        return Duration::from_secs(420);
+    }
     if [
         "command_run",
         "command_batch",
@@ -855,6 +869,12 @@ mod tests {
             TOOL_NAMES.len()
         );
         let catalog = body["result"]["tools"].as_array().unwrap();
+        let describe = catalog.iter().find(|tool| tool["name"] == "describe_clip").unwrap();
+        assert_eq!(describe["inputSchema"]["oneOf"], json!([
+            {"required":["clipId"]}, {"required":["media_id"]}
+        ]));
+        assert_eq!(describe["inputSchema"]["properties"]["sourceSpan"]["required"], json!(["startTicks", "endTicks"]));
+        assert_eq!(describe["annotations"]["readOnlyHint"], true);
         let cuts = catalog.iter().find(|tool| tool["name"] == "apply_shot_cuts").unwrap();
         assert_eq!(cuts["inputSchema"]["properties"]["ripple"]["type"], "boolean");
         assert_eq!(cuts["inputSchema"]["properties"]["ripple"]["default"], false);
@@ -893,7 +913,11 @@ mod tests {
         );
         let rpc_app = app.clone();
         let handle = tokio::spawn(async move {
-            rpc_app.oneshot(request("/mcp", json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_project"}}))).await.unwrap()
+            rpc_app.oneshot(request("/mcp", json!({
+                "jsonrpc":"2.0","id":5,"method":"tools/call","params":{
+                    "name":"describe_clip","arguments":{"clipId":"clip-a","composition_id":"child","language":"en"}
+                }
+            }))).await.unwrap()
         });
         let mut command = Value::Null;
         for _ in 0..100 {
@@ -910,7 +934,8 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
-        assert_eq!(command["tool"], "get_project");
+        assert_eq!(command["tool"], "describe_clip");
+        assert_eq!(command["args"], json!({"clipId":"clip-a","composition_id":"child","language":"en"}));
         let repeated = json_body(
             app.clone()
                 .oneshot(request("/api/agent/poll", json!({"editorId":"editor-a"})))
@@ -934,7 +959,7 @@ mod tests {
             .clone()
             .oneshot(request(
                 "/api/agent/result",
-                json!({"editorId":"editor-a","id":command["id"],"result":{"revision":42}}),
+                json!({"editorId":"editor-a","id":command["id"],"result":{"text":"Wide shot","tags":["city"]}}),
             ))
             .await
             .unwrap();
@@ -942,10 +967,8 @@ mod tests {
         let result = json_body(handle.await.unwrap()).await;
         assert_eq!(result["id"], 5);
         assert_eq!(result["result"]["isError"], false);
-        assert!(result["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("42"));
+        let payload: Value = serde_json::from_str(result["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(payload, json!({"text":"Wide shot","tags":["city"]}));
         assert_eq!(
             app.oneshot(request(
                 "/api/agent/result",

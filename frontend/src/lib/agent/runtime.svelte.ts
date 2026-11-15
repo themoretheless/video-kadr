@@ -238,7 +238,7 @@ async function dispatchAgentRequest(actor: string, tool: string, args: Record<st
     const { executeFilmcraftCommand } = await import('./filmcraftCommands')
     return executeFilmcraftCommand(actor, tool, args, access)
   }
-  if ((nestedComposition.document||tool==='redo'&&nestedHistory.future.length>0) && !['export_captions','set_history_lock'].includes(tool)) {
+  if ((nestedComposition.document||tool==='redo'&&nestedHistory.future.length>0) && !['export_captions','set_history_lock','describe_clip'].includes(tool)) {
     const id=makeId('agent-op')
     logAgentOperation(id,actor,tool,'started')
     try {
@@ -252,7 +252,7 @@ async function dispatchAgentRequest(actor: string, tool: string, args: Record<st
     }
   }
 
-  if (['analyze_clip', 'measure_shots', 'compare_frames', 'auto_split_by_shot', 'mark_shots', 'apply_shot_cuts'].includes(tool)) {
+  if (['analyze_clip', 'measure_shots', 'compare_frames', 'describe_clip', 'auto_split_by_shot', 'mark_shots', 'apply_shot_cuts'].includes(tool)) {
     const { executeAgentCompute } = await import('./compute.svelte.js')
     return executeAgentCompute(actor, tool, args, access)
   }
