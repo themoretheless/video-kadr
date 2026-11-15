@@ -125,6 +125,8 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         use sha2::{Digest, Sha256};
         assert_eq!(sidecar["manifestSha256"], format!("{:x}", Sha256::digest(&manifest_bytes)));
         assert_eq!(sidecar["clips"][0][0], "root");
+        assert_eq!(sidecar["clips"][0][2]["clip"], manifest["timelines"][0]["clips"][0]);
+        assert_eq!(sidecar["clips"][0][2]["video"], manifest["timelines"][0]["video"]);
         let saved_caption = &sidecar["clips"][0][1];
         assert_eq!(saved_caption["style"]["shadow"], caption["style"]["shadow"]);
         assert_eq!(saved_caption["style"]["shadowX"].as_f64(), Some(2.0));

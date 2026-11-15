@@ -5,6 +5,38 @@ export const CONCAT_CAPTION_CLIPS = 'video-kadr-caption-clips.json'
 export const MAX_CONCAT_CAPTION_BYTES = 8 * 1024 * 1024
 type Captions = readonly (readonly [timelineId: string, clip: WireTextClip])[]
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (Array.isArray(left)) {
+    return Array.isArray(right) && left.length === right.length && left.every((value, index) => sameJson(value, right[index]))
+  }
+  const a = record(left)
+  const b = record(right)
+  return !!a && !!b && Object.keys(a).length === Object.keys(b).length &&
+    Object.keys(a).every(key => Object.hasOwn(b, key) && sameJson(a[key], b[key]))
+}
+
+// Concat's writer adds some defaults and omits others when saving a title.
+function normalizedClip(value: unknown): unknown {
+  const clip = record(value)
+  if (!clip) return value
+  return {
+    mediaId: '', sourceStart: 0, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
+    preservePitch: true, stretchX: 1, stretchY: 1, flipH: false, flipV: false, keys: [], filters: [], videoEffects: [],
+    ...clip,
+    blend: clip.blend || 'normal',
+  }
+}
+
+function normalizedVideo(value: unknown): unknown {
+  const video = record(value)
+  return video ? { colorSpace: 'sdr', ...video } : value
+}
+
 export async function readConcatTemplateCaptions(file: File, manifest: File): Promise<Captions | undefined> {
   if (file.size > MAX_CONCAT_CAPTION_BYTES) throw new Error('Дорожки субтитров шаблона превышают 8 МиБ')
   const sidecar: unknown = JSON.parse(await file.text())
@@ -15,14 +47,37 @@ export async function readConcatTemplateCaptions(file: File, manifest: File): Pr
   }
   const digest = await crypto.subtle.digest('SHA-256', await manifest.arrayBuffer())
   const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
-  if (hash !== sidecar.manifestSha256) return undefined
+  const unchanged = hash === sidecar.manifestSha256
+  const timelines = new Map<string, { video: unknown; clips: Map<string, unknown> }>()
+  if (!unchanged) {
+    const document = record(JSON.parse(await manifest.text()))
+    for (const value of Array.isArray(document?.timelines) ? document.timelines : []) {
+      const timeline = record(value)
+      if (!timeline || typeof timeline.id !== 'string' || !Array.isArray(timeline.clips)) continue
+      const clips = new Map<string, unknown>()
+      for (const entry of timeline.clips) {
+        const clip = record(entry)
+        if (typeof clip?.id === 'string') clips.set(clip.id, clip)
+      }
+      timelines.set(timeline.id, { video: timeline.video, clips })
+    }
+  }
+  const eligible: [string, WireTextClip][] = []
   for (const entry of sidecar.clips) {
-    if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string' ||
+    if (!Array.isArray(entry) || (entry.length !== 2 && entry.length !== 3) || typeof entry[0] !== 'string' ||
         !entry[1] || typeof entry[1] !== 'object' || typeof entry[1].id !== 'string') {
       throw new Error('Некорректный клип субтитров шаблона')
     }
+    const [timelineId, clip, baselineValue] = entry
+    const baseline = record(baselineValue)
+    const timeline = timelines.get(timelineId)
+    if (unchanged || (baseline && timeline &&
+      sameJson(normalizedVideo(baseline.video), normalizedVideo(timeline.video)) &&
+      sameJson(normalizedClip(baseline.clip), normalizedClip(timeline.clips.get(clip.id))))) {
+      eligible.push([timelineId, clip])
+    }
   }
-  return sidecar.clips
+  return eligible.length ? eligible : undefined
 }
 
 export function restoreConcatTemplateCaptions(
