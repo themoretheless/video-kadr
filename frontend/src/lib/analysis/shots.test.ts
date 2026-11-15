@@ -64,6 +64,33 @@ describe('source scan review', () => {
     expect(document.tracks[0]?.clips).toHaveLength(1)
     expect(() => applyShotReview(document, 'clip', rows, 'discard', rows.map((row) => row.id), id)).toThrow('Нельзя исключить все')
   })
+  it('cuts linked audio at the same boundaries and removes only the audio inside discarded scenes', () => {
+    let document = fixture()
+    document = registerSource(document, { id: 'audio', kind: 'audio', durationTicks: 5_000_000, width: 0, height: 0, hasAudio: true })
+    document = addTrack(document, { id: 'sound', kind: 'audio', name: 'Sound', locked: false, muted: false, clips: [] })
+    document = addClip(document, 'sound', {
+      id: 'partner', kind: 'audio', sourceId: 'audio', timelineStartTicks: 4_500_000,
+      sourceInTicks: 0, sourceOutTicks: 5_000_000, gain: 1,
+    })
+    document = { ...document, links: [{ id: 'av', memberIds: ['partner', 'clip'] }] }
+    const rows = reviewShotRows(document, 'clip', scan)
+    const id = (index: number) => `shot-${index}`
+    const spans = (doc: typeof document, lane: number) =>
+      doc.tracks[lane]!.clips.map(clip => [clip.timelineStartTicks, clipEndTicks(clip)])
+    const split = applyShotReview(document, 'clip', rows, 'split', [], id)
+    expect(spans(split.document, 1)).toEqual([[4_500_000, 6_000_000], [6_000_000, 8_000_000], [8_000_000, 9_500_000]])
+    expect(split.document.links?.map(link => link.memberIds)).toEqual([
+      ['partner', 'clip'], ['shot-2', 'shot-0'], ['shot-3', 'shot-1'],
+    ])
+    const discarded = applyShotReview(document, 'clip', rows, 'discard', [rows[0]!.id, rows[2]!.id], id)
+    expect(spans(discarded.document, 0)).toEqual([[6_000_000, 8_000_000]])
+    expect(spans(discarded.document, 1)).toEqual([[4_500_000, 5_000_000], [6_000_000, 8_000_000], [9_000_000, 9_500_000]])
+    expect(discarded.selectedClipId).toBe('shot-0')
+    expect(discarded.document.links).toEqual([{ id: 'av', memberIds: ['shot-3', 'shot-0'] }])
+    const locked = { ...document, tracks: document.tracks.map(track => track.id === 'sound' ? { ...track, locked: true } : track) }
+    expect(() => applyShotReview(locked, 'clip', rows, 'discard', [rows[0]!.id], id)).toThrow()
+    expect(spans(document, 1)).toEqual([[4_500_000, 9_500_000]])
+  })
   it('rejects malformed scans and frame-collapsed boundaries before producing an edit', () => {
     for (const bad of [{ ...scan, floor: 0 }, { ...scan, cuts: [{ tick: 1, score: NaN }] }, { ...scan, cuts: [...scan.cuts].reverse() }]) expect(() => validateShotScan(bad)).toThrow()
     const document = fixture()

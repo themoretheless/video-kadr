@@ -1,5 +1,6 @@
 import { findClipLocation, splitClip, deleteClip } from '../composition/commands.js'
 import { clipEndTicks, type Composition, type VideoClip } from '../composition/types.js'
+import { assertCompositionLocksPreserved } from '../composition/locks.js'
 import { assertValidComposition } from '../composition/validation.js'
 import { videoSourceTickAtTimelineTick } from '../composition/playback.js'
 import { speedRampTimelineTickAtSourceProgress } from '../composition/speedRamp.js'
@@ -81,17 +82,51 @@ export function applyShotReview(document: Composition, clipId: string, rows: rea
     for (let index = 0; index < boundaries.length; index++) result = upsertCompositionMarker(result, { id: idForSegment(index), tick: boundaries[index]!, label: `Shot ${index + 2}` })
     return { document: result, selectedClipId: clipId }
   }
-  const segmentIds = [clipId]
-  for (let index = 0; index < boundaries.length; index++) {
-    const rightId = idForSegment(index)
-    result = splitClip(result, segmentIds.at(-1)!, boundaries[index]!, rightId)
-    segmentIds.push(rightId)
+  const rejected = new Set(action === 'discard' ? discardedRowIds : [])
+  const rejectedSlots = rows.map(row => rejected.has(row.id))
+  const cuts = [
+    ...(rejectedSlots[0] ? [location.clip.timelineStartTicks] : []),
+    ...boundaries,
+    ...(rejectedSlots.at(-1) ? [clipEndTicks(location.clip)] : []),
+  ]
+  if (!cuts.length) return { document, selectedClipId: clipId }
+  const link = document.links?.find(item => item.memberIds.includes(clipId))
+  const partners = link?.memberIds.filter(member => member !== clipId) ?? []
+  const retained = new Map<number, Map<string, string>>()
+  let nextId = 0
+  let selectedClipId = ''
+  for (const member of [clipId, ...partners]) {
+    const original = findClipLocation(document, member).clip
+    const pieces = [{ id: member, start: original.timelineStartTicks }]
+    for (const at of cuts) {
+      if (at <= original.timelineStartTicks || at >= clipEndTicks(original)) continue
+      const right = idForSegment(nextId++)
+      result = splitClip(result, pieces.at(-1)!.id, at, right, true)
+      pieces.push({ id: right, start: at })
+    }
+    for (const piece of pieces) {
+      const nextCut = cuts.findIndex(cut => cut > piece.start)
+      const slot = (nextCut === -1 ? cuts.length : nextCut) - Number(rejectedSlots[0])
+      if (rejectedSlots[slot]) {
+        result = deleteClip(result, piece.id)
+        continue
+      }
+      if (member === clipId && !selectedClipId) selectedClipId = piece.id
+      const ids = retained.get(slot) ?? new Map<string, string>()
+      ids.set(member, piece.id)
+      retained.set(slot, ids)
+    }
   }
-  let selectedClipId = clipId
-  if (action === 'discard') {
-    selectedClipId = segmentIds[rows.findIndex((row) => !discardedRowIds.includes(row.id))]!
-    for (let index = 0; index < rows.length; index++) if (discardedRowIds.includes(rows[index]!.id)) result = deleteClip(result, segmentIds[index]!)
+  if (link) {
+    const groups = [...retained.entries()].sort(([a], [b]) => a - b)
+      .map(([, ids]) => link.memberIds.flatMap(member => ids.has(member) ? [ids.get(member)!] : []))
+      .filter(ids => ids.length > 1)
+    result = { ...result, links: [
+      ...(result.links ?? []).filter(item => item.id !== link.id),
+      ...groups.map((memberIds, index) => ({ id: index === 0 ? link.id : idForSegment(nextId++), memberIds })),
+    ] }
   }
   assertValidComposition(result)
+  assertCompositionLocksPreserved(document, result)
   return { document: result, selectedClipId }
 }
