@@ -451,6 +451,9 @@ fn tool_schema(name: &str) -> Value {
     if name=="get_keyframes" { properties["composition_id"]=json!({"type":"string","minLength":1,"maxLength":128,"description":"Native composition scope; defaults to root. Native supported envelopes are in get_project.nativeBatch.keyframeEnvelopes."}); }
     if matches!(name,"apply_batch"|"dry_run") { properties["expectedProjectHash"]=json!({"type":"string","pattern":"^[0-9a-f]{64}$","description":"Current nested project's get_project.projectHash. Ordinary compositions use expectedRevision."});properties["composition_id"]=json!({"type":"string","minLength":1,"maxLength":128,"description":"Nested batch scope; defaults to root independently of the editor's current view."}); }
     if name=="restore_checkpoint" { properties["expectedProjectHash"]=json!({"type":"string","pattern":"^[0-9a-f]{64}$","description":"Required for an open nested project: current get_project.projectHash."}); }
+    if name == "apply_shot_cuts" {
+        properties["ripple"] = json!({"type":"boolean","default":false,"description":"Close the gaps left by discardedRowIds and shift later clips and synchronized captions. Requires at least one discarded scene."});
+    }
     let required = match name {
         "jump_history" => vec!["entryId"],
         "begin_agent_session" => vec!["reason"],
@@ -845,6 +848,9 @@ mod tests {
             TOOL_NAMES.len()
         );
         let catalog = body["result"]["tools"].as_array().unwrap();
+        let cuts = catalog.iter().find(|tool| tool["name"] == "apply_shot_cuts").unwrap();
+        assert_eq!(cuts["inputSchema"]["properties"]["ripple"]["type"], "boolean");
+        assert_eq!(cuts["inputSchema"]["properties"]["ripple"]["default"], false);
         let color = catalog.iter().find(|tool| tool["name"] == "get_color_track").unwrap();
         assert_eq!(color["inputSchema"]["required"], json!(["clipId"]));
         let batch = catalog.iter().find(|tool| tool["name"] == "apply_batch").unwrap();

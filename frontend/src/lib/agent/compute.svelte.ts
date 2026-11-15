@@ -21,6 +21,12 @@ export async function executeAgentCompute(actor: string, tool: string, args: Rec
 }
 async function compute(actor: string, tool: string, args: Record<string, unknown>, access: AgentAccess): Promise<unknown> {
   if (typeof args.clipId !== 'string') throw new Error('clipId is required')
+  if (args.ripple !== undefined && (tool !== 'apply_shot_cuts' || typeof args.ripple !== 'boolean')) {
+    throw new Error('ripple must be a boolean on apply_shot_cuts')
+  }
+  if (args.ripple === true && (!Array.isArray(args.discardedRowIds) || !args.discardedRowIds.length)) {
+    throw new Error('ripple requires at least one discarded scene')
+  }
   const baseline = cloneComposition(compositionState.document)
   const revision = agentSession.revision
   const { clip, track } = findClipLocation(baseline, args.clipId)
@@ -58,7 +64,7 @@ async function compute(actor: string, tool: string, args: Record<string, unknown
     if ((access.expiresAt !== undefined && Date.now() >= access.expiresAt) || (access.isActive && !access.isActive())) throw new Error('Command expired or editor disconnected; no edit was committed')
     if (agentSession.revision !== revision) throw new Error('Project changed during analysis; no edit was committed')
     assertHistoryUnlocked(actor)
-    const action = tool === 'mark_shots' ? 'mark' : discarded.length ? 'discard' : 'split'
+    const action = tool === 'mark_shots' ? 'mark' : args.ripple === true ? 'ripple-discard' : discarded.length ? 'discard' : 'split'
     const result = applyShotReview(baseline, clip.id, rows, action, discarded, () => makeId(action === 'mark' ? 'shot-marker' : 'shot-segment'))
     commitDocument(result.document,undefined,undefined,'content',access.activity)
     selectCompositionClip(track.id, result.selectedClipId)

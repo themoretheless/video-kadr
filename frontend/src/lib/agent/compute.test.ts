@@ -7,6 +7,7 @@ import { addMediaInfoToComposition } from '../state/composition/media.svelte.js'
 import { addCompositionTrack } from '../state/composition/timeline.svelte.js'
 import { compositionState, resetCompositionForTests, setCompositionStorageForTests } from '../state/composition/core.svelte.js'
 import { undoComposition } from '../state/composition/transport.svelte.js'
+import { clipEndTicks } from '../composition/types.js'
 import type { ShotScan } from '../analysis/shots.js'
 
 vi.mock('../api.js', async (original) => ({ ...await original<typeof api>(), scanLibraryShots: vi.fn(), measureLibraryShots: vi.fn(), compareLibraryFrames: vi.fn() }))
@@ -32,6 +33,22 @@ describe('MCP shot analysis', () => {
     expect(compositionState.history.past).toHaveLength(previousHistory + 1)
     undoComposition()
     expect(compositionState.document.tracks[0]?.clips).toHaveLength(1)
+  })
+  it('closes gaps when applying discarded shots with ripple and undoes the edit once', async () => {
+    const before = JSON.stringify(compositionState.document)
+    const previousHistory = compositionState.history.past.length
+    const base = { clipId, expectedRevision: agentSession.revision }
+    await expect(executeAgentRequest('agent', 'apply_shot_cuts', { ...base, ripple: true })).rejects.toThrow('discarded scene')
+    await expect(executeAgentRequest('agent', 'apply_shot_cuts', { ...base, ripple: 'true' })).rejects.toThrow('boolean')
+    expect(api.scanLibraryShots).not.toHaveBeenCalled()
+    await executeAgentRequest('agent', 'apply_shot_cuts', {
+      ...base, ripple: true, discardedRowIds: ['1000000-3000000'],
+    })
+    expect(compositionState.document.tracks[0]?.clips.map(clip => [clip.timelineStartTicks, clipEndTicks(clip)]))
+      .toEqual([[0, 1_000_000], [1_000_000, 2_000_000]])
+    expect(compositionState.history.past).toHaveLength(previousHistory + 1)
+    undoComposition()
+    expect(JSON.stringify(compositionState.document)).toBe(before)
   })
   it('refuses a stale revision, a mid-analysis edit, disconnect and expiration', async () => {
     await expect(executeAgentRequest('agent', 'auto_split_by_shot', { clipId, expectedRevision: -1 })).rejects.toThrow('Project changed')
