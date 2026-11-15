@@ -94,8 +94,10 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
     Ok(())
 }
 
-// Native ASS fades use linear keys on the clip-local microsecond clock.
-// Concat samples the same segments at normalized clip progress.
+// Concat stores the easing on each segment's incoming key.
+const LINEAR: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+const CUBIC_IN: [f64; 4] = [1.0 / 3.0, 0.0, 2.0 / 3.0, 0.0];
+const CUBIC_OUT: [f64; 4] = [1.0 / 3.0, 1.0, 2.0 / 3.0, 1.0];
 fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
     let AnimatableValue::Keyframes { track } = &clip.opacity else {
         return Ok(());
@@ -113,21 +115,38 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
             .ok_or_else(|| anyhow::anyhow!("Invalid caption duration"))?,
     )?;
     let mut keys = Vec::with_capacity(track.keyframes.len());
+    let key_at = |tick: f64, value, ease| ParamKey {
+        derived: false,
+        at: tick / duration as f64,
+        value,
+        ease,
+    };
     for (index, key) in track.keyframes.iter().enumerate() {
         ensure!(
             key.tangents.is_none()
-                && (index + 1 == track.keyframes.len()
-                    || key.interpolation.unwrap_or(track.interpolation) == Interpolation::Linear)
                 && (0..=duration).contains(&key.tick)
                 && (0.0..=1.0).contains(&key.value),
             "Caption opacity key requires a Concat mapping"
         );
-        keys.push(ParamKey {
-            derived: false,
-            at: key.tick as f64 / duration as f64,
-            value: key.value,
-            ease: [0.0, 0.0, 1.0, 1.0],
-        });
+        let ease = if index == 0 {
+            LINEAR
+        } else {
+            let previous = &track.keyframes[index - 1];
+            match previous.interpolation.unwrap_or(track.interpolation) {
+                Interpolation::Linear => LINEAR,
+                Interpolation::EaseIn => CUBIC_IN,
+                Interpolation::EaseOut => CUBIC_OUT,
+                Interpolation::EaseInOut | Interpolation::EaseInOutCubic => {
+                    // The native curve changes cubic at its exact midpoint.
+                    let tick = (previous.tick as f64 + key.tick as f64) / 2.0;
+                    let value = (previous.value + key.value) / 2.0;
+                    keys.push(key_at(tick, value, CUBIC_IN));
+                    CUBIC_OUT
+                }
+                _ => anyhow::bail!("Caption opacity key requires a Concat mapping"),
+            }
+        };
+        keys.push(key_at(key.tick as f64, key.value, ease));
     }
     let transform = &mut clip.transform;
     let (AnimatableValue::Constant { value: x }, AnimatableValue::Constant { value: y }) =

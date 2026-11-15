@@ -218,6 +218,36 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     assert!(!orange.is_empty(), "caption must be visible after reopening");
     assert!(orange.iter().all(|row| (70..=117).contains(row)), "caption must remain near the bottom");
 
+    let mut nonlinear = serde_json::to_value(&project).unwrap();
+    let root = nonlinear["root"].as_str().unwrap().to_owned();
+    let track = &mut nonlinear["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"];
+    track["interpolation"] = json!("ease_in_out_cubic");
+    track["keyframes"] = json!([
+        {"tick":0,"value":0.1,"interpolation":"ease_in"},
+        {"tick":300001,"value":0.9,"interpolation":"ease_out"},
+        {"tick":600000,"value":0.2},
+        {"tick":1111111,"value":0.8}
+    ]);
+    let native: video_kadr_backend::domain::keyframes::KeyframeTrack<f64> =
+        serde_json::from_value(track.clone()).unwrap();
+    let nonlinear = serde_json::from_value(nonlinear).unwrap();
+    let exported = export(&nonlinear).unwrap();
+    let title = exported["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert_eq!(title["keys"].as_array().unwrap().len(), 5);
+    let reopened = convert(exported);
+    let animation = reopened.compositions[&reopened.root].content.tracks.iter().find_map(|track| match track {
+        video_kadr_backend::domain::composition::CompositionTrack::Text { clips, .. } =>
+            clips.iter().find(|clip| clip.id.as_str() == "words")
+                .and_then(|clip| clip.transform.concat_animation.as_ref()),
+        _ => None,
+    }).unwrap();
+    for tick in (0..=1_111_111).step_by(997).chain([300001, 600000, 855555, 855556, 1111111]) {
+        let expected = native.sample_tick(tick);
+        let actual = animation.sample(tick as u64).unwrap().opacity;
+        assert!((actual - expected).abs() < 1e-10, "cubic opacity at {tick}: {actual} vs {expected}");
+    }
+
     let mut unsupported = serde_json::to_value(project).unwrap();
     let root = unsupported["root"].as_str().unwrap().to_owned();
     unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!("bounce_in");
