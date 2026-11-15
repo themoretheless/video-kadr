@@ -1,14 +1,18 @@
 <script lang="ts">
   import { editFilmcraftPosterFrame, editFilmcraftSource, type FilmcraftSourcePlacementCommand, navigateFilmcraft, type FilmcraftNavigationCommand, type FilmcraftNavigationResult, editFilmcraftMarks, type FilmcraftImportResult, type FilmcraftMarks, type FilmcraftMarksCommand, type FilmcraftSourceEditFence } from '$lib/api'
-  let { document, sequenceId, clipId, token, items, marks, timeFrames, timeTicks, stillDuration = $bindable('5'), stillUnit = $bindable<'seconds' | 'frames'>('seconds'), tracks = [], rippleMarkers = $bindable(false), item = $bindable(''), sourcePlayhead = '0', selection = [], projectSelection = [], linkedSelection = true, disabled = false, onedit, oncontext }: {
+  let { document, sequenceId, clipId, token, items, marks, timeFrames, timeTicks, stillDuration = $bindable('5'), stillUnit = $bindable<'seconds' | 'frames'>('seconds'), tracks = [], rippleMarkers = $bindable(false), item = $bindable(''), sourcePlayhead = '0', sourceOpenSerial = 0, selection = [], projectSelection = [], linkedSelection = true, disabled = false, onedit, oncontext }: {
     document: string; sequenceId: string; clipId: string; token: string | null; items: NonNullable<FilmcraftImportResult['projectItems']>
     stillDuration?: string; stillUnit?: 'seconds' | 'frames'
     tracks?: NonNullable<FilmcraftImportResult['sequences'][number]['tracks']>; rippleMarkers?: boolean
-    item?: string; sourcePlayhead?: string; selection?: string[]; projectSelection?: string[]; linkedSelection?: boolean
+    item?: string; sourcePlayhead?: string; sourceOpenSerial?: number; selection?: string[]; projectSelection?: string[]; linkedSelection?: boolean
     oncontext?: (result: FilmcraftNavigationResult, expected: FilmcraftSourceEditFence) => boolean
     marks?: FilmcraftMarks; timeFrames: string; timeTicks?: string; disabled?: boolean; onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean | void
   } = $props()
   let target = $state<'program' | 'source'>('program')
+  let panelOpen = $state(false)
+  $effect(() => {
+    if (sourceOpenSerial > 0) { target = 'source'; panelOpen = true }
+  })
   let follows = $state(false)
   let position = $state('0')
   let useMonitorPosition = $state(false)
@@ -104,7 +108,7 @@
   }
 
 </script>
-<details>
+<details bind:open={panelOpen}>
   <summary>Точки In/Out</summary>
   <label>Монитор <select aria-label="Монитор точек Filmcraft" value={target} disabled={disabled || busy} onchange={event => { target = event.currentTarget.value as typeof target }}><option value="program">Таймлайн</option><option value="source">Исходник</option></select></label>
   {#if target === 'source'}<label>Элемент <select aria-label="Исходник точек Filmcraft" value={item} disabled={disabled || busy} onchange={event => { item = event.currentTarget.value }}><option value="">Выберите элемент</option>{#if item && !items.some(source => source.id === item)}<option value={item}>Недоступный исходник ({item})</option>{/if}{#each items as source (source.id)}<option value={source.id}>{source.name || source.id}</option>{/each}</select></label>{/if}

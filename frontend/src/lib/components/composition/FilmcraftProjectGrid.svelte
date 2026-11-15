@@ -4,9 +4,9 @@
   import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
-  let { project, sources, token, sequenceId, clipId, onedit, selected = $bindable<string[]>([]), disabled = false }: {
+  let { project, sources, token, sequenceId, clipId, onedit, onopen, selected = $bindable<string[]>([]), disabled = false }: {
     project: FilmcraftImportResult; sources: Record<string, string>; token: string | null; sequenceId: string; clipId: string
-    onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean; selected?: string[]; disabled?: boolean
+    onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean; onopen: (item: string) => void; selected?: string[]; disabled?: boolean
   } = $props()
   const pageSize = 12
   let open = $state(false)
@@ -339,7 +339,15 @@
               {/if}
               <button type="button" class="item" aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onpointerdown={event => beginMove(entry.item.id, event)} onpointermove={trackMove} onpointerup={finishMove}
                 onpointercancel={() => { drag = undefined }} onlostpointercapture={() => { drag = undefined }}
-                onclick={event => select(entry.item.id, event)}>{entry.item.name || entry.item.id}</button>
+                onclick={event => select(entry.item.id, event)}
+                ondblclick={() => onopen(entry.item.id)}
+                onkeydown={event => {
+                  if (event.key !== 'Enter') return
+                  event.preventDefault()
+                  if (event.repeat) return
+                  selected = [entry.item.id]
+                  onopen(entry.item.id)
+                }}>{entry.item.name || entry.item.id}</button>
             </li>
           {/if}
         {/each}
