@@ -226,6 +226,10 @@ async fn rpc(
             "uriTemplate":"media://{id}/description{?focus,language,fps,startTicks,endTicks,cursor}",
             "name":"Cached scene descriptions",
             "mimeType":"application/json"
+        },{
+            "uriTemplate":"media://{id}/analysis",
+            "name":"Whole-source scene analysis and measurements",
+            "mimeType":"application/json"
         }]}})).into_response());
     }
     let uri = if method == "resources/read" {
@@ -236,9 +240,14 @@ async fn rpc(
         let (tool, arguments) = match uri.as_str() {
             "project://document" => ("get_project", json!({})),
             "project://history" => ("get_history", json!({})),
-            _ => match cached_scene_resource(&uri) {
-                Some(arguments) => ("read_scene_descriptions", arguments),
-                None => return Ok(Json(error(request["id"].clone(), -32602, "Unknown resource")).into_response()),
+            _ => {
+                if let Some(id) = media_resource_id(&uri, "/analysis") {
+                    ("analyze_clip", json!({"media_id":id,"stats":true,"threshold":0.4,"minShotTicks":500000}))
+                } else if let Some(arguments) = cached_scene_resource(&uri) {
+                    ("read_scene_descriptions", arguments)
+                } else {
+                    return Ok(Json(error(request["id"].clone(), -32602, "Unknown resource")).into_response());
+                }
             }
         };
         request["method"] = json!("tools/call");
@@ -257,6 +266,14 @@ async fn rpc(
                 .and_then(|value| value["error"].as_str().map(str::to_owned));
             body = error(body["id"].clone(), -32000, message.as_deref().unwrap_or("Visible editor unavailable"));
         } else if let Some(text) = body["result"]["content"][0]["text"].as_str() {
+            let text = if media_resource_id(&uri, "/analysis").is_some() {
+                let mut report: serde_json::Map<String, Value> = serde_json::from_str(text)
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                report.remove("revision");
+                Value::Object(report).to_string()
+            } else {
+                text.to_owned()
+            };
             body["result"] =
                 json!({"contents":[{"uri":uri,"mimeType":"application/json","text":text}]});
         }
@@ -279,15 +296,17 @@ async fn rpc(
     Ok(response)
 }
 
+fn media_resource_id<'a>(path: &'a str, suffix: &str) -> Option<&'a str> {
+    let id = path.strip_prefix("media://")?.strip_suffix(suffix)?;
+    (!id.is_empty() && id.len() <= 128
+        && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')))
+        .then_some(id)
+}
+
 fn cached_scene_resource(uri: &str) -> Option<Value> {
     if uri.len() > 1024 || uri.contains('#') { return None; }
     let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
-    let id = path.strip_prefix("media://")?.strip_suffix("/description")?;
-    if id.is_empty() || id.len() > 128
-        || !id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-    {
-        return None;
-    }
+    let id = media_resource_id(path, "/description")?;
     let mut args = serde_json::Map::from_iter([("media_id".into(), json!(id))]);
     for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
         let arg = match key.as_ref() {
@@ -1077,41 +1096,53 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cached_scene_resource_is_discoverable_and_routed_without_a_compute_tool() {
+    async fn media_resources_route_cache_reads_and_whole_source_analysis() {
         let app = app();
         let list = json_body(app.clone().oneshot(request("/mcp", json!({
             "jsonrpc":"2.0","id":1,"method":"resources/templates/list"
         }))).await.unwrap()).await;
         assert_eq!(list["result"]["resourceTemplates"][0]["uriTemplate"],
             "media://{id}/description{?focus,language,fps,startTicks,endTicks,cursor}");
+        assert_eq!(list["result"]["resourceTemplates"][1]["uriTemplate"], "media://{id}/analysis");
         assert!(cached_scene_resource("media://clip/description?language=en&language=ru").is_none());
         assert!(cached_scene_resource("media://clip/description?unexpected=1").is_none());
-        let uri = "media://Clip-1/description?language=en&fps=0.5&startTicks=1&endTicks=2";
-        app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"cache-reader"}))).await.unwrap();
-        let rpc = app.clone();
-        let read = tokio::spawn(async move {
-            rpc.oneshot(request("/mcp", json!({
-                "jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":uri}
-            }))).await.unwrap()
-        });
-        let mut command = Value::Null;
-        for _ in 0..100 {
-            let reply = json_body(app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"cache-reader"}))).await.unwrap()).await;
-            if !reply["command"].is_null() {
-                command = reply["command"].clone();
-                break;
+        assert!(media_resource_id("media://clip/analysis?stats=false", "/analysis").is_none());
+        app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"resource-reader"}))).await.unwrap();
+        for (uri, tool, args, report, expected) in [
+            ("media://Clip-1/description?language=en&fps=0.5&startTicks=1&endTicks=2",
+                "read_scene_descriptions", json!({"media_id":"Clip-1","language":"en","fps":0.5,"startTicks":1,"endTicks":2}),
+                json!({"descriptions":[]}), json!({"descriptions":[]})),
+            ("media://Clip-1/analysis", "analyze_clip",
+                json!({"media_id":"Clip-1","stats":true,"threshold":0.4,"minShotTicks":500000}),
+                json!({"sourceId":"Clip-1","revision":42,"measurements":[]}),
+                json!({"sourceId":"Clip-1","measurements":[]})),
+        ] {
+            let rpc = app.clone();
+            let read = tokio::spawn(async move {
+                rpc.oneshot(request("/mcp", json!({
+                    "jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":uri}
+                }))).await.unwrap()
+            });
+            let mut command = Value::Null;
+            for _ in 0..100 {
+                let reply = json_body(app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"resource-reader"}))).await.unwrap()).await;
+                if !reply["command"].is_null() {
+                    command = reply["command"].clone();
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
-            tokio::time::sleep(Duration::from_millis(1)).await;
+            assert_eq!(command["tool"], tool);
+            assert_eq!(command["args"], args);
+            let result = app.clone().oneshot(request("/api/agent/result", json!({
+                "editorId":"resource-reader","id":command["id"],"result":report
+            }))).await.unwrap();
+            assert_eq!(result.status(), StatusCode::NO_CONTENT);
+            let reply = json_body(read.await.unwrap()).await;
+            let content = &reply["result"]["contents"][0];
+            assert_eq!(content["uri"], uri);
+            assert_eq!(serde_json::from_str::<Value>(content["text"].as_str().unwrap()).unwrap(), expected);
         }
-        assert_eq!(command["tool"], "read_scene_descriptions");
-        assert_eq!(command["args"], json!({"media_id":"Clip-1","language":"en","fps":0.5,"startTicks":1,"endTicks":2}));
-        let result = app.oneshot(request("/api/agent/result", json!({
-            "editorId":"cache-reader","id":command["id"],"result":{"descriptions":[]}
-        }))).await.unwrap();
-        assert_eq!(result.status(), StatusCode::NO_CONTENT);
-        let reply = json_body(read.await.unwrap()).await;
-        assert_eq!(reply["result"]["contents"][0]["uri"], uri);
-        assert_eq!(reply["result"]["contents"][0]["text"], "{\"descriptions\":[]}");
     }
 
     #[test]

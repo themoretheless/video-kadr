@@ -90,7 +90,17 @@ async function compute(actor: string, tool: string, args: Record<string, unknown
     assertHistoryUnlocked(actor)
     if (location?.track.locked) throw new Error('Track is locked')
   }
-  const scan = await scanLibraryShots(sourceId, access.token, access.spaceId)
+  const remaining = !clip && access.expiresAt !== undefined ? access.expiresAt - Date.now() : undefined
+  if (remaining !== undefined && remaining <= 0) throw new Error('Analysis command expired')
+  const options: [] | [AbortSignal] = remaining === undefined ? [] : [AbortSignal.timeout(Math.min(remaining, 240_000))]
+  const checkSourceCommand = () => {
+    if (!clip && (options[0]?.aborted || access.isActive?.() === false)) {
+      throw new Error('Analysis command expired or editor disconnected')
+    }
+  }
+  checkSourceCommand()
+  const scan = await scanLibraryShots(sourceId, access.token, access.spaceId, ...options)
+  checkSourceCommand()
   shotAnalysisState.scans[sourceId] = scan
   const threshold = args.threshold === undefined ? baseline.shotReview?.threshold ?? 0.3 : args.threshold
   const minimum = args.minShotTicks === undefined ? baseline.shotReview?.minShotTicks ?? 500_000 : args.minShotTicks
@@ -103,7 +113,8 @@ async function compute(actor: string, tool: string, args: Record<string, unknown
   const measurements = []
   if (tool === 'measure_shots' || args.stats === true) {
     for (let index = 0; index < rows.length; index += 64) {
-      const stats = await measureLibraryShots(sourceId, rows.slice(index, index + 64).map(({ startTicks, endTicks }) => ({ startTicks, endTicks })), access.token, access.spaceId, scan.sourceHash)
+      const stats = await measureLibraryShots(sourceId, rows.slice(index, index + 64).map(({ startTicks, endTicks }) => ({ startTicks, endTicks })), access.token, access.spaceId, scan.sourceHash, ...options)
+      checkSourceCommand()
       for (const item of stats) shotAnalysisState.measurements[measurementKey(scan, item.span.startTicks, item.span.endTicks)] = item
       measurements.push(...stats)
     }

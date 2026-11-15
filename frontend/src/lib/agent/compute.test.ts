@@ -27,6 +27,31 @@ beforeEach(() => {
 })
 
 describe('MCP shot analysis', () => {
+  it('reads the unplaced analysis view while a nested project is open and forwards its deadline', async () => {
+    nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: {} }
+    const access = { token: 'owner', spaceId: 'space', expiresAt: Date.now() + 30_000 }
+    const report = { ...scan, cuts: [{ tick: 1_000_000, score: 0.35 }, { tick: 3_000_000, score: 0.7 }] }
+    vi.mocked(api.scanLibraryShots).mockResolvedValue(report)
+    const spans = [{ startTicks: 0, endTicks: 3_000_000 }, { startTicks: 3_000_000, endTicks: 4_000_000 }]
+    const measurements = spans.map(span => ({ span, brightness: 0.3, motion: 0.15, sharpness: 0.2, flags: [] }))
+    vi.mocked(api.measureLibraryShots).mockResolvedValue(measurements)
+    const before = JSON.stringify(nestedComposition.document)
+    try {
+      const args = { media_id: 'unplaced', stats: true, threshold: 0.4, minShotTicks: 500_000 }
+      const result = await executeAgentRequest('agent', 'analyze_clip', args, access)
+      expect(result).toMatchObject({ sourceId: 'unplaced', scan: report, rows: spans, measurements })
+      const signal = vi.mocked(api.scanLibraryShots).mock.calls[0]?.[3]
+      expect(signal).toBeInstanceOf(AbortSignal)
+      expect(api.measureLibraryShots).toHaveBeenCalledWith('unplaced', spans, 'owner', 'space', report.sourceHash, signal)
+      expect(JSON.stringify(nestedComposition.document)).toBe(before)
+
+      let connected = true
+      vi.mocked(api.scanLibraryShots).mockImplementationOnce(async () => { connected = false; return report })
+      await expect(executeAgentRequest('agent', 'analyze_clip', args, { ...access, isActive: () => connected }))
+        .rejects.toThrow('editor disconnected')
+      expect(api.measureLibraryShots).toHaveBeenCalledTimes(1)
+    } finally { closeNestedComposition() }
+  })
   it('uses editor preferences for omitted description and cache arguments while honoring explicit overrides', async () => {
     setSceneDescriptionPreferences({ focus: 'shot-type', language: 'en', fps: 4 })
     const span = { startTicks: 0, endTicks: 4_000_000 }

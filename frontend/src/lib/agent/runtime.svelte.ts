@@ -238,7 +238,8 @@ async function dispatchAgentRequest(actor: string, tool: string, args: Record<st
     const { executeFilmcraftCommand } = await import('./filmcraftCommands')
     return executeFilmcraftCommand(actor, tool, args, access)
   }
-  if ((nestedComposition.document||tool==='redo'&&nestedHistory.future.length>0) && !['export_captions','set_history_lock','describe_clip','read_scene_descriptions'].includes(tool)) {
+  const unplacedAnalysis = tool === 'analyze_clip' && args.media_id !== undefined && args.clipId === undefined
+  if (!unplacedAnalysis && (nestedComposition.document||tool==='redo'&&nestedHistory.future.length>0) && !['export_captions','set_history_lock','describe_clip','read_scene_descriptions'].includes(tool)) {
     const id=makeId('agent-op')
     logAgentOperation(id,actor,tool,'started')
     try {
