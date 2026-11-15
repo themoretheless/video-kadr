@@ -270,11 +270,16 @@ it('commits a batch of slot replacements together and undoes it in one step', as
  expect(document.body.textContent).not.toContain('Отменить заполнение слота')
 })
 
-it('requires FillSlot before converting a Concat template folder', async () => {
+it('uploads a local template slot replacement and requires FillSlot before conversion', async () => {
  const template = { ...original, media: [{ ...original.media[0], path: '', placeholder: true }] }
  const filled = { ...template, media: [{ ...template.media[0], placeholder: false }] }
+ const store = await import('$lib/state/store.svelte')
+ const upload = vi.spyOn(store, 'doUpload').mockResolvedValue({
+  id: source.id, filename: 'camera.mov', url: '/files/sources/camera.mov',
+  mediaType: 'video', duration: 1, width: 16, height: 16,
+ })
  vi.mocked(fillConcatMediaSlot).mockResolvedValueOnce({ document: filled, source })
- component = mount(Panel, { target: document.body, props: { token: 'session', sources: [{ label: 'Camera', source }] } })
+ component = mount(Panel, { target: document.body, props: { token: 'session' } })
  await tick()
  const file = new File([JSON.stringify(template)], 'template.json')
  Object.defineProperty(file, 'webkitRelativePath', { value: 'Design/template.json' })
@@ -286,13 +291,21 @@ it('requires FillSlot before converting a Concat template folder', async () => {
  expect(document.querySelector('select[aria-label="Источник Concat m1"]')).toBeNull()
  const verify = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Проверить импорт Concat')!
  const replacement = document.querySelector<HTMLSelectElement>(slot)!
- replacement.value = 'source'
- replacement.dispatchEvent(new Event('change', { bubbles: true }))
- await tick()
+ const localFile = new File(['movie'], 'camera.mov')
+ const localPicker = document.querySelector<HTMLInputElement>('input[aria-label="Файл замены слота Concat m1"]')!
+ Object.defineProperty(localPicker, 'files', { value: [localFile] })
+ localPicker.dispatchEvent(new Event('change', { bubbles: true }))
+ await vi.waitFor(() => expect(replacement.value).toBe(source.id))
+ expect(upload).toHaveBeenCalledWith(localFile, false)
+ expect(fillConcatMediaSlot).not.toHaveBeenCalled()
  expect(verify.disabled).toBe(true)
  document.querySelector<HTMLButtonElement>('button[aria-label="Заполнить слот Concat m1"]')!.click()
  await vi.waitFor(() => expect(verify.disabled).toBe(false))
- expect(fillConcatMediaSlot).toHaveBeenCalledWith(template, 'm1', expect.objectContaining({ source }), expect.any(AbortSignal), 'session')
+ expect(fillConcatMediaSlot).toHaveBeenCalledWith(template, 'm1', {
+  label: 'camera.mov',
+  source: expect.objectContaining({ id: source.id, kind: 'video' }),
+ }, expect.any(AbortSignal), 'session')
  click('Отменить заполнение слота')
  await vi.waitFor(() => expect(verify.disabled).toBe(true))
+ upload.mockRestore()
 })

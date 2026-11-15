@@ -27,8 +27,8 @@
   posterUrl=url
   return()=>URL.revokeObjectURL(url)
  })
- let folderSources=$state<ConcatImportSource[]>([])
- const availableSources=$derived([...sources,...folderSources.filter(entry=>!sources.some(source=>source.source.id===entry.source.id))])
+ let uploadedSources=$state<ConcatImportSource[]>([])
+ const availableSources=$derived([...sources,...uploadedSources.filter(entry=>!sources.some(source=>source.source.id===entry.source.id))])
  let preserveMediaIds=$state(false)
  let slotChoices=$state<Record<string,string>>({})
  let sourceOverrides=$state<Record<string,CompositionSource>>({})
@@ -39,9 +39,9 @@
  const ready=$derived(!!document&&(!importingTemplate||!media.some(item=>item.placeholder))&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path))&&stillDestinations.every(item=>!!chosenMask(item.key,item.mediaId))&&videoDestinations.every(item=>!!chosenMask(item.key,item.mediaId,true)))
  function identity(){return JSON.stringify([token,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,availableSources,preserveMediaIds,nestedComposition.revision,savedMasks,savedVideoMasks,maskChoices])}
  function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false}
- $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderPoster=undefined;folderSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
+ $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderPoster=undefined;uploadedSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
- async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;folderSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
+ async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;uploadedSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
  async function loadFolder(files:File[]){
   await load(undefined)
   if(!token||!files.length)return
@@ -68,7 +68,7 @@
    document=folder.document;media=folder.media;fonts=folder.fonts
    importingTemplate=true
    folderPoster=folder.poster
-   folderSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
+   uploadedSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
     await loadFont(font.path,font.file,false)
     if(!current())return
@@ -101,6 +101,33 @@
  const orderedMedia = $derived([...pendingSlots, ...media.filter(item => !item.placeholder)])
  function replacementFor(id: string) {
   return availableSources.find(entry => entry.source.id === slotChoices[id])
+ }
+ async function uploadSlotReplacement(id: string, file: File | undefined) {
+  if (!file || !token || busy || disabled || nestedHistory.busy || !pendingSlots.some(slot => slot.id === id)) return
+  invalidate()
+  busy = true
+  const serial = request
+  const owner = token
+  const workspace = context
+  const project = nestedComposition.document
+  const projectId = nestedComposition.projectId
+  const revision = nestedComposition.revision
+  try {
+   const result = await doUpload(file, false)
+   if (serial !== request || token !== owner) return
+   if (workspace !== context || project !== nestedComposition.document ||
+       projectId !== nestedComposition.projectId || revision !== nestedComposition.revision) {
+    throw new Error('Текущий проект изменился; выберите замену заново')
+   }
+   if (!result) throw new Error(`Не удалось загрузить ${file.name}`)
+   const source = compositionSourceFromMediaInfo(result)
+   uploadedSources = [...uploadedSources.filter(entry => entry.source.id !== source.id), { label: file.name, source }]
+   slotChoices = { ...slotChoices, [id]: source.id }
+  } catch (failure) {
+   if (serial === request && token === owner) error = failure instanceof Error ? failure.message : String(failure)
+  } finally {
+   if (serial === request) busy = false
+  }
  }
  async function fillSlots(ids: readonly string[]) {
   if (!document || busy || disabled || nestedHistory.busy || !token || !ids.length) return
@@ -168,6 +195,13 @@
    {#if item.placeholder}
     <label>Заполнить слот {item.name} · {(slotStats.get(item.id)?.seconds ?? 0).toLocaleString('ru-RU',{maximumFractionDigits:3})} с <select aria-label={`Заполнение слота Concat ${item.id}`} value={slotChoices[item.id]??''} onchange={event=>{slotChoices={...slotChoices,[item.id]:event.currentTarget.value}}}><option value="">Выберите замену из библиотеки</option>{#each availableSources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
     <button class="btn ghost sm" type="button" disabled={!slotChoices[item.id]} aria-label={`Заполнить слот Concat ${item.id}`} onclick={()=>void fillSlots([item.id])}>Заполнить слот</button>
+    <label>Загрузить замену для {item.name}
+     <input type="file" accept="video/*,audio/*,image/*" aria-label={`Файл замены слота Concat ${item.id}`} onchange={event=>{
+      const file=event.currentTarget.files?.[0]
+      event.currentTarget.value=''
+      void uploadSlotReplacement(item.id,file)
+     }} />
+    </label>
    {/if}
   {/each}
   {#if pendingSlots.length > 1}
@@ -179,7 +213,7 @@
    <label>Шрифт {font.family} <input type="file" accept=".ttf,.otf,.ttc" aria-label={`Файл шрифта Concat ${font.path}`} onchange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';void loadFont(font.path,file)}} />{#if Object.hasOwn(fontBindings,font.path)}<span>{fontNames[font.path]}</span>{/if}</label><button class="btn ghost sm" type="button" aria-label={`Системная замена шрифта Concat ${font.path}`} onclick={()=>fallbackFont(font.path)}>Использовать системную замену</button>
   {/each}
   {#if fonts.length}<p>Выберите файлы шрифтов. Они сохранятся внутри проекта.</p>{/if}
-  {#if media.length}<p>Недостающие файлы сначала добавьте в библиотеку.</p>{/if}
+  {#if media.some(item=>!item.placeholder&&!bindings[item.id])}<p>Для материалов без привязки выберите файлы из библиотеки.</p>{/if}
   {#if media.length}<label><input type="checkbox" aria-label="Сохранять отдельные ID медиа Concat" checked={preserveMediaIds} onchange={event=>{invalidate();preserveMediaIds=event.currentTarget.checked}} />Сохранять отдельные слоты при общем файле</label>{/if}
   {#if stillDestinations.length||videoDestinations.length}
    <p>Для каждого изображения и видео с вырезанием выберите сохранённую маску с теми же настройками.</p>
