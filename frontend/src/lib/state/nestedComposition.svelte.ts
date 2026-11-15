@@ -1190,6 +1190,24 @@ export async function updateNestedCaptionCue(
   return committed
 }
 
+export async function upgradeNestedFileCaptions(
+  id: string, ids: readonly string[], admission: () => void, onConverted: (ids: string[]) => void,
+): Promise<void> {
+  const guard = () => { assertHistoryUnlocked(); admission() }
+  let converted: string[] = []
+  await editNestedDocument(async document => {
+    guard()
+    const node = Object.hasOwn(document.compositions, id) ? document.compositions[id] : undefined
+    if (!node) throw new Error('Таймлайн не найден')
+    const { upgradeCompositionCaptions } = await import('$lib/api')
+    const { applyNestedCaptionUpgrade } = await import('$lib/composition/captionUpgrade')
+    const after = await upgradeCompositionCaptions(node.content, ids)
+    const content = applyNestedCaptionUpgrade(node.content, after, ids)
+    converted = content.tracks[0]!.clips.map(clip => clip.id)
+    return { ...document, compositions: { ...document.compositions, [id]: { ...node, content } } }
+  }, true, undefined, undefined, 0, () => onConverted(converted), guard)
+}
+
 export async function editNestedFileCaptions(
   id: string, operation: Extract<CaptionEditOperation, {kind: 'add' | 'split' | 'merge' | 'delete' | 'move' | 'trim'}>, admission: () => void, onAdded?: (cueId: string) => void,
 ): Promise<void> {

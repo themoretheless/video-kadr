@@ -9,7 +9,7 @@
   import NestedCaptionTextEditor from './NestedCaptionTextEditor.svelte'
   import CaptionTrackSettings from './CaptionTrackSettings.svelte'
   import CaptionTrackStyle from './CaptionTrackStyle.svelte'
-  import { editNestedFileCaptions, setNestedCaptionTracks, setNestedCaptionTrackStyle } from '$lib/state/nestedComposition.svelte'
+  import { editNestedFileCaptions, setNestedCaptionTracks, setNestedCaptionTrackStyle, upgradeNestedFileCaptions } from '$lib/state/nestedComposition.svelte'
   import { untrack,tick } from 'svelte'
   import {SvelteSet} from 'svelte/reactivity'
   import VideoEnhancementPanel from './VideoEnhancementPanel.svelte'
@@ -149,6 +149,23 @@
     }))
   }
 
+  function upgradeFileCaptions() {
+    const scope = active, ids = [...captionSelected]
+    if (!ids.length) return
+    void keepKeyboardFocus(() => upgradeNestedFileCaptions(scope, ids, () => {
+      assertCaptionSelection(scope, ids)
+    }, converted => {
+      captionSelected = []
+      selected = converted
+    }))
+  }
+
+  function assertCaptionSelection(scope: string, ids: readonly string[]) {
+    if (!alive || disabled || active !== scope || ids.length !== captionSelected.length || ids.some(id => !captionSelected.includes(id))) {
+      throw new Error('Выбор реплик изменился')
+    }
+  }
+
   function editFileCaptions(kind: 'split' | 'merge' | 'delete' | 'move' | 'trim', inEdge = false) {
     const scope = active
     const ids = [...captionSelected]
@@ -166,11 +183,7 @@
       nestedHistory.error = error instanceof Error ? error.message : String(error)
       return
     }
-    void keepKeyboardFocus(() => editNestedFileCaptions(scope, operation, () => {
-      if (!alive || disabled || active !== scope || ids.length !== captionSelected.length || ids.some(id => !captionSelected.includes(id))) {
-        throw new Error('Выбор реплик изменился')
-      }
-    }))
+    void keepKeyboardFocus(() => editNestedFileCaptions(scope, operation, () => assertCaptionSelection(scope, ids)))
   }
   const clipboardCaptionTracks = $derived(nestedClipboard.value?.compositions[nestedClipboard.value.root]?.content.captionTracks ?? [])
   let clipboardTargets = $state<Record<string,string>>({})
@@ -432,6 +445,8 @@
       {/each}
     {/each}
     {#if captionSelected.length}
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || !!agentSession.lock}
+        onclick={upgradeFileCaptions}>Преобразовать реплики в графику</button>
       <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || captionSelected.length !== 1}
         onclick={() => editFileCaptions('split')}>Разрезать реплику на курсоре</button>
       <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || captionSelected.length < 2}

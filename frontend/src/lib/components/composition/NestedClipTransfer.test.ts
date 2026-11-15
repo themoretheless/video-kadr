@@ -10,9 +10,10 @@ import { state as library } from '$lib/state/store.svelte'
 import NestedClipTransfer from './NestedClipTransfer.svelte'
 import { closeNestedComposition, nestedComposition, nestedHistory, nestedPlayback, undoNestedComposition, trimNestedClipEnds, nestedClipboard } from '$lib/state/nestedComposition.svelte'
 import { addClip, addTrack, createComposition, registerSource } from '$lib/composition/commands'
+import { createGraphicClip } from '$lib/composition/graphicLayers'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { cuesToTextClips, parseSrt } from '$lib/subtitles/srt'
-vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), editCompositionCaptions: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
+vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), editCompositionCaptions: vi.fn(), upgradeCompositionCaptions: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
 
 it('edits the selected file caption and keeps its submicrosecond clock through Undo', async () => {
   closeNestedComposition()
@@ -77,6 +78,59 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
     await unmount(component)
     target.remove()
     closeNestedComposition()
+  }
+})
+
+it('upgrades the selected file cue into graphics atomically and retains unselected file metadata', async () => {
+  closeNestedComposition()
+  const base = createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' })
+  const cue = { id: 'cue', cueId: 'external', timelineStartTick: '254016000000', timelineEndTick: '508032000000', text: 'Convert' }
+  const retained = { id: 'retained', timelineStartTick: '762048000001', timelineEndTick: '1016064000001', text: 'Keep' }
+  const track = { id: 'file', name: 'File', vttBlocks: ['NOTE keep'], clips: [cue, retained] }
+  const content = { ...buildCompositionWireDocument(base), captionTracks: [track] }
+  const original = { schemaVersion: 1 as const, root: 'root', compositions: { root: { instances: [], content } } }
+  nestedComposition.document = original
+  nestedComposition.renderedOutputs = { root: 'old' }
+  const response = (start: number) => buildCompositionWireDocument({
+    ...base, captionTracks: [{ ...track, clips: [retained] }],
+    metadata: { clipNames: { converted: 'Convert' } },
+    tracks: [{ kind: 'graphic', id: 'graphics', name: 'Captions as Graphics', hidden: false, locked: false,
+      clips: [createGraphicClip(base.canvas, 'converted', start, 2_000_000 - start, 'text')] }],
+  })
+  const mock = vi.mocked(api.upgradeCompositionCaptions)
+  mock.mockReset().mockResolvedValueOnce(response(999_999)).mockResolvedValueOnce(response(1_000_000))
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  try {
+    await tick()
+    const input = target.querySelector<HTMLInputElement>('[data-caption-id="cue"]')!
+    input.checked = true
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    const button = [...target.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Преобразовать реплики в графику')!
+    button.click()
+    await vi.waitFor(() => expect(nestedHistory.error).toBe('Изменилось время субтитров'))
+    expect(nestedHistory.past).toHaveLength(0)
+    expect(nestedComposition.document).toEqual(original)
+    await tick()
+    button.click()
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
+    expect(mock).toHaveBeenLastCalledWith(content, ['cue'])
+    const after = nestedComposition.document?.compositions.root?.content
+    expect(after?.captionTracks).toEqual([{ ...track, clips: [retained] }])
+    expect(after?.tracks[0]?.clips[0]).toMatchObject({ id: 'converted', timelineStartTick: 1_000_000, timelineEndTick: 2_000_000 })
+    expect(after?.metadata?.clipNames?.converted).toBe('Convert')
+    expect(target.querySelector<HTMLInputElement>('[data-clip-id="converted"]')?.checked).toBe(true)
+    expect(nestedComposition.renderedOutputs).toEqual({})
+    undoNestedComposition()
+    expect(nestedComposition.document).toEqual(original)
+    expect(nestedComposition.renderedOutputs).toEqual({ root: 'old' })
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+    mock.mockReset()
   }
 })
 
