@@ -23,20 +23,19 @@ export function validateShotScan(value: unknown): asserts value is ShotScan {
   }
 }
 
-/** Threshold changes are a pure reduction over the one source-absolute floor scan. */
-export function reviewShotRows(document: Composition, clipId: string, scan: ShotScan, threshold = 0.3, minShotTicks = 500_000, disabledCuts: readonly number[] = []): ShotRow[] {
+function validateShotReviewSettings(scan: ShotScan, threshold: number, minShotTicks: number): void {
   validateShotScan(scan)
   if (!Number.isFinite(threshold) || threshold < scan.floor || threshold > 1 || !Number.isSafeInteger(minShotTicks) || minShotTicks < 1 || minShotTicks > 60_000_000) throw new Error('Invalid shot review settings')
+}
+
+/** Threshold changes are a pure reduction over the one source-absolute floor scan. */
+export function reviewShotRows(document: Composition, clipId: string, scan: ShotScan, threshold = 0.3, minShotTicks = 500_000, disabledCuts: readonly number[] = []): ShotRow[] {
+  validateShotReviewSettings(scan, threshold, minShotTicks)
   const { clip } = findClipLocation(document, clipId)
   if (clip.kind !== 'video') throw new Error('Shot review requires a video clip')
   if (clip.playbackMode?.mode === 'freeze') return [{ id: `${clip.sourceInTicks}-${clip.sourceOutTicks}`, startTicks: clip.sourceInTicks, endTicks: clip.sourceOutTicks, timelineStartTicks: clip.timelineStartTicks, timelineEndTicks: clipEndTicks(clip) }]
   if (clip.sourceOutTicks > scan.durationTicks) throw new Error('Shot scan does not cover source window')
-  const boundaries = [clip.sourceInTicks]
-  for (const cut of scan.cuts) {
-    if (cut.score > threshold && cut.tick > clip.sourceInTicks && cut.tick < clip.sourceOutTicks && !disabledCuts.includes(cut.tick) && cut.tick - boundaries.at(-1)! >= minShotTicks) boundaries.push(cut.tick)
-  }
-  if (boundaries.length > 1 && clip.sourceOutTicks - boundaries.at(-1)! < minShotTicks) boundaries.pop()
-  boundaries.push(clip.sourceOutTicks)
+  const boundaries = shotBoundaries(scan, clip.sourceInTicks, clip.sourceOutTicks, threshold, minShotTicks, disabledCuts)
   const rows = boundaries.slice(0, -1).map((startTicks, index): ShotRow => {
     const endTicks = boundaries[index + 1]!
     const reverse = clip.playbackMode?.mode === 'reverse'
@@ -47,6 +46,27 @@ export function reviewShotRows(document: Composition, clipId: string, scan: Shot
     return { id: `${startTicks}-${endTicks}`, startTicks, endTicks, timelineStartTicks, timelineEndTicks, ...(cut && timelineStartTicks > clip.timelineStartTicks ? { openingCutTick: opening, score: cut.score } : {}) }
   })
   return rows.sort((a, b) => a.timelineStartTicks - b.timelineStartTicks)
+}
+
+function shotBoundaries(scan: ShotScan, start: number, end: number, threshold: number, minShotTicks: number, disabledCuts: readonly number[]): number[] {
+  const boundaries = [start]
+  for (const cut of scan.cuts) {
+    if (cut.score > threshold && cut.tick > start && cut.tick < end && !disabledCuts.includes(cut.tick) && cut.tick - boundaries.at(-1)! >= minShotTicks) boundaries.push(cut.tick)
+  }
+  if (boundaries.length > 1 && end - boundaries.at(-1)! < minShotTicks) boundaries.pop()
+  boundaries.push(end)
+  return boundaries
+}
+
+export function reviewUnplacedShots(scan: ShotScan, threshold: number, minShotTicks: number, disabledCuts: readonly number[]) {
+  validateShotReviewSettings(scan, threshold, minShotTicks)
+  const boundaries = shotBoundaries(scan, 0, scan.durationTicks, threshold, minShotTicks, disabledCuts)
+  const cuts = new Map(scan.cuts.map(cut => [cut.tick, cut]))
+  return boundaries.slice(0, -1).map((startTicks, index) => {
+    const endTicks = boundaries[index + 1]!
+    const cut = cuts.get(startTicks)
+    return { id: `${startTicks}-${endTicks}`, startTicks, endTicks, ...(cut ? { openingCutTick: cut.tick, score: cut.score } : {}) }
+  })
 }
 
 export function sourceBoundaryToTimeline(clip: VideoClip, sourceTick: number): number {

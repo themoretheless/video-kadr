@@ -55,6 +55,7 @@
 ## Анализ сцен
 
 `analyze_clip {clipId, threshold?, minShotTicks?, disabledCuts?, stats?}` возвращает source-absolute floor scan, сцены на часах композиции и необязательные показатели. `measure_shots` принимает те же поля и измеряет яркость, движение, резкость и black/freeze/fade. `compare_frames {clipId,leftTick,rightTick}` сравнивает два абсолютных source ticks внутри окна клипа. Все расчёты выполняет локальный Rust/FFmpeg backend, редактор хранит только результат.
+Для `analyze_clip`, `measure_shots` и `compare_frames` вместо `clipId` можно передать `media_id` видео из медиатеки. Границы для такого файла возвращаются в координатах исходника.
 
 `auto_split_by_shot`, `mark_shots`, `apply_shot_cuts` требуют `clipId` и `expectedRevision`; принимают параметры обзора выше. `apply_shot_cuts` дополнительно принимает `discardedRowIds` из ответа `analyze_clip`. При `ripple: true` требуется хотя бы одна исключаемая сцена. Команда закрывает промежутки и сдвигает последующие клипы и синхронизированные субтитры. Изменение атомарно и отменяется одним Undo. Границы одинаково привязываются к сетке кадров. Нельзя исключить все сцены, изменить locked track или разделить freeze clip. Изменение проекта во время расчёта, timeout или disconnect запрещают поздний commit.
 

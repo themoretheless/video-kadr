@@ -34,6 +34,27 @@ describe('MCP shot analysis', () => {
     undoComposition()
     expect(compositionState.document.tracks[0]?.clips).toHaveLength(1)
   })
+  it('analyzes and compares unplaced library video without adding it to the timeline', async () => {
+    const before = JSON.stringify(compositionState.document)
+    vi.mocked(api.measureLibraryShots).mockResolvedValue([])
+    vi.mocked(api.compareLibraryFrames).mockResolvedValue({ leftTick: 1, rightTick: 2, similarity: 0.5, motion: 0.5 })
+    const access = { token: 'owner', spaceId: 'space' }
+    const result = await executeAgentRequest('agent', 'measure_shots', { media_id: 'unplaced', disabledCuts: [1_000_000] }, access)
+    expect(result).toMatchObject({ sourceId: 'unplaced', rows: [
+      { id: '0-3000000', startTicks: 0, endTicks: 3_000_000 },
+      { id: '3000000-4000000', startTicks: 3_000_000, endTicks: 4_000_000 },
+    ] })
+    expect((result as { rows: object[] }).rows[0]).not.toHaveProperty('timelineStartTicks')
+    expect(api.scanLibraryShots).toHaveBeenCalledWith('unplaced', 'owner', 'space')
+    expect(api.measureLibraryShots).toHaveBeenCalledWith('unplaced', [
+      { startTicks: 0, endTicks: 3_000_000 }, { startTicks: 3_000_000, endTicks: 4_000_000 },
+    ], 'owner', 'space', scan.sourceHash)
+    await executeAgentRequest('agent', 'compare_frames', { media_id: 'unplaced', leftTick: 1, rightTick: 2 }, access)
+    expect(api.compareLibraryFrames).toHaveBeenCalledWith('unplaced', 1, 2, 'owner', 'space')
+    await expect(executeAgentRequest('agent', 'analyze_clip', { clipId, media_id: 'unplaced' }, access)).rejects.toThrow('exactly one')
+    await expect(executeAgentRequest('agent', 'auto_split_by_shot', { media_id: 'unplaced' }, access)).rejects.toThrow('requires clipId')
+    expect(JSON.stringify(compositionState.document)).toBe(before)
+  })
   it('closes gaps when applying discarded shots with ripple and undoes the edit once', async () => {
     const before = JSON.stringify(compositionState.document)
     const previousHistory = compositionState.history.past.length

@@ -454,6 +454,10 @@ fn tool_schema(name: &str) -> Value {
     if name == "apply_shot_cuts" {
         properties["ripple"] = json!({"type":"boolean","default":false,"description":"Close the gaps left by discardedRowIds and shift later clips and synchronized captions. Requires at least one discarded scene."});
     }
+    let source_analysis = matches!(name, "analyze_clip" | "measure_shots" | "compare_frames");
+    if source_analysis {
+        properties["media_id"] = json!({"type":"string","minLength":1,"maxLength":128,"description":"Library source ID for unplaced media; mutually exclusive with clipId."});
+    }
     let required = match name {
         "jump_history" => vec!["entryId"],
         "begin_agent_session" => vec!["reason"],
@@ -465,11 +469,11 @@ fn tool_schema(name: &str) -> Value {
         "get_color_track" => vec!["clipId"],
         "get_keyframes" => vec!["clipId","property"],
         "freeze_frame" => vec!["expectedProjectHash","clipId","time_us"],
-        "analyze_clip" | "measure_shots" => vec!["clipId"],
+        "analyze_clip" | "measure_shots" => vec![],
         "auto_split_by_shot" | "mark_shots" | "apply_shot_cuts" => {
             vec!["clipId", "expectedRevision"]
         }
-        "compare_frames" => vec!["clipId", "leftTick", "rightTick"],
+        "compare_frames" => vec!["leftTick", "rightTick"],
         "apply_batch" | "dry_run" => vec!["operations"],
         "create_checkpoint" => vec!["label"],
         "delete_checkpoint" | "restore_checkpoint" => vec!["id"],
@@ -489,6 +493,9 @@ fn tool_schema(name: &str) -> Value {
     if name == "freeze_frame" { return json!({"name":name,"description":"Insert a captured one-second FreezeFrame into an authenticated saved native project. Requires current get_project.projectHash and an unchanged saved revision/document. Optional composition_id defaults root; time_us is absolute composition time. Publishes a fresh still, splits/ripples the video lane and creates one local Undo entry. This is a server-persisted mutation, not a dry-run/batch operation. Unsupported native effects/playback profiles refuse. If the server commits after the editor context changes, local state is retained and the caller must reload before another save.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_keyframes" { return json!({"name":name,"description":"Read scalar animation before editing: ordinary revision or native projectHash (optional native composition_id defaults root), constant value or keyframes with native tick/timeBase, layer-local t_local_us, timeline t_us, effective tangents and outgoing segment. Exact preset_id is omitted for hand-tuned segments and the last key. envelope defaults to visual; mask requires maskId. Native effect channels require effectIndex plus effectKind and use authored animation parameters. Read-only.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_color_track" { return json!({"name":name,"description":"Read text or color-layer animation (native nested scope defaults to root and returns projectHash; packed native timing retains fractional microseconds and nativeTrack): constant RGBA bytes or keyframes with authored tick/timeBase, layer-local t_local_us, timeline t_us, resolved temporal tangents and outgoing segment. Read-only. set_color_key uses composition playhead ticks; delete_color_key uses exact authored key ticks, including negative retained keys after trimming.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
+    if source_analysis {
+        return json!({"name":name,"description":"Analyze a placed video clip by clipId or an unplaced library video by media_id. Times are absolute source microseconds. Only placed clips have composition-clock rows.","inputSchema":{"type":"object","properties":properties,"required":required,"oneOf":[{"required":["clipId"]},{"required":["media_id"]}],"additionalProperties":false}});
+    }
     json!({"name":name,"description":format!("{name}: operate on the visible Video Kadr composition. Batch operations use existing editor commands and validation; integer times are microseconds. Shot parameters and frame-comparison ticks are source-absolute; rows include composition-clock times. Shot editing requires expectedRevision and commits once. analyze_clip caches a whole-source floor scan; stats opt-in measures reviewed spans."),"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }
 fn operation_schemas() -> Vec<Value> {
