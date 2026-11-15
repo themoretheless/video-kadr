@@ -167,6 +167,17 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
         } else {
             let previous = &track.keyframes[index - 1];
             match previous.interpolation.unwrap_or(track.interpolation) {
+                Interpolation::Hold => {
+                    if previous.value != key.value {
+                        // Native time rounds to an integer microsecond. Bracket its
+                        // half-tick boundary with distinct, serializable Concat keys.
+                        let transition = key.tick as f64 - 0.5;
+                        let margin = 1.0 / 2048.0;
+                        keys.push(key_at(transition - margin, previous.value, LINEAR));
+                        keys.push(key_at(transition + margin, key.value, LINEAR));
+                    }
+                    LINEAR
+                }
                 Interpolation::Linear => LINEAR,
                 Interpolation::EaseIn => CUBIC_IN,
                 Interpolation::EaseOut => CUBIC_OUT,
