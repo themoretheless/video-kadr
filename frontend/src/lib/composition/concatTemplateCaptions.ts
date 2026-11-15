@@ -1,5 +1,5 @@
 import type { NativeNestedProject } from '$lib/api'
-import type { WireTextClip } from './types'
+import { MAX_COMPOSITION_TRACKS, MAX_COMPOSITION_VISIBLE_LAYERS, type WireCompositionTrack, type WireTextClip } from './types'
 import { colorToRgba } from './payload'
 
 export const CONCAT_CAPTION_CLIPS = 'video-kadr-caption-clips.json'
@@ -265,6 +265,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     ...after,
     start: before.start,
     name: before.name,
+    ...(typeof after.trackId === 'string' && typeof before.trackId === 'string' ? { trackId: before.trackId } : {}),
     offsetX: before.offsetX ?? 0,
     offsetY: before.offsetY ?? 0,
     scale: before.scale ?? 1,
@@ -359,8 +360,15 @@ export function restoreConcatTemplateCaptions(
   for (const [id, group] of groups) {
     const node = compositions[id]!
     const roles = new Set(node.content.metadata?.captionTextTracks)
-    const tracks = node.content.tracks.map(track => {
-      if (track.kind !== 'text') return track
+    const captionTracks = node.content.captionTracks ?? []
+    const ids = new Set([...node.content.tracks, ...captionTracks].map(track => track.id))
+    let available = MAX_COMPOSITION_TRACKS - ids.size
+    let visibleLayers = node.content.tracks.filter(track => track.kind !== 'audio' && !track.hidden).length +
+      captionTracks.filter(track => !track.hidden).length
+    let serial = 1
+    const tracks = node.content.tracks.flatMap<WireCompositionTrack>(track => {
+      if (track.kind !== 'text') return [track]
+      const recovered = new Set<string>()
       const clips = track.clips.map(clip => {
         const entry = group.get(clip.id)
         if (!entry) return clip
@@ -370,7 +378,7 @@ export function restoreConcatTemplateCaptions(
           throw new Error('Клип субтитров расходится с манифестом шаблона')
         }
         group.delete(clip.id)
-        roles.add(track.id)
+        recovered.add(clip.id)
         if (!importedAnimation) return restored
         const animation = clip.transform.concatAnimation
         const { x, y } = restored.transform
@@ -393,7 +401,24 @@ export function restoreConcatTemplateCaptions(
           } },
         }
       })
-      return { ...track, clips }
+      if (!recovered.size || roles.has(track.id)) return [{ ...track, clips }]
+      if (recovered.size === clips.length) {
+        roles.add(track.id)
+        return [{ ...track, clips }]
+      }
+      if (available <= 0 || (!track.hidden && visibleLayers >= MAX_COMPOSITION_VISIBLE_LAYERS)) {
+        return [{ ...track, clips }]
+      }
+      let captionId: string
+      do { captionId = `caption-lane-${serial++}` } while (ids.has(captionId))
+      ids.add(captionId)
+      roles.add(captionId)
+      available--
+      if (!track.hidden) visibleLayers++
+      return [
+        { ...track, clips: clips.filter(clip => !recovered.has(clip.id)) },
+        { ...track, id: captionId, name: `${track.name} · Субтитры`, clips: clips.filter(clip => recovered.has(clip.id)) },
+      ]
     })
     if (group.size) throw new Error('Клип субтитров отсутствует в шаблоне')
     compositions[id] = { ...node, content: { ...node.content, tracks, metadata: {

@@ -9,6 +9,7 @@ export const COMPOSITION_SCHEMA_VERSION = 1 as const
 export const COMPOSITION_TIME_BASE = 1_000_000 as const
 
 export const MAX_COMPOSITION_TRACKS = 16
+export const MAX_COMPOSITION_VISIBLE_LAYERS = 8
 export const MAX_COMPOSITION_CLIPS = 512
 export const MAX_COMPOSITION_SOURCES = 32
 export const MAX_VISIBLE_VISUAL_TRACKS = 8
