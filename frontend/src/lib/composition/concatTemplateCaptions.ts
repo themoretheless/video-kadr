@@ -238,6 +238,23 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     }
   }
 
+  const previousFlipH = before.flipH ?? false
+  const previousFlipV = before.flipV ?? false
+  const flipH = after.flipH ?? false
+  const flipV = after.flipV ?? false
+  if (flipH !== previousFlipH || flipV !== previousFlipV) {
+    const width = canvas?.width
+    const height = canvas?.height
+    if (clip.concatTitle || !centeredCaption({ ...clip, style }) ||
+        typeof flipH !== 'boolean' || typeof flipV !== 'boolean' ||
+        typeof width !== 'number' || typeof height !== 'number' ||
+        transform.concatPreparation?.crop.some(edge => edge !== 0)) return undefined
+    transform = {
+      ...transform,
+      concatPreparation: { crop: [0, 0, 0, 0], canvas: [width, height], flipH, flipV },
+    }
+  }
+
   let opacity = clip.opacity
   let opacityMultiplier = clip.opacityMultiplier
   const previousOpacity = before.opacity ?? 1
@@ -303,6 +320,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     stretchX: before.stretchX ?? 1,
     stretchY: before.stretchY ?? 1,
     rotation: before.rotation ?? 0,
+    flipH: previousFlipH,
+    flipV: previousFlipV,
     opacity: previousOpacity,
     blend: previousBlend,
     ...(retainKeys ? { keys: before.keys ?? [] } : {}),

@@ -71,6 +71,36 @@ mod tests {
         assert!(render(&disabled,(64,48),1500000,&mut||Ok(())).unwrap().is_none());
         assert!(render(&clip(),(64,48),1500000,&mut||anyhow::bail!("cancel")).is_err());
     }
+
+    #[test]
+    fn ordinary_caption_renders_both_flip_axes() {
+        let mut caption = clip();
+        caption.style.shadow.alpha = 0.5;
+        let pixels = |caption: &TextClip| {
+            render(caption, (64, 48), 1500000, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap().rgba
+        };
+        let original = pixels(&caption);
+        for (flip_h, flip_v) in [(true, false), (false, true), (true, true)] {
+            caption.transform.concat_preparation = Some(super::super::concat_picture::Preparation {
+                crop: [0.; 4],
+                canvas: [64, 48],
+                flip_h,
+                flip_v,
+            });
+            let actual = pixels(&caption);
+            assert_ne!(actual, original);
+            for y in 0..48 {
+                for x in 0..64 {
+                    let source_x = if flip_h { 63 - x } else { x };
+                    let source_y = if flip_v { 47 - y } else { y };
+                    let source = (source_y * 64 + source_x) * 4;
+                    let target = (y * 64 + x) * 4;
+                    assert_eq!(actual[target..target + 4], original[source..source + 4]);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

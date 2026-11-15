@@ -75,15 +75,29 @@ impl GraphicTimelineClip {
             checkpoint()?;
             return Ok(Some(frame));
         }
+        let preparation = self.transform.concat_preparation.as_ref();
+        let flip_h = preparation.is_some_and(|p| p.flip_h);
+        let flip_v = preparation.is_some_and(|p| p.flip_v);
+        let scale_x = if flip_h {
+            -pose.scale_x
+        } else {
+            pose.scale_x
+        };
+        let scale_y = if flip_v {
+            -pose.scale_y
+        } else {
+            pose.scale_y
+        };
         let matrix = GroupAffine::new(
             [output.0 as f64, output.1 as f64],
             [self.width as f64, self.height as f64],
             [self.transform.anchor_x, self.transform.anchor_y],
             [pose.x, pose.y],
-            [pose.scale_x, pose.scale_y],
+            [scale_x, scale_y],
             pose.rotation_degrees,
         )?;
-        if self.effects.is_empty() {
+        // Reflect the completed raster, including glyph coverage and decorations.
+        if self.effects.is_empty() && !flip_h && !flip_v {
             let mut frame = self.graphic.render_with_roll(
                 (self.width, self.height),
                 output,
@@ -106,7 +120,9 @@ impl GraphicTimelineClip {
             roll,
             checkpoint,
         )?;
-        effects(&mut child, &self.effects, local, checkpoint)?;
+        if !self.effects.is_empty() {
+            effects(&mut child, &self.effects, local, checkpoint)?;
+        }
         let mut frame = LinearColorFrame::from_surface(
             &GroupSurface::transparent(output.0 as usize, output.1 as usize)?,
             checkpoint,
