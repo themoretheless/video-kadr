@@ -675,6 +675,8 @@ pub struct PosterPreviewRequest {
     #[serde(default)]
     view: crate::domain::filmcraft_poster_frame::PreviewView,
     hover_fraction: Option<f64>,
+    #[serde(default = "preview_enabled")]
+    effects: bool,
     #[serde(default)]
     sources: BTreeMap<String, String>,
 }
@@ -692,7 +694,7 @@ pub async fn poster_preview(
     if matches!(kind, PreviewKind::Sequence) {
         return execute_preview(state, headers, PreviewFrameRequest {
             document: request.document, sequence_id: request.item, sources: request.sources,
-            time_ticks: Some(ticks.to_string()), time_frames: None, effects: true, captions: true,
+            time_ticks: Some(ticks.to_string()), time_frames: None, effects: request.effects, captions: true,
         }, None).await;
     }
     let (kind, surface) = match kind {

@@ -4,9 +4,9 @@
   import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftIconSortKeys, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
-  let { project, sources, token, sequenceId, clipId, onedit, onopen, previewArea = $bindable(true), selected = $bindable<string[]>([]), disabled = false }: {
+  let { project, sources, token, sequenceId, clipId, onedit, onopen, previewArea = $bindable(true), thumbnailEffects = $bindable(true), selected = $bindable<string[]>([]), disabled = false }: {
     project: FilmcraftImportResult; sources: Record<string, string>; token: string | null; sequenceId: string; clipId: string
-    onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean; onopen: (item: string) => void; previewArea?: boolean; selected?: string[]; disabled?: boolean
+    onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean; onopen: (item: string) => void; previewArea?: boolean; thumbnailEffects?: boolean; selected?: string[]; disabled?: boolean
   } = $props()
   const pageSize = 12
   let open = $state(false)
@@ -162,6 +162,7 @@
       if (typeof saved.hover === 'boolean') hoverEnabled = saved.hover
       if (typeof saved.listThumbnails === 'boolean') listThumbnails = saved.listThumbnails
       if (typeof saved.previewArea === 'boolean') previewArea = saved.previewArea
+      if (typeof saved.thumbnailEffects === 'boolean') thumbnailEffects = saved.thumbnailEffects
       if (typeof saved.snap === 'boolean') snapCards = saved.snap
       if (typeof saved.freeformGrid === 'number' && Number.isFinite(saved.freeformGrid)) {
         freeformGrid = Math.min(200, Math.max(4, saved.freeformGrid))
@@ -197,7 +198,7 @@
     try {
       localStorage.setItem(viewStorageKey, JSON.stringify({
         ...capturePresetView(), hover: hoverEnabled, snap: snapCards, listThumbnails, previewArea, presets, currentPreset,
-        freeformGrid, freeformCardSize, showCardNames, showCardDurations,
+        freeformGrid, freeformCardSize, showCardNames, showCardDurations, thumbnailEffects,
       }))
     } catch { /* Keep the current view usable without storage. */ }
   }
@@ -610,6 +611,7 @@
         <label><input type="checkbox" checked={listThumbnails} onchange={event => { listThumbnails = event.currentTarget.checked; hover = undefined; saveView() }} />Миниатюры в списке</label>
       {/if}
       <label><input type="checkbox" checked={previewArea} onchange={event => { previewArea = event.currentTarget.checked; saveView() }} />Предпросмотр выбранного элемента</label>
+      <label><input type="checkbox" checked={thumbnailEffects} onchange={event => { thumbnailEffects = event.currentTarget.checked; saveView() }} />Эффекты в миниатюрах секвенций</label>
       <label>Размер текста
         <select value={fontSize} onchange={event => { fontSize = Number(event.currentTarget.value); saveView() }}>
           {#each fontSizes as [value, label] (value)}<option {value}>{label}</option>{/each}
@@ -765,7 +767,7 @@
                 style:width={position ? `${position.size}px` : undefined}
                 class:stackAnchor={freeform && entry.item.freeformStack === entry.item.id} class:dragged={Boolean(dragged)} class:selected={selected.includes(entry.item.id)} onpointermove={event => scrub(entry.item.id, event)} onpointerleave={() => { hover = undefined }}>
               {#if (!listView || listThumbnails) && (entry.item.kind === 'Media' || entry.item.kind === 'Sequence')}
-                <FilmcraftPosterPreview card lazy={freeform} document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} markRange={entry.item.cardMarkRange} hoverFraction={hoverEnabled && hover?.item === entry.item.id ? hover.fraction : undefined} />
+                <FilmcraftPosterPreview card lazy={freeform} document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} effects={entry.item.kind !== 'Sequence' || thumbnailEffects} markRange={entry.item.cardMarkRange} hoverFraction={hoverEnabled && hover?.item === entry.item.id ? hover.fraction : undefined} />
               {/if}
               {#if freeform && entry.item.freeformStack === entry.item.id && stackCount(entry.item.id) > 1}
                 <span class="stack-count">×{stackCount(entry.item.id)}</span>

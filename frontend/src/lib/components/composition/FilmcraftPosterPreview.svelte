@@ -2,15 +2,15 @@
   import { getFilmcraftPosterPreview, type FilmcraftMonitorFrame as Frame } from '$lib/api'
   import FilmcraftMonitorFrame from './FilmcraftMonitorFrame.svelte'
 
-  let { document, item, name, sources, token, card = false, hoverFraction, markRange, lazy = false }: {
-    document: string; item: string; name: string; sources: Record<string, string>; token: string | null; card?: boolean; hoverFraction?: number; markRange?: { start: number; end: number } | null; lazy?: boolean
+  let { document, item, name, sources, token, card = false, hoverFraction, markRange, lazy = false, effects = true }: {
+    document: string; item: string; name: string; sources: Record<string, string>; token: string | null; card?: boolean; hoverFraction?: number; markRange?: { start: number; end: number } | null; lazy?: boolean; effects?: boolean
   } = $props()
   let preview = $state<HTMLElement>()
   let visible = $state(false)
   let frame = $state<Frame>()
   let unavailable = $state(false)
   let hoverFrame = $state<Frame>()
-  const input = $derived({ document, item, ...(card ? { view: 'card' as const } : {}), sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)) })
+  const input = $derived({ document, item, ...(card ? { view: 'card' as const } : {}), ...(!effects ? { effects } : {}), sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)) })
   const shown = $derived(hoverFraction === undefined ? frame : hoverFrame ?? frame)
 
   $effect(() => {

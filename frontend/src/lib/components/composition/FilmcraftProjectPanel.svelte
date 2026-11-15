@@ -457,6 +457,7 @@
   let bindings = $state<Record<string, string>>({})
   let projectPanelOpen = $state(false)
   let projectPreviewArea = $state(true)
+  let projectThumbnailEffects = $state(true)
   const selectedPosterItem = $derived(project?.projectItems?.find(item => item.id === projectSelection[0]))
   const activeBindings = $derived(Object.fromEntries(Object.entries(bindings).filter(([id]) => project?.media.some(media => media.id === id))))
   let start = $state(0)
@@ -577,10 +578,10 @@
         <label>Позиция правки, кадров <input aria-label="Позиция правки, кадров" type="text" inputmode="numeric" value={editPositionFrames} oninput={(event) => { editPositionFrames = event.currentTarget.value; pastePositionTicks = '' }} disabled={busy} /></label>
       <FilmcraftLabelControls document={project.documentText} {sequenceId} {clipId} {token} items={project.projectItems ?? []} palette={project.labelPalette ?? []} bind:selected={projectSelection} clipSelection={timelineSelection} onselection={adoptLabelSelection} clipLabel={sequence?.clips?.find(clip => clip.id === clipId)?.label} disabled={busy} onedit={commitEdit} />
       {#if projectPanelOpen && project.projectItems?.length}
-        <FilmcraftProjectGrid {project} sources={activeBindings} {token} {sequenceId} {clipId} onedit={commitEdit} onopen={openProjectCard} bind:previewArea={projectPreviewArea} bind:selected={projectSelection} disabled={busy} />
+        <FilmcraftProjectGrid {project} sources={activeBindings} {token} {sequenceId} {clipId} onedit={commitEdit} onopen={openProjectCard} bind:previewArea={projectPreviewArea} bind:thumbnailEffects={projectThumbnailEffects} bind:selected={projectSelection} disabled={busy} />
       {/if}
       {#if projectPanelOpen && projectPreviewArea && selectedPosterItem && (selectedPosterItem.kind === 'Media' || selectedPosterItem.kind === 'Sequence')}
-        <FilmcraftPosterPreview document={project.documentText} item={selectedPosterItem.id} name={selectedPosterItem.name} sources={activeBindings} {token} />
+        <FilmcraftPosterPreview document={project.documentText} item={selectedPosterItem.id} name={selectedPosterItem.name} sources={activeBindings} {token} effects={selectedPosterItem.kind !== 'Sequence' || projectThumbnailEffects} />
       {/if}
       <FilmcraftClipEditControls document={project.documentText} {sequenceId} {clipId} {token} selection={timelineSelection} {linked} tracks={sequence?.tracks ?? []} timeFrames={editPositionFrames} timeTicks={pastePositionTicks || undefined} disabled={busy} onedit={commitEdit} />
       <FilmcraftMetadataControls document={project.documentText}

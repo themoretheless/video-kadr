@@ -316,3 +316,56 @@ async fn icon_sort_keys_use_source_timecode_and_subclip_offset() {
     assert_eq!(keys("2")["fileSize"], 2048);
     assert_eq!(keys("1")["metadata"], json!({"Scene":"Opening","Review owner":"Alex"}));
 }
+
+#[tokio::test]
+async fn sequence_thumbnails_can_bypass_effects_without_changing_their_clock() {
+    let (state, _dir) = support::make_state(false, false).await;
+    let app = support::router(state);
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-source-masks.json")).unwrap();
+    let case = fixture["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| {
+            case["effect"] == "invert"
+                && case["profile"] == 1
+                && case["mask_mode"] == "Add"
+                && case["scale"] == 1.0
+        })
+        .unwrap();
+    let document = &case["document"];
+    let post = |path, body: Value| {
+        axum::http::Request::post(path)
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap()
+    };
+    for (view, hover) in [("selected", None), ("card", None), ("card", Some(0.1))] {
+        let input = json!({"document":document,"item":"6","view":view,"hoverFraction":hover});
+        let endpoint = "/api/compositions/filmcraft/poster-preview";
+        let (status, _, enabled) = support::send(&app, post(endpoint, input.clone())).await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{enabled:?}");
+        let mut bypass = input;
+        bypass["effects"] = json!(false);
+        let (status, _, disabled) = support::send(&app, post(endpoint, bypass)).await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{disabled:?}");
+        let enabled: Value = serde_json::from_str(&enabled).unwrap();
+        let disabled: Value = serde_json::from_str(&disabled).unwrap();
+        assert_eq!(enabled["effects"], true);
+        assert_eq!(disabled["effects"], false);
+        assert_eq!(enabled["ptsTicks"], disabled["ptsTicks"]);
+        assert_ne!(enabled["rgbaHex"], disabled["rgbaHex"], "{view} {hover:?}");
+        let (status, _, program) = support::send(
+            &app,
+            post(
+                "/api/compositions/filmcraft/preview-frame",
+                json!({"document":document,"sequenceId":"6","timeTicks":enabled["ptsTicks"]}),
+            ),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        let program: Value = serde_json::from_str(&program).unwrap();
+        assert_eq!(enabled["rgbaHex"], program["rgbaHex"]);
+    }
+}
