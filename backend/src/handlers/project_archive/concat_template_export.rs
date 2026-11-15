@@ -158,7 +158,7 @@ pub async fn export(
         let _slot = slot;
         let mut native = plan.project;
         let fonts = std::mem::take(&mut native.fonts);
-        concat_project_fonts::bank(&fonts)
+        let _font_scope = concat_project_fonts::Scope::enter(&fonts)
             .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
         let subtitles = native.compositions.get_mut(&native.root)
             .and_then(|root| root.content.metadata.as_mut())

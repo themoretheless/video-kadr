@@ -1255,8 +1255,8 @@ pub fn render(
     width: u32,
     height: u32,
 ) -> Result<Rendered, Error> {
-    let (canvas, block, words) = paint(fonts, style, width, height)?;
-    let png = canvas
+    let (canvas, block, words) = paint(fonts, style, width, height, true)?;
+    let png = canvas.expect("raster requested")
         .encode_png()
         .map_err(|error| Error::Encode(error.to_string()))?;
     Ok(Rendered {
@@ -1281,9 +1281,9 @@ pub fn render_frame(
     width: u32,
     height: u32,
 ) -> Result<RenderedFrame, Error> {
-    let (canvas, block, words) = paint(fonts, style, width, height)?;
+    let (canvas, block, words) = paint(fonts, style, width, height, true)?;
     Ok(RenderedFrame {
-        rgba: straight_rgba(&canvas),
+        rgba: straight_rgba(&canvas.expect("raster requested")),
         width,
         height,
         block_width: block.0,
@@ -1297,6 +1297,17 @@ pub fn render_frame(
 /// A painted block: (width, height, dx, dy), on [`Rendered`]'s terms.
 type Block = (u32, u32, i32, i32);
 
+/// Measures the authored title block without allocating a frame.
+pub fn measure_block(
+    fonts: &Fonts,
+    style: &TitleStyle,
+    width: u32,
+    height: u32,
+) -> Result<(u32, u32), Error> {
+    let (_, block, _) = paint(fonts, style, width, height, false)?;
+    Ok((block.0, block.1))
+}
+
 /// The canvas with the title on it, the block, and every word's box on the
 /// canvas in reading order.
 fn paint(
@@ -1304,8 +1315,9 @@ fn paint(
     style: &TitleStyle,
     width: u32,
     height: u32,
-) -> Result<(Pixmap, Block, Vec<WordRect>), Error> {
-    let mut canvas = Pixmap::new(width, height).ok_or(Error::Canvas(width, height))?;
+    raster: bool,
+) -> Result<(Option<Pixmap>, Block, Vec<WordRect>), Error> {
+    let canvas = || Pixmap::new(width, height).ok_or(Error::Canvas(width, height));
     let frame_h = height as f32;
     let em = (style.font_size.clamp(0.005, 1.0) as f32) * frame_h;
     let tracking = style.tracking as f32 * frame_h;
@@ -1395,7 +1407,7 @@ fn paint(
     let words_h = (rows as f32 - 1.0) * pitch + ascent + descent;
     if words_w <= 0.0 || lines.is_empty() {
         // Nothing to paint: an empty, valid canvas.
-        return Ok((canvas, (0, 0, 0, 0), Vec::new()));
+        return Ok((raster.then(canvas).transpose()?, (0, 0, 0, 0), Vec::new()));
     }
 
     // The box the words sit in. Sized by the style where the style says,
@@ -1427,6 +1439,11 @@ fn paint(
     // The words are centred in a box taller than they are.
     let top = (frame_h - outer_h) / 2.0 + pad_y + (box_h - words_h) / 2.0;
     let block_dx = (outer_left + outer_w / 2.0 - anchor_x).round() as i32;
+    let block = (outer_w.round() as u32, outer_h.round() as u32, block_dx, 0);
+    if !raster {
+        return Ok((None, block, Vec::new()));
+    }
+    let mut canvas = canvas()?;
 
     // One path for all the words, placed. Each line is aligned within the
     // box's width and sits on its own baseline. A word's box rides the
@@ -1596,8 +1613,8 @@ fn paint(
     }
 
     Ok((
-        canvas,
-        (outer_w.round() as u32, outer_h.round() as u32, block_dx, 0),
+        Some(canvas),
+        block,
         word_rects,
     ))
 }

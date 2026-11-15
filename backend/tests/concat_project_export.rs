@@ -150,3 +150,51 @@ fn explicit_media_paths_roundtrip_audio_video_and_image_without_opening_paths(){
  for mode in ["solo","derived"]{let mut changed=before.clone();let track=&mut changed["compositions"][&project.root]["content"]["tracks"][2];if mode=="solo"{track["solo"]=json!(true);}else{track["clips"][0]["dspEffects"][0]["concatSourceKeys"]["delay"][0]["derived"]=json!(true);}assert!(export_with_paths(&serde_json::from_value(changed).unwrap(),&paths).is_err(),"{mode}");}
  let mut changed=before.clone();changed["compositions"][&project.root]["content"]["tracks"][2]["clips"][0]["pan"]=json!({"mode":"constant","value":0.5});let changed=serde_json::from_value(changed).unwrap();assert!(export_with_paths(&changed,&paths).is_err());
 }
+
+#[test]
+fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
+    let mut project = serde_json::to_value(convert(source())).unwrap();
+    let root = project["root"].as_str().unwrap().to_owned();
+    let content = &mut project["compositions"][root]["content"];
+    let caption_lane = content["tracks"][0]["id"].clone();
+    content["metadata"]["captionTextTracks"] = json!([caption_lane]);
+    let clip = &mut content["tracks"][0]["clips"][0];
+    assert!(clip.get("concatTitle").is_some());
+    clip.as_object_mut().unwrap().remove("concatTitle");
+    clip["timelineStartTick"] = json!(1_234_567);
+    clip["timelineEndTick"] = json!(2_345_678);
+    clip["text"] = json!("First line\nSecond line");
+    clip["textAnchor"] = json!([0.5, 1.0]);
+    clip["textBoxWidth"] = json!(144);
+    clip["transform"] = serde_json::to_value(video_kadr_backend::domain::composition::TransformSpec::default()).unwrap();
+    clip["transform"]["y"]["value"] = json!(54);
+    clip["style"]["fontSize"] = json!(12);
+    clip["style"]["align"] = json!("center");
+    clip["style"]["bold"] = json!(true);
+    clip["style"]["italic"] = json!(true);
+    clip["style"]["strokeWidth"] = json!(1);
+    clip["style"]["color"] = json!({"red":1,"green":0.5,"blue":0,"alpha":1});
+    let project = serde_json::from_value(project).unwrap();
+    let converted = export(&project).unwrap();
+    let title = converted["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert_eq!(title["kind"], "text");
+    assert_eq!(title["start"], 1.234567);
+    assert_eq!(title["duration"], 1.111111);
+    assert_eq!(title["text"]["content"], "First line\nSecond line");
+    assert_eq!(title["text"]["fontSize"], 0.1);
+    assert_eq!(title["text"]["fontWeight"].as_f64(), Some(700.0));
+    assert_eq!(title["text"]["italic"], true);
+    assert_eq!(title["text"]["color"], "#ff8000ff");
+    assert_eq!(title["text"]["maxWidth"], 0.9);
+    assert!(title["offsetY"].as_f64().unwrap() < 54.0 / 120.0);
+
+    let restored = convert(converted);
+    let content = &restored.compositions[&restored.root].content;
+    let frame = frame(content, 1_500_000);
+    let orange = frame.chunks_exact(4).enumerate().filter(|(_, rgba)| {
+        rgba[0] > 160 && rgba[1] > 65 && rgba[1] < 180 && rgba[2] < 12
+    }).map(|(pixel, _)| pixel / 160).collect::<Vec<_>>();
+    assert!(!orange.is_empty(), "caption must be visible after reopening");
+    assert!(orange.iter().all(|row| (70..=117).contains(row)), "caption must remain near the bottom");
+}

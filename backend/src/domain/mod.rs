@@ -703,6 +703,7 @@ pub mod concat_project_fonts;
 
 pub mod concat_effect_export;
 
+mod concat_caption_export;
 pub mod concat_project_export;
 
 pub mod concat_project_transitions;

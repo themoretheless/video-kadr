@@ -83,7 +83,7 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
 
   ensure!(content["captionTracks"].as_array().map_or(true,Vec::is_empty),"Caption tracks need source title conversion");
   ensure!(canvas["background"]==json!({"red":0.,"green":0.,"blue":0.,"alpha":1.})&&canvas["backgroundMode"].as_str().unwrap_or("color")=="color","Concat output currently requires its opaque black source canvas");
-  let metadata=&content["metadata"];for (name,value) in metadata.as_object().into_iter().flatten(){if name=="dropFrame"&&value==false||name=="sequenceStartFrame"&&value.as_i64()==Some(0){continue}if !matches!(name.as_str(),"sequenceName"|"clipNames"|"sourceNames"|"concatLaneGroups"){ensure!(value.is_null()||value.as_object().is_some_and(serde_json::Map::is_empty)||value.as_array().is_some_and(Vec::is_empty),"Metadata {name} needs an explicit source mapping");}}
+  let metadata=&content["metadata"];for (name,value) in metadata.as_object().into_iter().flatten(){if name=="dropFrame"&&value==false||name=="sequenceStartFrame"&&value.as_i64()==Some(0){continue}if !matches!(name.as_str(),"sequenceName"|"clipNames"|"sourceNames"|"concatLaneGroups"|"captionTextTracks"){ensure!(value.is_null()||value.as_object().is_some_and(serde_json::Map::is_empty)||value.as_array().is_some_and(Vec::is_empty),"Metadata {name} needs an explicit source mapping");}}
   let width=canvas["width"].as_f64().context("Canvas width missing")?;let height=canvas["height"].as_f64().context("Canvas height missing")?;
   let mut tracks=vec![];let mut clips=vec![];let mut end=0u64;
   for track in content["tracks"].as_array().context("Tracks missing")?.iter().rev(){
@@ -94,6 +94,13 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
    for clip in track["clips"].as_array().context("Clips missing")?{
     let media_kind=if matches!(track["kind"].as_str(),Some("video"|"image"|"audio")){track["kind"].as_str()}else{None};
     let mut view=clip.clone();
+    if track["kind"]=="text" && view["concatTitle"].is_null()
+        && metadata["captionTextTracks"].as_array().is_some_and(|ids|ids.contains(&track["id"])) {
+     let mut caption = serde_json::from_value::<super::composition::TextClip>(view)?;
+     super::concat_caption_export::title(&mut caption, width as u32, height as u32)
+         .with_context(|| format!("caption {}", caption.id.as_str()))?;
+     view = serde_json::to_value(caption)?;
+    }
     if media_kind.is_some(){let(start,duration)=media_timing(clip)?;view["timelineStartTick"]=json!(start);view["timelineEndTick"]=json!(start.checked_add(duration).context("Media end overflow")?);}
     let mut converted=if media_kind==Some("audio"){json!({"id":clip["id"],"kind":"audio","mediaId":clip["sourceId"],"start":view["timelineStartTick"].as_u64().unwrap() as f64/1e6,"duration":(view["timelineEndTick"].as_u64().unwrap()-view["timelineStartTick"].as_u64().unwrap()) as f64/1e6})}else{visual(&view,width,height,media_kind).with_context(||format!("clip {}",clip["id"]))?};
     if let Some(kind)=media_kind{media_controls(clip,kind,&mut converted)?;}
