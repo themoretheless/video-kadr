@@ -141,6 +141,14 @@ it('opens an archived template directory without mixing in sibling assets', asyn
       } }],
       clips[1],
     ])
+  const faded = { ...first, opacity: 0.5, text: { ...first.text, opacity: 0.25 } }
+  const withOpacity = { ...source, timelines: [{ id: 'TL1', video, clips: [faded, second] }] }
+  const fadedFile = new File([JSON.stringify(withOpacity)], 'template.json')
+  await expect(readConcatTemplateCaptions(sidecar, fadedFile)).resolves.toEqual([
+    ['TL1', { ...staticClip, opacity: { mode: 'constant', value: 0.125 } }],
+    clips[1],
+  ])
+  await expect(readConcatTemplateCaptions(animatedSidecar, fadedFile)).resolves.toEqual([clips[1]])
   changed.timelines[0]!.video.width = 640
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))
     .resolves.toBeUndefined()

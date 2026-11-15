@@ -227,6 +227,29 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     }
   }
 
+  let opacity = clip.opacity
+  const previousOpacity = before.opacity ?? 1
+  const editedOpacity = after.opacity ?? 1
+  const previousTitleOpacity = previousText.opacity ?? 1
+  const editedTitleOpacity = editedText.opacity ?? 1
+  if (editedOpacity !== previousOpacity || editedTitleOpacity !== previousTitleOpacity) {
+    if (clip.concatTitle || retainKeys || opacity?.mode !== 'constant' ||
+        transform?.concatAnimation?.keys.opacity?.length ||
+        typeof editedOpacity !== 'number' || !(editedOpacity >= 0 && editedOpacity <= 1) ||
+        typeof editedTitleOpacity !== 'number' || !(editedTitleOpacity >= 0 && editedTitleOpacity <= 1)) return undefined
+    // Concat multiplies title and clip opacity. Native captions composite the
+    // whole text layer once, including its fill, outline, background and shadow.
+    const value = editedOpacity * editedTitleOpacity
+    opacity = { mode: 'constant', value }
+    if (transform?.concatAnimation) {
+      const animation = transform.concatAnimation
+      transform = { ...transform, concatAnimation: {
+        ...animation, rest: { ...animation.rest, opacity: value },
+      } }
+    }
+    if (editedTitleOpacity !== previousTitleOpacity) retainOriginalField('opacity')
+  }
+
   // Text and whole-clip moves retain the original local clock. A static title
   // also accepts Concat's new duration and, for a head trim, its source in-point.
   // The imported document already carries the updated display name in clipNames.
@@ -240,7 +263,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     stretchX: before.stretchX ?? 1,
     stretchY: before.stretchY ?? 1,
     rotation: before.rotation ?? 0,
-    ...(retainKeys ? { keys: before.keys ?? [], opacity: before.opacity ?? 1 } : {}),
+    opacity: previousOpacity,
+    ...(retainKeys ? { keys: before.keys ?? [] } : {}),
     ...(resized ? { duration: before.duration, sourceStart: before.sourceStart ?? 0 } : {}),
     text: comparisonText,
   }
@@ -252,6 +276,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     text: editedText.content,
     style,
     transform,
+    opacity,
     ...(textBoxWidth === undefined ? {} : { textBoxWidth }),
     timelineStartTick: start,
     timelineEndTick: start + duration,
