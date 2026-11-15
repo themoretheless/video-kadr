@@ -258,6 +258,27 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     if (editedTitleOpacity !== previousTitleOpacity) retainOriginalField('opacity')
   }
 
+  const previousBlend = typeof before.blend === 'string' && before.blend ? before.blend : 'normal'
+  const editedBlend = typeof after.blend === 'string' && after.blend ? after.blend : 'normal'
+  let blendMode = clip.blendMode
+  if (editedBlend !== previousBlend) {
+    switch (editedBlend) {
+      case 'add':
+        blendMode = 'addition'
+        break
+      case 'normal':
+      case 'multiply':
+      case 'screen':
+      case 'addition':
+      case 'lighten':
+      case 'darken':
+        blendMode = editedBlend
+        break
+      default:
+        return undefined
+    }
+  }
+
   // Text and whole-clip moves retain the original local clock. A static title
   // also accepts Concat's new duration and, for a head trim, its source in-point.
   // The imported document already carries the updated display name in clipNames.
@@ -273,6 +294,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     stretchY: before.stretchY ?? 1,
     rotation: before.rotation ?? 0,
     opacity: previousOpacity,
+    blend: previousBlend,
     ...(retainKeys ? { keys: before.keys ?? [] } : {}),
     ...(resized ? { duration: before.duration, sourceStart: before.sourceStart ?? 0 } : {}),
     text: comparisonText,
@@ -286,6 +308,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     style,
     transform,
     opacity,
+    ...(blendMode === undefined ? {} : { blendMode }),
     ...(opacityMultiplier === undefined ? {} : { opacityMultiplier }),
     ...(textBoxWidth === undefined ? {} : { textBoxWidth }),
     timelineStartTick: start,

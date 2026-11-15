@@ -198,7 +198,7 @@ it('uploads the selected template design and binds its bundled font before conve
   const positionKeys = [{ property: 'offsetY', at: 0, value: 0.25 }, { property: 'offsetY', at: 1, value: 0.5 }]
   const resizedKeys = [{ ...keys[0]!, value: 0.25 }, keys[1]!]
   const beforeTitle = { id: 'captions', kind: 'text', trackId: 'old-captions', start: 0.000001, duration: 0.999999, offsetY: 0.25, keys, text: { content: 'Dialogue', shadow: true } }
-  const afterTitle = { ...beforeTitle, trackId: 'titles', start: 1.000001, offsetX: 0.125, keys: [...resizedKeys, ...positionKeys, ...pivotKeys], text: { ...beforeTitle.text, content: 'Revised dialogue', opacity: 0.5, color: '#ff800080', fontSize: 0.05, fontWeight: 700, strokeWidth: 2 / 1080, maxWidth: 0.625, shadow: false } }
+  const afterTitle = { ...beforeTitle, trackId: 'titles', start: 1.000001, offsetX: 0.125, blend: 'screen', keys: [...resizedKeys, ...positionKeys, ...pivotKeys], text: { ...beforeTitle.text, content: 'Revised dialogue', opacity: 0.5, color: '#ff800080', fontSize: 0.05, fontWeight: 700, strokeWidth: 2 / 1080, maxWidth: 0.625, shadow: false } }
   const template = {
    ...original,
    video: { width: 320, height: 180, rateNum: 24, rateDen: 1 },
@@ -236,7 +236,7 @@ it('uploads the selected template design and binds its bundled font before conve
    ...node, content: { ...node.content, tracks: [{
     id: 'lane-text', kind: 'text', name: 'Dialogue', hidden: false, locked: false,
     clips: [
-     { ...editedCaption, opacity: editedOpacity, transform: { ...caption.transform, concatAnimation: animation }, concatTitle: { shadow: true } },
+     { ...editedCaption, blendMode: 'screen', opacity: editedOpacity, transform: { ...caption.transform, concatAnimation: animation }, concatTitle: { shadow: true } },
      { ...caption, id: 'ordinary-title', text: 'Keep title', timelineStartTick: 3000000, timelineEndTick: 4000000, opacity: editedOpacity, concatTitle: { shadow: false } },
     ],
    }] },
@@ -285,7 +285,7 @@ it('uploads the selected template design and binds its bundled font before conve
   expect(restored?.metadata?.captionTextTracks).toEqual(['caption-lane-1'])
   expect(restored?.tracks[0]?.clips).toMatchObject([{ id: 'ordinary-title', concatTitle: { shadow: false } }])
   expect(restored?.tracks[1]?.clips).toEqual([{
-   ...editedCaption, opacity: editedOpacity, opacityMultiplier: 0.5, textBoxWidth: 1200,
+   ...editedCaption, blendMode: 'screen', opacity: editedOpacity, opacityMultiplier: 0.5, textBoxWidth: 1200,
    style: { ...caption.style, fontSize: 54, bold: true, strokeWidth: 2, shadow: { ...caption.style.shadow, alpha: 0 }, color: { red: 1, green: 128 / 255, blue: 0, alpha: 128 / 255 } },
    transform: { ...caption.transform, x: { mode: 'constant', value: 240 }, concatAnimation: {
     ...animation, keys: { ...animation.keys, offsetY: [{ at: 0, value: 0 }, { at: 1, value: 0.25 }] }, rest: { ...animation.rest, y: 0 },

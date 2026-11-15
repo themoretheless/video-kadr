@@ -130,11 +130,11 @@ it('opens an archived template directory without mixing in sibling assets', asyn
       } }],
       clips[1],
     ])
-  const transformed = { ...placed, scale: 2, stretchX: 1.5, stretchY: 0.5, rotation: 30 }
+  const transformed = { ...placed, scale: 2, stretchX: 1.5, stretchY: 0.5, rotation: 30, blend: 'add' }
   const withTransform = { ...source, timelines: [{ id: 'TL1', video, clips: [transformed, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withTransform)], 'template.json')))
     .resolves.toEqual([
-      ['TL1', { ...staticClip, transform: { ...staticClip.transform,
+      ['TL1', { ...staticClip, blendMode: 'addition', transform: { ...staticClip.transform,
         x: { mode: 'constant', value: 81 }, y: { mode: 'constant', value: -21.5 },
         scaleX: { mode: 'constant', value: 3 }, scaleY: constant,
         rotationDegrees: { mode: 'constant', value: 31 },
