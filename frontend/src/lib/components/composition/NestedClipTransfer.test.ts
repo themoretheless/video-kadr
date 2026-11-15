@@ -18,7 +18,12 @@ it('saves subtitle text, typography and background together and restores them wi
   closeNestedComposition()
   const [cue] = cuesToTextClips(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nOriginal'), () => 'cue')
   const base = createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' })
-  const draft = addTrack(base, { id: 'captions', kind: 'text', name: 'Subtitles', hidden: false, locked: false, clips: [cue!] })
+  const opacityKeys = {
+    mode: 'keyframes', track: { timeBase: 1000000, interpolation: 'linear', keyframes: [{ tick: 0, value: 0 }, { tick: 500000, value: 1 }] },
+  } as const
+  const draft = addTrack(base, { id: 'captions', kind: 'text', name: 'Subtitles', hidden: false, locked: false,
+    clips: [{ ...cue!, animation: { ...cue!.animation, opacity: opacityKeys } }],
+  })
   const content = buildCompositionWireDocument({ ...draft, metadata: { captionTextTracks: ['captions'] } })
   nestedComposition.document = { schemaVersion: 1, root: 'root', fonts: [{ family: 'Embedded Face', data: 'Zm9udA==' }],
     compositions: { root: { content, instances: [] } },
@@ -67,6 +72,15 @@ it('saves subtitle text, typography and background together and restores them wi
       shadowFields[index]!.value = value
       shadowFields[index]!.dispatchEvent(new Event('input', { bubbles: true }))
     }
+    const composite = [...editor.querySelectorAll('details')]
+      .find(section => section.querySelector('summary')?.textContent === 'Наложение на кадр')!
+    composite.open = true
+    const opacity = composite.querySelector('input')!
+    opacity.value = '0.45'
+    opacity.dispatchEvent(new Event('input', { bubbles: true }))
+    const blend = composite.querySelector('select')!
+    blend.value = 'screen'
+    blend.dispatchEvent(new Event('change', { bubbles: true }))
     const textarea = editor.querySelector('textarea')!
     textarea.value = 'Edited'
     textarea.dispatchEvent(new Event('input', { bubbles: true }))
@@ -77,7 +91,7 @@ it('saves subtitle text, typography and background together and restores them wi
     await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
     expect(api.nestedDurations).toHaveBeenCalledTimes(1)
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
-      text: 'Edited', textBoxWidth: 200, textBoxHeight: 54,
+      text: 'Edited', textBoxWidth: 200, textBoxHeight: 54, opacityMultiplier: 0.45, blendMode: 'screen', opacity: opacityKeys,
       style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
         italic: true, align: 'right', tracking: -2, lineHeight: 1.6,
         color: { red: 1, green: 0, blue: 0, alpha: 0.7 },

@@ -21,6 +21,10 @@
   const changed=$derived(draft!==base || !sameCaptionAppearance(appearance, baseAppearance))
   const conflict=$derived(base!==clip.text || !sameCaptionAppearance(baseAppearance, captionAppearance(clip)))
   const shadowMode=$derived(appearance.concatShadow ? 'concat' : appearance.shadowAlpha === 0 ? 'off' : 'custom')
+  const blendModes = [
+    ['normal', 'Обычный'], ['multiply', 'Умножение'], ['screen', 'Экран'],
+    ['darken', 'Затемнение'], ['lighten', 'Осветление'], ['addition', 'Сложение'],
+  ] as const
   function changeShadowMode(mode: string) {
     appearance.concatShadow=mode==='concat' || undefined
     if(mode==='off')appearance.shadowAlpha=0
@@ -110,6 +114,20 @@
       <label>Цвет обводки<input type="color" bind:value={appearance.strokeColor} disabled={disabled||nestedHistory.busy} /></label>
       <label>Непрозрачность обводки<input type="number" min="0" max="1" step="any" bind:value={appearance.strokeAlpha} disabled={disabled||nestedHistory.busy} /></label>
       <label>Толщина обводки, px<input type="number" min="0" max="100" step="1" bind:value={appearance.strokeWidth} disabled={disabled||nestedHistory.busy} /></label>
+    </details>
+    <details>
+      <summary>Наложение на кадр</summary>
+      <label>Общая непрозрачность реплики<input type="number" min="0" max="1" step="any" placeholder="1" bind:value={appearance.opacityMultiplier} disabled={disabled||nestedHistory.busy} /></label>
+      <label>Режим наложения
+        <select value={appearance.blendMode ?? 'normal'}
+          onchange={event=>{appearance.blendMode=event.currentTarget.value as CaptionAppearance['blendMode']}}
+          disabled={disabled||nestedHistory.busy}>
+          {#each blendModes as [value, name] (value)}<option {value}>{name}</option>{/each}
+          {#if baseAppearance.blendMode === 'overlay' || baseAppearance.blendMode === 'difference'}
+            <option value={baseAppearance.blendMode}>{baseAppearance.blendMode === 'overlay' ? 'Перекрытие' : 'Разница'}</option>
+          {/if}
+        </select>
+      </label>
     </details>
   {/if}
   {#if conflict}<p role="alert">Реплика изменилась после начала редактирования. Сбросьте черновик, чтобы загрузить актуальную версию.</p>{/if}

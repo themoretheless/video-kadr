@@ -1,11 +1,11 @@
 import type {NativeNestedProject} from '../api'
 import {colorToRgba} from './payload'
-import {MAX_TEXT_LENGTH, type WireRgba, type WireTextClip, type WireTextStyle} from './types'
+import {COMPOSITION_BLEND_MODES, MAX_TEXT_LENGTH, type WireRgba, type WireTextClip, type WireTextStyle} from './types'
 
 export type CaptionAppearance = Pick<WireTextStyle,
   'fontFamily' | 'fontSize' | 'fontWeight' | 'italic' | 'align' | 'tracking' | 'lineHeight' | 'backgroundRadius' |
   'strokeWidth' | 'concatShadow' | 'shadowX' | 'shadowY'> &
-  Pick<WireTextClip, 'textBoxWidth' | 'textBoxHeight'> & {
+  Pick<WireTextClip, 'textBoxWidth' | 'textBoxHeight' | 'opacityMultiplier' | 'blendMode'> & {
     readonly textColor: string
     readonly textAlpha: number
     readonly backgroundColor: string
@@ -28,11 +28,12 @@ function editedColor(original: WireRgba, hex: string, alpha: number): WireRgba {
 }
 
 export function captionAppearance(clip: WireTextClip): CaptionAppearance {
-  const { style, textBoxWidth, textBoxHeight } = clip
+  const { style, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode } = clip
   return {
     fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
     italic: style.italic, align: style.align, tracking: style.tracking, lineHeight: style.lineHeight,
     textBoxWidth, textBoxHeight, backgroundRadius: style.backgroundRadius,
+    opacityMultiplier, blendMode,
     textColor: rgbHex(style.color), textAlpha: style.color.alpha,
     backgroundColor: rgbHex(style.background), backgroundAlpha: style.background.alpha,
     strokeColor: rgbHex(style.stroke), strokeAlpha: style.stroke.alpha, strokeWidth: style.strokeWidth,
@@ -47,6 +48,7 @@ export function sameCaptionAppearance(left: CaptionAppearance, right: CaptionApp
     left.fontWeight === right.fontWeight && left.italic === right.italic && left.align === right.align &&
     left.tracking === right.tracking && left.lineHeight === right.lineHeight &&
     left.textBoxWidth === right.textBoxWidth && left.textBoxHeight === right.textBoxHeight &&
+    left.opacityMultiplier === right.opacityMultiplier && left.blendMode === right.blendMode &&
     left.textColor === right.textColor && left.textAlpha === right.textAlpha &&
     left.backgroundColor === right.backgroundColor && left.strokeColor === right.strokeColor &&
     left.strokeAlpha === right.strokeAlpha && left.strokeWidth === right.strokeWidth &&
@@ -76,17 +78,21 @@ export function setNativeCaptionText(
   let edited = { ...clip, text }
   if (appearance && current && !sameCaptionAppearance(current, appearance.value)) {
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
-    const { textBoxWidth, textBoxHeight, textColor, textAlpha, backgroundColor, backgroundAlpha,
+    const { textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, textColor, textAlpha, backgroundColor, backgroundAlpha,
       strokeColor, strokeAlpha, shadowColor, shadowAlpha, paddingX, paddingY, ...style } = appearance.value
     if (!(style.fontSize >= 1 && style.fontSize <= 1000)) throw new Error('Размер шрифта должен быть от 1 до 1000 px')
     if (!style.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
+    if (blendMode !== undefined && !COMPOSITION_BLEND_MODES.includes(blendMode)) throw new Error('Неизвестный режим наложения')
+    if (opacityMultiplier !== undefined && !(opacityMultiplier >= 0 && opacityMultiplier <= 1)) {
+      throw new Error('Непрозрачность реплики должна быть от 0 до 1')
+    }
     if (!(style.strokeWidth >= 0 && style.strokeWidth <= 100)) throw new Error('Толщина обводки должна быть от 0 до 100 px')
     if (!(Math.hypot(Math.round(Math.abs(style.shadowX)), Math.round(Math.abs(style.shadowY))) <= 1000)) {
       throw new Error('Смещение тени должно быть не больше 1000 px')
     }
     const backgroundPadding = paddingX === undefined && paddingY === undefined
       ? undefined : [paddingX ?? 0, paddingY ?? 0] as const
-    edited = { ...edited, textBoxWidth, textBoxHeight, style: {
+    edited = { ...edited, textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, style: {
       ...clip.style, ...style, backgroundPadding,
       color: editedColor(clip.style.color, textColor, textAlpha),
       background: editedColor(clip.style.background, backgroundColor, backgroundAlpha),
