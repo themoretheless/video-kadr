@@ -1,6 +1,20 @@
 <script lang="ts">
   import { listFilmcraftExportQueue, editFilmcraftExportQueue, type FilmcraftExportQueue, type FilmcraftExportQueueCommand, type FilmcraftVideoRequest } from '$lib/api'
-  let { token, disabled = false, input }: { token: string | null; disabled?: boolean; input: () => FilmcraftVideoRequest } = $props()
+  import { exactExportRange } from '$lib/filmcraft/export-range'
+  let { token, disabled = false, batchDisabled = false, input, sequences = [], activeSequence }: {
+    token: string | null; disabled?: boolean; batchDisabled?: boolean; input: () => FilmcraftVideoRequest
+    sequences?: Array<{ id: string; name: string; hasWorkArea: boolean }>; activeSequence?: string
+  } = $props()
+  type RangeDraft = { mode: 'entire' | 'inOut' | 'workArea' | 'custom'; start: string; end: string }
+  let sequenceSelection = $state<string[] | null>(null)
+  let ranges = $state<RangeDraft[]>([])
+  const picked = $derived(sequences.filter(sequence => (sequenceSelection ?? (activeSequence ? [activeSequence] : [])).includes(sequence.id)))
+  const canUseWorkArea = $derived(picked.length > 0 && picked.every(sequence => sequence.hasWorkArea))
+  const resolved = $derived(ranges.map(row => row.mode === 'custom' ? exactExportRange(row.start, row.end)
+    : row.mode === 'workArea' && !canUseWorkArea ? undefined : row.mode))
+  const batchReady = $derived(picked.length > 0 && !batchDisabled && (ranges.length ? resolved.every(range => range !== undefined) : !disabled))
+  const batchCount = $derived(picked.length * Math.max(1, ranges.length))
+  const formatSeconds = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 6 })
   let queue = $state<FilmcraftExportQueue>({ running: false, items: [] })
   let busy = $state(false)
   let error = $state('')
@@ -37,12 +51,58 @@
       if (!current.signal.aborted) error = failure instanceof Error ? failure.message : String(failure)
     } finally { if (!current.signal.aborted) { revision++; busy = false } }
   }
+  function toggleSequence(id: string, checked: boolean) {
+    const ids = picked.map(sequence => sequence.id)
+    sequenceSelection = checked ? [...ids, id] : ids.filter(sequence => sequence !== id)
+  }
+  function enqueueBatch() {
+    if (!batchReady) return
+    const bounds = resolved.filter(range => range !== undefined)
+    void command({ action: 'add', input: input(), sequences: picked.map(sequence => sequence.id),
+      ...(bounds.length ? { ranges: bounds } : {}) })
+  }
   const labels = { ready: 'Ожидает', encoding: 'Экспортируется', done: 'Готово', failed: 'Ошибка', cancelled: 'Отменено' }
 </script>
 
 <section aria-label="Очередь экспорта Filmcraft">
   <h4>Очередь экспорта</h4>
   <button type="button" disabled={!token || busy || disabled} onclick={() => command({ action: 'add', input: input() })}>Добавить в очередь</button>
+  {#if sequences.length}
+    <details>
+      <summary>Пакетный экспорт</summary>
+      <fieldset>
+        <legend>Секвенции</legend>
+        {#each sequences as sequence (sequence.id)}
+          <label><input type="checkbox" checked={picked.some(item => item.id === sequence.id)} disabled={busy}
+            onchange={event => toggleSequence(sequence.id, event.currentTarget.checked)} />{sequence.name || sequence.id}</label>
+        {/each}
+      </fieldset>
+      <fieldset>
+        <legend>Диапазоны</legend>
+        {#if !ranges.length}<p>Будет использован выбранный диапазон обычного экспорта.</p>{/if}
+        {#each ranges as row, index (row)}
+          <div class="range-row">
+            <select aria-label={`Диапазон пакета ${index + 1}`} value={row.mode} disabled={busy}
+              onchange={event => { row.mode = event.currentTarget.value as RangeDraft['mode'] }}>
+              <option value="entire">Вся секвенция</option>
+              <option value="inOut">Точки In/Out</option>
+              <option value="workArea" disabled={!canUseWorkArea}>Рабочая область</option>
+              <option value="custom">Свой диапазон</option>
+            </select>
+            {#if row.mode === 'custom'}
+              <label>Начало, с <input aria-label={`Начало диапазона пакета ${index + 1}`} inputmode="decimal" bind:value={row.start} disabled={busy} /></label>
+              <label>Конец, с <input aria-label={`Конец диапазона пакета ${index + 1}`} inputmode="decimal" bind:value={row.end} disabled={busy} /></label>
+            {/if}
+            <button type="button" disabled={busy} aria-label={`Убрать диапазон пакета ${index + 1}`}
+              onclick={() => { ranges = ranges.filter(candidate => candidate !== row) }}>×</button>
+          </div>
+        {/each}
+        <button type="button" disabled={busy} onclick={() => { ranges = [...ranges, { mode: 'entire', start: '0', end: '' }] }}>Добавить диапазон</button>
+      </fieldset>
+      <button type="button" disabled={!token || busy || !batchReady} onclick={enqueueBatch}>Добавить пакет в очередь</button>
+      {#if batchCount && batchReady}<span>Задач: {batchCount}</span>{/if}
+    </details>
+  {/if}
   <button type="button" disabled={!token || busy || queue.running || !queue.items.some(item => item.status === 'ready')} onclick={() => command({ action: 'start' })}>Запустить очередь</button>
   <button type="button" disabled={!token || busy || !queue.running} onclick={() => command({ action: 'stop' })}>Остановить после текущего</button>
   <button type="button" disabled={!token || busy || !queue.items.some(item => ['ready', 'encoding'].includes(item.status))} onclick={() => command({ action: 'cancel' })}>Отменить все</button>
@@ -51,6 +111,11 @@
   {#each queue.items as item, index (item.id)}
     <article aria-label={`Экспорт ${item.id}`}>
       <p>{item.sequenceName} · {item.preset} · {labels[item.status]}</p>
+      {#if item.sourceRange}
+        <p title={`${item.sourceRange.startTicks}–${item.sourceRange.endTicks} тиков`}>
+          {formatSeconds.format(Number(item.sourceRange.startTicks) / 254_016_000_000)}–{formatSeconds.format(Number(item.sourceRange.endTicks) / 254_016_000_000)} с
+        </p>
+      {/if}
       {#if item.progress !== null}<progress max="1" value={item.progress} aria-label="Ход экспорта"></progress>{/if}
       {#if item.status === 'encoding' && item.etaText}<p>Осталось: {item.etaText}</p>{/if}
       {#if item.statusText}<p>{item.statusText}</p>{/if}
@@ -67,3 +132,10 @@
   {/each}
   {#if !queue.items.length}<p>Очередь пуста</p>{/if}
 </section>
+
+<style>
+  fieldset { margin-block: 0.4rem; }
+  fieldset label { display: inline-flex; gap: 0.3rem; align-items: center; margin-inline-end: 0.6rem; }
+  .range-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-block: 0.4rem; }
+  .range-row input { width: 7rem; }
+</style>

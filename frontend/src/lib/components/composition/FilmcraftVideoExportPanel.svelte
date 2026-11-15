@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
   import FilmcraftExportQueue from './FilmcraftExportQueue.svelte'
   import FilmcraftExportPresetLibrary from './FilmcraftExportPresetLibrary.svelte'
   import { startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, type FilmcraftVideoRequest, type FilmcraftVideoHistoryEntry, type FilmcraftExportPreset, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftTextOverlay, type FilmcraftOverlayPlacement, type FilmcraftImageOverlay, type FilmcraftBitrateSettings } from '$lib/api'
   import type { Job, MediaEntry } from '$lib/types'
-  let { document, sequenceId, sources, token = null, initialFrames = '24', disabled = false, imageSources = [] }: { document: string; sequenceId: string; sources: Record<string, string>; token?: string | null; initialFrames?: string; disabled?: boolean; imageSources?: MediaEntry[] } = $props()
+  let { document, sequenceId, sources, token = null, initialFrames = '24', disabled = false, imageSources = [], sequences = [] }: { document: string; sequenceId: string; sources: Record<string, string>; token?: string | null; initialFrames?: string; disabled?: boolean; imageSources?: MediaEntry[]; sequences?: Array<{ id: string; name: string }> } = $props()
   let preset = $state<FilmcraftExportPreset>('lossless')
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
@@ -14,21 +15,8 @@
   let quickRange = $state<'inOut' | 'entire' | 'workArea' | 'custom'>('inOut')
   let customStart = $state('0')
   let customEnd = $state('')
-  function secondsToTicks(value: string) {
-    const parts = /^(\d{1,5})(?:[.,](\d{1,12}))?$/.exec(value.trim())
-    if (!parts) return undefined
-    const fraction = BigInt((parts[2] ?? '').padEnd(12, '0'))
-    const ticks = BigInt(parts[1]) * 254_016_000_000n
-      + (fraction * 254_016_000_000n + 500_000_000_000n) / 1_000_000_000_000n
-    return ticks <= 86_400n * 254_016_000_000n ? ticks : undefined
-  }
-  function exactRange(first: string, last: string) {
-    const start = secondsToTicks(first), end = secondsToTicks(last)
-    if (start === undefined || end === undefined || end <= start) return undefined
-    return { startTicks: start.toString(), endTicks: end.toString() }
-  }
-  const customRange = $derived(exactRange(customStart, customEnd))
-  const exactExportRange = $derived(exactRange(exportStart, exportEnd))
+  const customRange = $derived(rangeFromSeconds(customStart, customEnd))
+  const exactExportRange = $derived(rangeFromSeconds(exportStart, exportEnd))
   $effect(() => { void token; libraryPreset = ''; quickPresetName = '' })
   const audioOnly = $derived(['wav16', 'wav24', 'aiff16'].includes(preset))
   const imageSequence = $derived(preset.endsWith('_sequence'))
@@ -55,11 +43,14 @@
   const effectivePcmBits = $derived(pcmAudioBits ?? (preset === 'wav24' ? 24 : 16))
   const aacRates = [8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200, 96000]
   let movieAudioRate = $state(48000)
-  const sequence = $derived.by(() => {
-    try {
-      return JSON.parse(document)?.project?.items?.[sequenceId]?.kind?.Sequence
-    } catch { return undefined }
+  const sourceItems = $derived.by(() => {
+    try { return JSON.parse(document)?.project?.items }
+    catch { return undefined }
   })
+  const sequence = $derived(sourceItems?.[sequenceId]?.kind?.Sequence)
+  const batchSequences = $derived(sequences.map(item => ({
+    ...item, hasWorkArea: sourceItems?.[item.id]?.kind?.Sequence?.work_area != null,
+  })))
   const sampleRate = $derived(sequence?.settings?.sample_rate)
   const sequenceAudioRate = $derived(Number.isInteger(sampleRate) && sampleRate >= 8000 && sampleRate <= 192000 ? sampleRate as number : 48000)
   const hasWorkArea = $derived(sequence?.work_area != null)
@@ -583,7 +574,7 @@
       {#if historyError}<p role="alert">{historyError}</p>{/if}
     </div>
   {/if}
-  <FilmcraftExportQueue {token} disabled={disabled || !valid} input={() => { const request = buildRequest(); return { ...request, ...(!request.libraryPreset ? { preset: request.preset ?? 'lossless' } : {}) } }} />
+  <FilmcraftExportQueue {token} disabled={disabled || !valid} batchDisabled={disabled || (!libraryPreset && !manualValid)} sequences={batchSequences} activeSequence={sequenceId} input={() => { const request = buildRequest(); return { ...request, ...(!request.libraryPreset ? { preset: request.preset ?? 'lossless' } : {}) } }} />
 </section>
 <style>
   .video-export { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-block: 0.5rem; font-size: 0.8rem; }
