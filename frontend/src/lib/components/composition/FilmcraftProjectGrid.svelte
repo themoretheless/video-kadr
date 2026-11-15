@@ -103,7 +103,9 @@
   let descending = $state(false)
   let page = $state(0)
   let hoverEnabled = $state(true)
+  let thumbnailAllDevices = $state(false)
   let hover = $state<{ item: string; fraction: number }>()
+  let thumbnailContact: { pointer: number; item: string; startX: number; left: number; width: number; moved: boolean } | undefined
   let marking = $state(false)
   let markError = $state('')
   let markRequest: AbortController | undefined
@@ -150,6 +152,7 @@
     listDescending = view.listDescending
     hover = undefined
     drag = undefined
+    thumbnailContact = undefined
     columnResize = undefined
     page = 0
   }
@@ -160,6 +163,7 @@
       if (!saved || typeof saved !== 'object') return
       applyPresetView(readPresetView(saved))
       if (typeof saved.hover === 'boolean') hoverEnabled = saved.hover
+      if (typeof saved.thumbnailAllDevices === 'boolean') thumbnailAllDevices = saved.thumbnailAllDevices
       if (typeof saved.listThumbnails === 'boolean') listThumbnails = saved.listThumbnails
       if (typeof saved.previewArea === 'boolean') previewArea = saved.previewArea
       if (typeof saved.thumbnailEffects === 'boolean') thumbnailEffects = saved.thumbnailEffects
@@ -198,7 +202,7 @@
     try {
       localStorage.setItem(viewStorageKey, JSON.stringify({
         ...capturePresetView(), hover: hoverEnabled, snap: snapCards, listThumbnails, previewArea, presets, currentPreset,
-        freeformGrid, freeformCardSize, showCardNames, showCardDurations, thumbnailEffects,
+        freeformGrid, freeformCardSize, showCardNames, showCardDurations, thumbnailEffects, thumbnailAllDevices,
       }))
     } catch { /* Keep the current view usable without storage. */ }
   }
@@ -355,23 +359,49 @@
   function stackCount(id: string) { return visibleItems.filter(item => item.freeformStack === id).length }
 
   function beginMove(id: string, event: PointerEvent) {
+    if (thumbnailContact) return
     suppressClick = false
+    const button = event.currentTarget as HTMLElement
+    if (thumbnailAllDevices && hoverEnabled && !disabled && event.isPrimary && event.button === 0
+      && (event.pointerType === 'touch' || event.pointerType === 'pen')) {
+      const rect = button.closest('li')?.querySelector('figure')?.getBoundingClientRect()
+      if (rect?.width && event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom) {
+        button.setPointerCapture(event.pointerId)
+        thumbnailContact = { pointer: event.pointerId, item: id, startX: event.clientX, left: rect.left, width: rect.width, moved: false }
+        return
+      }
+    }
     if (!freeform || !token || disabled || moving || marking || event.button !== 0) return
     const stack = visibleItems.find(item => item.id === id)?.freeformStack
     const items = [...new Set([id, ...(selected.includes(id) ? stackSelection : []),
       ...visibleItems.filter(item => stack && item.freeformStack === stack).map(item => item.id)])]
     if (stack && Object.hasOwn(layout, stack)) items.splice(0, items.length, stack, ...items.filter(item => item !== stack))
     drag = { pointer: event.pointerId, startX: event.clientX, startY: event.clientY, x: 0, y: 0, items, document: project.documentText }
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    button.setPointerCapture(event.pointerId)
   }
 
   function trackMove(event: PointerEvent) {
+    const contact = thumbnailContact
+    if (contact?.pointer === event.pointerId) {
+      if (!contact.moved && Math.abs(event.clientX - contact.startX) < 5) return
+      contact.moved = true
+      const fraction = Math.max(0, Math.min(1, (event.clientX - contact.left) / contact.width))
+      hover = { item: contact.item, fraction }
+      return
+    }
     if (!drag || event.pointerId !== drag.pointer) return
     drag.x = event.clientX - drag.startX
     drag.y = event.clientY - drag.startY
   }
 
   async function finishMove(event: PointerEvent) {
+    if (thumbnailContact?.pointer === event.pointerId) {
+      suppressClick = thumbnailContact.moved
+      thumbnailContact = undefined
+      hover = undefined
+      return
+    }
     if (!drag || event.pointerId !== drag.pointer) return
     trackMove(event)
     const moved = drag
@@ -390,6 +420,14 @@
     await editFreeform(token, (owner, document, signal) => moveFilmcraftProjectCards(owner, {
       document, positions, snap: snapCards, grid: freeformGrid,
     }, signal))
+  }
+
+  function cancelMove(event: PointerEvent) {
+    if (thumbnailContact?.pointer === event.pointerId) {
+      thumbnailContact = undefined
+      hover = undefined
+    }
+    if (drag?.pointer === event.pointerId) drag = undefined
   }
 
   async function editStack(stack: boolean) {
@@ -593,14 +631,18 @@
   }
 </script>
 
-<details ontoggle={event => { open = event.currentTarget.open; if (!open) hover = undefined }}>
+<details ontoggle={event => {
+  open = event.currentTarget.open
+  if (!open) { thumbnailContact = undefined; hover = undefined }
+}}>
   <summary>Сетка проекта Filmcraft</summary>
   {#if open}
     <div class="toolbar">
       {#if parent}<button type="button" disabled={disabled} onclick={() => enter(parent.id)}>На уровень выше</button>{/if}
       {#if activeBin}<span>{activeBin.name}</span>{/if}
       <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { query = event.currentTarget.value; page = 0; hover = undefined }} /></label>
-      <label><input type="checkbox" checked={hoverEnabled} onchange={event => { hoverEnabled = event.currentTarget.checked; hover = undefined; saveView() }} />Просмотр при наведении</label>
+      <label><input type="checkbox" checked={hoverEnabled} onchange={event => { hoverEnabled = event.currentTarget.checked; thumbnailContact = undefined; hover = undefined; saveView() }} />Просмотр при наведении</label>
+      <label><input type="checkbox" checked={thumbnailAllDevices} onchange={event => { thumbnailAllDevices = event.currentTarget.checked; thumbnailContact = undefined; hover = undefined; saveView() }} />Просмотр миниатюр касанием и пером</label>
       <label><input type="checkbox" checked={freeform} onchange={event => { freeform = event.currentTarget.checked; if (freeform) listView = false; hover = undefined; drag = undefined; saveView() }} />Свободная раскладка</label>
       <label><input type="checkbox" checked={listView} onchange={event => {
         listView = event.currentTarget.checked
@@ -753,7 +795,7 @@
           {/each}
         </div>
       {/if}
-      <ul class:freeform class:listView class:gridSnap={freeform && snapCards}
+      <ul class:freeform class:listView class:gridSnap={freeform && snapCards} class:contactScrub={hoverEnabled && thumbnailAllDevices}
         style:--freeform-grid={`${freeformGrid}px`} style:--filmcraft-font-size={`${fontSize}px`} style:--icon-size={`${iconSize}px`}
         aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
         {#each visible as entry (entry.kind === 'bin' ? `bin-${entry.folder.id}` : `item-${entry.item.id}`)}
@@ -776,7 +818,7 @@
               {#snippet itemButton()}
               <button type="button" class="item" aria-label={entry.item.name || entry.item.id}
                 aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onpointerdown={event => beginMove(entry.item.id, event)} onpointermove={trackMove} onpointerup={finishMove}
-                onpointercancel={() => { drag = undefined }} onlostpointercapture={() => { drag = undefined }}
+                onpointercancel={cancelMove} onlostpointercapture={cancelMove}
                 onclick={event => select(entry.item.id, event)}
                 ondblclick={() => onopen(entry.item.id)}
                 onkeydown={event => {
@@ -835,6 +877,7 @@
   }
   ul.freeform li { position: absolute; }
   ul.freeform button.item { touch-action: none; cursor: grab; }
+  ul.contactScrub:not(.freeform) button.item { touch-action: pan-y pinch-zoom; }
   ul.freeform li.stackAnchor { z-index: 1; }
   ul.freeform li.dragged { z-index: 2; }
   .stack-count { position: absolute; top: 0.15rem; left: 0.2rem; padding-inline: 0.3rem; border-radius: 0.2rem; background: var(--panel); }
