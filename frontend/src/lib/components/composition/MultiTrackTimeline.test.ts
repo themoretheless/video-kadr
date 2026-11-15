@@ -27,6 +27,7 @@ import {
   setCompositionPlayhead,
   setCompositionTransition,
 } from '$lib/state/composition.svelte.js'
+import { startSubtitleDrag } from '$lib/subtitles/timelineDrop'
 import MultiTrackTimeline from './MultiTrackTimeline.svelte'
 
 let target: HTMLDivElement
@@ -978,4 +979,29 @@ it('shows a single-sided explicit transition at its independent source-clock int
   expect(compositionState.ui.selectedClipIds).toContain(clip.id)
   expect(compositionState.document.tracks[0]!.kind==='video'&&compositionState.document.tracks[0]!.transitions?.[0]?.timeline?.startTick).toBe('508032000001')
  }finally{unmount(component)}
+})
+
+it('uses the drop position on a track lane for a subtitle document', async () => {
+  const component = mount(MultiTrackTimeline, { target })
+  const insert = vi.fn()
+  const transfer = new DataTransfer()
+  const event = (type: string, clientX = 0) => {
+    const drag = new MouseEvent(type, { bubbles: true, cancelable: true, clientX }) as DragEvent
+    Object.defineProperty(drag, 'dataTransfer', { value: transfer })
+    return drag
+  }
+  const endDrag = startSubtitleDrag(event('dragstart'), insert)
+  try {
+    await tick()
+    const lane = target.querySelector<HTMLElement>('.composition-track-lane')!
+    vi.spyOn(lane, 'getBoundingClientRect').mockReturnValue(new DOMRect(120, 0, 480, 32))
+    const x = 120 + compositionState.ui.zoomPxPerSecond * 2.5
+    expect(lane.dispatchEvent(event('dragover', x))).toBe(false)
+    expect(lane.dispatchEvent(event('drop', x))).toBe(false)
+    expect(insert).toHaveBeenCalledExactlyOnceWith(2.5 * COMPOSITION_TIME_BASE)
+    expect(lane.dispatchEvent(event('drop', x))).toBe(true)
+  } finally {
+    endDrag()
+    await unmount(component)
+  }
 })

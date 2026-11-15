@@ -173,17 +173,17 @@
     localError = error instanceof Error ? error.message : String(error)
   }
 
-  async function importSrtFile(file: File): Promise<boolean> {
+  async function importSrtFile(file: File, dropTime?: number): Promise<boolean> {
     if (importingSubtitles) return false
     importingSubtitles = true
     const document = compositionState.document
-    const trackId = targetTextTrackId
+    const trackId = dropTime === undefined ? targetTextTrackId : undefined
     const owner = authState.token
-    const offset = subtitlesAtPlayhead ? compositionState.transport.playheadTicks : 0
+    const offset = dropTime ?? (subtitlesAtPlayhead ? compositionState.transport.playheadTicks : 0)
     try {
       if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
       const body = await file.text()
-      if (authState.token !== owner || compositionState.document !== document || targetTextTrackId !== trackId) {
+      if (authState.token !== owner || compositionState.document !== document || (dropTime === undefined && targetTextTrackId !== trackId)) {
         throw new Error('Композиция или дорожка изменилась во время чтения файла')
       }
       let simplified = 0

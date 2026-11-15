@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { startSubtitleDrag } from '$lib/subtitles/timelineDrop'
  import { authState } from '$lib/state/auth.svelte'
  import { parseSubtitleDocument } from '$lib/subtitles/import'
  import { MAX_SRT_BYTES } from '$lib/subtitles/srt'
@@ -6,17 +7,19 @@
  let { label, disabled = false, onfile, onerror }: {
   label: string
   disabled?: boolean
-  onfile: (file: File) => Promise<boolean>
+  onfile: (file: File, dropTime?: number) => Promise<boolean>
   onerror: (message: string) => void
  } = $props()
  let dragging = $state(false)
  let filesInPanel = $state<File[]>([])
  let applying = $state(false)
+ let stopDrag: (() => void) | undefined
  let poolOnly = $state(false)
  const blocked = $derived(disabled || applying)
  $effect(() => {
   void authState.token
   filesInPanel = []
+  return () => stopDrag?.()
  })
 
  function remember(file: File) {
@@ -26,7 +29,7 @@
   )].slice(0, 8)
  }
 
- async function apply(file: File, addOnly = false) {
+ async function apply(file: File, addOnly = false, dropTime?: number) {
   if (blocked) return
   applying = true
   const owner = authState.token
@@ -36,7 +39,7 @@
     if (file.size > MAX_SRT_BYTES) throw new Error('Файл субтитров превышает лимит 2 МиБ')
     parseSubtitleDocument(await file.text())
    }
-   if ((addOnly || await onfile(file)) && authState.token === owner) remember(file)
+   if ((addOnly || await onfile(file, dropTime)) && authState.token === owner) remember(file)
   } catch (error) {
    if (authState.token === owner) onerror(error instanceof Error ? error.message : String(error))
   } finally {
@@ -86,7 +89,14 @@
   <ul aria-label="Недавние файлы субтитров">
    {#each filesInPanel as file (file)}
     <li>
-     <button class="btn ghost sm" type="button" disabled={blocked} onclick={() => void apply(file)}>
+     <button class="btn ghost sm" type="button" disabled={blocked} draggable={!blocked}
+      ondragstart={event => {
+       stopDrag?.()
+       if (blocked) { event.preventDefault(); return }
+       stopDrag = startSubtitleDrag(event, time => {
+        if (filesInPanel.includes(file)) void apply(file, false, time)
+       })
+      }} ondragend={() => stopDrag?.()} onclick={() => void apply(file)}>
       Вставить · {file.name}
      </button>
      <button class="btn ghost sm" type="button" disabled={blocked} aria-label={`Убрать файл ${file.name} из списка`}

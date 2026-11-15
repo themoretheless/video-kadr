@@ -5,6 +5,7 @@ import { nestedDurations } from '$lib/api'
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { closeNestedComposition, nestedComposition, nestedHistory, undoNestedComposition } from '$lib/state/nestedComposition.svelte'
+import { dropSubtitle } from '$lib/subtitles/timelineDrop'
 import NestedCaptionExport from './NestedCaptionExport.svelte'
 
 vi.mock('$lib/api', () => ({ nestedDurations: vi.fn(async () => ({ root: 4_000_000 })) }))
@@ -53,9 +54,16 @@ it('validates dropped files and imports subtitles at the cursor in one undo step
   expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
    text: 'Caption', timelineStartTick: 3_000_000, timelineEndTick: 4_000_000,
   })
-  nestedComposition.timeUs = 5_000_000
+  nestedComposition.timeUs = 1_000_000
   await vi.waitFor(() => expect(reuse()).toBeDefined())
-  reuse()!.click()
+  const transfer = new DataTransfer()
+  const dragStart = new Event('dragstart', { bubbles: true, cancelable: true })
+  Object.defineProperty(dragStart, 'dataTransfer', { value: transfer })
+  reuse()!.dispatchEvent(dragStart)
+  const dropEvent = new Event('drop', { cancelable: true }) as DragEvent
+  Object.defineProperty(dropEvent, 'dataTransfer', { value: transfer })
+  dropSubtitle(dropEvent, 5_000_000)
+  expect(dropEvent.defaultPrevented).toBe(true)
   await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(2))
   expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[1]).toMatchObject({
    text: 'Caption', timelineStartTick: 6_000_000, timelineEndTick: 7_000_000,

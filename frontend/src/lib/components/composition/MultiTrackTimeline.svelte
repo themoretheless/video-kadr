@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { acceptSubtitleDrag, dropSubtitle } from '$lib/subtitles/timelineDrop'
   import {transitionSourceSpan} from '$lib/composition/transitionTimeline'
   import {activityReveal} from '$lib/agent/activityReveal.svelte'
   import { tick } from 'svelte'
@@ -382,6 +383,11 @@
     return (ticks / COMPOSITION_TIME_BASE) * compositionState.ui.zoomPxPerSecond
   }
 
+  function dropSubtitleOnLane(event: DragEvent) {
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    dropSubtitle(event, pxToTicks(Math.max(0, event.clientX - bounds.left)))
+  }
+
   function pxToTicks(px: number): number {
     return Math.round((px / compositionState.ui.zoomPxPerSecond) * COMPOSITION_TIME_BASE)
   }
@@ -738,6 +744,8 @@
         aria-valuemin="0"
         aria-valuemax={timelineExtent}
         aria-valuenow={compositionState.transport.playheadTicks}
+        ondragover={acceptSubtitleDrag}
+        ondrop={dropSubtitleOnLane}
         onclick={seekOnLane}
         onkeydown={seekWithKeyboard}
       >
@@ -782,7 +790,8 @@
     {#if compositionState.document.tracks.length}
       <div class="composition-track-row composition-new-track-drop" class:active={gesture?.mode === 'move'} class:invalid={!!raisePreview.error} data-new-track-drop role="status" aria-label="Перенести выделение на новую дорожку" title={raisePreview.error || 'Перенести выделение на новую дорожку'}>
         <div class="composition-track-head">Новая дорожка</div>
-        <div class="composition-new-track-lane" style:width={`${contentWidth}px`}>
+        <div class="composition-new-track-lane" role="group" aria-label="Вставка на новую дорожку"
+          ondragover={acceptSubtitleDrag} ondrop={dropSubtitleOnLane} style:width={`${contentWidth}px`}>
           {#each raisePreview.clips as clip (clip.id)}
             <div class="composition-copy-ghost" style:left={`${ticksToPx(clip.timelineStartTicks)}px`} style:width={`${Math.max(12, ticksToPx(clipDurationTicks(clip)))}px`} aria-hidden="true"></div>
           {/each}
@@ -819,6 +828,8 @@
           aria-valuemax={compositionDuration()}
           aria-valuenow={compositionState.transport.playheadTicks}
           onclick={(event) => { if (suppressMarqueeClick) { suppressMarqueeClick = false; return } seekOnLane(event); selectCompositionGap(track.id, compositionState.transport.playheadTicks) }}
+          ondragover={acceptSubtitleDrag}
+          ondrop={dropSubtitleOnLane}
           oncontextmenu={(event) => void openGapMenu(event, track.id)}
           onkeydown={(event) => {
             if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') void openGapMenu(event, track.id)

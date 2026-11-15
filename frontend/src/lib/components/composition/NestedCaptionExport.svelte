@@ -5,12 +5,12 @@
   import SubtitleFilePicker from './SubtitleFilePicker.svelte'
   import { authState } from '$lib/state/auth.svelte'
   let error = $state(''), message = $state(''), importing = $state(false), atPlayhead = $state(false)
-  async function importFile(file:File): Promise<boolean> {
+  async function importFile(file: File, dropTime?: number): Promise<boolean> {
     if(importing||nestedHistory.busy)return false
     error='';message='';importing=true
     const project=nestedComposition.document,identity=JSON.stringify(project)
     const id=nestedComposition.activeCompositionId??project?.root
-    const offset=atPlayhead?nestedComposition.timeUs:0
+    const offset=dropTime ?? (atPlayhead ? nestedComposition.timeUs : 0)
     const owner=authState.token
     try {
       if(!id||!project)throw new Error('Сначала откройте вложенный проект')

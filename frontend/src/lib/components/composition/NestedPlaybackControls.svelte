@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { acceptSubtitleDrag, dropSubtitle } from '$lib/subtitles/timelineDrop'
   import { untrack } from 'svelte'
   import { nestedDurations } from '$lib/api'
   import { NativeAudioPreview } from '$lib/audio/nativePreview'
@@ -89,7 +90,15 @@
   <button class="btn ghost sm" type="button" disabled={disabled || !nestedPlayback.playing && (durationBusy || duration <= 0)} onclick={toggle}>
     {nestedPlayback.playing ? '⏸ Пауза' : '▶ Играть'}
   </button>
-  <input aria-label="Плейхед вложенной композиции" type="range" min="0" max={Math.max(1, duration)} step="1000" value={nestedComposition.timeUs} disabled={disabled || durationBusy || duration <= 0} oninput={event => { nestedComposition.timeUs = Number(event.currentTarget.value) }} />
+  <input aria-label="Плейхед вложенной композиции" type="range" min="0" max={Math.max(1, duration)} step="1000" value={nestedComposition.timeUs} disabled={disabled || durationBusy || duration <= 0} ondragover={event => { if (!disabled && !durationBusy && duration > 0) acceptSubtitleDrag(event) }}
+    ondrop={event => {
+      if (disabled || durationBusy || duration <= 0) return
+      const bounds = event.currentTarget.getBoundingClientRect()
+      if (bounds.width <= 0) return
+      const fraction = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
+      dropSubtitle(event, Math.round(fraction * duration))
+    }}
+    oninput={event => { nestedComposition.timeUs = Number(event.currentTarget.value) }} />
   <span>{(nestedComposition.timeUs / 1e6).toFixed(2)} / {(duration / 1e6).toFixed(2)} с</span>
 </div>
 {#if durationError || error}<p role="alert">Аудиопредпросмотр: {durationError || error}</p>{/if}

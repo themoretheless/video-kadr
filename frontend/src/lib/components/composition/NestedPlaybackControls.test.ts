@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nestedDurations, type NativeNestedProject } from '$lib/api'
 import { NativeAudioPreview } from '$lib/audio/nativePreview'
 import { closeNestedComposition, nestedComposition, nestedPlayback, navigateNestedComposition } from '$lib/state/nestedComposition.svelte'
+import { startSubtitleDrag } from '$lib/subtitles/timelineDrop'
 import Controls from './NestedPlaybackControls.svelte'
 // Match the component's browser untrack implementation under Vitest SSR conditions.
 vi.mock('svelte', async importOriginal => {
@@ -88,4 +89,29 @@ it('keeps pause available while an edited project awaits its new duration', asyn
   document.querySelector('button')!.click(); await tick()
   expect(nestedPlayback.playing).toBe(false)
   expect(NativeAudioPreview.prototype.stop).toHaveBeenCalled()
+})
+
+it('places a dragged subtitle at the fraction of the focused composition duration', async () => {
+  await setup()
+  navigateNestedComposition('child')
+  await tick()
+  const input = document.querySelector<HTMLInputElement>('input[type="range"]')!
+  await vi.waitFor(() => expect(input.max).toBe('1000000'))
+  vi.spyOn(input, 'getBoundingClientRect').mockReturnValue(new DOMRect(200, 0, 400, 20))
+  const insert = vi.fn()
+  const transfer = new DataTransfer()
+  const event = (type: string) => {
+    const drag = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 300 }) as DragEvent
+    Object.defineProperty(drag, 'dataTransfer', { value: transfer })
+    return drag
+  }
+  const endDrag = startSubtitleDrag(event('dragstart'), insert)
+  try {
+    expect(input.dispatchEvent(event('dragover'))).toBe(false)
+    expect(input.dispatchEvent(event('drop'))).toBe(false)
+    expect(insert).toHaveBeenCalledExactlyOnceWith(250000)
+    expect(nestedComposition.timeUs).toBe(0)
+  } finally {
+    endDrag()
+  }
 })
