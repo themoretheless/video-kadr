@@ -4,13 +4,17 @@
   import { editFilmcraftLayout, type FilmcraftLayoutCommand, editFilmcraftArrangement, type FilmcraftArrangementCommand, editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftIconSortKeys, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
-  let { project, sources, token, sequenceId, clipId, onedit, onopen, selected = $bindable<string[]>([]), disabled = false }: {
+  let { project, sources, token, sequenceId, clipId, onedit, onopen, previewArea = $bindable(true), selected = $bindable<string[]>([]), disabled = false }: {
     project: FilmcraftImportResult; sources: Record<string, string>; token: string | null; sequenceId: string; clipId: string
-    onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean; onopen: (item: string) => void; selected?: string[]; disabled?: boolean
+    onedit: (result: FilmcraftImportResult, expected: FilmcraftSourceEditFence) => boolean; onopen: (item: string) => void; previewArea?: boolean; selected?: string[]; disabled?: boolean
   } = $props()
   const pageSize = 12
   let open = $state(false)
   let freeform = $state(false)
+  let listView = $state(false)
+  let listThumbnails = $state(false)
+  const fontSizes = [[10.5, 'Мелкий'], [12, 'Обычный'], [14, 'Крупный'], [16, 'Очень крупный']] as const
+  let fontSize = $state(12)
   let arrangementName = $state('')
   let arrangementChoice = $state('')
   let snapCards = $state(false)
@@ -48,6 +52,10 @@
       descending = column?.[0] !== 'user' && Boolean(column) && saved.descending === true
       if (typeof saved.hover === 'boolean') hoverEnabled = saved.hover
       if (typeof saved.freeform === 'boolean') freeform = saved.freeform
+      listView = !freeform && saved.list === true
+      if (typeof saved.listThumbnails === 'boolean') listThumbnails = saved.listThumbnails
+      if (typeof saved.previewArea === 'boolean') previewArea = saved.previewArea
+      if (fontSizes.some(([size]) => size === saved.fontSize)) fontSize = saved.fontSize
       if (typeof saved.snap === 'boolean') snapCards = saved.snap
       if (typeof saved.iconSize === 'number' && Number.isFinite(saved.iconSize)) {
         iconSize = Math.max(48, Math.min(400, saved.iconSize))
@@ -58,7 +66,7 @@
   function saveView() {
     try {
       localStorage.setItem(viewStorageKey, JSON.stringify({
-        column: sortColumn, descending, hover: hoverEnabled, freeform, snap: snapCards, iconSize,
+        column: sortColumn, descending, hover: hoverEnabled, freeform, snap: snapCards, iconSize, list: listView, listThumbnails, previewArea, fontSize,
       }))
     } catch { /* Keep the current view usable without storage. */ }
   }
@@ -323,7 +331,21 @@
       {#if activeBin}<span>{activeBin.name}</span>{/if}
       <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { query = event.currentTarget.value; page = 0; hover = undefined }} /></label>
       <label><input type="checkbox" checked={hoverEnabled} onchange={event => { hoverEnabled = event.currentTarget.checked; hover = undefined; saveView() }} />Просмотр при наведении</label>
-      <label><input type="checkbox" checked={freeform} onchange={event => { freeform = event.currentTarget.checked; hover = undefined; drag = undefined; saveView() }} />Свободная раскладка</label>
+      <label><input type="checkbox" checked={freeform} onchange={event => { freeform = event.currentTarget.checked; if (freeform) listView = false; hover = undefined; drag = undefined; saveView() }} />Свободная раскладка</label>
+      <label><input type="checkbox" checked={listView} onchange={event => {
+        listView = event.currentTarget.checked
+        if (listView) freeform = false
+        hover = undefined; drag = undefined; page = 0; saveView()
+      }} />Список</label>
+      {#if listView}
+        <label><input type="checkbox" checked={listThumbnails} onchange={event => { listThumbnails = event.currentTarget.checked; hover = undefined; saveView() }} />Миниатюры в списке</label>
+      {/if}
+      <label><input type="checkbox" checked={previewArea} onchange={event => { previewArea = event.currentTarget.checked; saveView() }} />Предпросмотр выбранного элемента</label>
+      <label>Размер текста
+        <select value={fontSize} onchange={event => { fontSize = Number(event.currentTarget.value); saveView() }}>
+          {#each fontSizes as [value, label] (value)}<option {value}>{label}</option>{/each}
+        </select>
+      </label>
       {#if freeform}
         <label><input type="checkbox" checked={snapCards} onchange={event => { snapCards = event.currentTarget.checked; saveView() }} />Привязка к сетке</label>
         <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', 1)}>Увеличить карточки</button>
@@ -333,7 +355,7 @@
         <button type="button" disabled={disabled || !token || moving || marking || stackSelection.length < 2} onclick={() => editStack(true)}>Сложить в стек</button>
         <button type="button" disabled={disabled || !token || moving || marking || !canUnstack} onclick={() => editStack(false)}>Разобрать стек</button>
       {/if}
-      {#if !freeform}
+      {#if !freeform && !listView}
         <label>Размер карточек
           <input type="range" min="48" max="400" step="1" value={iconSize}
             oninput={event => { iconSize = event.currentTarget.valueAsNumber }}
@@ -380,7 +402,7 @@
         </div>
       {/if}
       <div class:scroll={freeform} bind:clientWidth={canvasWidth}>
-      <ul class:freeform style:--icon-size={`${iconSize}px`} aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
+      <ul class:freeform class:listView style:--filmcraft-font-size={`${fontSize}px`} style:--icon-size={`${iconSize}px`} aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
         {#each visible as entry (entry.kind === 'bin' ? `bin-${entry.folder.id}` : `item-${entry.item.id}`)}
           {#if entry.kind === 'bin'}
             {#if !freeform}<li><button type="button" class="folder" disabled={disabled} onclick={() => enter(entry.folder.id)}>Папка «{entry.folder.name}»</button></li>{/if}
@@ -391,7 +413,7 @@
                 style:top={position ? `${Math.max(0, position.y + (dragged?.y ?? 0))}px` : undefined}
                 style:width={position ? `${position.size}px` : undefined}
                 class:stackAnchor={freeform && entry.item.freeformStack === entry.item.id} class:dragged={Boolean(dragged)} class:selected={selected.includes(entry.item.id)} onpointermove={event => scrub(entry.item.id, event)} onpointerleave={() => { hover = undefined }}>
-              {#if entry.item.kind === 'Media' || entry.item.kind === 'Sequence'}
+              {#if (!listView || listThumbnails) && (entry.item.kind === 'Media' || entry.item.kind === 'Sequence')}
                 <FilmcraftPosterPreview card lazy={freeform} document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} markRange={entry.item.cardMarkRange} hoverFraction={hoverEnabled && hover?.item === entry.item.id ? hover.fraction : undefined} />
               {/if}
               {#if freeform && entry.item.freeformStack === entry.item.id && stackCount(entry.item.id) > 1}
@@ -408,6 +430,12 @@
                   selected = [entry.item.id]
                   onopen(entry.item.id)
                 }}>{entry.item.name || entry.item.id}</button>
+              {#if listView}
+                <span class="media-type">{entry.item.iconSort?.mediaType || entry.item.kind}</span>
+                {#if entry.item.iconSort?.mediaDuration !== undefined}
+                  <span class="duration">{(entry.item.iconSort.mediaDuration / 254_016_000_000).toFixed(2)} с</span>
+                {/if}
+              {/if}
             </li>
           {/if}
         {/each}
@@ -424,6 +452,14 @@
   summary { cursor: pointer; }
   .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-block: 0.5rem; }
   ul { display: grid; grid-template-columns: repeat(auto-fill, min(100%, var(--icon-size))); gap: 0.5rem; padding: 0; list-style: none; }
+  ul { font-size: var(--filmcraft-font-size); }
+  ul :is(button, span) { font-size: inherit; }
+  ul.listView { display: block; }
+  ul.listView li { display: flex; align-items: center; min-height: 1.85em; gap: 0.5rem; padding-inline: 0.25rem; margin-block: 0.15rem; }
+  ul.listView li :global(figure) { width: 64px; flex: 0 0 64px; }
+  ul.listView button.item { width: auto; flex: 1 1 auto; text-align: start; }
+  ul.listView .media-type { flex: 0 1 11em; overflow-wrap: anywhere; }
+  ul.listView .duration { flex: 0 0 6em; text-align: end; }
   li { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 0.3rem; background: var(--panel); }
   .scroll { overflow: auto; max-height: 65vh; }
   ul.freeform { display: block; position: relative; margin: 0; }
