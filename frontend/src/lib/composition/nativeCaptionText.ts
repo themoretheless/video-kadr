@@ -1,14 +1,19 @@
 import type {NativeNestedProject} from '../api'
 import {MAX_TEXT_LENGTH, type WireTextStyle} from './types'
 
-export type CaptionTypography = Pick<WireTextStyle, 'fontSize' | 'fontWeight' | 'tracking' | 'lineHeight'>
+export type CaptionTypography = Pick<WireTextStyle,
+  'fontFamily' | 'fontSize' | 'fontWeight' | 'italic' | 'align' | 'tracking' | 'lineHeight'>
 
 export function captionTypography(style: WireTextStyle): CaptionTypography {
-  return { fontSize: style.fontSize, fontWeight: style.fontWeight, tracking: style.tracking, lineHeight: style.lineHeight }
+  return {
+    fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
+    italic: style.italic, align: style.align, tracking: style.tracking, lineHeight: style.lineHeight,
+  }
 }
 
 export function sameCaptionTypography(left: CaptionTypography, right: CaptionTypography): boolean {
-  return left.fontSize === right.fontSize && left.fontWeight === right.fontWeight &&
+  return left.fontFamily === right.fontFamily && left.fontSize === right.fontSize &&
+    left.fontWeight === right.fontWeight && left.italic === right.italic && left.align === right.align &&
     left.tracking === right.tracking && left.lineHeight === right.lineHeight
 }
 
@@ -33,6 +38,7 @@ export function setNativeCaptionText(
   if (styleChanged && !(typography.value.fontSize >= 1 && typography.value.fontSize <= 1000)) {
     throw new Error('Размер шрифта должен быть от 1 до 1000 px')
   }
+  if (styleChanged && !typography.value.fontFamily.trim()) throw new Error('Укажите семейство шрифта')
   if (text === clip.text && !styleChanged) return project
   const edited = { ...clip, text, ...(styleChanged ? { style: { ...clip.style, ...typography.value } } : {}) }
   const tracks = node.content.tracks.map(candidate => candidate.id === track.id

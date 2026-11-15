@@ -20,7 +20,9 @@ it('saves subtitle text and typography together and restores them with one Undo'
   const base = createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' })
   const draft = addTrack(base, { id: 'captions', kind: 'text', name: 'Subtitles', hidden: false, locked: false, clips: [cue!] })
   const content = buildCompositionWireDocument({ ...draft, metadata: { captionTextTracks: ['captions'] } })
-  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { content, instances: [] } } }
+  nestedComposition.document = { schemaVersion: 1, root: 'root', fonts: [{ family: 'Embedded Face', data: 'Zm9udA==' }],
+    compositions: { root: { content, instances: [] } },
+  }
   nestedComposition.activeCompositionId = 'root'
   const before = JSON.stringify(nestedComposition.document)
   vi.mocked(api.nestedDurations).mockClear()
@@ -31,6 +33,16 @@ it('saves subtitle text and typography together and restores them with one Undo'
     await tick()
     const editor = target.querySelector<HTMLDetailsElement>('[data-caption-editor="cue"]')!
     editor.open = true
+    const family = editor.querySelector<HTMLInputElement>('input[list]')!
+    expect(editor.querySelector('datalist option[value="Embedded Face"]')).not.toBeNull()
+    family.value = 'Embedded Face'
+    family.dispatchEvent(new Event('input', { bubbles: true }))
+    const italic = editor.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    italic.checked = true
+    italic.dispatchEvent(new Event('change', { bubbles: true }))
+    const alignment = editor.querySelector('select')!
+    alignment.value = 'right'
+    alignment.dispatchEvent(new Event('change', { bubbles: true }))
     const fields = editor.querySelectorAll<HTMLInputElement>('input[type="number"]')
     for (const [index, value] of ['28', '550.5', '-2', '1.6'].entries()) {
       fields[index]!.value = value
@@ -46,7 +58,8 @@ it('saves subtitle text and typography together and restores them with one Undo'
     await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
     expect(api.nestedDurations).toHaveBeenCalledTimes(1)
     expect(nestedComposition.document?.compositions.root?.content.tracks[0]?.clips[0]).toMatchObject({
-      text: 'Edited', style: { fontSize: 28, fontWeight: 550.5, tracking: -2, lineHeight: 1.6 },
+      text: 'Edited', style: { fontFamily: 'Embedded Face', fontSize: 28, fontWeight: 550.5,
+        italic: true, align: 'right', tracking: -2, lineHeight: 1.6 },
     })
     undoNestedComposition()
     expect(JSON.stringify(nestedComposition.document)).toBe(before)
