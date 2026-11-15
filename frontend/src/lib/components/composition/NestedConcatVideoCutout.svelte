@@ -28,6 +28,7 @@
  const validFeather=$derived(Number.isFinite(feather)&&feather>=0&&feather<=0.1)
  let subject=$state<import('$lib/api').ConcatCutoutSubject>('auto')
  let controller:AbortController|undefined
+ let analysisRequest:AbortController|undefined
  let smartJob=$state<{id:string|null;owner:string;intent:PendingVideoSmartRecord;key:string|null}|null>(null),cancelling=$state(false)
  let pendingKey=$state<string|null>(null),pending=$state<PendingVideoSmartRecord|null>(null),pendingWarning=$state('')
  let destroyed=false
@@ -118,12 +119,26 @@
  const subjectOwner=$derived(JSON.stringify([nestedComposition.projectId,compositionId,clipId,savedSubject]))
  $effect(()=>{void subjectOwner;subject=savedSubject??'auto'})
  const scope=$derived(JSON.stringify([maskView,editMask,feather,subject,token,nestedComposition.projectId,nestedComposition.revision,compositionId,clipId,nestedComposition.timeUs,nestedComposition.document]))
- $effect(()=>{void scope;message='';hasFrame=false;drawing=null;return()=>{controller?.abort()}})
+ const analysisScope=$derived(JSON.stringify([analysisOwner,subject]))
+ $effect(()=>{void analysisScope;return()=>{analysisRequest?.abort()}})
+ $effect(()=>{void scope;message='';hasFrame=false;drawing=null;return()=>{if(controller!==analysisRequest)controller?.abort()}})
  async function run(analyse:boolean){
   if(!token||disabled||busy||cancelling||!validFeather)return
-  const request=new AbortController(),stamp=scope;controller=request;busy=true;message='';hasFrame=false;if(analyse)analysed=null
+  const request=new AbortController(),target=analysisScope
+  let stamp=scope
+  controller=request;busy=true;message='';hasFrame=false
+  if(analyse){analysisRequest=request;analysed=null}
   try{
-   if(analyse){const result=await analyseNestedSavedVideoCutout(token,compositionId,clipId,request.signal,subject);if(!result||request.signal.aborted||scope!==stamp)return;if(result.analysedFrames===0&&!result.cacheReused&&result.emptyRuns>0){message='В выбранном диапазоне нет кадров';return}if(result.modelHash)analysed={owner:analysisOwner,subject,modelHash:result.modelHash};message=result.analysedFrames?'Анализ готов':'Готовый анализ использован повторно'}
+   if(analyse){
+    const result=await analyseNestedSavedVideoCutout(token,compositionId,clipId,request.signal,subject)
+    await tick()
+    if(!result||request.signal.aborted||analysisScope!==target)return
+    analysisRequest=undefined
+    stamp=scope
+    if(result.analysedFrames===0&&!result.cacheReused&&result.emptyRuns>0){message='В выбранном диапазоне нет кадров';return}
+    if(result.modelHash)analysed={owner:analysisOwner,subject,modelHash:result.modelHash}
+    message=result.analysedFrames?'Анализ готов':'Готовый анализ использован повторно'
+   }
    const settings=JSON.stringify([authored,trackArgument])
    let frame=trackArgument!==undefined?await previewNestedSavedVideoCutout(token,compositionId,clipId,nestedComposition.timeUs,request.signal,feather,authored,editMask?true:undefined,undefined,trackArgument):editMask?await previewNestedSavedVideoCutout(token,compositionId,clipId,nestedComposition.timeUs,request.signal,feather,authored,true):authored?await previewNestedSavedVideoCutout(token,compositionId,clipId,nestedComposition.timeUs,request.signal,feather,authored):await previewNestedSavedVideoCutout(token,compositionId,clipId,nestedComposition.timeUs,request.signal,feather)
    if(editMask&&maskView!=='cutout'&&frame){
@@ -140,8 +155,8 @@
    canvas.width=frame.width;canvas.height=frame.height
    const context=canvas.getContext('2d');if(!context)throw new Error('Предпросмотр недоступен')
    const image=context.createImageData(frame.width,frame.height);image.data.set(frame.rgba);context.putImageData(image,0,0);hasFrame=true
-  }catch(error){if(!request.signal.aborted&&scope===stamp)nestedHistory.error=error instanceof Error?error.message:String(error)}
-  finally{if(controller===request)busy=false}
+  }catch(error){if(!request.signal.aborted&&(analysisRequest===request?analysisScope===target:scope===stamp))nestedHistory.error=error instanceof Error?error.message:String(error)}
+  finally{if(analysisRequest===request)analysisRequest=undefined;if(controller===request)busy=false}
  }
  async function apply(wanted:boolean){
   if(!token||disabled||busy||(wanted&&!validFeather))return

@@ -4,7 +4,11 @@ import {mount,tick,unmount} from '../../../../node_modules/svelte/src/index-clie
 import {beforeEach,afterEach,expect,it,vi} from 'vitest'
 import {nestedComposition,nestedHistory,reconcileNestedSavedVideoSmartRegion,startNestedSavedVideoSmartRegion,attachNestedSavedVideoSmartRegion,analyseNestedSavedVideoCutout,previewNestedSavedVideoCutout,setNestedSavedVideoCutout} from '$lib/state/nestedComposition.svelte'
 import Panel from './NestedConcatVideoCutout.svelte'
-vi.mock('$lib/state/nestedComposition.svelte',()=>({nestedComposition:{projectId:'saved',revision:7,timeUs:100000},nestedHistory:{busy:false,error:''},reconcileNestedSavedVideoSmartRegion:vi.fn(),startNestedSavedVideoSmartRegion:vi.fn(),attachNestedSavedVideoSmartRegion:vi.fn(),analyseNestedSavedVideoCutout:vi.fn(),previewNestedSavedVideoCutout:vi.fn(),setNestedSavedVideoCutout:vi.fn()}))
+vi.mock('$lib/state/nestedComposition.svelte',async importOriginal=>{
+ const { nestedComposition } = await importOriginal<typeof import('$lib/state/nestedComposition.svelte')>()
+ Object.assign(nestedComposition,{projectId:'saved',revision:7,timeUs:100000})
+ return {nestedComposition,nestedHistory:{busy:false,error:''},reconcileNestedSavedVideoSmartRegion:vi.fn(),startNestedSavedVideoSmartRegion:vi.fn(),attachNestedSavedVideoSmartRegion:vi.fn(),analyseNestedSavedVideoCutout:vi.fn(),previewNestedSavedVideoCutout:vi.fn(),setNestedSavedVideoCutout:vi.fn()}
+})
 let component:ReturnType<typeof mount>|undefined
 beforeEach(()=>{vi.spyOn(api,'cancelNestedVideoSmartOperation').mockResolvedValue({cancelled:true});nestedHistory.error='';vi.mocked(reconcileNestedSavedVideoSmartRegion).mockResolvedValue('unapplied');const data=new Map<string,string>();vi.stubGlobal('localStorage',{getItem:(key:string)=>data.get(key)??null,setItem:(key:string,value:string)=>{data.set(key,value)},removeItem:(key:string)=>{data.delete(key)},clear:()=>data.clear()})})
 afterEach(async()=>{if(component)await unmount(component);component=undefined;document.body.innerHTML='';vi.restoreAllMocks();vi.resetAllMocks();vi.unstubAllGlobals();Object.assign(nestedComposition,{document:null,projectId:'saved',revision:7,timeUs:100000})})
@@ -14,6 +18,25 @@ it('analyses and paints the returned selected frame',async()=>{
  component=mount(Panel,{target:document.body,props:{token:'owner',compositionId:'timeline',clipId:'video'}});await tick();document.querySelector('button')!.click();await vi.waitFor(()=>expect(putImageData).toHaveBeenCalled());expect(analyseNestedSavedVideoCutout).toHaveBeenCalledWith('owner','timeline','video',expect.any(AbortSignal),'auto');expect(previewNestedSavedVideoCutout).toHaveBeenCalledWith('owner','timeline','video',100000,expect.any(AbortSignal),0.01);expect(putImageData.mock.calls[0]![0].data).toEqual(new Uint8ClampedArray([0,255,0,128]));expect(document.querySelector('canvas')!.hidden).toBe(false)
 })
 it('cancels pending analysis and never starts preview after cancellation',async()=>{let finish!:(value:null)=>void;vi.mocked(analyseNestedSavedVideoCutout).mockReturnValue(new Promise(resolve=>{finish=resolve}));component=mount(Panel,{target:document.body,props:{token:'owner',compositionId:'timeline',clipId:'video'}});await tick();document.querySelector('button')!.click();await tick();const signal=vi.mocked(analyseNestedSavedVideoCutout).mock.calls[0]![3]!;Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Отменить обработку видео')!.click();expect(signal.aborted).toBe(true);finish(null);await tick();expect(previewNestedSavedVideoCutout).not.toHaveBeenCalled()})
+
+it.each(['seek', 'revision'] as const)('keeps source analysis scoped to the saved clip during %s', async change => {
+ let finish!: (value: api.ConcatVideoAnalysis) => void
+ vi.mocked(analyseNestedSavedVideoCutout).mockReturnValue(new Promise(resolve => { finish = resolve }))
+ vi.mocked(previewNestedSavedVideoCutout).mockResolvedValue(null)
+ component = mount(Panel, { target: document.body, props: { token: 'owner', compositionId: 'timeline', clipId: 'video' } })
+ await tick()
+ document.querySelector('button')!.click()
+ const signal = vi.mocked(analyseNestedSavedVideoCutout).mock.calls[0]![3]!
+ if (change === 'seek') nestedComposition.timeUs = 250000
+ else nestedComposition.revision = 8
+ await tick()
+ expect(signal.aborted).toBe(change === 'revision')
+ finish({ sourceId: 'raw', analysedRuns: 1, analysedFrames: 4, emptyRuns: 0, cacheReused: false })
+ await vi.waitFor(() => expect(document.querySelector('fieldset')!.disabled).toBe(false))
+ if (change === 'seek') {
+  expect(previewNestedSavedVideoCutout).toHaveBeenCalledWith('owner', 'timeline', 'video', 250000, signal, 0.01)
+ } else expect(previewNestedSavedVideoCutout).not.toHaveBeenCalled()
+})
 
 it('enables the saved clip from the inspector without rerunning analysis',async()=>{
  vi.mocked(setNestedSavedVideoCutout).mockResolvedValue(true)
