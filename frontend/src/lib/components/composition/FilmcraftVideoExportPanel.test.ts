@@ -618,19 +618,27 @@ it('validates and submits a custom H264 keyframe distance and omits it for other
   expect(vi.mocked(startFilmcraftVideoJob).mock.calls[1][1]).not.toHaveProperty('keyframeDistance')
 })
 
-it('submits the chosen H264 profile and hides it when switching to another codec', async () => {
+it('submits the chosen H264 profile and level, and hides both when switching to another codec', async () => {
   await open()
   const preset = document.querySelector<HTMLSelectElement>('[aria-label="Пресет видеоэкспорта Filmcraft"]')!
   preset.value = 'mxf_h264'; preset.dispatchEvent(new Event('change', { bubbles: true })); await tick()
   const profile = document.querySelector<HTMLSelectElement>('[aria-label="Профиль H264 Filmcraft"]')!
   profile.value = 'baseline'; profile.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  const level = document.querySelector<HTMLSelectElement>('[aria-label="Уровень H.264 Filmcraft"]')!
+  expect(level.options[level.selectedIndex].textContent).toBe('Авто')
+  expect(Array.from(level.options).map(option => option.textContent?.trim())).toEqual(['Авто', '3.0', '3.1', '3.2', '4.0', '4.1', '4.2', '5.0', '5.1', '5.2', '6.0', '6.1', '6.2'])
+  level.value = '41'
+  level.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
   button('Экспортировать видео без звука').click()
-  await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenCalledWith('owner', expect.objectContaining({ preset: 'mxf_h264', h264Profile: 'baseline' }), expect.any(AbortSignal)))
+  await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenCalledWith('owner', expect.objectContaining({ preset: 'mxf_h264', h264Profile: 'baseline', h264Level: 41 }), expect.any(AbortSignal)))
   preset.value = 'prores_hq'; preset.dispatchEvent(new Event('change', { bubbles: true })); await tick()
   expect(document.querySelector('[aria-label="Профиль H264 Filmcraft"]')).toBeNull()
+  expect(document.querySelector('[aria-label="Уровень H.264 Filmcraft"]')).toBeNull()
   button('Экспортировать видео без звука').click()
   await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenCalledTimes(2))
   expect(vi.mocked(startFilmcraftVideoJob).mock.calls[1][1]).not.toHaveProperty('h264Profile')
+  expect(vi.mocked(startFilmcraftVideoJob).mock.calls[1][1]).not.toHaveProperty('h264Level')
 })
 
 it('submits adaptive two-pass bitrate settings and omits them for another codec', async () => {
