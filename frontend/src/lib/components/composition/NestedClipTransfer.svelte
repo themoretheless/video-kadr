@@ -100,6 +100,18 @@
     return exactCaptionDeltaTicks((value.startsWith('-') ? -magnitude : magnitude).toString()).toString()
   }
 
+  function addFileCaption(trackId: string) {
+    const scope = active
+    const selection = captionSelected
+    void keepKeyboardFocus(() => editNestedFileCaptions(scope, {
+      kind: 'add', trackId, startTick: nestedComposition.timeUs, text: 'Субтитр',
+    }, () => {
+      if (!alive || disabled || active !== scope) throw new Error('Таймлайн изменился')
+    }, cueId => {
+      if (captionSelected === selection) captionSelected = [cueId]
+    }))
+  }
+
   function editFileCaptions(kind: 'split' | 'merge' | 'delete' | 'move' | 'trim', inEdge = false) {
     const scope = active
     const ids = [...captionSelected]
@@ -346,6 +358,9 @@
       <CaptionWrapWidth value={track.style?.wrapWidth} trackName={track.name}
         disabled={disabled || nestedHistory.busy || track.locked}
         onchange={width => void setNestedCaptionWrapWidth(active, track.id, width)} />
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || track.locked}
+        aria-label={`Добавить реплику на курсоре · ${track.name}`}
+        onclick={() => addFileCaption(track.id)}>Добавить реплику на курсоре</button>
       {#each track.clips as cue (cue.id)}
         <label><input type="checkbox" data-caption-id={cue.id} disabled={track.locked} checked={captionSelected.includes(cue.id)} onchange={event=>{captionSelected=event.currentTarget.checked?[...captionSelected,cue.id]:captionSelected.filter(id=>id!==cue.id)}} /> {track.name} · {cue.text.slice(0,40)} · {captionDisplaySeconds(cue.timelineStartTick).toFixed(3)}–{captionDisplaySeconds(cue.timelineEndTick).toFixed(3)} с</label>
         {#if captionSelected.length === 1 && captionSelected[0] === cue.id}

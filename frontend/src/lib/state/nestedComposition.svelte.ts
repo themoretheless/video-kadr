@@ -1176,9 +1176,10 @@ export async function updateNestedCaptionCue(
 }
 
 export async function editNestedFileCaptions(
-  id: string, operation: Extract<CaptionEditOperation, {kind: 'split' | 'merge' | 'delete' | 'move' | 'trim'}>, admission: () => void,
+  id: string, operation: Extract<CaptionEditOperation, {kind: 'add' | 'split' | 'merge' | 'delete' | 'move' | 'trim'}>, admission: () => void, onAdded?: (cueId: string) => void,
 ): Promise<void> {
   const guard = () => { assertHistoryUnlocked(); admission() }
+  let addedCue: string | undefined
   await editNestedDocument(async document => {
     guard()
     const node = Object.hasOwn(document.compositions, id) ? document.compositions[id] : undefined
@@ -1191,7 +1192,14 @@ export async function editNestedFileCaptions(
     }
     const captionTracks = original.map((track, index) => ({ ...track, clips: updated[index]!.clips }))
     let durationUs = node.durationUs
-    if (operation.kind === 'move' || operation.kind === 'trim') {
+    if (operation.kind === 'add') {
+      const index = original.findIndex(track => track.id === operation.trackId)
+      const existing = new SvelteSet(original[index]?.clips.map(cue => cue.id))
+      const added = updated[index]?.clips.filter(cue => !existing.has(cue.id))
+      if (added?.length !== 1) throw new Error('Новая реплика отсутствует')
+      addedCue = added[0]!.id
+    }
+    if (operation.kind === 'add' || operation.kind === 'move' || operation.kind === 'trim') {
       const end = updated.reduce((max, track) => {
         const last = track.clips.at(-1)
         return last ? Math.max(max, captionMicrosecondsCeil(last.timelineEndTick)) : max
@@ -1202,7 +1210,7 @@ export async function editNestedFileCaptions(
     return { ...document, compositions: { ...document.compositions, [id]: {
       ...node, ...(durationUs === undefined ? {} : { durationUs }), content: { ...node.content, captionTracks },
     } } }
-  }, true, undefined, undefined, 0, undefined, guard)
+  }, true, undefined, undefined, 0, () => { if (addedCue) onAdded?.(addedCue) }, guard)
 }
 
 registerHistoryProvider('nested',()=>nestedHistory)

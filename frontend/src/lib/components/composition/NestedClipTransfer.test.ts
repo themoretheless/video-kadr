@@ -80,6 +80,44 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
   }
 })
 
+it('adds a cue at the cursor on the chosen imported track and opens its editor', async () => {
+  closeNestedComposition()
+  const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
+  const track = { id: 'file', name: 'Импорт', clips: [] }
+  const locked = { id: 'locked', name: 'Защищённая', clips: [], locked: true }
+  const original = { ...content, captionTracks: [track, locked] }
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: {
+    root: { instances: [], content: original, durationUs: 2_000_000 },
+  } }
+  nestedComposition.timeUs = 1_508_000
+  const cue = { id: 'new-cue', timelineStartTick: '381024000000', timelineEndTick: '1143072000000', text: 'Субтитр' }
+  const mock = vi.mocked(api.editCompositionCaptions)
+  mock.mockReset().mockResolvedValueOnce({
+    composition: { ...original, captionTracks: [{ ...track, clips: [cue] }, locked] },
+    appliedDelta: null, deleted: 0,
+  })
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  try {
+    await tick()
+    const button = (name: string) => target.querySelector<HTMLButtonElement>(`[aria-label="Добавить реплику на курсоре · ${name}"]`)!
+    expect(button('Защищённая').disabled).toBe(true)
+    button('Импорт').click()
+    await vi.waitFor(() => expect(target.querySelector('[aria-label="Редактировать реплику дорожки"]')).not.toBeNull())
+    expect(mock).toHaveBeenCalledWith(original, { kind: 'add', trackId: 'file', startTick: 1_508_000, text: 'Субтитр' })
+    expect(nestedComposition.document?.compositions.root?.durationUs).toBe(4_500_000)
+    expect(nestedHistory.past).toHaveLength(1)
+    undoNestedComposition()
+    expect(nestedComposition.document?.compositions.root).toEqual({ instances: [], content: original, durationUs: 2_000_000 })
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+    mock.mockReset()
+  }
+})
+
 it('edits imported captions through native commands and shared Undo', async () => {
   closeNestedComposition()
   const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
