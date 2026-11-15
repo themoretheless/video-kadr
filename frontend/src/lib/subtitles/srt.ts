@@ -1,4 +1,4 @@
-import { COMPOSITION_TIME_BASE, MAX_TEXT_LENGTH, type TextClip } from '../composition/types'
+import { COMPOSITION_TIME_BASE, MAX_TEXT_LENGTH, type TextClip, type TextStyle } from '../composition/types'
 
 export const MAX_SRT_BYTES = 2 * 1024 * 1024
 export const MAX_SRT_CUES = 10_000
@@ -8,6 +8,7 @@ export interface SubtitleCue {
   readonly startTicks: number
   readonly endTicks: number
   readonly text: string
+  readonly style?: Partial<TextStyle>
 }
 
 export class SubtitleFormatError extends Error {
@@ -93,6 +94,7 @@ export function cuesToTextClips(
         color: '#FFFFFFFF',
         backgroundColor: '#00000099',
         align: 'center',
+        ...cue.style,
       },
     }
   })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSubtitleDocument } from './import.js'
-import { MAX_SRT_BYTES } from './srt.js'
+import { cuesToTextClips, MAX_SRT_BYTES } from './srt.js'
 
 describe('subtitle document import', () => {
   it('converts WebVTT 90k timestamps to microseconds and decodes cue markup', () => {
@@ -16,6 +16,25 @@ describe('subtitle document import', () => {
   it('retains SRT and timecoded TXT support', () => {
     expect(parseSubtitleDocument('1\n00:00:01,000 --> 00:00:02,000\nHello')[0]?.text).toBe('Hello')
     expect(parseSubtitleDocument('[00:00:01.000 --> 00:00:02.000] Hello')[0]?.startTicks).toBe(1_000_000)
+  })
+
+  it('applies named ASS styles and cue overrides to editable text clips', () => {
+    const cues = parseSubtitleDocument(String.raw`[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Outline, Shadow, Alignment
+Style: Default,Arial,64,&H00FFFFFF,&H00000000,&H80000000,2,1,2
+
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:02.00,Default,{\an7\c&H0000FF&\fs56\fnDejaVu Sans}Styled cue
+Dialogue: 0:00:02.00,0:00:04.00,Default,Named style
+`)
+    const [overridden, named] = cuesToTextClips(cues, cue => cue.id)
+    expect(overridden?.text).toBe('Styled cue')
+    expect(overridden?.style).toMatchObject({
+      fontFamily: 'DejaVu Sans', fontSizePx: 56, color: '#FF0000FF',
+      align: 'left', strokeColor: '#000000FF', strokeWidthPx: 2, shadowX: 1, shadowY: 1,
+    })
+    expect(named?.style).toMatchObject({ fontFamily: 'Arial', fontSizePx: 64, color: '#FFFFFFFF', align: 'center' })
   })
 
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {

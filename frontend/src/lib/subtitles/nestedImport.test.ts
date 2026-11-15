@@ -55,3 +55,18 @@ it('supports ASS text/time and a safe cursor offset, refusing invalid input/ids/
  expect(()=>importNestedSubtitles(full,'root',body,allocator())).toThrow('лимит дорожек')
  expect(JSON.stringify(input)).toBe(before)
 })
+
+it('retains ASS cue styling in the authored nested project', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, Outline, Alignment
+Style: Note,Arial,60,&H00FFFFFF,2,3
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:02.00,Note,{\1c&H0000FF&}Caption
+`, allocator())
+ expect(result.document.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
+  text: 'Caption',
+  style: { fontFamily: 'Arial', fontSize: 60, align: 'right', strokeWidth: 2,
+   color: { red: 1, green: 0, blue: 0, alpha: 1 } },
+ })
+})
