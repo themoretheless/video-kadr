@@ -26,6 +26,7 @@
   import { importPreferences, setAutoPairAudioOnImport } from '$lib/state/importPreferences.svelte.js'
   import {
     compositionProjectArchiveUrl,
+    compositionProjectConcatTemplateUrl,
     importCompositionProjectArchive,
     MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES,
     subscribeCompositionProjectChanges,
@@ -551,6 +552,12 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   <NativeTemplateImport token={authState.token} spaceId={spacesState.selectedId||undefined} context={nestedComposition.document??compositionState.document} disabled={compositionState.save.busy||nestedHistory.busy||archiveBusy} oncreated={templateCreated} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})}/>
   <ConcatProjectImportPanel token={authState.token} context={compositionState.document} disabled={compositionState.save.busy} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
   <ConcatProjectExportPanel disabled={compositionState.save.busy} />
+  {#if nestedComposition.document && activeSavedProjectId && authState.token}
+    <button class="btn ghost sm" disabled={archiveBusy || compositionState.save.busy}
+      onclick={() => downloadUrl(compositionProjectConcatTemplateUrl(activeSavedProjectId!))}>
+      Скачать архив шаблона Concat из сохранённой версии
+    </button>
+  {/if}
   <FilmcraftProjectPanel token={authState.token} library={legacyState.library} />
 
   {#if authState.token}<NestedHistoryPanel disabled={compositionState.save.busy} />{/if}

@@ -1,0 +1,188 @@
+use super::*;
+use crate::{
+    domain::{
+        concat_project_export::export_with_paths, nested_composition::NestedCompositionProject,
+    },
+    project_archive::MAX_ARCHIVE_TOTAL_MEDIA_BYTES,
+    services::filmcraft_video_preview::SourceVideoRevision,
+    template_bundle,
+};
+use std::io::{Read, Write};
+
+pub async fn export(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let actor = archive_actor(&state, &headers, true).await?;
+    let slot = state.try_acquire_upload_slot().ok_or_else(|| {
+        AppError::too_many_requests("слишком много операций с локальными файлами")
+    })?;
+    let project = state
+        .db
+        .get_composition_project_for(&id, &actor)
+        .await
+        .map_err(|error| AppError::internal("load Concat template project", error))?
+        .ok_or_else(|| AppError::not_found("Проект не найден"))?;
+    let native: NestedCompositionProject = serde_json::from_value(project.document.clone())
+        .map_err(|_| AppError::bad_request("Шаблоны требуют нативный проект с таймлайнами"))?;
+    let plan =
+        template_bundle::plan(&native).map_err(|error| AppError::bad_request(error.to_string()))?;
+    let mut originals = Vec::new();
+    let mut names = BTreeMap::new();
+    let mut total = 0_u64;
+    for (source, key) in &plan.assets {
+        if !project.source_ids.iter().any(|id| id == source.as_str()) {
+            return Err(AppError::conflict(
+                "Ресурс отсутствует в сохранённом проекте",
+            ));
+        }
+        crate::handlers::library::authorize_source_access(&state, source.as_str(), &headers)
+            .await?;
+        let entry = state
+            .library
+            .get(source.as_str())
+            .await
+            .filter(|entry| entry.kind == "source")
+            .ok_or_else(|| AppError::conflict("Ресурс шаблона отсутствует"))?;
+        let path = validated_source_path(&state, &entry).await?;
+        let revision = SourceVideoRevision::read(&path)
+            .await
+            .map_err(|_| AppError::conflict("Ресурс шаблона отсутствует"))?;
+        let length = tokio::fs::metadata(&path)
+            .await
+            .map_err(|error| AppError::internal("stat Concat template asset", error))?
+            .len();
+        total = total.saturating_add(length);
+        if length == 0 || total > MAX_ARCHIVE_TOTAL_MEDIA_BYTES {
+            return Err(AppError::payload_too_large(
+                "Некорректный размер ресурсов шаблона",
+            ));
+        }
+        let extension = Path::new(&entry.filename)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .filter(|ext| {
+                !ext.is_empty()
+                    && ext.len() <= 12
+                    && ext.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            });
+        let name = match extension {
+            Some(ext) => format!("assets/{}.{ext}", key.as_str()),
+            None => format!("assets/{}", key.as_str()),
+        };
+        names.insert(key.clone(), name.clone());
+        originals.push((source.clone(), entry, path, revision, name, length));
+    }
+    let inputs: Vec<_> = originals
+        .iter()
+        .map(|(_, _, path, _, name, length)| (path.clone(), name.clone(), *length))
+        .collect();
+    let paths = plan
+        .project
+        .project_media
+        .iter()
+        .map(|(id, item)| {
+            let path = item
+                .library_source_id
+                .as_ref()
+                .map(|key| names[key].clone())
+                .unwrap_or_default();
+            (id.as_str().to_owned(), path)
+        })
+        .collect();
+    let output = state
+        .staging_dir()
+        .join(format!("{}.concat-template", Uuid::new_v4()));
+    let title = project.name.clone();
+    let archive = tokio::task::spawn_blocking(move || -> AppResult<TemporaryFile> {
+        let _slot = slot;
+        let mut document = export_with_paths(&plan.project, &paths)
+            .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
+        document["name"] = Value::String(title);
+        let manifest = serde_json::to_vec(&document)
+            .map_err(|error| AppError::internal("encode Concat template", error))?;
+        if manifest.len() > 4 * 1024 * 1024 {
+            return Err(AppError::payload_too_large("Файл Concat превышает 4 МиБ"));
+        }
+        let archive = TemporaryFile::new(output);
+        (|| -> anyhow::Result<()> {
+            let file = std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(archive.path())?;
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("template.json", options)?;
+            zip.write_all(&manifest)?;
+            for (path, name, length) in inputs {
+                zip.start_file(name, options)?;
+                let mut source = std::fs::File::open(path)?.take(length + 1);
+                anyhow::ensure!(
+                    std::io::copy(&mut source, &mut zip)? == length,
+                    "Template asset size changed"
+                );
+            }
+            zip.finish()?.sync_all()?;
+            Ok(())
+        })()
+        .map_err(|error| AppError::conflict(error.to_string()))?;
+        Ok(archive)
+    })
+    .await
+    .map_err(|error| AppError::internal("join Concat template export", error))??;
+    for (source, entry, path, revision, _, _) in originals {
+        crate::handlers::library::authorize_source_access(&state, source.as_str(), &headers)
+            .await?;
+        let current = state
+            .library
+            .get(source.as_str())
+            .await
+            .ok_or_else(|| AppError::conflict("Ресурс шаблона изменился"))?;
+        if serde_json::to_value(&current).ok() != serde_json::to_value(&entry).ok()
+            || validated_source_path(&state, &current).await? != path
+            || SourceVideoRevision::read(&path).await.ok().as_ref() != Some(&revision)
+        {
+            return Err(AppError::conflict("Ресурс шаблона изменился"));
+        }
+    }
+    archive_actor(&state, &headers, true).await?;
+    let current = state
+        .db
+        .get_composition_project_for(&id, &actor)
+        .await
+        .map_err(|error| AppError::internal("recheck Concat template project", error))?
+        .ok_or_else(|| AppError::conflict("Доступ к проекту отозван"))?;
+    if current.revision != project.revision
+        || current.document != project.document
+        || current.source_ids != project.source_ids
+    {
+        return Err(AppError::conflict(
+            "Проект изменился во время упаковки шаблона",
+        ));
+    }
+    let file = tokio::fs::File::open(archive.path())
+        .await
+        .map_err(|error| AppError::internal("open Concat template", error))?;
+    let length = file
+        .metadata()
+        .await
+        .map_err(|error| AppError::internal("stat Concat template", error))?
+        .len();
+    let base = archive_download_filename(&project.name);
+    let filename = format!("{}-concat.zip", base.trim_end_matches(".veproj"));
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/zip")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .header(header::CONTENT_LENGTH, length)
+        .header(header::CACHE_CONTROL, "private, no-store")
+        .body(Body::from_stream(ReaderStream::new(
+            archive.into_reader(file),
+        )))
+        .map_err(|error| AppError::internal("Concat template response", error))
+}

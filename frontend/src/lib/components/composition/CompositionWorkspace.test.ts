@@ -609,6 +609,8 @@ it('opens the native workspace with unavailable catalogs and downloads its saved
   button('Скачать шаблон сохранённой версии').click();await settle()
   expect(downloads).toEqual(['/api/composition-projects/saved%2Fnative/template'])
   expect(target.textContent).toContain('Загрузка шаблона сохранённой версии началась')
+  button('Скачать архив шаблона Concat из сохранённой версии').click();await settle()
+  expect(downloads[1]).toBe('/api/composition-projects/saved%2Fnative/concat-template')
   expect(JSON.stringify(nestedComposition.document)).toBe(before)
   expect(durationCalls).toBeGreaterThan(0);expect(previewCalls).toBeGreaterThan(0);expect(durations).toHaveBeenCalledTimes(durationCalls);expect(previews).toHaveBeenCalledTimes(previewCalls)
  }finally{await unmount(component)}

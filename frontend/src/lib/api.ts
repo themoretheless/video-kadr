@@ -906,6 +906,10 @@ export function compositionProjectArchiveUrl(id: string): string {
   return `/api/composition-projects/${encodeURIComponent(id)}/archive`
 }
 
+export function compositionProjectConcatTemplateUrl(id: string): string {
+  return `/api/composition-projects/${encodeURIComponent(id)}/concat-template`
+}
+
 /** Upload, verify and relink a portable `.veproj` into a new local project. */
 export async function importCompositionProjectArchive(
   file: File,

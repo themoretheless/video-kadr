@@ -69,6 +69,37 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         .await
         .unwrap();
     let app = support::router(state.clone());
+    let mut portable = document.clone();
+    portable["compositions"]["root"]["content"]["tracks"] = json!([]);
+    let concat = state.db.create_owned_composition_project(
+        "Portable Concat", &portable, &["design-file".into(), "missing-original".into()],
+        &owner.user.username,
+    ).await.unwrap();
+    let concat_uri = format!("/api/composition-projects/{}/concat-template", concat.id);
+    let concat_request = |token: &str| Request::get(&concat_uri)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty()).unwrap();
+    let denied = app.clone().oneshot(concat_request(&outsider.token)).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+    let response = app.clone().oneshot(concat_request(&owner.token)).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    {
+        use std::io::Read;
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        assert_eq!(zip.len(), 2);
+        let manifest: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
+        assert_eq!(manifest["name"], "Portable Concat");
+        let media = manifest["media"].as_array().unwrap();
+        let slot = media.iter().find(|item| item["id"] == "slot").unwrap();
+        assert_eq!(slot["path"], "");
+        assert_eq!(slot["placeholder"], true);
+        let design = media.iter().find(|item| item["id"] == "design").unwrap();
+        let mut contents = Vec::new();
+        zip.by_name(design["path"].as_str().unwrap()).unwrap().read_to_end(&mut contents).unwrap();
+        assert_eq!(contents, std::fs::read(&path).unwrap());
+    }
     let uri = format!("/api/composition-projects/{}/template", saved.id);
     let request = |token: Option<&str>| {
         let mut r = Request::get(&uri);

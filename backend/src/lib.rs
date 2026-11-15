@@ -944,6 +944,10 @@ pub fn build_router_with_mcp(
             get(handlers::composition_project_template_export_handler).post(handlers::composition_project_template_save_handler),
         )
         .route(
+            "/composition-projects/:id/concat-template",
+            get(handlers::composition_project_concat_template_export_handler),
+        )
+        .route(
             "/composition-projects/:id/archive",
             get(handlers::composition_project_archive_export_handler),
         )
