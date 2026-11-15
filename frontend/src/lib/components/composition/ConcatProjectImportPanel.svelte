@@ -1,6 +1,7 @@
 <script lang="ts">
  import {untrack} from 'svelte'
  import {SvelteMap} from 'svelte/reactivity'
+ import ConcatTemplatePreview from './ConcatTemplatePreview.svelte'
 
  import type {CompositionSource} from '$lib/composition/types'
  import {importConcatProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
@@ -18,19 +19,11 @@
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
- let templateFolders = $state<{ name: string; files: readonly File[] }[]>([])
- let selectedFolder = $state('')
+ type TemplateDetails = Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount' | 'poster'>
+ let templateFolders = $state<(TemplateDetails & { name: string; files: readonly File[] })[]>([])
+ let selectedFolder = $state<number>()
  let templateProjectName = $state('')
- let templateDetails = $state<Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount'>>()
- let folderPoster=$state<File>()
- let posterUrl=$state('')
- $effect(()=>{
-  const file=folderPoster
-  if(!file){posterUrl='';return}
-  const url=URL.createObjectURL(new Blob([file],{type:'image/jpeg'}))
-  posterUrl=url
-  return()=>URL.revokeObjectURL(url)
- })
+ let templateDetails = $state<TemplateDetails>()
  let uploadedSources=$state<ConcatImportSource[]>([])
  const availableSources=$derived([...sources,...uploadedSources.filter(entry=>!sources.some(source=>source.source.id===entry.source.id))])
  let preserveMediaIds=$state(false)
@@ -47,12 +40,12 @@
    ? value.name : 'Импорт Concat'
  }
  function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false}
- $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderPoster=undefined;uploadedSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
+ $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;templateDetails=undefined;templateFolders=[];selectedFolder=undefined;uploadedSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
- async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;uploadedSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
+ async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};templateDetails=undefined;uploadedSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
  async function chooseDirectory(files: File[]) {
   templateFolders = []
-  selectedFolder = ''
+  selectedFolder = undefined
   const candidates = concatTemplateFolders(files)
   const first = candidates[0]
   if (first?.direct) {
@@ -75,6 +68,9 @@
      valid.push({
       name: typeof title === 'string' && title.trim() ? title.trim() : candidate.name,
       files: candidate.files,
+      format: folder.format,
+      slotCount: folder.slotCount,
+      poster: folder.poster,
      })
     } catch {
      if (!current()) return
@@ -86,11 +82,11 @@
    if (current()) busy = false
   }
  }
- async function chooseTemplate(key: string) {
-  selectedFolder = key
-  const folder = key ? templateFolders[Number(key)] : undefined
-  if (folder) await loadFolder(folder.files)
-  else await load(undefined)
+ async function chooseTemplate(index: number) {
+  const folder = templateFolders[index]
+  if (!folder || (selectedFolder === index && importingTemplate)) return
+  selectedFolder = index
+  await loadFolder(folder.files)
  }
  async function loadFolder(files: readonly File[]){
   await load(undefined)
@@ -118,8 +114,7 @@
    document=folder.document;media=folder.media;fonts=folder.fonts
    importingTemplate=true
    templateProjectName=importedName(folder.document)
-   templateDetails={format:folder.format,slotCount:folder.slotCount}
-   folderPoster=folder.poster
+   templateDetails={format:folder.format,slotCount:folder.slotCount,poster:folder.poster}
    uploadedSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
     await loadFont(font.path,font.file,false)
@@ -252,34 +247,26 @@
 </script>
 <details><summary>Импорт проекта Concat</summary>
  <fieldset disabled={disabled||busy||nestedHistory.busy||!token}>
-  <label>Файл Concat JSON <input type="file" accept=".json,application/json" aria-label="Файл проекта Concat" onchange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';templateFolders=[];selectedFolder='';void load(file)}} /></label>
+  <label>Файл Concat JSON <input type="file" accept=".json,application/json" aria-label="Файл проекта Concat" onchange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';templateFolders=[];selectedFolder=undefined;void load(file)}} /></label>
   <label>Папка шаблона или библиотеки Concat <input type="file" webkitdirectory multiple onchange={event=>{
     const files=Array.from(event.currentTarget.files??[])
     event.currentTarget.value=''
     void chooseDirectory(files)
   }} /></label>
   {#if templateFolders.length}
-   <label>Шаблон Concat
-    <select value={selectedFolder} onchange={event=>void chooseTemplate(event.currentTarget.value)}>
-     <option value="">Выберите шаблон</option>
-     {#each templateFolders as folder, index (index)}
-      <option value={String(index)}>{folder.name}</option>
-     {/each}
-    </select>
-   </label>
+   <div class="template-gallery" role="group" aria-label="Шаблоны Concat">
+    {#each templateFolders as { files, ...preview }, index (files)}
+     <button type="button" class="btn ghost template-card" aria-pressed={selectedFolder === index}
+      onclick={() => void chooseTemplate(index)}>
+      <ConcatTemplatePreview {...preview} />
+     </button>
+    {/each}
+   </div>
   {/if}
   {#if importingTemplate && templateDetails}
-   <div>
-    {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}
-    <p>
-     <strong>{importedName(document)}</strong>
-     {#if templateDetails.format}
-      {@const { width, height, rateNum, rateDen } = templateDetails.format}
-      · {width} × {height} · {(rateNum / rateDen).toLocaleString('ru-RU', { maximumFractionDigits: 3 })} кадр/с
-     {/if}
-     · Слоты: {templateDetails.slotCount}
-    </p>
-   </div>
+   {#if !templateFolders.length}
+    <div class="template-card"><ConcatTemplatePreview name={importedName(document)} {...templateDetails} /></div>
+   {/if}
    <label>Название нового проекта <input type="text" bind:value={templateProjectName} /></label>
   {/if}
   {#each orderedMedia as item(item.id)}
@@ -325,4 +312,12 @@
  {#if report?.diagnostics.length}<ul>{#each report.diagnostics as message,index (index)}<li>{message}</li>{/each}</ul>{/if}
  {#if error}<p role="alert">{error}</p>{/if}{#if applied}<p>Импорт открыт. Для сохранения используйте «Сохранить».</p>{/if}
 </details>
-<style>fieldset{border:0;padding:0.5rem 0;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center}label{display:flex;gap:0.5rem;align-items:center}p{flex-basis:100%}select{max-width:24rem}img{object-fit:contain}</style>
+<style>
+ fieldset{border:0;padding:0.5rem 0;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center}
+ label{display:flex;gap:0.5rem;align-items:center}
+ p,.template-gallery{flex-basis:100%}
+ select{max-width:24rem}
+ .template-gallery{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:stretch}
+ .template-card{display:grid;gap:0.25rem;align-content:start;text-align:start;white-space:normal;overflow-wrap:anywhere}
+ .template-card[aria-pressed=true]{outline:1px solid currentColor}
+</style>

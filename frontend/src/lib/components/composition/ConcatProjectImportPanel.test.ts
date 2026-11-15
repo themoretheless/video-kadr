@@ -250,6 +250,8 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
   id: 'design', filename: 'design.mov', url: '/files/sources/design.mov',
   mediaType: 'video', duration: 1, width: 16, height: 16,
  })
+ const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:gallery-cover')
+ const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
  try {
   function file(path: string, contents: string) {
    const asset = new File([contents], path.split('/').at(-1)!)
@@ -259,6 +261,7 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
   const design = file('B/assets/design.mov', 'video')
   const manifest = file('B/template.json', JSON.stringify({
    ...original, name: 'Selected template',
+   video: { width: 1280, height: 720, rateNum: 25, rateDen: 1 },
    media: [{ ...original.media[0], path: 'assets/design.mov' }],
   }))
   component = mount(Panel, { target: document.body, props: { token: 'session' } })
@@ -273,21 +276,27 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
    media: [{ ...original.media[0], path: 'assets/missing.mov' }],
   }))
   Object.defineProperty(picker, 'files', {
-   value: [manifest, design, file('A/template.json', 'invalid'), other, missing],
+   value: [manifest, design, file('B/poster.jpg', 'jpeg'), file('A/template.json', 'invalid'), other, missing],
   })
   picker.dispatchEvent(new Event('change', { bubbles: true }))
-  await vi.waitFor(() => expect(document.querySelector('select')).not.toBeNull())
-  const select = document.querySelector<HTMLSelectElement>('select')!
-  expect([...select.options].map(option => option.textContent)).toEqual([
-   'Выберите шаблон', 'Another template', 'Selected template',
-  ])
+  const cards = () => [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Шаблоны Concat"] button')]
+  await vi.waitFor(() => expect(cards()).toHaveLength(2))
+  expect(cards().map(card => card.querySelector('strong')?.textContent)).toEqual(['Another template', 'Selected template'])
+  const selected = cards()[1]!
+  expect(selected.textContent).toContain('1280 × 720 · 25 кадр/с')
+  expect(selected.querySelector('img')?.getAttribute('src')).toBe('blob:gallery-cover')
   expect(upload).not.toHaveBeenCalled()
-  select.value = '1'
-  select.dispatchEvent(new Event('change', { bubbles: true }))
+  selected.click()
   await vi.waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe('Selected template'))
   expect(upload).toHaveBeenCalledExactlyOnceWith(design, false)
+  expect(selected.getAttribute('aria-pressed')).toBe('true')
+  await unmount(component!)
+  component = undefined
+  expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:gallery-cover')
  } finally {
   upload.mockRestore()
+  createUrl.mockRestore()
+  revokeUrl.mockRestore()
  }
 })
 
