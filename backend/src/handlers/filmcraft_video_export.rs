@@ -760,7 +760,25 @@ impl VideoRequest {
         )
     }
     pub(super) fn summary(&self) -> Result<Value> {
-        let (spec, start) = self.spec()?;
+        let document = self.document()?;
+        let index = ProjectIndex::new(&document)?;
+        let item = index.item(self.sequence_id.parse()?).context("export sequence missing")?;
+        let sequence = item.pointer("/kind/Sequence").context("export sequence missing")?;
+        let (spec, start) = self.spec_for_sequence(sequence)?;
+        let settings = &sequence["settings"];
+        let rate: filmcraft_time::FrameRate = serde_json::from_value(settings["frame_rate"].clone())?;
+        let source_rate = FrameRateRatio {
+            numerator: u32::try_from(rate.num)?,
+            denominator: u32::try_from(rate.den)?,
+        };
+        let (range_start, range_end) = if let Some(range) = &self.source_range {
+            range.bounds()?
+        } else {
+            // Frame inputs describe the source clock, even after output-rate conversion.
+            let source_spec = RasterVideoSpec { frame_rate: source_rate, ..spec };
+            let start = self.start_ticks.as_deref().map(str::parse).transpose()?.unwrap_or(0);
+            (self.tick(source_spec, start, 0)?, self.tick(source_spec, start, self.frames)?)
+        };
         let encoding = self.encoding(spec)?;
         let (bitrate, keyframes) = match encoding {
             RasterEncoding::NativeH264 { target_kbps, max_kbps, mode, keyint, .. } =>
@@ -809,6 +827,16 @@ impl VideoRequest {
         Ok(serde_json::json!({
             "preset": self.preset, "container": self.extension(), "video": video,
             "audio": audio, "estimatedBytes": estimated_bytes,
+            "source": {
+                "name": item["name"].as_str(),
+                "width": settings["width"].as_u64(), "height": settings["height"].as_u64(),
+                "frameRate": source_rate, "sampleRate": settings["sample_rate"].as_u64(),
+            },
+            "sourceRange": {
+                "startTicks": range_start.to_string(), "endTicks": range_end.to_string(),
+                "durationSeconds": (i128::from(range_end) - i128::from(range_start)) as f64
+                    / filmcraft_time::TICKS_PER_SECOND as f64,
+            },
         }))
     }
 
@@ -858,6 +886,16 @@ impl VideoRequest {
     }
 
     pub(super) fn spec(&self) -> Result<(RasterVideoSpec, i64)> {
+        let document = self.document()?;
+        let index = ProjectIndex::new(&document)?;
+        let sequence = index
+            .item(self.sequence_id.parse()?)
+            .and_then(|v| v.pointer("/kind/Sequence"))
+            .context("export sequence missing")?;
+        self.spec_for_sequence(sequence)
+    }
+
+    fn spec_for_sequence(&self, sequence: &Value) -> Result<(RasterVideoSpec, i64)> {
         let exact_range = self
             .source_range
             .as_ref()
@@ -884,12 +922,6 @@ impl VideoRequest {
         self.metadata.validate()?;
         self.video_limiter.validate()?;
         ensure!(self.sources.len() <= 64, "too many video sources");
-        let document = self.document()?;
-        let index = ProjectIndex::new(&document)?;
-        let sequence = index
-            .item(self.sequence_id.parse()?)
-            .and_then(|v| v.pointer("/kind/Sequence"))
-            .context("export sequence missing")?;
         let settings = &sequence["settings"];
         if let Some(kind) = self.caption_sidecar.as_deref() {
             if sequence["caption_tracks"]

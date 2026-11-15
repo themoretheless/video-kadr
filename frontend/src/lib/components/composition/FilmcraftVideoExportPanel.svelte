@@ -20,6 +20,10 @@
   let burnCaptions = $state(true)
   let captionFormat = $state('')
   let exportRange = $state<'frames' | 'inOut' | 'entire' | 'workArea' | 'custom'>('frames')
+  const exportRanges = {
+    frames: 'Ручной ввод кадров', entire: 'Вся секвенция', inOut: 'Точки In/Out',
+    workArea: 'Рабочая область', custom: 'Свой диапазон',
+  }
   let exportStart = $state('0')
   let exportEnd = $state('')
   let quickRange = $state<'inOut' | 'entire' | 'workArea' | 'custom'>('inOut')
@@ -287,6 +291,14 @@
     prores_proxy: 'ProRes 422 Proxy', prores_lt: 'ProRes 422 LT', prores_standard: 'ProRes 422',
     prores_hq: 'ProRes 422 HQ', mxf_prores_hq: 'ProRes 422 HQ', apv42210: 'APV 422-10', apv42212: 'APV 422-12',
     dnxhr_lb: 'DNxHR LB', dnxhr_sq: 'DNxHR SQ', dnxhr_hq: 'DNxHR HQ', mxf_dnxhr_hq: 'DNxHR HQ', mxf_atom_dnxhr_hq: 'DNxHR HQ',
+  }
+  function sourceLabel(source: FilmcraftExportSummary['source']) {
+    return [
+      source.name || 'Секвенция',
+      ...(source.width && source.height ? [`${source.width}×${source.height}`] : []),
+      `${summaryNumber.format(source.frameRate.numerator / source.frameRate.denominator)} кадр/с`,
+      ...(source.sampleRate ? [`${summaryNumber.format(source.sampleRate)} Гц`] : []),
+    ].join(' · ')
   }
   function sizeLabel(bytes: number) {
     const unit = bytes >= 1e9 ? [1e9, 'ГБ'] as const : bytes >= 1e6 ? [1e6, 'МБ'] as const : [1e3, 'КБ'] as const
@@ -640,11 +652,11 @@
   <label>Диапазон экспорта
     <select aria-label="Диапазон обычного экспорта Filmcraft" value={exportRange} disabled={submitting || retrying || disabled}
       onchange={event => { exportRange = event.currentTarget.value as typeof exportRange }}>
-      <option value="frames">Ручной ввод кадров</option>
-      <option value="entire">Вся секвенция</option>
-      <option value="inOut">Точки In/Out</option>
-      <option value="workArea" disabled={!hasWorkArea}>Рабочая область</option>
-      <option value="custom">Свой диапазон</option>
+      <option value="frames">{exportRanges.frames}</option>
+      <option value="entire">{exportRanges.entire}</option>
+      <option value="inOut">{exportRanges.inOut}</option>
+      <option value="workArea" disabled={!hasWorkArea}>{exportRanges.workArea}</option>
+      <option value="custom">{exportRanges.custom}</option>
     </select>
   </label>
   {#if exportRange === 'frames'}
@@ -658,7 +670,7 @@
   <details ontoggle={event => { summaryOpen = event.currentTarget.open }}>
     <summary>Сводка экспорта</summary>
     {#if exportSummary}
-      {@const { video, audio, container, estimatedBytes, preset: resolvedPreset } = exportSummary}
+      {@const { video, audio, container, estimatedBytes, source, sourceRange, preset: resolvedPreset } = exportSummary}
       <dl>
         <dt>Контейнер</dt><dd>{container.toUpperCase()}</dd>
         <dt>Видео</dt>
@@ -677,6 +689,10 @@
           {audio.bits ? `PCM ${audio.bits} бит${audio.codec === 'pcm_f32le' ? ' float' : ''}` : audio.codec.toUpperCase()} · {summaryNumber.format(audio.sampleRate)} Гц · {audio.channels === 1 ? 'Моно' : audio.channels === 6 ? '5.1' : 'Стерео'}
           {#if audio.bitrateKbps} · {audio.bitrateKbps} кбит/с{/if}
         {:else}Без аудио{/if}</dd>
+        <dt>Источник</dt>
+        <dd>{sourceLabel(source)}</dd>
+        <dt>Диапазон</dt>
+        <dd>{exportRanges[exportRange]} · {summaryNumber.format(sourceRange.durationSeconds)} с</dd>
         {#if estimatedBytes !== null}<dt>Примерный размер</dt><dd>{sizeLabel(estimatedBytes)}</dd>{/if}
       </dl>
     {:else if summaryError}<span role="alert">{summaryError}</span>{/if}

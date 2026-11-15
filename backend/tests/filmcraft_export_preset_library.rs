@@ -660,6 +660,34 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     standard["preset"] = json!("youtube1080");
     let (status, summary) = call("video-jobs/summary", standard).await;
     assert_eq!(status, StatusCode::OK, "{summary}");
+    assert_eq!(summary["source"], json!({
+        "name": "Sequence", "width": 80, "height": 64,
+        "frameRate": {"numerator":24,"denominator":1}, "sampleRate":48000,
+    }));
+    assert_eq!(summary["sourceRange"], json!({
+        "startTicks":"0", "endTicks":"254016000000", "durationSeconds":1.0
+    }));
+    let framed = json!({
+        "document": input["document"], "sequenceId":"6", "preset":"youtube1080",
+        "startFrames":"3", "frames":12, "frameRate":{"numerator":60,"denominator":1},
+    });
+    let (frame_status, frame_summary) = call("video-jobs/summary", framed.clone()).await;
+    assert_eq!(frame_status, StatusCode::OK, "{frame_summary}");
+    assert_eq!(frame_summary["video"]["frameRate"]["numerator"], 60);
+    assert_eq!(frame_summary["sourceRange"], json!({
+        "startTicks":"31752000000", "endTicks":"158760000000", "durationSeconds":0.5
+    }));
+    let mut marked = framed;
+    for key in ["startFrames", "frames"] {
+        marked.as_object_mut().unwrap().remove(key);
+    }
+    marked["range"] = json!("inOut");
+    let sequence = &mut marked["document"]["project"]["items"]["6"]["kind"]["Sequence"];
+    sequence["mark_in"] = json!(31752000000i64);
+    sequence["mark_out"] = json!(148176000000i64);
+    let (mark_status, mark_summary) = call("video-jobs/summary", marked).await;
+    assert_eq!(mark_status, StatusCode::OK, "{mark_summary}");
+    assert_eq!(mark_summary["sourceRange"], frame_summary["sourceRange"]);
     assert_eq!(summary["video"]["width"], 1920);
     assert_eq!(summary["video"]["height"], 1080);
     assert_eq!(summary["video"]["bitrate"]["targetKbps"], 16000);

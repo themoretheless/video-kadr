@@ -1091,6 +1091,8 @@ it('blocks stale two-pass settings when changing H264 to HEVC', async () => {
 it('shows resolved standard export settings without starting an export', async () => {
   vi.mocked(summarizeFilmcraftExport).mockResolvedValue({
     preset: 'lossless', container: 'mkv', estimatedBytes: null, audio: null,
+    source: { name: 'Монтаж', width: 3840, height: 2160, frameRate: { numerator: 24, denominator: 1 }, sampleRate: 48000 },
+    sourceRange: { startTicks: '0', endTicks: '508032000000', durationSeconds: 2 },
     video: { codec: 'ffv1', width: 1920, height: 1080, frameRate: { numerator: 30000, denominator: 1001 }, pixelAspect: [1, 1], profile: null, level: null, keyframeDistance: null, mjpegQuality: null, bitrate: null },
   })
   await open()
@@ -1099,6 +1101,8 @@ it('shows resolved standard export settings without starting an export', async (
   details.dispatchEvent(new Event('toggle'))
   await vi.waitFor(() => expect(details.textContent).toContain('1920×1080'))
   expect(details.textContent).toContain('29,97')
+  expect(details.textContent).toContain('Монтаж · 3840×2160')
+  expect(details.textContent).toContain('Ручной ввод кадров · 2 с')
   expect(details.textContent).toContain('Без аудио')
   expect(details.textContent).not.toContain('Примерный размер')
   expect(startFilmcraftVideoJob).not.toHaveBeenCalled()

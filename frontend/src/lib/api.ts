@@ -1922,6 +1922,8 @@ export type FilmcraftVideoRequest = { mjpegQuality?: number; captionSidecar?: st
 export type FilmcraftExportSummary = {
   preset: FilmcraftExportPreset
   container: string
+  source: { name: string | null; width: number | null; height: number | null; frameRate: { numerator: number; denominator: number }; sampleRate: number | null }
+  sourceRange: FilmcraftSourceRange & { durationSeconds: number }
   video: null | {
     codec: string; width: number; height: number
     frameRate: { numerator: number; denominator: number }; pixelAspect: [number, number]
