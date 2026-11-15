@@ -1987,24 +1987,24 @@ export async function renameFilmcraftClip(token: string, input: { document: stri
   const result = await runFilmcraftExportCommand(token, 'clip.rename', input, signal)
   return importFilmcraftCommandSnapshot(result, signal)
 }
-export async function moveFilmcraftProjectCards(token: string, input: { document: string; positions: Record<string, [number, number]>; snap: boolean }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
+export async function moveFilmcraftProjectCards(token: string, input: { document: string; positions: Record<string, [number, number]>; snap: boolean; grid?: number }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
   const result = await runFilmcraftExportCommand<{ freeformEdit?: boolean }>(token, 'project.freeform.move', input, signal)
   if (result.freeformEdit !== true) throw new Error('Перемещение карточек не подтверждено')
   return { ...await importFilmcraftCommandSnapshot(result, signal), freeformEdit: true }
 }
-export async function stackFilmcraftProjectCards(token: string, stack: boolean, input: { document: string; items: string[]; width: number }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
+export async function stackFilmcraftProjectCards(token: string, stack: boolean, input: { document: string; items: string[]; width: number; grid?: number; cardSize?: number }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
   const result = await runFilmcraftExportCommand<{ freeformEdit?: boolean }>(token, stack ? 'project.freeform.stack' : 'project.freeform.unstack', input, signal)
   if (result.freeformEdit !== true) throw new Error('Изменение стека не подтверждено')
   return { ...await importFilmcraftCommandSnapshot(result, signal), freeformEdit: true }
 }
 export type FilmcraftLayoutCommand = 'project.freeform.resize' | 'project.freeform.alignToGrid' | 'project.freeform.reset'
-export async function editFilmcraftLayout(token: string, command: FilmcraftLayoutCommand, input: { document: string; bin?: string; width: number; items?: string[]; step?: number }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
+export async function editFilmcraftLayout(token: string, command: FilmcraftLayoutCommand, input: { document: string; bin?: string; width: number; items?: string[]; step?: number; size?: number; grid?: number; cardSize?: number }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
   const result = await runFilmcraftExportCommand<{ freeformEdit?: boolean }>(token, command, input, signal)
   if (result.freeformEdit !== true) throw new Error('Изменение раскладки не подтверждено')
   return { ...await importFilmcraftCommandSnapshot(result, signal), freeformEdit: true }
 }
 export type FilmcraftArrangementCommand = 'project.freeform.saveArrangement' | 'project.freeform.restoreArrangement' | 'project.freeform.deleteArrangement'
-export async function editFilmcraftArrangement(token: string, command: FilmcraftArrangementCommand, input: { document: string; name: string; bin?: string; width?: number }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
+export async function editFilmcraftArrangement(token: string, command: FilmcraftArrangementCommand, input: { document: string; name: string; bin?: string; width?: number; grid?: number; cardSize?: number }, signal?: AbortSignal): Promise<FilmcraftImportResult & { freeformEdit: true }> {
   const result = await runFilmcraftExportCommand<{ freeformEdit?: boolean }>(token, command, input, signal)
   if (result.freeformEdit !== true) throw new Error('Изменение раскладки не подтверждено')
   return { ...await importFilmcraftCommandSnapshot(result, signal), freeformEdit: true }

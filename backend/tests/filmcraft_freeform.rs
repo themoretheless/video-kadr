@@ -173,3 +173,31 @@ fn card_size_align_and_reset_share_the_bin_layout() {
     assert!(metadata["Freeform Stack"].is_null());
     assert_eq!(metadata["Freeform Arrangement: Saved"], "1,2,128");
 }
+
+#[test]
+fn custom_grid_and_base_size_are_used_by_move_align_and_resize() {
+    use video_kadr_backend::domain::filmcraft_freeform::edit_layout;
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let document = &fixture["cases"][0]["document"];
+    let moved = move_cards(json!({
+        "document":document,"positions":{"1":[48.0,79.0]},"snap":true,"grid":32
+    }))
+    .unwrap();
+    let position = |result: &Value, id: &str| {
+        result["document"]["project"]["items"][id]["metadata"]["Freeform Position"].clone()
+    };
+    assert_eq!(position(&moved, "1"), "64,64");
+    let aligned = edit_layout(
+        "project.freeform.alignToGrid",
+        json!({"document":document,"grid":32,"cardSize":200,"width":800}),
+    )
+    .unwrap();
+    assert_eq!(position(&aligned, "2"), "224,0");
+    let resized = edit_layout(
+        "project.freeform.resize",
+        json!({"document":document,"items":["2"],"step":1,"cardSize":200,"width":800}),
+    )
+    .unwrap();
+    assert_eq!(position(&resized, "2"), "236,12,250");
+}

@@ -36,6 +36,7 @@ struct MoveRequest {
     positions: BTreeMap<String, [f32; 2]>,
     #[serde(default)]
     snap: bool,
+    grid: Option<f32>,
 }
 
 pub fn move_cards(params: Value) -> Result<Value> {
@@ -46,6 +47,7 @@ pub fn move_cards(params: Value) -> Result<Value> {
     };
     let mut document = SourceProjectDocument::read(&bytes)?;
     let index = ProjectIndex::new(&document)?;
+    let grid = grid_spacing(request.grid);
     let mut positions = BTreeMap::new();
     for (id, [x, y]) in request.positions {
         let id = id.parse::<u64>().context("invalid card ID")?;
@@ -53,7 +55,7 @@ pub fn move_cards(params: Value) -> Result<Value> {
         ensure!(x.is_finite() && y.is_finite(), "invalid card position");
         let point = |value: f32| {
             let value = if request.snap {
-                (value / GRID).round() * GRID
+                (value / grid).round() * grid
             } else {
                 value
             };
@@ -79,7 +81,13 @@ pub fn move_cards(params: Value) -> Result<Value> {
 
 const STACK: &str = "Freeform Stack";
 const CARD_SIZE: f32 = 128.0;
-const STEP: f32 = CARD_SIZE + 24.0;
+fn grid_spacing(grid: Option<f32>) -> f32 {
+    grid.unwrap_or(GRID).clamp(4.0, 200.0)
+}
+
+fn default_card_size(size: Option<f32>) -> f32 {
+    size.unwrap_or(CARD_SIZE).clamp(48.0, 480.0)
+}
 
 pub(crate) fn stack(item: &Value) -> Option<String> {
     item["metadata"][STACK]
@@ -95,6 +103,9 @@ struct StackRequest {
     document: Value,
     items: Vec<Value>,
     width: Option<f32>,
+    #[serde(rename = "cardSize")]
+    card_size: Option<f32>,
+    grid: Option<f32>,
 }
 
 pub fn stack_cards(params: Value, on: bool) -> Result<Value> {
@@ -141,7 +152,14 @@ pub fn stack_cards(params: Value, on: bool) -> Result<Value> {
         &index,
         bin.map_or("/project/root", |bin| bin.path.as_str()),
     );
-    let cards = layout(&index, &ids, request.width.unwrap_or(800.0));
+    let card_size = default_card_size(request.card_size);
+    let cards = layout(
+        &index,
+        &ids,
+        request.width.unwrap_or(800.0),
+        card_size,
+        grid_spacing(request.grid),
+    );
     let mut affected = items.clone();
     if !on {
         for id in items {
@@ -167,7 +185,7 @@ pub fn stack_cards(params: Value, on: bool) -> Result<Value> {
         item["metadata"][POSITION] = json!(format_position(
             point.x,
             point.y,
-            point.size.filter(|size| *size != CARD_SIZE)
+            point.size.filter(|size| *size != card_size)
         ));
     }
     let spread = !on && affected.len() > 1;
@@ -187,7 +205,7 @@ pub fn stack_cards(params: Value, on: bool) -> Result<Value> {
         if spread {
             let size = position(item).and_then(|point| point.size);
             item["metadata"][POSITION] = json!(format_position(
-                (base.0 + n as f32 * STEP).max(0.0),
+                (base.0 + n as f32 * (card_size + 24.0)).max(0.0),
                 base.1.max(0.0),
                 size
             ));
@@ -216,7 +234,13 @@ fn bin_cards(document: &SourceProjectDocument, index: &ProjectIndex<'_>, path: &
         .collect()
 }
 
-fn layout(index: &ProjectIndex<'_>, ids: &[u64], width: f32) -> Vec<(u64, Position, Option<u64>)> {
+fn layout(
+    index: &ProjectIndex<'_>,
+    ids: &[u64],
+    width: f32,
+    card_size: f32,
+    grid: f32,
+) -> Vec<(u64, Position, Option<u64>)> {
     let mut cards = Vec::new();
     let mut unplaced = Vec::new();
     let mut bottom = 0.0_f32;
@@ -225,15 +249,17 @@ fn layout(index: &ProjectIndex<'_>, ids: &[u64], width: f32) -> Vec<(u64, Positi
         let stack = stack(item).and_then(|id| id.parse::<u64>().ok());
         if let Some(position) = position(item) {
             bottom =
-                bottom.max(position.y + position.size.unwrap_or(CARD_SIZE) * 9.0 / 16.0 + 40.0);
+                bottom.max(position.y + position.size.unwrap_or(card_size) * 9.0 / 16.0 + 40.0);
             cards.push((id, position, stack));
         } else {
             unplaced.push((id, stack));
         }
     }
-    let columns = ((width - 12.0) / STEP).floor().max(1.0) as usize;
+    let step = card_size + 24.0;
+    let row_height = card_size * 9.0 / 16.0 + 44.0;
+    let columns = ((width - 12.0) / step).floor().max(1.0) as usize;
     let top = if bottom > 0.0 {
-        ((bottom + 8.0) / GRID).round() * GRID
+        ((bottom + 8.0) / grid).round() * grid
     } else {
         12.0
     };
@@ -241,8 +267,8 @@ fn layout(index: &ProjectIndex<'_>, ids: &[u64], width: f32) -> Vec<(u64, Positi
         cards.push((
             id,
             Position {
-                x: 12.0 + (n % columns) as f32 * STEP,
-                y: top + (n / columns) as f32 * 116.0,
+                x: 12.0 + (n % columns) as f32 * step,
+                y: top + (n / columns) as f32 * row_height,
                 size: None,
             },
             stack,
@@ -300,6 +326,9 @@ struct ArrangementRequest {
     name: Option<String>,
     bin: Option<Value>,
     width: Option<f32>,
+    #[serde(rename = "cardSize")]
+    card_size: Option<f32>,
+    grid: Option<f32>,
 }
 
 pub fn arrangement(command: &str, params: Value) -> Result<Value> {
@@ -333,16 +362,23 @@ pub fn arrangement(command: &str, params: Value) -> Result<Value> {
     ensure!(!save || !name.is_empty(), "arrangement name is empty");
     ensure!(!restore || names().contains(name), "arrangement is absent");
     let key = format!("{ARRANGEMENT}{name}");
+    let card_size = default_card_size(request.card_size);
     let positions: BTreeMap<_, _> = if save {
-        layout(&index, &ids, request.width.unwrap_or(800.0))
-            .into_iter()
-            .map(|(id, point, _)| {
-                (
-                    id,
-                    format_position(point.x, point.y, Some(point.size.unwrap_or(CARD_SIZE))),
-                )
-            })
-            .collect()
+        layout(
+            &index,
+            &ids,
+            request.width.unwrap_or(800.0),
+            card_size,
+            grid_spacing(request.grid),
+        )
+        .into_iter()
+        .map(|(id, point, _)| {
+            (
+                id,
+                format_position(point.x, point.y, Some(point.size.unwrap_or(card_size))),
+            )
+        })
+        .collect()
     } else {
         BTreeMap::new()
     };
@@ -387,6 +423,8 @@ struct LayoutRequest {
     #[serde(default)]
     items: Vec<Value>,
     width: Option<f32>,
+    #[serde(rename = "cardSize")]
+    card_size: Option<f32>,
     grid: Option<f32>,
     size: Option<f32>,
     step: Option<f32>,
@@ -438,9 +476,16 @@ pub fn edit_layout(command: &str, params: Value) -> Result<Value> {
         selected.map_or("/project/root", |entry| entry.path.as_str()),
     );
     let grid = request.grid.unwrap_or(GRID).max(1.0);
+    let card_size = default_card_size(request.card_size);
     let mut positions = BTreeMap::new();
     if !reset {
-        let cards = layout(&index, &ids, request.width.unwrap_or(800.0));
+        let cards = layout(
+            &index,
+            &ids,
+            request.width.unwrap_or(800.0),
+            card_size,
+            grid_spacing(request.grid),
+        );
         if resize {
             let points: BTreeMap<_, _> = cards
                 .into_iter()
@@ -448,8 +493,8 @@ pub fn edit_layout(command: &str, params: Value) -> Result<Value> {
                 .collect();
             for id in items {
                 let point = points.get(&id);
-                let (x, y, current) = point.map_or((12.0, 12.0, CARD_SIZE), |p| {
-                    (p.x, p.y, p.size.unwrap_or(CARD_SIZE))
+                let (x, y, current) = point.map_or((12.0, 12.0, card_size), |p| {
+                    (p.x, p.y, p.size.unwrap_or(card_size))
                 });
                 let size = request
                     .size
@@ -472,7 +517,7 @@ pub fn edit_layout(command: &str, params: Value) -> Result<Value> {
                     format_position(
                         snap(point.x),
                         snap(point.y),
-                        point.size.filter(|size| *size != CARD_SIZE),
+                        point.size.filter(|size| *size != card_size),
                     ),
                 );
             }

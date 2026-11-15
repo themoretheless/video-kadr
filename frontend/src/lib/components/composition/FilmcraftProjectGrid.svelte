@@ -18,6 +18,10 @@
   let arrangementName = $state('')
   let arrangementChoice = $state('')
   let snapCards = $state(false)
+  let freeformGrid = $state(20)
+  let freeformCardSize = $state(128)
+  let showCardNames = $state(true)
+  let showCardDurations = $state(true)
   let canvasWidth = $state(800)
   let moving = $state(false)
   let moveRequest: AbortController | undefined
@@ -159,6 +163,14 @@
       if (typeof saved.listThumbnails === 'boolean') listThumbnails = saved.listThumbnails
       if (typeof saved.previewArea === 'boolean') previewArea = saved.previewArea
       if (typeof saved.snap === 'boolean') snapCards = saved.snap
+      if (typeof saved.freeformGrid === 'number' && Number.isFinite(saved.freeformGrid)) {
+        freeformGrid = Math.min(200, Math.max(4, saved.freeformGrid))
+      }
+      if (typeof saved.freeformCardSize === 'number' && Number.isFinite(saved.freeformCardSize)) {
+        freeformCardSize = Math.min(480, Math.max(48, saved.freeformCardSize))
+      }
+      if (typeof saved.showCardNames === 'boolean') showCardNames = saved.showCardNames
+      if (typeof saved.showCardDurations === 'boolean') showCardDurations = saved.showCardDurations
       if (Array.isArray(saved.presets)) {
         const restored = Array.from({ length: presetSlots }, (_, slot): ViewPreset | null => {
           const preset = saved.presets[slot]
@@ -185,6 +197,7 @@
     try {
       localStorage.setItem(viewStorageKey, JSON.stringify({
         ...capturePresetView(), hover: hoverEnabled, snap: snapCards, listThumbnails, previewArea, presets, currentPreset,
+        freeformGrid, freeformCardSize, showCardNames, showCardDurations,
       }))
     } catch { /* Keep the current view usable without storage. */ }
   }
@@ -303,16 +316,18 @@
     for (const item of cards) {
       const saved = item.freeformPosition
       if (!saved) continue
-      const size = Math.min(1024, Math.max(32, saved.size ?? 128))
+      const size = Math.min(1024, Math.max(32, saved.size ?? freeformCardSize))
       positions[item.id] = { x: saved.x, y: saved.y, size }
       bottom = Math.max(bottom, saved.y + size * 9 / 16 + 40)
     }
-    const columns = Math.max(1, Math.floor((canvasWidth - 12) / 152))
-    const top = bottom > 0 ? Math.round((bottom + 8) / 20) * 20 : 12
+    const step = freeformCardSize + 24
+    const rowHeight = freeformCardSize * 9 / 16 + 44
+    const columns = Math.max(1, Math.floor((canvasWidth - 12) / step))
+    const top = bottom > 0 ? Math.round((bottom + 8) / freeformGrid) * freeformGrid : 12
     let index = 0
     for (const item of cards) {
       if (Object.hasOwn(positions, item.id)) continue
-      positions[item.id] = { x: 12 + index % columns * 152, y: top + Math.floor(index / columns) * 116, size: 128 }
+      positions[item.id] = { x: 12 + index % columns * step, y: top + Math.floor(index / columns) * rowHeight, size: freeformCardSize }
       index++
     }
     const anchors = new Set(cards.filter(card => card.freeformStack === card.id).map(card => card.id))
@@ -371,16 +386,20 @@
       const card = layout[id]
       return card ? [[id, [card.x + dx, card.y + dy] as [number, number]]] : []
     }))
-    await editFreeform(token, (owner, document, signal) => moveFilmcraftProjectCards(owner, { document, positions, snap: snapCards }, signal))
+    await editFreeform(token, (owner, document, signal) => moveFilmcraftProjectCards(owner, {
+      document, positions, snap: snapCards, grid: freeformGrid,
+    }, signal))
   }
 
   async function editStack(stack: boolean) {
     if (!token || disabled || moving || marking || !stackSelection.length) return
     const items = [...stackSelection]
-    await editFreeform(token, (owner, document, signal) => stackFilmcraftProjectCards(owner, stack, { document, items, width: canvasWidth }, signal))
+    await editFreeform(token, (owner, document, signal) => stackFilmcraftProjectCards(owner, stack, {
+      document, items, width: canvasWidth, grid: freeformGrid, cardSize: freeformCardSize,
+    }, signal))
   }
 
-  function editLayout(command: FilmcraftLayoutCommand, step?: number) {
+  function editLayout(command: FilmcraftLayoutCommand, step?: number, size?: number) {
     if (!token || disabled || moving || marking) return
     const resize = command === 'project.freeform.resize'
     const targets = [...stackSelection]
@@ -388,7 +407,8 @@
     const bin = activeBin?.id
     const width = canvasWidth
     void editFreeform(token, (owner, document, signal) => editFilmcraftLayout(owner, command, {
-      document, width, ...(resize ? { items: targets, step } : bin === undefined ? {} : { bin }),
+      document, width, grid: freeformGrid, cardSize: freeformCardSize,
+      ...(resize ? { items: targets, step, size } : bin === undefined ? {} : { bin }),
     }, signal))
   }
 
@@ -401,7 +421,8 @@
     const width = canvasWidth
     if (save) arrangementChoice = name
     void editFreeform(token, (owner, document, signal) => editFilmcraftArrangement(owner, command, {
-      document, name, ...(bin === undefined ? {} : { bin }), ...(save ? { width } : {}),
+      document, name, ...(bin === undefined ? {} : { bin }),
+      ...(save ? { width, grid: freeformGrid, cardSize: freeformCardSize } : {}),
     }, signal))
   }
 
@@ -560,6 +581,15 @@
       ? selected.includes(id) ? selected.filter(item => item !== id) : [...selected, id]
       : [id]
   }
+
+  function cardDuration(ticks = 0) {
+    const seconds = Math.floor(Math.max(0, ticks) / 254_016_000_000)
+    const twoDigits = (value: number) => String(value).padStart(2, '0')
+    const minutes = Math.floor(seconds / 60)
+    return minutes >= 60
+      ? `${Math.floor(minutes / 60)}:${twoDigits(minutes % 60)}:${twoDigits(seconds % 60)}`
+      : `${minutes}:${twoDigits(seconds % 60)}`
+  }
 </script>
 
 <details ontoggle={event => { open = event.currentTarget.open; if (!open) hover = undefined }}>
@@ -587,8 +617,23 @@
       </label>
       {#if freeform}
         <label><input type="checkbox" checked={snapCards} onchange={event => { snapCards = event.currentTarget.checked; saveView() }} />Привязка к сетке</label>
+        <label>Шаг сетки <input type="number" min="4" max="200" value={freeformGrid} onchange={event => {
+          const value = event.currentTarget.valueAsNumber
+          if (Number.isFinite(value)) freeformGrid = Math.min(200, Math.max(4, value))
+          event.currentTarget.value = String(freeformGrid)
+          saveView()
+        }} /></label>
+        <label>Базовый размер карточек <input type="number" min="48" max="480" value={freeformCardSize} onchange={event => {
+          const value = event.currentTarget.valueAsNumber
+          if (Number.isFinite(value)) freeformCardSize = Math.min(480, Math.max(48, value))
+          event.currentTarget.value = String(freeformCardSize)
+          saveView()
+        }} /></label>
+        <label><input type="checkbox" checked={showCardNames} onchange={event => { showCardNames = event.currentTarget.checked; saveView() }} />Имена карточек</label>
+        <label><input type="checkbox" checked={showCardDurations} onchange={event => { showCardDurations = event.currentTarget.checked; saveView() }} />Длительности карточек</label>
         <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', 1)}>Увеличить карточки</button>
         <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', -1)}>Уменьшить карточки</button>
+        <button type="button" disabled={disabled || !token || moving || marking || !stackSelection.length} onclick={() => editLayout('project.freeform.resize', undefined, freeformCardSize)}>Стандартный размер</button>
         <button type="button" disabled={disabled || !token || moving || marking} onclick={() => editLayout('project.freeform.alignToGrid')}>Выровнять по сетке</button>
         <button type="button" disabled={disabled || !token || moving || marking} onclick={() => editLayout('project.freeform.reset')}>Сбросить позиции и стеки</button>
         <button type="button" disabled={disabled || !token || moving || marking || stackSelection.length < 2} onclick={() => editStack(true)}>Сложить в стек</button>
@@ -706,7 +751,9 @@
           {/each}
         </div>
       {/if}
-      <ul class:freeform class:listView style:--filmcraft-font-size={`${fontSize}px`} style:--icon-size={`${iconSize}px`} aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
+      <ul class:freeform class:listView class:gridSnap={freeform && snapCards}
+        style:--freeform-grid={`${freeformGrid}px`} style:--filmcraft-font-size={`${fontSize}px`} style:--icon-size={`${iconSize}px`}
+        aria-label="Карточки проекта Filmcraft" style:min-height={freeform ? `${canvasHeight}px` : undefined} style:min-width={freeform ? `${canvasRight}px` : undefined}>
         {#each visible as entry (entry.kind === 'bin' ? `bin-${entry.folder.id}` : `item-${entry.item.id}`)}
           {#if entry.kind === 'bin'}
             {#if !freeform}<li><button type="button" class="folder" disabled={disabled} onclick={() => enter(entry.folder.id)}>Папка «{entry.folder.name}»</button></li>{/if}
@@ -725,7 +772,8 @@
               {/if}
               {#if listView && listThumbnails && entry.item.kind !== 'Media' && entry.item.kind !== 'Sequence'}<span></span>{/if}
               {#snippet itemButton()}
-              <button type="button" class="item" aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onpointerdown={event => beginMove(entry.item.id, event)} onpointermove={trackMove} onpointerup={finishMove}
+              <button type="button" class="item" aria-label={entry.item.name || entry.item.id}
+                aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onpointerdown={event => beginMove(entry.item.id, event)} onpointermove={trackMove} onpointerup={finishMove}
                 onpointercancel={() => { drag = undefined }} onlostpointercapture={() => { drag = undefined }}
                 onclick={event => select(entry.item.id, event)}
                 ondblclick={() => onopen(entry.item.id)}
@@ -735,7 +783,7 @@
                   if (event.repeat) return
                   selected = [entry.item.id]
                   onopen(entry.item.id)
-                }}>{entry.item.name || entry.item.id}</button>
+                }}>{!freeform || showCardNames ? entry.item.name || entry.item.id : ''}</button>
               {/snippet}
               {#if listView}
                 {#each shownColumns as column (column.key)}
@@ -744,6 +792,9 @@
                 {/each}
               {:else}
                 {@render itemButton()}
+                {#if freeform && showCardDurations}
+                  <span class="card-duration">{cardDuration(entry.item.iconSort?.mediaDuration)}</span>
+                {/if}
               {/if}
             </li>
           {/if}
@@ -775,11 +826,17 @@
   li { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 0.3rem; background: var(--panel); }
   .scroll { overflow: auto; max-height: 65vh; }
   ul.freeform { display: block; position: relative; margin: 0; }
+  ul.gridSnap {
+    --grid-line: color-mix(in srgb, var(--border) 50%, transparent);
+    background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: var(--freeform-grid) var(--freeform-grid);
+  }
   ul.freeform li { position: absolute; }
   ul.freeform button.item { touch-action: none; cursor: grab; }
   ul.freeform li.stackAnchor { z-index: 1; }
   ul.freeform li.dragged { z-index: 2; }
   .stack-count { position: absolute; top: 0.15rem; left: 0.2rem; padding-inline: 0.3rem; border-radius: 0.2rem; background: var(--panel); }
+  .card-duration { display: block; padding-inline: 0.35rem; text-align: end; }
   li.selected { border-color: var(--accent); }
   button.item, button.folder { width: 100%; overflow-wrap: anywhere; }
   button.item::after { content: ""; position: absolute; inset: 0; }
